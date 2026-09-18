@@ -3,12 +3,12 @@
 //  CSVImportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
+final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "CSV Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from CSV and TSV files"
@@ -21,7 +21,7 @@ final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
     typealias Settings = CSVImportOptions
     static let settingsStorageId = "csv-import"
 
-    var settings = CSVImportOptions() {
+    @Published var settings = CSVImportOptions() {
         didSet { saveSettings() }
     }
 
@@ -29,6 +29,7 @@ final class CSVImportPlugin: ImportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(CSVImportOptionsView(plugin: self))
     }

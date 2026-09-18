@@ -30,17 +30,7 @@ actor AIChatStorage {
     }()
 
     private init() {
-        let appSupport: URL
-        if let resolved = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first {
-            appSupport = resolved
-        } else {
-            Self.logger.error("Application Support directory unavailable, falling back to temporary directory")
-            appSupport = FileManager.default.temporaryDirectory
-        }
-        let dir = appSupport
+        let dir = AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("ai_chats", isDirectory: true)
         directory = dir
@@ -67,6 +57,20 @@ actor AIChatStorage {
 
     /// Save a conversation to disk
     func save(_ conversation: AIConversation) {
+        Self.write(conversation, into: directory)
+    }
+
+    /// Writes on the calling thread, for the one caller that cannot wait for an actor hop.
+    ///
+    /// `applicationWillTerminate` runs to the end of the main run loop turn and the process goes;
+    /// a hop booked there is never scheduled, so the last turns of a reply were lost while the
+    /// session record on disk still named the conversation they belonged to. The body touches no
+    /// actor state beyond `directory`, which is a `let`.
+    nonisolated func saveSynchronously(_ conversation: AIConversation) {
+        Self.write(conversation, into: directory)
+    }
+
+    nonisolated private static func write(_ conversation: AIConversation, into directory: URL) {
         let fileURL = directory.appendingPathComponent("\(conversation.id.uuidString).json")
 
         do {
@@ -92,6 +96,22 @@ actor AIChatStorage {
         } catch {
             Self.logger.error("Failed to save conversation \(conversation.id): \(error.localizedDescription)")
         }
+    }
+
+    /// One connection's conversations, newest first.
+    ///
+    /// A conversation stored before conversations carried a connection id has no answer, so it is
+    /// shown on every connection rather than lost.
+    func loadAll(connectionId: UUID?) -> [AIConversation] {
+        guard let connectionId else { return loadAll() }
+        return loadAll().filter { $0.connectionId == nil || $0.connectionId == connectionId }
+    }
+
+    /// One conversation by id, without reading the rest of the directory.
+    func load(id: UUID) -> AIConversation? {
+        let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? Self.decoder.decode(AIConversation.self, from: data)
     }
 
     /// Load all conversations, sorted by updatedAt descending

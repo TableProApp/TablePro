@@ -13,11 +13,19 @@ internal enum ProFeature: String, CaseIterable {
     case encryptedExport
     case envVarReferences
     case linkedFolders
+    case queryInsights
+    case resultCharts
     case teamCatalog
     case teamLibrary
+    case compareSync
+    case dataRewind
 
     var displayName: String {
         switch self {
+        case .queryInsights:
+            return String(localized: "Query Insights")
+        case .resultCharts:
+            return String(localized: "Result Charts")
         case .iCloudSync:
             return String(localized: "iCloud Sync")
         case .encryptedExport:
@@ -30,11 +38,19 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Team Catalog")
         case .teamLibrary:
             return String(localized: "Team Library")
+        case .compareSync:
+            return String(localized: "Compare & Sync")
+        case .dataRewind:
+            return String(localized: "Data Rewind")
         }
     }
 
     var systemImage: String {
         switch self {
+        case .queryInsights:
+            return "chart.bar.xaxis"
+        case .resultCharts:
+            return "chart.xyaxis.line"
         case .iCloudSync:
             return "icloud"
         case .encryptedExport:
@@ -47,13 +63,21 @@ internal enum ProFeature: String, CaseIterable {
             return "person.2.fill"
         case .teamLibrary:
             return "books.vertical.fill"
+        case .compareSync:
+            return "arrow.left.arrow.right.square"
+        case .dataRewind:
+            return "clock.arrow.circlepath"
         }
     }
 
     var featureDescription: String {
         switch self {
+        case .queryInsights:
+            return String(localized: "See which queries you run most, which run slowest, and which got slower.")
+        case .resultCharts:
+            return String(localized: "Turn loaded query results into native bar, line, area, and scatter charts.")
         case .iCloudSync:
-            return String(localized: "Sync connections, settings, and history across your Macs.")
+            return String(localized: "Sync connections, settings, and favorites across your Macs.")
         case .encryptedExport:
             return String(localized: "Export connections with encrypted credentials.")
         case .envVarReferences:
@@ -64,13 +88,18 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Publish connections to a shared folder your team reads from. Passwords are never included.")
         case .teamLibrary:
             return String(localized: "Share connections and saved queries with your team through your account. Passwords are never included.")
+        case .compareSync:
+            return String(localized: "Compare structure or data between two connections and generate the sync script.")
+        case .dataRewind:
+            return String(localized: "Restore the previous values of rows you already saved.")
         }
     }
 
     /// The lowest license tier that unlocks this feature.
     var requiredTier: LicenseTier {
         switch self {
-        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders:
+        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .queryInsights, .resultCharts,
+             .compareSync, .dataRewind:
             return .starter
         case .teamCatalog, .teamLibrary:
             return .team

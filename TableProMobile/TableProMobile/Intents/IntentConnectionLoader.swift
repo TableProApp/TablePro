@@ -1,7 +1,7 @@
 import Foundation
 import TableProModels
 
-enum IntentConnectionLoader {
+nonisolated enum IntentConnectionLoader {
     static func load() -> [DatabaseConnection] {
         guard let fileURL else { return [] }
         guard let data = try? Data(contentsOf: fileURL) else { return [] }

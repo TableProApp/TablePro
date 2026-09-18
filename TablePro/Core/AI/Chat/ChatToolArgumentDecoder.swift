@@ -41,17 +41,17 @@ enum ChatToolArgumentDecoder {
     static func optionalInt(
         _ args: JsonValue,
         key: String,
-        default fallback: Int,
+        default fallback: Int? = nil,
         clamp: ClosedRange<Int>? = nil
     ) -> Int? {
         guard case .object(let dict) = args, let value = dict[key] else { return fallback }
-        let raw: Int?
+        let decoded: Int?
         switch value {
-        case .int(let int): raw = int
-        case .double(let double): raw = Int(double)
-        default: raw = nil
+        case .int(let int): decoded = int
+        case .double(let double): decoded = Int(exactly: double.rounded(.towardZero))
+        default: decoded = nil
         }
-        guard let raw else { return fallback }
+        guard let raw = decoded ?? fallback else { return nil }
         if let clamp { return max(clamp.lowerBound, min(raw, clamp.upperBound)) }
         return raw
     }

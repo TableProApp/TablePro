@@ -69,10 +69,6 @@ public extension JsonRpcError {
         Self(code: JsonRpcErrorCode.requestTimeout, message: message, data: data)
     }
 
-    static func resourceNotFound(message: String = "Resource not found", data: JsonValue? = nil) -> Self {
-        Self(code: JsonRpcErrorCode.resourceNotFound, message: message, data: data)
-    }
-
     static func tooLarge(message: String = "Payload too large", data: JsonValue? = nil) -> Self {
         Self(code: JsonRpcErrorCode.tooLarge, message: message, data: data)
     }

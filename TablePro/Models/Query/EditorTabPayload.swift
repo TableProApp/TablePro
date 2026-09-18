@@ -37,18 +37,27 @@ internal struct EditorTabPayload: Codable, Hashable {
     internal let initialQuery: String?
     /// Whether this tab displays a database view (read-only)
     internal let isView: Bool
+    /// The object's own kind, which decides which structure edits the tab may offer. Carried beside
+    /// `isView` because that Bool answers a different question and cannot tell a materialized view
+    /// from a table. (#2726)
+    internal let objectType: TableInfo.TableType?
     /// Whether to show the structure view instead of data (for "Show Structure" context menu)
     internal let showStructure: Bool
     /// Whether to skip automatic query execution (used for restored tabs that should lazy-load)
     internal let skipAutoExecute: Bool
     /// Whether this tab is a preview (temporary) tab
     internal let isPreview: Bool
+    /// Whether this open must get a tab of its own, even when the table already has one.
+    /// Carries "Open in New Tab" all the way to tab creation, which re-checks for a duplicate.
+    internal let forcesNewTab: Bool
     /// Initial filter state (for FK navigation — pre-applies a WHERE filter)
     internal let initialFilterState: TabFilterState?
     /// Source file URL for .sql files opened from disk (used for deduplication)
     internal let sourceFileURL: URL?
     /// Schema key for ER diagram tabs
     internal let erDiagramSchemaKey: String?
+    /// The routine or trigger a .objectSource tab shows
+    internal let objectRef: DatabaseObjectRef?
     /// Tab title (for restoring persisted tabs with their original names)
     internal let tabTitle: String?
     /// The intent behind creating this tab
@@ -56,9 +65,10 @@ internal struct EditorTabPayload: Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, connectionId, tabType, tableName, databaseName, schemaName
-        case initialQuery, isView, showStructure, skipAutoExecute, isPreview
+        case initialQuery, isView, objectType, showStructure, skipAutoExecute, isPreview
+        case forcesNewTab
         case tabTitle
-        case initialFilterState, sourceFileURL, erDiagramSchemaKey, intent
+        case initialFilterState, sourceFileURL, erDiagramSchemaKey, objectRef, intent
         // Legacy key for backward decoding only
         case isNewTab
     }
@@ -72,12 +82,15 @@ internal struct EditorTabPayload: Codable, Hashable {
         schemaName: String? = nil,
         initialQuery: String? = nil,
         isView: Bool = false,
+        objectType: TableInfo.TableType? = nil,
         showStructure: Bool = false,
         skipAutoExecute: Bool = false,
         isPreview: Bool = false,
+        forcesNewTab: Bool = false,
         initialFilterState: TabFilterState? = nil,
         sourceFileURL: URL? = nil,
         erDiagramSchemaKey: String? = nil,
+        objectRef: DatabaseObjectRef? = nil,
         tabTitle: String? = nil,
         intent: TabIntent = .openContent
     ) {
@@ -89,12 +102,15 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.schemaName = schemaName
         self.initialQuery = initialQuery
         self.isView = isView
+        self.objectType = objectType
         self.showStructure = showStructure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = isPreview
+        self.forcesNewTab = forcesNewTab
         self.initialFilterState = initialFilterState
         self.sourceFileURL = sourceFileURL
         self.erDiagramSchemaKey = erDiagramSchemaKey
+        self.objectRef = objectRef
         self.tabTitle = tabTitle
         self.intent = intent
     }
@@ -109,12 +125,18 @@ internal struct EditorTabPayload: Codable, Hashable {
         schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
         initialQuery = try container.decodeIfPresent(String.self, forKey: .initialQuery)
         isView = try container.decodeIfPresent(Bool.self, forKey: .isView) ?? false
+        /// A raw String, so a spelling a newer build invents decodes to nil rather than throwing and
+        /// losing the whole payload.
+        objectType = try container.decodeIfPresent(String.self, forKey: .objectType)
+            .flatMap(TableInfo.TableType.init(rawValue:))
         showStructure = try container.decodeIfPresent(Bool.self, forKey: .showStructure) ?? false
         skipAutoExecute = try container.decodeIfPresent(Bool.self, forKey: .skipAutoExecute) ?? false
         isPreview = try container.decodeIfPresent(Bool.self, forKey: .isPreview) ?? false
+        forcesNewTab = try container.decodeIfPresent(Bool.self, forKey: .forcesNewTab) ?? false
         initialFilterState = try container.decodeIfPresent(TabFilterState.self, forKey: .initialFilterState)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
+        objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         tabTitle = try container.decodeIfPresent(String.self, forKey: .tabTitle)
         if let decodedIntent = try container.decodeIfPresent(TabIntent.self, forKey: .intent) {
             intent = decodedIntent
@@ -134,12 +156,15 @@ internal struct EditorTabPayload: Codable, Hashable {
         try container.encodeIfPresent(schemaName, forKey: .schemaName)
         try container.encodeIfPresent(initialQuery, forKey: .initialQuery)
         try container.encode(isView, forKey: .isView)
+        try container.encodeIfPresent(objectType?.rawValue, forKey: .objectType)
         try container.encode(showStructure, forKey: .showStructure)
         try container.encode(skipAutoExecute, forKey: .skipAutoExecute)
         try container.encode(isPreview, forKey: .isPreview)
+        try container.encode(forcesNewTab, forKey: .forcesNewTab)
         try container.encodeIfPresent(initialFilterState, forKey: .initialFilterState)
         try container.encodeIfPresent(sourceFileURL, forKey: .sourceFileURL)
         try container.encodeIfPresent(erDiagramSchemaKey, forKey: .erDiagramSchemaKey)
+        try container.encodeIfPresent(objectRef, forKey: .objectRef)
         try container.encodeIfPresent(tabTitle, forKey: .tabTitle)
         try container.encode(intent, forKey: .intent)
     }
@@ -154,12 +179,15 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.schemaName = tab.tableContext.schemaName
         self.initialQuery = tab.content.query
         self.isView = tab.tableContext.isView
+        self.objectType = tab.tableContext.objectType
         self.showStructure = tab.display.resultsViewMode == .structure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = false
+        self.forcesNewTab = false
         self.initialFilterState = nil
         self.sourceFileURL = tab.content.sourceFileURL
         self.erDiagramSchemaKey = tab.display.erDiagramSchemaKey
+        self.objectRef = tab.display.objectRef
         self.tabTitle = tab.title
         self.intent = .openContent
     }

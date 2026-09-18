@@ -86,46 +86,6 @@ enum DataGridRowHeight: Int, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Date format options
-enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
-    case iso8601 = "yyyy-MM-dd HH:mm:ss"
-    case iso8601Date = "yyyy-MM-dd"
-    case usLong = "MM/dd/yyyy hh:mm:ss a"
-    case usShort = "MM/dd/yyyy"
-    case euLong = "dd/MM/yyyy HH:mm:ss"
-    case euShort = "dd/MM/yyyy"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .iso8601: return String(localized: "ISO 8601 (2024-12-31 23:59:59)")
-        case .iso8601Date: return String(localized: "ISO Date (2024-12-31)")
-        case .usLong: return String(localized: "US Long (12/31/2024 11:59:59 PM)")
-        case .usShort: return String(localized: "US Short (12/31/2024)")
-        case .euLong: return String(localized: "EU Long (31/12/2024 23:59:59)")
-        case .euShort: return String(localized: "EU Short (31/12/2024)")
-        }
-    }
-
-    var formatString: String { rawValue }
-
-    var dateOnlyFormatString: String {
-        switch self {
-        case .iso8601, .iso8601Date: return "yyyy-MM-dd"
-        case .usLong, .usShort: return "MM/dd/yyyy"
-        case .euLong, .euShort: return "dd/MM/yyyy"
-        }
-    }
-
-    var timeOnlyFormatString: String {
-        switch self {
-        case .usLong: return "hh:mm:ss a"
-        default: return "HH:mm:ss"
-        }
-    }
-}
-
 enum DefaultSortBehavior: String, Codable, CaseIterable, Identifiable, Equatable {
     case none
     case primaryKey
@@ -156,6 +116,7 @@ struct DataGridSettings: Codable, Equatable {
     var queryResultRowCap: Int
     var truncateQueryResults: Bool
     var defaultSortBehavior: DefaultSortBehavior
+    var defaultSortDirection: SortDirection
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -169,7 +130,8 @@ struct DataGridSettings: Codable, Equatable {
         countRowsIfEstimateLessThan: 100_000,
         queryResultRowCap: 10_000,
         truncateQueryResults: true,
-        defaultSortBehavior: .none
+        defaultSortBehavior: .none,
+        defaultSortDirection: .ascending
     )
 
     init(
@@ -184,7 +146,8 @@ struct DataGridSettings: Codable, Equatable {
         countRowsIfEstimateLessThan: Int = 100_000,
         queryResultRowCap: Int = 10_000,
         truncateQueryResults: Bool = true,
-        defaultSortBehavior: DefaultSortBehavior = .none
+        defaultSortBehavior: DefaultSortBehavior = .none,
+        defaultSortDirection: SortDirection = .ascending
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -198,6 +161,7 @@ struct DataGridSettings: Codable, Equatable {
         self.queryResultRowCap = queryResultRowCap
         self.truncateQueryResults = truncateQueryResults
         self.defaultSortBehavior = defaultSortBehavior
+        self.defaultSortDirection = defaultSortDirection
     }
 
     init(from decoder: Decoder) throws {
@@ -215,6 +179,7 @@ struct DataGridSettings: Codable, Equatable {
         queryResultRowCap = try container.decodeIfPresent(Int.self, forKey: .queryResultRowCap) ?? 10_000
         truncateQueryResults = try container.decodeIfPresent(Bool.self, forKey: .truncateQueryResults) ?? true
         defaultSortBehavior = try container.decodeIfPresent(DefaultSortBehavior.self, forKey: .defaultSortBehavior) ?? .none
+        defaultSortDirection = try container.decodeIfPresent(SortDirection.self, forKey: .defaultSortDirection) ?? .ascending
     }
 
     // MARK: - Validated Properties
@@ -289,16 +254,23 @@ struct HistorySettings: Codable, Equatable {
     var maxDays: Int // 0 = unlimited
     var autoCleanup: Bool
 
+    /// Keep what rows looked like before each save, so a committed save can be restored.
+    ///
+    /// This is the only setting in the app that governs storing real row values on disk, which is
+    /// why it is a switch rather than an assumption.
+    var keepRewindHistory: Bool
+
     static let `default` = HistorySettings(
         maxEntries: 10_000,
         maxDays: 90,
         autoCleanup: true
     )
 
-    init(maxEntries: Int = 10_000, maxDays: Int = 90, autoCleanup: Bool = true) {
+    init(maxEntries: Int = 10_000, maxDays: Int = 90, autoCleanup: Bool = true, keepRewindHistory: Bool = true) {
         self.maxEntries = maxEntries
         self.maxDays = maxDays
         self.autoCleanup = autoCleanup
+        self.keepRewindHistory = keepRewindHistory
     }
 
     init(from decoder: Decoder) throws {
@@ -306,6 +278,7 @@ struct HistorySettings: Codable, Equatable {
         maxEntries = try container.decodeIfPresent(Int.self, forKey: .maxEntries) ?? 10_000
         maxDays = try container.decodeIfPresent(Int.self, forKey: .maxDays) ?? 90
         autoCleanup = try container.decodeIfPresent(Bool.self, forKey: .autoCleanup) ?? true
+        keepRewindHistory = try container.decodeIfPresent(Bool.self, forKey: .keepRewindHistory) ?? true
     }
 
     // MARK: - Validated Properties
@@ -342,17 +315,19 @@ struct HistorySettings: Codable, Equatable {
 /// Tab behavior settings
 struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true
-    var groupAllConnectionTabs: Bool = false
+    /// What the strip does once the tabs stop fitting. `scroll` is the system's answer and the
+    /// default: every tab bar Apple ships keeps one row and scrolls it.
+    var overflow: EditorTabStripOverflow = .scroll
     static let `default` = TabSettings()
 
-    init(enablePreviewTabs: Bool = true, groupAllConnectionTabs: Bool = false) {
+    init(enablePreviewTabs: Bool = true, overflow: EditorTabStripOverflow = .scroll) {
         self.enablePreviewTabs = enablePreviewTabs
-        self.groupAllConnectionTabs = groupAllConnectionTabs
+        self.overflow = overflow
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enablePreviewTabs = try container.decodeIfPresent(Bool.self, forKey: .enablePreviewTabs) ?? true
-        groupAllConnectionTabs = try container.decodeIfPresent(Bool.self, forKey: .groupAllConnectionTabs) ?? false
+        overflow = try container.decodeIfPresent(EditorTabStripOverflow.self, forKey: .overflow) ?? .scroll
     }
 }

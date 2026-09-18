@@ -63,7 +63,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         for row in rows {
             try Task.checkCancellation()
             guard let type = Self.mapDriver(row.connectionType) else {
-                Self.logger.warning("Skipping Beekeeper connection \(row.id) with unsupported driver \(row.connectionType ?? "<nil>", privacy: .public)")
+                Self.logger.warning("Skipping Beekeeper connection \(row.id) with no connection type")
                 continue
             }
             let groupName = row.connectionFolderId.flatMap { folderMap[$0] }
@@ -72,7 +72,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
             let exportable = ExportableConnection(
                 name: row.name.isEmpty ? "Untitled" : row.name,
                 host: row.host.isEmpty ? "localhost" : row.host,
-                port: row.port ?? Self.defaultPort(for: type),
+                port: row.port ?? ForeignAppDatabaseType.defaultPort(for: type),
                 database: row.defaultDatabase ?? "",
                 username: row.username ?? "",
                 type: type,
@@ -124,8 +124,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     /// Beekeeper's `connectionType` strings come from the `ConnectionType`
     /// enum in
     /// `beekeeper-studio/apps/studio/src/lib/db/types.ts`. Update this map
-    /// when Beekeeper adds a driver TablePro now supports. Unmapped drivers
-    /// are skipped with a warning at the call site.
+    /// when Beekeeper adds a driver TablePro now supports.
     private static func mapDriver(_ raw: String?) -> String? {
         guard let raw, !raw.isEmpty else { return nil }
         switch raw.lowercased() {
@@ -144,22 +143,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         case "bigquery": return "BigQuery"
         case "duckdb": return "DuckDB"
         case "libsql": return "libSQL"
-        default: return nil
-        }
-    }
-
-    private static func defaultPort(for type: String) -> Int {
-        switch type {
-        case "MySQL", "MariaDB": return 3_306
-        case "PostgreSQL", "Redshift": return 5_432
-        case "CockroachDB": return 26_257
-        case "SQL Server": return 1_433
-        case "Oracle": return 1_521
-        case "MongoDB": return 27_017
-        case "Redis": return 6_379
-        case "Cassandra": return 9_042
-        case "ClickHouse": return 8_123
-        default: return 0
+        default: return ForeignAppDatabaseType.resolve(raw)
         }
     }
 

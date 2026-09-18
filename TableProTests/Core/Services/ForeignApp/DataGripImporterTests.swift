@@ -159,6 +159,17 @@ struct DataGripImporterTests {
         #expect(connection.port == 5_432)
     }
 
+    @Test("uses the registry's default port for a portless Redshift url")
+    func redshiftDefaultPort() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "redshift", jdbcURL: "jdbc:redshift://cluster.example.com/dev")
+        ])
+
+        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        #expect(connection.type == "Redshift")
+        #expect(connection.port == 5_439)
+    }
+
     @Test("SQLite stores file path as database")
     func sqlitePath() throws {
         try writeDataSources([

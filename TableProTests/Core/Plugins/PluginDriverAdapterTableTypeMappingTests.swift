@@ -8,18 +8,23 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubTableTypeDriver: PluginDatabaseDriver {
-    var supportsSchemas: Bool { false }
+private final class StubTableTypeDriver: PluginDatabaseDriver, @unchecked Sendable {
+    var stubbedSupportsSchemas = false
+    var stubbedCurrentSchema: String?
+
+    var supportsSchemas: Bool { stubbedSupportsSchemas }
     var supportsTransactions: Bool { false }
-    var currentSchema: String? { nil }
+    var currentSchema: String? { stubbedCurrentSchema }
     var serverVersion: String? { nil }
 
     var stubbedTables: [PluginTableInfo] = []
     var stubbedPartitions: [PluginTableInfo] = []
     private(set) var requestedPartitionTable: String?
+    private(set) var requestedTableSchema: String??
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        stubbedTables
+        requestedTableSchema = .some(schema)
+        return stubbedTables
     }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
@@ -128,6 +133,50 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.allSatisfy { $0.type == .systemTable })
     }
 
+    @Test("Maps the Redshift external classifier output to an external table")
+    func mapsExternalTable() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedTables = [
+            PluginTableInfo(
+                name: "customers",
+                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: "TABLE")
+            ),
+            PluginTableInfo(
+                name: "orders",
+                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: " ")
+            ),
+            PluginTableInfo(name: "events", type: "external_table")
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let tables = try await adapter.fetchTables()
+        #expect(tables.count == 3)
+        #expect(tables.allSatisfy { $0.type == .externalTable })
+        #expect(tables.allSatisfy { !$0.type.allowsRowEditing })
+    }
+
+    /// The MariaDB listing spells system versioning into the type string, because `PluginTableInfo`
+    /// cannot gain a field without an ABI break. The adapter is where it separates again.
+    @Test("Maps the MariaDB kinds to a sequence and to a system-versioned table")
+    func mapsMariaDBKinds() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedTables = [
+            PluginTableInfo(name: "order_ids", type: "SEQUENCE"),
+            PluginTableInfo(name: "versioned", type: "SYSTEM VERSIONED TABLE"),
+            PluginTableInfo(
+                name: "versioned_parted",
+                type: "SYSTEM VERSIONED PARTITIONED TABLE",
+                comment: nil,
+                partitionCount: 2
+            )
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let tables = try await adapter.fetchTables()
+
+        #expect(tables.map(\.type) == [.sequence, .table, .partitionedTable])
+        #expect(tables.map(\.isSystemVersioned) == [false, true, true])
+        #expect(tables[2].partitionCount == 2)
+    }
+
     @Test("Maps unknown type to .table with warning")
     func mapsUnknownToTable() async throws {
         let driver = StubTableTypeDriver()
@@ -191,7 +240,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables[1].type == .table)
     }
 
-    @Test("fetchPartitions bridges plugin rows and resolves the schema")
+    @Test("fetchPartitionDetails bridges plugin rows and resolves the schema")
     func fetchPartitionsBridgesRows() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedPartitions = [
@@ -199,12 +248,15 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "orders_2024_02", type: "PARTITIONED TABLE")
         ]
         let adapter = makeAdapter(driver: driver)
-        let partitions = try await adapter.fetchPartitions(table: "orders", schema: "app")
+        let partitions = try await adapter.fetchPartitionDetails(table: "orders", schema: "app")
         #expect(driver.requestedPartitionTable == "orders")
         #expect(partitions.map(\.name) == ["orders_2024_01", "orders_2024_02"])
-        #expect(partitions[0].type == .table)
-        #expect(partitions[1].type == .partitionedTable)
+        #expect(partitions[0].isSubpartitioned == false)
+        #expect(partitions[1].isSubpartitioned)
+        #expect(partitions.allSatisfy { $0.isSeparateRelation })
         #expect(partitions.allSatisfy { $0.schema == "app" })
+        let asTables = partitions.compactMap { $0.asTableInfo }
+        #expect(asTables.map(\.type) == [.table, .partitionedTable])
     }
 
     @Test("Plugin schema propagates to TableInfo when set on PluginTableInfo")
@@ -230,8 +282,22 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.first?.schema == "audit")
     }
 
-    @Test("fetchTables() preserves nil schema (no fallback to currentSchema)")
-    func defaultFetchPreservesNilSchema() async throws {
+    @Test("fetchTables() stamps the schema the rows were actually read from")
+    func defaultFetchStampsCurrentSchema() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedSupportsSchemas = true
+        driver.stubbedCurrentSchema = "custom"
+        driver.stubbedTables = [PluginTableInfo(name: "def_encounter", type: "TABLE")]
+        let adapter = makeAdapter(driver: driver)
+
+        let tables = try await adapter.fetchTables()
+
+        #expect(driver.requestedTableSchema == .some("custom"))
+        #expect(tables.first?.schema == "custom")
+    }
+
+    @Test("fetchTables() stays schema-less for an engine without schemas")
+    func defaultFetchStaysSchemaLess() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [PluginTableInfo(name: "users", type: "TABLE")]
         let adapter = makeAdapter(driver: driver)

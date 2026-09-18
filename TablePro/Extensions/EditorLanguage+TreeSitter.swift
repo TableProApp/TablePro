@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import CodeEditLanguages
+import TableProGrammars
 import TableProPluginKit
 
 extension EditorLanguage {

@@ -29,13 +29,18 @@ extension MainContentView {
         updateWindowTitleAndFileState()
         let t2 = Date()
 
-        syncSidebarToCurrentTab()
+        /// A tab selection change in a background window is usually a side effect rather than
+        /// navigation, a close refocusing its neighbour above all, and that window re-marks its own
+        /// object tree the moment it becomes key.
+        if coordinator.isKeyWindow {
+            coordinator.syncSidebarObjectSelection()
+        }
         let t3 = Date()
 
         guard !coordinator.isTearingDown else { return }
         let aggregated = MainContentCoordinator.aggregatedTabs(for: coordinator.connectionId)
         coordinator.persistence.saveNow(
-            windowedTabs: aggregated,
+            tabs: aggregated,
             selectedTabId: newTabId
         )
         MainContentView.lifecycleLogger.debug(
@@ -60,7 +65,7 @@ extension MainContentView {
             coordinator.promotePreviewTab()
         }
 
-        coordinator.persistence.saveOrClearAggregated()
+        coordinator.persistence.saveAggregated()
         MainContentView.lifecycleLogger.debug(
             "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
@@ -89,18 +94,25 @@ extension MainContentView {
             schemaName: tab.tableContext.schemaName,
             columns: newColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
-            databaseType: connection.type
+            databaseType: connection.type,
+            generatedColumns: coordinator.tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
+            rowMatchPolicy: coordinator.tabSessionRegistry.tableRows(for: tab.id).rowMatchPolicy
         )
     }
 
     func handleTableSelectionChange(
-        from oldTables: Set<TableInfo>, to newTables: Set<TableInfo>
+        from oldTables: Set<DatabaseTreeTableRef>, to newTables: Set<DatabaseTreeTableRef>
     ) {
-        let action = TableSelectionAction.resolve(oldTables: oldTables, newTables: newTables)
+        let action = TableSelectionAction.resolve(
+            oldTables: oldTables,
+            newTables: newTables,
+            selectedRowCount: coordinator.windowSidebarState.selectedRowCount
+        )
 
-        guard case .navigate(let table) = action else {
+        guard case .navigate(let ref) = action else {
             return
         }
+        let table = ref.table
 
         guard coordinator.isKeyWindow else {
             return
@@ -113,79 +125,73 @@ extension MainContentView {
             isActiveTabReusable: coordinator.isActiveTabReusable
         )
 
+        MainContentView.lifecycleLogger.debug(
+            """
+            [tableload] sidebarSelection table=\(table.name, privacy: .private(mask: .hash)) \
+            decision=\(String(describing: result), privacy: .public) \
+            currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .public) \
+            isExecuting=\(coordinator.tabExecution.isAnyExecuting)
+            """
+        )
+
         switch result {
         case .skip:
             return
         case .reuseActiveTab:
             coordinator.selectionState.indices = []
-            coordinator.openTableTab(table)
+            coordinator.openTableTab(table, schema: ref.qualifyingSchema)
         case .openNewTab:
-            coordinator.openTableTab(table)
-        }
-    }
-
-    /// Keep sidebar selection in sync with the current window's tab.
-    /// Only writes when the value actually changes, preventing spurious onChange triggers.
-    /// Navigation safety is guaranteed by `SidebarNavigationResult.resolve` returning `.skip`
-    /// when the selected table matches the current tab.
-    /// Reads from DatabaseManager (authoritative source) instead of the `tables` binding.
-    func syncSidebarToCurrentTab() {
-        guard coordinator.isKeyWindow else { return }
-        let liveTables = DatabaseManager.shared.session(for: connection.id)?.tables ?? []
-        let target: Set<TableInfo>
-        if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
-            let match = liveTables.first(where: { $0.name == currentTableName })
-        {
-            target = [match]
-        } else {
-            target = []
-        }
-        if coordinator.windowSidebarState.selectedTables != target {
-            if target.isEmpty && liveTables.isEmpty { return }
-            coordinator.windowSidebarState.selectedTables = target
+            coordinator.openTableTab(table, schema: ref.qualifyingSchema)
         }
     }
 
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        /// A selection change, a refresh or an undo rebuilds the fields under whatever was being
+        /// typed, so the run it was building ends here rather than folding the next keystroke into
+        /// a step that belongs to another row.
+        coordinator.endInspectorEditRun()
+        switch gridSelectionOwner {
+        case .schemaGrid:
+            updateSchemaSidebarEditState()
+            return
+        case .none:
+            clearSidebarEditState()
+            return
+        case .dataGrid:
+            break
+        }
+
         let selectedIndices = coordinator.selectionState.indices
         guard let tab = coordinator.tabManager.selectedTab,
             !selectedIndices.isEmpty
         else {
-            rightPanelState.editState.fields = []
-            rightPanelState.editState.onFieldChanged = nil
+            clearSidebarEditState()
             return
         }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
 
         let displayIDs = coordinator.activeGridDisplayIDs
-        var allRows: [[PluginCellValue]] = []
-        for displayIndex in selectedIndices.sorted() {
-            if let row = DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows) {
-                allRows.append(Array(row.values))
-            }
+        let selectedRows = selectedIndices.sorted().compactMap {
+            DisplayRowMapping.row(forDisplay: $0, displayIDs: displayIDs, in: tableRows)
         }
+        let allRows = selectedRows.map { Array($0.values) }
 
         var columnTypes = tableRows.columnTypes
         for (i, col) in tableRows.columns.enumerated() where i < columnTypes.count {
             if let values = tableRows.columnEnumValues[col], !values.isEmpty {
-                let ct = columnTypes[i]
-                if ct.isEnumType {
-                    columnTypes[i] = .enumType(rawType: ct.rawType, values: values)
-                } else if ct.isSetType {
-                    columnTypes[i] = .set(rawType: ct.rawType, values: values)
-                }
+                columnTypes[i] = columnTypes[i].withAllowedValues(values)
             }
         }
 
         if !changeManager.hasChanges {
-            rightPanelState.editState.clearEdits()
+            trailingPaneState.inspector.editState.clearEdits()
         }
 
         var modifiedColumns = Set<Int>()
-        for rowIndex in selectedIndices {
-            modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
+        for row in selectedRows {
+            modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(row.id))
         }
 
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
@@ -200,56 +206,126 @@ extension MainContentView {
                 }
             }
         }
-        rightPanelState.editState.configure(
+        trailingPaneState.inspector.editState.configure(
             selectedRowIndices: selectedIndices,
+            rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             columns: tableRows.columns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
             primaryKeyColumns: pkColumns,
-            foreignKeyColumns: fkColumns
+            foreignKeyColumns: fkColumns,
+            serverOwnedColumns: tableRows.generatedColumns,
+            displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes)
         )
 
         guard isSidebarEditable else {
-            rightPanelState.editState.onFieldChanged = nil
+            clearSidebarEditHandlers()
             return
         }
 
         let capturedCoordinator = coordinator
-        let capturedEditState = rightPanelState.editState
-        rightPanelState.editState.onFieldChanged = { columnIndex, newValue in
-            guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
-            let tableRows = capturedCoordinator.tabSessionRegistry.tableRows(for: tab.id)
-            let columnName =
-                columnIndex < tableRows.columns.count ? tableRows.columns[columnIndex] : ""
+        let capturedEditState = trailingPaneState.inspector.editState
+        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue, continuity in
+            capturedCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: capturedEditState.rowIDs,
+                continuity: continuity
+            )
+        }
+        trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow in
+            capturedCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+        }
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs in
+            /// A value window commits on every keystroke exactly as the field it detached from
+            /// does, so its typing folds into one undo step the same way.
+            capturedCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: rowIDs,
+                continuity: .typing
+            )
+        }
+    }
 
-            let displayIDs = capturedCoordinator.activeGridDisplayIDs
-            for rowIndex in capturedEditState.selectedRowIndices {
-                guard let resolvedRow = DisplayRowMapping.row(
-                    forDisplay: rowIndex,
-                    displayIDs: displayIDs,
-                    in: tableRows
-                ) else { continue }
-                let originalRow = Array(resolvedRow.values)
+    /// The per-column display formats the grid is applying, in column order.
+    ///
+    /// The inspector had no idea these existed: its values came from a raw pass that decoded bytes
+    /// with `isoLatin1` and passed text straight through, while the dead tuple path beside it
+    /// computed formatted values nothing displayed. Only the editor choice is taken from the
+    /// format; the value stays raw, because a save writes what the editor holds and a formatted
+    /// timestamp written back into an integer column would corrupt it.
+    private func inspectorDisplayFormats(
+        for tab: QueryTab,
+        columns: [String],
+        types: [ColumnType?]
+    ) -> [ValueDisplayFormat?] {
+        let service = ValueDisplayFormatService.shared
+        let scope = tab.tableContext.scope(connectionId: coordinator.connection.id)
+        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: columns)
+        let activeFormats = InspectorValueDisplayFormatResolver.activeFormats(
+            from: coordinator.dataTabDelegate?.tableViewCoordinator,
+            matching: columns
+        )
+        let storedFormats = activeFormats == nil
+            ? storageKeys.map { service.effectiveFormat(columnKey: $0, scope: scope) }
+            : []
+        return columns.indices.map { index in
+            let resolved = InspectorValueDisplayFormatResolver.resolve(
+                columnIndex: index,
+                activeFormats: activeFormats,
+                storedFormat: storedFormats.indices.contains(index) ? storedFormats[index] : .raw,
+                columnType: index < types.count ? types[index] : nil,
+                databaseType: coordinator.connection.type
+            )
+            /// `.raw` is what the resolver returns for "nobody chose a format", and it is also what
+            /// `FieldEditorResolver` reads as "skip JSON, PHP and image detection". Forwarding it
+            /// would take the content-driven editors away from every column that has no override,
+            /// which is nearly all of them, so absence stays nil.
+            return resolved == .raw ? nil : resolved
+        }
+    }
 
-                let oldValue: PluginCellValue
-                if columnIndex < capturedEditState.fields.count {
-                    oldValue = PluginCellValue.fromOptional(capturedEditState.fields[columnIndex].originalValue)
-                } else if columnIndex < originalRow.count {
-                    oldValue = originalRow[columnIndex]
-                } else {
-                    oldValue = .null
-                }
+    private func clearSidebarEditState() {
+        trailingPaneState.inspector.editState.fields = []
+        clearSidebarEditHandlers()
+    }
 
-                capturedCoordinator.changeManager.recordCellChange(
-                    rowIndex: rowIndex,
-                    columnIndex: columnIndex,
-                    columnName: columnName,
-                    oldValue: oldValue,
-                    newValue: newValue,
-                    originalRow: originalRow
-                )
-            }
+    private func clearSidebarEditHandlers() {
+        trailingPaneState.inspector.editState.onFieldChanged = nil
+        trailingPaneState.inspector.editState.onFieldReverted = nil
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
+    }
+
+    /// Populate the inspector from the grid that owns a schema selection, and send every
+    /// edit back to it so a change lands in its change manager exactly as an inline
+    /// grid edit does, with one undo step and one pending change.
+    private func updateSchemaSidebarEditState() {
+        guard let displayRow = coordinator.selectionState.indices.min(),
+            let row = selectedInspectorRow
+        else {
+            clearSidebarEditState()
+            return
+        }
+
+        trailingPaneState.inspector.editState.configure(schemaFields: row.fields, displayRow: displayRow)
+
+        guard row.isEditable else {
+            clearSidebarEditHandlers()
+            return
+        }
+
+        let capturedCoordinator = coordinator
+        trailingPaneState.inspector.editState.onFieldReverted = nil
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
+        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue, _ in
+            capturedCoordinator.inspectorRowSource?.commitInspectorField(
+                displayRow: displayRow,
+                fieldIndex: fieldIndex,
+                value: newValue.asText
+            )
+            capturedCoordinator.inspectorRowSourceRevision += 1
         }
     }
 }

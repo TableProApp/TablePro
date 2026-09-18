@@ -51,6 +51,11 @@ internal struct SSHChannelRelay {
     let bufferSize: Int
     let isActive: () -> Bool
 
+    /// Counts what crosses this relay, for the connection activity readout. Absent for a jump hop,
+    /// whose relay carries the same payload a second time on its way to the next hop: counting both
+    /// would report every byte twice for a connection that goes through a bastion.
+    var byteCounter: TransportByteCounter?
+
     private static let pollTimeoutMs: Int32 = 500
     private static let writeWaitTimeoutMs: Int32 = 1_000
 
@@ -116,6 +121,7 @@ internal struct SSHChannelRelay {
     private func pumpChannelToLocal(_ buffer: UnsafeMutablePointer<CChar>, transportReadable: Bool) -> PumpOutcome {
         switch channelIO.read(into: buffer, count: bufferSize) {
         case .bytes(let count):
+            byteCounter?.recordReceived(count)
             var totalSent = 0
             while totalSent < count {
                 let sent = send(localFD, buffer.advanced(by: totalSent), count - totalSent, 0)
@@ -134,6 +140,7 @@ internal struct SSHChannelRelay {
     private func pumpLocalToChannel(_ buffer: UnsafeMutablePointer<CChar>) -> PumpOutcome {
         let localRead = recv(localFD, buffer, bufferSize, 0)
         if localRead <= 0 { return .localClosed }
+        byteCounter?.recordSent(localRead)
 
         var totalWritten = 0
         while totalWritten < Int(localRead) {

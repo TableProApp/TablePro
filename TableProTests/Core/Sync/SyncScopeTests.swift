@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import Testing
+import TableProSyncTransport
 
 @Suite("Sync scope")
 struct SyncScopeTests {

@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observation
 import os
 
 internal struct RecentlyClosedTabEntry: Codable, Identifiable {
@@ -44,18 +44,17 @@ internal extension RecentlyClosedTabEntry {
 /// windows on every save, so a closed tab necessarily falls out of it. This store is the
 /// append-and-prune log that lets a closed tab come back.
 @MainActor
-@Observable
-internal final class RecentlyClosedTabStore {
+internal final class RecentlyClosedTabStore: ObservableObject {
     internal static let shared = RecentlyClosedTabStore()
 
     internal static let maxEntries = 20
     internal static let maxAge: TimeInterval = 60 * 60 * 24 * 30
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RecentlyClosedTabStore")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RecentlyClosedTabStore")
 
-    internal private(set) var entries: [RecentlyClosedTabEntry] = []
+    @Published internal private(set) var entries: [RecentlyClosedTabEntry] = []
 
-    @ObservationIgnored private let directory: URL
+    private let directory: URL
 
     internal init(directory: URL = RecentlyClosedTabStore.defaultDirectory()) {
         self.directory = directory
@@ -81,18 +80,29 @@ internal final class RecentlyClosedTabStore {
         entries.first
     }
 
-    /// Removes the entry and returns it with any overflow text folded back into the tab, so the
-    /// caller holds everything needed to rebuild the tab without touching disk again.
-    internal func consume(id: UUID) -> RecentlyClosedTabEntry? {
-        guard let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
-        var entry = entries.remove(at: index)
+    /// The entry with any overflow text folded back into the tab, so the caller holds everything
+    /// needed to rebuild the tab without touching disk again.
+    ///
+    /// Reading removes nothing. Opening the tab can still fail or wait on a connect, and an entry
+    /// taken out before the tab is on screen is a closed tab lost for good; `discard(id:)` is the
+    /// caller's to call once it is shown.
+    internal func restorableEntry(id: UUID) -> RecentlyClosedTabEntry? {
+        guard var entry = entries.first(where: { $0.id == id }) else { return nil }
         if let overflow = overflowText(for: entry) {
             entry.tab.query = overflow
         }
-        removeOverflowFile(for: entry)
         entry.overflowFileName = nil
-        persist()
         return entry
+    }
+
+    internal func containsEntry(id: UUID) -> Bool {
+        entries.contains { $0.id == id }
+    }
+
+    internal func discard(id: UUID) {
+        guard containsEntry(id: id) else { return }
+        discardEntries { $0.id == id }
+        persist()
     }
 
     // MARK: - Connection Removal
@@ -166,7 +176,7 @@ internal final class RecentlyClosedTabStore {
             try query.write(to: overflowDirectory.appendingPathComponent(fileName), atomically: true, encoding: .utf8)
             return true
         } catch {
-            Self.logger.fault("Failed to write overflow query \(fileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.fault("Failed to write overflow query \(fileName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return false
         }
     }
@@ -191,7 +201,7 @@ internal final class RecentlyClosedTabStore {
         do {
             try FileManager.default.createDirectory(at: overflowDirectory, withIntermediateDirectories: true)
         } catch {
-            Self.logger.error("Failed to create directory \(self.overflowDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to create directory \(self.overflowDirectory.path, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -200,7 +210,7 @@ internal final class RecentlyClosedTabStore {
             let data = try JSONEncoder().encode(entries)
             try data.write(to: Self.stateFileURL(in: directory), options: .atomic)
         } catch {
-            Self.logger.fault("Failed to persist recently closed tabs: \(error.localizedDescription, privacy: .public)")
+            Self.logger.fault("Failed to persist recently closed tabs: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -211,14 +221,13 @@ internal final class RecentlyClosedTabStore {
         do {
             return try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.value)
         } catch {
-            logger.error("Failed to load recently closed tabs: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to load recently closed tabs: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }
 
     nonisolated internal static func defaultDirectory() -> URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("RecentlyClosedTabs", isDirectory: true)

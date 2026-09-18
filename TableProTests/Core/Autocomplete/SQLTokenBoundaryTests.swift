@@ -96,4 +96,102 @@ struct SQLTokenBoundaryTests {
         )
         #expect(range == NSRange(location: 7, length: 0))
     }
+
+    // MARK: - Match text
+
+    @Test(
+        "Match text drops the identifier quotes the segment carries",
+        arguments: [
+            ("`cat", "cat"),
+            ("\"cat", "cat"),
+            ("`category`", "category"),
+            ("\"category\"", "category"),
+            ("`", ""),
+            ("\"", ""),
+            ("cat", "cat"),
+            ("", "")
+        ]
+    )
+    func matchTextDropsQuotes(segment: String, expected: String) {
+        #expect(SQLTokenBoundary.matchText(of: segment) == expected)
+    }
+
+    /// The segment keeps its quote so the replacement covers it; only the match text drops it.
+    @Test("Match text does not change what the segment covers")
+    func matchTextLeavesTheSegmentAlone() {
+        let text = "SELECT \"mess" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: 12) == 7)
+        #expect(SQLTokenBoundary.matchText(of: text.substring(from: 7)) == "mess")
+    }
+
+    // MARK: - Non-ASCII identifiers
+
+    /// The ASCII-only rule read these tokens as empty, so the replacement range collapsed to zero
+    /// length and accepting a suggestion inserted beside the typed text instead of replacing it.
+    @Test(
+        "A non-ASCII token is replaced, not duplicated",
+        arguments: [
+            ("SELECT 名", "名前", "SELECT 名前"),
+            ("SELECT 名前", "名前テーブル", "SELECT 名前テーブル"),
+            ("SELECT имя", "имя_клиента", "SELECT имя_клиента"),
+            ("SELECT tên", "tên_khach", "SELECT tên_khach"),
+            ("SELECT café", "café_id", "SELECT café_id"),
+            ("SELECT Ünvan", "Ünvan_kodu", "SELECT Ünvan_kodu")
+        ]
+    )
+    func nonASCIISegmentIsReplaced(typed: String, completion: String, expected: String) {
+        let text = typed as NSString
+        let range = SQLTokenBoundary.replacementRange(
+            in: text, cursor: text.length, fallback: NSRange(location: 0, length: 0)
+        )
+        #expect(text.replacingCharacters(in: range, with: completion) == expected)
+    }
+
+    @Test("A mixed ASCII and non-ASCII token is covered whole")
+    func mixedScriptSegment() {
+        let text = "SELECT tê" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length) == 7)
+    }
+
+    @Test("A surrogate pair is consumed whole rather than split")
+    func surrogatePairSegment() {
+        let text = "SELECT 𝕏table" as NSString
+        #expect(text.length == 14)
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length) == 7)
+    }
+
+    @Test("A combining mark stays with the base character it sits on")
+    func combiningMarkSegment() {
+        let text = "SELECT te\u{0302}n" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length) == 7)
+    }
+
+    @Test("A non-ASCII token still stops at a dot")
+    func nonASCIISegmentStopsAtDot() {
+        let text = "SELECT 顧客.名" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length) == 10)
+    }
+
+    @Test("Non-identifier punctuation and symbols still end the token")
+    func nonASCIIPunctuationEndsSegment() {
+        for text in ["SELECT a、b", "SELECT a b", "SELECT a+b", "SELECT a→b"] {
+            let ns = text as NSString
+            #expect(SQLTokenBoundary.segmentStart(in: ns, endingAt: ns.length) == ns.length - 1)
+        }
+    }
+
+    /// `$` opens a MongoDB pipeline stage, and `MongoContextAnalyzer` needs the token to start
+    /// there, so the wider rule must not adopt it.
+    @Test("A dollar sign still ends the token")
+    func dollarEndsSegment() {
+        let text = "aggregate([{ $match" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length) == text.length - 5)
+    }
+
+    @Test("ASCII segments are unchanged by the wider rule")
+    func asciiSegmentsUnchanged() {
+        #expect(SQLTokenBoundary.segmentStart(in: "SELECT mess" as NSString, endingAt: 11) == 7)
+        #expect(SQLTokenBoundary.segmentStart(in: "SELECT users.na" as NSString, endingAt: 15) == 13)
+        #expect(SQLTokenBoundary.segmentStart(in: "SELECT " as NSString, endingAt: 7) == 7)
+    }
 }

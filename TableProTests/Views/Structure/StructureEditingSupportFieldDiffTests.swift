@@ -19,7 +19,7 @@ struct StructureEditingSupportFieldDiffTests {
     // MARK: - Fixtures
 
     private static let mysqlOrderedFields: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .primaryKey,
+        .name, .type, .nullable, .defaultValue, .onUpdate, .primaryKey,
         .autoIncrement, .comment, .charset, .collation
     ]
 
@@ -111,8 +111,8 @@ struct StructureEditingSupportFieldDiffTests {
             new: changed,
             orderedFields: Self.mysqlOrderedFields
         )
-        // .type is at index 1, .comment is at index 6 in mysqlOrderedFields.
-        #expect(result == [1, 6])
+        // .type is at index 1, .comment is at index 7 in mysqlOrderedFields.
+        #expect(result == [1, 7])
     }
 
     @Test("Diff respects orderedFields and skips fields not displayed by the database type")
@@ -131,7 +131,7 @@ struct StructureEditingSupportFieldDiffTests {
         #expect(result.isEmpty)
     }
 
-    @Test("All nine StructureColumnField cases are diffable")
+    @Test("Every StructureColumnField case is diffable")
     func columnEveryFieldDetected() {
         let original = makeColumn(name: "a", dataType: "INT")
         var changed = original
@@ -139,6 +139,7 @@ struct StructureEditingSupportFieldDiffTests {
         changed.dataType = "BIGINT"
         changed.isNullable.toggle()
         changed.defaultValue = "0"
+        changed.onUpdate = "CURRENT_TIMESTAMP"
         changed.isPrimaryKey.toggle()
         changed.autoIncrement.toggle()
         changed.comment = "x"

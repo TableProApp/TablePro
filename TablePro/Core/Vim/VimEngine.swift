@@ -42,9 +42,14 @@ enum VimMacroPendingKind { case recordTarget, replayTarget }
 enum VimBracketPending { case openBracket, closeBracket }
 enum VimScreenPosition { case top, middle, bottom }
 
+struct VimReplaceModeEdit {
+    let offset: Int
+    let original: String?
+}
+
 @MainActor
 final class VimEngine {
-    static let logger = Logger(subsystem: "com.TablePro", category: "VimEngine")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "VimEngine")
 
     private(set) var mode: VimMode = .normal {
         didSet {
@@ -94,6 +99,7 @@ final class VimEngine {
     var macroPlaybackDepth: Int = 0
     var visualAnchor: Int = 0
     var lastInsertOffset: Int?
+    var replaceModeEdits: [VimReplaceModeEdit] = []
 
     var buffer: VimTextBuffer?
 
@@ -126,10 +132,6 @@ final class VimEngine {
             cursorOffset = buffer.selectedRange().location
         }
         return consumed
-    }
-
-    func redo() {
-        buffer?.redo()
     }
 
     func invalidateLineCache() {

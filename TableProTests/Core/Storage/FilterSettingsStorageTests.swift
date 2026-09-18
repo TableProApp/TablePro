@@ -34,6 +34,65 @@ struct FilterSettingsStorageTests {
         )
     }
 
+    @Test("Saving then loading preserves the order of several filters")
+    func roundTripsFilterOrder() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [
+            TestFixtures.makeTableFilter(column: "id", value: "42"),
+            TestFixtures.makeTableFilter(column: "name", op: .contains, value: "ana"),
+            TestFixtures.makeTableFilter(column: "age", op: .greaterThan, value: "18"),
+        ]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        let loaded = storage.loadLastFilters(
+            for: "users",
+            connectionId: connectionId,
+            databaseName: "db",
+            schemaName: nil
+        )
+        #expect(loaded == filters)
+        #expect(loaded.map(\.columnName) == ["id", "name", "age"])
+    }
+
+    /// The delete runs on the storage's IO queue, so a load that arrives first used to read the file
+    /// still on disk and hand back what the reader had just cleared.
+    @Test("Clearing hides the saved filters before the file is gone")
+    func clearHidesFiltersBeforeTheDeleteLands() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.waitForPendingDiskWrites()
+        storage.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isEmpty
+        )
+    }
+
+    @Test("Saving no filters hides them before the file is gone")
+    func savingNoFiltersHidesThemBeforeTheDeleteLands() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.waitForPendingDiskWrites()
+        storage.saveLastFilters([], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isEmpty
+        )
+    }
+
     @Test("Loading an unsaved table returns no filters")
     func loadReturnsEmptyForMissing() {
         let (storage, directory) = makeStorage()
@@ -108,7 +167,7 @@ struct FilterSettingsStorageTests {
             keptFilters, for: "users", connectionId: keptConnection, databaseName: "db", schemaName: nil
         )
 
-        storage.removeFilters(for: deletedConnection)
+        storage.purgeConnections([deletedConnection])
         storage.waitForPendingDiskWrites()
 
         #expect(
@@ -135,7 +194,7 @@ struct FilterSettingsStorageTests {
             )
         }
 
-        storage.removeFilters(for: [first, second])
+        storage.purgeConnections([first, second])
         storage.waitForPendingDiskWrites()
 
         #expect(storage.loadLastFilters(for: "users", connectionId: first, databaseName: "db", schemaName: nil).isEmpty)
@@ -161,7 +220,7 @@ struct FilterSettingsStorageTests {
             for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
 
-        storage.removeFilters(for: connectionId)
+        storage.purgeConnections([connectionId])
         storage.waitForPendingDiskWrites()
 
         let fresh = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
@@ -371,5 +430,85 @@ struct FilterSettingsStorageTests {
         )
         #expect(state.filters == filters)
         #expect(state.logicMode == .and)
+    }
+
+    @Test("A table rename moves its filters and browse search and leaves a longer name alone")
+    func renameTableMovesFiltersAndBrowseSearch() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+        let archiveFilters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+        let search = BrowseSearchState(pattern: "user:*", typeScope: "hash")
+
+        let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(
+            archiveFilters, for: "users_archive", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        storage.saveBrowseSearch(search, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        storage.renameTable(
+            from: TableScope(connectionId: connectionId, database: "db", schema: nil, table: "users"),
+            to: TableScope(connectionId: connectionId, database: "db", schema: nil, table: "members")
+        )
+        storage.waitForPendingDiskWrites()
+
+        for reader in [storage, FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)] {
+            #expect(
+                reader.loadLastFilters(for: "members", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                    == filters
+            )
+            #expect(
+                reader.loadBrowseSearch(for: "members", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                    == search
+            )
+            #expect(
+                reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                    .isEmpty
+            )
+            #expect(
+                reader.loadLastFilters(
+                    for: "users_archive", connectionId: connectionId, databaseName: "db", schemaName: nil
+                ) == archiveFilters
+            )
+        }
+    }
+
+    @Test("A schema rename moves browse search along with the filters")
+    func renameContainerMovesBrowseSearch() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+        let search = BrowseSearchState(pattern: "user:*", typeScope: "hash")
+
+        let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app")
+        storage.saveBrowseSearch(search, for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app")
+
+        storage.renameContainer(
+            connectionId: connectionId, fromDatabase: "db", fromSchema: "app", toDatabase: "db", toSchema: "core"
+        )
+        storage.waitForPendingDiskWrites()
+
+        for reader in [storage, FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)] {
+            #expect(
+                reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: "core")
+                    == filters
+            )
+            #expect(
+                reader.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: "core")
+                    == search
+            )
+            #expect(
+                !reader.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app")
+                    .isActive
+            )
+        }
     }
 }

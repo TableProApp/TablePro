@@ -5,17 +5,19 @@
 //  DDL-first editor sheet for creating and editing triggers.
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
 struct TriggerEditorView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     enum Mode {
         case create
         case edit(originalName: String, originalDefinition: String)
     }
 
+    let scope: DatabaseScope
     let connection: DatabaseConnection
     let tableName: String
     let mode: Mode
@@ -27,9 +29,17 @@ struct TriggerEditorView: View {
     @State private var isApplying = false
     @State private var errorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("structureCodeFontSize") private var fontSize: Double = 13
+    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
-    init(connection: DatabaseConnection, tableName: String, mode: Mode, initialSQL: String, onClose: @escaping () -> Void) {
+    init(
+        scope: DatabaseScope,
+        connection: DatabaseConnection,
+        tableName: String,
+        mode: Mode,
+        initialSQL: String,
+        onClose: @escaping () -> Void
+    ) {
+        self.scope = scope
         self.connection = connection
         self.tableName = tableName
         self.mode = mode
@@ -46,22 +56,27 @@ struct TriggerEditorView: View {
                 $sql,
                 language: PluginManager.shared.editorLanguage(for: connection.type).treeSitterLanguage,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: FoldProviderResolver.provider(for: connection.type)
             )
             if let errorMessage {
                 Divider()
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.callout)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                Label {
+                    RevealedTextView(errorMessage)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                }
+                .foregroundStyle(.red)
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }
-        .onChange(of: fontSize) { _, newSize in
+        .onChange(of: fontSize) { newSize in
             editorConfiguration = Self.makeConfiguration(fontSize: newSize)
         }
     }
@@ -103,6 +118,7 @@ struct TriggerEditorView: View {
             defer { isApplying = false }
             do {
                 try await TriggerEditing.apply(
+                    scope: scope,
                     connection: connection,
                     tableName: tableName,
                     sql: sql,
@@ -126,7 +142,11 @@ struct TriggerEditorView: View {
             ),
             behavior: .init(isEditable: true),
             layout: .init(contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)),
-            peripherals: .init(showGutter: true, showMinimap: false, showFoldingRibbon: false)
+            peripherals: EditorPeripherals.inline(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                invisibleCharacters: AppSettingsManager.shared.editor.showInvisibleCharacters
+            )
         )
     }
 }

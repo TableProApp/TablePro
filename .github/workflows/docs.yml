@@ -1,0 +1,59 @@
+name: Docs
+
+# No paths filter. As a required status check, a filtered workflow never starts on a PR
+# that misses the filter, so the check sits pending and blocks the merge forever. It runs
+# in about a minute, which is cheaper than the exception handling.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Validate docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      # Pinned because the CLI self-upgrades inside its own command handlers, so an
+      # unpinned install lets a release land mid-run and change what the gate checks.
+      - name: Install the Mintlify CLI
+        run: npm install --global mint@4.2.816
+
+      - name: Validate the build
+        working-directory: docs
+        run: mint validate
+
+      - name: Check links, anchors and redirects
+        working-directory: docs
+        run: mint broken-links --check-anchors --check-redirects
+
+      - name: Check accessibility
+        working-directory: docs
+        run: mint a11y
+
+      # The three claims that rot fastest, each checked against the source that
+      # defines it. All three were wrong at once in August 2026.
+      - name: Check docs against the source
+        run: python3 docs/scripts/check-docs-against-source.py
+
+      - name: Check writing style
+        run: bash docs/scripts/check-writing-style.sh
+
+      # The Mintlify CLI needs a working native toolchain, so it is the step most likely
+      # to break on an environment change. This one is plain Python, and it also answers
+      # what the CLI does not: a page in no navigation group, which nothing links to.
+      - name: Check links and navigation coverage
+        run: python3 docs/scripts/check-links.py

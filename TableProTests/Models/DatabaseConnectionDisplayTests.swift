@@ -18,7 +18,7 @@ struct DatabaseConnectionDisplayTests {
             database: "myapp_production", type: .mysql
         )
 
-        #expect(connection.connectionSubtitle == "localhost · myapp_production")
+        #expect(connection.connectionSubtitle == "localhost/myapp_production")
     }
 
     @Test("Non-default port is shown before the database")
@@ -28,7 +28,7 @@ struct DatabaseConnectionDisplayTests {
             database: "myapp_production", type: .mysql
         )
 
-        #expect(connection.connectionSubtitle == "localhost:3307 · myapp_production")
+        #expect(connection.connectionSubtitle == "localhost:3307/myapp_production")
     }
 
     @Test("Empty database leaves no trailing separator")
@@ -48,7 +48,7 @@ struct DatabaseConnectionDisplayTests {
             database: "analytics", type: .postgresql
         )
 
-        #expect(connection.connectionSubtitle == "db.example.com · analytics")
+        #expect(connection.connectionSubtitle == "db.example.com/analytics")
     }
 
     @Test("Two same-named, same-host connections differ by database")
@@ -91,7 +91,7 @@ struct DatabaseConnectionDisplayTests {
             database: "appdb", type: .mysql
         )
 
-        #expect(connection.connectionSubtitle == "~/run/mysql.sock · appdb")
+        #expect(connection.connectionSubtitle == "appdb on ~/run/mysql.sock")
     }
 
     @Test("File-based connection with no path falls back to the type name")
@@ -110,7 +110,7 @@ struct DatabaseConnectionDisplayTests {
             database: "", type: .redis, redisDatabase: 3
         )
 
-        #expect(connection.connectionSubtitle == "localhost · db 3")
+        #expect(connection.connectionSubtitle == "localhost/3")
     }
 
     @Test("Redis without an index shows only the host")
@@ -130,7 +130,7 @@ struct DatabaseConnectionDisplayTests {
             database: "ORCLPDB1", type: .oracle
         )
 
-        #expect(connection.connectionSubtitle == "ora.example.com · ORCLPDB1")
+        #expect(connection.connectionSubtitle == "ora.example.com/ORCLPDB1")
     }
 
     @Test("MongoDB replica set shows host count and database")
@@ -141,7 +141,64 @@ struct DatabaseConnectionDisplayTests {
             additionalFields: ["mongoHosts": "node1.example.com,node2.example.com,node3.example.com"]
         )
 
-        #expect(connection.connectionSubtitle == "node1.example.com (+2 more) · appdb")
+        #expect(connection.connectionSubtitle == "node1.example.com (+2 more)/appdb")
+    }
+
+    /// A Sentinel or Cluster connection leaves Host blank, so before the host list was described
+    /// the connection list showed nothing but the word "Redis".
+    @Test("Redis Sentinel shows its Sentinel nodes")
+    func redisSentinelShowsItsNodes() {
+        let connection = DatabaseConnection(
+            name: "Cache", host: "", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: [
+                "redisMode": "sentinel",
+                "redisSentinelHosts": "10.0.0.1:26379,10.0.0.2:26379,10.0.0.3:26379",
+            ]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("10.0.0.1:26379 (+2 more)"))
+    }
+
+    @Test("Redis Cluster shows its seed nodes, not the Sentinel list it no longer uses")
+    func redisClusterShowsSeedNodes() {
+        let connection = DatabaseConnection(
+            name: "Shards", host: "", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: [
+                "redisMode": "cluster",
+                "redisSentinelHosts": "10.0.0.1:26379",
+                "redisClusterHosts": "10.9.9.1:6379,10.9.9.2:6379",
+            ]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("10.9.9.1:6379 (+1 more)"))
+    }
+
+    @Test("A single-entry host list drops the count")
+    func singleHostListEntryHasNoCount() {
+        let connection = DatabaseConnection(
+            name: "Cache", host: "", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: [
+                "redisMode": "sentinel",
+                "redisSentinelHosts": "10.0.0.1:26379",
+            ]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("10.0.0.1:26379"))
+        #expect(!connection.connectionSubtitle.contains("more"))
+    }
+
+    @Test("Standalone Redis still shows its own host")
+    func standaloneRedisShowsHost() {
+        let connection = DatabaseConnection(
+            name: "Cache", host: "localhost", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: ["redisMode": "standalone", "redisSentinelHosts": "10.0.0.1:26379"]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("localhost"))
     }
 
     @Test("SSH via segment comes last")
@@ -154,7 +211,7 @@ struct DatabaseConnectionDisplayTests {
             database: "myapp", type: .mysql, sshConfig: sshConfig
         )
 
-        #expect(connection.connectionSubtitle == "localhost · myapp · via bastion.example.com")
+        #expect(connection.connectionSubtitle == "localhost/myapp via bastion.example.com")
     }
 
     @Test("Unknown future type is treated like a database role")
@@ -164,6 +221,6 @@ struct DatabaseConnectionDisplayTests {
             database: "mydb", type: DatabaseType(rawValue: "FutureDB")
         )
 
-        #expect(connection.connectionSubtitle == "future.example.com · mydb")
+        #expect(connection.connectionSubtitle == "future.example.com/mydb")
     }
 }

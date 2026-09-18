@@ -4,15 +4,15 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class InlineSuggestionManager {
     // MARK: - Properties
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "InlineSuggestion")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "InlineSuggestion")
 
     private weak var controller: TextViewController?
     private let renderer = GhostTextRenderer()
@@ -21,12 +21,10 @@ final class InlineSuggestionManager {
     private var suggestionOffset: Int = 0
     private var debounceTask: Task<Void, Never>?
     private var requestTask: Task<Void, Never>?
-    private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
     private(set) var isEditorFocused = false
     private var isUninstalled = false
 
     deinit {
-        if let monitor = _keyEventMonitor.withLock({ $0 }) { NSEvent.removeMonitor(monitor) }
     }
 
     // MARK: - Install / Uninstall
@@ -43,14 +41,12 @@ final class InlineSuggestionManager {
     func editorDidFocus() {
         guard !isEditorFocused else { return }
         isEditorFocused = true
-        installKeyEventMonitor()
     }
 
     func editorDidBlur() {
         guard isEditorFocused else { return }
         isEditorFocused = false
         dismissSuggestion()
-        removeKeyEventMonitor()
     }
 
     func uninstall() {
@@ -64,7 +60,6 @@ final class InlineSuggestionManager {
         requestTask = nil
 
         renderer.uninstall()
-        removeKeyEventMonitor()
 
         sourceResolver = nil
         controller = nil
@@ -111,6 +106,7 @@ final class InlineSuggestionManager {
         guard let controller else { return false }
         guard let textView = controller.textView else { return false }
         guard textView.window?.firstResponder === textView else { return false }
+        guard !textView.hasMarkedText() else { return false }
         guard let cursor = controller.cursorPositions.first,
               cursor.range.length == 0 else { return false }
 
@@ -122,7 +118,7 @@ final class InlineSuggestionManager {
 
     // MARK: - Request
 
-    private func requestSuggestion() {
+    internal func requestSuggestion() {
         guard isEnabled() else { return }
         guard let source = sourceResolver?() else { return }
         guard let controller, let textView = controller.textView else { return }
@@ -157,6 +153,7 @@ final class InlineSuggestionManager {
                 guard let activeIdentity = self.sourceResolver?()?.sourceIdentity,
                       activeIdentity == requestedFromIdentity else { return }
                 guard !suggestion.text.isEmpty else { return }
+                guard self.controller?.textView?.hasMarkedText() == false else { return }
 
                 self.currentSuggestion = suggestion
                 self.renderer.show(suggestion.text, at: cursorOffset)
@@ -204,44 +201,29 @@ final class InlineSuggestionManager {
         currentSuggestion = nil
     }
 
-    // MARK: - Key Event Monitor
+    // MARK: - Key Handling
 
-    private func installKeyEventMonitor() {
-        removeKeyEventMonitor()
-        _keyEventMonitor.withLock { $0 = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
-            nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                guard let self, self.isEditorFocused else { return event }
+    /// Called from the editor's single key-down chain rather than from a monitor of this manager's
+    /// own. As one, its Tab raced the completion list's Tab and the editor's own indent with no
+    /// defined order.
+    ///
+    /// Ghost text yields to an open completion list: that list is a surface the user is navigating
+    /// and Tab belongs to its selection, so this claims Tab only when nothing else is showing.
+    internal func consumesKeyDown(_ event: NSEvent) -> Bool {
+        guard isEditorFocused, currentSuggestion != nil else { return false }
 
-                guard self.currentSuggestion != nil else { return event }
+        guard let controller, let textView = controller.textView,
+              event.window === textView.window,
+              textView.window?.firstResponder === textView else { return false }
 
-                guard let textView = self.controller?.textView,
-                      event.window === textView.window,
-                      textView.window?.firstResponder === textView else { return event }
-
-                switch event.keyCode {
-                case 48:
-                    self.acceptSuggestion()
-                    return nil
-
-                case 53:
-                    self.dismissSuggestion()
-                    return event
-
-                default:
-                    self.dismissSuggestion()
-                    return event
-                }
-            }
+        guard event.keyCode == KeyCode.tab.rawValue, !textView.hasMarkedText() else {
+            dismissSuggestion()
+            return false
         }
-        }
-    }
+        guard !controller.isShowingCompletions else { return false }
 
-    private func removeKeyEventMonitor() {
-        _keyEventMonitor.withLock {
-            if let monitor = $0 { NSEvent.removeMonitor(monitor) }
-            $0 = nil
-        }
+        acceptSuggestion()
+        return true
     }
 
     // MARK: - Helpers

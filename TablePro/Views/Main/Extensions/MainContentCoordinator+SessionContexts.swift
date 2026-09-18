@@ -28,7 +28,8 @@ extension MainContentCoordinator {
         do {
             try await driver.switchSessionContext(id: id, to: value)
             await loadSessionContexts()
-            AppCommands.shared.refreshData.send(connectionId)
+            AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connectionId))
+            services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .everything)))
         } catch {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Switch Failed"),

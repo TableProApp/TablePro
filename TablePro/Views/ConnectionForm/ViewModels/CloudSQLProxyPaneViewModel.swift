@@ -3,23 +3,23 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@Observable
 @MainActor
-final class CloudSQLProxyPaneViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
+final class CloudSQLProxyPaneViewModel: ObservableObject {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
 
-    var state = CloudSQLProxyFormState()
+    @Published var state = CloudSQLProxyFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
-    var resolvedBinaryPath: String?
-    var didResolveBinary: Bool = false
-    var downloadedVersion: String?
-    var isDownloading: Bool = false
-    var downloadError: String?
+    @Published var resolvedBinaryPath: String?
+    @Published var didResolveBinary: Bool = false
+    @Published var downloadedVersion: String?
+    @Published var isDownloading: Bool = false
+    @Published var downloadError: String?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }
@@ -39,14 +39,6 @@ final class CloudSQLProxyPaneViewModel {
         if state.authMode == .serviceAccountKey,
            state.serviceAccountKeyJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(String(localized: "A service account key is required"))
-        }
-
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudSQLProxy) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.cloudSQLProxy.displayName
-            ))
         }
 
         return issues
@@ -73,7 +65,9 @@ final class CloudSQLProxyPaneViewModel {
             if let found {
                 resolvedBinaryPath = found
             } else {
-                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath
+                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.isInstalled
+                    ? CloudSQLProxyBinaryManager.shared.binaryExecutablePath
+                    : nil
             }
             downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
             didResolveBinary = true
@@ -91,10 +85,10 @@ final class CloudSQLProxyPaneViewModel {
                 resolvedBinaryPath = path
                 downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
                 didResolveBinary = true
-                Self.logger.info("cloud-sql-proxy ready at \(path, privacy: .public)")
+                Self.logger.info("cloud-sql-proxy ready at \(path, privacy: .private(mask: .hash))")
             } catch {
                 downloadError = error.localizedDescription
-                Self.logger.error("cloud-sql-proxy download failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("cloud-sql-proxy download failed: \(error.publicLogShape, privacy: .public)")
             }
         }
     }

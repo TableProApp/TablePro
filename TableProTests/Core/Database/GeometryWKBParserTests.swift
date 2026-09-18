@@ -77,7 +77,6 @@ private func wkbPolygon(_ rings: [[(Double, Double)]]) -> [UInt8] {
 
 @Suite("GeometryWKBParser")
 struct GeometryWKBParserTests {
-
     @Test("Point: little-endian binary produces WKT")
     func testPoint() {
         let data = mysqlGeometry(wkb: wkbPoint(1.0, 2.0))
@@ -176,247 +175,57 @@ struct GeometryWKBParserTests {
         let result = GeometryWKBParser.parse(data)
         #expect(result == "POINT(100.0 200.0)")
     }
-}
 
-// MARK: - Local Copy of GeometryWKBParser
-
-// Copied from Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
-// because the plugin is a bundle target and cannot be imported with @testable import.
-
-private enum GeometryWKBParser {
-    static func parse(_ data: Data) -> String {
-        guard data.count >= 9 else {
-            return hexString(data)
-        }
-
-        let wkbData = data.dropFirst(4)
-        var offset = wkbData.startIndex
-        return parseWKBGeometry(wkbData, offset: &offset) ?? hexString(data)
+    /// The SRID used to be read only to be skipped, which left the app unable to tell 4326 from
+    /// 3857 from "nobody said" for a MySQL geometry column. It now reaches the text, spelled the
+    /// way PostGIS spells it.
+    @Test("A non-zero SRID reaches the output as an EWKT prefix")
+    func sridBecomesAnEWKTPrefix() {
+        let data = mysqlGeometry(srid: 4326, wkb: wkbPoint(-122.4194, 37.7749))
+        #expect(GeometryWKBParser.parse(data) == "SRID=4326;POINT(-122.4194 37.7749)")
     }
 
-    static func parse(_ buffer: UnsafeRawBufferPointer) -> String {
-        let data = Data(buffer)
-        return parse(data)
+    /// MySQL stores a literal 0 for "no SRID", which means unknown rather than a coordinate system
+    /// numbered zero, so it prints no prefix. PostGIS does the same.
+    @Test("SRID 0 prints no prefix")
+    func zeroSRIDHasNoPrefix() {
+        let data = mysqlGeometry(srid: 0, wkb: wkbPoint(1, 2))
+        #expect(GeometryWKBParser.parse(data) == "POINT(1.0 2.0)")
     }
 
-    private static func parseWKBGeometry(_ data: Data.SubSequence, offset: inout Data.Index) -> String? {
-        guard offset < data.endIndex else { return nil }
-
-        let byteOrder = data[offset]
-        let littleEndian = byteOrder == 0x01
-        offset = data.index(after: offset)
-
-        guard let typeCode = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-
-        switch typeCode {
-        case 1:
-            return parsePoint(data, offset: &offset, littleEndian: littleEndian)
-        case 2:
-            return parseLineString(data, offset: &offset, littleEndian: littleEndian)
-        case 3:
-            return parsePolygon(data, offset: &offset, littleEndian: littleEndian)
-        case 4:
-            return parseMultiPoint(data, offset: &offset, littleEndian: littleEndian)
-        case 5:
-            return parseMultiLineString(data, offset: &offset, littleEndian: littleEndian)
-        case 6:
-            return parseMultiPolygon(data, offset: &offset, littleEndian: littleEndian)
-        case 7:
-            return parseGeometryCollection(data, offset: &offset, littleEndian: littleEndian)
-        default:
-            return nil
-        }
+    /// **The orientation guard.**
+    ///
+    /// These are the verbatim bytes MySQL 8.4.11 and MariaDB 12.3.3 both store for a SRID-4326
+    /// point at San Francisco, measured byte-identical. MySQL's own `ST_AsText` prints this value
+    /// latitude-first, so "make the parser agree with ST_AsText" is the plausible-looking change
+    /// that would move every MySQL point into the Southern Ocean. The storage is longitude-first.
+    @Test("Stored geometry is longitude-first, whatever ST_AsText prints")
+    func storageIsLongitudeFirst() {
+        let bytes: [UInt8] = [
+            0xE6, 0x10, 0x00, 0x00,
+            0x01, 0x01, 0x00, 0x00, 0x00,
+            0x50, 0xFC, 0x18, 0x73, 0xD7, 0x9A, 0x5E, 0xC0,
+            0xD0, 0xD5, 0x56, 0xEC, 0x2F, 0xE3, 0x42, 0x40,
+        ]
+        #expect(GeometryWKBParser.parse(Data(bytes)) == "SRID=4326;POINT(-122.4194 37.7749)")
     }
 
-    private static func parsePoint(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let x = readFloat64(data, offset: &offset, littleEndian: littleEndian),
-              let y = readFloat64(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        return "POINT(\(formatCoord(x)) \(formatCoord(y)))"
+    /// The old hand-rolled body produced the invalid `GEOMETRYCOLLECTION()` for an empty
+    /// collection, which no grammar accepts and nothing downstream could read back.
+    @Test("An empty collection uses the EMPTY keyword")
+    func emptyCollectionUsesTheKeyword() {
+        let data = mysqlGeometry(wkb: wkbHeader(type: 7) + uint32Bytes(0))
+        #expect(GeometryWKBParser.parse(data) == "GEOMETRYCOLLECTION EMPTY")
     }
 
-    private static func parseLineString(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let points = readPointList(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        return "LINESTRING(\(points))"
-    }
-
-    private static func parsePolygon(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let numRings = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        var rings: [String] = []
-        for _ in 0 ..< numRings {
-            guard let points = readPointList(data, offset: &offset, littleEndian: littleEndian) else {
-                return nil
-            }
-            rings.append("(\(points))")
-        }
-        return "POLYGON(\(rings.joined(separator: ", ")))"
-    }
-
-    private static func parseMultiPoint(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let numGeoms = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        var points: [String] = []
-        for _ in 0 ..< numGeoms {
-            guard let geom = parseWKBGeometry(data, offset: &offset) else { return nil }
-            if geom.hasPrefix("POINT("), geom.hasSuffix(")") {
-                let ns = geom as NSString
-                points.append(ns.substring(with: NSRange(location: 6, length: ns.length - 7)))
-            } else {
-                points.append(geom)
-            }
-        }
-        return "MULTIPOINT(\(points.joined(separator: ", ")))"
-    }
-
-    private static func parseMultiLineString(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let numGeoms = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        var lineStrings: [String] = []
-        for _ in 0 ..< numGeoms {
-            guard let geom = parseWKBGeometry(data, offset: &offset) else { return nil }
-            if geom.hasPrefix("LINESTRING("), geom.hasSuffix(")") {
-                let ns = geom as NSString
-                lineStrings.append("(\(ns.substring(with: NSRange(location: 11, length: ns.length - 12))))")
-            } else {
-                lineStrings.append(geom)
-            }
-        }
-        return "MULTILINESTRING(\(lineStrings.joined(separator: ", ")))"
-    }
-
-    private static func parseMultiPolygon(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let numGeoms = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        var polygons: [String] = []
-        for _ in 0 ..< numGeoms {
-            guard let geom = parseWKBGeometry(data, offset: &offset) else { return nil }
-            if geom.hasPrefix("POLYGON("), geom.hasSuffix(")") {
-                let ns = geom as NSString
-                polygons.append("(\(ns.substring(with: NSRange(location: 8, length: ns.length - 9))))")
-            } else {
-                polygons.append(geom)
-            }
-        }
-        return "MULTIPOLYGON(\(polygons.joined(separator: ", ")))"
-    }
-
-    private static func parseGeometryCollection(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let numGeoms = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        var geoms: [String] = []
-        for _ in 0 ..< numGeoms {
-            guard let geom = parseWKBGeometry(data, offset: &offset) else { return nil }
-            geoms.append(geom)
-        }
-        return "GEOMETRYCOLLECTION(\(geoms.joined(separator: ", ")))"
-    }
-
-    private static func readUInt32(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> UInt32? {
-        let endOffset = data.index(offset, offsetBy: 4, limitedBy: data.endIndex) ?? data.endIndex
-        guard data.distance(from: offset, to: endOffset) == 4 else { return nil }
-
-        let bytes = data[offset ..< endOffset]
-        offset = endOffset
-
-        if littleEndian {
-            return bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian }
-        } else {
-            return bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).bigEndian }
-        }
-    }
-
-    private static func readFloat64(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> Double? {
-        let endOffset = data.index(offset, offsetBy: 8, limitedBy: data.endIndex) ?? data.endIndex
-        guard data.distance(from: offset, to: endOffset) == 8 else { return nil }
-
-        let bytes = data[offset ..< endOffset]
-        offset = endOffset
-
-        let bits: UInt64
-        if littleEndian {
-            bits = bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt64.self).littleEndian }
-        } else {
-            bits = bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt64.self).bigEndian }
-        }
-        return Double(bitPattern: bits)
-    }
-
-    private static func readPointList(
-        _ data: Data.SubSequence,
-        offset: inout Data.Index,
-        littleEndian: Bool
-    ) -> String? {
-        guard let numPoints = readUInt32(data, offset: &offset, littleEndian: littleEndian) else {
-            return nil
-        }
-        var coords: [String] = []
-        for _ in 0 ..< numPoints {
-            guard let x = readFloat64(data, offset: &offset, littleEndian: littleEndian),
-                  let y = readFloat64(data, offset: &offset, littleEndian: littleEndian) else {
-                return nil
-            }
-            coords.append("\(formatCoord(x)) \(formatCoord(y))")
-        }
-        return coords.joined(separator: ", ")
-    }
-
-    private static func formatCoord(_ value: Double) -> String {
-        if value == value.rounded() && abs(value) < 1e15 {
-            return String(format: "%.1f", value)
-        }
-        let formatted = String(format: "%.15g", value)
-        return formatted
-    }
-
-    static func hexString(_ data: Data) -> String {
-        if data.isEmpty { return "" }
-        return "0x" + data.map { String(format: "%02X", $0) }.joined()
+    /// The old body assumed XY, so a Z or M ordinate desynchronised the cursor and every later
+    /// coordinate in the value was read from the wrong offset.
+    @Test("A Z ordinate does not desynchronise the reader")
+    func threeDimensionalPointReads() {
+        var wkb: [UInt8] = [0x01]
+        wkb += uint32Bytes(1001)
+        wkb += float64Bytes(1) + float64Bytes(2) + float64Bytes(3)
+        let data = mysqlGeometry(wkb: wkb)
+        #expect(GeometryWKBParser.parse(data) == "POINT(1.0 2.0)")
     }
 }

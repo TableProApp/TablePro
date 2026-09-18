@@ -61,7 +61,11 @@ final class CursorProvider: ChatTransport {
         }
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0, reasoning: .unsupported) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         var request = URLRequest(url: try Self.url("/v1/models"))
         request.timeoutInterval = AIProvider.modelListTimeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -70,7 +74,7 @@ final class CursorProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Cursor model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Cursor model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
         }
         guard let httpResponse = response as? HTTPURLResponse,
@@ -140,23 +144,7 @@ final class CursorProvider: ChatTransport {
     }
 
     static func renderPrompt(turns: [ChatTurnWire], options: ChatTransportOptions) -> String {
-        var sections: [String] = []
-        if let systemPrompt = options.systemPrompt, !systemPrompt.isEmpty {
-            sections.append(systemPrompt)
-        }
-        for turn in turns {
-            let text = turnText(turn)
-            guard !text.isEmpty else { continue }
-            switch turn.role {
-            case .user:
-                sections.append("User: \(text)")
-            case .assistant:
-                sections.append("Assistant: \(text)")
-            case .system:
-                sections.append(text)
-            }
-        }
-        return sections.joined(separator: "\n\n")
+        AgentPromptRenderer.renderPrompt(turns: turns, includingSystemPrompt: options.systemPrompt)
     }
 
     static func launchBody(prompt: String, model: String) -> [String: Any] {
@@ -165,24 +153,6 @@ final class CursorProvider: ChatTransport {
             body["model"] = ["id": model]
         }
         return body
-    }
-
-    private static func turnText(_ turn: ChatTurnWire) -> String {
-        var parts: [String] = []
-        for block in turn.blocks {
-            switch block.kind {
-            case .text(let text):
-                if !text.isEmpty { parts.append(text) }
-            case .sqlWalkthrough(let walkthrough):
-                let text = walkthrough.transcriptText
-                if !text.isEmpty { parts.append(text) }
-            case .toolResult(let result):
-                if !result.content.isEmpty { parts.append("Result: \(result.content)") }
-            case .toolUse, .attachment, .reasoning, .image:
-                continue
-            }
-        }
-        return parts.joined(separator: "\n")
     }
 
     private static func url(_ path: String) throws -> URL {

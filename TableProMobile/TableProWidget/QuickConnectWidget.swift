@@ -9,8 +9,8 @@ struct QuickConnectWidget: Widget {
             QuickConnectEntryView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName("Quick Connect")
-        .description("Quickly connect to your databases.")
+        .configurationDisplayName(LocalizedStringResource("Quick Connect"))
+        .description(LocalizedStringResource("Quickly connect to your databases."))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

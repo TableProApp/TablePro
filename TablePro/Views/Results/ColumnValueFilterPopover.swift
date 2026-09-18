@@ -85,6 +85,7 @@ struct ColumnValueFilterPopover: View {
             )
             HStack(spacing: 6) {
                 TristateCheckbox(state: selectAllState) { toggleSelectAll() }
+                    .accessibilityLabel(String(localized: "Select All"))
                 Text("Select All")
                 Spacer()
             }
@@ -109,6 +110,7 @@ struct ColumnValueFilterPopover: View {
                     }
                 }
                 .toggleStyle(.checkbox)
+                .accessibilityIdentifier("value-filter-value")
             }
         }
         .listStyle(.plain)

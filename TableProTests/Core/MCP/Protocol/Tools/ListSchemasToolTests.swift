@@ -1,43 +1,63 @@
+//
+//  ListSchemasToolTests.swift
+//  TableProTests
+//
+
 import Foundation
-import TableProPluginKit
 @testable import TablePro
 import Testing
 
 @Suite("ListSchemasTool")
 struct ListSchemasToolTests {
-    @Test("Tool exposes expected metadata")
-    func metadata() {
-        #expect(ListSchemasTool.name == "list_schemas")
-        #expect(ListSchemasTool.requiredScopes == [.toolsRead])
-        let schema = ListSchemasTool.inputSchema
-        #expect(schema["type"]?.stringValue == "object")
-        let required = schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        #expect(required == ["connection_id"])
+    private let tool = ListSchemasTool()
+
+    private func call(_ arguments: JsonValue) async throws -> MCPToolCallResult {
+        try await tool.call(
+            arguments: arguments,
+            context: MCPToolTestHarness.context(),
+            services: MCPToolTestHarness.services()
+        )
     }
 
-    @Test("Missing connection_id returns invalidParams")
-    func missingConnectionId() async throws {
-        let tool = ListSchemasTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
+    @Test("Listing schemas is read-only and reports the database it covered")
+    func metadata() throws {
+        #expect(ListSchemasTool.name == "list_schemas")
+        #expect(ListSchemasTool.requiredScopes == [.toolsRead])
+        let output = try #require(ListSchemasTool.outputSchema)
+        #expect(output["required"]?.arrayValue?.compactMap(\.stringValue) == ["database", "schemas"])
+    }
 
+    @Test("Missing connection_id is a protocol error")
+    func missingConnectionId() async throws {
         await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(arguments: .object([:]), context: context, services: services)
+            _ = try await call(.object([:]))
         }
     }
 
-    @Test("Malformed connection_id returns invalidParams")
+    @Test("A malformed connection id is a tool error")
     func malformedConnectionId() async throws {
-        let tool = ListSchemasTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
+        let result = try await call(.object(["connection_id": .string("not-a-uuid")]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("invalid_argument:") == true)
+    }
 
+    @Test("A database passed as a number is an error")
+    func numericDatabaseIsRejected() async throws {
         await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object(["connection_id": .string("not-a-uuid")]),
-                context: context,
-                services: services
-            )
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "database": .int(1)
+            ]))
+        }
+    }
+
+    @Test("A schema argument is not accepted here")
+    func unknownParameterIsRejected() async throws {
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "schema": .string("public")
+            ]))
         }
     }
 }

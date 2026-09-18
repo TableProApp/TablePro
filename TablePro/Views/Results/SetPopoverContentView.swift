@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct SetPopoverContentView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let allowedValues: [String]
     let initialSelections: [String: Bool]
     let onCommit: (String?) -> Void
@@ -41,7 +42,7 @@ struct SetPopoverContentView: View {
                             )
                         )
                         .toggleStyle(.checkbox)
-                        .font(.system(.callout, design: .monospaced))
+                        .font(themeEngine.valueFontSwiftUI)
                     }
                 }
                 .padding(12)

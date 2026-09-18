@@ -302,7 +302,7 @@ private struct TestTCPClient {
         let connection = NWConnection(host: "127.0.0.1", port: nwPort, using: .tcp)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let resumed = OSAllocatedUnfairLock(initialState: false)
-            let finish: (Result<Void, Error>) -> Void = { result in
+            let finish: @Sendable (Result<Void, Error>) -> Void = { result in
                 let shouldResume = resumed.withLock { done -> Bool in
                     guard !done else { return false }
                     done = true

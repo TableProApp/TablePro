@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Protocol
 
-protocol ForeignAppImporter {
+protocol ForeignAppImporter: Sendable {
     var id: String { get }
     var displayName: String { get }
     var symbolName: String { get }
@@ -55,6 +55,25 @@ extension ForeignAppImporter {
     var importFileTypes: [UTType]? { nil }
 
     mutating func setSelectedFile(_ url: URL) {}
+}
+
+// MARK: - Database Types
+
+enum ForeignAppDatabaseType {
+    static func resolve(_ identifier: String) -> String {
+        ConnectionTypeResolver.canonicalTypeId(
+            identifier,
+            registeredTypeIds: Set(PluginMetadataRegistry.shared.allRegisteredTypeIds())
+        ) ?? identifier
+    }
+
+    static func defaultPort(for typeId: String) -> Int {
+        DatabaseType(rawValue: typeId).defaultPort
+    }
+
+    static func localFilePathField(for typeId: String) -> LocalFilePathField? {
+        PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: typeId))?.capabilities.localFilePathField
+    }
 }
 
 // MARK: - Result
@@ -124,7 +143,7 @@ enum KeychainReadResult {
     case cancelled
 }
 
-typealias ForeignKeychainRead = (_ service: String, _ account: String) -> KeychainReadResult
+typealias ForeignKeychainRead = @Sendable (_ service: String, _ account: String) -> KeychainReadResult
 
 enum ForeignKeychainReader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ForeignKeychainReader")

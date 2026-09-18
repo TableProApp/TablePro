@@ -16,10 +16,12 @@ import Testing
 struct ThemeDefinitionTests {
     // MARK: - Default light theme
 
+    /// The band is painted under the caret line highlight, so it carries alpha rather than being opaque. An opaque
+    /// value covers the caret line instead of layering with it.
     @Test("Default light editor colors include currentStatementHighlight")
     func defaultLightHasCurrentStatementHighlight() {
         let colors = EditorThemeColors.defaultLight
-        #expect(colors.currentStatementHighlight == "#F0F4FA")
+        #expect(colors.currentStatementHighlight == "#0A0A0A0F")
     }
 
     @Test("Default light editor colors have expected background")

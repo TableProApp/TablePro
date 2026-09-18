@@ -1,0 +1,114 @@
+//
+//  TableStructureSnapshot.swift
+//  TablePro
+//
+//  One side's view of a table's structure, already converted out of plugin
+//  transfer types so the diff engine stays free of driver concerns.
+//
+
+import Foundation
+import TableProPluginKit
+
+internal struct TableStructureSnapshot: Hashable {
+    internal let name: String
+    internal let schema: String?
+    internal private(set) var columns: [EditableColumnDefinition]
+    internal private(set) var indexes: [EditableIndexDefinition]
+    internal private(set) var foreignKeys: [EditableForeignKeyDefinition]
+    internal let engine: String?
+    internal let charset: String?
+    internal let collation: String?
+
+    internal init(
+        name: String,
+        schema: String? = nil,
+        columns: [EditableColumnDefinition],
+        indexes: [EditableIndexDefinition] = [],
+        foreignKeys: [EditableForeignKeyDefinition] = [],
+        engine: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil
+    ) {
+        self.name = name
+        self.schema = schema
+        self.columns = columns
+        self.indexes = indexes
+        self.foreignKeys = foreignKeys
+        self.engine = engine
+        self.charset = charset
+        self.collation = collation
+    }
+
+    internal var primaryKeyColumns: [String] {
+        if let primary = indexes.first(where: { $0.isPrimary }) {
+            return primary.columns
+        }
+        return columns.filter { $0.isPrimaryKey }.map { $0.name }
+    }
+
+    internal var qualifiedName: String {
+        guard let schema, !schema.isEmpty else { return name }
+        return "\(schema).\(name)"
+    }
+
+    /// The same table, said to live somewhere else. A copy reads one namespace and writes another,
+    /// and the DDL it generates has to name the one it is writing.
+    internal func placed(in schema: String?) -> TableStructureSnapshot {
+        guard schema != self.schema else { return self }
+        return TableStructureSnapshot(
+            name: name,
+            schema: schema,
+            columns: columns,
+            indexes: indexes,
+            foreignKeys: foreignKeys,
+            engine: engine,
+            charset: charset,
+            collation: collation
+        )
+    }
+
+    /// The same structure said in the spellings a target schema resolves, which is the one
+    /// vocabulary a comparison, its definitions, its change guard and its script all read.
+    ///
+    /// A catalog spelling names the schema it was read from, so comparing two schemas' own types
+    /// reported every one of them as changed, and writing one bound the target's column to the
+    /// source's type. The declared spellings are already relative to the schema each side was read
+    /// from, which is the rule a copy applies to a reference to the source's own schema.
+    internal func droppingCatalogSpellings(ownSchema: String?) -> TableStructureSnapshot {
+        var copy = self
+        copy.columns = columns.map { $0.droppingCatalogSpellings(collationRelativeTo: ownSchema) }
+        return copy
+    }
+
+    /// The same structure with every definition under one shared `id`, so two reads of a table
+    /// nobody touched compare equal. Replacing the three arrays on a copy, rather than rebuilding
+    /// the snapshot, keeps every other field in the comparison.
+    internal func withoutIdentity() -> TableStructureSnapshot {
+        var copy = self
+        copy.columns = columns.map { $0.withoutIdentity() }
+        copy.indexes = indexes.map { $0.withoutIdentity() }
+        copy.foreignKeys = foreignKeys.map { $0.withoutIdentity() }
+        return copy
+    }
+}
+
+internal extension TableStructureSnapshot {
+    static func from(
+        table: PluginTableInfo,
+        columns: [PluginColumnInfo],
+        indexes: [PluginIndexInfo],
+        foreignKeys: [PluginForeignKeyInfo],
+        metadata: PluginTableMetadata? = nil
+    ) -> TableStructureSnapshot {
+        TableStructureSnapshot(
+            name: table.name,
+            schema: table.schema,
+            columns: columns.map { EditableColumnDefinition.from(ColumnInfo($0)) },
+            indexes: indexes.map { EditableIndexDefinition.from(IndexInfo($0)) },
+            foreignKeys: EditableForeignKeyDefinition.grouping(foreignKeys.map(ForeignKeyInfo.init)),
+            engine: metadata?.engine,
+            charset: nil,
+            collation: metadata?.collation
+        )
+    }
+}

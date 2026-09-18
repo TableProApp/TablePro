@@ -125,6 +125,22 @@ struct SSHConfigurationTests {
         )
     }
 
+    @Test("The system default's help text says it is the macOS agent, not 1Password's (#2583)")
+    func testSystemDefaultExplanationNamesTheMacOSAgent() {
+        let explanation = SSHAgentSocketOption.systemDefault.explanation
+
+        #expect(explanation.localizedCaseInsensitiveContains("SSH_AUTH_SOCK"))
+        #expect(explanation.localizedCaseInsensitiveContains("1Password"))
+    }
+
+    @Test("Every agent socket option carries its own help text (#2583)")
+    func testEveryAgentSocketOptionExplains() {
+        let explanations = SSHAgentSocketOption.allCases.map(\.explanation)
+
+        #expect(!explanations.contains(""))
+        #expect(Set(explanations).count == explanations.count)
+    }
+
     @Test("Jump hosts validation passes when all valid")
     func testJumpHostsValidationPasses() {
         let config = SSHConfiguration(

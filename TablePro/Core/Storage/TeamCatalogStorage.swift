@@ -12,16 +12,16 @@ internal enum TeamCatalogStorage {
 
     static var folderURL: URL? {
         get {
-            guard let path = UserDefaults.standard.string(forKey: folderPathKey), !path.isEmpty else {
+            guard let path = AppStorageEnvironment.shared.defaults.string(forKey: folderPathKey), !path.isEmpty else {
                 return nil
             }
             return URL(fileURLWithPath: path)
         }
         set {
             if let path = newValue?.path {
-                UserDefaults.standard.set(path, forKey: folderPathKey)
+                AppStorageEnvironment.shared.defaults.set(path, forKey: folderPathKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: folderPathKey)
+                AppStorageEnvironment.shared.defaults.removeObject(forKey: folderPathKey)
             }
         }
     }

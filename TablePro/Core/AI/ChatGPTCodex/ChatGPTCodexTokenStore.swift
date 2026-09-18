@@ -18,7 +18,7 @@ actor ChatGPTCodexTokenStore {
     private var refreshTask: Task<ChatGPTCodexTokens, Error>?
 
     init(
-        keychain: KeychainStoring = KeychainHelper.shared,
+        keychain: KeychainStoring = AppStorageEnvironment.shared.keychain,
         refresher: ChatGPTCodexTokenRefreshing = ChatGPTCodexOAuthClient()
     ) {
         self.keychain = keychain

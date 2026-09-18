@@ -32,6 +32,7 @@ internal final class KeyboardInteractiveContext {
     let promptProvider: any KeyboardInteractivePromptProvider
     private(set) var totpAttemptCount = 0
     private(set) var interactiveAttemptCount = 0
+    private(set) var passwordAnswerCount = 0
     private(set) var userCancelled = false
     var lastError: Error?
 
@@ -43,6 +44,16 @@ internal final class KeyboardInteractiveContext {
         self.password = password
         self.totpProvider = totpProvider
         self.promptProvider = promptProvider
+    }
+
+    /// What the rejection was about, named by whichever answer actually went to the server. A
+    /// server that issued no prompt at all never took a credential from this method, so the
+    /// failure says nothing about the user's own: it says keyboard-interactive was not on offer.
+    var failureReason: AuthFailureReason {
+        if interactiveAttemptCount > 0 { return .keyboardInteractive }
+        if totpAttemptCount > 0 { return .verificationCode }
+        if passwordAnswerCount > 0 { return .password }
+        return .methodUnavailable
     }
 
     func nextTotpCode() -> String {
@@ -67,6 +78,7 @@ internal final class KeyboardInteractiveContext {
             switch KeyboardInteractiveAuthenticator.classify(prompt.text) {
             case .password where password != nil:
                 results[index] = password
+                passwordAnswerCount += 1
             case .totp where totpProvider != nil:
                 results[index] = nextTotpCode()
             default:
@@ -206,10 +218,7 @@ internal struct KeyboardInteractiveAuthenticator: SSHAuthenticator {
             libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
             let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
             Self.logger.error("Keyboard-interactive authentication failed: \(detail)")
-            let reason: AuthFailureReason = context.interactiveAttemptCount > 0
-                ? .keyboardInteractive
-                : (context.totpAttemptCount > 0 ? .verificationCode : .password)
-            throw SSHTunnelError.authenticationFailed(reason: reason)
+            throw SSHTunnelError.authenticationFailed(reason: context.failureReason)
         }
 
         Self.logger.info("Keyboard-interactive authentication succeeded")

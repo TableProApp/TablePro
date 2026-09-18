@@ -2,27 +2,33 @@ name: Build TablePro
 
 on:
   workflow_dispatch:
+  # No paths filter here. GitHub does not evaluate one for a tag push, and a tag push is the
+  # only thing that triggers this workflow, so the paths-ignore list that used to sit here
+  # never excluded anything.
   push:
     tags: ["v*"]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - ".vscode/**"
 
-env:
-  XCODE_PROJECT: TablePro.xcodeproj
-  XCODE_SCHEME: TablePro
-  BUILD_CONFIGURATION: Release
+# A release must never be cancelled part-way through: the build jobs hold notarization
+# submissions open with Apple, and the release job pushes a commit and publishes artifacts.
+# Re-running the same tag queues behind the run already in flight rather than racing it.
+concurrency:
+  group: build-tablepro-${{ github.ref }}
+  cancel-in-progress: false
+
+# The release job raises this to write for itself. Everything else here builds and notarizes and
+# needs nothing beyond the checkout.
+permissions:
+  contents: read
 
 jobs:
   lint:
     name: SwiftLint
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 10
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install SwiftLint
         run: brew list swiftlint &>/dev/null || brew install swiftlint
@@ -30,255 +36,126 @@ jobs:
       - name: Run SwiftLint
         run: swiftlint lint --strict
 
+  # No `secrets: inherit`. That handed the suite CERTIFICATES_P12, CERTIFICATES_PASSWORD,
+  # NOTARY_PASSWORD, PROVISIONING_PROFILE, SPARKLE_PRIVATE_KEY, TELEGRAM_BOT_TOKEN and
+  # REGISTRY_DEPLOY_KEY, none of which it reads.
   test:
     name: macOS Tests
     uses: ./.github/workflows/macos-tests.yml
-    secrets: inherit
 
-  build-arm64:
-    name: Build ARM64
+  build:
+    name: Build ${{ matrix.arch }}
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      # No fail-fast. A failing arch would otherwise cancel its sibling mid-notarization, which is
+      # the same thing the concurrency block above exists to prevent.
+      fail-fast: false
+      matrix:
+        include:
+          # One budget for both arms. The arms run on separate runners at the same time, so a
+          # tighter budget on one buys nothing and only decides which arm dies first. v0.73.0 is
+          # what that cost: ARM64 reached "Build complete" at 30:01 and was cancelled 13 seconds
+          # into notarization, while x86_64 finished the whole job in 31:15. The two arms are not
+          # reliably ordered (over v0.62 to v0.67 x86_64 was the slower one, once by 22 minutes),
+          # and the notary queue is not something a build budget can predict, so the budget has to
+          # clear the slowest arm plus a notary wait rather than the arm's own past average.
+          - arch: arm64
+            timeout: 45
+          - arch: x86_64
+            timeout: 45
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '26.4.1'
+        uses: ./.github/actions/setup-xcode
 
       - name: Download static libraries
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh --force
 
-      - name: Install ARM64 dependencies
-        run: |
-          echo "Installing ARM64 dependencies..."
+      # build-release.sh clones packages into ~/.spm-cache via -clonedSourcePackagesDirPath,
+      # so this restores the checkouts instead of re-cloning 30 repositories on every release.
+      # Package.resolved pins every revision and is tracked, which is why it can key the cache.
+      - name: Cache Swift package checkouts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.spm-cache
+          key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
 
-          # Check and install only if needed
-          if ! brew list mariadb-connector-c &>/dev/null; then
-            echo "📦 Installing mariadb-connector-c..."
-            brew install mariadb-connector-c
-          else
-            echo "✅ mariadb-connector-c already installed"
-          fi
-
-          # Link packages with --force and --overwrite (needed for keg-only formulas)
-          brew link --force --overwrite mariadb-connector-c 2>/dev/null || true
-
-          if ! brew list create-dmg &>/dev/null; then
-            echo "📦 Installing create-dmg..."
-            brew install create-dmg
-          else
-            echo "✅ create-dmg already installed"
-          fi
-
-          echo "✅ ARM64 dependencies installed"
+      # create-dmg is the only Homebrew formula either arm needs. The MySQL plugin links
+      # Libs/libmariadb.a, which download-libs.sh vendors and prepare-libs.sh selects per
+      # architecture, and its headers live in Plugins/MySQLDriverPlugin/CMariaDB/include.
+      # LIBRARY_SEARCH_PATHS names $(SRCROOT)/Libs and no Homebrew prefix, so nothing in the
+      # build ever read mariadb-connector-c. macos-tests.yml proves it: its build job links all
+      # 31 plugin bundles with no Homebrew mariadb installed at all.
+      #
+      # The x86_64 arm is a cross-compile on an arm64 runner: every tool that runs during the
+      # build is native and the x86_64 slices of the static libraries are vendored in Libs.
+      # Bootstrapping a second Homebrew prefix cost five minutes a release to install a
+      # mariadb-connector-c the build never opened. create-dmg is a shell script, so the native
+      # prefix serves both arms.
+      - name: Install create-dmg
+        run: brew list create-dmg &>/dev/null || brew install create-dmg
 
       - name: Prepare libraries
-        run: scripts/ci/prepare-libs.sh arm64
-
-      - name: Verify Xcode
-        run: |
-          echo "Active Xcode:"
-          xcode-select -p
-          xcodebuild -version
+        run: scripts/ci/prepare-libs.sh ${{ matrix.arch }}
 
       - name: Create Secrets.xcconfig
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
+        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
 
-      - name: Import signing certificate
-        env:
-          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
-          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
 
-      - name: Configure notarization
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool store-credentials "TablePro" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARY_PASSWORD"
+      - name: Set up Apple signing
+        uses: ./.github/actions/apple-signing
+        with:
+          certificate-p12: ${{ secrets.CERTIFICATES_P12 }}
+          certificate-password: ${{ secrets.CERTIFICATES_PASSWORD }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          team-id: ${{ secrets.APPLE_TEAM_ID }}
+          notary-password: ${{ secrets.NOTARY_PASSWORD }}
+          provisioning-profile: ${{ secrets.PROVISIONING_PROFILE }}
 
-      - name: Install provisioning profile
-        env:
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/tablepro.provisionprofile
-
-      - name: Build ARM64
+      - name: Build ${{ matrix.arch }}
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
           NOTARIZE: "true"
-        run: scripts/build-release.sh arm64
+        run: scripts/build-release.sh ${{ matrix.arch }}
 
       - name: Verify build
-        run: scripts/ci/verify-build.sh arm64
+        run: scripts/ci/verify-build.sh ${{ matrix.arch }}
 
       - name: Package artifacts
         env:
           NOTARIZE: "true"
-        run: scripts/ci/package-artifacts.sh arm64
+        run: scripts/ci/package-artifacts.sh ${{ matrix.arch }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: artifacts-arm64
+          name: artifacts-${{ matrix.arch }}
           path: |
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.zip
 
-  build-x86_64:
-    name: Build x86_64
-    runs-on: macos-26
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '26.4.1'
-
-      - name: Download static libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh --force
-
-      - name: Install Rosetta 2
-        run: softwareupdate --install-rosetta --agree-to-license || true
-
-      - name: Install x86_64 Homebrew
-        run: |
-          if [ ! -f /usr/local/bin/brew ]; then
-            echo "Installing x86_64 Homebrew..."
-            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-
-      - name: Install x86_64 dependencies
-        run: |
-          echo "Installing x86_64 dependencies..."
-
-          # Check and install only if needed
-          if ! arch -x86_64 /usr/local/bin/brew list mariadb-connector-c &>/dev/null; then
-            echo "📦 Installing mariadb-connector-c (x86_64)..."
-            arch -x86_64 /usr/local/bin/brew install mariadb-connector-c
-          else
-            echo "✅ mariadb-connector-c (x86_64) already installed"
-          fi
-
-          # Link packages with --force (needed for keg-only formulas)
-          arch -x86_64 /usr/local/bin/brew link --force --overwrite mariadb-connector-c 2>/dev/null || true
-
-          # create-dmg is architecture-independent, use native brew
-          if ! brew list create-dmg &>/dev/null; then
-            echo "📦 Installing create-dmg..."
-            brew install create-dmg
-          else
-            echo "✅ create-dmg already installed"
-          fi
-
-          echo "✅ x86_64 dependencies installed"
-
-      - name: Prepare libraries
-        run: scripts/ci/prepare-libs.sh x86_64
-
-      - name: Verify Xcode
-        run: |
-          echo "Active Xcode:"
-          xcode-select -p
-          xcodebuild -version
-
-      - name: Create Secrets.xcconfig
-        env:
-          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
-
-      - name: Import signing certificate
-        env:
-          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
-          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
-
-      - name: Configure notarization
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool store-credentials "TablePro" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARY_PASSWORD"
-
-      - name: Install provisioning profile
-        env:
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/tablepro.provisionprofile
-
-      - name: Build x86_64
-        env:
-          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-          NOTARIZE: "true"
-        run: scripts/build-release.sh x86_64
-
-      - name: Verify build
-        run: scripts/ci/verify-build.sh x86_64
-
-      - name: Package artifacts
-        env:
-          NOTARIZE: "true"
-        run: scripts/ci/package-artifacts.sh x86_64
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifacts-x86_64
-          path: |
-            build/Release/TablePro-*.dmg
-            build/Release/TablePro-*.zip
-
+  # Reads two integers out of a Swift file and fetches a JSON manifest, so it wants nothing
+  # from macOS and does not need to spend a macOS runner minute (billed at ten times Linux).
   registry-readiness:
     name: Registry Readiness
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 5
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Verify registry has compatible plugin binaries
         run: |
@@ -291,7 +168,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: macos-26
-    needs: [lint, test, build-arm64, build-x86_64, registry-readiness]
+    needs: [lint, test, build, registry-readiness]
     if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 10
     permissions:
@@ -299,18 +176,22 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '26.4.1'
+        uses: ./.github/actions/setup-xcode
 
+      # Only the two build artifacts. Unfiltered, this also pulled the four test-result bundles and
+      # test-products, which is 874MB fetched to use 106MB of it, and every megabyte is another
+      # chance for the blob store to drop the transfer: v0.69.0 failed here twice in a row with
+      # "Artifact download failed after 5 retries", both times inside two minutes. Flatten takes any
+      # *.dmg or *.zip it finds, so a zip inside a test bundle could also reach the release.
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          pattern: artifacts-*
           path: artifacts-raw/
           merge-multiple: true
 
@@ -321,6 +202,52 @@ jobs:
           rm -rf artifacts-raw/
           echo "Artifacts:"
           ls -lh artifacts/
+
+      - name: Verify the tag matches the declared version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          XCCONFIG_VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
+          if [ "$TAG_VERSION" != "$XCCONFIG_VERSION" ]; then
+            echo "::error::tag v$TAG_VERSION does not match MARKETING_VERSION $XCCONFIG_VERSION"
+            exit 1
+          fi
+          echo "tag and MARKETING_VERSION agree on $TAG_VERSION"
+
+          # CURRENT_PROJECT_VERSION is what Sparkle compares, as <sparkle:version>. A build number
+          # that did not increase means no installed app is offered the release, and until now only
+          # a sentence in the release runbook stopped that. Compared against the newest PUBLISHED
+          # release rather than the newest tag, because re-cutting a release that failed leaves a
+          # tag at the same build and that is a legitimate state to be in.
+          BUILD=$(sed -n 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
+          case "$BUILD" in
+            ''|*[!0-9]*)
+              echo "::error::CURRENT_PROJECT_VERSION '$BUILD' is not a plain integer"
+              exit 1
+              ;;
+          esac
+
+          # No `|| true`. A gh outage used to turn this gate into "no earlier published release"
+          # and exit 0, which is the same output a genuine first release produces.
+          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
+                | sort_by(.publishedAt) | last | .tagName')
+          if [ "$PREVIOUS_TAG" = "null" ]; then
+            PREVIOUS_TAG=""
+          fi
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "v$TAG_VERSION" ]; then
+            echo "no earlier published release to compare the build number against"
+            exit 0
+          fi
+
+          PREVIOUS_BUILD=$(git show "${PREVIOUS_TAG}:Configs/Version.xcconfig" \
+            | sed -n 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*//p' | tr -d ' ')
+          if [ -n "$PREVIOUS_BUILD" ] && [ "$BUILD" -le "$PREVIOUS_BUILD" ]; then
+            echo "::error::CURRENT_PROJECT_VERSION $BUILD is not above $PREVIOUS_BUILD from $PREVIOUS_TAG; no install would be offered this update"
+            exit 1
+          fi
+          echo "build $BUILD is above $PREVIOUS_BUILD from $PREVIOUS_TAG"
 
       - name: Verify and organize artifacts for release
         run: |
@@ -335,64 +262,84 @@ jobs:
           echo "Contents of artifacts directory:"
           ls -la artifacts/
 
-          # Note: DMG files should already have correct names from build
-          # ZIP files need to be renamed
+          # The DMGs are already versioned by package-artifacts.sh; the ZIPs are not.
+          # Both renames used to be guarded by `if [ -f ... ]` with no else, so a missing or
+          # differently named ZIP printed "organized successfully" and the release published
+          # whatever the upload glob happened to match.
+          for ARCH in arm64 x86_64; do
+            if [ ! -f "artifacts/TablePro-${ARCH}.zip" ]; then
+              echo "::error::artifacts/TablePro-${ARCH}.zip is missing; the ${ARCH} build did not produce an update archive"
+              ls -la artifacts/ >&2
+              exit 1
+            fi
+            mv "artifacts/TablePro-${ARCH}.zip" "artifacts/TablePro-${VERSION}-${ARCH}.zip"
 
-          # Rename ZIP files if they exist
-          if [ -f "artifacts/TablePro-arm64.zip" ]; then
-            mv artifacts/TablePro-arm64.zip "artifacts/TablePro-${VERSION}-arm64.zip"
-          fi
-
-          if [ -f "artifacts/TablePro-x86_64.zip" ]; then
-            mv artifacts/TablePro-x86_64.zip "artifacts/TablePro-${VERSION}-x86_64.zip"
-          fi
+            if [ ! -f "artifacts/TablePro-${VERSION}-${ARCH}.dmg" ]; then
+              echo "::error::artifacts/TablePro-${VERSION}-${ARCH}.dmg is missing"
+              ls -la artifacts/ >&2
+              exit 1
+            fi
+          done
 
           echo "✅ Artifacts organized successfully"
           echo "Final artifacts:"
           ls -lh artifacts/
 
+      # No `if: env.SPARKLE_PRIVATE_KEY != ''` on these steps. This job only runs for a v* tag,
+      # so the key is always meant to be present, and gating on it meant a missing or rotated
+      # secret published a release that no existing install could ever see. A signing key that
+      # is not there is now a red job, not a silent skip.
+      # The tag's own appcast.xml is the feed as of that commit, which is missing every version
+      # published since. The merge base has to be the feed that is actually live.
+      - name: Fetch the published feed to merge into
+        run: |
+          git fetch origin main
+          mkdir -p appcast
+          git show origin/main:appcast.xml > appcast/base.xml
+
+      # A flag left true from the previous release would mark an ordinary build critical and
+      # interrupt every user, so it has to have been touched in this release's own diff.
+      - name: Read the release flags
+        id: flags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CRITICAL=$(python3 -c "
+          import json
+          print('1' if json.load(open('.github/release-flags.json')).get('criticalUpdate') is True else '0')
+          ")
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          if [ "$CRITICAL" != "1" ]; then
+            echo "Ordinary release, staged over 36 hours"
+            exit 0
+          fi
+
+          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
+                | sort_by(.publishedAt) | last | .tagName')
+          if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "null" ] \
+             && git diff --quiet "$PREVIOUS_TAG" HEAD -- .github/release-flags.json; then
+            echo "::error::criticalUpdate is true but .github/release-flags.json has not changed since $PREVIOUS_TAG, which is what a flag left over from the previous release looks like"
+            exit 1
+          fi
+          echo "::warning::This release is marked critical and will interrupt every user"
+
       - name: Sign update archives with Sparkle
-        if: env.SPARKLE_PRIVATE_KEY != ''
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          BASE_APPCAST: appcast/base.xml
+          CRITICAL_UPDATE: ${{ steps.flags.outputs.critical }}
         run: scripts/ci/sign-and-appcast.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Upload appcast artifact
-        if: env.SPARKLE_PRIVATE_KEY != ''
-        uses: actions/upload-artifact@v4
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: appcast-${{ github.sha }}
           path: appcast/appcast.xml
           retention-days: 90
 
-      - name: Commit appcast.xml to repo
-        if: env.SPARKLE_PRIVATE_KEY != ''
-        continue-on-error: true
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          if [ ! -f appcast/appcast.xml ]; then
-            echo "⚠️  No appcast.xml to commit"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout main
-          cp appcast/appcast.xml appcast.xml
-          git add appcast.xml
-          git diff --cached --quiet && echo "No changes to appcast.xml" && exit 0
-          git commit -m "Update appcast.xml for v${GITHUB_REF#refs/tags/v}"
-          git push origin main
-
-      - name: Extract release notes from CHANGELOG.md
-        run: scripts/ci/extract-release-notes.sh "${GITHUB_REF#refs/tags/v}"
-
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
             artifacts/*.dmg
@@ -402,6 +349,89 @@ jobs:
           prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publishing the feed comes after publishing the artifacts it points at, so there is no
+      # window where Sparkle advertises a download URL that still 404s.
+      #
+      # This step used to be continue-on-error, which made a failed push indistinguishable from
+      # a release that went out clean: every user's updater would keep reporting "up to date"
+      # for a version that shipped. A rejected push now rebases and retries, and a push that
+      # still will not land fails the job.
+      - name: Commit appcast.xml to repo
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+
+          if [ ! -f appcast/items/arm64.xml ] || [ ! -f appcast/items/x86_64.xml ]; then
+            echo "❌ ERROR: the signed per-architecture items are missing, the Sparkle step produced no feed" >&2
+            exit 1
+          fi
+
+          # The merge below runs after the tree has been reset to main, so the scripts are taken
+          # from the tag first. Otherwise a release would publish its feed with whatever
+          # scripts/ci main happened to hold, rather than the code the tag was tested with.
+          TOOLS=$(mktemp -d)
+          cp -R scripts/ci "$TOOLS/"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B main
+
+          # The whole attempt is inside the retry, because the merge is what has to be redone when
+          # main moves. It used to run once against a snapshot taken before the build and then be
+          # copied over main, which reverted anything pushed in between: a pull-release.py
+          # withdrawal landing inside that window was undone and the withdrawn build went back on
+          # offer. The rewind guard could not see it, because a restoration adds versions rather
+          # than dropping them. Rebasing was no answer either, since the merge rewrites the file
+          # wholesale and every retry conflicted.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            python3 "$TOOLS/ci/merge-appcast.py" \
+              --base appcast.xml \
+              --version "$VERSION" \
+              --arm64 appcast/items/arm64.xml \
+              --x86-64 appcast/items/x86_64.xml \
+              --download-prefix "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/" \
+              --out appcast.xml
+
+            # The feed is pruned to the newest releases, so an old version leaving it is the policy
+            # working. What must never leave is the newest item, the only one any install can be
+            # offered, or the release being published.
+            # An empty newest_before is a feed with no items yet, which is a legitimate first
+            # release rather than something to refuse.
+            newest_before=$(git show origin/main:appcast.xml \
+              | grep -o '<sparkle:shortVersionString>[^<]*' | sed 's/.*>//' | head -1)
+            for required in "$newest_before" "$VERSION"; do
+              if [ -z "$required" ]; then
+                continue
+              fi
+              if ! grep -q "<sparkle:shortVersionString>${required}</sparkle:shortVersionString>" appcast.xml; then
+                echo "❌ ERROR: the generated feed no longer advertises $required" >&2
+                exit 1
+              fi
+            done
+            first=$(grep -o '<sparkle:shortVersionString>[^<]*' appcast.xml | sed 's/.*>//' | head -1)
+            if [ "$first" != "$VERSION" ]; then
+              echo "❌ ERROR: the feed leads with $first, not the release being published ($VERSION)" >&2
+              exit 1
+            fi
+
+            git add appcast.xml
+            if git diff --cached --quiet; then
+              echo "appcast.xml already advertises v${VERSION}"
+              exit 0
+            fi
+
+            git commit -m "Update appcast.xml for v${VERSION}"
+            if git push origin main; then
+              exit 0
+            fi
+            echo "Push rejected, re-merging onto the current origin/main (attempt ${attempt})"
+          done
+
+          echo "❌ ERROR: could not push appcast.xml after 3 attempts" >&2
+          exit 1
 
       - name: Notify Telegram
         if: success() && env.TELEGRAM_BOT_TOKEN != ''

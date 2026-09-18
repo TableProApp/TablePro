@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 import os
 import TableProImport
@@ -16,11 +17,22 @@ struct SequelAceImporter: ForeignAppImporter {
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
     let readsPasswordsFromKeychain = true
 
+    /// Injectable for the same reason `TablePlusImporter` carries one: `isAvailable()` answers
+    /// "is the app installed", and a test cannot install an app. The default is exactly what the
+    /// protocol does on its own, so this changes no behaviour.
+    var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
     var favoritesFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(
             "Library/Containers/com.sequel-ace.sequel-ace/Data/Library/Application Support/"
                 + "Sequel Ace/Data/Favorites.plist"
         )
+
+    func installedAppURL() -> URL? {
+        resolveAppURL(appBundleIdentifier)
+    }
 
     func connectionCount() -> Int {
         guard let root = loadRootDict() else { return 0 }

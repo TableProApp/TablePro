@@ -1,121 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Download pre-built static libraries from GitHub Releases
+# Download the pre-built static libraries from GitHub Releases.
 # Usage: scripts/download-libs.sh [--force]
 #
-# Libraries are hosted as a tar.gz on the "libs-v1" release tag
-# to avoid Git LFS bandwidth limits.
+# Libraries are hosted as tarballs on the "libs-v1" release tag rather than in git, to avoid
+# Git LFS bandwidth limits. Two archives: the macOS .a files, and the iOS xcframeworks.
+#
+# Whatever ends up in Libs/ is verified against the baseline committed in git, on every run,
+# including runs that download nothing. These libraries are force_loaded into a signed and
+# notarized app, so "we already have some files, skip the check" is not a safe shortcut.
 
 REPO="TableProApp/TablePro"
 LIBS_TAG="libs-v1"
 LIBS_ARCHIVE="tablepro-libs-v1.tar.gz"
+IOS_ARCHIVE="tablepro-libs-ios-v1.tar.gz"
 LIBS_DIR="Libs"
+IOS_DIR="$LIBS_DIR/ios"
 MARKER="$LIBS_DIR/.downloaded"
+IOS_MARKER="$IOS_DIR/.downloaded"
+FORCE="${1:-}"
 
-# Skip if already downloaded (unless --force)
-if [[ -f "$MARKER" && "${1:-}" != "--force" ]]; then
-  echo "Libraries already downloaded. Use --force to re-download."
-  exit 0
-fi
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
 
-# Check if libs already exist (local development)
-LIB_COUNT=$(find "$LIBS_DIR" -name '*.a' 2>/dev/null | wc -l | tr -d ' ')
-if [[ "$LIB_COUNT" -gt 0 && "${1:-}" != "--force" ]]; then
-  echo "Found $LIB_COUNT .a files in $LIBS_DIR — skipping download."
-  echo "Use --force to re-download."
-  exit 0
-fi
+# The baseline comes from git, never from the extracted copy. Each archive bundles its own
+# checksums file and extraction overwrites the working one, so verifying against that is
+# self-referential: a tampered release ships matching checksums and passes. Captured up front,
+# before anything is extracted, for the same reason.
+capture_baseline() {
+    local tracked="$1" out="$2"
+    git rev-parse --is-inside-work-tree &> /dev/null || return 0
+    git cat-file -e "HEAD:$tracked" 2> /dev/null || return 0
+    git show "HEAD:$tracked" > "$out"
+}
 
-echo "Downloading static libraries from $REPO@$LIBS_TAG..."
+capture_baseline "$LIBS_DIR/checksums.sha256" "$WORK/macos-baseline"
+capture_baseline "$IOS_DIR/checksums.sha256" "$WORK/ios-baseline"
 
-# Download using gh CLI if available, otherwise curl
-if command -v gh &>/dev/null; then
-  gh release download "$LIBS_TAG" \
-    --repo "$REPO" \
-    --pattern "$LIBS_ARCHIVE" \
-    --dir /tmp \
-    --clobber
+fetch() {
+    local archive="$1" dest="$2"
+    if command -v gh &> /dev/null; then
+        gh release download "$LIBS_TAG" --repo "$REPO" --pattern "$archive" --dir "$dest" --clobber
+    else
+        curl -fSL -o "$dest/$archive" "https://github.com/$REPO/releases/download/$LIBS_TAG/$archive"
+    fi
+}
+
+# The two baselines use different path conventions, so each names the directory to run from:
+# Libs/checksums.sha256 holds "Libs/..." paths and is checked from the repo root, while
+# Libs/ios/checksums.sha256 holds "./..." paths and is checked from inside Libs/ios.
+verify() {
+    local run_from="$1" dir="$2" baseline="$3" label="$4"
+    if [[ ! -s "$baseline" ]]; then
+        echo "WARNING: no trusted $label baseline at HEAD; skipping integrity verification." >&2
+        return 0
+    fi
+    echo "Verifying $label against the baseline committed in git..."
+    if (cd "$run_from" && shasum -a 256 -c "$baseline" --quiet 2> /dev/null); then
+        echo "  $label OK"
+        return 0
+    fi
+    echo "ERROR: $dir does not match the checksums committed in git." >&2
+    echo "       The archive may be corrupt or tampered with." >&2
+    echo "       If you rebuilt a library on purpose, publish it so the baseline moves with it:" >&2
+    echo "         scripts/publish-libs.sh <lib>.a     for the macOS libraries" >&2
+    echo "         scripts/publish-ios-libs.sh         for the iOS xcframeworks" >&2
+    return 1
+}
+
+# --- macOS static libraries ---
+
+if [[ -f "$MARKER" && "$FORCE" != "--force" ]]; then
+    echo "macOS libraries already present."
+elif [[ "$(find "$LIBS_DIR" -maxdepth 1 -name '*.a' 2> /dev/null | wc -l | tr -d ' ')" -gt 0 && "$FORCE" != "--force" ]]; then
+    echo "Found existing .a files in $LIBS_DIR."
 else
-  DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LIBS_TAG/$LIBS_ARCHIVE"
-  echo "Downloading from $DOWNLOAD_URL"
-  curl -fSL -o "/tmp/$LIBS_ARCHIVE" "$DOWNLOAD_URL"
+    echo "Downloading macOS static libraries from $REPO@$LIBS_TAG..."
+    fetch "$LIBS_ARCHIVE" "$WORK"
+    mkdir -p "$LIBS_DIR"
+    tar xzf "$WORK/$LIBS_ARCHIVE" -C "$LIBS_DIR"
+    touch "$MARKER"
+    echo "Downloaded $(find "$LIBS_DIR" -maxdepth 1 -name '*.a' | wc -l | tr -d ' ') static libraries."
 fi
 
-# Capture the trusted checksum baseline from git BEFORE extraction. The archive
-# bundles its own checksums.sha256, and extraction overwrites Libs/checksums.sha256
-# with that copy, so verifying against the extracted file is self-referential: a
-# tampered release ships matching checksums and passes. The committed baseline
-# (Libs/checksums.sha256 at HEAD) is the only trusted reference.
-TRUSTED_CHECKSUMS=""
-if git rev-parse --is-inside-work-tree &>/dev/null \
-   && git cat-file -e "HEAD:$LIBS_DIR/checksums.sha256" 2>/dev/null; then
-  TRUSTED_CHECKSUMS="$(mktemp)"
-  git show "HEAD:$LIBS_DIR/checksums.sha256" > "$TRUSTED_CHECKSUMS"
-fi
-
-echo "Extracting to $LIBS_DIR/..."
-mkdir -p "$LIBS_DIR"
-tar xzf "/tmp/$LIBS_ARCHIVE" -C "$LIBS_DIR"
-rm -f "/tmp/$LIBS_ARCHIVE"
-
-# Verify the extracted libraries against the trusted git baseline, never the
-# archive's own bundled checksum file.
-if [[ -n "$TRUSTED_CHECKSUMS" ]]; then
-  echo "Verifying checksums against the baseline committed in git..."
-  if shasum -a 256 -c "$TRUSTED_CHECKSUMS" --quiet 2>/dev/null; then
-    echo "Checksums OK"
-    rm -f "$TRUSTED_CHECKSUMS"
-  else
-    rm -f "$TRUSTED_CHECKSUMS"
-    echo "ERROR: extracted libraries do not match Libs/checksums.sha256 committed in git."
-    echo "The downloaded archive may be corrupt or tampered with. Aborting."
-    exit 1
-  fi
-else
-  echo "WARNING: no trusted checksum baseline found (not a git checkout, or"
-  echo "         Libs/checksums.sha256 is absent at HEAD). Skipping integrity"
-  echo "         verification. The archive's own checksum file is NOT trusted."
-fi
-
-# Mark as downloaded
-touch "$MARKER"
-
-LIB_COUNT=$(find "$LIBS_DIR" -maxdepth 1 -name '*.a' | wc -l | tr -d ' ')
-echo "Downloaded $LIB_COUNT static libraries."
-
-# --- OpenSSL shared dylibs ---
-echo "Creating OpenSSL shared dylibs for local development..."
-if [[ -f "$LIBS_DIR/libcrypto_arm64.a" || -f "$LIBS_DIR/libcrypto.a" ]]; then
-  scripts/create-openssl-dylibs.sh both
-else
-  echo "Skipping OpenSSL dylibs (no static libs found yet)."
-fi
+verify "." "$LIBS_DIR" "$WORK/macos-baseline" "macOS libraries"
 
 # --- iOS xcframeworks ---
-IOS_ARCHIVE="tablepro-libs-ios-v1.tar.gz"
-IOS_DIR="$LIBS_DIR/ios"
-IOS_MARKER="$IOS_DIR/.downloaded"
 
-if [[ -f "$IOS_MARKER" && "${1:-}" != "--force" ]]; then
-  echo "iOS libraries already downloaded."
-elif [[ -d "$IOS_DIR" && "$(find "$IOS_DIR" -name '*.xcframework' -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')" -gt 0 && "${1:-}" != "--force" ]]; then
-  echo "Found xcframeworks in $IOS_DIR — skipping iOS download."
+if [[ -f "$IOS_MARKER" && "$FORCE" != "--force" ]]; then
+    echo "iOS xcframeworks already present."
+elif [[ "$(find "$IOS_DIR" -maxdepth 1 -name '*.xcframework' 2> /dev/null | wc -l | tr -d ' ')" -gt 0 && "$FORCE" != "--force" ]]; then
+    echo "Found existing xcframeworks in $IOS_DIR."
 else
-  echo "Downloading iOS static libraries..."
-  if command -v gh &>/dev/null; then
-    gh release download "$LIBS_TAG" \
-      --repo "$REPO" \
-      --pattern "$IOS_ARCHIVE" \
-      --dir /tmp \
-      --clobber
-  else
-    curl -fSL -o "/tmp/$IOS_ARCHIVE" "https://github.com/$REPO/releases/download/$LIBS_TAG/$IOS_ARCHIVE"
-  fi
-  mkdir -p "$IOS_DIR"
-  tar xzf "/tmp/$IOS_ARCHIVE" -C "$IOS_DIR"
-  rm -f "/tmp/$IOS_ARCHIVE"
-  touch "$IOS_MARKER"
-  FW_COUNT=$(find "$IOS_DIR" -name '*.xcframework' -maxdepth 1 | wc -l | tr -d ' ')
-  echo "Downloaded $FW_COUNT iOS xcframeworks."
+    echo "Downloading iOS xcframeworks..."
+    fetch "$IOS_ARCHIVE" "$WORK"
+    mkdir -p "$IOS_DIR"
+    tar xzf "$WORK/$IOS_ARCHIVE" -C "$IOS_DIR"
+    touch "$IOS_MARKER"
+    echo "Downloaded $(find "$IOS_DIR" -maxdepth 1 -name '*.xcframework' | wc -l | tr -d ' ') iOS xcframeworks."
+fi
+
+verify "$IOS_DIR" "$IOS_DIR" "$WORK/ios-baseline" "iOS xcframeworks"
+
+# --- OpenSSL shared dylibs, built from the verified static libraries ---
+
+if [[ -f "$LIBS_DIR/libcrypto_arm64.a" || -f "$LIBS_DIR/libcrypto.a" ]]; then
+    echo "Creating OpenSSL shared dylibs for local development..."
+    scripts/create-openssl-dylibs.sh both
+else
+    echo "Skipping OpenSSL dylibs (no static libs found yet)."
 fi

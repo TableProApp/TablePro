@@ -15,7 +15,9 @@ struct SyncSettings: Codable, Equatable {
     var syncSettings: Bool
     var syncPasswords: Bool
     var syncSSHProfiles: Bool
+    var syncCredentialProfiles: Bool
     var syncTableFavorites: Bool
+    var syncDatabaseFavorites: Bool
     var syncSQLFavorites: Bool
 
     init(
@@ -25,7 +27,9 @@ struct SyncSettings: Codable, Equatable {
         syncSettings: Bool,
         syncPasswords: Bool = false,
         syncSSHProfiles: Bool = true,
+        syncCredentialProfiles: Bool = true,
         syncTableFavorites: Bool = true,
+        syncDatabaseFavorites: Bool = true,
         syncSQLFavorites: Bool = true
     ) {
         self.enabled = enabled
@@ -34,7 +38,9 @@ struct SyncSettings: Codable, Equatable {
         self.syncSettings = syncSettings
         self.syncPasswords = syncPasswords
         self.syncSSHProfiles = syncSSHProfiles
+        self.syncCredentialProfiles = syncCredentialProfiles
         self.syncTableFavorites = syncTableFavorites
+        self.syncDatabaseFavorites = syncDatabaseFavorites
         self.syncSQLFavorites = syncSQLFavorites
     }
 
@@ -46,7 +52,9 @@ struct SyncSettings: Codable, Equatable {
         syncSettings = try container.decode(Bool.self, forKey: .syncSettings)
         syncPasswords = try container.decodeIfPresent(Bool.self, forKey: .syncPasswords) ?? false
         syncSSHProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncSSHProfiles) ?? true
+        syncCredentialProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncCredentialProfiles) ?? true
         syncTableFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncTableFavorites) ?? true
+        syncDatabaseFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncDatabaseFavorites) ?? true
         syncSQLFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncSQLFavorites) ?? true
     }
 
@@ -57,7 +65,9 @@ struct SyncSettings: Codable, Equatable {
         syncSettings: true,
         syncPasswords: false,
         syncSSHProfiles: true,
+        syncCredentialProfiles: true,
         syncTableFavorites: true,
+        syncDatabaseFavorites: true,
         syncSQLFavorites: true
     )
 }

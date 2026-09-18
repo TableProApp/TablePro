@@ -76,14 +76,21 @@ enum PostgreSQLPrincipalQueries {
         PluginPrivilegeDescriptor(name: "REFERENCES", label: "References", category: structure)
     ]
 
-    static func searchObjects(patternLiteral: String, limit: Int) -> String {
+    /// The wildcards are wrapped around the pattern before it is quoted, because an `E` prefix
+    /// cannot be spliced into the middle of a literal: `ILIKE '%' || E'…' || '%'` would be the only
+    /// alternative, and one literal is simpler to read.
+    ///
+    /// LIKE metacharacters in the typed pattern are deliberately left alone and remain a separate
+    /// defect: a typed `%` still matches anything, and a typed backslash still acts as LIKE's own
+    /// escape. Quoting fixes which statement runs, not what the pattern means.
+    static func searchObjects(pattern: String, limit: Int) -> String {
         """
         SELECT n.nspname, c.relname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-          AND c.relname ILIKE '%\(patternLiteral)%'
+          AND c.relname ILIKE \(PostgreSQLObjectQueries.quoteLiteral("%\(pattern)%"))
         ORDER BY n.nspname, c.relname
         LIMIT \(max(1, limit))
         """
@@ -93,48 +100,51 @@ enum PostgreSQLPrincipalQueries {
         SELECT n.nspname
         FROM pg_namespace n
         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-          AND n.nspname NOT LIKE 'pg\\_%'
+          AND n.nspname NOT LIKE 'pg!_%' ESCAPE '!'
         ORDER BY n.nspname
         """
 
-    static func tables(schemaLiteral: String) -> String {
+    static func tables(schema: String) -> String {
         """
         SELECT c.relname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = '\(schemaLiteral)'
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
           AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
         ORDER BY c.relname
         """
     }
 
-    static func columns(schemaLiteral: String, tableLiteral: String) -> String {
+    static func columns(schema: String, table: String) -> String {
         """
         SELECT a.attname
         FROM pg_attribute a
         JOIN pg_class c ON c.oid = a.attrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = '\(schemaLiteral)'
-          AND c.relname = '\(tableLiteral)'
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
           AND a.attnum > 0
           AND NOT a.attisdropped
         ORDER BY a.attnum
         """
     }
 
-    static func columnGrants(roleLiteral: String) -> String {
+    static func columnGrants(role: String) -> String {
         """
-        SELECT n.nspname, c.relname, a.attname, acl.privilege_type, acl.is_grantable
-        FROM pg_attribute a
-        JOIN pg_class c ON c.oid = a.attrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN LATERAL aclexplode(a.attacl) AS acl
-        JOIN pg_roles r ON r.oid = acl.grantee
-        WHERE r.rolname = '\(roleLiteral)'
-          AND a.attnum > 0
-          AND NOT a.attisdropped
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY n.nspname, c.relname, a.attname, acl.privilege_type
+        SELECT s.nspname, s.relname, s.attname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT n.nspname, c.relname, a.attname, pg_catalog.aclexplode(a.attacl) AS acl
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE a.attacl IS NOT NULL
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
+        ORDER BY s.nspname, s.relname, s.attname, (s.acl).privilege_type
         """
     }
 
@@ -152,7 +162,7 @@ enum PostgreSQLPrincipalQueries {
                    r.rolconnlimit,
                    pg_catalog.shobj_description(r.oid, 'pg_authid')
             FROM pg_roles r
-            WHERE r.rolname NOT LIKE 'pg\\_%'
+            WHERE r.rolname NOT LIKE 'pg!_%' ESCAPE '!'
             ORDER BY r.rolname
             """
     }
@@ -165,51 +175,60 @@ enum PostgreSQLPrincipalQueries {
         ORDER BY member.rolname, grantedRole.rolname
         """
 
-    static func databaseGrants(roleLiteral: String) -> String {
+    static func databaseGrants(role: String) -> String {
         """
-        SELECT d.datname, a.privilege_type, a.is_grantable
-        FROM pg_database d
-        CROSS JOIN LATERAL aclexplode(d.datacl) AS a
-        JOIN pg_roles r ON r.oid = a.grantee
-        WHERE r.rolname = '\(roleLiteral)'
-          AND NOT d.datistemplate
-        ORDER BY d.datname, a.privilege_type
-        """
-    }
-
-    static func schemaGrants(roleLiteral: String) -> String {
-        """
-        SELECT n.nspname, a.privilege_type, a.is_grantable
-        FROM pg_namespace n
-        CROSS JOIN LATERAL aclexplode(n.nspacl) AS a
-        JOIN pg_roles r ON r.oid = a.grantee
-        WHERE r.rolname = '\(roleLiteral)'
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY n.nspname, a.privilege_type
+        SELECT s.datname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT d.datname, pg_catalog.aclexplode(d.datacl) AS acl
+            FROM pg_database d
+            WHERE d.datacl IS NOT NULL
+              AND NOT d.datistemplate
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
+        ORDER BY s.datname, (s.acl).privilege_type
         """
     }
 
-    static func tableGrants(roleLiteral: String) -> String {
+    static func schemaGrants(role: String) -> String {
         """
-        SELECT n.nspname, c.relname, a.privilege_type, a.is_grantable
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN LATERAL aclexplode(c.relacl) AS a
-        JOIN pg_roles r ON r.oid = a.grantee
-        WHERE r.rolname = '\(roleLiteral)'
-          AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY n.nspname, c.relname, a.privilege_type
+        SELECT s.nspname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT n.nspname, pg_catalog.aclexplode(n.nspacl) AS acl
+            FROM pg_namespace n
+            WHERE n.nspacl IS NOT NULL
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
+        ORDER BY s.nspname, (s.acl).privilege_type
         """
     }
 
-    static func ownsObjects(roleLiteral: String) -> String {
+    static func tableGrants(role: String) -> String {
+        """
+        SELECT s.nspname, s.relname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT n.nspname, c.relname, pg_catalog.aclexplode(c.relacl) AS acl
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relacl IS NOT NULL
+              AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
+        ORDER BY s.nspname, s.relname, (s.acl).privilege_type
+        """
+    }
+
+    static func ownsObjects(role: String) -> String {
         """
         SELECT EXISTS (
             SELECT 1
             FROM pg_shdepend s
             JOIN pg_roles r ON r.oid = s.refobjid
-            WHERE r.rolname = '\(roleLiteral)'
+            WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
               AND s.deptype IN ('o', 'a')
         )
         """

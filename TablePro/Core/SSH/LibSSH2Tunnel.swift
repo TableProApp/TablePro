@@ -27,7 +27,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
     private var forwardingTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
-    private let isAlive = OSAllocatedUnfairLock(initialState: true)
+    private let aliveLatch = TeardownLatch()
     private let clientTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
 
     /// Serial queue for all libssh2 calls on this tunnel's session.
@@ -45,6 +45,11 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     var onDeath: ((UUID) -> Void)?
 
     private let forwardFailure = SSHForwardFailureRecorder()
+
+    /// Shared by every client relay this tunnel serves, so the readout describes the tunnel rather
+    /// than whichever socket the driver happens to be using. Owned here and registered weakly, so
+    /// the totals disappear with the tunnel instead of outliving it.
+    private let byteCounter = TransportByteCounter()
 
     struct JumpHop {
         let session: OpaquePointer    // LIBSSH2_SESSION*
@@ -93,10 +98,11 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             label: "com.TablePro.ssh.accept.\(connectionId.uuidString)",
             qos: .utility
         )
+        TransportActivityRegistry.shared.register(byteCounter, for: connectionId)
     }
 
     var isRunning: Bool {
-        isAlive.withLock { $0 }
+        aliveLatch.isLive
     }
 
     // MARK: - Forwarding
@@ -170,13 +176,20 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     // MARK: - Lifecycle
 
     func close() {
-        let wasAlive = isAlive.withLock { alive -> Bool in
-            let was = alive
-            alive = false
-            return was
-        }
-        guard wasAlive else { return }
+        guard consumeAliveLatch() else { return }
+        performTeardown()
+    }
 
+    /// Takes the one-shot alive latch, returning true to exactly one caller.
+    ///
+    /// The latch decides who performs teardown, so every path that consumes it owes the teardown.
+    /// `markDead` used to consume it and only fire `onDeath`, which left `close()` a no-op for the
+    /// rest of the tunnel's life and every resource it held unreleased.
+    private func consumeAliveLatch() -> Bool {
+        aliveLatch.claim()
+    }
+
+    private func performTeardown() {
         // Cancel all tasks so relay loops see isCancelled
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
@@ -234,12 +247,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     /// and tear down immediately. We avoid closing socketFD or freeing the session
     /// since relay tasks may still reference them; the OS reclaims all resources.
     func closeSync() {
-        let wasAlive = isAlive.withLock { alive -> Bool in
-            let was = alive
-            alive = false
-            return was
-        }
-        guard wasAlive else { return }
+        guard consumeAliveLatch() else { return }
 
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
@@ -262,14 +270,9 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     // MARK: - Private
 
     private func markDead() {
-        let wasAlive = isAlive.withLock { alive -> Bool in
-            let was = alive
-            alive = false
-            return was
-        }
-        if wasAlive {
-            onDeath?(connectionId)
-        }
+        guard consumeAliveLatch() else { return }
+        performTeardown()
+        onDeath?(connectionId)
     }
 
     /// Accepts a client on the listening socket. The accept timestamp is taken here, not once
@@ -378,7 +381,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         let shouldCancel = clientTasks.withLock { tasks -> Bool in
             tasks.removeAll { $0.isCancelled }
             tasks.append(task)
-            return !isAlive.withLock { $0 }
+            return !aliveLatch.isLive
         }
         if shouldCancel {
             task.cancel()
@@ -395,7 +398,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             transportFD: socketFD,
             channelIO: LibSSH2ChannelIO(channel: channel, session: session, sessionQueue: sessionQueue),
             bufferSize: Self.relayBufferSize,
-            isActive: { [weak self] in self?.isRunning ?? false }
+            isActive: { [weak self] in self?.isRunning ?? false },
+            byteCounter: byteCounter
         )
 
         let startedAt = Date()

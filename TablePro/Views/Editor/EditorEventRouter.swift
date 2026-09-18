@@ -7,7 +7,7 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditTextView
+import TableProTextEngine
 
 @MainActor
 internal final class EditorEventRouter {
@@ -80,9 +80,32 @@ internal final class EditorEventRouter {
 
     // MARK: - Public API
 
+    /// Whether the key window has a SQL editor a find can fall back to. A focused editor answers the
+    /// Find commands itself through the responder chain, so this only decides whether the window's
+    /// last-resort handler has anything to search once nothing nearer has claimed them.
+    internal var keyWindowHasEditor: Bool {
+        editor(for: NSApp.keyWindow) != nil
+    }
+
     internal func showFindPanelForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.showFindPanel()
+    }
+
+    internal func showFindAndReplacePanelForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.showFindAndReplacePanel()
+    }
+
+    /// Whether the key window's editor has a selection to search for, so the menu can disable
+    /// Use Selection for Find rather than offering a command that would do nothing.
+    internal var keyWindowEditorHasSelectionForFind: Bool {
+        editor(for: NSApp.keyWindow)?.0.hasSelectionForFind ?? false
+    }
+
+    internal func useSelectionForFindInKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.useSelectionForFind()
     }
 
     internal func findNext() {
@@ -100,13 +123,50 @@ internal final class EditorEventRouter {
         coordinator.performFormatSQL()
     }
 
-    /// Called by the SwiftUI "Clear Selection" menu when its bare-Escape key equivalent
-    /// fires. A bare-key menu equivalent preempts every local event monitor in the key
-    /// window, so the focused editor's completion popup, Vim interceptor, and
-    /// first-responder handling never see the keystroke. Routes it to the key window's
-    /// editor so it can dismiss its completion popup, hand the escape to Vim, and restore
-    /// first responder. Returns whether the editor consumed the escape so the caller
-    /// skips its cancelOperation fallback (the data grid's Clear Selection).
+    internal func performRemoveInvisibleCharactersForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.performRemoveInvisibleCharacters()
+    }
+
+    internal func performToggleFoldForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.toggleFoldAtCursor()
+    }
+
+    internal func performFoldAllForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.foldAll()
+    }
+
+    internal func performUnfoldAllForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.unfoldAll()
+    }
+
+    internal func moveCursorToStatementForKeyWindow(_ direction: StatementNavigationDirection) {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.moveCursorToStatement(direction)
+    }
+
+    /// Runs the statement the caret is in and advances, entirely inside the editor this resolves to.
+    ///
+    /// Handing the SQL back for someone else to execute would let the text and the connection come from two different
+    /// editors, which a window hosting more than one connection can genuinely do.
+    internal func runStatementAtCursorAndAdvanceForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.runStatementAtCursorAndAdvance()
+    }
+
+    /// Called when the Edit menu's "Clear Selection" item is chosen with the pointer.
+    ///
+    /// Only with the pointer. AppKit never dispatches an unmodified Escape as a key equivalent:
+    /// measured on macOS 26, `NSMenu.performKeyEquivalent` is not called at all for key code 53,
+    /// which instead reaches `keyDown:` and `cancelOperation(_:)` through the responder chain, as
+    /// `StandardKeyBinding.dict` maps 0x1B to. The item carries no Escape key equivalent anyway,
+    /// because `KeyboardSettings.menuKeyEquivalent(for:)` refuses a bare key. Routes the command to
+    /// the key window's editor so it can dismiss its completion popup, hand the escape to Vim, and
+    /// restore first responder. Returns whether the editor consumed it so the caller skips its
+    /// cancelOperation fallback (the data grid's Clear Selection).
     @discardableResult
     internal func handleEscapeFromMenu() -> Bool {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return false }
@@ -115,14 +175,20 @@ internal final class EditorEventRouter {
 
     // MARK: - Lookup
 
+    /// Window-scoped on purpose: every caller is a command the window's front content owns rather than
+    /// whatever holds first responder, and the escape and find routes exist precisely because focus is
+    /// somewhere else. A tab switch can leave the outgoing editor registered for a moment, and the
+    /// dictionary has no order, so the focused editor wins before the remaining candidate is used.
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {
         guard let window else { return nil }
+        var unfocused: (SQLEditorCoordinator, TextView)?
         for ref in editors.values {
             guard let coordinator = ref.coordinator, let textView = ref.textView,
                   textView.window === window else { continue }
-            return (coordinator, textView)
+            if window.firstResponder === textView { return (coordinator, textView) }
+            unfocused = unfocused ?? (coordinator, textView)
         }
-        return nil
+        return unfocused
     }
 
     private func purgeStaleEntries() {

@@ -8,6 +8,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSyncTransport
 
 @MainActor
 final class WeakCoordinatorRef {
@@ -18,84 +19,85 @@ final class WeakCoordinatorRef {
     }
 }
 
-@Observable
 @MainActor
-final class ConnectionFormCoordinator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormCoordinator")
+final class ConnectionFormCoordinator: ObservableObject {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormCoordinator")
 
     let connectionId: UUID?
-    private(set) var originalConnection: DatabaseConnection?
+    @Published private(set) var originalConnection: DatabaseConnection?
 
-    var network: NetworkPaneViewModel
-    var auth: AuthPaneViewModel
-    var ssh: SSHPaneViewModel
-    var cloudflareTunnel: CloudflareTunnelPaneViewModel
-    var cloudSQLProxy: CloudSQLProxyPaneViewModel
-    var socksProxy: SOCKSProxyPaneViewModel
-    var ssl: SSLPaneViewModel
-    var customization: CustomizationPaneViewModel
-    var advanced: AdvancedPaneViewModel
-    var aiRules: AIRulesPaneViewModel
+    @Published var network: NetworkPaneViewModel
+    @Published var auth: AuthPaneViewModel
+    @Published var ssh: SSHPaneViewModel
+    @Published var remoteFile: RemoteFilePaneViewModel
+    @Published var cloudflareTunnel: CloudflareTunnelPaneViewModel
+    @Published var cloudSQLProxy: CloudSQLProxyPaneViewModel
+    @Published var socksProxy: SOCKSProxyPaneViewModel
+    @Published var tunnelCommand: TunnelCommandPaneViewModel
+    @Published var ssl: SSLPaneViewModel
+    @Published var customization: CustomizationPaneViewModel
+    @Published var advanced: AdvancedPaneViewModel
+    @Published var aiRules: AIRulesPaneViewModel
 
-    var selectedPane: ConnectionFormPane = .general
-    var hasLoadedData: Bool = false
+    @Published var selectedTab: ConnectionFormTab = .general
+    @Published var hasLoadedData: Bool = false
 
-    var isTesting: Bool = false
-    var testSucceeded: Bool = false
-    var testTask: Task<Void, Never>?
+    @Published var isTesting: Bool = false
+    @Published var testSucceeded: Bool = false
+    @Published var testTask: Task<Void, Never>?
 
-    var isInstallingPlugin: Bool = false
-    var pluginInstallError: String?
-    var pluginInstallConnection: DatabaseConnection?
-    var pluginDiagnostic: PluginDiagnosticItem?
+    @Published var isInstallingPlugin: Bool = false
+    @Published var pluginInstallError: String?
+    @Published var pluginInstallConnection: DatabaseConnection?
+    @Published var pluginDiagnostic: PluginDiagnosticItem?
 
-    var saveError: String?
+    @Published var saveError: String?
 
-    var clipboardCandidate: ParsedConnection?
-    var clipboardBannerDismissed: Bool = false
+    @Published var clipboardCandidate: ParsedConnection?
+    @Published var clipboardBannerDismissed: Bool = false
+
+    @Published var isChoosingType: Bool = false
 
 
-    private var temporaryTestIds: Set<UUID> = []
+    @Published private var temporaryTestIds: Set<UUID> = []
 
-    @ObservationIgnored let services: AppServices
+    private var childChangeForwarding: AnyCancellable?
+
+    let services: AppServices
     var storage: ConnectionStorage { services.connectionStorage }
-    var dismissAction: (() -> Void)?
+    @Published var dismissAction: (() -> Void)?
 
     var isNew: Bool { connectionId == nil }
 
-    var visiblePanes: [ConnectionFormPane] {
-        var panes: [ConnectionFormPane] = [.general]
-        if services.pluginManager.supportsSSH(for: network.type) {
-            panes.append(.ssh)
-        }
-        if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
-            panes.append(.cloudflareTunnel)
-        }
-        if network.type.supportsCloudSQLProxy {
-            panes.append(.cloudSQLProxy)
-        }
-        if services.pluginManager.supportsSOCKSProxy(for: network.type) {
-            panes.append(.socksProxy)
-        }
-        if services.pluginManager.supportsSSL(for: network.type) {
-            panes.append(.ssl)
-        }
-        panes.append(.customization)
-        panes.append(.advanced)
-        panes.append(.aiRules)
-        return panes
+    /// Filtered from `allCases` rather than assembled by hand, so the compiler makes every case
+    /// answer the visibility question. A tab left out of a hand-written list would vanish from the
+    /// picker *and* have its issues dropped from `validationIssues`, which is a disabled Save with
+    /// nothing to fix.
+    var visibleTabs: [ConnectionFormTab] {
+        ConnectionFormTab.allCases.filter { isVisible($0) }
     }
 
-    var isFormValid: Bool {
-        network.validationIssues.isEmpty
-            && auth.validationIssues.isEmpty
-            && ssh.validationIssues.isEmpty
-            && cloudflareTunnel.validationIssues.isEmpty
-            && cloudSQLProxy.validationIssues.isEmpty
-            && socksProxy.validationIssues.isEmpty
-            && ssl.validationIssues.isEmpty
-            && customization.validationIssues.isEmpty
-            && advanced.validationIssues.isEmpty
+    private func isVisible(_ tab: ConnectionFormTab) -> Bool {
+        switch tab {
+        case .general, .options, .appearance:
+            return true
+        case .network:
+            return availableTransports.count > 1 || supportsSSL
+        }
+    }
+
+    /// Every issue the form knows about, tab by tab, in tab order.
+    ///
+    /// `isFormValid` reads this rather than repeating the list, so a validation rule cannot
+    /// disable Save while no tab claims it and leave the user with nothing to fix.
+    var validationIssues: [String] {
+        visibleTabs.flatMap { $0.validationIssues(for: self) }
+    }
+
+    var isFormValid: Bool { validationIssues.isEmpty }
+
+    var firstTabWithIssue: ConnectionFormTab? {
+        visibleTabs.first { !$0.validationIssues(for: self).isEmpty }
     }
 
     private let pendingInitialType: DatabaseType?
@@ -114,9 +116,11 @@ final class ConnectionFormCoordinator {
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
+        self.remoteFile = RemoteFilePaneViewModel()
         self.cloudflareTunnel = CloudflareTunnelPaneViewModel()
         self.cloudSQLProxy = CloudSQLProxyPaneViewModel()
         self.socksProxy = SOCKSProxyPaneViewModel()
+        self.tunnelCommand = TunnelCommandPaneViewModel()
         self.ssl = SSLPaneViewModel()
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
@@ -126,13 +130,47 @@ final class ConnectionFormCoordinator {
         network.coordinator = ref
         auth.coordinator = ref
         ssh.coordinator = ref
+        remoteFile.coordinator = ref
         cloudflareTunnel.coordinator = ref
         cloudSQLProxy.coordinator = ref
         socksProxy.coordinator = ref
+        tunnelCommand.coordinator = ref
         ssl.coordinator = ref
         customization.coordinator = ref
         advanced.coordinator = ref
         aiRules.coordinator = ref
+
+        childChangeForwarding = forwardChildChanges()
+    }
+
+    /// Every pane observes this coordinator and reads its values through a child, as in
+    /// `coordinator.network.type`. `@Published` on a child only fires when the reference is
+    /// replaced, never when a value inside it changes, so without this a pane stayed as it was
+    /// drawn: picking Sentinel left the Redis mode picker on Standalone with the host field still
+    /// showing. The send is synchronous because SwiftUI needs `objectWillChange` before the value
+    /// lands, and `switchToLatest` moves the subscription to a replacement child.
+    private func forwardChildChanges() -> AnyCancellable {
+        Publishers.MergeMany([
+            Self.changes(of: $network),
+            Self.changes(of: $auth),
+            Self.changes(of: $ssh),
+            Self.changes(of: $remoteFile),
+            Self.changes(of: $cloudflareTunnel),
+            Self.changes(of: $cloudSQLProxy),
+            Self.changes(of: $socksProxy),
+            Self.changes(of: $tunnelCommand),
+            Self.changes(of: $ssl),
+            Self.changes(of: $customization),
+            Self.changes(of: $advanced),
+            Self.changes(of: $aiRules),
+        ])
+        .sink { [weak self] in self?.objectWillChange.send() }
+    }
+
+    private static func changes<Child: ObservableObject>(
+        of child: Published<Child>.Publisher
+    ) -> AnyPublisher<Void, Never> where Child.ObjectWillChangePublisher == ObservableObjectPublisher {
+        child.map(\.objectWillChange).switchToLatest().eraseToAnyPublisher()
     }
 
     /// Performs the one-time side-effecting setup: applying initial type
@@ -153,6 +191,11 @@ final class ConnectionFormCoordinator {
         if let parsed = pendingInitialParsedURL {
             applyParsed(parsed)
         }
+
+        /// After the URL too, not only after a stored connection: a URL naming an SSH server for a
+        /// driver that cannot tunnel would otherwise leave a transport enabled that no tab offers
+        /// and no validation counts.
+        normalizeTransport()
     }
 
     // MARK: - Lifecycle
@@ -163,6 +206,9 @@ final class ConnectionFormCoordinator {
         )
         ssh.loadProfiles()
         ssh.loadSSHConfig()
+        /// A new connection has no stored record to load from, and its picker still has to offer
+        /// every profile.
+        auth.loadCredentialProfiles()
         if let id = connectionId,
            let existing = storage.loadConnections().first(where: { $0.id == id })
         {
@@ -176,10 +222,12 @@ final class ConnectionFormCoordinator {
             cloudflareTunnel.load(from: existing, storage: storage)
             cloudSQLProxy.load(from: existing, storage: storage)
             socksProxy.load(from: existing, storage: storage)
+            tunnelCommand.load(from: existing)
             ssl.load(from: existing)
             customization.load(from: existing)
             advanced.load(from: existing)
             aiRules.load(from: existing)
+            normalizeTransport()
         }
         hasLoadedData = true
     }
@@ -198,6 +246,13 @@ final class ConnectionFormCoordinator {
 
     // MARK: - Type change
 
+    /// Retypes the connection in place. `NetworkPaneViewModel.setType` had no caller, so picking
+    /// the wrong database meant cancelling the window and starting the form again.
+    func changeType(to newType: DatabaseType) {
+        isChoosingType = false
+        network.setType(newType)
+    }
+
     func didChangeType(_ newType: DatabaseType) {
         testSucceeded = false
         if hasLoadedData {
@@ -205,8 +260,13 @@ final class ConnectionFormCoordinator {
             auth.resetForType(newType)
             advanced.resetForType(newType)
         }
-        if !visiblePanes.contains(selectedPane) {
-            selectedPane = .general
+        /// Not `normalizeTransport()`: which transports exist and what they mean both change with
+        /// the type, and keeping the selection would turn a MySQL port forward into SQLite's
+        /// read-only file copy without saying so. The fields each transport holds are kept, so
+        /// re-picking costs nothing.
+        transport = nil
+        if !visibleTabs.contains(selectedTab) {
+            selectedTab = .general
         }
         isInstallingPlugin = false
         pluginInstallError = nil
@@ -225,77 +285,57 @@ final class ConnectionFormCoordinator {
         saveConnection(connect: false)
     }
 
-    func saveAndConnect() {
+    /// The window's default action. A new connection is opened once it is stored; an existing one
+    /// is only saved, because the window it is already open in is the one the user came from.
+    func commit() {
         saveConnection(connect: isNew)
     }
 
-    private func saveConnection(connect: Bool) {
-        let sshConfig = ssh.state.buildSSHConfig()
-        let sslConfig = ssl.buildConfig()
+    func buildEdits() -> ConnectionFormEdits {
+        var fields: [String: String] = [:]
+        network.write(into: &fields)
+        auth.write(into: &fields)
+        advanced.write(into: &fields)
 
-        var finalHost = network.resolvedHost
-        var finalPort = network.resolvedPort
-        let finalUsername = auth.resolvedUsername
-
-        let finalId = connectionId ?? UUID()
-
-        var finalAdditionalFields: [String: String] = [:]
-        network.write(into: &finalAdditionalFields)
-        auth.write(into: &finalAdditionalFields)
-        advanced.write(into: &finalAdditionalFields)
+        var resolvedHost = network.resolvedHost
+        var resolvedPort = network.resolvedPort
 
         if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = finalAdditionalFields["mongoHosts"],
+           let mongoHosts = fields["mongoHosts"],
            !mongoHosts.isEmpty
         {
             let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            finalAdditionalFields["mongoHosts"] = result.hosts
-            finalHost = result.primaryHost
-            finalPort = result.primaryPort
+            fields["mongoHosts"] = result.hosts
+            resolvedHost = result.primaryHost
+            resolvedPort = result.primaryPort
         }
 
         let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedScript.isEmpty {
-            finalAdditionalFields["preConnectScript"] = advanced.preConnectScript
+        if trimmedScript.isEmpty {
+            fields.removeValue(forKey: "preConnectScript")
         } else {
-            finalAdditionalFields.removeValue(forKey: "preConnectScript")
+            fields["preConnectScript"] = advanced.preConnectScript
         }
 
-        finalAdditionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
-
-        let secureFields = services.pluginManager.additionalConnectionFields(for: network.type)
-            .filter(\.isSecure)
-        for field in secureFields {
-            if let value = finalAdditionalFields[field.id], !value.isEmpty {
-                storage.savePluginSecureField(value, fieldId: field.id, for: finalId)
-            } else {
-                storage.deletePluginSecureField(fieldId: field.id, for: finalId)
-            }
-            finalAdditionalFields.removeValue(forKey: field.id)
-        }
-
-        let sshTunnelMode = ssh.state.buildTunnelMode()
-        let cloudflareTunnelMode = cloudflareTunnel.state.buildTunnelMode()
-        let cloudSQLProxyMode = cloudSQLProxy.state.buildTunnelMode()
-        let socksProxyMode = socksProxy.state.buildTunnelMode()
-        let connectionToSave = DatabaseConnection(
-            id: finalId,
+        return ConnectionFormEdits(
             name: network.name,
-            host: finalHost,
-            port: finalPort,
+            host: resolvedHost,
+            port: resolvedPort,
             database: network.database,
-            username: finalUsername,
+            username: auth.selectedCredentialProfile?.username ?? auth.resolvedUsername,
             type: network.type,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
+            sshConfig: ssh.state.buildSSHConfig(),
+            sslConfig: ssl.buildConfig(),
             color: customization.color,
             tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
-            sshTunnelMode: sshTunnelMode,
-            cloudflareTunnelMode: cloudflareTunnelMode,
-            cloudSQLProxyMode: cloudSQLProxyMode,
-            socksProxyMode: socksProxyMode,
+            sshTunnelMode: ssh.state.buildTunnelMode(),
+            credentialMode: auth.credentialMode,
+            cloudflareTunnelMode: cloudflareTunnel.state.buildTunnelMode(),
+            cloudSQLProxyMode: cloudSQLProxy.state.buildTunnelMode(),
+            socksProxyMode: socksProxy.state.buildTunnelMode(),
+            tunnelCommandMode: tunnelCommand.state.buildTunnelMode(),
             safeModeLevel: customization.safeModeLevel,
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
@@ -304,12 +344,95 @@ final class ConnectionFormCoordinator {
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
-            passwordSource: originalConnection?.passwordSource,
-            additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
+            additionalFields: fields,
+            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs()
         )
+    }
 
-        if auth.effectivePromptForPassword {
-            storage.deletePassword(for: connectionToSave.id)
+    /// The secure fields of the type being saved **and** of the type the connection started as.
+    ///
+    /// Retyping used to be impossible, so a save only ever had one type's secure fields to write.
+    /// Now that Change… exists, a SQL Server connection retyped to MySQL would leave its Kerberos
+    /// password in the Keychain under the same connection id, invisible to the form that owns it.
+    /// This mirrors what `ownedAdditionalFieldIDs()` already does for the plain fields.
+    internal func secureFieldsOwnedByForm() -> [ConnectionField] {
+        Self.secureFieldsOwnedByForm(
+            currentType: network.type,
+            originalType: originalConnection?.type,
+            pluginManager: services.pluginManager
+        )
+    }
+
+    internal static func secureFieldsOwnedByForm(
+        currentType: DatabaseType,
+        originalType: DatabaseType?,
+        pluginManager: PluginManager
+    ) -> [ConnectionField] {
+        var fields = pluginManager.additionalConnectionFields(for: currentType).filter(\.isSecure)
+        guard let originalType, originalType != currentType else { return fields }
+        let known = Set(fields.map(\.id))
+        fields += pluginManager.additionalConnectionFields(for: originalType)
+            .filter { $0.isSecure && !known.contains($0.id) }
+        return fields
+    }
+
+    private func ownedAdditionalFieldIDs() -> Set<String> {
+        var ids = ConnectionFormEdits.appManagedAdditionalFieldIDs
+        for field in services.pluginManager.additionalConnectionFields(for: network.type) {
+            ids.insert(field.id)
+        }
+        guard let originalType = originalConnection?.type, originalType != network.type else {
+            return ids
+        }
+        for field in services.pluginManager.additionalConnectionFields(for: originalType) {
+            ids.insert(field.id)
+        }
+        return ids
+    }
+
+    private func baseConnection(id: UUID) -> DatabaseConnection {
+        guard let original = originalConnection, original.id == id else {
+            return DatabaseConnection(id: id, name: "")
+        }
+        return storage.loadConnection(id: id) ?? original
+    }
+
+    private func saveConnection(connect: Bool) {
+        let finalId = connectionId ?? UUID()
+
+        var edits = buildEdits()
+        edits.additionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
+
+        for field in secureFieldsOwnedByForm() {
+            if let value = edits.additionalFields[field.id], !value.isEmpty {
+                storage.savePluginSecureField(value, fieldId: field.id, for: finalId)
+            } else {
+                storage.deletePluginSecureField(fieldId: field.id, for: finalId)
+            }
+            edits.additionalFields.removeValue(forKey: field.id)
+        }
+
+        var connectionToSave = edits.applied(to: baseConnection(id: finalId))
+
+        /// Removing a secret cannot be undone, so a clear waits until the connection record it
+        /// belongs to is on disk. Running it first and then failing the write leaves the old
+        /// connection in place with nothing left to authenticate it.
+        var clearedSecrets: [() -> Void] = []
+
+        /// A linked connection holds no secret of its own. That is the whole point: the password
+        /// exists once, under the profile, so rotating it is one edit rather than one per
+        /// connection. Any secret the connection had before the link goes with it, or an encrypted
+        /// export still carries it and a duplicate still copies it.
+        if auth.usesCredentialProfile {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
+            /// The secure-field loop above wrote the form's values back under the connection id.
+            /// Anything the profile owns has to go with the password, or the connection keeps a
+            /// second stale copy that a duplicate carries and the driver can fall back to.
+            for fieldId in auth.selectedCredentialProfile?.secureFieldIds ?? [] {
+                clearedSecrets.append { self.storage.deletePluginSecureField(fieldId: fieldId, for: finalId) }
+            }
+        } else if auth.effectivePromptForPassword || auth.clearsStoredPassword {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
         } else if !auth.password.isEmpty {
             storage.savePassword(auth.password, for: connectionToSave.id)
         }
@@ -319,9 +442,13 @@ final class ConnectionFormCoordinator {
                 && !ssh.state.password.isEmpty
             {
                 storage.saveSSHPassword(ssh.state.password, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredPassword {
+                clearedSecrets.append { self.storage.deleteSSHPassword(for: finalId) }
             }
             if ssh.state.authMethod == .privateKey && !ssh.state.keyPassphrase.isEmpty {
                 storage.saveKeyPassphrase(ssh.state.keyPassphrase, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredKeyPassphrase {
+                clearedSecrets.append { self.storage.deleteKeyPassphrase(for: finalId) }
             }
             if ssh.state.totpMode == .autoGenerate && !ssh.state.totpSecret.isEmpty {
                 storage.saveTOTPSecret(ssh.state.totpSecret, for: connectionToSave.id)
@@ -346,11 +473,16 @@ final class ConnectionFormCoordinator {
 
         var savedConnections = storage.loadConnections()
         if isNew {
+            connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                in: savedConnections,
+                groupId: connectionToSave.groupId
+            )
             savedConnections.append(connectionToSave)
             guard storage.saveConnections(savedConnections) else {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
                 return
             }
+            clearedSecrets.forEach { $0() }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -364,11 +496,18 @@ final class ConnectionFormCoordinator {
                 saveError = String(localized: "This connection was deleted on another device or window. Your changes were not saved.")
                 return
             }
+            if savedConnections[index].groupId != connectionToSave.groupId {
+                connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                    in: savedConnections,
+                    groupId: connectionToSave.groupId
+                )
+            }
             savedConnections[index] = connectionToSave
             guard storage.saveConnections(savedConnections) else {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
                 return
             }
+            clearedSecrets.forEach { $0() }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -378,7 +517,6 @@ final class ConnectionFormCoordinator {
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
@@ -396,7 +534,7 @@ final class ConnectionFormCoordinator {
 
         if !WindowManager.shared.hasOpenWindow(for: connection.id) {
             Self.logger.info(
-                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+                "Connection failed after window was closed: \(error.publicLogShape, privacy: .public)")
             return
         }
 
@@ -408,22 +546,31 @@ final class ConnectionFormCoordinator {
             return
         }
 
-        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("Failed to connect: \(error.publicLogShape, privacy: .public)")
         WelcomeRouter.shared.routeError(error, for: connection)
     }
 
-    func connectAfterInstall(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
-        Task {
-            do {
-                try await TabRouter.shared.route(.openConnection(connection.id))
-            } catch {
-                handleConnectError(error, connection: connection)
+    // MARK: - Test
+
+    private func presentRecoverableTestFailure(
+        _ error: Error,
+        action: ConnectionRecoveryAction,
+        connection: DatabaseConnection,
+        window: NSWindow?
+    ) {
+        let info = ConnectionFailureClassifier.info(for: error)
+        AlertHelper.showRecoverableErrorSheet(
+            title: String(localized: "Connection Test Failed"),
+            message: [info.message, info.failureReason].compactMap { $0 }.joined(separator: "\n\n"),
+            recoverySuggestion: info.recoverySuggestion,
+            recoveryTitle: action.title,
+            window: window
+        ) { [weak self] in
+            ConnectionRecoveryPerformer.perform(action, for: connection) {
+                self?.test()
             }
         }
     }
-
-    // MARK: - Test
 
     func test() {
         guard testTask == nil else { return }
@@ -431,66 +578,19 @@ final class ConnectionFormCoordinator {
         testSucceeded = false
         let window = NSApp.keyWindow
 
-        let sshConfig = ssh.state.buildSSHConfig()
-        let sslConfig = ssl.buildConfig()
-
-        var testHost = network.resolvedHost
-        var testPort = network.resolvedPort
-        let finalUsername = auth.resolvedUsername
-
-        var finalAdditionalFields: [String: String] = [:]
-        network.write(into: &finalAdditionalFields)
-        auth.write(into: &finalAdditionalFields)
-        advanced.write(into: &finalAdditionalFields)
-
-        let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedScript.isEmpty {
-            finalAdditionalFields["preConnectScript"] = advanced.preConnectScript
-        } else {
-            finalAdditionalFields.removeValue(forKey: "preConnectScript")
-        }
-
-        if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = finalAdditionalFields["mongoHosts"],
-           !mongoHosts.isEmpty
-        {
-            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            finalAdditionalFields["mongoHosts"] = result.hosts
-            testHost = result.primaryHost
-            testPort = result.primaryPort
-        }
-
-        let testTunnelMode = ssh.state.buildTunnelMode()
-        let testCloudflareMode = cloudflareTunnel.state.buildTunnelMode()
-        let testCloudSQLProxyMode = cloudSQLProxy.state.buildTunnelMode()
-        let testSOCKSProxyMode = socksProxy.state.buildTunnelMode()
-        let testConn = DatabaseConnection(
-            name: network.name,
-            host: testHost,
-            port: testPort,
-            database: network.database,
-            username: finalUsername,
-            type: network.type,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: customization.color,
-            tagIds: customization.tagIds,
-            groupId: customization.groupId,
-            sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
-            sshTunnelMode: testTunnelMode,
-            cloudflareTunnelMode: testCloudflareMode,
-            cloudSQLProxyMode: testCloudSQLProxyMode,
-            socksProxyMode: testSOCKSProxyMode,
-            redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
-            startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? nil : advanced.startupCommands,
-            passwordSource: auth.password.isEmpty ? originalConnection?.passwordSource : nil,
-            additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
-        )
+        var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
+        /// `credentialMode` rides along from the edits, so the resolver finds the linked profile
+        /// under its own id rather than the throwaway connection's. The connection's own password
+        /// source is only resurrected when nothing else supplies a password.
+        testConn.passwordSource = auth.password.isEmpty && !auth.usesCredentialProfile
+            ? originalConnection?.passwordSource
+            : nil
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
-        let promptForPassword = auth.effectivePromptForPassword
+        /// A linked profile owns the decision, so a profile set to ask every time asks here
+        /// too instead of testing with an empty password.
+        let promptForPassword = ConnectionCredentialResolver.promptsForPassword(testConn)
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
@@ -498,11 +598,12 @@ final class ConnectionFormCoordinator {
             ssh: ssh.state,
             cloudflare: cloudflareTunnel.state,
             cloudSQLProxy: cloudSQLProxy.state,
-            socksProxy: socksProxy.state
+            socksProxy: socksProxy.state,
+            tunnelCommand: tunnelCommand.state
         )
         let sslClientKeyPassphrase = ssl.clientKeyPassphrase
         let sslClientKeyPath = ssl.clientKeyPath
-        let additionalFieldValues = finalAdditionalFields
+        let additionalFieldValues = testConn.additionalFields
 
         persistTestSecrets(
             for: testConn.id,
@@ -515,7 +616,7 @@ final class ConnectionFormCoordinator {
             additionalFieldValues: additionalFieldValues
         )
 
-        testTask = Task { [weak self] in
+        testTask = Task { [weak self, services] in
             do {
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
@@ -558,10 +659,9 @@ final class ConnectionFormCoordinator {
                     }
                 }
             } catch {
-                let usesSSO = self?.auth.additionalFieldValues["awsAuth"] == "sso"
-                    || self?.auth.additionalFieldValues["awsAuthMethod"] == "sso"
-                if usesSSO, AWSSSOLoginService.isSSOExpired(error) {
-                    await self?.offerAWSSSOSignIn(testId: testConn.id, window: window)
+                let fields = self?.auth.additionalFieldValues ?? [:]
+                if let provider = ConnectionSignInRegistry.provider(for: error, fields: fields) {
+                    await self?.offerSignIn(provider, fields: fields, testId: testConn.id, window: window)
                     return
                 }
                 await MainActor.run {
@@ -572,9 +672,12 @@ final class ConnectionFormCoordinator {
                     if case PluginError.pluginNotInstalled = error {
                         self?.pluginInstallConnection = testConn
                     } else if let item = PluginDiagnosticItem.classify(
-                        error: error, connection: testConn, username: finalUsername
+                        error: error, connection: testConn, username: testConn.username
                     ) {
                         self?.pluginDiagnostic = item
+                    } else if let action = ConnectionFailureClassifier.recoveryAction(for: error),
+                              action != .editConnection {
+                        self?.presentRecoverableTestFailure(error, action: action, connection: testConn, window: window)
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),
@@ -587,36 +690,23 @@ final class ConnectionFormCoordinator {
         }
     }
 
-    private func offerAWSSSOSignIn(testId: UUID, window: NSWindow?) async {
+    /// Testing tears down first so the sheet never covers a running test, and the result is left
+    /// alone rather than marked failed: the credential was the problem, not the settings.
+    private func offerSignIn(
+        _ provider: ConnectionSignInProvider,
+        fields: [String: String],
+        testId: UUID,
+        window: NSWindow?
+    ) async {
         cleanupTestSecrets(for: testId)
         isTesting = false
         testTask = nil
-        let profileName = auth.additionalFieldValues["awsProfileName"]
-            .flatMap { $0.isEmpty ? nil : $0 } ?? "default"
-        let confirmed = await AlertHelper.confirmCritical(
-            title: String(localized: "AWS SSO Sign-In Required"),
-            message: String(
-                format: String(localized: "The SSO session for profile \"%@\" has expired. Sign in with your browser?"),
-                profileName
-            ),
-            confirmButton: String(localized: "Sign In"),
+        guard await ConnectionSignInPrompt.offer(provider, fields: fields, window: window) else { return }
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Signed In"),
+            message: provider.signedInMessage,
             window: window
         )
-        guard confirmed else { return }
-        do {
-            try await AWSSSOLoginService.signIn(profileName: profileName)
-            AlertHelper.showInfoSheet(
-                title: String(localized: "Signed In"),
-                message: String(localized: "AWS SSO sign-in finished. Test the connection again."),
-                window: window
-            )
-        } catch {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "AWS SSO Sign-In Failed"),
-                message: error.localizedDescription,
-                window: window
-            )
-        }
     }
 
     private struct TunnelFormStates {
@@ -624,6 +714,7 @@ final class ConnectionFormCoordinator {
         let cloudflare: CloudflareTunnelFormState
         let cloudSQLProxy: CloudSQLProxyFormState
         let socksProxy: SOCKSProxyFormState
+        let tunnelCommand: TunnelCommandFormState
     }
 
     private func persistTestSecrets(
@@ -699,8 +790,7 @@ final class ConnectionFormCoordinator {
         services.connectionStorage.deleteCloudflareTokenSecret(for: testId)
         services.connectionStorage.deleteCloudSQLProxyServiceAccountKey(for: testId)
         services.connectionStorage.deleteSOCKSProxyPassword(for: testId)
-        let secureFieldIds = services.pluginManager.additionalConnectionFields(for: network.type)
-            .filter(\.isSecure).map(\.id)
+        let secureFieldIds = services.pluginManager.secureConnectionFieldIds(for: network.type)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
         temporaryTestIds.remove(testId)
     }
@@ -709,7 +799,7 @@ final class ConnectionFormCoordinator {
 
     func installPlugin(for databaseType: DatabaseType) {
         isInstallingPlugin = true
-        Task { [weak self] in
+        Task { [weak self, services] in
             do {
                 try await services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
                 await MainActor.run {
@@ -732,6 +822,18 @@ final class ConnectionFormCoordinator {
                 }
             }
         }
+    }
+
+    /// Every additional field value the form currently holds, across all three panes.
+    ///
+    /// The panes each own the values for their own section, so a `visibleWhen` rule that points at
+    /// a field in another section can never see it from inside one pane. Redis needs exactly that:
+    /// the Sentinel credentials live under Authentication and appear only when the Connection
+    /// Mode field, which lives under Connection, says sentinel.
+    var allAdditionalFieldValues: [String: String] {
+        auth.additionalFieldValues
+            .merging(network.additionalFieldValues) { _, network in network }
+            .merging(advanced.additionalFieldValues) { _, advanced in advanced }
     }
 
     private func targetValues(for section: FieldSection) -> [String: String] {
@@ -772,7 +874,9 @@ final class ConnectionFormCoordinator {
         ssl.mode = parsed.sslMode ?? parsed.type.defaultSSLMode
 
         if let sshHostValue = parsed.sshHost {
-            ssh.state.enabled = true
+            /// Through the transport setter rather than the flag, so a URL naming an SSH server
+            /// can never leave a second transport enabled beside it.
+            transport = .ssh
             ssh.state.host = sshHostValue
             ssh.state.port = parsed.sshPort.map(String.init) ?? ""
             ssh.state.username = parsed.sshUsername ?? ""
@@ -826,6 +930,8 @@ final class ConnectionFormCoordinator {
                 writeFieldByRegistry("mongoAuthMechanism", value: value)
             case "replicaSet":
                 writeFieldByRegistry("mongoReplicaSet", value: value)
+            case "uuidRepresentation":
+                writeFieldByRegistry("mongoUuidRepresentation", value: value)
             default:
                 writeFieldByRegistry("mongoParam_\(key)", value: value)
             }

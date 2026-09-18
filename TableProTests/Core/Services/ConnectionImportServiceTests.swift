@@ -1,6 +1,7 @@
 import Foundation
 import TableProImport
 import Testing
+import TableProSyncTransport
 
 @testable import TablePro
 

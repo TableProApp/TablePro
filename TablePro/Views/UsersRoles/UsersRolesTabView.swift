@@ -3,8 +3,9 @@ import SwiftUI
 import TableProPluginKit
 
 struct UsersRolesTabView: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let coordinator: MainContentCoordinator?
+    let tabID: UUID
 
     @State private var actions = UsersRolesActionHandler()
 
@@ -42,12 +43,12 @@ struct UsersRolesTabView: View {
         ) { _ in
             Button(String(localized: "OK"), role: .cancel) { viewModel.actionError = nil }
         } message: { message in
-            Text(message)
+            Text(verbatim: RevealedText(message).plainText)
         }
         .onAppear { install() }
         .onDisappear { teardown() }
-        .onChange(of: viewModel.changeCount) { _, _ in
-            coordinator?.toolbarState.hasPrincipalChanges = viewModel.hasChanges
+        .onChange(of: viewModel.changeCount) { _ in
+            publishChangeState()
         }
     }
 
@@ -127,7 +128,21 @@ struct UsersRolesTabView: View {
             Task { await viewModel.load(forceReload: true) }
         }
         coordinator?.usersRolesActions = actions
-        coordinator?.toolbarState.hasPrincipalChanges = viewModel.hasChanges
+        publishChangeState()
+    }
+
+    /// The toolbar flag describes the tab on screen, so deselecting clears it. The per-tab record
+    /// must not follow it down: this view goes away on deselect but `UsersRolesViewModel` is cached
+    /// by tab id and keeps the staged principals, so clearing here would report a tab that still
+    /// holds real work as clean and let it close without asking.
+    private func publishChangeState() {
+        guard let coordinator else { return }
+        coordinator.toolbarState.hasPrincipalChanges = viewModel.hasChanges
+        if viewModel.hasChanges {
+            coordinator.tabsWithStagedPrincipals.insert(tabID)
+        } else {
+            coordinator.tabsWithStagedPrincipals.remove(tabID)
+        }
     }
 
     private func teardown() {

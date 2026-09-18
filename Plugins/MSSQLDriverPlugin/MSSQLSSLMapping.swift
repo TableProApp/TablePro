@@ -1,18 +1,24 @@
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
 
-/// FreeTDS dblib reads this value via DBSETENCRYPT. Accepted values come from
-/// libtds: "off", "request", "require", "strict". Cert verification beyond what
-/// the system trust store provides is configured in freetds.conf, not per
-/// connection through dblib, so .verifyCa and .verifyIdentity both map to
-/// "require"; the actual verification depends on the trust store and any
-/// freetds.conf overrides on the machine.
+/// FreeTDS dblib reads the encryption level via DBSETENCRYPT. Accepted values come from libtds:
+/// "off", "request", "require", "strict". Certificate validation is not reachable through dblib
+/// at all, so a verifying mode also produces a generated freetds.conf; see MSSQLFreeTDSConfig.
 enum MSSQLSSLMapping {
     static func freetdsEncryptionFlag(for mode: SSLMode) -> String {
         switch mode {
         case .disabled: return "off"
         case .preferred: return "request"
         case .required, .verifyCa, .verifyIdentity: return "require"
+        }
+    }
+
+    static func certificateVerification(for mode: SSLMode) -> MSSQLCertificateVerification {
+        switch mode {
+        case .disabled, .preferred, .required: return .none
+        case .verifyCa: return .chain
+        case .verifyIdentity: return .chainAndHostname
         }
     }
 }

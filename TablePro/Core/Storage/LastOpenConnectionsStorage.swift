@@ -14,13 +14,12 @@ import os
 final class LastOpenConnectionsStorage {
     static let shared = LastOpenConnectionsStorage()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
 
     private let fileURL: URL
 
     private convenience init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         self.init(directory: appSupport.appendingPathComponent("TablePro", isDirectory: true))
     }
 
@@ -38,7 +37,7 @@ final class LastOpenConnectionsStorage {
             let data = try JSONEncoder().encode(connectionIds)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            Self.logger.error("Failed to save last open connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save last open connections: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -48,7 +47,7 @@ final class LastOpenConnectionsStorage {
             let data = try Data(contentsOf: fileURL)
             return try JSONDecoder().decode([UUID].self, from: data)
         } catch {
-            Self.logger.error("Failed to load last open connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load last open connections: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }

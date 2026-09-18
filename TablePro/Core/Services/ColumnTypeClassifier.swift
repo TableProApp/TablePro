@@ -11,8 +11,35 @@ import Foundation
 
 struct ColumnTypeClassifier {
     func classify(rawTypeName: String) -> ColumnType {
-        let stripped = stripWrappers(rawTypeName)
+        let stripped = stripTrailingAttributes(stripWrappers(rawTypeName))
+        if Self.isAngleBracketCompositeType(stripped) {
+            return .json(rawType: rawTypeName)
+        }
+        /// `extractBaseAndParams` splits at the first `(` and keeps nothing after the last `)`, so
+        /// a parameterized array's `[]` never reached the test below: `numeric(10,2)[]` classified
+        /// as `.decimal` and `bit(8)[]` as `.boolean`, which put a boolean dropdown on an array
+        /// column. PostgreSQL spells a domain's array this way through `format_type`.
+        if stripped.hasSuffix("[]") {
+            let elementRaw = String(stripped.dropLast(2))
+            guard !elementRaw.isEmpty else { return .text(rawType: rawTypeName) }
+            return .array(rawType: rawTypeName, element: classify(rawTypeName: elementRaw))
+        }
+
         let (base, params) = extractBaseAndParams(stripped)
+
+        /// The app's own spelling for an enum array, `ENUM[](mood)`, puts the `[]` on the base and
+        /// the labels in the parentheses, so it is the one array form the suffix test above misses.
+        if base.hasSuffix("[]") {
+            let elementBase = String(base.dropLast(2))
+            guard !elementBase.isEmpty else { return .text(rawType: rawTypeName) }
+            let elementRaw = params.map { "\(elementBase)(\($0))" } ?? elementBase
+            return .array(rawType: rawTypeName, element: classify(rawTypeName: elementRaw))
+        }
+
+        if base == Self.caseSensitiveBytesTypeName {
+            return .blob(rawType: rawTypeName)
+        }
+
         let upper = base.uppercased()
 
         // MySQL convention: TINYINT(1) means boolean
@@ -24,11 +51,22 @@ struct ColumnTypeClassifier {
             return factory(rawTypeName)
         }
 
-        if params == nil, ["VARIANT", "OBJECT", "ARRAY"].contains(upper) {
+        if params == nil, Self.structuredTypeNames.contains(upper) {
             return .json(rawType: rawTypeName)
         }
 
         return classifyByPattern(upper: upper, rawTypeName: rawTypeName)
+    }
+
+    private static let caseSensitiveBytesTypeName = "BYTES"
+
+    /// Elasticsearch names an object array `nested` and a flat key-value object `flattened`, and
+    /// both hold JSON the grid should offer its viewer for.
+    private static let structuredTypeNames: Set<String> = ["VARIANT", "OBJECT", "ARRAY", "NESTED", "FLATTENED"]
+
+    private static func isAngleBracketCompositeType(_ value: String) -> Bool {
+        let upper = value.uppercased()
+        return upper.hasPrefix("ARRAY<") || upper.hasPrefix("STRUCT<")
     }
 
     // MARK: - Wrapper Stripping
@@ -44,6 +82,18 @@ struct ColumnTypeClassifier {
         }
         return value
     }
+
+    /// MySQL's catalog spells a column `INT UNSIGNED` or `INT(10) UNSIGNED ZEROFILL`, while its
+    /// result metadata says `INT`. Without this the catalog spelling fell through to text.
+    private func stripTrailingAttributes(_ value: String) -> String {
+        var stripped = value
+        while let attribute = Self.trailingAttributes.first(where: { stripped.uppercased().hasSuffix(" \($0)") }) {
+            stripped = String(stripped.dropLast(attribute.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return stripped
+    }
+
+    private static let trailingAttributes = ["UNSIGNED", "SIGNED", "ZEROFILL"]
 
     // MARK: - Base / Params Extraction
 
@@ -63,7 +113,7 @@ struct ColumnTypeClassifier {
     // MARK: - Pattern Fallback
 
     private func classifyByPattern(upper: String, rawTypeName: String) -> ColumnType {
-        if upper == "ARRAY" || upper == "MAP" || upper == "ROW" {
+        if upper == "ARRAY" || upper == "MAP" || upper == "ROW" || upper == "STRUCT" {
             return .json(rawType: rawTypeName)
         }
         if upper.contains("BOOL") {
@@ -98,8 +148,8 @@ struct ColumnTypeClassifier {
 
     // MARK: - Type Lookup Table
 
-    private static let typeLookup: [String: (String) -> ColumnType] = {
-        var map: [String: (String) -> ColumnType] = [:]
+    private static let typeLookup: [String: @Sendable (String) -> ColumnType] = {
+        var map: [String: @Sendable (String) -> ColumnType] = [:]
 
         for key in ["BOOL", "BOOLEAN", "BIT"] {
             map[key] = { .boolean(rawType: $0) }
@@ -163,10 +213,16 @@ struct ColumnTypeClassifier {
 
         map["SET"] = { .set(rawType: $0, values: nil) }
 
+        /// GEOMCOLLECTION is MySQL 8.0.11's own spelling, which its catalog reports for a column
+        /// declared either way. GEO_POINT and GEO_SHAPE are Elasticsearch's, SDO_GEOMETRY Oracle's,
+        /// ST_GEOMETRY Teradata's, and RING ClickHouse's. Every one of them fell through to a
+        /// pattern arm before this: GEO_POINT reached `hasSuffix("INT")` and classified as an
+        /// integer, which drove its alignment, its sort comparator and its filter operators.
         for key in [
             "GEOMETRY", "POINT", "LINESTRING", "POLYGON",
             "MULTIPOINT", "MULTILINESTRING", "MULTIPOLYGON",
-            "GEOGRAPHY", "GEOMETRYCOLLECTION"
+            "GEOGRAPHY", "GEOMETRYCOLLECTION", "GEOMCOLLECTION",
+            "GEO_POINT", "GEO_SHAPE", "SDO_GEOMETRY", "ST_GEOMETRY", "RING"
         ] {
             map[key] = { .spatial(rawType: $0) }
         }

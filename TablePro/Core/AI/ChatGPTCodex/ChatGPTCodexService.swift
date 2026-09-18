@@ -4,14 +4,15 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class ChatGPTCodexService {
+@MainActor
+final class ChatGPTCodexService: ObservableObject {
     static let shared = ChatGPTCodexService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ChatGPTCodexService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ChatGPTCodexService")
 
     enum AuthState: Sendable, Equatable {
         case signedOut
@@ -24,11 +25,11 @@ final class ChatGPTCodexService {
         }
     }
 
-    private(set) var authState: AuthState = .signedOut
-    private(set) var errorMessage: String?
+    @Published private(set) var authState: AuthState = .signedOut
+    @Published private(set) var errorMessage: String?
 
-    @ObservationIgnored private let tokenStore: ChatGPTCodexTokenStore
-    @ObservationIgnored private let oauthClient: ChatGPTCodexOAuthClient
+    private let tokenStore: ChatGPTCodexTokenStore
+    private let oauthClient: ChatGPTCodexOAuthClient
 
     init(
         tokenStore: ChatGPTCodexTokenStore = .shared,
@@ -103,7 +104,7 @@ final class ChatGPTCodexService {
     }
 
     private func failSignIn(_ error: Error) {
-        Self.logger.error("ChatGPT sign-in failed: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("ChatGPT sign-in failed: \(error.publicLogShape, privacy: .public)")
         errorMessage = error.localizedDescription
         authState = .signedOut
     }

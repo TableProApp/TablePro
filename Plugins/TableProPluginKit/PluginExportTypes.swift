@@ -8,18 +8,91 @@ import Foundation
 public struct PluginExportTable: Sendable {
     public let name: String
     public let databaseName: String
+    public let schema: String?
     public let tableType: String
     public let optionValues: [Bool]
 
+    /// What this item is. Defaults to `.table` for every caller that predates object scope, and is
+    /// derived from `tableType` by the initializers that do not take one.
+    public let kind: PluginExportObjectKind
+
+    /// Whatever the driver needs to address this exact object again: a routine's oid or argument
+    /// signature, a trigger's owning table. Opaque here, handed straight back to the driver.
+    public let identity: String?
+
+    /// The table a trigger fires for. Nil for every other kind.
+    public let parentTable: String?
+
+    /// Which rows and columns of this object to write. Unrestricted unless the user narrowed it.
+    public let rowScope: PluginExportRowScope
+
+    public init(
+        name: String,
+        databaseName: String,
+        tableType: String,
+        optionValues: [Bool] = [],
+        schema: String?,
+        kind: PluginExportObjectKind,
+        identity: String? = nil,
+        parentTable: String? = nil,
+        rowScope: PluginExportRowScope = .unrestricted
+    ) {
+        self.name = name
+        self.databaseName = databaseName
+        self.schema = schema
+        self.tableType = tableType
+        self.optionValues = optionValues
+        self.kind = kind
+        self.identity = identity
+        self.parentTable = parentTable
+        self.rowScope = rowScope
+    }
+
+    /// Kept at its exact published signature. Adding a parameter to it, even a defaulted one,
+    /// replaces its mangled symbol and every already-built plugin fails to load.
+    @_disfavoredOverload
+    public init(
+        name: String,
+        databaseName: String,
+        tableType: String,
+        optionValues: [Bool] = [],
+        schema: String?
+    ) {
+        self.name = name
+        self.databaseName = databaseName
+        self.schema = schema
+        self.tableType = tableType
+        self.optionValues = optionValues
+        self.kind = PluginExportObjectKind.from(tableType: tableType)
+        self.identity = nil
+        self.parentTable = nil
+        self.rowScope = .unrestricted
+    }
+
+    @_disfavoredOverload
     public init(name: String, databaseName: String, tableType: String, optionValues: [Bool] = []) {
         self.name = name
         self.databaseName = databaseName
+        self.schema = nil
         self.tableType = tableType
         self.optionValues = optionValues
+        self.kind = PluginExportObjectKind.from(tableType: tableType)
+        self.identity = nil
+        self.parentTable = nil
+        self.rowScope = .unrestricted
     }
 
     public var qualifiedName: String {
         databaseName.isEmpty ? name : "\(databaseName).\(name)"
+    }
+
+    /// The container this table was grouped under: the export tree's group name where it named
+    /// one, and the driver's own schema where it did not. Two tables in one export carry the
+    /// same value only when they really sit together, so this is what qualifies a bare name.
+    public var containerName: String? {
+        guard databaseName.isEmpty else { return databaseName }
+        guard let schema, !schema.isEmpty else { return nil }
+        return schema
     }
 }
 
@@ -96,7 +169,27 @@ public struct PluginEnumTypeInfo: Sendable {
 
 public struct ExportFormatResult: Sendable {
     public let warnings: [String]
+
+    /// Facts about what the export wrote, as opposed to problems with it.
+    ///
+    /// A separate list because the two read differently and the summary alert keys off the difference:
+    /// a non-empty `warnings` retitles the alert "Export completed with warnings", gives it the caution
+    /// icon, and takes away its "Do not show this again" checkbox. An always-present fact put in there
+    /// would brand every export a warning and leave the user unable to silence the alert again. Both
+    /// appear in the alert's body, notes first, which is where the import and transfer summaries
+    /// already put theirs.
+    public let notes: [String]
+
+    public init(warnings: [String] = [], notes: [String] = []) {
+        self.warnings = warnings
+        self.notes = notes
+    }
+
+    /// Kept at its exact published signature. Adding a parameter to it, even a defaulted one,
+    /// replaces its mangled symbol and every already-built plugin fails to load.
+    @_disfavoredOverload
     public init(warnings: [String] = []) {
         self.warnings = warnings
+        notes = []
     }
 }

@@ -2,7 +2,7 @@
 //  VimEngineUndoRepeatTests.swift
 //  TableProTests
 //
-//  Specification tests for undo (u), redo (Ctrl+R via engine.redo()),
+//  Specification tests for undo (u), redo (Ctrl+R),
 //  the repeat command (.), and the line undo (U).
 //
 
@@ -56,14 +56,14 @@ final class VimEngineUndoRepeatTests: XCTestCase {
 
     func testRedoCallsBufferRedo() {
         XCTAssertEqual(buffer.redoCallCount, 0)
-        engine.redo()
+        key("\u{12}")
         XCTAssertEqual(buffer.redoCallCount, 1)
     }
 
     func testMultipleRedoCalls() {
-        engine.redo()
-        engine.redo()
-        engine.redo()
+        key("\u{12}")
+        key("\u{12}")
+        key("\u{12}")
         XCTAssertEqual(buffer.redoCallCount, 3)
     }
 

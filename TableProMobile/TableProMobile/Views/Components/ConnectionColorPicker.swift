@@ -26,7 +26,7 @@ struct ConnectionColorPicker: View {
                         .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text(color.rawValue))
+                    .accessibilityLabel(Text(Self.accessibilityName(for: color)))
                 }
             }
             .padding(.vertical, 4)
@@ -44,6 +44,20 @@ struct ConnectionColorPicker: View {
         case .purple: return .purple
         case .pink: return .pink
         case .gray: return Color(.systemGray3)
+        }
+    }
+
+    private static func accessibilityName(for color: ConnectionColor) -> LocalizedStringResource {
+        switch color {
+        case .none: LocalizedStringResource("None")
+        case .red: LocalizedStringResource("Red")
+        case .orange: LocalizedStringResource("Orange")
+        case .yellow: LocalizedStringResource("Yellow")
+        case .green: LocalizedStringResource("Green")
+        case .blue: LocalizedStringResource("Blue")
+        case .purple: LocalizedStringResource("Purple")
+        case .pink: LocalizedStringResource("Pink")
+        case .gray: LocalizedStringResource("Gray")
         }
     }
 }

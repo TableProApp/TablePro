@@ -10,12 +10,12 @@ import IOKit
 import os
 
 /// Persists license data using Keychain (secrets) and UserDefaults (metadata)
-final class LicenseStorage {
+final class LicenseStorage: Sendable {
     static let shared = LicenseStorage()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
 
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
     private let keychain: KeychainHelper
 
     private enum Keys {
@@ -50,9 +50,7 @@ final class LicenseStorage {
     /// Save cached license (including signed payload) to UserDefaults
     func saveLicense(_ license: License) {
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(license)
+            let data = try JSONEncoder().encode(license)
             defaults.set(data, forKey: Keys.licensePayload)
         } catch {
             Self.logger.error("Failed to encode license: \(error.localizedDescription)")
@@ -66,9 +64,7 @@ final class LicenseStorage {
         }
 
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(License.self, from: data)
+            return try JSONDecoder().decode(License.self, from: data)
         } catch {
             Self.logger.error("Failed to decode license: \(error.localizedDescription)")
             return nil
@@ -85,9 +81,16 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy.
     /// Stable across OS reinstalls (tied to hardware).
-    private lazy var _machineId: String = Self.computeMachineId(defaults: defaults)
+    private let cachedMachineId = OSAllocatedUnfairLock<String?>(initialState: nil)
 
-    var machineId: String { _machineId }
+    var machineId: String {
+        cachedMachineId.withLock { cached in
+            if let cached { return cached }
+            let computed = Self.computeMachineId(defaults: defaults)
+            cached = computed
+            return computed
+        }
+    }
 
     private static func computeMachineId(defaults: UserDefaults) -> String {
         let platformExpert = IOServiceGetMatchingService(
@@ -119,7 +122,7 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy (uncached, for migration).
     static func currentMachineId() -> String {
-        computeMachineId(defaults: UserDefaults.standard)
+        computeMachineId(defaults: AppStorageEnvironment.shared.defaults)
     }
 
     /// Human-readable machine name (e.g., "John's MacBook Pro")

@@ -13,6 +13,7 @@ struct StrictToolSchemaTests {
         ListConnectionsChatTool(),
         ListDatabasesChatTool(),
         ListTablesChatTool(),
+        ListSchemasChatTool(),
         DescribeTableChatTool(),
         GetTableDDLChatTool(),
         GetConnectionStatusChatTool(),

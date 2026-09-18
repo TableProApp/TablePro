@@ -15,7 +15,7 @@ extension MainContentCoordinator {
 
     var canPinActiveResultSet: Bool {
         guard let tab = tabManager.selectedTab else { return false }
-        return ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+        return ResultSetPolicy.canPin(tabType: tab.tabType, display: tab.display)
     }
 
     var isActiveResultSetPinned: Bool {
@@ -35,7 +35,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.resultSets.removeAll { $0.id == id } }
         if tabManager.tabs[tabIdx].display.activeResultSetId == id {
             let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
-            switchActiveResultSet(to: newActiveId, in: tabId)
+            applyResultSetSwitch(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
             setActiveTableRows(TableRows(), for: tabId)
@@ -61,8 +61,15 @@ extension MainContentCoordinator {
         let tabId = tabManager.tabs[tabIdx].id
 
         if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
-            switchActiveResultSet(to: lastPinned.id, in: tabId)
-            tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
+            applyResultSetSwitch(to: lastPinned.id, in: tabId)
+            tabManager.mutate(at: tabIdx) { tab in
+                tab.display.removeUnpinnedResults()
+                /// A failed execution records its message on the tab rather than on a result set,
+                /// so returning here without clearing it left the banner over the pinned result the
+                /// switch just revealed, and only the banner's own Dismiss could take it away.
+                tab.execution.errorMessage = nil
+                tab.execution.errorQuery = nil
+            }
             return
         }
 
@@ -86,12 +93,12 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites else { return }
 
         if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: activeDatabaseName)
+            tabManager.addCreateTableTab(databaseName: browseDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .createTable,
-                databaseName: activeDatabaseName
+                databaseName: browseDatabaseName
             )
             WindowManager.shared.openTab(payload: payload)
         }
@@ -109,46 +116,94 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: template
         )
         WindowManager.shared.openTab(payload: payload)
     }
 
-    func editViewDefinition(_ viewName: String) {
+    /// Opens the engine's CREATE TYPE template in a query tab, the way Create New View does. A type
+    /// has no form of its own: its shape is the statement, and the editor is where that is written.
+    func createType(database: String?, schema: String?) {
+        guard !safeModeLevel.blocksAllWrites else { return }
+        guard let driver = DatabaseManager.shared.driver(for: connection.id),
+              let template = driver.createTypeTemplate(schema: schema ?? toolbarState.currentSchema)
+        else { return }
+
+        let targetDatabase = database.flatMap { $0.isEmpty ? nil : $0 } ?? browseDatabaseName
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .query,
+            databaseName: targetDatabase,
+            schemaName: schema,
+            initialQuery: template
+        )
+        WindowManager.shared.openTab(payload: payload)
+    }
+
+    /// Reads the view the row names, in the database and schema the row names, and opens the query
+    /// tab there. It used to read through the browse scope with the name alone, so a view selected
+    /// in another schema opened the definition of a same-named view in the browsed one, and running
+    /// it replaced that other view.
+    func editViewDefinition(_ ref: DatabaseTreeTableRef) {
+        guard let target = objectTarget(for: ref) else { return }
+        let viewName = ref.table.name
         Task {
+            let query: String
             do {
-                let definition = try await DatabaseManager.shared.withMetadataDriver(connectionId: self.connection.id) { driver in
+                query = try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
                     try await driver.fetchViewDefinition(view: viewName)
                 }
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: definition
-                )
-                WindowManager.shared.openTab(payload: payload)
             } catch {
-                let driver = DatabaseManager.shared.driver(for: self.connection.id)
-                let template = driver?.editViewFallbackTemplate(viewName: viewName)
-                    ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
-                let fallbackSQL = "-- Could not fetch view definition: \(error.localizedDescription)\n\(template)"
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: fallbackSQL
+                query = Self.viewDefinitionFallback(
+                    viewName: viewName,
+                    error: error,
+                    driver: DatabaseManager.shared.driver(for: self.connection.id)
                 )
-                WindowManager.shared.openTab(payload: payload)
             }
+            WindowManager.shared.openTab(payload: EditorTabPayload(
+                connectionId: connection.id,
+                tabType: .query,
+                databaseName: target.scope.database,
+                schemaName: target.scope.schema,
+                initialQuery: query
+            ))
         }
+    }
+
+    /// Every line of the error is commented out. A driver error can span several lines, and only the
+    /// first used to be, so the rest landed in the query tab as SQL.
+    static func viewDefinitionFallback(viewName: String, error: Error, driver: DatabaseDriver?) -> String {
+        let template = driver?.editViewFallbackTemplate(viewName: viewName)
+            ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
+        let reason = error.localizedDescription
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "-- \($0)" }
+            .joined(separator: "\n")
+        let heading = "-- " + String(localized: "Could not fetch the view definition:")
+        return "\(heading)\n\(reason)\n\(template)"
     }
 
     // MARK: - Export/Import
 
-    func openExportDialog(preselectedTableNames: Set<String>? = nil) {
-        exportPreselectedTableNames = preselectedTableNames
+    /// The scope travels with the names because a bare name does not identify a table. Without it
+    /// the dialog resolved `orders` against whichever container it considered current.
+    func openExportDialog(preselectedTableNames: Set<String>? = nil, scope: DatabaseContainerRef? = nil) {
+        exportPreselection = preselectedTableNames.map { .tables(names: $0, scope: scope) }
         activeSheet = .exportDialog
+    }
+
+    func openExportDialog(containers: [DatabaseContainerRef]) {
+        guard !containers.isEmpty else { return }
+        exportPreselection = .containers(containers)
+        activeSheet = .exportDialog
+    }
+
+    /// Copies rows into another open connection. The tables the user right-clicked travel with the
+    /// request rather than being read back from the object browser, which may have moved on by the
+    /// time the sheet appears.
+    func openTableTransferSheet(preselectedTableNames: Set<String> = [], schema: String? = nil) {
+        activeSheet = .transferTables(tables: preselectedTableNames, schema: schema)
     }
 
     func openExportQueryResultsDialog() {
@@ -199,21 +254,72 @@ extension MainContentCoordinator {
 
     // MARK: - Maintenance
 
-    func supportedMaintenanceOperations() -> [String] {
+    func maintenanceOperations() -> [PluginMaintenanceOperation] {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return [] }
-        return driver.supportedMaintenanceOperations() ?? []
+        return driver.maintenanceOperations() ?? []
     }
 
-    func showMaintenanceSheet(operation: String, tableName: String) {
-        activeSheet = .maintenance(operation: operation, tableName: tableName)
+    func showMaintenanceSheet(
+        operation: PluginMaintenanceOperation,
+        tableName: String,
+        database: String? = nil,
+        schema: String? = nil
+    ) {
+        activeSheet = .maintenance(
+            operation: operation, tableName: tableName, database: database, schema: schema
+        )
     }
 
-    func executeMaintenance(operation: String, tableName: String, options: [String: String]) {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        guard let statements = driver.maintenanceStatements(
-            operation: operation, table: tableName, options: options
-        ) else { return }
+    /// The statements the confirmation sheet shows, built by the driver that will run them.
+    ///
+    /// Synchronous and pure, so the sheet can call it from `body` on every toggle. It used to write
+    /// its own SQL instead, which disagreed with what ran: `REINDEX orders`, not valid SQL, where
+    /// `REINDEX TABLE "orders"` runs.
+    func maintenancePreview(
+        operation: PluginMaintenanceOperation,
+        tableName: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String] {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return [] }
+        return driver.maintenanceStatements(
+            operation: operation.name,
+            table: operation.target(tableName),
+            schema: schema,
+            options: options
+        ) ?? []
+    }
 
+    /// Runs against the database the object it names lives in, on a scoped lease.
+    ///
+    /// A maintenance statement names its table and nothing else, so where it lands is decided
+    /// entirely by the connection's current database. Executing on the session driver directly left
+    /// that to chance: a cross-database tab pins the shared handle to its own database for the
+    /// length of its query and deliberately writes no session state back, so `OPTIMIZE TABLE
+    /// role_ability` could optimize the copy in another database while the sheet reported success.
+    /// Every other statement the user owns takes a scoped lease; this one now does too, which also
+    /// puts it behind the same gate rather than interleaving with a tab's work on one handle.
+    func executeMaintenance(
+        operation: PluginMaintenanceOperation,
+        tableName: String,
+        options: [String: String],
+        database: String? = nil,
+        schema: String? = nil
+    ) {
+        let statements = maintenancePreview(
+            operation: operation, tableName: tableName, schema: schema, options: options
+        )
+        guard !statements.isEmpty else { return }
+        /// The object the user picked names its own database, and only a command that names none
+        /// falls back to where the browser is pointing. `resolvedScope` is what decides that, so a
+        /// schema is never carried across a database boundary.
+        guard let scope = services.databaseManager.resolvedScope(
+            database: database, schema: schema, for: connectionId
+        ) ?? browseScope else { return }
+
+        /// What the statement acts on, which is the database itself for an operation that names no
+        /// object. Reporting the table there claimed work the statement never asked for.
+        let subject = operation.target(tableName) ?? scope.database
         Task { [weak self] in
             guard let self else { return }
             let decision = await ExecutionGateProvider.shared.authorize(
@@ -224,13 +330,13 @@ extension MainContentCoordinator {
                     kind: .maintenance,
                     caller: .userInterface,
                     capabilities: .interactiveUser,
-                    operationDescription: operation
+                    operationDescription: operation.name
                 )
             )
             guard case .authorized = decision else {
                 if let reason = decision.deniedReason {
                     await AlertHelper.showErrorSheet(
-                        title: String(format: String(localized: "%@ failed"), operation),
+                        title: String(format: String(localized: "%@ failed"), operation.name),
                         message: reason,
                         window: self.contentWindow
                     )
@@ -239,18 +345,32 @@ extension MainContentCoordinator {
             }
             do {
                 var lastResult: QueryResult?
+                let route = DatabaseManager.shared.executionRoute(for: scope)
                 for sql in statements {
-                    lastResult = try await driver.execute(query: sql)
+                    /// `.protectedWrite`: a half-applied OPTIMIZE or REPAIR cannot be undone by
+                    /// retrying, so the lease is registered to mark the connection busy and is never
+                    /// reachable by Stop.
+                    lastResult = try await DatabaseManager.shared.withScopedDriver(
+                        scope: scope,
+                        route: route,
+                        cancellation: .protectedWrite
+                    ) { scopedDriver in
+                        try await scopedDriver.execute(query: sql)
+                    }
                 }
                 await AlertHelper.showInfoSheet(
-                    title: String(format: String(localized: "%@ completed"), operation),
+                    title: String(format: String(localized: "%@ completed"), operation.name),
                     message: lastResult?.statusMessage
-                        ?? String(format: String(localized: "%@ on %@ completed successfully."), operation, tableName),
+                        ?? String(
+                            format: String(localized: "%@ on %@ completed successfully."),
+                            operation.name,
+                            subject
+                        ),
                     window: self.contentWindow
                 )
             } catch {
                 await AlertHelper.showErrorSheet(
-                    title: String(format: String(localized: "%@ failed"), operation),
+                    title: String(format: String(localized: "%@ failed"), operation.name),
                     message: error.localizedDescription,
                     window: self.contentWindow
                 )

@@ -37,8 +37,8 @@ struct DefaultSortInitialQueryTests {
     func firstQueryContainsPrimaryKeyOrderBy() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
         coordinator.schemaColumns.store(
-            (columns: ["id", "name", "email"], primaryKeys: ["id"]),
-            for: coordinator.schemaColumnsKey("users", schema: nil)
+            SchemaColumnStore.Entry(columns: ["id", "name", "email"], primaryKeys: ["id"], columnTypes: [:]),
+            for: coordinator.schemaColumnsKey("users", scope: coordinator.selectedTabScope)
         )
 
         await withDefaultSortBehavior(.primaryKey) {
@@ -56,8 +56,12 @@ struct DefaultSortInitialQueryTests {
     func compositePrimaryKeySortsAllKeyColumns() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "invoices")
         coordinator.schemaColumns.store(
-            (columns: ["customer_uid", "order_uid", "total"], primaryKeys: ["customer_uid", "order_uid"]),
-            for: coordinator.schemaColumnsKey("invoices", schema: nil)
+            SchemaColumnStore.Entry(
+                columns: ["customer_uid", "order_uid", "total"],
+                primaryKeys: ["customer_uid", "order_uid"],
+                columnTypes: [:]
+            ),
+            for: coordinator.schemaColumnsKey("invoices", scope: coordinator.selectedTabScope)
         )
 
         await withDefaultSortBehavior(.primaryKey) {
@@ -76,8 +80,8 @@ struct DefaultSortInitialQueryTests {
     func noPrimaryKeyProducesNoOrderBy() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "logs")
         coordinator.schemaColumns.store(
-            (columns: ["message", "level"], primaryKeys: []),
-            for: coordinator.schemaColumnsKey("logs", schema: nil)
+            SchemaColumnStore.Entry(columns: ["message", "level"], primaryKeys: [], columnTypes: [:]),
+            for: coordinator.schemaColumnsKey("logs", scope: coordinator.selectedTabScope)
         )
         let originalQuery = tabManager.tabs[index].content.query
 
@@ -153,8 +157,8 @@ struct DefaultSortInitialQueryTests {
     func userSortSurvivesFirstLoad() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
         coordinator.schemaColumns.store(
-            (columns: ["id", "name"], primaryKeys: ["id"]),
-            for: coordinator.schemaColumnsKey("users", schema: nil)
+            SchemaColumnStore.Entry(columns: ["id", "name"], primaryKeys: ["id"], columnTypes: [:]),
+            for: coordinator.schemaColumnsKey("users", scope: coordinator.selectedTabScope)
         )
         let userSort = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending)], source: .user)
         tabManager.mutate(at: index) { $0.sortState = userSort }
@@ -170,8 +174,8 @@ struct DefaultSortInitialQueryTests {
     func sortsAgainstScopedColumnsWithHiddenColumns() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
         coordinator.schemaColumns.store(
-            (columns: ["a", "id", "name"], primaryKeys: ["id"]),
-            for: coordinator.schemaColumnsKey("users", schema: nil)
+            SchemaColumnStore.Entry(columns: ["a", "id", "name"], primaryKeys: ["id"], columnTypes: [:]),
+            for: coordinator.schemaColumnsKey("users", scope: coordinator.selectedTabScope)
         )
         tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = ["a"] }
 

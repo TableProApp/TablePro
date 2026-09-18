@@ -12,6 +12,13 @@ import TableProPluginKit
 
 @MainActor
 enum StructureEditingSupport {
+    static func parseBool(_ value: String) -> Bool {
+        switch value.uppercased() {
+        case "YES", "TRUE", "1": return true
+        default: return false
+        }
+    }
+
     static func updateColumn(
         _ column: inout EditableColumnDefinition,
         at index: Int,
@@ -22,13 +29,31 @@ enum StructureEditingSupport {
         switch orderedFields[index] {
         case .name: column.name = value
         case .type: column.dataType = value
-        case .nullable: column.isNullable = value.uppercased() == "YES" || value == "1"
+        case .nullable: column.isNullable = parseBool(value) && !column.isPrimaryKey
         case .defaultValue: column.defaultValue = value.isEmpty ? nil : value
-        case .primaryKey: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
-        case .autoIncrement: column.autoIncrement = value.uppercased() == "YES" || value == "1"
+        case .onUpdate:
+            column.onUpdate = parseBool(value) ? EditableColumnDefinition.currentTimestampExpression : nil
+        case .primaryKey:
+            column.isPrimaryKey = parseBool(value)
+            if column.isPrimaryKey { column.isNullable = false }
+        case .autoIncrement: column.autoIncrement = parseBool(value)
         case .comment: column.comment = value.isEmpty ? nil : value
         case .charset: column.charset = value.isEmpty ? nil : value
         case .collation: column.collation = value.isEmpty ? nil : value
+        case .generated:
+            column.generationKind = GenerationKind(rawValue: value.uppercased())
+            if column.generationKind == nil { column.generationExpression = nil }
+        case .generationExpression:
+            column.generationExpression = value.isEmpty ? nil : value
+            // The pair describes one setting. An expression with no kind would be created using
+            // the driver's default while the grid still reads "Not generated", and a kind with no
+            // expression would create an ordinary column while the grid claims it is generated.
+            if column.generationExpression == nil {
+                column.generationKind = nil
+            } else if column.generationKind == nil {
+                column.generationKind = .virtual
+            }
+        @unknown default: break
         }
     }
 
@@ -36,9 +61,14 @@ enum StructureEditingSupport {
         switch colIndex {
         case 0: index.name = value
         case 1:
+            let previousExpressions = Set(index.expressions)
             var prefixes: [String: Int] = [:]
-            index.columns = value.split(separator: ",").map { part in
-                let trimmed = part.trimmingCharacters(in: .whitespaces)
+            var expressions: [String] = []
+            index.columns = indexKeyParts(value, expressions: index.expressions).map { trimmed in
+                if previousExpressions.contains(trimmed) {
+                    expressions.append(trimmed)
+                    return trimmed
+                }
                 if let parenStart = trimmed.firstIndex(of: "("),
                    let parenEnd = trimmed.firstIndex(of: ")"),
                    let prefix = Int(trimmed[trimmed.index(after: parenStart)..<parenEnd]) {
@@ -49,14 +79,55 @@ enum StructureEditingSupport {
                 return trimmed
             }
             index.columnPrefixes = prefixes
+            index.expressions = expressions
         case 2:
-            if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
+            let indexType = EditableIndexDefinition.IndexType(rawValue: value)
+            if EditableIndexDefinition.IndexType.knownTypes.contains(indexType) {
                 index.type = indexType
             }
-        case 3: index.isUnique = value.uppercased() == "YES" || value == "1"
+        case 3: index.isUnique = parseBool(value)
         case 4: index.whereClause = value.isEmpty ? nil : value
         default: break
         }
+    }
+
+    /// The entries of an index's Columns cell, split at the commas that separate key parts.
+    ///
+    /// The cell lists column names as they are, unquoted, beside expressions as the server writes
+    /// them, so no single reading of quotes and parentheses fits both: the column `owner's_id` opens a
+    /// quote that never closes, and `coalesce(a, b)` holds a comma that separates nothing. An
+    /// expression can only have come from the index being edited, so each of `expressions` is taken
+    /// whole where an entry starts with it, and the rest of the cell is split at every comma, the way
+    /// a list of column names always was. An expression edited by hand is therefore read as column
+    /// names, which the column check then names.
+    static func indexKeyParts(_ value: String, expressions: [String]) -> [String] {
+        let longestFirst = expressions.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+        var parts: [String] = []
+        var remaining = value[...]
+        while !remaining.isEmpty {
+            remaining = remaining.drop(while: isBlank)
+            if let expression = longestFirst.first(where: { entry(in: remaining, isWhole: $0) }) {
+                parts.append(expression)
+                remaining = remaining.dropFirst(expression.count).drop(while: isBlank).dropFirst()
+                continue
+            }
+            let entryEnd = remaining.firstIndex(of: ",") ?? remaining.endIndex
+            parts.append(remaining[..<entryEnd].trimmingCharacters(in: .whitespaces))
+            remaining = entryEnd == remaining.endIndex
+                ? remaining[entryEnd...]
+                : remaining[remaining.index(after: entryEnd)...]
+        }
+        return parts.filter { !$0.isEmpty }
+    }
+
+    nonisolated private static func entry(in text: Substring, isWhole expression: String) -> Bool {
+        guard text.hasPrefix(expression) else { return false }
+        let rest = text.dropFirst(expression.count).drop(while: isBlank)
+        return rest.isEmpty || rest.first == ","
+    }
+
+    nonisolated private static func isBlank(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { CharacterSet.whitespaces.contains($0) }
     }
 
     static func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {
@@ -138,6 +209,30 @@ enum StructureEditingSupport {
         return indices
     }
 
+    /// Grid columns: 0 Name, 1 Expression. `columns` is derived from the catalog and read-only,
+    /// so it has no editable arm and never tints.
+    static func updateCheckConstraint(
+        _ constraint: inout EditableCheckConstraintDefinition,
+        at index: Int,
+        with value: String
+    ) {
+        switch index {
+        case 0: constraint.name = value
+        case 1: constraint.expression = value
+        default: break
+        }
+    }
+
+    static func checkConstraintModifiedIndices(
+        old: EditableCheckConstraintDefinition,
+        new: EditableCheckConstraintDefinition
+    ) -> Set<Int> {
+        var indices: Set<Int> = []
+        if old.name != new.name { indices.insert(0) }
+        if old.expression != new.expression { indices.insert(1) }
+        return indices
+    }
+
     private static func columnFieldDiffers(
         _ field: StructureColumnField,
         old: EditableColumnDefinition,
@@ -148,11 +243,15 @@ enum StructureEditingSupport {
         case .type: return old.dataType != new.dataType
         case .nullable: return old.isNullable != new.isNullable
         case .defaultValue: return old.defaultValue != new.defaultValue
+        case .onUpdate: return old.onUpdate != new.onUpdate
         case .primaryKey: return old.isPrimaryKey != new.isPrimaryKey
         case .autoIncrement: return old.autoIncrement != new.autoIncrement
         case .comment: return old.comment != new.comment
         case .charset: return old.charset != new.charset
         case .collation: return old.collation != new.collation
+        case .generated: return old.generationKind != new.generationKind
+        case .generationExpression: return old.generationExpression != new.generationExpression
+        @unknown default: return false
         }
     }
 }

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct BigQueryTypeMapper {
@@ -87,11 +88,15 @@ internal struct BigQueryTypeMapper {
         }
     }
 
-    private static let timestampFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
+    private static let lockedTimestampFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
+
+    private static func timestampString(from date: Date) -> String {
+        lockedTimestampFormatter.withLockUnchecked { $0.string(from: date) }
+    }
 
     private static func convertScalarString(_ str: String, type: String) -> String? {
         switch type.uppercased() {
@@ -99,7 +104,7 @@ internal struct BigQueryTypeMapper {
             // BigQuery returns timestamps as epoch-seconds strings like "1.617235200E9"
             if let epochSeconds = Double(str) {
                 let date = Date(timeIntervalSince1970: epochSeconds)
-                return timestampFormatter.string(from: date)
+                return timestampString(from: date)
             }
             return str
 
@@ -143,15 +148,60 @@ internal struct BigQueryTypeMapper {
 
     // MARK: - Column Infos
 
-    static func columnInfos(from fields: [BQTableFieldSchema]) -> [PluginColumnInfo] {
-        fields.map { field in
+    static func columnInfos(from fields: [BQTableFieldSchema], primaryKey: [String] = []) -> [PluginColumnInfo] {
+        let keyColumns = Set(primaryKey)
+        return fields.map { field in
             PluginColumnInfo(
                 name: field.name,
                 dataType: fieldTypeName(field),
                 isNullable: field.mode?.uppercased() != "REQUIRED",
-                isPrimaryKey: false,
+                isPrimaryKey: keyColumns.contains(field.name),
                 comment: field.description
             )
+        }
+    }
+
+    // MARK: - Comparability
+
+    static func nonComparableColumnNames(from fields: [BQTableFieldSchema]) -> Set<String> {
+        Set(fields.filter { !isComparable($0) }.map(\.name))
+    }
+
+    private static func isComparable(_ field: BQTableFieldSchema) -> Bool {
+        guard field.mode?.uppercased() != "REPEATED" else { return false }
+        switch field.type.uppercased() {
+        case "JSON", "GEOGRAPHY":
+            return false
+        case "RECORD", "STRUCT":
+            return (field.fields ?? []).allSatisfy(isComparable)
+        default:
+            return true
+        }
+    }
+
+    // MARK: - Column Kinds
+
+    static func columnKinds(from fields: [BQTableFieldSchema]) -> [String: PluginColumnKind] {
+        var kinds: [String: PluginColumnKind] = [:]
+        for field in fields {
+            kinds[field.name] = columnKind(for: field)
+        }
+        return kinds
+    }
+
+    private static func columnKind(for field: BQTableFieldSchema) -> PluginColumnKind {
+        guard field.mode?.uppercased() != "REPEATED" else { return .other }
+        switch field.type.uppercased() {
+        case "STRING":
+            return .text
+        case "INT64", "INTEGER":
+            return .integer
+        case "FLOAT64", "FLOAT", "NUMERIC", "BIGNUMERIC", "DECIMAL", "BIGDECIMAL":
+            return .decimal
+        case "BOOL", "BOOLEAN":
+            return .boolean
+        default:
+            return .other
         }
     }
 }

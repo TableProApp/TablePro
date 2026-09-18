@@ -578,5 +578,129 @@ struct ConnectionSharingTests {
             )
             #expect(connection.preConnectScript == nil)
         }
+
+        private static func parseImportLink(_ items: [URLQueryItem]) -> ExportableConnection? {
+            var components = URLComponents()
+            components.scheme = "tablepro"
+            components.host = "import"
+            components.queryItems = items
+            guard let url = components.url,
+                  case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
+                return nil
+            }
+            return parsed
+        }
+
+        @Test("Deeplink import drops every AWS credential-resolution field")
+        @MainActor
+        func testDeeplinkImportDropsAWSFields() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Analytics Replica"),
+                URLQueryItem(name: "host", value: "evil.example.com"),
+                URLQueryItem(name: "port", value: "5432"),
+                URLQueryItem(name: "type", value: "PostgreSQL"),
+                URLQueryItem(name: "af_awsAuth", value: "profile"),
+                URLQueryItem(name: "af_awsRDSEndpoint", value: "prod.abc.us-east-1.rds.amazonaws.com:5432"),
+                URLQueryItem(name: "af_awsRegion", value: "us-east-1"),
+                URLQueryItem(name: "af_awsProfileName", value: "default"),
+                URLQueryItem(name: "af_mongoAuthSource", value: "admin")
+            ]))
+
+            #expect(parsed.additionalFields?["awsAuth"] == nil)
+            #expect(parsed.additionalFields?["awsRDSEndpoint"] == nil)
+            #expect(parsed.additionalFields?["awsRegion"] == nil)
+            #expect(parsed.additionalFields?["awsProfileName"] == nil)
+            #expect(parsed.additionalFields?["mongoAuthSource"] == "admin")
+
+            let connection = ConnectionExportService.buildDatabaseConnection(
+                id: UUID(), from: parsed, name: parsed.name,
+                tagIdsByName: [:], groupIdsByName: [:]
+            )
+            #expect(!connection.usesAWSIAM)
+        }
+
+        @Test("Deeplink import drops the Spanner endpoint and keeps the rest of the Spanner fields")
+        @MainActor
+        func testDeeplinkImportDropsSpannerEndpoint() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Orders"),
+                URLQueryItem(name: "host", value: "spanner.googleapis.com"),
+                URLQueryItem(name: "type", value: "Spanner"),
+                URLQueryItem(name: "af_spEndpoint", value: "https://collector.example.com"),
+                URLQueryItem(name: "af_spProjectId", value: "proj"),
+                URLQueryItem(name: "af_spInstanceId", value: "inst"),
+                URLQueryItem(name: "af_spDatabaseId", value: "gdb")
+            ]))
+
+            #expect(parsed.additionalFields?["spEndpoint"] == nil)
+            #expect(parsed.additionalFields?["spProjectId"] == "proj")
+            #expect(parsed.additionalFields?["spInstanceId"] == "inst")
+            #expect(parsed.additionalFields?["spDatabaseId"] == "gdb")
+        }
+
+        @Test("A shared connection file drops the Spanner endpoint on import")
+        func testSanitizedImportDropsSpannerEndpoint() {
+            let shared = ExportableConnection(
+                name: "Orders", host: "", port: 0, database: "", username: "", type: "Spanner",
+                sshConfig: nil, sslConfig: nil, color: nil, tagName: nil, groupName: nil,
+                sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
+                additionalFields: ["spEndpoint": "https://collector.example.com", "spProjectId": "proj"],
+                redisDatabase: nil, startupCommands: nil, localOnly: nil
+            )
+
+            let imported = shared.sanitizedForImport()
+
+            #expect(imported.additionalFields == ["spProjectId": "proj"])
+        }
+
+        @Test("Deeplink import drops pgpass and pre-tunnel redirection fields")
+        @MainActor
+        func testDeeplinkImportDropsCredentialRedirectionFields() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Replica"),
+                URLQueryItem(name: "host", value: "evil.example.com"),
+                URLQueryItem(name: "port", value: "5432"),
+                URLQueryItem(name: "type", value: "PostgreSQL"),
+                URLQueryItem(name: "af_usePgpass", value: "true"),
+                URLQueryItem(name: "af_preTunnelHost", value: "prod.internal"),
+                URLQueryItem(name: "af_preTunnelPort", value: "5432"),
+                URLQueryItem(name: "af_promptForPassword", value: "false"),
+                URLQueryItem(name: "af_sslClientKeyPassphrase", value: "secret"),
+                URLQueryItem(name: "af_mssqlSchema", value: "dbo")
+            ]))
+
+            #expect(parsed.additionalFields?["usePgpass"] == nil)
+            #expect(parsed.additionalFields?["preTunnelHost"] == nil)
+            #expect(parsed.additionalFields?["preTunnelPort"] == nil)
+            #expect(parsed.additionalFields?["promptForPassword"] == nil)
+            #expect(parsed.additionalFields?["sslClientKeyPassphrase"] == nil)
+            #expect(parsed.additionalFields?["mssqlSchema"] == "dbo")
+        }
+
+        @Test("Blocked field keys are matched without regard to case")
+        func testBlockedKeysAreCaseInsensitive() {
+            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("AWSAuth"))
+            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("PreConnectScript"))
+            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("UsePgpass"))
+            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("spEndpoint"))
+            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("SPENDPOINT"))
+            #expect(!ExportableConnection.isImportBlockedAdditionalFieldKey("spProjectId"))
+            #expect(!ExportableConnection.isImportBlockedAdditionalFieldKey("mongoAuthSource"))
+            #expect(!ExportableConnection.isImportBlockedAdditionalFieldKey("awareness"))
+        }
+
+        @Test("Imported startup commands survive so the sheet can disclose them")
+        @MainActor
+        func testDeeplinkImportKeepsStartupCommandsForDisclosure() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Staging"),
+                URLQueryItem(name: "host", value: "db.example.com"),
+                URLQueryItem(name: "port", value: "5432"),
+                URLQueryItem(name: "type", value: "PostgreSQL"),
+                URLQueryItem(name: "startupCommands", value: "GRANT ALL ON *.* TO 'attacker'@'%'")
+            ]))
+
+            #expect(parsed.startupCommands == "GRANT ALL ON *.* TO 'attacker'@'%'")
+        }
     }
 }

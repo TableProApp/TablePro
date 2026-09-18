@@ -723,3 +723,101 @@ struct RedisStatementGeneratorTests {
         #expect(results[2].statement == "EXPIRE newkey 600")
     }
 }
+
+@Suite("Redis Statement Generator - key browse columns")
+struct RedisStatementGeneratorBrowseColumnTests {
+    private static let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]
+
+    @Test("A string value update still resolves with the Length column present")
+    func valueUpdateWithLengthColumn() {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 4, columnName: "Value", oldValue: "old", newValue: "new")
+            ],
+            originalRow: ["mykey", "STRING", "-1", "3", "old"]
+        )
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement == "SET mykey new")
+    }
+
+    @Test("A whole string value is written back, however long it is")
+    func longValueIsWrittenWhole() {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        let long = String(repeating: "a", count: 5_000)
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 4, columnName: "Value", oldValue: "old", newValue: PluginCellValue.text(long))
+            ],
+            originalRow: ["mykey", "STRING", "-1", "3", "old"]
+        )
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement == "SET mykey \(long)")
+    }
+
+    @Test("A collection value update is skipped so the structure survives")
+    func collectionValueUpdateSkipped() {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 4, columnName: "Value", oldValue: "[\"a\"]", newValue: "[\"b\"]")
+            ],
+            originalRow: ["mylist", "LIST", "-1", "1", "[\"a\"]"]
+        )
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.isEmpty)
+    }
+
+    @Test("An insert reads its cells by name, not by position")
+    func insertResolvesColumnsByName() {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let insertedData: [Int: [PluginCellValue]] = [
+            0: ["mykey", "STRING", "600", nil, "hello"]
+        ]
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: insertedData,
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.count == 2)
+        #expect(results[0].statement == "SET mykey hello")
+        #expect(results[1].statement == "EXPIRE mykey 600")
+    }
+}

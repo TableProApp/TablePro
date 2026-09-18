@@ -51,12 +51,23 @@ extension DatabaseManager {
                 )
             }
 
-            try await runPrincipalStatements(
-                statements,
-                driver: driver,
-                rollsBack: principalDriver.rollsBackPrincipalStatements,
-                connectionId: connectionId
+            /// Reported whether or not every statement ran: an engine that cannot roll principal
+            /// statements back keeps the ones before a failure, and `DROP OWNED` among them drops objects.
+            let ranStatements = CatalogEvent.statementsRan(
+                connectionId: connectionId, statements: statements.map(\.sql), databaseType: databaseType
             )
+            do {
+                try await runPrincipalStatements(
+                    statements,
+                    driver: driver,
+                    rollsBack: principalDriver.rollsBackPrincipalStatements,
+                    connectionId: connectionId
+                )
+            } catch {
+                CatalogChangeService.post(ranStatements)
+                throw error
+            }
+            CatalogChangeService.post(ranStatements)
         }
     }
 
@@ -66,9 +77,17 @@ extension DatabaseManager {
         rollsBack: Bool,
         connectionId: UUID
     ) async throws {
-        let useTransaction = driver.supportsTransactions && rollsBack
+        /// No transaction is opened over one the session already holds: on this shared session an
+        /// app-owned `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION`
+        /// commits it implicitly. Joining it instead leaves the statements pending, which is what
+        /// the failure then reports.
+        let owner = WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState()
+        )
+        let useTransaction = owner.opensTransaction && rollsBack
         if useTransaction {
-            try await driver.beginTransaction()
+            try await driver.beginTransaction(mode: .readWrite)
         }
 
         var appliedCount = 0
@@ -81,11 +100,13 @@ extension DatabaseManager {
                 try await driver.commitTransaction()
             }
         } catch {
-            var rolledBack = false
+            var disposition: PrincipalApplyError.Disposition = owner == .session
+                ? .pendingInSessionTransaction
+                : .applied
             if useTransaction {
                 do {
                     try await driver.rollbackTransaction()
-                    rolledBack = true
+                    disposition = .rolledBack
                 } catch {
                     Self.logger.error(
                         "Rollback failed after principal change error: \(error.localizedDescription)"
@@ -96,22 +117,27 @@ extension DatabaseManager {
                 failedStatement: statements[min(appliedCount, statements.count - 1)],
                 appliedCount: appliedCount,
                 totalCount: statements.count,
-                rolledBack: rolledBack,
+                disposition: disposition,
                 underlying: error
             )
         }
 
-        let databaseName = activeSessions[connectionId]?.activeDatabase ?? ""
+        let databaseName = activeSessions[connectionId]?.resolvedBrowseDatabase ?? ""
         // Query history is stored unencrypted on disk. A CREATE USER / ALTER USER statement embeds
         // the plaintext password, so it is never recorded.
+        let principalDatabaseType = activeSessions[connectionId]?.connection.type ?? DatabaseType(rawValue: "")
         for statement in statements where !statement.carriesCredentials {
-            QueryHistoryManager.shared.recordQuery(
-                query: statement.sql.hasSuffix(";") ? statement.sql : statement.sql + ";",
-                connectionId: connectionId,
-                databaseName: databaseName,
-                executionTime: 0,
-                rowCount: 0,
-                wasSuccessful: true
+            await historyRecorder.record(
+                QueryHistoryRecordRequest(
+                    query: statement.sql.hasSuffix(";") ? statement.sql : statement.sql + ";",
+                    connectionId: connectionId,
+                    databaseName: databaseName,
+                    databaseType: principalDatabaseType,
+                    source: .structureDDL,
+                    executionTime: 0,
+                    rowCount: -1,
+                    wasSuccessful: true
+                )
             )
         }
 

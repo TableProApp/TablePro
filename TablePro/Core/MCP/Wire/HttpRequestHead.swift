@@ -68,6 +68,11 @@ public struct HttpHeaders: Sendable, Equatable {
         return storage.contains { key, _ in key.lowercased() == lowered }
     }
 
+    public func pairs(withPrefix prefix: String) -> [(String, String)] {
+        let lowered = prefix.lowercased()
+        return storage.filter { key, _ in key.lowercased().hasPrefix(lowered) }
+    }
+
     public static func == (lhs: HttpHeaders, rhs: HttpHeaders) -> Bool {
         guard lhs.storage.count == rhs.storage.count else { return false }
         for index in lhs.storage.indices {
@@ -92,5 +97,28 @@ public struct HttpRequestHead: Sendable, Equatable {
         self.path = path
         self.httpVersion = httpVersion
         self.headers = headers
+    }
+
+    public var pathWithoutQuery: String {
+        guard let questionIndex = path.firstIndex(of: "?") else { return path }
+        return String(path[path.startIndex..<questionIndex])
+    }
+
+    public var wantsKeepAlive: Bool {
+        let connection = headers.value(for: "Connection")?.lowercased()
+        if httpVersion == "HTTP/1.0" {
+            return connection?.contains("keep-alive") == true
+        }
+        return connection?.contains("close") != true
+    }
+}
+
+public struct HttpParsedRequest: Sendable, Equatable {
+    public let head: HttpRequestHead
+    public let body: Data
+
+    public init(head: HttpRequestHead, body: Data) {
+        self.head = head
+        self.body = body
     }
 }

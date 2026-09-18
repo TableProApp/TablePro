@@ -8,18 +8,20 @@ import Foundation
 import Testing
 
 @MainActor
-final class StubConfirming: OperationConfirming {
+final class StubConfirming: OperationConfirming, @unchecked Sendable {
     private(set) var callCount = 0
     private(set) var lastDestructive = false
+    private(set) var lastRequest: OperationConfirmationRequest?
     private let answer: Bool
 
     init(answer: Bool) {
         self.answer = answer
     }
 
-    func confirm(sql: String, operationDescription: String, connectionId: UUID, isDestructive: Bool) async -> Bool {
+    func confirm(_ request: OperationConfirmationRequest) async -> Bool {
         callCount += 1
-        lastDestructive = isDestructive
+        lastDestructive = request.isDestructive
+        lastRequest = request
         return answer
     }
 }
@@ -95,6 +97,76 @@ struct ExecutionGateTests {
         #expect(auth.callCount == 0)
     }
 
+    /// A row-scoped DELETE is an ordinary write, so Silent mode sends it straight through. Replaying
+    /// one from query history is a single click, which is why that caller asks for the confirmation
+    /// its safe-mode level would not give it.
+    @Test("A caller that confirms its writes is prompted even in Silent mode")
+    func confirmsWritesPromptsUnderSilent() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(
+            sql: "DELETE FROM users WHERE id = 5",
+            kind: .writeQuery,
+            capabilities: CallerCapabilities.interactiveUser.union(.confirmsWrites)
+        ))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 1)
+        #expect(!confirm.lastDestructive)
+        #expect(auth.callCount == 0)
+    }
+
+    @Test("A caller that confirms its writes still runs reads without prompting")
+    func confirmsWritesLeavesReadsAlone() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(
+            sql: "SELECT * FROM users",
+            kind: .readQuery,
+            capabilities: CallerCapabilities.interactiveUser.union(.confirmsWrites)
+        ))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
+    /// `effectiveWrite` is true for every statement on a driver that cannot be opened read-only,
+    /// so gating the extra prompt on it would ask before every Redis `GET`.
+    @Test("A caller that confirms its writes still runs reads on a driver with no read-only mode")
+    func confirmsWritesLeavesReadsAloneWhenTheDriverForcesWrite() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, forcesWrite: true, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(
+            sql: "SELECT * FROM users",
+            kind: .readQuery,
+            capabilities: CallerCapabilities.interactiveUser.union(.confirmsWrites)
+        ))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
+    @Test("A confirmed write that the user cancels is denied")
+    func confirmsWritesCancelled() async {
+        let confirm = StubConfirming(answer: false)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(
+            sql: "UPDATE users SET name = 'x' WHERE id = 5",
+            kind: .writeQuery,
+            capabilities: CallerCapabilities.interactiveUser.union(.confirmsWrites)
+        ))
+
+        #expect(!decision.isAuthorized)
+    }
+
     @Test("Silent still confirms destructive operations")
     func silentConfirmsDestructive() async {
         let confirm = StubConfirming(answer: true)
@@ -107,6 +179,19 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 1)
         #expect(confirm.lastDestructive)
         #expect(auth.callCount == 0)
+    }
+
+    @Test("Silent still confirms a destructive statement that an invisible character precedes")
+    func silentConfirmsDestructiveBehindInvisibleCharacter() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(sql: "\u{FEFF}DROP TABLE t", kind: .readQuery))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 1)
+        #expect(confirm.lastDestructive)
     }
 
     @Test("Silent destructive denied when user cancels")
@@ -167,6 +252,18 @@ struct ExecutionGateTests {
 
         #expect(read.isAuthorized)
         #expect(write.deniedReason?.contains("read-only") == true)
+        #expect(confirm.callCount == 0)
+    }
+
+    @Test("Read-only runs a read that an invisible character precedes")
+    func readOnlyAllowsReadBehindInvisibleCharacter() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .readOnly, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(sql: "\u{0008}SELECT 1", kind: .readQuery))
+
+        #expect(decision.isAuthorized)
         #expect(confirm.callCount == 0)
     }
 
@@ -383,6 +480,19 @@ struct ExecutionGateTests {
 
         let decision = await gate.authorize(
             makeRequest(sql: "SELECT 1; -- note", kind: .readQuery, capabilities: [.mayWrite])
+        )
+
+        #expect(decision.isAuthorized)
+    }
+
+    @Test("An invisible character after the semicolon is not denied as multi-statement")
+    func trailingInvisibleCharacterNotDeniedAsMultiStatement() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(
+            makeRequest(sql: "SELECT 1;\n\u{FEFF}\u{0008}", kind: .readQuery, capabilities: [.mayWrite])
         )
 
         #expect(decision.isAuthorized)

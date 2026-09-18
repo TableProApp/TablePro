@@ -1,799 +1,450 @@
 import Foundation
 import TableProPluginKit
-import Network
 @testable import TablePro
 import XCTest
 
 final class MCPBridgeIntegrationTests: XCTestCase {
-    fileprivate static let mcpVersion = "2024-11-05"
-    fileprivate static let bearerToken = "integration-token"
+    private var upstream: MockHttpServer!
 
-    func testHappyPathInitializeAndToolsListFlowsThroughBridge() async throws {
-        let harness = try await BridgeHarness.start(authenticator: StubAlwaysAllowAuthenticator())
-        defer { harness.shutdown() }
+    override func setUp() async throws {
+        try await super.setUp()
+        upstream = MockHttpServer()
+        try await upstream.start()
+    }
 
-        let consumer = StubExchangeConsumer()
-        await consumer.start(transport: harness.serverTransport) { exchange in
-            switch exchange.message {
-            case .request(let request):
-                let response = JsonRpcMessage.successResponse(
-                    JsonRpcSuccessResponse(
-                        id: request.id,
-                        result: .object(["echo": .string(request.method)])
-                    )
-                )
-                await exchange.responder.respond(response, sessionId: exchange.context.sessionId)
-            default:
-                await exchange.responder.respondError(.invalidRequest(detail: "unsupported"), requestId: nil)
-            }
-        }
-        defer { Task { await consumer.stop() } }
+    override func tearDown() async throws {
+        await upstream.stop()
+        upstream = nil
+        try await super.tearDown()
+    }
 
-        let initRequest = JsonRpcMessage.request(
-            JsonRpcRequest(id: .number(1), method: "initialize", params: nil)
-        )
-        try await harness.writeFromHost(initRequest)
+    func testALegacyInitializeIsAnsweredByTheBridgeItself() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
 
-        let firstResponse = try await harness.readNextResponse()
-        guard case .successResponse(let success) = firstResponse else {
-            XCTFail("Expected successResponse for initialize, got \(firstResponse)")
+        try bridge.write(#"""
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",\#
+        "clientInfo":{"name":"LegacyHost","version":"9.9.9"},"capabilities":{}}}
+        """#)
+
+        let response = try await bridge.nextMessage()
+        guard case .successResponse(let success) = response else {
+            XCTFail("Expected a success response, got \(response)")
             return
         }
         XCTAssertEqual(success.id, .number(1))
-        XCTAssertEqual(success.result["echo"]?.stringValue, "initialize")
+        XCTAssertEqual(success.result["protocolVersion"]?.stringValue, MCPProtocolVersion.v20250618.rawValue)
+        XCTAssertEqual(success.result["serverInfo"]?["name"]?.stringValue, "TablePro")
+        XCTAssertEqual(success.result["instructions"]?.stringValue, BridgeIntegrationFixtures.instructions)
 
-        let toolsRequest = JsonRpcMessage.request(
-            JsonRpcRequest(id: .number(2), method: "tools/list", params: nil)
-        )
-        try await harness.writeFromHost(toolsRequest)
-
-        let secondResponse = try await harness.readNextResponse()
-        guard case .successResponse(let toolsSuccess) = secondResponse else {
-            XCTFail("Expected successResponse for tools/list, got \(secondResponse)")
-            return
-        }
-        XCTAssertEqual(toolsSuccess.id, .number(2))
-        XCTAssertEqual(toolsSuccess.result["echo"]?.stringValue, "tools/list")
+        let forwarded = await upstream.requests
+        XCTAssertTrue(forwarded.isEmpty, "initialize is terminated locally and never reaches the app")
     }
 
-    func testIdleSessionEvictionRecoversTransparently() async throws {
-        let clock = MCPTestClock(start: Date(timeIntervalSince1970: 1_700_000_000))
-        let policy = MCPSessionPolicy(
-            idleTimeout: .seconds(60),
-            maxSessions: 16,
-            cleanupInterval: .seconds(60)
-        )
-        let store = MCPSessionStore(policy: policy, clock: clock)
-        let serverTransport = MCPHttpServerTransport(
-            configuration: MCPHttpServerConfiguration.loopback(port: 0),
-            sessionStore: store,
-            authenticator: StubAlwaysAllowAuthenticator(),
-            clock: clock
-        )
-        let stateStream = serverTransport.listenerState
-        let stateTask = Task<UInt16?, Never> {
-            for await state in stateStream {
-                if case .running(let port) = state { return port }
-                if case .failed = state { return nil }
-            }
-            return nil
-        }
-        try await serverTransport.start()
-        guard let port = await stateTask.value, port != 0 else {
-            XCTFail("server did not start")
-            return
-        }
-        defer { Task { await serverTransport.stop() } }
+    func testTheAdvertisedLegacyCapabilitiesDropWhatALegacyHostCannotUse() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
 
-        let observed = ObservedMethods()
-        let consumer = StubExchangeConsumer()
-        await consumer.start(transport: serverTransport) { exchange in
-            switch exchange.message {
-            case .request(let request):
-                await observed.record(request.method)
-                await exchange.responder.respond(
-                    .successResponse(JsonRpcSuccessResponse(id: request.id, result: .object(["ok": .bool(true)]))),
-                    sessionId: exchange.context.sessionId
-                )
-            case .notification(let notification):
-                await observed.record(notification.method)
-                await exchange.responder.acknowledgeAccepted()
-            default:
-                await exchange.responder.respondError(.invalidRequest(detail: "unsupported"), requestId: nil)
-            }
-        }
-        defer { Task { await consumer.stop() } }
-
-        guard let url = URL(string: "http://127.0.0.1:\(port)/mcp") else {
-            XCTFail("Failed to build URL")
-            return
-        }
-        let credentials = MCPUpstreamCredentials(endpoint: url, bearerToken: Self.bearerToken)
-        let client = MCPStreamableHttpClientTransport(
-            configuration: MCPStreamableHttpClientConfiguration(
-                requestTimeout: .seconds(5),
-                serverInitiatedStream: false,
-                keepaliveInterval: nil
-            ),
-            credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },
-            errorLogger: nil
-        )
-        defer { Task { await client.close() } }
-
-        try await client.send(.request(JsonRpcRequest(id: .number(10), method: "initialize", params: nil)))
-        _ = try await Self.firstInbound(of: client, timeout: 3.0)
-        try await client.send(.notification(JsonRpcNotification(method: "notifications/initialized", params: nil)))
-        try await Self.waitUntil { await observed.methods.contains("notifications/initialized") }
-
-        let sessionsBeforeEviction = await store.allSessions()
-        XCTAssertEqual(sessionsBeforeEviction.count, 1)
-        let evictedSessionId = sessionsBeforeEviction.first?.id
-
-        await clock.advance(by: .seconds(120))
-        await store.runCleanupPass()
-        let postCleanupCount = await store.count()
-        XCTAssertEqual(postCleanupCount, 0)
-
-        try await client.send(.request(JsonRpcRequest(id: .number(11), method: "tools/call", params: nil)))
-        let response = try await Self.firstInbound(of: client, timeout: 3.0)
+        try bridge.write(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#)
+        let response = try await bridge.nextMessage()
         guard case .successResponse(let success) = response else {
-            XCTFail("Expected the follow-up call to recover transparently, got \(response)")
+            XCTFail("Expected a success response")
             return
         }
-        XCTAssertEqual(success.id, .number(11))
 
-        let sessionsAfterRecovery = await store.allSessions()
-        XCTAssertEqual(sessionsAfterRecovery.count, 1)
-        XCTAssertNotEqual(sessionsAfterRecovery.first?.id, evictedSessionId)
+        let capabilities = try XCTUnwrap(success.result["capabilities"])
+        XCTAssertNil(capabilities["extensions"], "Modern extensions mean nothing to a legacy host")
+        XCTAssertEqual(capabilities["resources"]?["subscribe"]?.boolValue, false)
+        XCTAssertNotNil(capabilities["tools"])
+        XCTAssertNotNil(capabilities["prompts"])
+    }
 
-        let methods = await observed.methods
+    func testAnUnsupportedRequestedVersionNegotiatesDownToTheNewestLegacyOne() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+
+        try bridge.write(#"""
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}
+        """#)
+
+        let response = try await bridge.nextMessage()
+        guard case .successResponse(let success) = response else {
+            XCTFail("Expected a success response")
+            return
+        }
+        XCTAssertEqual(success.result["protocolVersion"]?.stringValue, MCPProtocolVersion.v20251125.rawValue)
+    }
+
+    func testTheInitializedNotificationIsSwallowed() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+
+        await upstream.respondWithJson(try Self.successBody(id: .number(2)))
+        try bridge.write(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+        try bridge.write(#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#)
+
+        _ = try await bridge.nextMessage()
+        let forwarded = await upstream.requests
+        XCTAssertEqual(forwarded.count, 1)
+        XCTAssertEqual(forwarded[0].header("Mcp-Method"), "tools/list")
+    }
+
+    func testPingIsAnsweredLocally() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#)
+
+        let response = try await bridge.nextMessage()
+        guard case .successResponse(let success) = response else {
+            XCTFail("Expected a success response")
+            return
+        }
+        XCTAssertEqual(success.id, .number(3))
+        XCTAssertEqual(success.result, .object([:]))
+
+        let forwarded = await upstream.requests
+        XCTAssertTrue(forwarded.isEmpty)
+    }
+
+    func testALegacyHostRequestIsStampedWithSynthesisedMetadata() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(4)))
+
+        try bridge.write(#"""
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25",\#
+        "clientInfo":{"name":"LegacyHost","version":"9.9.9"},"capabilities":{}}}
+        """#)
+        _ = try await bridge.nextMessage()
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{"cursor":"abc"}}"#)
+        _ = try await bridge.nextMessage()
+
+        let recordedForwarded = await upstream.requests.first
+
+        let forwarded = try XCTUnwrap(recordedForwarded)
+        let body = try JSONDecoder().decode(JsonValue.self, from: forwarded.body)
+        let meta = try XCTUnwrap(body["params"]?["_meta"])
+
+        XCTAssertEqual(meta[MCPMetaKeys.protocolVersion]?.stringValue, MCPProtocolVersion.latest.rawValue)
+        XCTAssertEqual(meta[MCPMetaKeys.clientCapabilities], .object([:]))
+        XCTAssertEqual(meta[MCPMetaKeys.clientInfo]?["name"]?.stringValue, "LegacyHost")
+        XCTAssertEqual(meta[MCPMetaKeys.clientInfo]?["version"]?.stringValue, "9.9.9")
+        XCTAssertEqual(body["params"]?["cursor"]?.stringValue, "abc")
+    }
+
+    func testARequestWithNoParamsGainsAParamsObjectCarryingTheMetadata() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(5)))
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":5,"method":"resources/list"}"#)
+        _ = try await bridge.nextMessage()
+
+        let recordedForwarded = await upstream.requests.first
+
+        let forwarded = try XCTUnwrap(recordedForwarded)
+        let body = try JSONDecoder().decode(JsonValue.self, from: forwarded.body)
         XCTAssertEqual(
-            methods.suffix(3),
-            ["initialize", "notifications/initialized", "tools/call"],
-            "The bridge must replay the full handshake before retrying the call"
+            body["params"]?["_meta"]?[MCPMetaKeys.protocolVersion]?.stringValue,
+            MCPProtocolVersion.latest.rawValue
         )
     }
 
-    func testServerReturning404WithGarbageBodyIsWrappedAsJsonRpcError() async throws {
-        let badServer = try await BadHttpServer.start { _ in
-            BadHttpResponse(
-                status: 404,
-                headers: [("Content-Type", "application/json")],
-                body: Data("{\"error\":\"Session not found\"}".utf8)
-            )
-        }
-        defer { badServer.stop() }
+    func testAModernHostRequestIsForwardedByteForByte() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(6)))
 
-        guard let url = URL(string: "http://127.0.0.1:\(badServer.port)/mcp") else {
-            XCTFail("Failed to build URL")
+        let line = #"""
+        {"jsonrpc":"2.0","id":6,"method":"tools/list","params":{"_meta":\#
+        {"io.modelcontextprotocol/protocolVersion":"2026-07-28",\#
+        "io.modelcontextprotocol/clientCapabilities":{}}}}
+        """#
+        try bridge.write(line)
+        _ = try await bridge.nextMessage()
+
+        let recordedForwarded = await upstream.requests.first
+
+        let forwarded = try XCTUnwrap(recordedForwarded)
+        XCTAssertEqual(forwarded.body, Data(line.utf8), "A modern host already carries its own metadata")
+    }
+
+    func testStampingNeverRewritesTheNumbersInAMessage() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(7)))
+
+        let line = #"""
+        {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"execute_query",\#
+        "arguments":{"exact":1.0,"huge":123456789012345678901,"negative":-0.0}}}
+        """#
+        try bridge.write(line)
+        _ = try await bridge.nextMessage()
+
+        let recordedForwarded = await upstream.requests.first
+
+        let forwarded = try XCTUnwrap(recordedForwarded)
+        let text = try XCTUnwrap(String(data: forwarded.body, encoding: .utf8))
+
+        XCTAssertTrue(text.contains("\"exact\":1.0"), "1.0 must not arrive as 1")
+        XCTAssertTrue(text.contains("\"huge\":123456789012345678901"), "A huge integer must not be rounded")
+        XCTAssertTrue(text.contains("\"negative\":-0.0"))
+        XCTAssertTrue(text.contains(MCPMetaKeys.protocolVersion))
+    }
+
+    func testAModernMessageWithBigNumbersIsForwardedUntouched() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(8)))
+
+        let line = #"""
+        {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"execute_query",\#
+        "_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"},\#
+        "arguments":{"exact":1.0,"huge":123456789012345678901}}}
+        """#
+        try bridge.write(line)
+        _ = try await bridge.nextMessage()
+
+        let recordedForwarded = await upstream.requests.first
+
+        let forwarded = try XCTUnwrap(recordedForwarded)
+        XCTAssertEqual(forwarded.body, Data(line.utf8))
+    }
+
+    func testAToolCallCarriesItsNameInTheHeader() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(9)))
+
+        try bridge.write(#"""
+        {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"list_tables","arguments":{}}}
+        """#)
+        _ = try await bridge.nextMessage()
+
+        let recordedForwarded = await upstream.requests.first
+
+        let forwarded = try XCTUnwrap(recordedForwarded)
+        XCTAssertEqual(forwarded.header("Mcp-Name"), "list_tables")
+        XCTAssertEqual(forwarded.header("Mcp-Method"), "tools/call")
+    }
+
+    func testTheBridgeNeverSendsASessionHeaderUpstream() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.setResponse(MockHttpResponse(
+            status: 200,
+            headers: [("Content-Type", "application/json"), ("Mcp-Session-Id", "server-minted")],
+            body: try Self.successBody(id: .number(10))
+        ))
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}"#)
+        _ = try await bridge.nextMessage()
+        try bridge.write(#"{"jsonrpc":"2.0","id":11,"method":"tools/list","params":{}}"#)
+        _ = try await bridge.nextMessage()
+
+        let forwarded = await upstream.requests
+        XCTAssertEqual(forwarded.count, 2)
+        for request in forwarded {
+            XCTAssertNil(request.header("Mcp-Session-Id"))
+            XCTAssertEqual(request.method, "POST")
+        }
+    }
+
+    func testTheBridgeNeverPingsUpstreamToKeepAnythingWarm() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+
+        try await Task.sleep(for: .milliseconds(400))
+
+        let forwarded = await upstream.requests
+        XCTAssertTrue(forwarded.isEmpty, "There is no session upstream, so there is nothing to keep alive")
+    }
+
+    func testAnUpstreamAnswerReachesTheHostVerbatim() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+
+        let body = Data(#"{"jsonrpc":"2.0","id":12,"result":{"exact":1.0,"cursor":"abc"}}"#.utf8)
+        await upstream.respondWithJson(body)
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":12,"method":"tools/list","params":{}}"#)
+
+        let line = try await bridge.nextLine()
+        XCTAssertEqual(line, body, "The bridge relays the app's bytes without decoding them")
+    }
+
+    func testAForwardThatFailsAnswersTheHostInsteadOfLeavingItWaiting() async throws {
+        let bridge = try await startBridge(upstreamPort: 1)
+        defer { bridge.shutdown() }
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":13,"method":"tools/list","params":{}}"#)
+
+        let response = try await bridge.nextMessage(timeout: 10)
+        guard case .errorResponse(let failure) = response else {
+            XCTFail("Expected an error response, got \(response)")
             return
         }
-        let configuration = MCPStreamableHttpClientConfiguration(
-            requestTimeout: .seconds(5),
-            serverInitiatedStream: false,
-            keepaliveInterval: nil
-        )
-        let credentials = MCPUpstreamCredentials(endpoint: url, bearerToken: Self.bearerToken)
-        let client = MCPStreamableHttpClientTransport(
-            configuration: configuration,
+        XCTAssertEqual(failure.id, .number(13))
+        XCTAssertFalse(failure.error.message.isEmpty)
+    }
+
+    func testAResponseWrittenToStdinIsDropped() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(14)))
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":99,"result":{"ok":true}}"#)
+        try bridge.write(#"{"jsonrpc":"2.0","id":14,"method":"tools/list","params":{}}"#)
+        _ = try await bridge.nextMessage()
+
+        let forwarded = await upstream.requests
+        XCTAssertEqual(forwarded.count, 1)
+        XCTAssertEqual(forwarded[0].header("Mcp-Method"), "tools/list")
+    }
+
+    func testAMalformedLineIsDropped() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(15)))
+
+        try bridge.write("this is not json")
+        try bridge.write(#"{"jsonrpc":"2.0","id":15,"method":"tools/list","params":{}}"#)
+        _ = try await bridge.nextMessage()
+
+        let forwarded = await upstream.requests
+        XCTAssertEqual(forwarded.count, 1)
+    }
+
+    func testAMessageWithNoMethodIsDropped() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.shutdown() }
+        await upstream.respondWithJson(try Self.successBody(id: .number(16)))
+
+        try bridge.write(#"{"jsonrpc":"2.0","id":50}"#)
+        try bridge.write(#"{"jsonrpc":"2.0","id":16,"method":"tools/list","params":{}}"#)
+        _ = try await bridge.nextMessage()
+
+        let forwarded = await upstream.requests
+        XCTAssertEqual(forwarded.count, 1)
+    }
+
+    private func startBridge(upstreamPort: UInt16? = nil) async throws -> BridgeHarness {
+        let port = upstreamPort ?? upstream.port
+        let endpoint = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/mcp"))
+        let credentials = MCPUpstreamCredentials(endpoint: endpoint, bearerToken: "integration-token")
+        let transport = MCPStreamableHttpClientTransport(
+            configuration: MCPStreamableHttpClientConfiguration(requestTimeout: .seconds(5)),
             credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },
             errorLogger: nil
         )
-        defer { Task { await client.close() } }
-
-        let request = JsonRpcMessage.request(
-            JsonRpcRequest(id: .number(42), method: "tools/list", params: nil)
-        )
-        try await client.send(request)
-
-        let received = try await Self.firstInbound(of: client, timeout: 3.0)
-        guard case .errorResponse(let envelope) = received else {
-            XCTFail("Expected errorResponse, got \(received)")
-            return
-        }
-        XCTAssertEqual(envelope.id, .number(42))
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.sessionNotFound)
-
-        let encoded = try JsonRpcCodec.encode(received)
-        let roundTripped = try JsonRpcCodec.decode(encoded)
-        XCTAssertEqual(roundTripped, received)
+        return BridgeHarness(upstream: transport, discovery: BridgeIntegrationFixtures.discovery)
     }
 
-    func testMalformedRequestReturnsValidJsonRpcErrorEnvelope() async throws {
-        let harness = try await BridgeHarness.start(authenticator: StubAlwaysAllowAuthenticator())
-        defer { harness.shutdown() }
-
-        let consumer = StubExchangeConsumer()
-        await consumer.start(transport: harness.serverTransport) { exchange in
-            await exchange.responder.respondError(.invalidRequest(detail: "should-not-reach"), requestId: nil)
-        }
-        defer { Task { await consumer.stop() } }
-
-        guard let url = URL(string: "http://127.0.0.1:\(harness.serverPort)/mcp") else {
-            XCTFail("Failed to build URL")
-            return
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(Self.mcpVersion, forHTTPHeaderField: "mcp-protocol-version")
-        request.setValue("Bearer \(Self.bearerToken)", forHTTPHeaderField: "Authorization")
-        request.httpBody = Data("{\"not\":\"json-rpc\"}".utf8)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
-
-        XCTAssertGreaterThanOrEqual(httpResponse.statusCode, 400)
-        XCTAssertLessThan(httpResponse.statusCode, 500)
-        XCTAssertFalse(data.isEmpty, "Server must return a body for malformed requests")
-
-        let decoded = try JsonRpcCodec.decode(data)
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected JSON-RPC errorResponse envelope, got \(decoded)")
-            return
-        }
-        XCTAssertTrue(
-            envelope.error.code == JsonRpcErrorCode.invalidRequest
-                || envelope.error.code == JsonRpcErrorCode.parseError
-                || envelope.error.code == JsonRpcErrorCode.methodNotFound,
-            "Unexpected error code \(envelope.error.code)"
+    private static func successBody(id: JsonRpcId) throws -> Data {
+        try JsonRpcCodec.encode(
+            .successResponse(JsonRpcSuccessResponse(id: id, result: .object(["ok": .bool(true)])))
         )
+    }
+}
 
-        let plainErrorShape = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        if let asObject = plainErrorShape {
-            XCTAssertNotNil(asObject["jsonrpc"], "Body must include jsonrpc field; got plain dict \(asObject)")
-            XCTAssertNotNil(asObject["error"], "Body must include error field")
+enum BridgeIntegrationFixtures {
+    static let instructions = "Query TablePro connections through these tools."
+
+    static let discovery = BridgeDiscovery(
+        supportedVersions: MCPProtocolVersion.supportedRawValues,
+        capabilities: .object([
+            "tools": .object(["listChanged": .bool(true)]),
+            "prompts": .object(["listChanged": .bool(true)]),
+            "resources": .object(["subscribe": .bool(true), "listChanged": .bool(true)]),
+            "completions": .object([:]),
+            "extensions": .object(["io.tablepro/subscriptions": .object([:])])
+        ]),
+        serverInfo: .object(["name": .string("TablePro"), "version": .string("1.2.3")]),
+        instructions: instructions,
+        instanceId: "instance-1"
+    )
+}
+
+final class BridgeHarness: @unchecked Sendable {
+    private let hostToBridge = Pipe()
+    private let bridgeToHost = Pipe()
+    private let output = BridgeOutputBuffer()
+    private let proxy: BridgeProxy
+    private let runTask: Task<Void, Never>
+
+    init(upstream: MCPStreamableHttpClientTransport, discovery: BridgeDiscovery) {
+        proxy = BridgeProxy(
+            upstream: upstream,
+            discovery: discovery,
+            logger: RecordingBridgeLogger(),
+            stdin: hostToBridge.fileHandleForReading,
+            stdout: bridgeToHost.fileHandleForWriting
+        )
+        let buffer = output
+        bridgeToHost.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            guard !chunk.isEmpty else { return }
+            buffer.append(chunk)
         }
+        let runner = proxy
+        runTask = Task { await runner.run() }
     }
 
-    private static func waitUntil(
-        timeout: TimeInterval = 3.0,
-        condition: @Sendable () async -> Bool
-    ) async throws {
+    func write(_ line: String) throws {
+        var payload = Data(line.utf8)
+        payload.append(0x0A)
+        try hostToBridge.fileHandleForWriting.write(contentsOf: payload)
+    }
+
+    func nextLine(timeout: TimeInterval = 5) async throws -> Data {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if await condition() {
-                return
+            if let line = output.take() {
+                return line
             }
-            try await Task.sleep(nanoseconds: 20_000_000)
+            try await Task.sleep(for: .milliseconds(10))
         }
-        throw IntegrationTestError.timeout
+        throw BridgeIntegrationError.timeout
     }
 
-    private static func firstInbound(
-        of transport: MCPStreamableHttpClientTransport,
-        timeout: TimeInterval
-    ) async throws -> JsonRpcMessage {
-        try await withThrowingTaskGroup(of: JsonRpcMessage?.self) { group in
-            group.addTask {
-                var iterator = transport.inbound.makeAsyncIterator()
-                return try await iterator.next()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                return nil
-            }
-            guard let result = try await group.next(), let value = result else {
-                group.cancelAll()
-                throw IntegrationTestError.timeout
-            }
-            group.cancelAll()
-            return value
-        }
-    }
-}
-
-private enum IntegrationTestError: Error {
-    case timeout
-    case serverDidNotStart
-    case readClosed
-}
-
-private actor ObservedMethods {
-    private(set) var methods: [String] = []
-
-    func record(_ method: String) {
-        methods.append(method)
-    }
-}
-
-private struct PipePair {
-    let hostInput: FileHandle
-    let bridgeStdin: FileHandle
-    let bridgeStdout: FileHandle
-    let hostOutput: FileHandle
-
-    let stdinPipe: Pipe
-    let stdoutPipe: Pipe
-
-    static func make() -> PipePair {
-        let stdinPipe = Pipe()
-        let stdoutPipe = Pipe()
-        return PipePair(
-            hostInput: stdinPipe.fileHandleForWriting,
-            bridgeStdin: stdinPipe.fileHandleForReading,
-            bridgeStdout: stdoutPipe.fileHandleForWriting,
-            hostOutput: stdoutPipe.fileHandleForReading,
-            stdinPipe: stdinPipe,
-            stdoutPipe: stdoutPipe
-        )
-    }
-
-    func closeAll() {
-        try? hostInput.close()
-        try? bridgeStdin.close()
-        try? bridgeStdout.close()
-        try? hostOutput.close()
-    }
-}
-
-private final class IntegrationBridgeLogger: MCPBridgeLogger, @unchecked Sendable {
-    func log(_ level: MCPBridgeLogLevel, _ message: String) {}
-}
-
-private actor TestBridgeProxy {
-    private let host: any MCPMessageTransport
-    private let upstream: any MCPMessageTransport
-    private let logger: any MCPBridgeLogger
-    private var task: Task<Void, Never>?
-
-    init(host: any MCPMessageTransport, upstream: any MCPMessageTransport, logger: any MCPBridgeLogger) {
-        self.host = host
-        self.upstream = upstream
-        self.logger = logger
-    }
-
-    func start() {
-        task = Task { [host, upstream, logger] in
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    await Self.forward(from: host, to: upstream, direction: "host→upstream", logger: logger)
-                }
-                group.addTask {
-                    await Self.forward(from: upstream, to: host, direction: "upstream→host", logger: logger)
-                }
-                await group.waitForAll()
-            }
-        }
-    }
-
-    func stop() {
-        task?.cancel()
-        task = nil
-    }
-
-    private static func forward(
-        from source: any MCPMessageTransport,
-        to destination: any MCPMessageTransport,
-        direction: String,
-        logger: any MCPBridgeLogger
-    ) async {
-        do {
-            for try await message in source.inbound {
-                do {
-                    try await destination.send(message)
-                } catch {
-                    logger.log(.warning, "[\(direction)] send failed: \(error.localizedDescription)")
-                }
-            }
-            logger.log(.info, "[\(direction)] inbound stream closed")
-        } catch {
-            logger.log(.error, "[\(direction)] inbound failed: \(error.localizedDescription)")
-        }
-        await destination.close()
-    }
-}
-
-private actor LineQueue {
-    private var pending: [Data] = []
-    private var waiters: [CheckedContinuation<Data?, Never>] = []
-    private var finished = false
-
-    func push(_ line: Data) {
-        if let waiter = waiters.first {
-            waiters.removeFirst()
-            waiter.resume(returning: line)
-            return
-        }
-        pending.append(line)
-    }
-
-    func finish() {
-        finished = true
-        let toResume = waiters
-        waiters.removeAll()
-        for waiter in toResume {
-            waiter.resume(returning: nil)
-        }
-    }
-
-    func next() async -> Data? {
-        if !pending.isEmpty {
-            return pending.removeFirst()
-        }
-        if finished {
-            return nil
-        }
-        return await withCheckedContinuation { continuation in
-            waiters.append(continuation)
-        }
-    }
-}
-
-private final class BridgeHarness: @unchecked Sendable {
-    let serverTransport: MCPHttpServerTransport
-    let sessionStore: MCPSessionStore
-    let serverPort: UInt16
-    let clientTransport: MCPStreamableHttpClientTransport
-    let stdioTransport: MCPStdioMessageTransport
-    private let proxy: TestBridgeProxy
-    private let pipes: PipePair
-    private let lineQueue = LineQueue()
-    private var readerTask: Task<Void, Never>?
-    private let stateLock = NSLock()
-
-    private init(
-        serverTransport: MCPHttpServerTransport,
-        sessionStore: MCPSessionStore,
-        serverPort: UInt16,
-        clientTransport: MCPStreamableHttpClientTransport,
-        stdioTransport: MCPStdioMessageTransport,
-        proxy: TestBridgeProxy,
-        pipes: PipePair
-    ) {
-        self.serverTransport = serverTransport
-        self.sessionStore = sessionStore
-        self.serverPort = serverPort
-        self.clientTransport = clientTransport
-        self.stdioTransport = stdioTransport
-        self.proxy = proxy
-        self.pipes = pipes
-    }
-
-    static func start(
-        authenticator: any MCPAuthenticator,
-        clock: any MCPClock = MCPSystemClock(),
-        sessionPolicy: MCPSessionPolicy = MCPSessionPolicy(
-            idleTimeout: .seconds(900),
-            maxSessions: 16,
-            cleanupInterval: .seconds(60)
-        )
-    ) async throws -> BridgeHarness {
-        let store = MCPSessionStore(policy: sessionPolicy, clock: clock)
-        let configuration = MCPHttpServerConfiguration.loopback(port: 0)
-        let serverTransport = MCPHttpServerTransport(
-            configuration: configuration,
-            sessionStore: store,
-            authenticator: authenticator,
-            clock: clock
-        )
-
-        let stateStream = serverTransport.listenerState
-        let stateTask = Task<UInt16?, Never> {
-            for await state in stateStream {
-                if case .running(let port) = state {
-                    return port
-                }
-                if case .failed = state {
-                    return nil
-                }
-            }
-            return nil
-        }
-
-        try await serverTransport.start()
-        guard let port = await stateTask.value, port != 0 else {
-            await serverTransport.stop()
-            throw IntegrationTestError.serverDidNotStart
-        }
-
-        guard let url = URL(string: "http://127.0.0.1:\(port)/mcp") else {
-            await serverTransport.stop()
-            throw IntegrationTestError.serverDidNotStart
-        }
-        let logger = IntegrationBridgeLogger()
-        let clientConfig = MCPStreamableHttpClientConfiguration(
-            requestTimeout: .seconds(5),
-            serverInitiatedStream: false,
-            keepaliveInterval: nil
-        )
-        let credentials = MCPUpstreamCredentials(
-            endpoint: url,
-            bearerToken: MCPBridgeIntegrationTests.bearerToken
-        )
-        let credentialsProvider = MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials }
-        let clientTransport = MCPStreamableHttpClientTransport(
-            configuration: clientConfig,
-            credentialsProvider: credentialsProvider,
-            errorLogger: logger
-        )
-
-        let pipes = PipePair.make()
-        let stdioTransport = MCPStdioMessageTransport(
-            stdin: pipes.bridgeStdin,
-            stdout: pipes.bridgeStdout,
-            errorLogger: logger
-        )
-
-        let proxy = TestBridgeProxy(host: stdioTransport, upstream: clientTransport, logger: logger)
-        await proxy.start()
-
-        let harness = BridgeHarness(
-            serverTransport: serverTransport,
-            sessionStore: store,
-            serverPort: port,
-            clientTransport: clientTransport,
-            stdioTransport: stdioTransport,
-            proxy: proxy,
-            pipes: pipes
-        )
-        harness.startReader()
-        return harness
-    }
-
-    func writeFromHost(_ message: JsonRpcMessage) async throws {
-        let line = try JsonRpcCodec.encodeLine(message)
-        try pipes.hostInput.write(contentsOf: line)
-    }
-
-    func readNextResponse(timeout: TimeInterval = 4.0) async throws -> JsonRpcMessage {
-        let line = try await readNextLine(timeout: timeout)
-        return try JsonRpcCodec.decode(line)
-    }
-
-    private func readNextLine(timeout: TimeInterval) async throws -> Data {
-        let queue = lineQueue
-        return try await withThrowingTaskGroup(of: Data?.self) { group in
-            group.addTask {
-                await queue.next()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                return nil
-            }
-            guard let first = try await group.next(), let value = first else {
-                group.cancelAll()
-                throw IntegrationTestError.timeout
-            }
-            group.cancelAll()
-            return value
-        }
-    }
-
-    fileprivate func startReader() {
-        stateLock.lock()
-        if readerTask != nil {
-            stateLock.unlock()
-            return
-        }
-        let handle = pipes.hostOutput
-        let queue = lineQueue
-        readerTask = Task.detached(priority: .userInitiated) {
-            var buffer = Data()
-            do {
-                for try await byte in handle.bytes {
-                    if Task.isCancelled { return }
-                    if byte == 0x0A {
-                        var line = buffer
-                        buffer.removeAll(keepingCapacity: true)
-                        if line.last == 0x0D {
-                            line.removeLast()
-                        }
-                        if !line.isEmpty {
-                            await queue.push(line)
-                        }
-                    } else {
-                        buffer.append(byte)
-                    }
-                }
-            } catch {
-                // pipe closed or read error; finish the queue
-            }
-            await queue.finish()
-        }
-        stateLock.unlock()
+    func nextMessage(timeout: TimeInterval = 5) async throws -> JsonRpcMessage {
+        try JsonRpcCodec.decode(try await nextLine(timeout: timeout))
     }
 
     func shutdown() {
-        stateLock.lock()
-        readerTask?.cancel()
-        readerTask = nil
-        stateLock.unlock()
-        let queue = lineQueue
-        Task { await queue.finish() }
-        Task { await proxy.stop() }
-        Task { await stdioTransport.close() }
-        Task { await clientTransport.close() }
-        Task { await serverTransport.stop() }
-        pipes.closeAll()
+        bridgeToHost.fileHandleForReading.readabilityHandler = nil
+        try? hostToBridge.fileHandleForWriting.close()
+        runTask.cancel()
+        try? bridgeToHost.fileHandleForWriting.close()
     }
 }
 
-private struct BadHttpResponse: Sendable {
-    let status: Int
-    let headers: [(String, String)]
-    let body: Data
-}
-
-private actor BadHttpServerState {
-    var responder: (@Sendable (Data) -> BadHttpResponse)?
-
-    func setResponder(_ responder: @escaping @Sendable (Data) -> BadHttpResponse) {
-        self.responder = responder
-    }
-
-    func respond(_ data: Data) -> BadHttpResponse {
-        responder?(data) ?? BadHttpResponse(status: 500, headers: [], body: Data())
-    }
-}
-
-private final class BadHttpServer: @unchecked Sendable {
-    private let state = BadHttpServerState()
-    private var listener: NWListener?
+final class BridgeOutputBuffer: @unchecked Sendable {
     private let lock = NSLock()
-    private var assignedPort: UInt16 = 0
-    private var connections: [NWConnection] = []
+    private var buffer = Data()
+    private var lines: [Data] = []
 
-    var port: UInt16 {
+    func append(_ chunk: Data) {
         lock.lock()
         defer { lock.unlock() }
-        return assignedPort
-    }
-
-    static func start(_ responder: @escaping @Sendable (Data) -> BadHttpResponse) async throws -> BadHttpServer {
-        let server = BadHttpServer()
-        await server.state.setResponder(responder)
-        try await server.startListener()
-        return server
-    }
-
-    private func startListener() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            do {
-                let params = NWParameters.tcp
-                params.allowLocalEndpointReuse = true
-                let listener = try NWListener(using: params)
-                lock.lock()
-                self.listener = listener
-                lock.unlock()
-                listener.stateUpdateHandler = { [weak self] state in
-                    guard let self else { return }
-                    switch state {
-                    case .ready:
-                        if let port = listener.port?.rawValue {
-                            self.lock.lock()
-                            self.assignedPort = port
-                            self.lock.unlock()
-                        }
-                        continuation.resume()
-                    case .failed(let error):
-                        continuation.resume(throwing: error)
-                    default:
-                        break
-                    }
-                }
-                listener.newConnectionHandler = { [weak self] connection in
-                    self?.handle(connection)
-                }
-                listener.start(queue: .global(qos: .userInitiated))
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        buffer.append(chunk)
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            let line = Data(buffer[buffer.startIndex ..< newline])
+            buffer.removeSubrange(buffer.startIndex ... newline)
+            guard !line.isEmpty else { continue }
+            lines.append(line)
         }
     }
 
-    func stop() {
+    func take() -> Data? {
         lock.lock()
-        let listener = self.listener
-        let connections = self.connections
-        self.listener = nil
-        self.connections = []
-        lock.unlock()
-        listener?.cancel()
-        for connection in connections {
-            connection.cancel()
-        }
+        defer { lock.unlock() }
+        return lines.isEmpty ? nil : lines.removeFirst()
     }
+}
 
-    private func handle(_ connection: NWConnection) {
-        lock.lock()
-        connections.append(connection)
-        lock.unlock()
-        connection.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .ready:
-                self?.readLoop(connection: connection, accumulated: Data())
-            case .failed, .cancelled:
-                break
-            default:
-                break
-            }
-        }
-        connection.start(queue: .global(qos: .userInitiated))
-    }
-
-    private func readLoop(connection: NWConnection, accumulated: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, isComplete, _ in
-            guard let self else { return }
-            var buffer = accumulated
-            if let data {
-                buffer.append(data)
-            }
-
-            if let bodyStart = Self.findHeaderEnd(buffer) {
-                let contentLength = Self.contentLength(buffer.prefix(bodyStart))
-                let bodyAvailable = buffer.count - bodyStart
-                if bodyAvailable < contentLength {
-                    if isComplete {
-                        connection.cancel()
-                        return
-                    }
-                    self.readLoop(connection: connection, accumulated: buffer)
-                    return
-                }
-                let body = buffer.subdata(in: bodyStart..<(bodyStart + contentLength))
-                Task {
-                    let response = await self.state.respond(body)
-                    let raw = Self.serialize(response)
-                    connection.send(content: raw, completion: .contentProcessed { _ in
-                        connection.cancel()
-                    })
-                }
-                return
-            }
-
-            if isComplete {
-                connection.cancel()
-                return
-            }
-            self.readLoop(connection: connection, accumulated: buffer)
-        }
-    }
-
-    private static func findHeaderEnd(_ data: Data) -> Int? {
-        guard let range = data.range(of: Data("\r\n\r\n".utf8)) else { return nil }
-        return range.upperBound
-    }
-
-    private static func contentLength(_ headerData: Data) -> Int {
-        guard let headerString = String(data: headerData, encoding: .utf8) else { return 0 }
-        for line in headerString.components(separatedBy: "\r\n") {
-            guard let colon = line.firstIndex(of: ":") else { continue }
-            let key = line[line.startIndex..<colon].lowercased()
-            if key == "content-length" {
-                let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-                return Int(value) ?? 0
-            }
-        }
-        return 0
-    }
-
-    private static func serialize(_ response: BadHttpResponse) -> Data {
-        var output = "HTTP/1.1 \(response.status) \(reasonPhrase(for: response.status))\r\n"
-        var headers = response.headers
-        if !headers.contains(where: { $0.0.lowercased() == "content-length" }) {
-            headers.append(("Content-Length", "\(response.body.count)"))
-        }
-        if !headers.contains(where: { $0.0.lowercased() == "connection" }) {
-            headers.append(("Connection", "close"))
-        }
-        for (key, value) in headers {
-            output.append("\(key): \(value)\r\n")
-        }
-        output.append("\r\n")
-        var data = Data(output.utf8)
-        data.append(response.body)
-        return data
-    }
-
-    private static func reasonPhrase(for status: Int) -> String {
-        switch status {
-        case 200: return "OK"
-        case 400: return "Bad Request"
-        case 401: return "Unauthorized"
-        case 404: return "Not Found"
-        case 500: return "Internal Server Error"
-        default: return "Status"
-        }
-    }
+enum BridgeIntegrationError: Error {
+    case timeout
 }

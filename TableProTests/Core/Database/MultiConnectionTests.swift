@@ -97,10 +97,10 @@ struct DatabaseManagerMultiSessionTests {
         }
 
         DatabaseManager.shared.updateSession(id1) { session in
-            session.pendingTruncates = ["users"]
+            session.pendingTruncates = [TestFixtures.makeTableRef(name: "users")]
         }
 
-        #expect(DatabaseManager.shared.session(for: id1)?.pendingTruncates == ["users"])
+        #expect(DatabaseManager.shared.session(for: id1)?.pendingTruncates == [TestFixtures.makeTableRef(name: "users")])
         #expect(DatabaseManager.shared.session(for: id2)?.pendingTruncates.isEmpty == true)
     }
 
@@ -133,7 +133,7 @@ struct DatabaseManagerMultiSessionTests {
         let countBefore = DatabaseManager.shared.activeSessions.count
 
         DatabaseManager.shared.updateSession(unknownId) { session in
-            session.pendingTruncates = ["ghost"]
+            session.pendingTruncates = [TestFixtures.makeTableRef(name: "ghost")]
         }
 
         #expect(DatabaseManager.shared.activeSessions.count == countBefore)

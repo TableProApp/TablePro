@@ -112,6 +112,20 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         return result
     }
 
+    /// The mapping already names every path and every `nested` ancestor, so nothing is sampled.
+    /// Reporting them is what offers the same-element choice on a filter row: without it two
+    /// filters on one array are two independent questions, each answered by a different element.
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        try await cachedMappingColumns(table).map { column in
+            PluginFieldPath(
+                path: column.name,
+                typeName: column.type,
+                depth: column.name.split(separator: ".").count,
+                arrayPrefixes: column.nestedPaths
+            )
+        }
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         [PluginIndexInfo(name: "_id", columns: ["_id"], isUnique: true, isPrimary: true, type: "PRIMARY KEY")]
     }
@@ -127,14 +141,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     func fetchFilteredRowCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
         guard let conn = connection else { throw ElasticsearchError.notConnected }
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: try await cachedMappingColumns(table))
-        let specs = filters.map { ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+        let specs = ElasticsearchQueryBuilder.specs(from: queryFilters)
         let query = ElasticsearchQueryBuilder.queryClause(
-            filters: specs, logicMode: logicMode, fields: fields, caseInsensitive: supportsCaseInsensitiveSearch
+            filters: specs, logicMode: logicMode, fields: fields, supportsCaseInsensitive: supportsCaseInsensitiveSearch
         )
         return try await conn.count(index: table, query: query)
     }
@@ -180,12 +194,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let sorts = sortSpecs(from: sortColumns, columns: columns)
         Self.logger.debug("""
@@ -198,6 +214,26 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         return ElasticsearchQueryBuilder().buildFilteredQuery(
             index: table, filters: filters, logicMode: logicMode, sorts: sorts, limit: limit, offset: offset
         )
+    }
+
+    /// Export reads the index through the driver's own paging rather than through a fabricated
+    /// `SELECT * FROM "<index>"`, which this driver rejects.
+    func defaultExportQuery(table: String) -> String? {
+        ElasticsearchOperations.encodeExport(index: table)
+    }
+
+    // MARK: - Table Operations
+
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        ElasticsearchOperations.deleteIndex(named: name, objectType: objectType)
+    }
+
+    /// Elasticsearch has no truncate. `_delete_by_query` runs asynchronously, reports version
+    /// conflicts per document and leaves the mapping behind, so it is a bulk delete rather than the
+    /// operation the app's Truncate promises. Answering nil keeps the command off the menu instead
+    /// of offering one that means something else.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        nil
     }
 
     // MARK: - Statement Generation
@@ -231,6 +267,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         let columns = try await conn.mappingProperties(index: index)
         lock.withLock { _mappingCache[index] = columns }
         return columns
+    }
+
+    /// A mapping is cached for the life of the connection, so anything that can change one has to
+    /// say so or the grid keeps the old columns and a filter on a new field silently matches
+    /// nothing. The whole cache goes rather than one index: a console request can name a list, a
+    /// wildcard or an alias, and refilling it costs one `GET /<index>/_mapping` per index reopened.
+    func invalidateMappingCache() {
+        lock.withLock { _mappingCache.removeAll() }
     }
 
     private func columnTypeNames(for columns: [String], index: String) -> [String] {

@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTrinoCore
+import XCTest
 
 final class TrinoStatementSplitterTests: XCTestCase {
     func testSingleStatementNoTrailingSemicolon() {

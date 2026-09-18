@@ -27,6 +27,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
     case vietnamese = "vi"
     case chineseSimplified = "zh-Hans"
     case chineseTraditional = "zh-Hant"
+    case korean = "ko"
     case turkish = "tr"
 
     var id: String { rawValue }
@@ -38,6 +39,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
         case .vietnamese: return "Tiếng Việt"
         case .chineseSimplified: return "简体中文"
         case .chineseTraditional: return "繁體中文"
+        case .korean: return "한국어"
         case .turkish: return "Türkçe"
         }
     }
@@ -55,7 +57,6 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
 struct GeneralSettings: Codable, Equatable {
     var startupBehavior: StartupBehavior
     var language: AppLanguage
-    var automaticallyCheckForUpdates: Bool
 
     /// Query execution timeout in seconds (0 = no limit)
     var queryTimeoutSeconds: Int
@@ -69,42 +70,88 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether to show database object comments in the sidebar and data grid headers
     var showObjectComments: Bool
 
+    /// Whether sidebar rows show a type icon before the object name
+    var showObjectIcons: Bool
+
+    /// Whether the sidebar tree and its database filter list system databases and schemas
+    var showSystemContainers: Bool
+
+    /// Whether a partitioned table lists its partitions in the sidebar and shows how many it holds
+    var showPartitions: Bool
+
+    /// Whether the window shows the workspace rail listing every open connection and database
+    var showWorkspaceRail: Bool
+
+    /// How tall sidebar rows are drawn, following the system Appearance setting unless overridden
+    var sidebarRowSize: SidebarRowSizePreference
+
+    /// How often TablePro checks that an open connection still works
+    var connectionHealthCheck: ConnectionHealthCheck
+
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
         language: .system,
-        automaticallyCheckForUpdates: true,
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
         showRecentTables: false,
-        showObjectComments: true
+        showObjectComments: true,
+        showObjectIcons: true,
+        showSystemContainers: false,
+        showPartitions: true,
+        showWorkspaceRail: true,
+        sidebarRowSize: .matchSystem,
+        connectionHealthCheck: .every30Seconds
     )
 
     init(
         startupBehavior: StartupBehavior = .reopenLast,
         language: AppLanguage = .system,
-        automaticallyCheckForUpdates: Bool = true,
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
-        showObjectComments: Bool = true
+        showObjectComments: Bool = true,
+        showObjectIcons: Bool = true,
+        showSystemContainers: Bool = false,
+        showPartitions: Bool = true,
+        showWorkspaceRail: Bool = true,
+        sidebarRowSize: SidebarRowSizePreference = .matchSystem,
+        connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
-        self.automaticallyCheckForUpdates = automaticallyCheckForUpdates
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
         self.showObjectComments = showObjectComments
+        self.showObjectIcons = showObjectIcons
+        self.showSystemContainers = showSystemContainers
+        self.showPartitions = showPartitions
+        self.showWorkspaceRail = showWorkspaceRail
+        self.sidebarRowSize = sidebarRowSize
+        self.connectionHealthCheck = connectionHealthCheck
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         startupBehavior = try container.decode(StartupBehavior.self, forKey: .startupBehavior)
         language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
-        automaticallyCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .automaticallyCheckForUpdates) ?? true
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 60
         shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
         showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
+        showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
+        showSystemContainers = try container.decodeIfPresent(Bool.self, forKey: .showSystemContainers) ?? false
+        showPartitions = try container.decodeIfPresent(Bool.self, forKey: .showPartitions) ?? true
+        showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
+        sidebarRowSize = try container.decodeIfPresent(
+            SidebarRowSizePreference.self, forKey: .sidebarRowSize
+        ) ?? .matchSystem
+        /// Decoded through its raw value rather than as the enum. Settings sync between devices,
+        /// so a newer TablePro can write an interval this build has no case for, and decoding that
+        /// as the enum throws and takes the whole of General down with it.
+        connectionHealthCheck = ConnectionHealthCheck(
+            rawValue: try container.decodeIfPresent(Int.self, forKey: .connectionHealthCheck)
+                ?? ConnectionHealthCheck.every30Seconds.rawValue
+        ) ?? .every30Seconds
     }
 }

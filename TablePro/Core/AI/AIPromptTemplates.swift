@@ -43,7 +43,7 @@ enum AIPromptTemplates {
     }
 
     @MainActor private static func queryInfo(for databaseType: DatabaseType) -> (typeName: String, language: String) {
-        let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)
+        let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         let editorLanguage = snapshot?.editorLanguage ?? .sql
         let lang = editorLanguage.codeBlockTag
         let typeName: String

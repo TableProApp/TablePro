@@ -1,0 +1,156 @@
+---
+title: Compare & Sync
+description: Compare two databases and generate the SQL script that brings one in line with the other
+---
+
+Pick a source and a target, press **Compare**, and every object that differs lists in one window. Include the ones to change, generate the script, and read it before anything runs. Requires a Starter license.
+
+<Frame caption="A structure comparison grouped by difference, with the source and target definitions side by side">
+  <img className="block dark:hidden" src="/images/compare-sync-window.png" alt="Compare and Sync window with a results table on the left and a two-up definition diff on the right" />
+  <img className="hidden dark:block" src="/images/compare-sync-window-dark.png" alt="Compare and Sync window with a results table on the left and a two-up definition diff on the right" />
+</Frame>
+
+## Opening it
+
+- **Database > Compare > Compare & Sync Databases…**
+- Right-click a connection in the connection list and choose **Compare/Sync with…**. The connection clicked becomes the source.
+
+The window comes back on the source, target, mode and options it last held, so running the same comparison again is one press of **Compare**. Opening it from a connection makes that connection the source, and the remembered target comes back only when it was the target of that same source.
+
+Every toolbar control also sits under **Database > Compare**, so the whole flow is reachable from the keyboard.
+
+## Choosing the two sides
+
+**Source** and **Target** are database pickers, not connection pickers: each one walks connection, then database, then schema. Two databases on one server are a valid pair, and so are two schemas in one database.
+
+**Comparisons** in the toolbar lists every saved setup and sets both pickers from the one chosen. It does not need a pair to be chosen first.
+
+The **source** never changes. The **target** is written to. A connection whose safe mode level is **Read-Only** is disabled in the target picker with the reason shown, so the refusal arrives at selection time rather than after comparing. **Swap** reverses the direction.
+
+Nothing is written until **Apply**. Until then the strip along the top reads **Comparing only. Nothing has been written.**
+
+## What takes part
+
+**Options** chooses the object kinds. Tables are always compared; views, materialized views, procedures, functions and triggers are opt-in.
+
+| Kind | Compared as |
+|---|---|
+| Tables | Parsed columns, indexes, foreign keys, storage engine and collation |
+| Views, materialized views | Normalized definition text |
+| Procedures, functions | Normalized definition text, matched on name and argument list |
+| Triggers | Normalized definition text, per table |
+
+Tables are never compared as DDL text. Driver-rendered DDL varies by formatting and by system-generated constraint names, which reports identical tables as different. A routine has no parsed form to compare instead, so its body is the definition, and the normalizer folds line endings, trailing semicolons and, when the options say so, whitespace and identifier case.
+
+A column's type is compared as the server declares it, so `character varying(10)` against `character varying(50)` and `numeric(10,2)` against `numeric(12,4)` are differences, and so are two different enum types. The schema a type was found in is not part of the comparison: two schemas that each carry their own `status` enum compare equal, and a PostGIS column matches whichever schema each side installed the extension into. A type the target does not have at all is still written, and its `ALTER … TYPE` fails there with `type "…" does not exist`.
+
+### What is ignored
+
+These drift between environments by design, so they are ignored by default. Turn one off to have the difference reported.
+
+| Option | What it ignores |
+|---|---|
+| Identifier case | `Orders` against `orders` |
+| Column order | The same columns in a different order |
+| Whitespace in text | Indentation inside default values, comments and routine bodies |
+| Auto-increment seed | The counter's current value |
+| Collation and character set | A table-level or column-level collation difference. A column changed for another reason keeps the target's collation, unless its type changes |
+| Comments, owners, definers | Descriptive metadata with no runtime effect |
+
+With **Collation and character set** off, a PostgreSQL column whose collation differs is retyped to the type it already has, `ALTER COLUMN … TYPE text COLLATE …`. That rebuilds the column's indexes, and PostgreSQL refuses it on a column a view or a generated column reads: drop the view or the generated column first, or leave the option on.
+
+## Reading the results
+
+Each object lands in one of four states: **only in source**, **only in target**, **different**, or **identical**. **Group By** sections the table by difference or by object kind, and the search field filters by name. Identical objects stay hidden until **Show Identical Objects**.
+
+Every row carries an **Include** checkbox, and a group header carries one for everything under it. **Select > All** covers everything the pane is currently showing, so the search field and **Show Identical Objects** narrow what it reaches. Nothing is included until it is checked.
+
+An object whose metadata could not be read keeps its own **Could Not Compare** section with the driver's reason. One unreadable object never stops the rest of the comparison.
+
+The detail pane on the right has three tabs. **Definitions** shows the source and target side by side, split or unified, rendered from the same function so a formatting difference cannot appear as a real one. **Rows** is the data comparison. **Script** is the generated SQL.
+
+## Comparing rows
+
+Switch the mode control to **Data**. The left pane lists the tables present on both sides as soon as there is a pair to list them for, without reading a row.
+
+Tables start unchecked. Tick the ones to compare, then press **Compare**: a data comparison reads every row of every ticked table on both sides, so comparing a whole database by accident is expensive.
+
+Rows are matched by key, read in key order from both sides and walked in lockstep, so neither side is ever held in memory in full.
+
+### Setting a table's scope
+
+Select a table, then set its scope at the top of the **Rows** tab. Each table keeps its own settings.
+
+| Setting | What it does |
+|---|---|
+| **Key columns** | The columns that identify a row. Defaults to the primary key; composite keys work. A key that matches more than one row stops that table's comparison and names the key. |
+| **Compared columns** | The columns checked for differences. A column left out is still written on insert and update. |
+| **Filter** | A SQL condition, such as `status = 'active'`, read on both sides. Clear **Use the same filter for the target** to give the target its own condition. |
+| **Rows** | **All**, or the first N rows in key order. |
+
+A filter is a single condition. A semicolon, a comment, or an unclosed quote or parenthesis is refused before either side is read. Press `Return` or leave the field to apply it.
+
+- A table with no usable key lists as not comparable rather than being matched on a guess.
+- A generated column is read and compared but never written. An identity column the target always generates is inserted with `OVERRIDING SYSTEM VALUE` on PostgreSQL and `IDENTITY_INSERT` on SQL Server, and never updated.
+- NULL equals only NULL. Numeric tolerance applies to numeric columns and timestamp precision to date and time columns, both set in **Options**.
+- A row with NULL in a key column is left out and counted.
+
+### Row limits and filters
+
+A row limit reads the first N rows of each side in key order, and every key both sides were read past is compared. Rows past that point are not read, so none of them is inserted or deleted. The review pane names the last key compared: put it in the **Filter** on both sides, as `id > 5000`, to compare the next stretch.
+
+With a filter, a row that matches on one side and exists outside the filter on the other is listed as **Outside Filter** and never written. Widen the filter to sync it.
+
+### Reviewing rows
+
+Every column shows in a grid. A row only in the source is underlined, a row only in the target is struck through, and a changed row shows its source line above its target line with each differing value marked.
+
+**Show** narrows the grid to **All Rows**, **Difference**, **Insert**, **Update**, **Delete** or **Same**, plus **Outside Filter** when a filter produced any. Clear a row's **Include** checkbox, or select rows and press `Space`, to leave them out of the script. The **Include** menu above the grid includes or excludes every listed row.
+
+The grid lists up to 5,000 differences and 1,000 matching rows. Past either cap the pane says so, and **Apply** still covers every difference.
+
+### One connection, two databases
+
+A data comparison needs both sides open at once. On an engine that pools connections, two databases on one connection is fine. On an engine that cannot pool, both sides share one driver and one database position, so the comparison refuses that pair by name and asks for a second connection for the target.
+
+## The script
+
+**Generate Script** builds the SQL. It is read-only: each statement carries the hazards its operation plan computed, and those cannot be recovered from edited text. **Copy** and **Save…** take it elsewhere, and the query editor runs a hand-edited version through the normal path.
+
+Statements are ordered by foreign key dependency, not alphabetically. Tables are created parent-first and dropped child-first; row inserts run parent-first and row deletes child-first.
+
+A data script is built from a fresh read of both sides. An included table that has not been compared with its current scope holds the script back until it is compared or excluded, and a table whose rows changed since the comparison stops the script with that table named. Compare again, then generate.
+
+A structure script is checked the same way. Both schemas are read again, and an object whose structure moved since the comparison stops the script with that object named rather than writing DDL against a schema that no longer exists.
+
+Script generation needs matching database types, with MySQL and MariaDB counting as one family. A cross-engine pair still compares, read-only: column data types are engine-specific strings, so generating DDL for one engine from another's metadata is not sound.
+
+## Applying
+
+Anything that would destroy data is generated, listed, and held back. Dropping a table, dropping a column, narrowing a type, adding NOT NULL, changing a primary key and deleting a row each need an explicit allowance, and that allowance covers one run and is never saved.
+
+A type narrows when the new one holds less: a shorter length, a length where there was none, fewer decimal places, fewer digits before the point, fewer fractional-second digits, or an enum or set label removed. An integer's display width and the order of enum labels are not a narrowing.
+
+**Apply…** opens a sheet with the script, a summary, and the warnings, building the script first when **Generate Script** has not run. **Cancel** is the default button and **Apply** is marked destructive. Allow a held-back statement in the sheet or in the **Script** pane; the sheet's **Apply** stays disabled while any included statement is still held back.
+
+<Warning>
+  Applying runs the script against the target. Statements that already ran stay applied unless the whole run is inside a transaction that rolls back.
+</Warning>
+
+**On error** chooses between stopping and rolling back, stopping and keeping what ran, and skipping and continuing. A transaction cannot be combined with skip and continue, because together they leave the target half-applied.
+
+Whether a transaction covers the run depends on the engine. MySQL, MariaDB and Oracle commit implicitly on every DDL statement, so a structure sync on those engines runs without one rather than implying a rollback that will not happen. A data sync into a MySQL or MariaDB table on a storage engine that cannot roll back, such as MyISAM, keeps the rows a rolled-back run already wrote, and the result names those tables.
+
+An UPDATE or DELETE that changes more than the one row it was built for counts as a failed statement, and **On error** decides what happens next.
+
+The source, the target, the mode and **Options** stay locked while a run applies. A target whose connection is switched to **Read-Only** after it was picked turns **Apply** off.
+
+Closing the window mid-run asks first, and says that statements which already ran stay applied. After a run, press **Compare** to see where the target stands; the included tables stay checked for the next sync.
+
+## Saving a comparison
+
+**Save Comparison…** names the current setup: the source, the target, the mode, the object kinds, the options, the included objects, and each table's key columns, compared columns, filter and row limit. Rows left out of a script are not saved. It sits in the **Comparisons** menu and under **Database > Compare**.
+
+Loading one sets both pickers. **Comparisons** lists them all whatever pair is on screen; **Options** lists them too, with a **Delete** for each.
+
+A saved comparison whose connection has since been deleted says so instead of loading half a pair.

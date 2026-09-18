@@ -72,4 +72,114 @@ struct AnthropicProviderEncodingTests {
         let encoded = try AnthropicProvider.encodeTurn(turn)
         #expect(encoded == nil)
     }
+
+    private func body(
+        model: String,
+        effort: ReasoningEffort?,
+        maxTokens: Int = 32_768
+    ) throws -> [String: Any] {
+        try AnthropicProvider.makeRequestBody(
+            turns: [ChatTurnWire(role: .user, blocks: [.text("hi")])],
+            options: ChatTransportOptions(model: model),
+            effort: effort,
+            maxTokens: maxTokens,
+            stream: true
+        )
+    }
+
+    @Test("Effort travels in output_config, never inside thinking (#2031)")
+    func effortIsNotNestedInThinking() throws {
+        let encoded = try body(model: "claude-opus-4-7", effort: .medium)
+
+        let thinking = encoded["thinking"] as? [String: Any]
+        #expect(thinking?["type"] as? String == "adaptive")
+        #expect(thinking?["effort"] == nil, "thinking.adaptive has no effort member; the API rejects it")
+
+        let outputConfig = encoded["output_config"] as? [String: Any]
+        #expect(outputConfig?["effort"] as? String == "medium")
+    }
+
+    @Test("Adaptive thinking asks for summarized reasoning so the Reasoning block is not empty")
+    func adaptiveThinkingRequestsSummarizedDisplay() throws {
+        let thinking = try body(model: "claude-opus-5", effort: .high)["thinking"] as? [String: Any]
+        #expect(thinking?["display"] as? String == "summarized")
+    }
+
+    @Test("Adaptive models never carry budget_tokens, which newer models reject")
+    func adaptiveModelsOmitBudgetTokens() throws {
+        for model in ["claude-opus-4-7", "claude-opus-5", "claude-sonnet-5", "claude-sonnet-4-6"] {
+            let thinking = try body(model: model, effort: .high)["thinking"] as? [String: Any]
+            #expect(thinking?["type"] as? String == "adaptive", "\(model) must use adaptive thinking")
+            #expect(thinking?["budget_tokens"] == nil, "\(model) must not send budget_tokens")
+        }
+    }
+
+    @Test("Extra High serializes as xhigh, and clamps to high where the model lacks it")
+    func extraHighEffortWireValue() throws {
+        let modern = try body(model: "claude-opus-5", effort: .xhigh)["output_config"] as? [String: Any]
+        #expect(modern?["effort"] as? String == "xhigh")
+
+        let fourSix = try body(model: "claude-sonnet-4-6", effort: .xhigh)["output_config"] as? [String: Any]
+        #expect(fourSix?["effort"] as? String == "high", "Sonnet 4.6 has no xhigh level")
+    }
+
+    @Test("Pre-4.6 models use a thinking budget and send no output_config")
+    func legacyModelsUseBudgetedThinking() throws {
+        let encoded = try body(model: "claude-haiku-4-5", effort: .medium)
+
+        let thinking = encoded["thinking"] as? [String: Any]
+        #expect(thinking?["type"] as? String == "enabled")
+        #expect(thinking?["budget_tokens"] as? Int == 8_192)
+        #expect(encoded["output_config"] == nil, "effort is rejected on Haiku 4.5")
+    }
+
+    @Test("A budget that cannot clear the API minimum drops thinking instead of sending an invalid one")
+    func tinyMaxTokensDropsThinking() throws {
+        let encoded = try body(model: "claude-haiku-4-5", effort: .medium, maxTokens: 1)
+        #expect(encoded["thinking"] == nil)
+        #expect(encoded["max_tokens"] as? Int == 1)
+    }
+
+    @Test("Minimal effort asks for the smallest budget, not the largest")
+    func minimalEffortDoesNotConsumeTheWholeCeiling() throws {
+        let minimal = try #require(
+            (try body(model: "claude-haiku-4-5", effort: .minimal, maxTokens: 4_096)["thinking"]
+                as? [String: Any])?["budget_tokens"] as? Int
+        )
+        let low = try #require(
+            (try body(model: "claude-haiku-4-5", effort: .low, maxTokens: 4_096)["thinking"]
+                as? [String: Any])?["budget_tokens"] as? Int
+        )
+        #expect(minimal <= low, "Minimal must not request more thinking than Low")
+        #expect(minimal < 4_096 / 2, "Minimal must leave room for the answer")
+    }
+
+    @Test("The budget always stays under max_tokens")
+    func budgetStaysBelowMaxTokens() throws {
+        let encoded = try body(model: "claude-haiku-4-5", effort: .xhigh, maxTokens: 2_000)
+        let budget = try #require((encoded["thinking"] as? [String: Any])?["budget_tokens"] as? Int)
+        #expect(budget < 2_000)
+        #expect(budget >= AnthropicModelCapabilities.minimumThinkingBudgetTokens)
+    }
+
+    @Test("No reasoning parameters are sent when no effort is configured")
+    func noEffortMeansNoReasoningKeys() throws {
+        let encoded = try body(model: "claude-opus-4-7", effort: nil)
+        #expect(encoded["thinking"] == nil)
+        #expect(encoded["output_config"] == nil)
+    }
+
+    @Test("An unrecognised future model gets adaptive thinking with its effort")
+    func unknownModelUsesAdaptive() throws {
+        let encoded = try body(model: "claude-opus-9", effort: .high)
+        #expect((encoded["thinking"] as? [String: Any])?["type"] as? String == "adaptive")
+        #expect((encoded["output_config"] as? [String: Any])?["effort"] as? String == "high")
+    }
+
+    @Test("Request body is serializable as JSON")
+    func bodySerializes() throws {
+        let encoded = try body(model: "claude-opus-4-7", effort: .medium)
+        #expect(JSONSerialization.isValidJSONObject(encoded))
+        _ = try JSONSerialization.data(withJSONObject: encoded)
+    }
 }

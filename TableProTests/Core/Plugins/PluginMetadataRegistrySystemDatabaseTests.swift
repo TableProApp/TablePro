@@ -17,7 +17,7 @@ import Testing
 @Suite("PluginMetadataRegistry system databases")
 struct PluginMetadataRegistrySystemDatabaseTests {
     private func systemDatabaseNames(forTypeId typeId: String) -> [String]? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?.schema.systemDatabaseNames
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)?.schema.systemDatabaseNames
     }
 
     @Test("PostgreSQL default matches the plugin")
@@ -47,6 +47,9 @@ struct PluginMetadataRegistrySystemDatabaseTests {
             ("PGlite", "postgres"),
             ("Redshift", "dev"),
             ("CockroachDB", "defaultdb"),
+            ("TiDB", "test"),
+            ("Databend", "default"),
+            ("OceanBase", "test"),
         ]
         for (typeId, database) in defaults {
             guard let names = systemDatabaseNames(forTypeId: typeId) else {

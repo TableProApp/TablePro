@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -22,15 +23,16 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let isDownloadable = true
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE"),
-        ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST"),
-        ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX"),
-        ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE"),
+        ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
+        ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText),
+        ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST", format: .indentedText),
+        ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX", format: .indentedText),
+        ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE", format: .indentedText),
     ]
     static let brandColorHex = "#FFD100"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
     static let systemDatabaseNames: [String] = ["information_schema", "INFORMATION_SCHEMA", "system"]
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": [
@@ -54,6 +56,8 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
     static let supportsQueryProgress = true
     static let supportsDropDatabase = true
+    static let supportsRenameTable = true
+    static let supportsRenameDatabase = true
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "`",
@@ -73,17 +77,17 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
             "MATERIALIZED", "WITH"
         ],
         functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN",
-            "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-            "TRIM", "LTRIM", "RTRIM", "REPLACE",
-            "NOW", "TODAY", "YESTERDAY",
+            "count", "sum", "avg", "max", "min",
+            "concat", "substring", "left", "right", "length", "lower", "upper",
+            "trim", "ltrim", "rtrim", "replace",
+            "now", "today", "yesterday",
             "CAST",
-            "UNIQ", "UNIQEXACT", "ARGMIN", "ARGMAX", "GROUPARRAY",
-            "TOSTRING", "TOINT32", "FORMATDATETIME",
-            "IF", "MULTIIF",
-            "ARRAYMAP", "ARRAYJOIN",
-            "MATCH", "CURRENTDATABASE", "VERSION",
-            "QUANTILE", "TOPK"
+            "uniq", "uniqExact", "argMin", "argMax", "groupArray",
+            "toString", "toInt32", "formatDateTime",
+            "if", "multiIf",
+            "arrayMap", "arrayJoin",
+            "match", "currentDatabase", "version",
+            "quantile", "topK"
         ],
         dataTypes: [
             "INT8", "INT16", "INT32", "INT64", "INT128", "INT256",
@@ -105,7 +109,11 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .caseFoldFunction,
+        caseFoldFunction: "lowerUTF8",
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: false
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -132,6 +140,10 @@ struct CHQueryResult {
     let rows: [[PluginCellValue]]
     let affectedRows: Int
     let isTruncated: Bool
+
+    /// Execution time as the server reported it in `X-ClickHouse-Summary`, so the figure carries no
+    /// network round trip. Nil on a server too old to send it.
+    var serverElapsed: TimeInterval?
 }
 
 // MARK: - Plugin Driver
@@ -149,6 +161,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
+    /// The columns the last schema read found under a kind other than DEFAULT, by name. It is the
+    /// driver's own record of what the server told it, because the kind has nowhere to ride on a
+    /// column definition and `generateModifyColumnSQL` is synchronous, so it cannot ask again.
+    var nonDefaultColumnKinds: Set<String> = []
+
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
@@ -159,6 +176,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .alterTableDDL,
             .cancelQuery,
             .materializedViews,
+            .dataCompare,
         ]
     }
 
@@ -168,6 +186,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func escapeStringLiteral(_ value: String) -> String {
+        Self.escapeStringLiteral(value)
+    }
+
+    /// The backslash goes first, or every escape written after it is escaped again.
+    static func escapeStringLiteral(_ value: String) -> String {
         var result = value
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
         result = result.replacingOccurrences(of: "'", with: "''")
@@ -193,25 +216,29 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await connect(reportingStage: { _ in })
+    }
+
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let urlConfig = URLSessionConfiguration.default
         urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
-        lock.lock()
-        if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
-            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
-        } else {
-            session = URLSession(configuration: urlConfig)
+        lock.withLock {
+            if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
+                session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
+            } else {
+                session = URLSession(configuration: urlConfig)
+            }
         }
-        lock.unlock()
 
         do {
             _ = try await executeRaw("SELECT 1")
         } catch {
-            lock.lock()
-            session?.invalidateAndCancel()
-            session = nil
-            lock.unlock()
+            lock.withLock {
+                session?.invalidateAndCancel()
+                session = nil
+            }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             if let sslError = ClickHouseSSLClassifier.classifySSLError(error) {
                 throw sslError
@@ -219,6 +246,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw ClickHouseError.connectionFailed
         }
 
+        report(.preparingSession)
         if let result = try? await executeRaw("SELECT version()"),
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = versionStr
@@ -253,7 +281,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
             rowsAffected: result.affectedRows,
-            executionTime: executionTime,
+            timing: PluginQueryTiming(total: executionTime, server: result.serverElapsed),
             isTruncated: result.isTruncated
         )
     }
@@ -265,8 +293,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let startTime = Date()
         let queryId = UUID().uuidString
-        let (convertedQuery, paramMap) = Self.buildClickHouseParams(query: query, parameters: parameters)
-        let result = try await executeRawWithParams(convertedQuery, params: paramMap, queryId: queryId)
+        let bound = ClickHouseParameterBinding.bind(query: query, parameters: parameters)
+        let result = try await executeRawWithParams(bound.query, params: bound.params, queryId: queryId)
         let executionTime = Date().timeIntervalSince(startTime)
 
         return PluginQueryResult(
@@ -274,7 +302,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
             rowsAffected: result.affectedRows,
-            executionTime: executionTime,
+            timing: PluginQueryTiming(total: executionTime, server: result.serverElapsed),
             isTruncated: result.isTruncated
         )
     }
@@ -425,9 +453,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
-        lock.lock()
-        _currentDatabase = database
-        lock.unlock()
+        lock.withLock { _currentDatabase = database }
     }
 
     // MARK: - EXPLAIN
@@ -476,6 +502,104 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    /// A bounded read is one HTTP request, and so is the unbounded `streamRows` path: the format
+    /// both ask for names its columns, so neither pays a `LIMIT 0` probe to learn them. That probe
+    /// appended to the statement, which a query already carrying a `LIMIT` rejects outright.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        let started = Date()
+        let stream = PluginRowStream.make { continuation, abort in
+            let streamTask = Task {
+                do {
+                    try await self.performBoundedStreamRows(
+                        query: query,
+                        rowCap: rowCap,
+                        continuation: continuation
+                    )
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            abort.onAbort { streamTask.cancel() }
+        }
+        return try await PluginBoundedStream.collect(stream, rowCap: rowCap, startedAt: started)
+    }
+
+    private func performBoundedStreamRows(
+        query: String,
+        rowCap: Int,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            return (session, _currentDatabase)
+        }
+
+        let request = try buildStreamRequest(
+            query: Self.withoutTrailingSemicolons(query),
+            database: database,
+            rowCap: rowCap
+        )
+        try await streamTabSeparatedRows(
+            request: request,
+            session: session,
+            batchSize: min(5_000, rowCap + 1),
+            continuation: continuation
+        )
+    }
+
+    /// `TabSeparatedWithNamesAndTypes` carries the names on line one and the types on line two, so
+    /// the columns arrive with the rows and survive a result holding none. It is the format the
+    /// non-streaming read asks for too, which is what keeps an exported value and the same value in
+    /// the grid the same text, and unlike a JSON string it can carry a byte no encoding covers.
+    private func streamTabSeparatedRows(
+        request: URLRequest,
+        session: URLSession,
+        batchSize: Int,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        var decoder = ClickHouseTabSeparatedRowDecoder()
+        var headerSent = false
+        var batch: [PluginRow] = []
+        batch.reserveCapacity(batchSize)
+
+        func sendHeader(_ header: ClickHouseTabSeparatedRowDecoder.Header) {
+            guard !headerSent else { return }
+            headerSent = true
+            continuation.yield(.header(PluginStreamHeader(
+                columns: header.columns,
+                columnTypeNames: header.columnTypeNames,
+                estimatedRowCount: nil
+            )))
+        }
+
+        try await ClickHouseHTTPChunks(session: session, request: request).forEachChunk { chunk in
+            try Task.checkCancellation()
+            let rows = decoder.consume(chunk)
+            if let header = decoder.header {
+                sendHeader(header)
+            }
+            batch.append(contentsOf: rows)
+            guard batch.count >= batchSize else { return }
+            continuation.yield(.rows(batch))
+            batch.removeAll(keepingCapacity: true)
+        }
+
+        batch.append(contentsOf: decoder.finish())
+        sendHeader(decoder.header ?? ClickHouseTabSeparatedRowDecoder.Header(columns: [], columnTypeNames: []))
+        if !batch.isEmpty {
+            continuation.yield(.rows(batch))
+        }
+        continuation.finish()
+    }
+
+    private static func withoutTrailingSemicolons(_ query: String) -> String {
+        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix(";") {
+            trimmed = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
@@ -495,99 +619,21 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        lock.lock()
-        guard let session = self.session else {
-            lock.unlock()
-            throw ClickHouseError.notConnected
-        }
-        let database = _currentDatabase
-        lock.unlock()
-
-        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmedQuery.hasSuffix(";") {
-            trimmedQuery = String(trimmedQuery.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            return (session, _currentDatabase)
         }
 
-        let headerResult = try await executeRaw("\(trimmedQuery) LIMIT 0")
-        continuation.yield(.header(PluginStreamHeader(
-            columns: headerResult.columns,
-            columnTypeNames: headerResult.columnTypeNames,
-            estimatedRowCount: nil
-        )))
-
-        let columnOrder = headerResult.columns
-
-        guard !columnOrder.isEmpty else {
-            continuation.finish()
-            return
-        }
-
-        let streamRequest = try buildStreamRequest(
-            query: trimmedQuery, database: database
+        let request = try buildStreamRequest(query: Self.withoutTrailingSemicolons(query), database: database)
+        try await streamTabSeparatedRows(
+            request: request,
+            session: session,
+            batchSize: 5_000,
+            continuation: continuation
         )
-
-        let (bytes, response) = try await session.bytes(for: streamRequest)
-
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            var body = ""
-            for try await line in bytes.lines {
-                body += line
-            }
-            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
-
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedLine.isEmpty { continue }
-
-            guard let lineData = trimmedLine.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
-                continue
-            }
-
-            var row: [PluginCellValue] = []
-            for colName in columnOrder {
-                if let value = json[colName] {
-                    if value is NSNull {
-                        row.append(.null)
-                    } else if let str = value as? String {
-                        row.append(.text(str))
-                    } else if let num = value as? NSNumber {
-                        row.append(.text(num.stringValue))
-                    } else {
-                        if let jsonData = try? JSONSerialization.data(withJSONObject: value),
-                           let jsonStr = String(data: jsonData, encoding: .utf8) {
-                            row.append(.text(jsonStr))
-                        } else {
-                            row.append(.text(String(describing: value)))
-                        }
-                    }
-                } else {
-                    row.append(.null)
-                }
-            }
-
-            batch.append(row)
-            if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
-                batch.removeAll(keepingCapacity: true)
-            }
-        }
-
-        if !batch.isEmpty {
-            continuation.yield(.rows(batch))
-        }
-
-        continuation.finish()
     }
 
-    private func buildStreamRequest(query: String, database: String) throws -> URLRequest {
+    private func buildStreamRequest(query: String, database: String, rowCap: Int? = nil) throws -> URLRequest {
         let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
@@ -600,7 +646,17 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !database.isEmpty {
             queryItems.append(URLQueryItem(name: "database", value: database))
         }
-        queryItems.append(URLQueryItem(name: "default_format", value: "JSONEachRow"))
+        queryItems.append(URLQueryItem(
+            name: "default_format",
+            value: ClickHouseResponseClassifier.requestedFormat
+        ))
+        if let rowCap {
+            /// The bound rides as an HTTP setting so the SQL in the body stays exactly what the
+            /// user wrote. One row past the cap, so a full page can be told from a truncated one.
+            queryItems.append(URLQueryItem(name: "max_result_rows", value: String(rowCap + 1)))
+            queryItems.append(URLQueryItem(name: "result_overflow_mode", value: "break"))
+            queryItems.append(URLQueryItem(name: "cancel_http_readonly_queries_on_client_close", value: "1"))
+        }
         components.queryItems = queryItems
 
         guard let url = components.url else {
@@ -658,21 +714,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var def = "\(quoteIdentifier(col.name)) \(dataType)"
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(clickhouseDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if let comment = col.comment, !comment.isEmpty {
             def += " COMMENT '\(escapeStringLiteral(comment))'"
         }
         return def
-    }
-
-    private func clickhouseDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "NOW()" || upper == "TODAY()"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     // MARK: - ALTER TABLE DDL
@@ -681,7 +728,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(clickhouseColumnDefinition(column))"
     }
 
+    /// A column whose kind is MATERIALIZED, EPHEMERAL or ALIAS has no default, so a statement that
+    /// gives it one converts it and its stored values stop being computed. The kind reaches the app
+    /// as `extra` and does not survive the round trip back into a column definition, so the driver
+    /// answers from what it read from `system.columns` itself.
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        if newColumn.defaultValue != nil, nonDefaultColumnKinds.contains(newColumn.name) {
+            Self.logger.warning("Refusing to set a default on a non-DEFAULT ClickHouse column kind")
+            return nil
+        }
         let tableName = quoteIdentifier(table)
         var stmts: [String] = []
         if oldColumn.name != newColumn.name {
@@ -691,6 +746,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             || oldColumn.defaultValue != newColumn.defaultValue || oldColumn.comment != newColumn.comment {
             stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(clickhouseColumnDefinition(newColumn))")
         }
+        // MODIFY COLUMN changes only the properties it spells out, so omitting the clause leaves the
+        // old default in place and the save reports a removal that never happened.
+        if oldColumn.defaultValue != nil, newColumn.defaultValue == nil {
+            let column = quoteIdentifier(newColumn.name)
+            stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(column) REMOVE DEFAULT")
+        }
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
     }
 
@@ -698,10 +759,62 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// `ALTER TABLE … MODIFY COLUMN name type FIRST | AFTER other`.
+    ///
+    /// Measured against 26.8: the type is mandatory (`MODIFY COLUMN c AFTER b` is a syntax error),
+    /// and naming it alone is enough. `MODIFY COLUMN` changes only the properties the statement
+    /// spells out, so the default, comment, codec, TTL and the MATERIALIZED, ALIAS and EPHEMERAL
+    /// kinds all survive a move, and the statement rewrites metadata without starting a mutation.
+    /// Restating the full definition instead would rewrite a MATERIALIZED column as a DEFAULT one
+    /// and requote every expression default.
+    ///
+    /// The type comes from the server rather than from the caller's definition, because it has to
+    /// be the stored type down to the `Nullable(…)` wrapper and a round trip is cheaper than a
+    /// column that comes back with a different type than it went in with.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        let storedTypes = try await fetchStoredColumnTypes(table: table)
+        let currentOrder = storedTypes.map(\.name)
+        let statements = PluginColumnReorderPlanner
+            .moves(from: currentOrder, to: desiredOrder)
+            .compactMap { move -> String? in
+                guard let type = storedTypes.first(where: { $0.name == move.column })?.type else { return nil }
+                let position = move.afterColumn.map { "AFTER \(quoteIdentifier($0))" } ?? "FIRST"
+                return "ALTER TABLE \(quoteIdentifier(table)) "
+                    + "MODIFY COLUMN \(quoteIdentifier(move.column)) \(type) \(position)"
+            }
+        guard !statements.isEmpty else { return nil }
+        return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
+    }
+
+    private func fetchStoredColumnTypes(table: String) async throws -> [(name: String, type: String)] {
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let result = try await execute(query: """
+            SELECT name, type
+            FROM system.columns
+            WHERE database = currentDatabase() AND table = '\(escapedTable)'
+            ORDER BY position
+            """)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText, let type = row[safe: 1]?.asText else { return nil }
+            return (name, type)
+        }
+    }
+
+    /// Nil for every index. A data skipping index is an expression, a type with its arguments and a
+    /// granularity, and an index row carries none of them: it holds a column list and says `BTREE`
+    /// when new or `DATA_SKIPPING` when read. A changed index is a drop and an add, and the app builds
+    /// every statement before it runs one, so declining here keeps the index the table has rather than
+    /// dropping it ahead of an add that could not say what the index was.
+    ///
+    /// Not a `schemaOperationRefusal`: that also answers for the indexes of a copied `CREATE TABLE`,
+    /// which this driver leaves out of the statement, and refusing those would refuse the whole copy.
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let indexType = index.indexType ?? "minmax"
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD INDEX \(quoteIdentifier(index.name)) (\(cols)) TYPE \(indexType) GRANULARITY 1"
+        nil
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -715,6 +828,7 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
     private enum Strategy {
         case skipVerify
         case verifyChain(anchor: SecCertificate?)
+        case anchorUnavailable
     }
 
     private let strategy: Strategy
@@ -732,15 +846,24 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         case .preferred, .required:
             return ClickHouseTLSDelegate(strategy: .skipVerify)
         case .verifyCa:
-            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: loadAnchor(at: ssl.caCertificatePath)))
+            guard !ssl.caCertificatePath.isEmpty else {
+                return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: nil))
+            }
+            guard let anchor = loadAnchor(at: ssl.caCertificatePath) else {
+                return ClickHouseTLSDelegate(strategy: .anchorUnavailable)
+            }
+            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor))
         }
     }
 
+    /// A verification mode whose anchor cannot be read must fail, never quietly widen to the
+    /// system roots. `SecCertificateCreateWithData` takes DER only, so PEM is decoded first.
     private static func loadAnchor(at path: String) -> SecCertificate? {
         guard !path.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             return nil
         }
-        return SecCertificateCreateWithData(nil, data as CFData)
+        guard let der = PEMCertificateDecoder.certificateDER(from: data) else { return nil }
+        return SecCertificateCreateWithData(nil, der as CFData)
     }
 
     func urlSession(
@@ -757,6 +880,8 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         switch strategy {
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        case .anchorUnavailable:
+            completionHandler(.cancelAuthenticationChallenge, nil)
         case .verifyChain(let anchor):
             if let anchor {
                 SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)

@@ -76,6 +76,8 @@ struct AppSettingsManagerMigrationTests {
             includeCurrentQuery: false,
             includeQueryResults: true,
             maxSchemaTables: 50,
+            maxToolRoundtrips: 40,
+            maxToolRoundtripsEnabled: false,
             defaultConnectionPolicy: .never
         )
         let migrated = AppSettingsManager.migrateAI(input)
@@ -85,6 +87,8 @@ struct AppSettingsManagerMigrationTests {
         #expect(migrated.includeCurrentQuery == false)
         #expect(migrated.includeQueryResults == true)
         #expect(migrated.maxSchemaTables == 50)
+        #expect(migrated.maxToolRoundtrips == 40)
+        #expect(migrated.maxToolRoundtripsEnabled == false)
         #expect(migrated.defaultConnectionPolicy == .never)
     }
 }

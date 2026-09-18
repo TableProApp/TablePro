@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 
@@ -56,13 +57,16 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         "SELECT * FROM \(quoteIdentifier(table))"
     }
 
+    /// DynamoDB has no truncate. Emptying a table means scanning it and deleting every item in
+    /// batches, which is a long billed job rather than a statement, and DeleteTable plus
+    /// CreateTable loses the table's settings. Neither is what Truncate promises, so it stays
+    /// unoffered rather than offered as something else.
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        // DynamoDB does not support TRUNCATE; scan and delete all items
         nil
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        nil
+        DynamoDBOperations.dropTable(named: name, objectType: objectType)
     }
 
     init(config: DriverConnectionConfig) {
@@ -121,6 +125,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
         if DynamoDBQueryBuilder.isTaggedQuery(trimmed) {
             return try await executeTaggedQuery(trimmed, conn: conn, startTime: startTime)
+        }
+
+        if let table = DynamoDBOperations.droppedTableName(in: trimmed) {
+            return try await executeDropTable(table, conn: conn, startTime: startTime)
         }
 
         return try await executePartiQL(trimmed, conn: conn, startTime: startTime)
@@ -453,12 +461,14 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let (keySchema, attrTypes) = lock.withLock {
             let desc = _tableDescriptionCache[table]
@@ -512,6 +522,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     // MARK: - Streaming
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
@@ -772,6 +786,25 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     // MARK: - Tagged Query Execution
+
+    /// Issues DeleteTable for the driver's own `DROP TABLE "x"` statement.
+    ///
+    /// The cached description goes with it, or a table recreated under the same name would be read
+    /// through the old key schema. DeleteTable returns once the table is DELETING rather than gone,
+    /// so the row count is reported as the one table the request named, not as work completed.
+    private func executeDropTable(
+        _ table: String, conn: DynamoDBConnection, startTime: Date
+    ) async throws -> PluginQueryResult {
+        _ = try await conn.deleteTable(tableName: table)
+        lock.withLock { _tableDescriptionCache.removeValue(forKey: table) }
+        return PluginQueryResult(
+            columns: ["result"],
+            columnTypeNames: ["String"],
+            rows: [[.text("DELETING")]],
+            rowsAffected: 1,
+            executionTime: Date().timeIntervalSince(startTime)
+        )
+    }
 
     private func executeTaggedQuery(
         _ query: String, conn: DynamoDBConnection, startTime: Date
@@ -1137,17 +1170,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         return total
     }
 
-    private func applyClientFilter(
-        items: [[String: DynamoDBAttributeValue]],
-        column: String,
-        op: String,
-        value: String
-    ) -> [[String: DynamoDBAttributeValue]] {
-        items.filter { item in
-            matchesItemFilter(item, column: column, op: op, value: value)
-        }
-    }
-
     private func applyClientFilters(
         items: [[String: DynamoDBAttributeValue]],
         filters: [DynamoDBFilterSpec],
@@ -1156,49 +1178,44 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard !filters.isEmpty else { return items }
         return items.filter { item in
             if logicMode.uppercased() == "OR" {
-                return filters.contains { filter in
-                    matchesItemFilter(item, column: filter.column, op: filter.op, value: filter.value)
-                }
+                return filters.contains { matchesItemFilter(item, filter: $0) }
             }
-            return filters.allSatisfy { filter in
-                matchesItemFilter(item, column: filter.column, op: filter.op, value: filter.value)
-            }
+            return filters.allSatisfy { matchesItemFilter(item, filter: $0) }
         }
     }
 
     private func matchesItemFilter(
         _ item: [String: DynamoDBAttributeValue],
-        column: String,
-        op: String,
-        value: String
+        filter: DynamoDBFilterSpec
     ) -> Bool {
-        if column == "*" {
-            for (_, attrValue) in item {
-                let str = DynamoDBItemFlattener.attributeValueToString(attrValue)
-                if matchesFilter(str, op: op, value: value) {
-                    return true
-                }
+        if filter.column == "*" {
+            return item.values.contains { attrValue in
+                matchesFilter(
+                    DynamoDBItemFlattener.attributeValueToString(attrValue),
+                    op: filter.op, value: filter.value, ignoresCase: filter.ignoresCase
+                )
             }
-            return false
         }
 
-        guard let attrValue = item[column] else { return false }
+        guard let attrValue = item[filter.column] else { return false }
         let str = DynamoDBItemFlattener.attributeValueToString(attrValue)
-        return matchesFilter(str, op: op, value: value)
+        return matchesFilter(str, op: filter.op, value: filter.value, ignoresCase: filter.ignoresCase)
     }
 
-    private func matchesFilter(_ str: String, op: String, value: String) -> Bool {
+    private func matchesFilter(_ str: String, op: String, value: String, ignoresCase: Bool) -> Bool {
+        let subject = ignoresCase ? str.lowercased() : str
+        let needle = ignoresCase ? value.lowercased() : value
         switch op.uppercased() {
         case "=":
-            return str == value
+            return subject == needle
         case "!=", "<>":
-            return str != value
+            return subject != needle
         case "CONTAINS":
-            return str.localizedCaseInsensitiveContains(value)
+            return subject.contains(needle)
         case "STARTS WITH":
-            return str.lowercased().hasPrefix(value.lowercased())
+            return subject.hasPrefix(needle)
         case "ENDS WITH":
-            return str.lowercased().hasSuffix(value.lowercased())
+            return subject.hasSuffix(needle)
         case ">":
             if let d1 = Double(str), let d2 = Double(value) { return d1 > d2 }
             return str > value

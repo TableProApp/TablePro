@@ -1,0 +1,73 @@
+//
+//  StructureInspectorRowBuilder.swift
+//  TablePro
+//
+//  Builds the inspector payload for a structure grid row. Field names, values,
+//  and editors all come from the same provider the grid renders, so the panel
+//  and the grid can never disagree about what a row holds.
+//
+
+import Foundation
+
+@MainActor
+internal enum StructureInspectorRowBuilder {
+    static func row(
+        atDisplayRow displayRow: Int,
+        tab: StructureTab,
+        provider: StructureRowProvider,
+        canEditSchema: Bool,
+        rowOptions: (Int) -> [GridMenuOption]? = { _ in nil }
+    ) -> InspectorRow? {
+        switch tab {
+        case .columns, .indexes, .foreignKeys, .checkConstraints:
+            break
+        case .ddl, .parts, .triggers:
+            return nil
+        }
+
+        guard let values = provider.row(at: displayRow) else { return nil }
+
+        let names = provider.columns
+        let dropdownOptions = provider.customDropdownOptions
+        let typePickerColumns = provider.typePickerColumns
+        let modified = provider.modifiedFieldIndices(atDisplay: displayRow)
+
+        let fields = names.indices.map { index -> InspectorRowField in
+            InspectorRowField(
+                name: names[index],
+                value: index < values.count ? values[index] : nil,
+                editor: editor(
+                    at: index,
+                    options: rowOptions(index) ?? dropdownOptions[index],
+                    typePickerColumns: typePickerColumns
+                ),
+                isModified: modified.contains(index)
+            )
+        }
+
+        return InspectorRow(
+            fields: fields,
+            isEditable: canEditSchema && !provider.isPendingDelete(atDisplay: displayRow)
+        )
+    }
+
+    /// An option list that carries a `Custom…` entry is an open vocabulary, so the field keeps its
+    /// text editor and puts the list beside it. A closed list becomes the picker it already was;
+    /// giving the Default field one would take away the only way to type an expression.
+    private static func editor(
+        at index: Int,
+        options: [GridMenuOption]?,
+        typePickerColumns: Set<Int>
+    ) -> FieldEditorKind {
+        if let options, !options.isEmpty {
+            if options.contains(where: { if case .custom = $0 { return true } else { return false } }) {
+                return .valuePicker(options: options)
+            }
+            return .enumPicker(values: options.compactMap(\.sql))
+        }
+        if typePickerColumns.contains(index) {
+            return .typePicker
+        }
+        return .schemaText
+    }
+}

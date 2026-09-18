@@ -8,9 +8,10 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct InstalledPluginsView: View {
-    private let pluginManager = PluginManager.shared
-    private let registryClient = RegistryClient.shared
-    private let installTracker = PluginInstallTracker.shared
+    @ObservedObject private var pluginManager = PluginManager.shared
+    @ObservedObject private var registryClient = RegistryClient.shared
+    @ObservedObject private var installTracker = PluginInstallTracker.shared
+    @ObservedObject private var navigation = PluginsSettingsNavigation.shared
 
     @State private var selectedPluginId: String?
     @State private var searchText = ""
@@ -55,7 +56,7 @@ struct InstalledPluginsView: View {
                       let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                 let ext = url.pathExtension.lowercased()
                 guard ext == "zip" || ext == "tableplugin" else { return }
-                Task {
+                Task { @MainActor in
                     installPlugin(from: url)
                 }
             }
@@ -186,7 +187,7 @@ struct InstalledPluginsView: View {
             .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
         case .requiresAppUpdate:
             Button(String(localized: "Update TablePro")) {
-                UpdaterBridge.shared.checkForUpdates()
+                SoftwareUpdater.shared.checkForUpdates()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -242,22 +243,33 @@ struct InstalledPluginsView: View {
 
     private var pluginList: some View {
         VStack(spacing: 0) {
-            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter..."))
+            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter…"))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            List(selection: $selectedPluginId) {
-                ForEach(filteredPlugins) { plugin in
-                    pluginRow(plugin)
-                        .tag(plugin.id)
+            ScrollViewReader { proxy in
+                List(selection: $selectedPluginId) {
+                    ForEach(filteredPlugins) { plugin in
+                        pluginRow(plugin)
+                            .tag(plugin.id)
+                            .id(plugin.id)
+                    }
+                }
+                .listStyle(.inset)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    listBottomBar
+                }
+                .onAppear { revealRequestedPlugin() }
+                .onChange(of: navigation.pendingRequest) { _ in
+                    revealRequestedPlugin()
+                }
+                .onChange(of: selectedPluginId) { pluginId in
+                    guard let pluginId else { return }
+                    proxy.scrollTo(pluginId)
                 }
             }
-            .listStyle(.inset)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                listBottomBar
-            }
         }
-        .onChange(of: searchText) {
+        .onChange(of: searchText) { _ in
             if let selectedPluginId, !filteredPlugins.contains(where: { $0.id == selectedPluginId }) {
                 self.selectedPluginId = nil
             }
@@ -446,15 +458,10 @@ struct InstalledPluginsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            VStack(spacing: 8) {
-                Image(systemName: "puzzlepiece.extension")
-                    .font(.title)
-                    .foregroundStyle(.tertiary)
-                Text("Select a Plugin")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+            Form {
+                TrustedDevelopersView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .formStyle(.grouped)
         }
     }
 
@@ -476,7 +483,7 @@ struct InstalledPluginsView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Updating...")
+                    Text("Updating…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -552,6 +559,17 @@ struct InstalledPluginsView: View {
     }
 
     // MARK: - Actions
+
+    private func revealRequestedPlugin() {
+        guard let request = navigation.consumePendingRequest() else { return }
+        guard let pluginId = request.pluginId,
+              pluginManager.plugins.contains(where: { $0.id == pluginId }) else {
+            dismissedRejectedBanner = false
+            return
+        }
+        searchText = ""
+        selectedPluginId = pluginId
+    }
 
     private func installFromFile() {
         let panel = NSOpenPanel()

@@ -1,9 +1,10 @@
 import CDuckDB
+import Dispatch
 import Foundation
 import TableProDatabase
 import TableProModels
 
-final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     static let inMemoryPath = ":memory:"
 
     let actor = DuckDBActor()
@@ -17,6 +18,7 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: duckdb_library_version()) }
+    var holdsSuspensionBlockingResource: Bool { dbPath != Self.inMemoryPath }
 
     var currentSchema: String? {
         stateLock.lock()
@@ -36,7 +38,7 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         try await actor.open(path: resolvedPath)
         try? await actor.query("SET autoinstall_known_extensions=false")
         try? await actor.query("SET autoload_known_extensions=false")
-        setInterruptHandle(await actor.connectionHandle)
+        setInterruptHandle(await actor.connectionHandle.connection)
     }
 
     func disconnect() async throws {
@@ -103,9 +105,7 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func cancelCurrentQuery() async throws {
-        stateLock.lock()
-        let handle = interruptHandle
-        stateLock.unlock()
+        let handle = stateLock.withLock { interruptHandle }
         guard let handle else { return }
         duckdb_interrupt(handle)
     }
@@ -162,8 +162,17 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
 
 // MARK: - DuckDB Actor (thread-safe C API access)
 
+/// Hands the open connection pointer out of the actor so a cancel can interrupt the running query.
+nonisolated struct DuckDBInterruptHandle: @unchecked Sendable {
+    let connection: duckdb_connection?
+}
+
 actor DuckDBActor {
     static let maxRows = 100_000
+
+    private let queue = DispatchSerialQueue(label: "com.TablePro.duckdb")
+
+    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
     private var database: duckdb_database?
     var connection: duckdb_connection?
@@ -171,7 +180,7 @@ actor DuckDBActor {
     var streamResult: duckdb_result?
     var streamColumns: [DuckDBStreamColumn] = []
 
-    var connectionHandle: duckdb_connection? { connection }
+    var connectionHandle: DuckDBInterruptHandle { DuckDBInterruptHandle(connection: connection) }
 
     func interrupt() {
         guard let connection else { return }
@@ -401,7 +410,7 @@ actor DuckDBActor {
     }
 }
 
-struct DuckDBRawResult: @unchecked Sendable {
+nonisolated struct DuckDBRawResult: @unchecked Sendable {
     let columnNames: [String]
     let columnTypeNames: [String]
     let rows: [[String?]]
@@ -412,7 +421,7 @@ struct DuckDBRawResult: @unchecked Sendable {
 
 // MARK: - Errors
 
-enum DuckDBDriverError: Error, LocalizedError {
+nonisolated enum DuckDBDriverError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

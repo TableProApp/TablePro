@@ -291,6 +291,83 @@ struct HexEditorTests {
         #expect(hex!.hasSuffix("…"))
         #expect(BlobFormattingService.shared.parseHex(hex!) == nil)
     }
+
+    // MARK: - Truncation guard
+
+    /// What the guard exists to stop. Dropping the ellipsis the formatter appended leaves a string
+    /// that parses cleanly, so nothing downstream can tell it from a value the user actually typed:
+    /// it is a prefix, and committing it writes that prefix over the whole column.
+    @Test("A truncated edit string parses back to a prefix, not to the value")
+    func droppingTheEllipsisYieldsAPrefixThatStillParses() throws {
+        let original = String(repeating: "X", count: 50_000)
+        let truncated = try #require(original.formattedAsEditableHex())
+        #expect(truncated.hasSuffix("…"))
+
+        let withoutMarker = truncated.replacingOccurrences(of: " …", with: "")
+        let parsed = try #require(BlobFormattingService.shared.parseHex(withoutMarker))
+
+        #expect(parsed.count == 10_240)
+        #expect(parsed != original)
+        #expect(original.hasPrefix(parsed))
+    }
+
+    /// The inline inspector editor and the pop-out editor read the same formatter, so both have to
+    /// refuse a marked string. The pop-out has always disabled Save on it; the inline one treated
+    /// the marker as a syntax error, which reported "Invalid hex" over an untouched value and then
+    /// reverted every edit on blur instead of saying the value was too large to edit.
+    /// Both editors refuse to commit a value they only hold a prefix of, and both anchor that
+    /// refusal to the stored value rather than to the draft. Anchoring it to the draft is what makes
+    /// the guard defeatable: deleting the marker the formatter appended leaves a string that parses
+    /// cleanly, and the editor then writes 10,240 bytes over the whole blob.
+    @Test("The inline editor blocks a truncated commit and cannot be talked out of it")
+    func theInlineEditorGuardsTruncation() throws {
+        let inline = try source(of: "TablePro/Views/RowInspector/FieldEditors/BlobHexEditorView.swift")
+        #expect(inline.contains("guard !isTruncated else { return }"))
+        #expect(inline.contains("Truncated, read only"))
+
+        let loader = try #require(
+            inline.range(of: "private func loadDraft()"),
+            "BlobHexEditorView must load the draft and the flag from one read"
+        )
+        let body = inline[loader.lowerBound...].prefix(320)
+        #expect(body.contains("context.value.wrappedValue"))
+        #expect(body.contains("isTruncated = formatted.hasSuffix"))
+
+        /// The flag is never recomputed from what the user typed. It was, and pasting an ellipsis
+        /// into an ordinary blob then locked the field for good, because it went read-only and the
+        /// commit guard returned without restoring the text, so the marker could not be deleted.
+        let assignments = inline.components(separatedBy: "isTruncated =").dropFirst()
+        for assignment in assignments {
+            #expect(
+                !assignment.prefix(60).contains("hexEditText"),
+                "The truncation flag must not be assigned from the draft: \(assignment.prefix(60))"
+            )
+        }
+    }
+
+    /// The pop-out had the same defeatable guard: `validateHex` recomputed `isTruncated` from the
+    /// text view on every keystroke, so deleting the marker cleared it, re-enabled Save, and
+    /// committed the prefix over the full blob.
+    @Test("The pop-out editor anchors truncation to the value it opened on")
+    func thePopOutEditorGuardsTruncation() throws {
+        let popOut = try source(of: "TablePro/Views/Results/HexEditorContentView.swift")
+
+        #expect(popOut.contains("private let sourceIsTruncated: Bool"))
+        #expect(popOut.contains("guard isValid, !sourceIsTruncated else { return }"))
+        #expect(popOut.contains("|| sourceIsTruncated"))
+    }
+
+    private static let repositoryRoot: URL = {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0 ..< 4 {
+            url.deleteLastPathComponent()
+        }
+        return url
+    }()
+
+    private func source(of path: String) throws -> String {
+        try String(contentsOf: Self.repositoryRoot.appendingPathComponent(path), encoding: .utf8)
+    }
 }
 
 // swiftlint:enable force_unwrapping

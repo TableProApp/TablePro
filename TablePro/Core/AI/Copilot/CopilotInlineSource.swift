@@ -8,7 +8,7 @@ import os
 
 @MainActor
 final class CopilotInlineSource: InlineSuggestionSource {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotInlineSource")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotInlineSource")
 
     private let documentSync: CopilotDocumentSync
     private var pendingCommands: [UUID: LSPCommand] = [:]

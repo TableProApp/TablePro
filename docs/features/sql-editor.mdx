@@ -3,98 +3,179 @@ title: SQL Editor
 description: Write and run SQL with syntax highlighting, multi-statement execution, find and replace, and a built-in formatter
 ---
 
-Write and run SQL with tree-sitter syntax highlighting, schema-aware autocomplete, and multi-statement execution in a single editor pane.
+`Cmd+Enter` sends one statement: the one the cursor is in. Semicolons separate statements, so a single tab holds a whole script and you run it a piece at a time.
 
 <Frame caption="SQL Editor with syntax highlighting">
   <img className="block dark:hidden" src="/images/sql-editor.png" alt="SQL Editor" />
   <img className="hidden dark:block" src="/images/sql-editor-dark.png" alt="SQL Editor" />
 </Frame>
 
-## Writing Queries
+## Run your first query
 
-Separate statements with semicolons. Place the cursor in any statement and press `Cmd+Enter` to run just that one.
+<Steps>
+  <Step title="Open a query tab">
+    Press `Cmd+T`, or choose **File > New Tab**.
+  </Step>
+  <Step title="Check the database picker">
+    The toolbar picker binds this tab to one database. Changing it later affects this tab only.
+  </Step>
+  <Step title="Type a statement">
+    Suggestions arrive as you type: tables after FROM and JOIN, a table's columns after its alias and a dot. See [Autocomplete](/features/autocomplete).
+  </Step>
+  <Step title="Press `Cmd+Enter`">
+    The statement under the cursor runs. Rows land in the grid below, under a tab named after the table they came from. See [Query Results](/features/query-results).
+  </Step>
+</Steps>
 
-```sql
-SELECT * FROM users LIMIT 10;
-SELECT COUNT(*) FROM orders;
-```
+Instead of hardcoding a value, write `:name` and fill it in when the query runs. See [Query Parameters](/features/query-parameters).
 
-Select text and press `Cmd+Enter` to run only the selection. Multiple statements in a selection run sequentially:
+`Cmd+O` opens a `.sql`, `.psql` or `.pgsql` file as a query tab that `Cmd+S` writes back to. See [SQL Files](/features/sql-files).
 
-- On databases with transaction support, the batch runs in a transaction: if a statement fails, execution stops and all changes roll back. Databases without transactions run each statement as-is, with no rollback.
-- The error names the failing statement ("Statement 3/5 failed: ...").
-- The last `SELECT` result appears in the data grid.
-- Each statement is recorded individually in query history.
+## Running several statements
 
-The editor supports multiple cursors for editing several places at once.
+To run the whole tab, press `Cmd+Shift+Enter`, choose **Run All Statements** from the **Run** button's menu, or use **Query > Execute All Statements**. Nothing needs to be selected first. Select text and `Cmd+Enter` runs the selection instead.
 
-Autocomplete suggests tables, columns, and keywords as you type, and resolves aliases. See [Autocomplete](/features/autocomplete).
+A batch runs top to bottom and stops at the first statement that fails. The error names its place in the run: "Statement 3/5 failed: …". Each statement gets its own result, and each is recorded separately in [query history](/features/query-history).
 
-Use `:name` placeholders instead of hardcoding values; they bind via prepared statements. See [Query Parameters](/features/query-parameters).
+### Which transaction the batch runs in
 
-## Per-Tab Database Picker
+| The batch | Runs in | A failure or Stop |
+|---|---|---|
+| Ordinary statements | A transaction TablePro opens and commits | Everything rolls back |
+| One that manages its own: `BEGIN`, `START TRANSACTION`, `XA START`, `SET autocommit`, `SET IMPLICIT_TRANSACTIONS ON` on SQL Server, `SAVEPOINT` on SQLite | The script's own transaction | The transaction it left open is rolled back |
+| One holding a [statement a transaction cannot hold](#statements-a-transaction-cannot-hold) | No transaction | Each statement that ran stays applied, and the banner counts them |
+| Anything, on a connection that already has a transaction open | That transaction | The transaction stays open and the message says so |
 
-The editor toolbar shows a database picker (or schema picker, depending on the engine). Each SQL tab binds to its own database:
+The last row wins over the other three. The open transaction comes from a `BEGIN` you ran with `Cmd+Enter`, a `SET autocommit = 0`, `LOCK TABLES` on MySQL or MariaDB, or an [MCP client's](/external-api/mcp-tools) `begin`, and a batch that joins it sends no `BEGIN`, `COMMIT` or `ROLLBACK` at all: the script's own text decides, so a script ending in `COMMIT` commits. Where a failed statement has left the transaction unable to commit, the message says to roll it back rather than offering the choice. A `BEGIN` left running here reaches the rest of the window too, so a grid save and a **Users & Roles** apply land inside it.
 
-- Changing the picker affects only that tab. Switching the active database elsewhere keeps existing tabs on their bound database.
-- The picker lists the databases visible in the sidebar, so it follows the sidebar database filter.
-- Databases whose driver reconnects the session to switch show a lock instead of a menu; those tabs follow the connection's active database.
+PostgreSQL, Redshift, CockroachDB, MySQL, MariaDB, TiDB, SQLite, DuckDB and SQL Server report what their session holds. Anywhere else there is no answer to be had, so a plain batch is wrapped as it always was and a self-managed script is left alone after a failure, since the transaction its text opened may well predate the run.
 
-## Find and Replace
+Two things survive a rollback in any of those four cases. MySQL and MariaDB commit a `CREATE`, `ALTER` or `DROP` the moment it runs, along with everything before it, and CockroachDB commits the open transaction before it processes any DDL at all.
 
-Press `Cmd+F` in a query tab to open the find panel. Switch the panel to Replace mode to replace the current match or all matches.
+### Statements a transaction cannot hold
 
-| Action | Shortcut |
-|--------|----------|
-| Find | `Cmd+F` |
-| Find next | `Cmd+G` |
-| Find previous | `Cmd+Shift+G` |
+One of these anywhere in the batch leaves the whole of it unwrapped. The engine either refuses the statement inside a block, as PostgreSQL refuses `VACUUM`, or applies it and quietly throws it away, as SQLite does with `PRAGMA foreign_keys`.
 
-Match modes: contains, matches word, starts with, ends with, or regular expression, plus match case and wrap around toggles.
+| Engine | Statements |
+|---|---|
+| PostgreSQL, Redshift, CockroachDB | `VACUUM`, `CREATE INDEX CONCURRENTLY`, `REINDEX SCHEMA`, `ALTER SYSTEM`, `CREATE DATABASE`, `DISCARD ALL`, `ALTER TYPE … ADD VALUE` |
+| MySQL, MariaDB, TiDB, OceanBase | `SET TRANSACTION`, `SET sql_log_bin`, `SET binlog_format`, `SET GLOBAL gtid_mode`, `STOP REPLICA` |
+| SQLite, libSQL | `VACUUM`, `DETACH`, `PRAGMA journal_mode`, `PRAGMA foreign_keys`, `PRAGMA wal_checkpoint` |
+| DuckDB | `CHECKPOINT`, `FORCE CHECKPOINT`, `DETACH` |
+| SQL Server | `CREATE`, `ALTER` and `DROP DATABASE`, `BACKUP`, `RESTORE`, `RECONFIGURE` |
 
-## Query Execution
+The MySQL row covers the preamble a `mysqldump` or `mariadb-dump` file carries, so a dump pasted into the editor runs the way `mysql` runs it. CockroachDB adds `SET CLUSTER SETTING`, `BACKUP`, `RESTORE` and `IMPORT`, and Redshift adds `CREATE EXTERNAL TABLE`, `CREATE LIBRARY` and `ALTER TABLE … APPEND`.
 
-| Action | Shortcut | Description |
-|--------|----------|-------------|
-| Execute query | `Cmd+Enter` | Runs query at cursor, or all selected statements |
-| Execute all statements | `Cmd+Shift+Enter` | Runs every statement in the tab, top to bottom |
-| Execute without limit | `Cmd+Option+Enter` | Runs the query at cursor without the row cap |
-| Cancel query | `Cmd+.` | Stops the running query |
-| Explain query | `Cmd+Option+E` | Shows the execution plan for the query at cursor as a tree or diagram (see [Explain Visualization](/features/explain-visualization)) |
-| Format query | `Cmd+Shift+L` | Formats the current query |
+A `CLUSTER` or `REINDEX` naming one table, and a `CALL` of a procedure that commits inside itself, depend on the object rather than on the text, so the batch around them keeps its transaction. Run those on their own.
 
-### Automatic Row Limit
+Redis has no transaction TablePro can open, so every command runs and answers as sent. A `MULTI` in the script opens a block of its own: each command after it answers `QUEUED` until `EXEC`, and a batch that fails or is stopped inside the block discards it. See [Redis](/databases/redis).
 
-SELECT and WITH queries without their own `LIMIT` or `FETCH FIRST` run with the configured row cap:
+### Stopping a batch
 
-- The default cap is 10,000 rows. Pick 100 to 500,000 in **Settings > Data** (**Row cap**), or turn off **Truncate query results** to disable it.
-- Your query is sent exactly as you wrote it. TablePro never changes the SQL, it stops reading once it reaches the cap.
-- Your own `LIMIT`, `FETCH FIRST`, or `TOP` always wins: the query is not capped for that run.
-- `EXPLAIN`, `SHOW`, writes, and DDL are never limited.
+Stop (`Cmd+.`) acts between statements. The run halts before the next one goes out, and a transaction TablePro or the script opened is rolled back. A batch running outside a transaction keeps what it already wrote and shows no result for it, so refresh the table to see where it stands.
 
-When the cap trims a result, the status bar shows **truncated** with a **Fetch All** link. To skip the cap for one run, press `Cmd+Option+Enter` or use the Execute button's menu or the Query menu.
+The commit is the point of no return. While it is on the wire Stop is dimmed and says why, and nothing else reaches it either: closing the tab releases the tab and nothing more, and disconnecting queues behind the commit, so the server finishes it either way. A script's own `COMMIT` counts the same, and the statements after it become stoppable again.
 
-### Results
+If the connection dies while the commit is in flight, the result says the statements may or may not be saved and query history records them the same way. There is nothing left to ask, so no rollback is sent. Check the table before running them again.
 
-Results appear in the data grid below the editor with row count and execution time. Large result sets are paginated.
+### Each tab runs its own queries
 
-- **Result tabs**: every result gets a tab above the grid; multi-statement runs produce one tab per statement. Tabs show in JSON view too. Switch with `Cmd+Option+[` / `Cmd+Option+]`, close with `Cmd+Shift+W`. Hover a tab to see its query.
-- **Pinning**: click the pin on the right of a result tab, press `Cmd+Option+P`, or right-click the tab and choose **Pin Result**. The next query lands in a new tab instead of overwriting the pinned one. Pinned results move to the front of the strip and cannot be closed or cleared until unpinned.
-- **Panel**: toggle the results panel with `Cmd+Option+R` or the toolbar button; it auto-expands when a query executes. The toolbar trash button clears the query and results together; to keep the query, right-click the results and choose **Clear Results**.
-- **Errors**: a red banner above the results shows the database error message with a **Fix with AI** button.
-- **Non-SELECT statements** (INSERT, UPDATE, DELETE, DDL) show a success view with affected row count and execution time.
+Stop and `Cmd+.` act on the tab you are looking at. A query started in another tab, or on the same connection in another window, waits for the running one rather than stopping it: the waiting tab shows the ordinary **Executing…** spinner and a live Stop for as long as the other one runs, and a table opened in a new tab shows an empty grid with a spinner. Stopping the waiting tab leaves the running batch alone.
 
-## SQL Formatting
+## Statement markers
 
-Press `Cmd+Shift+L` to format the current query. You can also click the format button in the editor toolbar (its tooltip reads Format Query) or use **Query > Format Query**; the shortcut is rebindable in **Settings > Keyboard**. The token-based formatter:
+The editor marks which statement it is about to send.
 
-- Breaks lines per clause (`SELECT`, `FROM`, `WHERE`, `JOIN`) and indents 2 spaces
-- Uppercases keywords
-- Preserves comments, string literals, and your cursor position
-- Keeps dialect identifier quoting (MySQL backticks, PostgreSQL double quotes)
-- Handles JOINs, subqueries, CASE expressions, CTEs (including recursive), window functions, and set operations
+- The statement holding the cursor gets a faint band behind it. It is a decoration, not a selection, so your next keystroke does not replace it.
+- Move the pointer over the gutter and a run button appears beside every statement. Click one to run that statement while the cursor is elsewhere. Their column is reserved at all times, so revealing them never shifts the text.
+- A run button takes the same [safe mode](/features/safe-mode) checks and [parameter](/features/query-parameters) prompts as any other run, and dims while a query is running.
+- VoiceOver reads each button as a button naming the line its statement starts on.
+- A `BEGIN … END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
 
-Procedural blocks (PL/pgSQL `DO`, stored procedures, T-SQL `BEGIN`/`END`) pass through with minimal changes.
+Turn either marker off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
+
+<Frame caption="A run control beside each statement, and a band over the one at the cursor">
+  <img className="block dark:hidden" src="/images/sql-editor-statement-run.png" alt="Statement run controls in the editor gutter" />
+  <img className="hidden dark:block" src="/images/sql-editor-statement-run-dark.png" alt="Statement run controls in the editor gutter" />
+</Frame>
+
+### Moving between statements
+
+`Ctrl+Cmd+Left` and `Ctrl+Cmd+Right` step to the previous and next statement. From part-way through a statement, the first press back lands on that statement's own start. Neither wraps.
+
+`Ctrl+Cmd+Enter` runs the statement the cursor is in and then moves to the next one, so a script can be worked through without reaching for the pointer. The cursor moves first, so the next statement is visible while the current one runs.
+
+`Option+Shift+Up` and `Option+Shift+Down` extend the selection by a statement, the way macOS extends a selection by a paragraph.
+
+A statement hidden inside a [collapsed fold](/features/code-folding) unfolds when the cursor lands on it. All three commands are in the Query menu and rebindable in **Settings > Keyboard**.
+
+## Selecting text
+
+Double-click takes a word, triple-click takes a line, and holding the button after either keeps
+extending at that size: a double-click drag moves whole words, a triple-click drag moves whole
+lines. Drag back past where the gesture started and that first word or line stays whole.
+
+`Shift`-click moves the far end of the selection and leaves the end you started from where it is, so
+a `Shift`-click on the other side of the anchor turns the selection around instead of trimming it.
+`Shift`-double-click and `Shift`-triple-click do the same to whole words and whole lines.
+
+Operators select as one unit. Double-click the `=` in `WHERE id = 1` and the operator comes back;
+`<=` and `||` come back whole.
+
+Drag past the top or bottom edge and the editor scrolls to follow at a steady speed. Extending with
+`Shift`+arrow follows the end that is moving, so the moving edge stays on screen no matter how far
+the selection already runs.
+
+The JSON viewer, a table's DDL and an import preview are read-only, and take the same arrow-key
+movement and `Shift`+arrow selection as the editor here.
+
+## Inline diagnostics
+
+Problems more typing cannot fix are underlined 500ms after you stop typing, and the underline clears as soon as you fix it. A red underline marks a structural mistake:
+
+| Underlined in red | Message |
+|---|---|
+| A closing bracket with no opener, or one closing the wrong kind | No matching opening bracket |
+| A `/*` with no `*/` after it | Unterminated comment |
+
+An orange underline marks a character that looks like SQL but reaches the server as something else. Chinese, Japanese and Korean input methods type these in full-width mode, and text pasted from a document or a chat often carries them. `SELECT 1；` looks like a complete statement, but `；` does not end it, so the editor and the server read it and the statement after it as one.
+
+| Underlined in orange | Type instead |
+|---|---|
+| Full-width punctuation, such as `；` `，` `（` `）` `＝` | The ASCII character it resembles |
+| Full-width letters and digits, such as `ＳＥＬＥＣＴ` or `１` | ASCII letters and digits |
+| Curly quotes `‘` `’` `“` `”` | A straight `'` or `"` |
+| A no-break space, an ideographic space, or a typographic space such as a thin space | An ordinary space |
+
+Each message names the character and the ASCII character to type instead. **Query > Remove Invisible Characters** turns every flagged space into an ordinary one in a single step. Orange underlines appear on SQL connections only, and none of them stops a query from running.
+
+Full-width letters and digits inside a name written in another script, such as `売上２０２４`, are not underlined. Full-width punctuation is, even inside a name: both parentheses in `价格（元）` are flagged. Write such a name as a quoted identifier and the underline goes.
+
+Text between `'`, `"` or `` ` `` quotes and text in a `--` or `/* */` comment is not checked. Neither is a `#` comment on MySQL and MariaDB, a `$$` body on PostgreSQL, or a `[bracketed]` name on SQL Server and SQLite. On other engines, a `#` comment, a `$$` body or a bracketed name is checked like the rest of the query.
+
+A half-written statement is never flagged. An opener you have not closed yet, a string you are still typing, and brackets inside a string or a comment are all left alone. Documents over 100,000 characters are not checked at all.
+
+Switching tabs or loading a query checks the new text the same way, without a keystroke. Rest the pointer on an underline to read its message. In VoiceOver, the rotor lists every underline under **Query Issues**, each read with its message.
+
+On MongoDB connections the query parser runs as well, so an unknown collection method or a query that does not start with `db.` is underlined with the reason. Where the parser names the method, the method name itself is what gets marked.
+
+## Per-tab database picker
+
+The editor toolbar carries a database picker, or a schema picker depending on the engine. Each tab binds to its own database, and switching the active database elsewhere leaves existing tabs on theirs. The picker lists the databases the sidebar's database filter keeps, then the system databases after a divider.
+
+PostgreSQL, Redshift and CockroachDB reconnect the session to change database, so their picker shows a lock instead of a menu. The tab keeps the database it opened with, and a tab bound to anything other than the connection's active database runs on a separate connection. See [Cross-Database Tabs](/databases/postgresql#cross-database-tabs).
+
+## Find and replace
+
+Press `Cmd+F` to open the find panel, `Cmd+G` and `Cmd+Shift+G` to walk the matches. Switch the panel to Replace mode to replace the current match or all of them. Match modes are contains, matches word, starts with, ends with, and regular expression, each with match case and wrap around toggles.
+
+The editor also carries multiple cursors, for editing several places at once.
+
+## Formatting
+
+Press `Cmd+Shift+L` to format the statement at the cursor. The toolbar's format button and **Query > Format Query** do the same, and the shortcut is rebindable in **Settings > Keyboard**.
+
+The token-based formatter breaks a line per clause, indents two spaces, cases keywords per **Settings > Editor > Keyword case**, and keeps your comments, string literals, cursor position and dialect identifier quoting (MySQL backticks, PostgreSQL double quotes). JOINs, subqueries, CASE expressions, recursive CTEs, window functions and set operations are all handled. Procedural blocks pass through with minimal changes: PL/pgSQL `DO`, stored procedures, T-SQL `BEGIN`/`END`.
 
 **Before**:
 ```sql
@@ -115,45 +196,42 @@ HAVING COUNT(o.id) > 5
 ORDER BY order_count DESC;
 ```
 
-## Vim Mode
+## Invisible characters
 
-Enable Vim keybindings in **Settings > Editor > Vim mode**. Normal, Insert, Replace, Visual, Visual Line, and Command-line modes are supported, with standard motions, operators, count prefixes, and text objects. `:w` executes the query and `:q` closes the tab. Jump to a line with `10G` or `10gg` (`:10` is not supported). Control-key bindings other than `Ctrl+R` are not intercepted. Full key reference: [Vim Mode](/features/vim-mode).
+Characters that would otherwise draw as nothing, or as an ordinary space, are marked where they sit. A mark is the character itself: select it, arrow past it, or delete it like any other text.
 
-## Editor Settings
+<Frame caption="A backspace before SELECT, a non-breaking space before LIKE, a zero-width space after Composer">
+  <img className="block dark:hidden" src="/images/invisible-characters.png" alt="SQL editor with an orange BS box at the start of line 2, an outlined space on line 4 and a ZWSP box on line 5" />
+  <img className="hidden dark:block" src="/images/invisible-characters-dark.png" alt="SQL editor with an orange BS box at the start of line 2, an outlined space on line 4 and a ZWSP box on line 5" />
+</Frame>
 
-**Settings > Editor** covers line numbers, current-line highlight, word wrap, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
+| Character | Shown as |
+|---|---|
+| Control characters, such as a backspace (U+0008) or NUL (U+0000) | A box with the character's short name: `BS`, `NUL`, `ESC` |
+| Zero-width and formatting characters: zero-width space, byte order mark, soft hyphen, bidirectional controls | A box with the short name: `ZWSP`, `BOM`, `SHY`, `RLO` |
+| Line and paragraph separators (U+2028, U+2029) | A box, `LSEP` or `PSEP`. The line continues past it, as it does for the database |
+| Non-breaking, ideographic and other special spaces | An outline around the space |
 
-Editor windows remember their size, position, and font zoom between launches. See [Query Tabs](/features/tabs#windows-and-connections).
+Emoji sequences, variation selectors, and the joiners Arabic, Persian and Indic text rely on are left unmarked.
 
-## AI Assistance
+Control characters never arrive by typing. A stray backspace an input method sends, or a chord such as `Ctrl+Option+H`, is dropped. Pasted text is kept exactly as copied, with every invisible character marked.
 
-**Explain with AI** (`Cmd+L`) explains the query at cursor, **Optimize with AI** (`Cmd+Option+L`) suggests performance improvements, and **Fix with AI** in the error banner rewrites a failing query. Inline AI suggestions (ghost text) complete your SQL as you type: Tab accepts, Escape dismisses. See [AI Assistant](/features/ai-assistant) for setup.
+Choose **Query > Remove Invisible Characters** to clean a query. With nothing selected, it removes marked characters outside string literals, quoted identifiers and comments. Special spaces, form feeds and vertical tabs become ordinary spaces, and a line or paragraph separator becomes a line break. Select text first to clean inside a literal as well. `Cmd+Z` undoes the whole change.
 
-## SQL Files
+Invisible characters around a statement, such as a byte order mark in front of `SELECT` or a non-breaking space on the line after it, are not sent with it, and a line holding nothing else gets no run button. A NUL character inside a statement stops it from being sent. Remove the character and run it again.
 
-TablePro opens `.sql`, `.psql`, and `.pgsql` files:
+A database often quotes the offending character back in its error message. Error messages show each marked character as its short name in angle brackets, so SQLite's reply to a stray backspace reads `unrecognized token: "<BS>"`. The error banner, query history and the other panes that show a database error also color the name orange and tint a special space. In an error alert, a special space shows as an ordinary space. The banner's copy button copies the database's text as it arrived, for a search or a bug report.
 
-- Double-click in Finder (or **Open With > TablePro**)
-- **File > Open File...** (`Cmd+O`)
-- Drag files onto the dock icon
+To hide the marks in the editor, turn off **Show invisible characters** in **Settings > Editor**. Read-only views, such as the AI assistant's code blocks, and error messages always show them.
 
-Files open in a new tab. Without a connection they queue and open on connect. Opening the same file twice focuses the existing tab.
+## AI assistance
 
-### Saving
+**Explain with AI** (`Cmd+L`) explains the query at the cursor and **Optimize with AI** (`Cmd+Option+L`) suggests improvements. When a query fails, **Fix with AI** in the error banner rewrites it. Inline suggestions complete your SQL as ghost text: `Tab` accepts, `Escape` dismisses. See [AI Assistant](/features/ai-assistant) for setup.
 
-- `Cmd+S` saves back to the source file. Untitled tabs trigger Save As.
-- `Cmd+Shift+S` opens Save As.
+For the execution plan rather than an opinion, press `Cmd+Option+E` and see [Explain Visualization](/features/explain-visualization).
 
-The title bar shows the filename for file-backed tabs, with the standard macOS unsaved-changes dot on the close button. `Cmd+click` the title for the standard path menu, then pick a folder to open it in Finder. Closing a query tab keeps its SQL: reopen with `Cmd+Shift+T` or **File > Recently Closed**. See [Tabs](/features/tabs).
+## Editor settings
 
-<Note>
-When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the grid changes first. Save the file after the grid save completes.
-</Note>
+**Settings > Editor** holds line numbers, current-line and current-statement highlighting, word wrap, [code folding](/features/code-folding), the per-statement run button, [invisible characters](#invisible-characters), tab width, [keyword case](/features/autocomplete#keyword-case), [query parameters](/features/query-parameters), and [vim mode](/features/vim-mode). Editor font family and size are per theme, in **Settings > Appearance**.
 
-### External Modifications
-
-If a file changes on disk while open (a `git pull`, an edit in another editor), a yellow banner offers **Reload from Disk**, which replaces your tab edits with the new content. Saving over an externally changed file shows a side-by-side diff with three actions: **Keep My Changes**, **Reload from Disk**, or **Cancel**.
-
-### Linked Folders
-
-To watch a whole folder of `.sql` files, use [Linked SQL Folders](/features/favorites#linked-sql-folders) instead of opening files one by one.
+Editor windows remember their size, position and font zoom between launches. See [Query Tabs](/features/tabs#switching-tabs).

@@ -7,9 +7,9 @@ import Foundation
 
 extension MainContentCoordinator {
     func saveChanges(
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>,
-        tableOperationOptions: inout [String: TableOperationOptions]
+        pendingTruncates: inout Set<DatabaseTreeTableRef>,
+        pendingDeletes: inout Set<DatabaseTreeTableRef>,
+        tableOperationOptions: inout [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         rowEditingCoordinator.saveChanges(
             pendingTruncates: &pendingTruncates,

@@ -5,6 +5,9 @@ enum DatabaseTypeStyle {
         switch type {
         case "MySQL": return "mysql-icon"
         case "MariaDB": return "mariadb-icon"
+        case "TiDB": return "tidb-icon"
+        case "Databend": return "databend-icon"
+        case "OceanBase": return "oceanbase-icon"
         case "PostgreSQL": return "postgresql-icon"
         case "Redshift": return "redshift-icon"
         case "SQLite": return "sqlite-icon"
@@ -19,6 +22,8 @@ enum DatabaseTypeStyle {
         case "Cloudflare D1": return "cloudflare-d1-icon"
         case "DynamoDB": return "dynamodb-icon"
         case "BigQuery": return "bigquery-icon"
+        case "Spanner": return "spanner-icon"
+        case "Weaviate": return "weaviate-icon"
         default: return "externaldrive"
         }
     }
@@ -41,12 +46,16 @@ enum DatabaseTypeStyle {
     static func iconColor(for type: String) -> Color {
         switch type {
         case "MySQL", "MariaDB": return .orange
+        case "TiDB": return .red
+        case "Databend": return .blue
+        case "OceanBase": return .blue
         case "PostgreSQL", "Redshift": return .blue
         case "SQLite": return .green
         case "Redis": return .red
         case "MongoDB": return .green
         case "ClickHouse": return .yellow
         case "SQL Server": return .indigo
+        case "Oracle": return .red
         default: return .gray
         }
     }

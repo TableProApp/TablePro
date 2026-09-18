@@ -150,9 +150,18 @@ struct NavicatImporterTests {
 
     @Test("Passes an unknown ConnType through unchanged")
     func passesUnknownConnTypeThrough() throws {
-        try writeNCX([conn(type: "COCKROACHDB")])
+        try writeNCX([conn(type: "EXOTICDB", port: "")])
         let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
-        #expect(connection.type == "COCKROACHDB")
+        #expect(connection.type == "EXOTICDB")
+        #expect(connection.port == 0)
+    }
+
+    @Test("Resolves a ConnType TablePro knows under another case to its registered type")
+    func resolvesConnTypeCaseInsensitively() throws {
+        try writeNCX([conn(type: "COCKROACHDB", port: "")])
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.type == "CockroachDB")
+        #expect(connection.port == 26_257)
     }
 
     @Test("Falls back to the default port when Port is absent")

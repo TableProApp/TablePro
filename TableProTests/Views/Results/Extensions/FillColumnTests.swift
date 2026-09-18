@@ -117,21 +117,21 @@ struct FillColumnTests {
         coordinator.applyFillColumn(columnIndex: 0, value: .text("X"))
 
         for row in 0..<4 {
-            #expect(manager.pending.isCellModified(rowIndex: row, columnIndex: 0))
+            #expect(manager.pending.isCellModified(rowID: .existing(row), columnIndex: 0))
         }
-        #expect(manager.pending.isCellModified(rowIndex: 0, columnIndex: 1) == false)
+        #expect(manager.pending.isCellModified(rowID: .existing(0), columnIndex: 1) == false)
     }
 
     @Test("Does not touch rows marked for deletion")
     func skipsDeletedRowsOnApply() {
         let manager = DataChangeManager()
         let coordinator = makeCoordinator(columns: ["a"], rowCount: 4, manager: manager)
-        manager.recordRowDeletion(rowIndex: 2, originalRow: [.text("r2c0")])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: [.text("r2c0")])
 
         coordinator.applyFillColumn(columnIndex: 0, value: .text("X"))
 
-        #expect(manager.pending.isCellModified(rowIndex: 0, columnIndex: 0))
-        #expect(manager.pending.isCellModified(rowIndex: 2, columnIndex: 0) == false)
+        #expect(manager.pending.isCellModified(rowID: .existing(0), columnIndex: 0))
+        #expect(manager.pending.isCellModified(rowID: .existing(2), columnIndex: 0) == false)
     }
 
     @Test("Records nothing on a read-only result set")
@@ -151,7 +151,7 @@ struct FillColumnTests {
 
         coordinator.applyFillColumn(columnIndex: 0, value: .null)
 
-        let change = manager.pending.change(forRow: 0, type: .update)
+        let change = manager.pending.change(forRow: .existing(0), type: .update)
         #expect(change?.cellChanges.first?.newValue == .null)
     }
 
@@ -162,7 +162,7 @@ struct FillColumnTests {
 
         coordinator.applyFillColumn(columnIndex: 0, value: .text("r0c0"))
 
-        #expect(manager.pending.isCellModified(rowIndex: 0, columnIndex: 0) == false)
-        #expect(manager.pending.isCellModified(rowIndex: 1, columnIndex: 0))
+        #expect(manager.pending.isCellModified(rowID: .existing(0), columnIndex: 0) == false)
+        #expect(manager.pending.isCellModified(rowID: .existing(1), columnIndex: 0))
     }
 }

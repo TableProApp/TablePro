@@ -63,10 +63,10 @@ enum OllamaDetector {
 
             return models.compactMap { $0["name"] as? String }.sorted()
         } catch let error as URLError {
-            logger.debug("Ollama detection: URLError \(error.code.rawValue, privacy: .public) (\(error.localizedDescription, privacy: .public))")
+            logger.debug("Ollama detection: URLError \(error.code.rawValue, privacy: .public) (\(error.publicLogShape, privacy: .public))")
             return nil
         } catch {
-            logger.debug("Ollama detection: \(String(describing: type(of: error)), privacy: .public) - \(error.localizedDescription, privacy: .public)")
+            logger.debug("Ollama detection: \(String(describing: type(of: error)), privacy: .public) - \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }

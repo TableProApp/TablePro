@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubTableOpsDriver: PluginDatabaseDriver {
+private final class StubTableOpsDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
@@ -146,5 +146,69 @@ struct PluginDriverAdapterTableOpsTests {
         let adapter = makeAdapter(driver: driver)
         let result = adapter.truncateTableStatements(table: "users", schema: nil, cascade: false)
         #expect(result == ["DELETE FROM `users`", "ALTER TABLE `users` AUTO_INCREMENT = 1"])
+    }
+
+    // MARK: - Engines with no SQL DDL
+
+    private func makeNonSQLAdapter(driver: StubTableOpsDriver) -> PluginDriverAdapter {
+        let connection = DatabaseConnection(name: "Test", type: .elasticsearch)
+        return PluginDriverAdapter(connection: connection, pluginDriver: driver)
+    }
+
+    /// #2884: the fallback answered an Elasticsearch index with `DROP TABLE "test_index"`, which the
+    /// driver's console parser rejected. Nil is the honest answer, and the menu reads it.
+    @Test("No drop is invented for an engine with no SQL DDL")
+    func dropWithheldForNonSQLEngine() {
+        let adapter = makeNonSQLAdapter(driver: StubTableOpsDriver())
+        #expect(adapter.dropObjectStatement(
+            name: "test_index", objectType: "TABLE", schema: nil, cascade: false
+        ) == nil)
+    }
+
+    @Test("No truncate is invented for an engine with no SQL DDL")
+    func truncateWithheldForNonSQLEngine() {
+        let adapter = makeNonSQLAdapter(driver: StubTableOpsDriver())
+        #expect(adapter.truncateTableStatements(table: "test_index", schema: nil, cascade: false) == nil)
+    }
+
+    @Test("A plugin that answers still wins on an engine with no SQL DDL")
+    func nonSQLPluginOverrideIsUsed() {
+        let driver = StubTableOpsDriver()
+        driver.dropOverride = { name, _, _, _ in "DELETE /\(name)" }
+        let adapter = makeNonSQLAdapter(driver: driver)
+        #expect(adapter.dropObjectStatement(
+            name: "test_index", objectType: "TABLE", schema: nil, cascade: false
+        ) == "DELETE /test_index")
+    }
+
+    @Test("Eligibility reports exactly what the driver answered for")
+    func eligibilityFollowsTheDriver() {
+        let driver = StubTableOpsDriver()
+        driver.dropOverride = { name, _, _, _ in name == "keep" ? "DELETE /keep" : nil }
+        let adapter = makeNonSQLAdapter(driver: driver)
+        let keep = DatabaseTreeTableRef(
+            database: nil, schema: nil,
+            table: TableInfo(name: "keep", type: .table, rowCount: nil, schema: nil)
+        )
+        let skip = DatabaseTreeTableRef(
+            database: nil, schema: nil,
+            table: TableInfo(name: "skip", type: .table, rowCount: nil, schema: nil)
+        )
+        let context = adapter.tableOperationEligibility(for: [keep, skip], isReadOnly: false)
+        #expect(context.droppable == [keep])
+        #expect(context.truncatable.isEmpty)
+    }
+
+    @Test("Read-only reports nothing as eligible")
+    func eligibilityIsEmptyWhenReadOnly() {
+        let adapter = makeAdapter(driver: StubTableOpsDriver())
+        let ref = DatabaseTreeTableRef(
+            database: nil, schema: nil,
+            table: TableInfo(name: "users", type: .table, rowCount: nil, schema: nil)
+        )
+        let context = adapter.tableOperationEligibility(for: [ref], isReadOnly: true)
+        #expect(context.droppable.isEmpty)
+        #expect(context.truncatable.isEmpty)
+        #expect(context.isReadOnly)
     }
 }

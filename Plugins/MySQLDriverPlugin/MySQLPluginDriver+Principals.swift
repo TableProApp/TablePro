@@ -34,7 +34,9 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
-        let query = "SELECT User, Host, max_user_connections FROM mysql.user ORDER BY User, Host"
+        let query = flavor.isTiDB
+            ? "SELECT User, Host FROM mysql.user ORDER BY User, Host"
+            : "SELECT User, Host, max_user_connections FROM mysql.user ORDER BY User, Host"
         let result = try await execute(query: query)
 
         return result.rows.compactMap { row -> PluginPrincipalInfo? in
@@ -127,6 +129,8 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             try await columns(in: database, table: table)
         case .server, .schema, .column:
             []
+        @unknown default:
+            []
         }
     }
 
@@ -135,10 +139,13 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         limit: Int
     ) async throws -> [PluginPrivilegeScope] {
         let pattern = escapeStringLiteral(MySQLGrantPatternEscaping.escapeDatabasePattern(query))
+        let excludedSchemas = flavor.systemDatabaseNames
+            .map { "'\(escapeStringLiteral($0))'" }
+            .joined(separator: ", ")
         let sql = """
             SELECT TABLE_SCHEMA, TABLE_NAME
             FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+            WHERE TABLE_SCHEMA NOT IN (\(excludedSchemas))
               AND TABLE_NAME LIKE '%\(pattern)%'
             ORDER BY TABLE_SCHEMA, TABLE_NAME
             LIMIT \(max(1, limit))
@@ -238,6 +245,8 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
         case let .column(database, _, table, _):
             "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
+        @unknown default:
+            nil
         }
     }
 

@@ -1,16 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
-
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        tail -30 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
 
 # Build static libmongoc + libbson for TablePro
 #
@@ -34,20 +23,22 @@ run_quiet() {
 #
 # Prerequisites:
 #   - Xcode Command Line Tools
-#   - CMake 3.15+ (brew install cmake)
+#   - CMake 3.15 or later, and BELOW 4. Measured with 4.4.3: configure dies in
+#     src/libmongoc/CMakeLists.txt's accept() detection with
+#     `The warning category "error -DCMAKE_CXX_LINK_EXECUTABLE=..." is not known`, because CMake 4
+#     joins that TRY_COMPILE's two CMAKE_FLAGS entries and reads the result as a -W flag. 1.30.11
+#     carries the same line, so a version bump does not help. Point CMAKE_BIN at a 3.x if the one on
+#     PATH is 4.x; 3.31.6 from cmake.org builds this cleanly.
 #   - curl
 
-DEPLOY_TARGET="14.0"
+CMAKE_BIN="${CMAKE_BIN:-cmake}"
 MONGOC_VERSION="1.28.1"
 MONGOC_SHA256="a93259840f461b28e198311e32144f5f8dc9fbd74348029f2793774d781bb7da"
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openssl-version.sh"
+# shellcheck source=lib/macos.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 
 ARCH="${1:-both}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LIBS_DIR="$PROJECT_DIR/Libs"
-BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
+make_build_dir
 
 echo "🔧 Building static libmongoc $MONGOC_VERSION + OpenSSL $OPENSSL_VERSION"
 echo "   Deployment target: macOS $DEPLOY_TARGET"
@@ -55,20 +46,11 @@ echo "   Architecture: $ARCH"
 echo "   Build dir: $BUILD_DIR"
 echo ""
 
-cleanup() {
-    echo "🧹 Cleaning up build directory..."
-    rm -rf "$BUILD_DIR"
-}
-trap cleanup EXIT
 
 download_sources() {
     echo "📥 Downloading source tarballs..."
 
-    if [ ! -f "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" ]; then
-        curl -fSL "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" \
-            -o "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz"
-    fi
-    echo "$OPENSSL_SHA256  $BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" | shasum -a 256 -c -
+    fetch_openssl
 
     if [ ! -f "$BUILD_DIR/mongo-c-driver-$MONGOC_VERSION.tar.gz" ]; then
         curl -fSL "https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz" \
@@ -77,42 +59,6 @@ download_sources() {
     echo "$MONGOC_SHA256  $BUILD_DIR/mongo-c-driver-$MONGOC_VERSION.tar.gz" | shasum -a 256 -c -
 
     echo "✅ Sources downloaded"
-}
-
-build_openssl() {
-    local arch=$1
-    local prefix="$BUILD_DIR/install-openssl-$arch"
-
-    echo ""
-    echo "🔨 Building OpenSSL $OPENSSL_VERSION for $arch..."
-
-    rm -rf "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    mkdir -p "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    tar xzf "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" -C "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch" --strip-components=1
-
-    cd "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-
-    local target
-    if [ "$arch" = "arm64" ]; then
-        target="darwin64-arm64-cc"
-    else
-        target="darwin64-x86_64-cc"
-    fi
-
-    MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
-    run_quiet ./Configure \
-        "$target" \
-        no-shared \
-        no-tests \
-        no-apps \
-        no-docs \
-        --prefix="$prefix" \
-        -mmacosx-version-min=$DEPLOY_TARGET
-
-    run_quiet make -j"$NCPU"
-    run_quiet make install_sw
-
-    echo "✅ OpenSSL $arch: $(ls -lh "$prefix/lib/libssl.a" | awk '{print $5}') (libssl) $(ls -lh "$prefix/lib/libcrypto.a" | awk '{print $5}') (libcrypto)"
 }
 
 build_mongoc() {
@@ -144,8 +90,11 @@ build_mongoc() {
         openssl_lib_dir="$openssl_prefix/lib64"
     fi
 
+    # Snappy is pinned off rather than left to detection: on a machine that has Homebrew's
+    # snappy, CMake links it and the archive gains three undefined symbols the shipped one
+    # never had, which is a plugin that fails to load on every other machine.
     run_quiet env MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
-    cmake .. \
+    "$CMAKE_BIN" .. \
         -DCMAKE_INSTALL_PREFIX="$prefix" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_OSX_ARCHITECTURES="$arch" \
@@ -159,6 +108,7 @@ build_mongoc() {
         -DENABLE_SRV=ON \
         -DENABLE_ZLIB=SYSTEM \
         -DENABLE_ZSTD=OFF \
+        -DENABLE_SNAPPY=OFF \
         -DENABLE_SSL=OPENSSL \
         -DENABLE_TESTS=OFF \
         -DENABLE_EXAMPLES=OFF \
@@ -167,8 +117,8 @@ build_mongoc() {
         -DOPENSSL_SSL_LIBRARY="$openssl_lib_dir/libssl.a" \
         -DOPENSSL_CRYPTO_LIBRARY="$openssl_lib_dir/libcrypto.a"
 
-    run_quiet cmake --build . --parallel "$NCPU"
-    run_quiet cmake --install .
+    run_quiet "$CMAKE_BIN" --build . --parallel "$NCPU"
+    run_quiet "$CMAKE_BIN" --install .
 
     echo "✅ libmongoc $arch: $(ls -lh "$prefix/lib/libmongoc-static-1.0.a" 2>/dev/null || ls -lh "$prefix/lib64/libmongoc-static-1.0.a" 2>/dev/null | awk '{print $5}') (libmongoc) $(ls -lh "$prefix/lib/libbson-static-1.0.a" 2>/dev/null || ls -lh "$prefix/lib64/libbson-static-1.0.a" 2>/dev/null | awk '{print $5}') (libbson)"
 }
@@ -191,7 +141,7 @@ install_libs() {
 install_headers() {
     local arch=$1
     local prefix="$BUILD_DIR/install-mongoc-$arch"
-    local dest="$PROJECT_DIR/Plugins/MongoDBDriverPlugin/CLibMongoc/include"
+    local dest="$REPO_ROOT/Plugins/MongoDBDriverPlugin/CLibMongoc/include"
 
     echo "📦 Installing libmongoc headers..."
 
@@ -204,23 +154,6 @@ install_headers() {
     cp "$inc_dir/libbson-1.0/bson/"*.h "$dest/bson/"
 
     echo "✅ Headers installed to $dest"
-}
-
-create_universal() {
-    echo ""
-    echo "🔗 Creating universal (fat) libraries..."
-    for lib in libmongoc libbson; do
-        if [ -f "$LIBS_DIR/${lib}_arm64.a" ] && [ -f "$LIBS_DIR/${lib}_x86_64.a" ]; then
-            lipo -create \
-                "$LIBS_DIR/${lib}_arm64.a" \
-                "$LIBS_DIR/${lib}_x86_64.a" \
-                -output "$LIBS_DIR/${lib}_universal.a"
-            if ! [ "$LIBS_DIR/${lib}_universal.a" -ef "$LIBS_DIR/${lib}.a" ]; then
-                cp "$LIBS_DIR/${lib}_universal.a" "$LIBS_DIR/${lib}.a"
-            fi
-            echo "   ${lib}_universal.a ($(ls -lh "$LIBS_DIR/${lib}_universal.a" | awk '{print $5}'))"
-        fi
-    done
 }
 
 build_for_arch() {
@@ -253,33 +186,6 @@ verify_tls_backend() {
     echo "   ✅ libmongoc has no Secure Transport references"
 }
 
-verify_deployment_target() {
-    echo ""
-    echo "🔍 Verifying deployment targets..."
-    local failed=0
-    for lib in "$LIBS_DIR"/lib{mongoc,bson}_*.a; do
-        [ -f "$lib" ] || continue
-        local name min_ver
-        name=$(basename "$lib")
-        min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_BUILD_VERSION/{found=1} found && /minos/{print $2; found=0}' | sort -V | tail -1)
-        if [ -z "$min_ver" ]; then
-            min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{found=1} found && /version/{print $2; found=0}' | sort -V | tail -1)
-        fi
-        if [ -n "$min_ver" ]; then
-            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | head -1)" != "$DEPLOY_TARGET" ]; then
-                echo "   ❌ $name targets macOS $min_ver (expected $DEPLOY_TARGET)"
-                failed=1
-            else
-                echo "   ✅ $name targets macOS $min_ver"
-            fi
-        fi
-    done
-    if [ "$failed" -eq 1 ]; then
-        echo "❌ FATAL: Some libraries have incorrect deployment targets"
-        exit 1
-    fi
-}
-
 mkdir -p "$LIBS_DIR"
 download_sources
 
@@ -293,7 +199,7 @@ case "$ARCH" in
     both)
         build_for_arch arm64
         build_for_arch x86_64
-        create_universal
+        make_universal libmongoc libbson
         ;;
     *)
         echo "Usage: $0 [arm64|x86_64|both]"
@@ -302,8 +208,7 @@ case "$ARCH" in
 esac
 
 verify_tls_backend
-verify_deployment_target
-
+verify_deployment_target "$LIBS_DIR"/libmongoc_*.a "$LIBS_DIR"/libbson_*.a
 echo ""
 echo "🎉 Build complete! Libraries in Libs/:"
 ls -lh "$LIBS_DIR"/lib{mongoc,bson}*.a 2>/dev/null

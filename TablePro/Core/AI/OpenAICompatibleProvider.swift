@@ -196,7 +196,11 @@ final class OpenAICompatibleProvider: ChatTransport {
         return events
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         switch providerType {
         case .ollama:
             return try await fetchOllamaModels()
@@ -471,7 +475,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
         }
 
@@ -503,7 +507,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Ollama model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Ollama model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(
                 String(format: String(localized: "Failed to fetch models from %@"), endpoint)
             )

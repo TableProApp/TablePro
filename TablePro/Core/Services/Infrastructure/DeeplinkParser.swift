@@ -203,10 +203,23 @@ internal enum DeeplinkParser {
         }
 
         let scopes = value("scopes")?.nilIfEmpty
+        /// Only an absent parameter means every connection. Naming the parameter and then handing
+        /// over something unreadable used to fall back to absent, which turned a request scoped to
+        /// one connection into a request for all of them with the sheet pre-ticked to All
+        /// Connections. So presence is the test, not a non-empty value, and an empty field is kept
+        /// rather than dropped so it has to answer the same guard. (#2930)
         let connectionIds: Set<UUID>?
-        if let csv = value("connection-ids")?.nilIfEmpty {
-            let parsed = csv.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
-            connectionIds = parsed.isEmpty ? nil : Set(parsed)
+        if queryItems.contains(where: { $0.name == "connection-ids" }) {
+            let csv = value("connection-ids") ?? ""
+            var parsed: Set<UUID> = []
+            for rawId in csv.split(separator: ",", omittingEmptySubsequences: false) {
+                let trimmed = rawId.trimmingCharacters(in: .whitespaces)
+                guard let connectionId = UUID(uuidString: trimmed) else {
+                    return .failure(.invalidUUID(trimmed))
+                }
+                parsed.insert(connectionId)
+            }
+            connectionIds = parsed
         } else {
             connectionIds = nil
         }
@@ -244,18 +257,13 @@ internal enum DeeplinkParser {
             return .failure(.missingRequiredParam("type"))
         }
 
-        let resolvedType: DatabaseType?
-        if let direct = DatabaseType(validating: typeStr) {
-            resolvedType = direct
-        } else if let pluginMatch = PluginMetadataRegistry.shared.allRegisteredTypeIds()
-            .first(where: { $0.lowercased() == typeStr.lowercased() }) {
-            resolvedType = DatabaseType(rawValue: pluginMatch)
-        } else {
-            resolvedType = nil
-        }
-        guard let dbType = resolvedType else {
+        guard let typeId = ConnectionTypeResolver.canonicalTypeId(
+            typeStr,
+            registeredTypeIds: Set(PluginMetadataRegistry.shared.allRegisteredTypeIds())
+        ) else {
             return .failure(.unsupportedDatabaseType(typeStr))
         }
+        let dbType = DatabaseType(rawValue: typeId)
 
         let port = value("port").flatMap(Int.init) ?? dbType.defaultPort
         let username = value("username") ?? ""
@@ -282,7 +290,9 @@ internal enum DeeplinkParser {
                 totpMode: value("sshTotpMode"),
                 totpAlgorithm: value("sshTotpAlgorithm"),
                 totpDigits: value("sshTotpDigits").flatMap(Int.init),
-                totpPeriod: value("sshTotpPeriod").flatMap(Int.init)
+                totpPeriod: value("sshTotpPeriod").flatMap(Int.init),
+                remoteFilePath: value("sshRemoteFilePath"),
+                remoteFileAccess: value("sshRemoteFileAccess")
             )
         } else {
             sshConfig = nil
@@ -337,7 +347,7 @@ internal enum DeeplinkParser {
             localOnly: value("localOnly") == "1" ? true : nil
         )
 
-        return .success(.importConnection(exportable.sanitizedForImport()))
+        return .success(.importConnection(exportable.sanitizedForImport().withoutTunnelCommand()))
     }
 
     private static func pathSegments(_ url: URL) -> [String] {

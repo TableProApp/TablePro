@@ -17,6 +17,37 @@ struct ReconnectCredentialRecoveryTests {
         #expect(DatabaseManager.shared.isAuthenticationFailure(error))
     }
 
+    /// Nobody asked for a background reconnect, so it must not raise a modal sheet on whatever
+    /// window happens to be key, for a connection that may not even be the one on screen, and
+    /// block Disconnect and Quit until it is answered.
+    @Test("An unattended reconnect never asks for a password")
+    func unattendedReconnectDoesNotPrompt() async {
+        let manager = DatabaseManager.shared
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        connection.promptForPassword = true
+        let session = ConnectionSession(connection: connection)
+        let error = FakePluginAuthError(
+            pluginErrorMessage: "Access denied",
+            pluginErrorCode: 1_045,
+            pluginSqlState: "28000"
+        )
+        let prompted = PromptFlag()
+
+        let resolution = await manager.reconnectCredentialResolution(
+            for: session,
+            error: error,
+            currentPassword: "expired-secret",
+            allowsCredentialPrompt: false,
+            prompt: { _, _, _ in
+                prompted.value = true
+                return "fresh-secret"
+            }
+        )
+
+        #expect(resolution == .fail)
+        #expect(!prompted.value)
+    }
+
     @Test("Prompt-for-password connections retry with fresh password")
     func retriesWithFreshPassword() async {
         let manager = DatabaseManager.shared
@@ -115,4 +146,8 @@ private struct FakePluginAuthError: PluginDriverError {
     let pluginErrorMessage: String
     let pluginErrorCode: Int?
     let pluginSqlState: String?
+}
+
+private final class PromptFlag: @unchecked Sendable {
+    var value = false
 }

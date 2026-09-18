@@ -36,27 +36,27 @@ struct DatabaseManagerSessionTests {
     func resolvedSchemaNameKeepsExplicitSchema() {
         let connection = TestFixtures.makeConnection()
         var session = ConnectionSession(connection: connection)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName("audit", for: connection.id) == "audit")
+        #expect(DatabaseManager.shared.resolvedSchemaName("audit", inDatabase: nil, for: connection.id) == "audit")
     }
 
     @Test("resolvedSchemaName falls back to the session's current schema")
     func resolvedSchemaNameFallsBackToSessionSchema() {
         let connection = TestFixtures.makeConnection()
         var session = ConnectionSession(connection: connection)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == "sales")
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == "sales")
     }
 
     @Test("resolvedSchemaName stays nil without a session")
     func resolvedSchemaNameStaysNilWithoutSession() {
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: UUID()) == nil)
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: UUID()) == nil)
     }
 
     @Test("resolvedSchemaName stays nil for a schema-less session")
@@ -65,7 +65,29 @@ struct DatabaseManagerSessionTests {
         DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == nil)
+    }
+
+    @Test("resolvedSchemaName treats a blank explicit schema as absent")
+    func resolvedSchemaNameTreatsBlankExplicitSchemaAsAbsent() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.browseSchema = "custom"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName("", inDatabase: nil, for: connection.id) == "custom")
+    }
+
+    @Test("resolvedSchemaName returns nil rather than a blank session schema")
+    func resolvedSchemaNameRejectsBlankSessionSchema() {
+        let connection = TestFixtures.makeConnection()
+        var session = ConnectionSession(connection: connection)
+        session.browseSchema = ""
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == nil)
     }
 }
 
@@ -98,24 +120,36 @@ private class DatabaseSwitchBaseDriver {
     }
 }
 
-private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver {
+private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var switchedDatabases: [String] = []
+    private var schema: String?
+
+    override var currentSchema: String? { schema }
+
+    init(currentSchema: String? = nil) {
+        self.schema = currentSchema
+        super.init()
+    }
 
     func switchDatabase(to database: String) async throws {
         switchedDatabases.append(database)
+    }
+
+    func switchSchema(to schema: String) async throws {
+        self.schema = schema
     }
 }
 
 @Suite("DatabaseManager database switch")
 @MainActor
 struct DatabaseManagerDatabaseSwitchTests {
-    @Test("bySchema engines reset the session schema to the plugin default")
+    @Test("bySchema engines move the driver to the plugin default and record what it is using")
     func bySchemaSwitchResetsSchemaToDefault() async throws {
         let connection = TestFixtures.makeConnection(type: .mssql)
-        let pluginDriver = DatabaseSwitchingDriver()
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "sales")
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
         var session = ConnectionSession(connection: connection, driver: adapter)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -123,7 +157,23 @@ struct DatabaseManagerDatabaseSwitchTests {
 
         let updated = DatabaseManager.shared.session(for: connection.id)
         #expect(pluginDriver.switchedDatabases == ["other_db"])
-        #expect(updated?.currentDatabase == "other_db")
-        #expect(updated?.currentSchema == "dbo")
+        #expect(updated?.browseDatabase == "other_db")
+        #expect(updated?.browseSchema == "dbo")
+        #expect(pluginDriver.currentSchema == "dbo")
+    }
+
+    @Test("A database switch never leaves the session and the driver on different schemas")
+    func sessionSchemaMatchesDriverAfterSwitch() async throws {
+        let connection = TestFixtures.makeConnection(type: .mssql)
+        let pluginDriver = DatabaseSwitchingDriver(currentSchema: "custom")
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        var session = ConnectionSession(connection: connection, driver: adapter)
+        session.browseSchema = "custom"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        try await DatabaseManager.shared.switchDatabase(to: "other_db", for: connection.id, persist: false)
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == adapter.currentSchema)
     }
 }

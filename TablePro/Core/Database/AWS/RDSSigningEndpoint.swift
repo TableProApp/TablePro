@@ -28,12 +28,18 @@ enum RDSSigningEndpointResolver {
         override: String?,
         defaultPort: Int
     ) throws -> RDSSigningEndpoint {
+        let dialsLoopback = isLoopback(configuredHost)
+
         if let override, !override.trimmingCharacters(in: .whitespaces).isEmpty {
-            return try parse(override, defaultPort: defaultPort)
+            let endpoint = try parse(override, defaultPort: defaultPort)
+            guard dialsLoopback || endpoint.host.caseInsensitiveCompare(configuredHost) == .orderedSame else {
+                throw AWSAuthError.rdsEndpointUnresolved(host: configuredHost)
+            }
+            return endpoint
         }
 
-        let host = preTunnelHost ?? configuredHost
-        let port = preTunnelPort ?? configuredPort
+        let host = dialsLoopback ? (preTunnelHost ?? configuredHost) : configuredHost
+        let port = dialsLoopback ? (preTunnelPort ?? configuredPort) : configuredPort
         guard !isLoopback(host) else {
             throw AWSAuthError.rdsEndpointUnresolved(host: host)
         }

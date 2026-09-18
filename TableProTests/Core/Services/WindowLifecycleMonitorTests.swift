@@ -80,38 +80,6 @@ struct WindowLifecycleMonitorTests {
         monitor.unregisterWindow(for: UUID())
     }
 
-    // MARK: - hasOtherWindows
-
-    @Test("hasOtherWindows — returns true when other windows exist for same connection")
-    func hasOtherWindowsTrueWhenOthersExist() {
-        let windowId1 = UUID()
-        let windowId2 = UUID()
-        let connectionId = UUID()
-
-        monitor.register(window: NSWindow(), connectionId: connectionId, windowId: windowId1)
-        monitor.register(window: NSWindow(), connectionId: connectionId, windowId: windowId2)
-        defer { cleanup(windowId1, windowId2) }
-
-        #expect(monitor.hasOtherWindows(for: connectionId, excluding: windowId1))
-        #expect(monitor.hasOtherWindows(for: connectionId, excluding: windowId2))
-    }
-
-    @Test("hasOtherWindows — returns false when only the excluded window exists")
-    func hasOtherWindowsFalseWhenOnlySelf() {
-        let windowId = UUID()
-        let connectionId = UUID()
-
-        monitor.register(window: NSWindow(), connectionId: connectionId, windowId: windowId)
-        defer { cleanup(windowId) }
-
-        #expect(!monitor.hasOtherWindows(for: connectionId, excluding: windowId))
-    }
-
-    @Test("hasOtherWindows — returns false when no windows exist")
-    func hasOtherWindowsFalseWhenEmpty() {
-        #expect(!monitor.hasOtherWindows(for: UUID(), excluding: UUID()))
-    }
-
     // MARK: - Multiple connections
 
     @Test("Multiple connections — windows are independent")
@@ -283,5 +251,139 @@ struct WindowLifecycleMonitorTests {
 
         // Should not crash or affect state
         NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: unrelatedWindow)
+    }
+
+    // MARK: - Last focused window
+
+    @Test("Focus tracking: becoming key records the window for its connection")
+    func focusRecordsWindow() {
+        let windowId = UUID()
+        let connectionId = UUID()
+        let window = NSWindow()
+
+        monitor.register(window: window, connectionId: connectionId, windowId: windowId)
+        defer { cleanup(windowId) }
+
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+
+        #expect(monitor.lastFocusedWindowId(for: connectionId) == windowId)
+    }
+
+    @Test("Focus tracking: the most recently focused tab wins")
+    func focusTracksMostRecentTab() {
+        let windowId1 = UUID()
+        let windowId2 = UUID()
+        let connectionId = UUID()
+        let window1 = NSWindow()
+        let window2 = NSWindow()
+
+        monitor.register(window: window1, connectionId: connectionId, windowId: windowId1)
+        monitor.register(window: window2, connectionId: connectionId, windowId: windowId2)
+        defer { cleanup(windowId1, windowId2) }
+
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window1)
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window2)
+        #expect(monitor.lastFocusedWindowId(for: connectionId) == windowId2)
+
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window1)
+        #expect(monitor.lastFocusedWindowId(for: connectionId) == windowId1)
+    }
+
+    @Test("Focus tracking: each connection remembers its own window")
+    func focusIsPerConnection() {
+        let windowId1 = UUID()
+        let windowId2 = UUID()
+        let connectionId1 = UUID()
+        let connectionId2 = UUID()
+        let window1 = NSWindow()
+        let window2 = NSWindow()
+
+        monitor.register(window: window1, connectionId: connectionId1, windowId: windowId1)
+        monitor.register(window: window2, connectionId: connectionId2, windowId: windowId2)
+        defer { cleanup(windowId1, windowId2) }
+
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window1)
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window2)
+
+        #expect(monitor.lastFocusedWindowId(for: connectionId1) == windowId1)
+        #expect(monitor.lastFocusedWindowId(for: connectionId2) == windowId2)
+    }
+
+    @Test("Focus tracking: closing the focused window forgets it")
+    func focusClearedOnClose() {
+        let windowId = UUID()
+        let connectionId = UUID()
+        let window = NSWindow()
+
+        monitor.register(window: window, connectionId: connectionId, windowId: windowId)
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+        #expect(monitor.lastFocusedWindowId(for: connectionId) == windowId)
+
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: window)
+
+        #expect(monitor.lastFocusedWindowId(for: connectionId) == nil)
+    }
+
+    @Test("Focus tracking: closing an unfocused sibling keeps the focused window")
+    func focusSurvivesSiblingClose() {
+        let windowId1 = UUID()
+        let windowId2 = UUID()
+        let connectionId = UUID()
+        let window1 = NSWindow()
+        let window2 = NSWindow()
+
+        monitor.register(window: window1, connectionId: connectionId, windowId: windowId1)
+        monitor.register(window: window2, connectionId: connectionId, windowId: windowId2)
+        defer { cleanup(windowId1) }
+
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window1)
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: window2)
+
+        #expect(monitor.lastFocusedWindowId(for: connectionId) == windowId1)
+    }
+
+    @Test("Resolution: the last focused window is preferred over an arbitrary tab")
+    func resolutionPrefersLastFocused() {
+        let arbitrary = UUID()
+        let focused = UUID()
+
+        let resolved = WindowLifecycleMonitor.resolveWindowId(
+            lastFocusedWindowId: focused,
+            eligibleWindowIds: [arbitrary, focused]
+        )
+        #expect(resolved == focused)
+    }
+
+    @Test("Resolution: falls back when the last focused window is gone")
+    func resolutionFallsBackWhenFocusedWindowClosed() {
+        let remaining = UUID()
+        let closed = UUID()
+
+        let resolved = WindowLifecycleMonitor.resolveWindowId(
+            lastFocusedWindowId: closed,
+            eligibleWindowIds: [remaining]
+        )
+        #expect(resolved == remaining)
+    }
+
+    @Test("Resolution: falls back when no window has ever been focused")
+    func resolutionFallsBackWithoutFocusHistory() {
+        let only = UUID()
+
+        let resolved = WindowLifecycleMonitor.resolveWindowId(
+            lastFocusedWindowId: nil,
+            eligibleWindowIds: [only]
+        )
+        #expect(resolved == only)
+    }
+
+    @Test("Resolution: yields nothing when the connection has no eligible window")
+    func resolutionWithoutEligibleWindows() {
+        #expect(
+            WindowLifecycleMonitor.resolveWindowId(
+                lastFocusedWindowId: UUID(),
+                eligibleWindowIds: []
+            ) == nil
+        )
     }
 }

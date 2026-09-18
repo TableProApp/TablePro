@@ -154,6 +154,16 @@ struct UsernameHidingTests {
         #expect(fields.hidesPassword(forValues: ["mssqlAuthMethod": "windows"]) == false)
     }
 
+    @Test("Entra ID hides both built-in credentials, since the token replaces them")
+    func entraHidesUsernameAndPassword() {
+        let fields = mssqlAuthFields()
+            + EntraAuthFields.standard(gatedBy: "mssqlAuthMethod", value: "entra")
+        #expect(fields.hidesUsername(forValues: ["mssqlAuthMethod": "entra"]) == true)
+        #expect(fields.hidesPassword(forValues: ["mssqlAuthMethod": "entra"]) == true)
+        #expect(fields.hidesUsername(forValues: ["mssqlAuthMethod": "sql"]) == false)
+        #expect(fields.hidesPassword(forValues: ["mssqlAuthMethod": "sql"]) == false)
+    }
+
     @Test("Fields without the hidesUsername flag never hide the username")
     func plainFieldsDoNotHide() {
         let plain = ConnectionField(id: "region", label: "Region", section: .authentication)
@@ -195,6 +205,7 @@ struct PluginManagerPasswordHidingTests {
         #expect(hides("DuckDB", ["duckdbMode": "remote"]))
         #expect(hides("DynamoDB", ["awsAuthMethod": "profile"]))
         #expect(hides("BigQuery", ["bqAuthMethod": "adc"]))
+        #expect(hides("Spanner", ["spAuthMethod": "adc"]))
         #expect(hides("Snowflake", ["snowflakeAuthMethod": "externalBrowser"]))
     }
 }

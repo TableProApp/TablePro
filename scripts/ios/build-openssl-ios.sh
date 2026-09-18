@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Build static OpenSSL for iOS (device + simulator) → xcframework
@@ -14,7 +14,8 @@ set -eo pipefail
 #   - Xcode Command Line Tools
 #   - curl
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../openssl-version.sh"
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 IOS_DEPLOY_TARGET="17.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -22,18 +23,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs/ios"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
-
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        echo "FAILED: $*"
-        tail -50 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
 
 cleanup() {
     echo "   Cleaning up build directory..."
@@ -74,9 +63,6 @@ build_openssl_slice() {
     cp -R "$OPENSSL_SRC" "$SRC_COPY"
     cd "$SRC_COPY"
 
-    local SDK_PATH
-    SDK_PATH=$(xcrun --sdk "$PLATFORM" --show-sdk-path)
-
     export IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOY_TARGET"
 
     run_quiet ./Configure "$TARGET" \
@@ -103,7 +89,6 @@ SIMULATOR_SRC="$BUILD_DIR/openssl-iphonesimulator-arm64"
 cp -R "$OPENSSL_SRC" "$SIMULATOR_SRC"
 cd "$SIMULATOR_SRC"
 
-SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
 SIMULATOR_INSTALL="$BUILD_DIR/install-iphonesimulator-arm64"
 
 export IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOY_TARGET"

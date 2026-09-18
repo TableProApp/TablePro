@@ -30,7 +30,7 @@ struct HexColorPicker: View {
 
 internal struct ThemeEditorColorsSection: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorColorsSection")
-    private var engine: ThemeEngine { ThemeEngine.shared }
+    @ObservedObject private var engine = ThemeEngine.shared
     private var theme: ThemeDefinition { engine.activeTheme }
 
     var body: some View {
@@ -108,28 +108,23 @@ internal struct ThemeEditorColorsSection: View {
     // MARK: - Data Grid
 
     private var dataGridSection: some View {
-        Section(String(localized: "Data Grid")) {
-            LabeledContent(String(localized: "Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.background))
-            }
-            LabeledContent(String(localized: "Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.text))
-            }
-            LabeledContent(String(localized: "Alternate Row")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.alternateRow))
-            }
-            LabeledContent(String(localized: "NULL Value")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.nullValue))
-            }
-            LabeledContent(String(localized: "Bool True")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.boolTrue))
-            }
-            LabeledContent(String(localized: "Bool False")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.boolFalse))
-            }
-            LabeledContent(String(localized: "Row Number")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.rowNumber))
-            }
+        let system = ResolvedDataGridColors(from: .defaultLight)
+        let resolved = ResolvedDataGridColors(from: theme.dataGrid)
+        return Section(String(localized: "Data Grid")) {
+            optionalColorRow(String(localized: "Background"), keyPath: \.dataGrid.background,
+                             fallback: system.background)
+            optionalColorRow(String(localized: "Text"), keyPath: \.dataGrid.text,
+                             fallback: system.text)
+            optionalColorRow(String(localized: "Alternate Row"), keyPath: \.dataGrid.alternateRow,
+                             fallback: system.alternateRow)
+            optionalColorRow(String(localized: "NULL Value"), keyPath: \.dataGrid.nullValue,
+                             fallback: system.nullValue)
+            optionalColorRow(String(localized: "Bool True"), keyPath: \.dataGrid.boolTrue,
+                             fallback: resolved.text)
+            optionalColorRow(String(localized: "Bool False"), keyPath: \.dataGrid.boolFalse,
+                             fallback: resolved.text)
+            optionalColorRow(String(localized: "Row Number"), keyPath: \.dataGrid.rowNumber,
+                             fallback: system.rowNumber)
             LabeledContent(String(localized: "Modified")) {
                 HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.modified))
             }
@@ -141,9 +136,6 @@ internal struct ThemeEditorColorsSection: View {
             }
             LabeledContent(String(localized: "Deleted Text")) {
                 HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.deletedText))
-            }
-            LabeledContent(String(localized: "Focus Border")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.focusBorder))
             }
         }
     }
@@ -244,7 +236,7 @@ internal struct ThemeEditorColorsSection: View {
                 do {
                     try engine.saveUserTheme(updated)
                 } catch {
-                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to save theme: \(error.publicLogShape, privacy: .public)")
                 }
             }
         )
@@ -268,7 +260,7 @@ internal struct ThemeEditorColorsSection: View {
                 do {
                     try engine.saveUserTheme(updated)
                 } catch {
-                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to save theme: \(error.publicLogShape, privacy: .public)")
                 }
             }
         )
@@ -291,7 +283,7 @@ internal struct ThemeEditorColorsSection: View {
                         do {
                             try engine.saveUserTheme(updated)
                         } catch {
-                            Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                            Self.logger.error("Failed to save theme: \(error.publicLogShape, privacy: .public)")
                         }
                     } label: {
                         Image(systemName: "arrow.counterclockwise")
@@ -299,6 +291,7 @@ internal struct ThemeEditorColorsSection: View {
                     }
                     .buttonStyle(.borderless)
                     .help(String(localized: "Reset to System Default"))
+                    .accessibilityLabel(String(localized: "Reset to System Default"))
                 }
             }
         }

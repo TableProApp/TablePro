@@ -42,7 +42,7 @@ enum LoopbackPort {
         return await withCheckedContinuation { continuation in
             let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
             let resumed = OSAllocatedUnfairLock(initialState: false)
-            let complete: (Bool) -> Void = { value in
+            let complete: @Sendable (Bool) -> Void = { value in
                 let shouldResume = resumed.withLock { done -> Bool in
                     guard !done else { return false }
                     done = true

@@ -3,16 +3,16 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class MentionPopoverState {
-    var isVisible = false
-    var candidates: [MentionCandidate] = []
-    var selectedIndex = 0
-    var query = ""
-    var anchorRange = NSRange(location: 0, length: 0)
+final class MentionPopoverState: ObservableObject {
+    @Published var isVisible = false
+    @Published var candidates: [MentionCandidate] = []
+    @Published var selectedIndex = 0
+    @Published var query = ""
+    @Published var anchorRange = NSRange(location: 0, length: 0)
 
     func reset() {
         isVisible = false

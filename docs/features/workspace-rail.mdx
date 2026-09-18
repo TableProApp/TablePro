@@ -1,0 +1,88 @@
+---
+title: Connections strip
+description: Switch between every connection and database you have open from a narrow strip on the leading edge of the window
+---
+
+Click an icon in the strip down the leading edge and you land back where you left off, on the tab you last used there. Each icon is one connection plus the database you are browsing in it, so two connections make two icons and moving one to a second database makes three. Clicking an entry returns you to it on the tab you last used there, and closes nothing.
+
+<Frame caption="The connections strip beside the object browser, with two connections open">
+  <img className="block dark:hidden" src="/images/workspace-rail.png" alt="Connections strip" />
+  <img className="hidden dark:block" src="/images/workspace-rail-dark.png" alt="Connections strip" />
+</Frame>
+
+The strip is on by default and appears once a second entry exists. Hide it with **View > Hide Connections**, `Cmd+Option+0`, or **Settings > General > Sidebar > Show connections**.
+
+A hidden strip comes back on its own while the connection you are on has nothing to show, and goes again once it does. Disconnecting or losing a connection empties the object browser, drops the tab strip and dims most of the toolbar, and the strip is what puts the window's other connections back within one click.
+
+## What an entry shows
+
+The icon is the database engine's symbol, and its shape changes with the connection's state. A connection you gave a color shows it as a dot in the icon's corner. The first line under the icon names the connection, the second names the database or schema it browses, and each line shortens in the middle when long. Hovering gives the full connection name, host, and database or schema; VoiceOver reads those plus the connection state. The entry you are in is highlighted, in each window separately.
+
+On servers that group objects by schema, an entry stands for a schema. On an engine that switches neither databases nor schemas, such as SQLite or Redis, a connection has one entry and one line, the connection name.
+
+## Icon states
+
+Shape carries the state, not just color.
+
+| Icon | State | What to do |
+|------|-------|------------|
+| Engine symbol | Connected, or connecting | Nothing |
+| Filled warning triangle | The last connect failed | Click the entry: the pane carries the driver's own error, **Try Again**, and **Copy Details** |
+| Bolt in a circle | The session ended, tabs kept | Click the entry, then **Reconnect** on the pane, or **Database > Reconnect** |
+
+## When an entry appears
+
+Switching database adds an entry and keeps the one you are leaving, so both databases stay a click apart. An entry lasts until you close it.
+
+| You are on `app` and switch to `logs` | Result |
+|---|---|
+| First switch | `app` stays, `logs` is added |
+| Back to `app` from the strip | Both stay, `app` is current |
+| `logs` is already listed | The existing `logs` entry activates |
+
+Closing an entry's last tab leaves the entry where it is: tabs and entries close separately. The set is per session, so relaunching starts from the database each connection opens on, plus the databases your restored tabs have work in.
+
+## Switching
+
+Between two connections, the window switches connection and returns you to the tab you last used there; between two databases of one connection, the sidebar moves and the tabs stay. An entry with nothing open moves the sidebar only, and clicking the entry you are in does nothing. No tab is ever closed or retargeted by a switch: each one keeps querying the database it was opened against.
+
+The strip takes the keyboard too. Click into it, then use the arrow keys to move the highlight. Type the start of a connection, database, or schema name to jump to it, and press `Return` to open the entry.
+
+More entries than fit the window means the strip scrolls, and it settles on whole entries rather than halfway through one. Switching to an entry that is off screen brings it into view.
+
+## Windows
+
+One window hosts every connection you have open, and the tab strip below the toolbar lists only the current connection's tabs. Opening a table or query on a connection already open adds a tab there rather than opening a second window.
+
+To put two connections side by side, right-click an entry and choose **Open in New Window**. It moves with its tabs, its session, and anything unsaved. The item is absent when the window has no other connection left to show.
+
+A first window opens at 1200x800 and goes no smaller than 720x480; later windows reuse the last size and position. Whether a new one joins a tab group follows **Prefer tabs when opening documents** in System Settings > Desktop & Dock. Inside a group, **Window > Move Tab to New Window** and **Window > Merge All Windows** apply; both dim outside one. Those are macOS window tabs, which hold whole windows, not the editor tab strip, which holds one connection's editors.
+
+## Closing and disconnecting
+
+Right-click an entry and choose **Close Database “\<name\>”** to close that database: its tabs go, its entry goes, and the connection keeps everything it has open elsewhere. Unsaved work in those tabs is confirmed first, and the strip lands on the next entry. Middle-clicking does the same without the menu, and so does `Cmd+W` while the strip holds the keyboard. On servers that group objects by schema the item reads **Close Schema “\<name\>”**.
+
+**Close Connection “\<name\>”**, below it, closes the whole connection: every tab across every database it has open, its session, and all of its entries. The window closes too if that was its last connection, and **File > Close Connection** does the same for the connection on screen. A connection down to one entry has nothing else left, so closing that entry closes it. Nothing is lost for good: reopen the connection, from the connection list or **Database > Switch Connection…**, and its tabs come back as they were.
+
+**Disconnect**, on the same menu while the connection is live, ends the session and keeps everything else. No window closes, no entry disappears, and the tabs are saved first; the connection shows a Reconnect pane in their place until **Database > Reconnect**, or the pane's own button, brings both back. **Database > Disconnect** does the same for the connection on screen, asking first when a query is running or changes are unsaved. Nothing reconnects on its own, and a connection you disconnected is not reopened at the next launch.
+
+## Reordering
+
+Drag entries to arrange them. The order is shared by every window, kept across launches, and an entry returns to its slot when you reopen it. Until you drag anything, entries follow the order their connections opened, one connection's databases grouped by name, and a connection you disconnect keeps its place.
+
+Deleting a connection takes its entries out of the saved order. The rest is kept to 500 entries, dropping the ones you no longer have open, oldest first, so a database renamed or dropped on the server does not hold a slot forever.
+
+## Keys
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle connections | `Cmd+Option+0` |
+| Show previous connection | `Ctrl+Cmd+Up` |
+| Show next connection | `Ctrl+Cmd+Down` |
+
+Previous and next move through the strip in display order, not the order things opened. Rebind them in **Settings > Keyboard**; if either chord is already yours for something else, your assignment wins and the command stays unbound until you free it.
+
+## Related
+
+- [Query Tabs](/features/tabs) for what a tab is bound to and what survives a restart
+- [Open Quickly](/features/open-quickly) for searching inside one connection or across all of them

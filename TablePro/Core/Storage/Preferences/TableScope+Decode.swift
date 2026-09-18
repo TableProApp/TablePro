@@ -22,10 +22,4 @@ extension TableScope {
             table: decoded[3]
         )
     }
-
-    var displayName: String {
-        [database, schema, table]
-            .compactMap { $0?.isEmpty == false ? $0 : nil }
-            .joined(separator: ".")
-    }
 }

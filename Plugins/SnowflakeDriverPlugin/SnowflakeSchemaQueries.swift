@@ -65,22 +65,34 @@ enum SnowflakeSchemaQueries {
     }
 
     static func escapeLikePattern(_ value: String) -> String {
-        escapeLiteral(value)
-            .replacingOccurrences(of: "_", with: "\\\\_")
-            .replacingOccurrences(of: "%", with: "\\\\%")
+        SnowflakeSQL.escapeLikePattern(value)
     }
 
     static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+        SnowflakeSQL.escapeLiteral(value)
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(identifier)
     }
 
     private static func qualified(_ parts: String...) -> String {
         parts.map(quote).joined(separator: ".")
     }
 }
+
+internal extension SnowflakeSchemaQueries {
+    /// The database a foreign key points at, or nil when it points at the one it was read from.
+    ///
+    /// `SHOW IMPORTED KEYS` reports `pk_database_name` beside `pk_schema_name`, and the driver used
+    /// to read only the second, so a key into another database resolved to the current one's
+    /// same-named table. Snowflake folds an unquoted identifier to upper case and answers in its own
+    /// spelling, so a same-database key is recognised case-insensitively and reported as nil, which
+    /// keeps every existing key resolving exactly as before.
+    static func referencedDatabase(reported: String?, local: String?) -> String? {
+        guard let reported, !reported.isEmpty else { return nil }
+        guard let local, !local.isEmpty else { return reported }
+        return reported.caseInsensitiveCompare(local) == .orderedSame ? nil : reported
+    }
+}
+

@@ -308,10 +308,18 @@ struct RegistryAutoLimitStyleTests {
     func sqlPluginsDeclareStyle() {
         #expect(defaults["SQL Server"]?.editor.sqlDialect?.autoLimitStyle == .top)
         #expect(defaults["Oracle"]?.editor.sqlDialect?.autoLimitStyle == .fetchFirst)
+        #expect(defaults["Dameng"]?.editor.sqlDialect?.autoLimitStyle == .fetchFirst)
         #expect(defaults["ClickHouse"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["DuckDB"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["Cassandra"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["Cloudflare D1"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["libSQL"]?.editor.sqlDialect?.autoLimitStyle == .limit)
+    }
+
+    @Test("Registry entries declare the plan format their parser reads")
+    func registryEntriesDeclareExplainFormat() {
+        #expect(defaults["Dameng"]?.explainVariants.first?.format == .damengText)
+        #expect(defaults["ClickHouse"]?.explainVariants.first?.format == .indentedText)
+        #expect(defaults["DuckDB"]?.explainVariants.first?.format == .indentedText)
     }
 }

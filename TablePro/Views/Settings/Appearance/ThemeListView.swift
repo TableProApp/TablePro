@@ -4,23 +4,36 @@ import UniformTypeIdentifiers
 
 internal struct ThemeListView: View {
     @Binding var selectedThemeId: String
+    internal var slotAppearance: ThemeAppearance = .light
 
-    private var engine: ThemeEngine { ThemeEngine.shared }
+    @ObservedObject private var engine = ThemeEngine.shared
 
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
     @State private var showError = false
 
     private var builtInThemes: [ThemeDefinition] {
-        engine.availableThemes.filter(\.isBuiltIn)
+        ThemeSlotValidation.eligibleThemes(
+            engine.availableThemes.filter(\.isBuiltIn),
+            slot: slotAppearance,
+            keeping: selectedThemeId
+        )
     }
 
     private var registryThemes: [ThemeDefinition] {
-        engine.registryThemes
+        ThemeSlotValidation.eligibleThemes(
+            engine.registryThemes,
+            slot: slotAppearance,
+            keeping: selectedThemeId
+        )
     }
 
     private var customThemes: [ThemeDefinition] {
-        engine.availableThemes.filter(\.isEditable)
+        ThemeSlotValidation.eligibleThemes(
+            engine.availableThemes.filter(\.isEditable),
+            slot: slotAppearance,
+            keeping: selectedThemeId
+        )
     }
 
     private var selectedTheme: ThemeDefinition? {
@@ -71,16 +84,18 @@ internal struct ThemeListView: View {
                         duplicateActiveTheme()
                     }
                     Divider()
-                    Button(String(localized: "Import...")) {
+                    Button(String(localized: "Import…")) {
                         importTheme()
                     }
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 24)
+                        .accessibilityLabel(Text("Add Theme"))
                 }
                 .menuIndicator(.hidden)
                 .buttonStyle(.borderless)
                 .frame(width: 28)
+                .help(Text("Add Theme"))
 
                 Button {
                     showDeleteConfirmation = true
@@ -90,12 +105,14 @@ internal struct ThemeListView: View {
                 }
                 .buttonStyle(.borderless)
                 .disabled(isDeleteDisabled)
+                .help(Text("Delete Theme"))
+                .accessibilityLabel(Text("Delete Theme"))
 
                 Menu {
                     Button(String(localized: "Duplicate")) {
                         duplicateActiveTheme()
                     }
-                    Button(String(localized: "Export...")) {
+                    Button(String(localized: "Export…")) {
                         exportActiveTheme()
                     }
                     if selectedTheme?.isRegistry == true {
@@ -107,10 +124,12 @@ internal struct ThemeListView: View {
                 } label: {
                     Image(systemName: "gearshape")
                         .frame(width: 24, height: 24)
+                        .accessibilityLabel(Text("Theme Actions"))
                 }
                 .menuIndicator(.hidden)
                 .buttonStyle(.borderless)
                 .frame(width: 28)
+                .help(Text("Theme Actions"))
 
                 Spacer()
             }
@@ -173,19 +192,27 @@ internal struct ThemeListView: View {
     }
 
     private func exportActiveTheme() {
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = engine.activeTheme.name + ".json"
         panel.canCreateDirectories = true
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            try? engine.exportTheme(engine.activeTheme, to: url)
+            do {
+                try engine.exportTheme(engine.activeTheme, to: url)
+            } catch {
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Could not export the theme"),
+                    message: error.localizedDescription,
+                    window: window
+                )
+            }
         }
     }
 
     private func importTheme() {
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false

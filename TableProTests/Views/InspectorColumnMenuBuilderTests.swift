@@ -24,10 +24,12 @@ struct InspectorColumnMenuBuilderTests {
         #expect(items[4].action == #selector(InspectorViewController.inspectorMergeColumns(_:)))
         #expect(items.last?.action == #selector(InspectorViewController.inspectorDeleteColumn(_:)))
 
-        for item in items where !item.isSeparatorItem && item.submenu == nil {
-            #expect(item.tag == 3)
+        for item in items.dropLast() where !item.isSeparatorItem && item.submenu == nil {
+            #expect(InspectorColumnMenuBuilder.clickedColumn(from: item) == 3)
             #expect(item.target == nil)
         }
+        #expect(items.last?.representedObject as? [Int] == [3])
+        #expect(items.last?.target == nil)
     }
 
     @Test("Merge Columns is omitted for the last column")

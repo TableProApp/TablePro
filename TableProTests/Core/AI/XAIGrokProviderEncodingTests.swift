@@ -60,6 +60,6 @@ struct XAIGrokProviderEncodingTests {
     func subscriptionModels() async throws {
         let provider = XAIGrokProvider(model: "grok-build")
         let models = try await provider.fetchAvailableModels()
-        #expect(models == ["grok-4.5", "grok-build", "grok-composer-2.5-fast"])
+        #expect(models.map(\.id) == ["grok-4.5", "grok-build", "grok-composer-2.5-fast"])
     }
 }

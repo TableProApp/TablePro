@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import Testing
+import TableProSyncTransport
 @testable import TablePro
 
 @Suite("ConnectionStorage Additional Fields")

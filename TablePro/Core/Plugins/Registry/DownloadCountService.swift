@@ -3,17 +3,18 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class DownloadCountService {
+@MainActor
+final class DownloadCountService: ObservableObject {
     static let shared = DownloadCountService()
 
-    private var counts: [String: Int] = [:]
-    private var lastFetchDate: Date?
+    @Published private var counts: [String: Int] = [:]
+    @Published private var lastFetchDate: Date?
     private static let cooldown: TimeInterval = 300 // 5 minutes
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DownloadCountService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DownloadCountService")
 
     private static let releasesURL = URL(string: "https://api.github.com/repos/TableProApp/TablePro/releases?per_page=100")!
 

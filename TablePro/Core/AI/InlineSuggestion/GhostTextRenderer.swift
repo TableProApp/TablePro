@@ -4,22 +4,22 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class GhostTextRenderer {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "GhostTextRenderer")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "GhostTextRenderer")
 
     private weak var controller: TextViewController?
     private var ghostLayer: CATextLayer?
     private var currentText: String?
     private var currentOffset: Int = 0
-    private let _scrollObserver = OSAllocatedUnfairLock<Any?>(initialState: nil)
+    private let _scrollObserver = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
 
     deinit {
-        if let observer = _scrollObserver.withLock({ $0 }) { NotificationCenter.default.removeObserver(observer) }
+        if let observer = _scrollObserver.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
     }
 
     func install(controller: TextViewController) {
@@ -54,7 +54,7 @@ final class GhostTextRenderer {
             attributes: attrs
         )
 
-        // isFlipped = true in CodeEditTextView, so y=0 is top — coords match layoutManager directly
+        // isFlipped = true in TableProTextEngine, so y=0 is top — coords match layoutManager directly
         layer.frame = CGRect(
             x: rect.origin.x,
             y: rect.origin.y,
@@ -84,11 +84,11 @@ final class GhostTextRenderer {
     // MARK: - Scroll Observer
 
     private func installScrollObserver() {
-        guard _scrollObserver.withLock({ $0 }) == nil else { return }
+        guard _scrollObserver.withLockUnchecked({ $0 }) == nil else { return }
         guard let scrollView = controller?.scrollView else { return }
         let contentView = scrollView.contentView
 
-        _scrollObserver.withLock {
+        _scrollObserver.withLockUnchecked {
             $0 = NotificationCenter.default.addObserver(
                 forName: NSView.boundsDidChangeNotification,
                 object: contentView,
@@ -102,7 +102,7 @@ final class GhostTextRenderer {
     }
 
     private func removeScrollObserver() {
-        _scrollObserver.withLock {
+        _scrollObserver.withLockUnchecked {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }

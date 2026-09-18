@@ -1,0 +1,77 @@
+---
+title: General Settings
+description: Language, startup behavior, sidebar layout, query timeout, the command line tool, updates, and reset
+---
+
+Most of this tab takes effect the moment you click. Language waits for a restart, and the query timeout reaches a connection only when that connection opens.
+
+<Frame caption="The General tab">
+  <img className="block dark:hidden" src="/images/settings-general.png" alt="General settings tab" />
+  <img className="hidden dark:block" src="/images/settings-general-dark.png" alt="General settings tab" />
+</Frame>
+
+## Language
+
+System (the default), English, Tiếng Việt, 简体中文, 繁體中文, 한국어, Türkçe. The tab tells you to restart once you pick a different one.
+
+## Startup
+
+**When TablePro starts** takes **Reopen Last Session** (the default) or **Show Welcome Screen**. What a reopened session brings back, and what it does when a server is down, is on [Tabs](/features/tabs#what-survives-a-restart).
+
+## Tabs and sidebar
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| **Enable preview tabs** | On | Single-click opens a temporary tab that the next click replaces; double-clicking the table, the tab, or editing it makes it permanent |
+| **Show connections** | On | The [connections strip](/features/workspace-rail) on the window's leading edge |
+| **Show recent tables** | Off | A [Recent section](/features/favorites#recent-tables) at the top of the sidebar |
+| **Show object icons** | On | A type icon before each object name. Off gives a plain list of names |
+| **Show object comments** | On | Database object comments beside tables in the sidebar and in grid column headers |
+| **Show partitions** | On | A partitioned table's partitions listed under it, and how many it holds beside its name |
+| **Show system databases and schemas** | Off | `mysql`, `information_schema`, `master` and the other system databases and schemas in the sidebar tree and its database filter. The database switcher lists them either way |
+| **Row size** | Match System | Match System follows **Sidebar icon size** in **System Settings > Appearance**. Small, Medium, or Large overrides it to fit more objects on screen |
+| **Default layout for new connections** | List | List or Tree, on servers with a database tree. Switch the connection you are in from the **View** menu |
+
+Icons, comments, system databases and schemas, partitions, and row size are also under **View Options**, the button beside the sidebar's filter field. Right-clicking the empty space below the object list reaches the same options.
+
+## Query timeout
+
+How many seconds a query runs before it is cancelled. The default is 60; the picker offers 10 to 600 seconds and **No limit**. The value is read when a connection opens, so a change reaches an open connection only after you reconnect.
+
+Where the engine can enforce it, the timeout becomes a server-side setting: `statement_timeout` on PostgreSQL, `max_execution_time` on MySQL and ClickHouse, `max_statement_time` on MariaDB, `ob_query_timeout` on OceanBase. On SQLite it bounds how long a statement waits for a locked database instead. Drivers that talk HTTP (BigQuery, Spanner, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch, Typesense, and ClickHouse) bound the request at the timeout plus 30 seconds, and Oracle enforces it in the client: the connection is closed to unblock the call, and the next query reconnects and restores your current schema.
+
+Older servers have neither: MySQL before 5.7.8, MariaDB before 10.1.1. A statement that passes the timeout there is stopped with `KILL QUERY` from a second connection, which reaches a `SELECT` on MySQL and any statement at all on MariaDB. A server behind a proxy that reports a version it does not have still gets the right one of the two.
+
+**No limit** still caps an HTTP request at one hour, because the transport needs a ceiling.
+
+## Command line tool
+
+**Install** writes a `tablepro` command to `/usr/local/bin` that opens database URLs in the app. When it cannot write there, the section prints the command to run in Terminal yourself. See [Terminal and DDEV](/external-api/terminal).
+
+## Trusted links
+
+External links you chose to always allow, each with **Forget**, plus **Forget All**. Only a database on this machine can be trusted; a link to a remote host asks every time.
+
+## Software update
+
+Both switches are on out of the box, and together they are the whole of the decision: the first one stops the daily check, the second stops the install.
+
+**Automatically check for updates** runs the check in the background once a day. Turn it off and nothing reaches the network unless you press the button.
+
+**Download and install updates automatically** fetches the new version in the background and swaps it in the next time TablePro quits, with no dialog. Turn it off to be asked first. With the check switched off the switch is dimmed and installs never run.
+
+**Last checked** sits beside **Check for Updates…**, which checks now and is also **TablePro > Check for Updates…** in the menu bar. A check you press ignores the schedule and any staged rollout, so it always offers the newest build.
+
+When a background check finds something, nothing jumps in front of you. The menu item and the button both change to **Update Available…** and wait until you come back. Updates arrive through [Sparkle](https://sparkle-project.org/) and are signature-checked before they install.
+
+**What's New** opens the highlights of the version you are running, with a button to the full changelog. It is also **Help > What's New**.
+
+An administrator can pin both switches and the interval across a fleet. See [Managed updates](/security/managed-updates).
+
+## Privacy
+
+**Share anonymous usage data** is on. It sends one heartbeat a day with no query text, hostname, or account in it. The full payload, field by field, is on [Privacy](/security/privacy#usage-heartbeat).
+
+## Reset
+
+**Reset All Settings to Defaults** is at the bottom of the tab. What it restores and what it leaves alone is under [Where settings live](/customization/settings#where-settings-live).

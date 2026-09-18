@@ -4,58 +4,71 @@
 //
 
 import AppKit
+import os
 
 struct HeaderSortTransition: Equatable {
     let newState: SortState
 }
 
+/// The header click cycle: first direction, its opposite, then the engine's own order.
+///
+/// Every transition it returns is stamped `.user`, including the empty one. The empty state is the
+/// user saying "no order", which is a different thing from a tab that has not decided yet, and only
+/// the stamp keeps `wantsDefaultSort` from writing the app default back over it.
 enum HeaderSortCycle {
     static func nextTransition(
         state: SortState,
         clickedColumn: Int,
-        isMultiSort: Bool
+        isMultiSort: Bool,
+        firstClickDirection: SortDirection
     ) -> HeaderSortTransition {
-        if isMultiSort {
-            return multiSortTransition(state: state, clickedColumn: clickedColumn)
-        }
-        return singleSortTransition(state: state, clickedColumn: clickedColumn)
+        let transition = isMultiSort
+            ? multiSortTransition(state: state, clickedColumn: clickedColumn, firstClickDirection: firstClickDirection)
+            : singleSortTransition(state: state, clickedColumn: clickedColumn, firstClickDirection: firstClickDirection)
+        var stamped = transition.newState
+        stamped.source = .user
+        return HeaderSortTransition(newState: stamped)
     }
 
-    private static func multiSortTransition(state: SortState, clickedColumn: Int) -> HeaderSortTransition {
+    private static func multiSortTransition(
+        state: SortState,
+        clickedColumn: Int,
+        firstClickDirection: SortDirection
+    ) -> HeaderSortTransition {
         guard let existingIndex = state.columns.firstIndex(where: { $0.columnIndex == clickedColumn }) else {
             var newState = state
-            newState.columns.append(SortColumn(columnIndex: clickedColumn, direction: .ascending))
+            newState.columns.append(SortColumn(columnIndex: clickedColumn, direction: firstClickDirection))
             return HeaderSortTransition(newState: newState)
         }
 
         let existing = state.columns[existingIndex]
-        switch existing.direction {
-        case .ascending:
+        if existing.direction == firstClickDirection {
             var newState = state
-            newState.columns[existingIndex].direction = .descending
-            return HeaderSortTransition(newState: newState)
-        case .descending:
-            var newState = state
-            newState.columns.remove(at: existingIndex)
+            newState.columns[existingIndex].direction = firstClickDirection.opposite
             return HeaderSortTransition(newState: newState)
         }
+        var newState = state
+        newState.columns.remove(at: existingIndex)
+        return HeaderSortTransition(newState: newState)
     }
 
-    private static func singleSortTransition(state: SortState, clickedColumn: Int) -> HeaderSortTransition {
+    private static func singleSortTransition(
+        state: SortState,
+        clickedColumn: Int,
+        firstClickDirection: SortDirection
+    ) -> HeaderSortTransition {
         guard let primary = state.columns.first, primary.columnIndex == clickedColumn else {
             var newState = SortState()
-            newState.columns = [SortColumn(columnIndex: clickedColumn, direction: .ascending)]
+            newState.columns = [SortColumn(columnIndex: clickedColumn, direction: firstClickDirection)]
             return HeaderSortTransition(newState: newState)
         }
 
-        switch primary.direction {
-        case .ascending:
+        if primary.direction == firstClickDirection {
             var newState = SortState()
-            newState.columns = [SortColumn(columnIndex: clickedColumn, direction: .descending)]
+            newState.columns = [SortColumn(columnIndex: clickedColumn, direction: firstClickDirection.opposite)]
             return HeaderSortTransition(newState: newState)
-        case .descending:
-            return HeaderSortTransition(newState: SortState())
         }
+        return HeaderSortTransition(newState: SortState())
     }
 }
 
@@ -67,8 +80,6 @@ final class SortableHeaderView: NSTableHeaderView {
     private static let resizeZoneWidth: CGFloat = 4
     private static let fallbackHeight: CGFloat = 28
 
-    private var pendingClickStartLocation: NSPoint?
-    private var dragOccurredDuringClick = false
     private var mouseMovedTrackingArea: NSTrackingArea?
     private var hoveredColumnIndex: Int?
 
@@ -100,14 +111,107 @@ final class SortableHeaderView: NSTableHeaderView {
         return commentsByColumn[column.identifier]
     }
 
+    private let emphasisObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
+    private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
+    private var firstResponderObservation: NSKeyValueObservation?
+    /// Where the pinned row-number heading was last painted, so a scroll can clear it from there.
+    ///
+    /// Recorded by the drawing itself rather than by the scroll, because the heading is also painted
+    /// when nothing scrolled: row numbers turned on, or the column widening for a longer number,
+    /// while the grid is already scrolled sideways.
+    private(set) var drawnPinnedHeadingRect: NSRect?
+
     override init(frame frameRect: NSRect) {
         naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
         super.init(frame: frameRect)
     }
 
+    deinit {
+        emphasisObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
+        scrollObserver.withLockUnchecked { $0.map(NotificationCenter.default.removeObserver) }
+    }
+
     required init?(coder: NSCoder) {
         naturalHeight = Self.fallbackHeight
         super.init(coder: coder)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        emphasisObservers.withLockUnchecked {
+            $0.forEach(NotificationCenter.default.removeObserver)
+            $0.removeAll()
+        }
+        firstResponderObservation = nil
+        guard let window else {
+            applyEmphasis(false)
+            return
+        }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshEmphasis() }
+            }
+            emphasisObservers.withLockUnchecked { $0.append(observer) }
+        }
+        /// The header and the row bodies are two halves of one selection, so they have to agree on
+        /// what emphasis means. `NSTableRowView.isEmphasized` is key window *and* table focus, and
+        /// keying the header on the window alone left a sorted column accent blue over a grey body.
+        /// AppKit publishes no first-responder notification but does notify KVO by hand.
+        firstResponderObservation = window.observe(\.firstResponder, options: [.initial, .new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshEmphasis() }
+        }
+    }
+
+    /// The header scrolls in a clip view of its own, and the pinned row-number heading is drawn at that
+    /// clip's leading edge, so the clip's bounds are the one signal that always agrees with where the
+    /// heading belongs. The rows' clip view is not: scrolling it alone, measured on macOS 27, leaves
+    /// this one where it was.
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        scrollObserver.withLockUnchecked { observer in
+            observer.map(NotificationCenter.default.removeObserver)
+            observer = nil
+        }
+        guard let clipView = superview as? NSClipView else { return }
+        clipView.postsBoundsChangedNotifications = true
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pinnedRowNumberHeadingDidMove() }
+        }
+        scrollObserver.withLockUnchecked { $0 = observer }
+    }
+
+    private func refreshEmphasis() {
+        applyEmphasis(
+            SortableHeaderEmphasis.isEmphasized(
+                tableViewHoldsFocus: SortableHeaderEmphasis.holdsFocus(tableView: tableView, in: window),
+                isKeyWindow: window?.isKeyWindow ?? false
+            )
+        )
+    }
+
+    private func applyEmphasis(_ isEmphasized: Bool) {
+        guard let tableView else { return }
+        var changed = false
+        for column in tableView.tableColumns {
+            guard let cell = column.headerCell as? SortableHeaderCell,
+                  cell.isEmphasized != isEmphasized else { continue }
+            cell.isEmphasized = isEmphasized
+            changed = true
+        }
+        guard changed else { return }
+        needsDisplay = true
+        /// The pinned row gutter paints the row selection itself, from this same rule, and nothing else
+        /// tells it the answer changed: its selected rows kept the accent colour after the grid lost
+        /// focus, beside rows that had already turned grey.
+        coordinator?.repaintRowGutter()
     }
 
     private func applyHeaderHeight() {
@@ -117,6 +221,95 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         tableView?.enclosingScrollView?.tile()
         needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        SortableHeaderChrome.fillBackground(dirtyRect)
+        super.draw(dirtyRect)
+        drawPinnedRowNumberHeading(in: dirtyRect)
+        SortableHeaderChrome.drawBottomSeparator(in: bounds)
+    }
+
+    // MARK: - Pinned row-number heading
+
+    /// The row-number heading's own rect held at the visible leading edge, where the pinned row gutter
+    /// below it sits. Nil when row numbers are off.
+    var pinnedRowNumberHeadingRect: NSRect? {
+        guard let index = rowNumberColumnIndex else { return nil }
+        let heading = headerRect(ofColumn: index)
+        guard heading.width > 0 else { return nil }
+        return NSRect(x: visibleRect.minX, y: heading.minY, width: heading.width, height: heading.height)
+    }
+
+    func isInPinnedRowNumberHeading(_ point: NSPoint) -> Bool {
+        pinnedRowNumberHeadingRect?.contains(point) ?? false
+    }
+
+    private var rowNumberColumnIndex: Int? {
+        guard let tableView else { return nil }
+        let index = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        guard index >= 0, !tableView.tableColumns[index].isHidden else { return nil }
+        return index
+    }
+
+    /// Paints the row-number heading again at the visible leading edge, over the heading scrolled
+    /// under it.
+    ///
+    /// It is the drawing that paints the heading unscrolled, moved: the heading's rect goes through
+    /// this view's own fill and `super.draw`, translated to the leading edge and clipped to it. No
+    /// separate view can stand in for this. On macOS 27 `NSTableHeaderView.draw` lays its own
+    /// translucent grey over the fill, measured at 50 against the fill's 30 in dark mode, and nothing
+    /// else goes through it: the view that pinned this heading before was always darker than the
+    /// headings beside it. The fill replaces pixels rather than blending over them, so the heading
+    /// scrolled underneath is gone from the strip rather than showing through it.
+    private func drawPinnedRowNumberHeading(in dirtyRect: NSRect) {
+        guard let index = rowNumberColumnIndex, let pinned = pinnedRowNumberHeadingRect else {
+            drawnPinnedHeadingRect = nil
+            return
+        }
+        let heading = headerRect(ofColumn: index)
+        guard pinned.minX != heading.minX else {
+            drawnPinnedHeadingRect = nil
+            return
+        }
+        guard pinned.intersects(dirtyRect), let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        pinned.clip()
+        context.translateBy(x: pinned.minX - heading.minX, y: 0)
+        SortableHeaderChrome.fillBackground(heading)
+        super.draw(heading)
+        context.restoreGState()
+        drawnPinnedHeadingRect = pinned
+    }
+
+    /// Clears the heading from where it was last painted and asks for it where it now belongs.
+    private func pinnedRowNumberHeadingDidMove() {
+        if let drawn = drawnPinnedHeadingRect {
+            setNeedsDisplay(drawn)
+        }
+        if let current = pinnedRowNumberHeadingRect {
+            setNeedsDisplay(current)
+        }
+    }
+
+    /// The pinned heading answers for the row-number column, which has no header menu. Left to AppKit
+    /// the click resolves to whichever column is scrolled underneath and offers to sort that.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard !isInPinnedRowNumberHeading(convert(event.locationInWindow, from: nil)) else { return nil }
+        return super.menu(for: event)
+    }
+
+    /// The pinned heading has the row-number column's tooltip, which is none. AppKit resolves the tooltip
+    /// of the column under the point, which there is the column scrolled out of sight, and would show its
+    /// name, type and comment over the `#`. An empty string is AppKit's own "no tooltip here".
+    override func view(
+        _ view: NSView,
+        stringForToolTip tag: NSView.ToolTipTag,
+        point: NSPoint,
+        userData data: UnsafeMutableRawPointer?
+    ) -> String {
+        guard !isInPinnedRowNumberHeading(point) else { return "" }
+        return super.view(view, stringForToolTip: tag, point: point, userData: data)
     }
 
     override func updateTrackingAreas() {
@@ -134,14 +327,23 @@ final class SortableHeaderView: NSTableHeaderView {
         mouseMovedTrackingArea = area
     }
 
+    /// `NSCursor.resizeLeftRight` is deprecated in favour of the direction-aware column
+    /// cursor, which the rest of the app already uses.
+    static var columnResizeCursor: NSCursor {
+        if #available(macOS 15.0, *) {
+            return .columnResize
+        }
+        return .resizeLeftRight
+    }
+
     override func mouseMoved(with event: NSEvent) {
-        guard let tableView else {
+        guard tableView != nil else {
             super.mouseMoved(with: event)
             return
         }
         let point = convert(event.locationInWindow, from: nil)
         if isInResizeZone(point: point) {
-            NSCursor.resizeLeftRight.set()
+            SortableHeaderView.columnResizeCursor.set()
             updateFunnelHover(column: nil)
         } else {
             NSCursor.arrow.set()
@@ -154,18 +356,25 @@ final class SortableHeaderView: NSTableHeaderView {
         updateFunnelHover(column: nil)
     }
 
-    private func isInResizeZone(point: NSPoint) -> Bool {
-        guard let tableView else { return false }
+    /// `headerRect(ofColumn:)` gives a hidden column a zero rect, so its trailing edge is x = 0. The
+    /// pool keeps user-hidden columns and the surplus slots of a wider result attached with
+    /// `userResizingMask` set, and each one reports a divider at the header's leading edge.
+    ///
+    /// Nothing under the pinned row-number heading is a resize zone either: the edges scrolled under
+    /// it belong to columns the reader cannot see there.
+    internal func isInResizeZone(point: NSPoint) -> Bool {
+        guard let tableView, let coordinator, !isInPinnedRowNumberHeading(point) else { return false }
         let zone = Self.resizeZoneWidth
         return tableView.tableColumns.enumerated().contains { index, column in
-            guard column.resizingMask.contains(.userResizingMask) else { return false }
+            guard column.resizingMask.contains(.userResizingMask),
+                  coordinator.presentsColumn(column) else { return false }
             let edge = headerRect(ofColumn: index).maxX
             return abs(point.x - edge) <= zone
         }
     }
 
     private func hoverableColumn(at point: NSPoint) -> Int? {
-        guard let tableView else { return nil }
+        guard let tableView, !isInPinnedRowNumberHeading(point) else { return nil }
         let columnIndex = column(at: point)
         guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else { return nil }
         guard tableView.tableColumns[columnIndex].identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
@@ -201,52 +410,160 @@ final class SortableHeaderView: NSTableHeaderView {
         }
     }
 
+    /// The two index sets are display positions, which is the space a selection speaks; a column's
+    /// data index is the slot it occupies in the result and is not what a position names.
     func updateColumnSelectionIndicators(selectedColumns: IndexSet, dirtyColumns: IndexSet) {
         guard let tableView = tableView, let coordinator = coordinator else { return }
         for (columnIndex, column) in tableView.tableColumns.enumerated() {
             guard let cell = column.headerCell as? SortableHeaderCell,
-                  let dataIndex = coordinator.dataColumnIndex(from: column.identifier) else { continue }
-            let shouldBeSelected = selectedColumns.contains(dataIndex)
+                  let dataIndex = coordinator.dataColumnIndex(from: column.identifier),
+                  let position = coordinator.displayPosition(ofDataColumnIndex: dataIndex) else { continue }
+            let shouldBeSelected = selectedColumns.contains(position)
             if cell.isColumnSelected != shouldBeSelected {
                 cell.isColumnSelected = shouldBeSelected
                 setNeedsDisplay(headerRect(ofColumn: columnIndex))
-            } else if dirtyColumns.contains(dataIndex) {
+            } else if dirtyColumns.contains(position) {
                 setNeedsDisplay(headerRect(ofColumn: columnIndex))
             }
         }
     }
 
-    func updateSortIndicators(state: SortState, schema: ColumnIdentitySchema) {
-        guard let tableView = tableView else { return }
+    func applySortState(_ state: SortState, schema: ColumnIdentitySchema) {
+        guard let tableView else { return }
+        applySortDescriptors(state: state, schema: schema, in: tableView)
+        applySortIndicators(state: state, schema: schema, in: tableView)
+    }
 
-        var priorityByIdentifier: [NSUserInterfaceItemIdentifier: (direction: SortDirection, priority: Int)] = [:]
-        for (index, sortCol) in state.columns.enumerated() {
-            guard let identifier = schema.identifier(for: sortCol.columnIndex) else { continue }
-            priorityByIdentifier[identifier] = (sortCol.direction, index + 1)
+    /// Mirrors the whole sort onto `tableView.sortDescriptors`, never just its leading entry.
+    ///
+    /// AppKit maintains this array itself on every unmodified header click, and a plain click on a
+    /// second column *prepends* the new descriptor while keeping the old ones behind it. Comparing
+    /// only `.first` therefore left AppKit's stale secondary in place, so the array claimed a
+    /// two-column sort the app was not running.
+    private func applySortDescriptors(
+        state: SortState,
+        schema: ColumnIdentitySchema,
+        in tableView: NSTableView
+    ) {
+        let descriptors = Self.presentedColumns(of: state, in: schema).map { entry in
+            NSSortDescriptor(key: entry.name, ascending: entry.direction == .ascending)
         }
+        let current = tableView.sortDescriptors
+        guard current.count != descriptors.count
+            || zip(current, descriptors).contains(where: { $0.key != $1.key || $0.ascending != $1.ascending })
+        else { return }
+        tableView.sortDescriptors = descriptors
+    }
+
+    /// The sorted-column chrome, and the only place the grid tells an assistive client what is sorted.
+    ///
+    /// `tableView.sortDescriptors` reaches no accessibility client (measured: the header cell's
+    /// direction stays `.unknown` through every change to it). `setAccessibilitySortDirection` is the
+    /// attribute VoiceOver actually reads, so it is set here per column and cleared on the rest.
+    private func applySortIndicators(
+        state: SortState,
+        schema: ColumnIdentitySchema,
+        in tableView: NSTableView
+    ) {
+        var priorityByIdentifier: [NSUserInterfaceItemIdentifier: (direction: SortDirection, priority: Int)] = [:]
+        for (priority, entry) in Self.presentedColumns(of: state, in: schema).enumerated() {
+            guard let identifier = schema.identifier(for: entry.dataIndex) else { continue }
+            priorityByIdentifier[identifier] = (entry.direction, priority + 1)
+        }
+        let isDefaultSort = state.source == .defaultSort
 
         for (columnIndex, column) in tableView.tableColumns.enumerated() {
             guard let cell = column.headerCell as? SortableHeaderCell else { continue }
             let entry = priorityByIdentifier[column.identifier]
             let newDirection = entry?.direction
-            let newPriority = entry?.priority
-            if cell.sortDirection != newDirection || cell.sortPriority != newPriority {
+            let newPriority = isDefaultSort ? nil : entry?.priority
+            let newIsDefault = entry != nil && isDefaultSort
+            cell.setAccessibilitySortDirection(Self.accessibilitySortDirection(for: newDirection))
+            if cell.sortDirection != newDirection
+                || cell.sortPriority != newPriority
+                || cell.isDefaultSort != newIsDefault {
                 cell.sortDirection = newDirection
                 cell.sortPriority = newPriority
+                cell.isDefaultSort = newIsDefault
                 setNeedsDisplay(headerRect(ofColumn: columnIndex))
             }
         }
     }
 
-    override func mouseDragged(with event: NSEvent) {
-        if let start = pendingClickStartLocation {
-            let current = convert(event.locationInWindow, from: nil)
-            if abs(current.x - start.x) > Self.clickDragThreshold ||
-                abs(current.y - start.y) > Self.clickDragThreshold {
-                dragOccurredDuringClick = true
+    /// The sort entries the current result actually carries a column for, resolved by name.
+    ///
+    /// A sort keeps its entry when its column leaves the result, so that re-running a query that
+    /// brings the column back restores the order. Its `columnIndex` is stale while it is away, and
+    /// painting from that index put the chevron and the sort descriptor on whichever column had
+    /// moved into the slot: `SELECT id, name, email` sorted on `email`, re-run as
+    /// `SELECT id, name, phone`, marked `phone` as sorted over rows `phone` never ordered.
+    private static func presentedColumns(
+        of state: SortState,
+        in schema: ColumnIdentitySchema
+    ) -> [(name: String, dataIndex: Int, direction: SortDirection)] {
+        state.columns.compactMap { sortColumn in
+            guard let name = SortColumnResolver.columnName(for: sortColumn, displayColumns: schema.columnNames) else {
+                return nil
             }
+            /// The slot the entry already names wins whenever it still carries that name, because
+            /// `dataIndex(forColumnName:)` answers a duplicate name with its last occurrence and
+            /// `SELECT a.id, b.id` would otherwise mark and order the wrong one.
+            if schema.columnName(for: sortColumn.columnIndex) == name {
+                return (name, sortColumn.columnIndex, sortColumn.direction)
+            }
+            guard let dataIndex = schema.dataIndex(forColumnName: name) else { return nil }
+            return (name, dataIndex, sortColumn.direction)
         }
-        super.mouseDragged(with: event)
+    }
+
+    private static func presentedState(of state: SortState, in schema: ColumnIdentitySchema) -> SortState {
+        SortState(
+            columns: presentedColumns(of: state, in: schema).map {
+                SortColumn(columnIndex: $0.dataIndex, direction: $0.direction, columnName: $0.name)
+            },
+            source: state.source
+        )
+    }
+
+    private static func accessibilitySortDirection(for direction: SortDirection?) -> NSAccessibilitySortDirection {
+        switch direction {
+        case .ascending: return .ascending
+        case .descending: return .descending
+        case nil: return .unknown
+        }
+    }
+
+    /// Did the gesture `super.mouseDown` just consumed end as a click, or as a drag the user aborted?
+    ///
+    /// A `mouseDragged` override cannot answer this: `NSTableHeaderView.mouseDown` runs its own
+    /// modal tracking loop and dequeues the drags itself, so the override is never called (measured,
+    /// zero calls, including on a real reorder). An aborted drag also leaves column order and widths
+    /// untouched, so those two comparisons cannot answer it either.
+    ///
+    /// On an unmodified click AppKit has already decided, because every data column carries a
+    /// `sortDescriptorPrototype`: it rewrites `sortDescriptors` for a click and leaves them alone
+    /// for a drag. Under a modifier AppKit does nothing at all (measured), so there is no signal to
+    /// borrow and the distance between the press and the release is what is left.
+    private static func gestureWasClick(
+        modifierFlags: NSEvent.ModifierFlags,
+        downLocationInWindow: NSPoint,
+        descriptorsBeforeClick: [NSSortDescriptor],
+        descriptorsAfterClick: [NSSortDescriptor]
+    ) -> Bool {
+        guard modifierFlags.isEmpty else {
+            return releaseWasInPlace(downLocationInWindow: downLocationInWindow)
+        }
+        return descriptorsAfterClick != descriptorsBeforeClick
+    }
+
+    /// The release AppKit's tracking loop consumed. `NSApp.currentEvent` is that `leftMouseUp` by the
+    /// time `super.mouseDown` returns, measured, so the press-to-release distance is available even
+    /// though no `mouseDragged` was ever dispatched.
+    private static func releaseWasInPlace(downLocationInWindow: NSPoint) -> Bool {
+        guard let release = NSApp.currentEvent, release.type == .leftMouseUp else { return true }
+        let up = release.locationInWindow
+        return abs(up.x - downLocationInWindow.x) <= clickDragThreshold
+            && abs(up.y - downLocationInWindow.y) <= clickDragThreshold
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -257,6 +574,9 @@ final class SortableHeaderView: NSTableHeaderView {
         }
 
         let pointInHeader = convert(event.locationInWindow, from: nil)
+        /// A press on the pinned heading is a press on the row-number heading, which sorts, reorders
+        /// and resizes nothing. Handed to AppKit it would track the column scrolled underneath.
+        guard !isInPinnedRowNumberHeading(pointInHeader) else { return }
         if isInResizeZone(point: pointInHeader) {
             super.mouseDown(with: event)
             return
@@ -287,35 +607,45 @@ final class SortableHeaderView: NSTableHeaderView {
 
         let originalColumnOrder = tableView.tableColumns.map { $0.identifier }
         let originalColumnWidths = tableView.tableColumns.map { $0.width }
-        pendingClickStartLocation = pointInHeader
-        dragOccurredDuringClick = false
-        defer {
-            pendingClickStartLocation = nil
-            dragOccurredDuringClick = false
-        }
+        let descriptorsBeforeClick = tableView.sortDescriptors
+        let isMultiSort = modifierFlags.contains(.shift)
 
         super.mouseDown(with: event)
 
         let columnOrderChanged = tableView.tableColumns.map { $0.identifier } != originalColumnOrder
         let columnWidthsChanged = tableView.tableColumns.map { $0.width } != originalColumnWidths
-        if dragOccurredDuringClick || columnOrderChanged || columnWidthsChanged {
+        if columnOrderChanged || columnWidthsChanged {
             return
         }
+        guard Self.gestureWasClick(
+            modifierFlags: modifierFlags,
+            downLocationInWindow: event.locationInWindow,
+            descriptorsBeforeClick: descriptorsBeforeClick,
+            descriptorsAfterClick: tableView.sortDescriptors
+        ) else { return }
 
         if modifierFlags.contains(.command) && !modifierFlags.contains(.shift) {
             coordinator.extendColumnSelection(dataIndex)
             return
         }
 
-        let isMultiSort = modifierFlags.contains(.shift)
+        let schema = coordinator.identitySchema
+        /// The cycle runs over the sort the current result can actually show. An entry whose column
+        /// left the result keeps its slot in the model so that bringing the column back restores its
+        /// order, but feeding that latent slot to the cycle made a click on the unsorted column now
+        /// sitting there advance the vanished column's cycle instead of starting a new one.
         let transition = HeaderSortCycle.nextTransition(
-            state: coordinator.currentSortState,
+            state: Self.presentedState(of: coordinator.currentSortState, in: schema),
             clickedColumn: dataIndex,
-            isMultiSort: isMultiSort
+            isMultiSort: isMultiSort,
+            firstClickDirection: coordinator.firstClickSortDirection
         )
+        let newState = SortColumnResolver.stamped(transition.newState, displayColumns: schema.columnNames)
 
-        coordinator.currentSortState = transition.newState
-        updateSortIndicators(state: transition.newState, schema: coordinator.identitySchema)
-        coordinator.delegate?.dataGridSortStateChanged(transition.newState)
+        /// Announced, not painted. The header is drawn from whatever the model ends up holding, via
+        /// `DataGridView.syncSortState`. Painting here first meant a click the model then refused,
+        /// which "Discard Unsaved Changes?" does on Cancel, left the chevron and the click cycle
+        /// describing a sort that never ran.
+        coordinator.delegate?.dataGridSortStateChanged(newState)
     }
 }

@@ -1,14 +1,18 @@
 import Foundation
 import TableProModels
 
-extension DatabaseType {
+nonisolated extension DatabaseType {
     var defaultPort: String {
         switch self {
         case .mysql, .mariadb: return "3306"
+        case .tidb: return "4000"
+        case .databend: return "3307"
+        case .oceanbase: return "2881"
         case .postgresql: return "5432"
         case .redshift: return "5439"
         case .redis: return "6379"
         case .mssql: return "1433"
+        case .oracle: return "1521"
         case .sqlite, .duckdb: return ""
         default: return "3306"
         }
@@ -18,12 +22,16 @@ extension DatabaseType {
         switch self {
         case .mysql: "MySQL"
         case .mariadb: "MariaDB"
+        case .tidb: "TiDB"
+        case .databend: "Databend"
+        case .oceanbase: "OceanBase"
         case .postgresql: "PostgreSQL"
         case .redshift: "Redshift"
         case .sqlite: "SQLite"
         case .duckdb: "DuckDB"
         case .redis: "Redis"
         case .mssql: "SQL Server"
+        case .oracle: "Oracle"
         default: rawValue.uppercased()
         }
     }
@@ -31,10 +39,13 @@ extension DatabaseType {
     static let mobileSupportedTypes: [DatabaseType] = [
         .mysql,
         .mariadb,
+        .tidb,
+        .oceanbase,
         .postgresql,
         .sqlite,
         .duckdb,
         .redis,
-        .mssql
+        .mssql,
+        .oracle
     ]
 }

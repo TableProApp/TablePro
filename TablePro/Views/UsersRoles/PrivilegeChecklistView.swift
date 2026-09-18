@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct PrivilegeChecklistView: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
 
     @State private var expansion: [String: Bool] = [:]
 
@@ -67,11 +67,13 @@ struct PrivilegeChecklistView: View {
         } label: {
             Image(systemName: "ellipsis.circle")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(viewModel.privilegeSections.isEmpty)
         .help(String(localized: "Bulk actions"))
+        .accessibilityLabel(String(localized: "Bulk actions"))
     }
 
     // MARK: - Content
@@ -79,19 +81,19 @@ struct PrivilegeChecklistView: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.selection == nil {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Selection"),
                 systemImage: "person.2",
                 description: Text("Select a user or role to view its privileges.")
             )
         } else if viewModel.isMixedScopeSelection {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "Mixed Selection"),
                 systemImage: "square.stack.3d.up.slash",
                 description: Text("Select objects of the same kind to edit their privileges.")
             )
         } else if viewModel.selectedScopes.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Object Selected"),
                 systemImage: "hand.tap",
                 description: Text("Select an object on the left to edit its privileges.")
@@ -114,9 +116,9 @@ struct PrivilegeChecklistView: View {
     @ViewBuilder
     private var emptyPrivileges: some View {
         if !viewModel.privilegeFilter.isEmpty {
-            ContentUnavailableView.search(text: viewModel.privilegeFilter)
+            UnavailableStateView.search(text: viewModel.privilegeFilter)
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Privileges"),
                 systemImage: "lock",
                 description: Text("No privileges can be granted at this level.")
@@ -124,35 +126,57 @@ struct PrivilegeChecklistView: View {
         }
     }
 
+    /// `DisclosureTableRow` is macOS 14, and `@TableRowBuilder` rejects an `if #available`
+    /// inside it, so the whole table branches. The columns are shared.
+    @ViewBuilder
     private var table: some View {
-        Table(of: PrivilegeRow.self) {
-            TableColumn(String(localized: "Granted")) { row in
-                grantedCell(row)
-            }
-            .width(60)
-
-            TableColumn(String(localized: "Privilege")) { row in
-                privilegeCell(row)
-            }
-            .width(min: 140, ideal: 220)
-
-            TableColumn(String(localized: "Effective")) { row in
-                effectiveCell(row)
-            }
-            .width(min: 100, ideal: 180)
-        } rows: {
-            ForEach(viewModel.privilegeSections) { section in
-                DisclosureTableRow(
-                    section.headerRow,
-                    isExpanded: expansionBinding(for: section)
-                ) {
-                    ForEach(section.rows) { SwiftUI.TableRow($0) }
+        if #available(macOS 14.0, *) {
+            Table(of: PrivilegeRow.self) {
+                privilegeColumns
+            } rows: {
+                ForEach(viewModel.privilegeSections) { section in
+                    DisclosureTableRow(
+                        section.headerRow,
+                        isExpanded: expansionBinding(for: section)
+                    ) {
+                        ForEach(section.rows) { SwiftUI.TableRow($0) }
+                    }
                 }
             }
+            .tableStyle(.inset)
+            .alternatingRowBackgroundsCompat()
+            .accessibilityIdentifier("usersroles-privilege-table")
+        } else {
+            Table(of: PrivilegeRow.self) {
+                privilegeColumns
+            } rows: {
+                /// A section reads as its header followed by its rows; what macOS 13 gives up
+                /// is collapsing it, so every section is shown open.
+                ForEach(viewModel.privilegeSections.flatMap { [$0.headerRow] + $0.rows }) { row in
+                    SwiftUI.TableRow(row)
+                }
+            }
+            .tableStyle(.inset)
+            .accessibilityIdentifier("usersroles-privilege-table")
         }
-        .tableStyle(.inset)
-        .alternatingRowBackgrounds(.enabled)
-        .accessibilityIdentifier("usersroles-privilege-table")
+    }
+
+    @TableColumnBuilder<PrivilegeRow, Never>
+    private var privilegeColumns: some TableColumnContent<PrivilegeRow, Never> {
+        TableColumn(String(localized: "Granted")) { row in
+            grantedCell(row)
+        }
+        .width(60)
+
+        TableColumn(String(localized: "Privilege")) { row in
+            privilegeCell(row)
+        }
+        .width(min: 140, ideal: 220)
+
+        TableColumn(String(localized: "Effective")) { row in
+            effectiveCell(row)
+        }
+        .width(min: 100, ideal: 180)
     }
 
     // MARK: - Cells

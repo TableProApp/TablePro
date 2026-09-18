@@ -10,13 +10,28 @@ import TableProPluginKit
 extension ClickHousePluginDriver {
     // MARK: - Schema Operations
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let sql = """
+    /// Names the database rather than taking the session's, so a caller asking about another one is
+    /// answered about the one it asked about. The export tree asks for every database over the one
+    /// connection it holds, and answering all of them from `currentDatabase()` listed the same tables
+    /// under every name.
+    ///
+    /// The name is a literal, so it takes the driver's own escaper. A ClickHouse literal reads
+    /// backslash escapes as well as doubled quotes, and a name is free to hold either: measured on
+    /// 24.8.14.39, a database created as ``CREATE DATABASE `trail\\` `` ended the statement with
+    /// `Code 62 SYNTAX_ERROR` under quote-only escaping, and one created as ``q\\' OR 1=1 -- ``
+    /// closed the literal early and listed every table on the server.
+    static func tableListSQL(schema: String?) -> String {
+        let database = schema.flatMap { $0.isEmpty ? nil : $0 }
+            .map { "'\(Self.escapeStringLiteral($0))'" } ?? "currentDatabase()"
+        return """
             SELECT name, engine FROM system.tables
-            WHERE database = currentDatabase() AND name NOT LIKE '.%'
+            WHERE database = \(database) AND name NOT LIKE '.%'
             ORDER BY name
             """
-        let result = try await execute(query: sql)
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        let result = try await execute(query: Self.tableListSQL(schema: schema))
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let engine = row[safe: 1]?.asText
@@ -45,6 +60,11 @@ extension ClickHousePluginDriver {
             ORDER BY position
             """
         let result = try await execute(query: sql)
+        nonDefaultColumnKinds = Set(result.rows.compactMap { row -> String? in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            guard let kind = row[safe: 2]?.asText, !kind.isEmpty, kind != "DEFAULT" else { return nil }
+            return name
+        })
         return result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let dataType = (row[safe: 1]?.asText) ?? "String"
@@ -54,10 +74,7 @@ extension ClickHousePluginDriver {
 
             let isNullable = dataType.hasPrefix("Nullable(")
 
-            var defaultValue: String?
-            if let kind = defaultKind, !kind.isEmpty, let expr = defaultExpr, !expr.isEmpty {
-                defaultValue = expr
-            }
+            let defaultValue = clickhouseDefaultValue(kind: defaultKind, expression: defaultExpr)
 
             var extra: String?
             if let kind = defaultKind, !kind.isEmpty, kind != "DEFAULT" {
@@ -72,6 +89,7 @@ extension ClickHousePluginDriver {
                 defaultValue: defaultValue,
                 extra: extra,
                 comment: (comment?.isEmpty == false) ? comment : nil,
+                isGenerated: clickhouseColumnIsGenerated(defaultKind: defaultKind),
                 allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
         }
@@ -115,10 +133,7 @@ extension ClickHousePluginDriver {
 
             let isNullable = dataType.hasPrefix("Nullable(")
 
-            var defaultValue: String?
-            if let kind = defaultKind, !kind.isEmpty, let expr = defaultExpr, !expr.isEmpty {
-                defaultValue = expr
-            }
+            let defaultValue = clickhouseDefaultValue(kind: defaultKind, expression: defaultExpr)
 
             var extra: String?
             if let kind = defaultKind, !kind.isEmpty, kind != "DEFAULT" {
@@ -133,6 +148,7 @@ extension ClickHousePluginDriver {
                 defaultValue: defaultValue,
                 extra: extra,
                 comment: (comment?.isEmpty == false) ? comment : nil,
+                isGenerated: clickhouseColumnIsGenerated(defaultKind: defaultKind),
                 allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
             columnsByTable[tableName, default: []].append(colInfo)
@@ -223,14 +239,33 @@ extension ClickHousePluginDriver {
         return result.rows.first?.first?.asText ?? ""
     }
 
+    /// A materialized view is answered with `SHOW CREATE TABLE`, which carries its target table
+    /// and engine clause. `as_select` is the `SELECT` alone and would describe it as an ordinary
+    /// view, so the restore would build one and lose where the rows are actually kept.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let escapedView = view.replacingOccurrences(of: "'", with: "''")
         let sql = """
-            SELECT as_select FROM system.tables
+            SELECT engine, as_select FROM system.tables
             WHERE database = currentDatabase() AND name = '\(escapedView)'
             """
         let result = try await execute(query: sql)
-        return result.rows.first?.first?.asText ?? ""
+        guard let row = result.rows.first else {
+            throw ClickHouseError(message: String(
+                format: String(localized: "ClickHouse returned no definition for view '%@'."), view))
+        }
+
+        if row[safe: 0]?.asText == "MaterializedView" {
+            return try await fetchTableDDL(table: view, schema: schema)
+        }
+
+        guard let body = row[safe: 1]?.asText,
+              !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ClickHouseError(message: String(
+                format: String(localized: "ClickHouse returned no definition for view '%@'."), view))
+        }
+        /// `as_select` is the view's `SELECT` alone, so it needs the header a dump replays. Written
+        /// bare it made the restore run a query and create no view.
+        return "CREATE VIEW \(quoteIdentifier(view)) AS\n\(body)"
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -291,18 +326,35 @@ extension ClickHousePluginDriver {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let sql = """
-            SELECT database, count() AS table_count, sum(total_bytes) AS size_bytes
-            FROM system.tables
-            GROUP BY database
-            ORDER BY database
-            """
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { row -> PluginDatabaseMetadata? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let tableCount = (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0
-            let sizeBytes = (row[safe: 2]?.asText).flatMap { Int64($0) }
-            return PluginDatabaseMetadata(name: name, tableCount: tableCount, sizeBytes: sizeBytes)
+        let aggregate = try await execute(query: Self.databaseTableAggregateQuery)
+        let names = try await fetchDatabases()
+        return Self.databaseMetadata(names: names, aggregateRows: aggregate.rows)
+    }
+
+    static let databaseTableAggregateQuery = """
+        SELECT database, count() AS table_count, sum(total_bytes) AS size_bytes
+        FROM system.tables
+        GROUP BY database
+        """
+
+    /// `SHOW DATABASES` is the list and `system.tables` only supplies the numbers. The aggregate has no row for a
+    /// database that holds no tables, so a list read from it dropped every empty database.
+    static func databaseMetadata(names: [String], aggregateRows: [[PluginCellValue]]) -> [PluginDatabaseMetadata] {
+        var aggregates: [String: (tableCount: Int, sizeBytes: Int64?)] = [:]
+        for row in aggregateRows {
+            guard let name = row[safe: 0]?.asText else { continue }
+            aggregates[name] = (
+                tableCount: (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0,
+                sizeBytes: (row[safe: 2]?.asText).flatMap { Int64($0) }
+            )
+        }
+        return names.map { name in
+            let aggregate = aggregates[name]
+            return PluginDatabaseMetadata(
+                name: name,
+                tableCount: aggregate?.tableCount ?? 0,
+                sizeBytes: aggregate?.sizeBytes
+            )
         }
     }
 
@@ -318,6 +370,28 @@ extension ClickHousePluginDriver {
     func dropDatabase(name: String) async throws {
         let escapedName = name.replacingOccurrences(of: "`", with: "``")
         _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
+    }
+
+    /// Both sides are qualified with the same database, so this renames in place. Qualifying them
+    /// differently is how ClickHouse moves a table, which is a different verb to the user.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        let database = schema ?? lock.withLock { _currentDatabase }
+        let old = qualified(database: database, name: name)
+        let new = qualified(database: database, name: newName)
+        _ = try await execute(query: "RENAME TABLE \(old) TO \(new)")
+    }
+
+    /// Needs the Atomic database engine, the default since 20.10. An Ordinary database refuses,
+    /// and the server's own message says so.
+    func renameDatabase(name: String, to newName: String) async throws {
+        _ = try await execute(
+            query: "RENAME DATABASE \(quoteIdentifier(name)) TO \(quoteIdentifier(newName))"
+        )
+    }
+
+    private func qualified(database: String?, name: String) -> String {
+        guard let database, !database.isEmpty else { return quoteIdentifier(name) }
+        return "\(quoteIdentifier(database)).\(quoteIdentifier(name))"
     }
 
     // MARK: - All Tables Metadata
@@ -336,5 +410,13 @@ extension ClickHousePluginDriver {
         ORDER BY name
         """
     }
+}
 
+/// MATERIALIZED, ALIAS and EPHEMERAL are column kinds that store their expression in the same
+/// catalog field a DEFAULT uses, and only a DEFAULT is a default. Reporting one of the others as
+/// one let an edit to an unrelated field restate it as `DEFAULT '<expression>'`, which stores the
+/// text of the expression in every row inserted afterwards.
+internal func clickhouseDefaultValue(kind: String?, expression: String?) -> String? {
+    guard kind == "DEFAULT", let expression, !expression.isEmpty else { return nil }
+    return expression
 }

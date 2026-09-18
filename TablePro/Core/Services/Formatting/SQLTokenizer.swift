@@ -120,6 +120,8 @@ struct SQLTokenizer {
                 }
                 if i + 1 < count {
                     i += 2 // skip */
+                } else {
+                    i = count // unterminated, so the comment runs to the end of the input
                 }
                 tokens.append(SQLToken(type: .comment, value: String(chars[start..<i])))
                 continue
@@ -132,7 +134,7 @@ struct SQLTokenizer {
                 i += 1
                 while i < count {
                     if chars[i] == "\\" {
-                        i += 2 // skip escaped char
+                        i = min(i + 2, count) // skip escaped char, or stop at a trailing backslash
                         continue
                     }
                     if chars[i] == quote {

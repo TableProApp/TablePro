@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 @MainActor
@@ -8,37 +8,43 @@ protocol ChangeManaging: AnyObject {
     var reloadVersion: Int { get }
     var canRedo: Bool { get }
     var rowChanges: [RowChange] { get }
-    var insertedRowIndices: Set<Int> { get }
-    func isRowDeleted(_ rowIndex: Int) -> Bool
+    var insertedRowIDs: Set<RowID> { get }
+    var generatedColumns: Set<String> { get }
+    func isRowDeleted(_ rowID: RowID) -> Bool
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]?
     )
-    func undoRowDeletion(rowIndex: Int)
-    func undoRowInsertion(rowIndex: Int)
+    func undoRowDeletion(rowID: RowID)
 }
 
-@Observable
+/// Only the data grid tracks server-computed columns; the structure and
+/// inspector grids edit schema definitions, where the concept does not apply.
+extension ChangeManaging {
+    var generatedColumns: Set<String> { [] }
+}
+
 @MainActor
-final class AnyChangeManager {
-    @ObservationIgnored private let wrapped: any ChangeManaging
+final class AnyChangeManager: ObservableObject {
+    private let wrapped: any ChangeManaging
 
     var hasChanges: Bool { wrapped.hasChanges }
     var reloadVersion: Int { wrapped.reloadVersion }
     var canRedo: Bool { wrapped.canRedo }
     var rowChanges: [RowChange] { wrapped.rowChanges }
-    var insertedRowIndices: Set<Int> { wrapped.insertedRowIndices }
+    var insertedRowIDs: Set<RowID> { wrapped.insertedRowIDs }
+    var generatedColumns: Set<String> { wrapped.generatedColumns }
 
-    func isRowDeleted(_ rowIndex: Int) -> Bool {
-        wrapped.isRowDeleted(rowIndex)
+    func isRowDeleted(_ rowID: RowID) -> Bool {
+        wrapped.isRowDeleted(rowID)
     }
 
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
@@ -46,7 +52,7 @@ final class AnyChangeManager {
         originalRow: [PluginCellValue]
     ) {
         wrapped.recordCellChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
@@ -55,12 +61,8 @@ final class AnyChangeManager {
         )
     }
 
-    func undoRowDeletion(rowIndex: Int) {
-        wrapped.undoRowDeletion(rowIndex: rowIndex)
-    }
-
-    func undoRowInsertion(rowIndex: Int) {
-        wrapped.undoRowInsertion(rowIndex: rowIndex)
+    func undoRowDeletion(rowID: RowID) {
+        wrapped.undoRowDeletion(rowID: rowID)
     }
 
     init(_ manager: any ChangeManaging) {

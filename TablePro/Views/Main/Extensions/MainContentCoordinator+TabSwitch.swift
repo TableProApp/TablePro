@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProEditorKit
 
 extension MainContentCoordinator {
     func handleTabChange(
@@ -15,6 +16,10 @@ extension MainContentCoordinator {
         to newTabId: UUID?,
         tabs: [QueryTab]
     ) {
+        if let newTabId {
+            OperationUnseenMarker.clear(tabId: newTabId, in: tabManager)
+            OperationCompletionReporter.shared.clearDelivered(for: operationOwner(tabId: newTabId))
+        }
         let start = Date()
         Self.lifecycleLogger.debug(
             "[switch] handleTabChange start from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) connId=\(self.connectionId, privacy: .public) tabsCount=\(self.tabManager.tabs.count)"
@@ -31,20 +36,49 @@ extension MainContentCoordinator {
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
-            if changeManager.hasChanges {
+            /// The second half of the condition is the fix. Gated on `hasChanges` alone, an undo was
+            /// never recorded: the tab kept the snapshot a previous switch had saved, so switching
+            /// back restored the edit the reader had just taken back and the tab went on reporting
+            /// unsaved work. Writing the empty snapshot is what clears it.
+            ///
+            /// Still conditional, because `mutate` takes the element `inout` and so runs the array's
+            /// setter whether or not the block writes: an unconditional write would fire `tabs`'
+            /// `didSet` over every open tab on every switch, for nothing.
+            ///
+            /// Safe to take the snapshot from the change manager here because nothing has repointed
+            /// it yet: every other `configureForTable` and `restoreState` caller is either the
+            /// incoming block below or guarded to the selected tab, and this runs synchronously
+            /// from the selection change with no suspension in between.
+            if changeManager.hasChanges || tabManager.tabs[oldIndex].pendingChanges.hasChanges {
                 let savedState = changeManager.saveState()
                 tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
             }
-            if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
-                FilterSettingsStorage.shared.saveLastFilters(
-                    tabManager.tabs[oldIndex].filterState.appliedFilters,
-                    logicMode: tabManager.tabs[oldIndex].filterState.filterLogicMode,
-                    for: tableName,
-                    connectionId: connectionId,
-                    databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,
-                    schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
-                )
+            // One editor serves every query tab, so `cursorPositions` describes the outgoing tab
+            // only until the switch completes. Persistence writes the live caret for the selected
+            // tab alone, so a caret not captured here is gone once the editor has consumed the
+            // tab's restored value.
+            //
+            // Only a tab whose own restored caret is already consumed can be written, because the
+            // query editor subtree has no `.id(tab.id)`: selecting a restored tab reuses the same
+            // editor without re-installing it, so `cursorPositions` can still describe the tab
+            // before it. Overwriting there would destroy the very caret this is meant to keep.
+            let outgoing = tabManager.tabs[oldIndex]
+            if outgoing.tabType == .query,
+               outgoing.restoredCursorOffset == nil,
+               outgoing.restoredCursorLength == nil,
+               let range = cursorPositions.first?.range {
+                tabManager.mutate(at: oldIndex) {
+                    $0.restoredCursorOffset = range.location
+                    $0.restoredCursorLength = range.length
+                }
             }
+            /// Before the restore below repoints `selectionState` at the incoming tab. The outgoing
+            /// grid is still mounted and still bound to that shared channel, so the repoint clears
+            /// its table view and its own teardown then has nothing left to report. (#2667)
+            if let live = mountedGridSelection() {
+                storeGridSelection(rows: live.rows, cells: live.cells, forTab: oldId)
+            }
+            filterCoordinator.saveLastFilters(of: tabManager.tabs[oldIndex])
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
@@ -64,9 +98,12 @@ extension MainContentCoordinator {
             let newTab = tabManager.tabs[newIndex]
             let newRows = tabSessionRegistry.tableRows(for: newId)
 
-            selectionState.indices = newTab.selectedRowIndices
+            recordSelectedTabContainer()
+
+            selectionState.indices = newTab.selectedDisplayRows
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
+            syncQueryToolbarState(for: newTab)
 
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
@@ -74,7 +111,9 @@ extension MainContentCoordinator {
                     from: pendingState,
                     tableName: newTab.tableContext.tableName ?? "",
                     schemaName: newTab.tableContext.schemaName,
-                    databaseType: connection.type
+                    databaseType: connection.type,
+                    generatedColumns: newRows.generatedColumns,
+                    rowMatchPolicy: newRows.rowMatchPolicy
                 )
             } else {
                 changeManager.configureForTable(
@@ -83,6 +122,8 @@ extension MainContentCoordinator {
                     columns: newRows.columns,
                     primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
+                    generatedColumns: newRows.generatedColumns,
+                    rowMatchPolicy: newRows.rowMatchPolicy,
                     triggerReload: false
                 )
             }
@@ -92,38 +133,96 @@ extension MainContentCoordinator {
                 "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
-            if !newTab.tableContext.databaseName.isEmpty {
-                let currentDatabase = activeDatabaseName
-
-                if newTab.tableContext.databaseName != currentDatabase {
-                    Self.lifecycleLogger.debug(
-                        "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.tableContext.databaseName, privacy: .public)"
-                    )
-                    changeManager.reloadVersion += 1
-                    Task {
-                        await switchDatabase(to: newTab.tableContext.databaseName)
-                        lazyLoadCurrentTabIfNeeded()
-                    }
-                    return
-                }
-            }
-
-            changeManager.reloadVersion += 1
+            // No `reloadVersion` bump here. It is the change manager's throw-away-and-fetch-again
+            // signal and it is shared by every tab in the window, so bumping it on a switch told
+            // the incoming grid its rows had changed and made it re-format the whole result. The
+            // reload a switch does need is already forced by the freshly mounted grid's zero row
+            // count, and a real content change still arrives through `configureForTable`. (#2424)
+            lazyLoadCurrentTabIfNeeded()
         } else {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
+            toolbarState.isQueryTab = false
+            toolbarState.hasQueryText = false
         }
     }
 
-    private func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
+    /// What the toolbar's Run, Explain, Format and Favorite items validate against.
+    ///
+    /// Execution state is deliberately not among these: `TabExecutionRegistry` is the single answer
+    /// to "is something running", and its own documentation records that a hand-kept mirror of that
+    /// is what let the titlebar report a query which had already ended (#2342). The toolbar reads
+    /// it live through `isSelectedTabExecuting`.
+    func syncQueryToolbarState(for tab: QueryTab) {
+        toolbarState.isQueryTab = tab.tabType == .query
+        toolbarState.hasQueryText = tab.tabType == .query && tab.hasQueryText
+    }
+
+    func syncQueryToolbarStateForSelectedTab() {
+        guard let tab = tabManager.selectedTab else {
+            toolbarState.isQueryTab = false
+            toolbarState.hasQueryText = false
+            return
+        }
+        syncQueryToolbarState(for: tab)
+    }
+
+    /// Whether the tab the toolbar is pointed at has a query in flight, asked of the registry each
+    /// time rather than stored.
+    var isSelectedTabExecuting: Bool {
+        guard let tabId = tabManager.selectedTabId else { return false }
+        return tabExecution.isExecuting(tabId)
+    }
+
+    /// Whether dropping this tab's rows is safe, which is exactly whether `canAutoLoadTableTab`
+    /// will bring them back. The two answers have to agree: a tab evicted without a route back to
+    /// its rows shows an empty grid until the user refreshes it by hand.
+    ///
+    /// Table tabs qualify because their rows follow from their generated query. Query tabs do not,
+    /// a pinned result shares the buffer it would lose, and a tab with an execution, a load task or
+    /// a page fetch in flight would have the result land on a buffer that moved out from under it.
+    func canEvictReloadableTableRows(_ tab: QueryTab) -> Bool {
+        guard tab.id != tabManager.selectedTabId,
+              tab.tabType == .table,
+              tab.execution.errorMessage == nil,
+              tab.content.query.contains(where: { !$0.isWhitespace }),
+              !tab.pendingChanges.hasChanges,
+              !tab.display.hasPinnedResults,
+              !tab.pagination.isLoading,
+              !tab.pagination.isLoadingMore,
+              !tabExecution.isBusy(tab.id),
+              tableLoadTasks[tab.id] == nil,
+              !tabSessionRegistry.isEvicted(tab.id),
+              let rows = tabSessionRegistry.existingTableRows(for: tab.id),
+              !rows.rows.isEmpty
+        else { return false }
+        return true
+    }
+
+    @discardableResult
+    func evictReloadableTableRows(for tabId: UUID) -> Bool {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              canEvictReloadableTableRows(tabManager.tabs[index])
+        else { return false }
+
+        tabManager.mutate(at: index) { tab in
+            for resultSet in tab.display.resultSets where !resultSet.isPinned {
+                resultSet.tableRows.discardRowsKeepingMetadata()
+            }
+            tab.loadEpoch &+= 1
+        }
+        tabSessionRegistry.evict(for: tabId)
+        displayStateCache.removeValue(forKey: tabId)
+        return true
+    }
+
+    func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
         let start = Date()
         let candidates: [(tab: QueryTab, rows: TableRows)] = tabManager.tabs.compactMap { tab in
             guard !activeTabIds.contains(tab.id),
                   tab.execution.lastExecutedAt != nil,
-                  !tab.pendingChanges.hasChanges,
-                  let rows = tabSessionRegistry.existingTableRows(for: tab.id),
-                  !tabSessionRegistry.isEvicted(tab.id),
-                  !rows.rows.isEmpty
+                  canEvictReloadableTableRows(tab),
+                  let rows = tabSessionRegistry.existingTableRows(for: tab.id)
             else { return nil }
             return (tab, rows)
         }
@@ -152,12 +251,12 @@ extension MainContentCoordinator {
         }
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
+        var evicted = 0
         for entry in toEvict {
-            tabSessionRegistry.evict(for: entry.tab.id)
-            tabManager.mutate(tabId: entry.tab.id) { $0.loadEpoch &+= 1 }
+            if evictReloadableTableRows(for: entry.tab.id) { evicted += 1 }
         }
         Self.lifecycleLogger.debug(
-            "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[switch] evictInactiveTabs evicted=\(evicted) attempted=\(toEvict.count) candidates=\(sorted.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 }

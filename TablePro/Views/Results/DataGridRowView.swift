@@ -15,16 +15,178 @@ class DataGridRowView: NSTableRowView {
     }
 
     weak var coordinator: TableViewCoordinator?
-    var rowIndex: Int = 0
 
-    private(set) var visualState: RowVisualState = .empty
-    private var rowTint: NSColor?
+    /// The row this view is showing now, asked of the table rather than remembered.
+    ///
+    /// `insertRows(at:)` and `removeRows(at:)` move an already-built row view to its new slot
+    /// without calling `tableView(_:rowViewForRow:)` for it again, so an index captured at mount
+    /// goes stale the moment a row is inserted or removed above this one, and every read of it then
+    /// names a different row. Measured: after `removeRows(at: [1])` the view at display row 1 still
+    /// carried 2, the one at 2 carried 3, and an insert left two views both claiming 0, while
+    /// `row(for:)` answered correctly throughout at 26ns a call. AppKit keeps that mapping itself,
+    /// so it is asked for it. The seed answers only for a row view that is in no table, which is how
+    /// the copy tests build one.
+    var rowIndex: Int {
+        get {
+            guard let tableView = coordinator?.tableView else { return seededRowIndex }
+            let resolved = tableView.row(for: self)
+            return resolved >= 0 ? resolved : seededRowIndex
+        }
+        set { seededRowIndex = newValue }
+    }
+
+    private var seededRowIndex: Int = 0
+
+    var visualState: RowVisualState {
+        coordinator?.visualState(for: rowIndex) ?? .empty
+    }
+
+    /// Draws the row's data cells.
+    ///
+    /// A subview rather than the row view's own `draw(_:)`, so the cells land after AppKit has
+    /// painted the row background and the selection, which is the order a mounted cell view got.
+    private let contentView = DataGridRowContentView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         canDrawSubviewsIntoLayer = true
+        contentView.rowView = self
+        contentView.autoresizingMask = [.width, .height]
+        contentView.frame = bounds
+        addSubview(contentView)
+    }
+
+    /// Repaints one cell, the way a mounted cell view repainted itself.
+    func redrawCell(atTableColumnIndex tableColumnIndex: Int) {
+        guard let tableView = coordinator?.tableView else {
+            contentView.needsDisplay = true
+            return
+        }
+        let columnRect = tableView.rect(ofColumn: tableColumnIndex)
+        contentView.setNeedsDisplay(
+            NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: contentView.bounds.height)
+        )
+    }
+
+    func redrawCells() {
+        cellsNeedDisplay = true
+    }
+
+    /// Whether the drawn cells are waiting on a repaint. The row's own `needsDisplay` answers for
+    /// the background and the selection fill, which are painted separately from the cells.
+    var cellsNeedDisplay: Bool {
+        get { contentView.needsDisplay }
+        set { contentView.needsDisplay = newValue }
+    }
+
+    // MARK: - Accessibility
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .row }
+
+    /// The row answers for every point it covers that no cell does: the row-number column, and the
+    /// width past the last column on a result narrower than the grid.
+    ///
+    /// AppKit's own hit test descends into subviews, and `contentView` covers the whole row, so a
+    /// point outside every cell used to resolve to a view that is not in the accessibility tree. A
+    /// client reads an element outside the row's subtree as the row not being reachable there, which
+    /// is what a mounted cell view left behind when it covered only its own column.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        DataGridAccessibility.markActive()
+        guard let window else { return super.accessibilityHitTest(point) }
+        let local = convert(window.convertPoint(fromScreen: point), from: nil)
+        for subview in subviews where subview !== contentView && subview.frame.contains(local) {
+            if let hit = subview.accessibilityHitTest(point) { return hit }
+        }
+        return bounds.contains(local) ? self : nil
+    }
+
+    /// The click a cell view used to take for itself: the in-cell accessory, then a double click.
+    ///
+    /// - Returns: whether the click was consumed, leaving the table view's own selection handling
+    ///   to everything else.
+    func handleCellClick(at point: NSPoint, in view: NSView, clickCount: Int, modifiers: NSEvent.ModifierFlags) -> Bool {
+        guard let coordinator, let tableView = coordinator.tableView else { return false }
+        let inTableView = view.convert(point, to: tableView)
+        let tableColumnIndex = tableView.column(at: inTableView)
+        guard tableColumnIndex >= 0, tableColumnIndex < tableView.tableColumns.count,
+              let dataColumn = coordinator.dataColumnIndex(from: tableView.tableColumns[tableColumnIndex].identifier)
+        else { return false }
+
+        let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
+        let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+        if coordinator.presentsCheckboxCell(columnIndex: dataColumn) {
+            guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
+            return coordinator.toggleCheckbox(row: rowIndex, columnIndex: dataColumn)
+        }
+        guard let appearance = coordinator.cellAppearance(
+            row: rowIndex,
+            columnIndex: dataColumn,
+            onEmphasizedSelection: isSelected && isEmphasized
+        ) else { return false }
+
+        let accessoryRect = appearance.accessory.frame(in: cellRect)
+        guard !accessoryRect.isEmpty, accessoryRect.contains(point) else {
+            guard clickCount == 2 else { return false }
+            coordinator.dataGridCellDidDoubleClick(row: rowIndex, columnIndex: dataColumn)
+            return true
+        }
+
+        switch appearance.accessory {
+        case .foreignKey:
+            coordinator.dataGridCellDidClickFKArrow(
+                row: rowIndex,
+                columnIndex: dataColumn,
+                intent: modifiers.contains(.command) ? .newTab : .follow
+            )
+            return true
+        case .chevron where !visualState.isDeleted:
+            coordinator.dataGridCellDidClickChevron(row: rowIndex, columnIndex: dataColumn)
+            return true
+        case .none, .chevron:
+            return false
+        }
+    }
+
+    /// Draws every data cell the dirty area touches.
+    ///
+    /// The columns are still real `NSTableColumn`s, so AppKit answers which of them the area covers
+    /// and where each one sits; only the cell content is drawn rather than mounted.
+    func drawCells(in dirtyRect: NSRect, of view: NSView) {
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        let inTableView = view.convert(dirtyRect, to: tableView)
+        let onEmphasizedSelection = isSelected && isEmphasized
+        let row = rowIndex
+
+        for tableColumnIndex in tableView.columnIndexes(in: inTableView) {
+            guard tableColumnIndex < tableView.tableColumns.count else { continue }
+            let identifier = tableView.tableColumns[tableColumnIndex].identifier
+            guard let dataColumn = coordinator.dataColumnIndex(from: identifier) else { continue }
+            guard let appearance = coordinator.cellAppearance(
+                row: row,
+                columnIndex: dataColumn,
+                onEmphasizedSelection: onEmphasizedSelection
+            ) else { continue }
+
+            let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
+            coordinator.cellRenderer.draw(
+                appearance,
+                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height),
+                controlView: view
+            )
+        }
+    }
+
+    /// Draws the column separators crossing this row. See `DataGridBodyChrome`.
+    func drawColumnSeparators(in dirtyRect: NSRect, of view: NSView) {
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        DataGridBodyChrome.drawColumnSeparators(
+            in: dirtyRect,
+            of: view,
+            tableView: tableView,
+            presentsColumn: { coordinator.presentsColumn(atTableColumnIndex: $0) }
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -45,18 +207,7 @@ class DataGridRowView: NSTableRowView {
         "hidden": NSNull(),
     ]
 
-    func applyVisualState(_ state: RowVisualState) {
-        guard state != visualState else { return }
-        visualState = state
-        let nextTint: NSColor? = if state.isDeleted {
-            ThemeEngine.shared.colors.dataGrid.deleted
-        } else if state.isInserted {
-            ThemeEngine.shared.colors.dataGrid.inserted
-        } else {
-            nil
-        }
-        guard !colorsEqual(rowTint, nextTint) else { return }
-        rowTint = nextTint
+    func invalidateVisualState() {
         needsDisplay = true
     }
 
@@ -64,6 +215,7 @@ class DataGridRowView: NSTableRowView {
         didSet {
             guard isSelected != oldValue else { return }
             propagateEmphasisToCells()
+            needsDisplay = true
         }
     }
 
@@ -71,48 +223,53 @@ class DataGridRowView: NSTableRowView {
         didSet {
             guard isEmphasized != oldValue else { return }
             propagateEmphasisToCells()
+            needsDisplay = true
         }
     }
 
-    override func didAddSubview(_ subview: NSView) {
-        super.didAddSubview(subview)
-        guard let cell = subview as? DataGridCellView else { return }
-        cell.applyEmphasizedSelection(isSelected && isEmphasized)
-    }
-
+    /// Selection recolours every cell's text, so the row repaints its own cells rather than telling
+    /// a set of cell views to repaint themselves.
     private func propagateEmphasisToCells() {
-        let emphasized = isSelected && isEmphasized
-        for subview in subviews {
-            guard let cell = subview as? DataGridCellView else { continue }
-            cell.applyEmphasizedSelection(emphasized)
-            cell.needsDisplay = true
-        }
+        redrawCells()
     }
 
     override func drawBackground(in dirtyRect: NSRect) {
-        super.drawBackground(in: dirtyRect)
-        if let rowTint, !isSelected {
-            rowTint.setFill()
+        drawRowBackground(in: dirtyRect)
+        if !isSelected, let tint = visualState.tint {
+            tint.setFill()
             bounds.fill()
         }
         drawCellSelectionFill(in: dirtyRect)
     }
 
+    /// The row's stripe from `DataGridBodyChrome`, the owner the pinned gutter and the area past the
+    /// last row read too, rather than the `backgroundColor` the table assigns, which is only ever the
+    /// system's. A row outside a table has no stripe, and AppKit's own drawing already leaves it clear:
+    /// its `backgroundColor` is nil there, so it must not be read.
+    private func drawRowBackground(in dirtyRect: NSRect) {
+        guard let tableView = coordinator?.tableView else {
+            super.drawBackground(in: dirtyRect)
+            return
+        }
+        DataGridBodyChrome.rowBackgroundColor(forRow: rowIndex, of: tableView).setFill()
+        dirtyRect.fill()
+    }
+
+    /// A cell range on a row the table has selected is already covered by `NSTableRowView`'s own
+    /// selection fill, which runs after this, so only the remaining rows are painted here.
     private func drawCellSelectionFill(in dirtyRect: NSRect) {
-        guard let coordinator,
+        guard !isSelected,
+              let coordinator,
               let tableView = coordinator.tableView else { return }
         let selection = coordinator.selectionController.selection
         guard !selection.isEmpty else { return }
         let columns = selection.columns(in: rowIndex)
         guard !columns.isEmpty else { return }
 
-        let fillColor: NSColor = isSelected
-            ? NSColor.unemphasizedSelectedContentBackgroundColor
-            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
-        fillColor.setFill()
+        cellSelectionFill.setFill()
 
-        for dataColumn in columns {
-            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
+        for position in columns {
+            guard let tableColumnIndex = coordinator.tableColumnIndex(forDisplayPosition: position) else { continue }
             let columnRect = tableView.rect(ofColumn: tableColumnIndex)
             let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
             guard localRect.intersects(dirtyRect) else { continue }
@@ -120,22 +277,44 @@ class DataGridRowView: NSTableRowView {
         }
     }
 
-    private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
-        switch (lhs, rhs) {
-        case (nil, nil): return true
-        case let (l?, r?): return l == r
-        default: return false
-        }
+    /// `unemphasizedSelectedContentBackgroundColor` is a background colour and is used as one, the
+    /// way AppKit fills a selection in a view that does not hold focus. Thinning it out instead
+    /// left the range at 1.09:1 against a white grid, which is no visible selection at all. The
+    /// emphasized accent is far too dark to sit behind text these rows do not recolour, so that
+    /// one goes on as a tint.
+    private var cellSelectionFill: NSColor {
+        guard isEmphasized else { return .unemphasizedSelectedContentBackgroundColor }
+        return NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.emphasizedCellSelectionAlpha)
     }
+
+    private static let emphasizedCellSelectionAlpha: CGFloat = 0.28
 
     private func addForeignKeyMenuItems(to menu: NSMenu, dataColumnIndex: Int, tableRows: TableRows) {
         guard let coordinator, dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[dataColumnIndex]
-        guard let fkInfo = tableRows.columnForeignKeys[columnName],
-              let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
-              !cellValue.isEmpty else { return }
+        guard let fkInfo = tableRows.columnForeignKeys[columnName] else { return }
+
+        /// Choosing a value is offered on an empty cell too, which is where it is needed most,
+        /// while previewing and following a key still need one to resolve.
+        let hasValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex)?.isEmpty == false
+        let canChoose = coordinator.canStartInlineEdit(row: rowIndex, columnIndex: dataColumnIndex)
+            && !ForeignKeyConstraintSpan.isMultiColumn(fkInfo, among: tableRows.columnForeignKeys)
+        guard hasValue || canChoose else { return }
 
         menu.addItem(NSMenuItem.separator())
+
+        if canChoose {
+            let chooseItem = NSMenuItem(
+                title: String(format: String(localized: "Choose %@ Row…"), fkInfo.referencedTable),
+                action: #selector(chooseForeignKeyValue(_:)),
+                keyEquivalent: ""
+            )
+            chooseItem.representedObject = dataColumnIndex
+            chooseItem.target = self
+            menu.addItem(chooseItem)
+        }
+
+        guard hasValue else { return }
 
         let previewItem = NSMenuItem(
             title: String(localized: "Preview Referenced Row"),
@@ -165,40 +344,79 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(navInNewTabItem)
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        guard let coordinator = coordinator,
-              let tableView = coordinator.tableView else { return nil }
+    /// What a right-click landed on, as much as the row menu needs to know. A click that hit no
+    /// column at all is not the same as one that hit a column carrying no data, such as the row
+    /// number, so the two misses stay apart.
+    enum MenuTarget: Equatable {
+        case cell(dataColumn: Int)
+        case row
+        case unresolved
 
+        var dataColumn: Int {
+            guard case .cell(let index) = self else { return -1 }
+            return index
+        }
+    }
+
+    /// Where a right-click landed, resolved through the table view the row belongs to.
+    private func menuTarget(for event: NSEvent) -> MenuTarget {
+        guard let coordinator, let tableView = coordinator.tableView else { return .unresolved }
         let locationInRow = convert(event.locationInWindow, from: nil)
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
+        guard clickedColumn >= 0 else { return .unresolved }
+        guard let dataColumn = DataGridView.dataColumnIndex(
+            for: clickedColumn, in: tableView, schema: coordinator.identitySchema
+        ) else { return .row }
+        return .cell(dataColumn: dataColumn)
+    }
 
-        let dataColumnIndex: Int = clickedColumn >= 0
-            ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
-            : -1
+    /// Copy, meaning the cell under the pointer. Shared so a grid that builds its own row menu
+    /// offers the same item rather than leaving the pointer with no route to a value the keyboard
+    /// can already copy: the Structure tab had `Cmd+C` copying the clicked cell and no menu item
+    /// for it at all.
+    func makeCopyItem(target: MenuTarget) -> NSMenuItem {
+        let copyTarget: CopyContextTarget = switch target {
+        case .cell(let dataColumn): .cell(dataColumn)
+        case .row: .row
+        case .unresolved: .unresolved
+        }
+        let item = NSMenuItem(
+            title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: ""
+        )
+        item.representedObject = copyTarget
+        item.target = self
+        return item
+    }
+
+    /// Deliberately not `menu(for:)`. The table view owns context-menu handling because it
+    /// is the only level that can re-target the selection to the clicked row first; a row
+    /// view answering `menuForEvent:` would swallow the event and act on the old selection.
+    func contextMenu(for event: NSEvent) -> NSMenu? {
+        contextMenu(target: menuTarget(for: event))
+    }
+
+    /// The row menu for a click whose target is already known.
+    ///
+    /// The pinned row gutter needs this: it overlays whatever data column is scrolled under the
+    /// leading edge, so resolving its click through the table view would report a cell and give the
+    /// gutter the cell menu, with Set Value and IN Clause on a column the pointer never touched.
+    func contextMenu(target: MenuTarget) -> NSMenu? {
+        guard let coordinator = coordinator,
+              let tableView = coordinator.tableView else { return nil }
+
+        let dataColumnIndex = target.dataColumn
 
         let menu = NSMenu()
 
-        if coordinator.changeManager.isRowDeleted(rowIndex) {
+        if coordinator.isRowDeleted(displayRow: rowIndex) {
             menu.addItem(
                 withTitle: String(localized: "Undo Delete"), action: #selector(undoDeleteRow), keyEquivalent: ""
             ).target = self
             return menu
         }
 
-        let copyTarget: CopyContextTarget = if dataColumnIndex >= 0 {
-            .cell(dataColumnIndex)
-        } else if clickedColumn >= 0 {
-            .row
-        } else {
-            .unresolved
-        }
-
-        let copyItem = NSMenuItem(
-            title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: "")
-        copyItem.representedObject = copyTarget
-        copyItem.target = self
-        menu.addItem(copyItem)
+        menu.addItem(makeCopyItem(target: target))
 
         let copyAsMenu = NSMenu()
 
@@ -286,6 +504,26 @@ class DataGridRowView: NSTableRowView {
             menu.addItem(pasteItem)
         }
 
+        menu.addItem(NSMenuItem.separator())
+
+        if coordinator.supportsColumnCommands {
+            let jsonViewItem = NSMenuItem(
+                title: String(localized: "Show Row as JSON"),
+                action: #selector(showRowAsJSON),
+                keyEquivalent: ""
+            )
+            jsonViewItem.target = self
+            menu.addItem(jsonViewItem)
+        }
+
+        if dataColumnIndex >= 0,
+           let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
+               forRow: rowIndex,
+               dataColumn: dataColumnIndex
+           ) {
+            menu.addItem(highlightItem)
+        }
+
         let tableRows = coordinator.tableRowsProvider()
         addForeignKeyMenuItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
 
@@ -293,7 +531,9 @@ class DataGridRowView: NSTableRowView {
             menu.addItem(NSMenuItem.separator())
         }
 
-        if coordinator.isEditable && dataColumnIndex >= 0 {
+        let namesWritableColumn = dataColumnIndex >= 0 && dataColumnIndex < tableRows.columns.count
+            && coordinator.isColumnWritable(tableRows.columns[dataColumnIndex])
+        if coordinator.isEditable && namesWritableColumn {
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
             setValueItem.submenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
             menu.addItem(setValueItem)
@@ -301,13 +541,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let exportItem = NSMenuItem(
-            title: String(localized: "Export Results..."),
-            action: #selector(exportResults),
-            keyEquivalent: ""
-        )
-        exportItem.target = self
-        menu.addItem(exportItem)
+        if coordinator.supportsColumnCommands {
+            let exportItem = NSMenuItem(
+                title: String(localized: "Export Results…"),
+                action: #selector(exportResults),
+                keyEquivalent: ""
+            )
+            exportItem.target = self
+            menu.addItem(exportItem)
+        }
 
         if coordinator.delegate?.dataGridCanClearResults() == true {
             let clearResultsItem = NSMenuItem(
@@ -328,10 +570,14 @@ class DataGridRowView: NSTableRowView {
                 }
             }
 
-            let duplicateItem = NSMenuItem(
-                title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
-            duplicateItem.target = self
-            menu.addItem(duplicateItem)
+            /// The copy resets the columns the server owns, which only the schema names, so the item
+            /// stays away until it has arrived rather than appearing and doing nothing.
+            if tableRows.hasAuthoritativeSchema {
+                let duplicateItem = NSMenuItem(
+                    title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
+                duplicateItem.target = self
+                menu.addItem(duplicateItem)
+            }
 
             let deleteItem = NSMenuItem(
                 title: String(localized: "Delete"),
@@ -367,8 +613,8 @@ class DataGridRowView: NSTableRowView {
             setValueMenu.addItem(nullItem)
         }
 
-        let hasDefault = columnName.flatMap({ tableRows.columnDefaults[$0] ?? nil }) != nil
-        if hasDefault {
+        let serverAssignsValue = columnName.map { tableRows.serverAssignsValue(forColumn: $0) } ?? false
+        if serverAssignsValue {
             let defaultItem = NSMenuItem(
                 title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
             defaultItem.representedObject = dataColumnIndex
@@ -443,7 +689,7 @@ class DataGridRowView: NSTableRowView {
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
               tableView.focusedRow == rowIndex,
-              DataGridView.isDataTableColumn(tableView.focusedColumn) else { return nil }
+              tableView.presentsDataColumn(at: tableView.focusedColumn) else { return nil }
         return DataGridView.dataColumnIndex(
             for: tableView.focusedColumn,
             in: tableView,
@@ -530,6 +776,19 @@ class DataGridRowView: NSTableRowView {
         )
     }
 
+    @objc private func showRowAsJSON() {
+        coordinator?.delegate?.dataGridShowRowAsJSON()
+    }
+
+    @objc private func chooseForeignKeyValue(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int,
+              let coordinator, let tableView = coordinator.tableView,
+              let column = coordinator.tableColumnIndex(for: columnIndex) else { return }
+        coordinator.showForeignKeyPicker(
+            tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
+        )
+    }
+
     @objc private func previewForeignKey(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator, let tableView = coordinator.tableView,
@@ -540,14 +799,14 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
-        performForeignKeyNavigation(from: sender, openInNewTab: false)
+        performForeignKeyNavigation(from: sender, intent: .follow)
     }
 
     @objc private func navigateToForeignKeyInNewTab(_ sender: NSMenuItem) {
-        performForeignKeyNavigation(from: sender, openInNewTab: true)
+        performForeignKeyNavigation(from: sender, intent: .newTab)
     }
 
-    private func performForeignKeyNavigation(from sender: NSMenuItem, openInNewTab: Bool) {
+    private func performForeignKeyNavigation(from sender: NSMenuItem, intent: ReferenceOpenIntent) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
         let tableRows = coordinator.tableRowsProvider()
@@ -555,7 +814,7 @@ class DataGridRowView: NSTableRowView {
         let columnName = tableRows.columns[columnIndex]
         guard let fkInfo = tableRows.columnForeignKeys[columnName],
               let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
-        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, intent: intent)
     }
 }
 
@@ -566,5 +825,50 @@ private final class DateSetterContext {
     init(columnIndex: Int, value: String) {
         self.columnIndex = columnIndex
         self.value = value
+    }
+}
+
+/// The view a row's data cells are drawn into.
+///
+/// Its own class so the drawing lands after the row's background and selection, and so one row
+/// costs exactly one view however many columns the result has.
+@MainActor
+final class DataGridRowContentView: NSView {
+    weak var rowView: DataGridRowView?
+
+    override var isFlipped: Bool { true }
+    override var allowsVibrancy: Bool { false }
+
+    /// Chrome, not content. The row publishes one accessibility element per data column and this
+    /// view carries none of them, so leaving it in the tree puts a nameless group between the row
+    /// and its cells and lets an accessibility hit test land on it.
+    override func isAccessibilityElement() -> Bool { false }
+
+    /// AppKit hit-tests down the view hierarchy, and this view covers the whole row, so every point
+    /// in the row that no cell covers used to resolve to it. The row is the answer there; forwarding
+    /// keeps the one implementation. The row never calls back into `super` while it has a window, so
+    /// this cannot loop.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        rowView?.accessibilityHitTest(point) ?? super.accessibilityHitTest(point)
+    }
+
+    /// The separators go down in a second pass, after every cell, because a cell fills its whole
+    /// rect for a modified or find-match tint and would paint over a line drawn beside it. AppKit's
+    /// own separator views composite above the rows for the same reason.
+    override func draw(_ dirtyRect: NSRect) {
+        rowView?.drawCells(in: dirtyRect, of: self)
+        rowView?.drawColumnSeparators(in: dirtyRect, of: self)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let consumed = rowView?.handleCellClick(
+            at: point,
+            in: self,
+            clickCount: event.clickCount,
+            modifiers: event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        ) ?? false
+        guard !consumed else { return }
+        super.mouseDown(with: event)
     }
 }

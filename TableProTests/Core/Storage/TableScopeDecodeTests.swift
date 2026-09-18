@@ -27,12 +27,6 @@ struct TableScopeDecodeTests {
         #expect(TableScope(storageComponent: scope.storageComponent) == scope)
     }
 
-    @Test("displayName joins the present parts")
-    func displayName() {
-        let scope = TableScope(connectionId: UUID(), database: "shop", schema: nil, table: "orders")
-        #expect(scope.displayName == "shop.orders")
-    }
-
     @Test("Rejects a malformed storage component")
     func rejectsMalformed() {
         #expect(TableScope(storageComponent: "not-a-key") == nil)

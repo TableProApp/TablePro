@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import os
 import Security
 
 final class TeradataTLSTransport: TeradataTransport {
@@ -46,11 +47,11 @@ final class TeradataTLSTransport: TeradataTransport {
         connection = NWConnection(host: NWEndpoint.Host(host), port: endpointPort, using: parameters)
 
         let ready = DispatchSemaphore(value: 0)
-        var failure: Error?
+        let failureBox = OSAllocatedUnfairLock<NWError?>(initialState: nil)
         connection.stateUpdateHandler = { state in
             switch state {
             case .ready: ready.signal()
-            case .failed(let error): failure = error; ready.signal()
+            case .failed(let error): failureBox.withLock { $0 = error }; ready.signal()
             case .cancelled: ready.signal()
             default: break
             }
@@ -60,7 +61,7 @@ final class TeradataTLSTransport: TeradataTransport {
             connection.cancel()
             throw TeradataWireError.connectionFailed("TLS handshake to \(host):\(options.httpsPort) timed out")
         }
-        if let failure {
+        if let failure = failureBox.withLock({ $0 }) {
             connection.cancel()
             throw TeradataWireError.connectionFailed("TLS handshake failed: \(failure)")
         }
@@ -114,7 +115,9 @@ final class TeradataTLSTransport: TeradataTransport {
         try sendRaw(Array(request.utf8))
 
         let header = try readRawUntilHeaderEnd()
-        let response = String(decoding: header, as: UTF8.self)
+        guard let response = String(bytes: header, encoding: .utf8) else {
+            throw TeradataWireError.connectionFailed("WebSocket upgrade response is not valid UTF-8")
+        }
         guard response.contains(" 101 ") else {
             throw TeradataWireError.connectionFailed("WebSocket upgrade rejected: \(response.split(separator: "\r\n").first ?? "")")
         }

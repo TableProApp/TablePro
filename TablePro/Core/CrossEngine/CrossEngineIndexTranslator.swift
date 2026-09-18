@@ -1,0 +1,333 @@
+//
+//  CrossEngineIndexTranslator.swift
+//  TablePro
+//
+//  Which of a table's indexes survive the crossing, and in what shape.
+//
+//  An index is the part of a copy that fails loudest. A `GIN` index arrives at
+//  MySQL as a plain `INDEX` over a column that is now `JSON`, and MySQL refuses
+//  the whole `CREATE TABLE` for it; an index over a column that became
+//  `LONGTEXT` is refused with "used in key specification without a key length",
+//  and one over two `VARCHAR(500)` columns with "Specified key was too long".
+//  Each takes the table down with it, so an index that cannot be written as it
+//  was is cut to prefixes or dropped here, and named in the review instead.
+//
+
+import Foundation
+import TableProPluginKit
+
+internal enum CrossEngineIndexTranslator {
+    internal struct Result: Sendable {
+        internal let indexes: [EditableIndexDefinition]
+        internal let notes: [CrossEngineConversionNote]
+    }
+
+    /// The indexes a copy between two type families can create at all, each with the type it takes on
+    /// `target`, before the columns are sized.
+    ///
+    /// None of it depends on what a column becomes, and the MySQL row pass needs to know which indexes
+    /// exist: a column covered only by a `gin` index or a Redshift `SORTKEY` is covered by nothing on
+    /// the target, so it moves to `TEXT` before a column whose kept unique index a prefix would weaken.
+    internal static func creatable(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> Result {
+        let family = SQLTypeFamily.of(target)
+        return decided(indexes, table: table, from: source, to: target) { index in
+            crossFamilyRefusal(index, family: family)
+        }
+    }
+
+    /// Fits the indexes `creatable` kept to what their columns hold on the target. `columnKinds` is
+    /// keyed by each column's name in lowercase.
+    internal static func translate(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        to family: SQLTypeFamily,
+        columnKinds: [String: CanonicalTypeKind]
+    ) -> Result {
+        var kept: [EditableIndexDefinition] = []
+        var notes: [CrossEngineConversionNote] = []
+
+        for index in indexes {
+            /// The primary key is not an index the target creates separately: it comes out of
+            /// `primaryKeyColumns` inside the `CREATE TABLE`, and the column translation has
+            /// already bounded whatever it needed to.
+            guard !index.isPrimary else {
+                kept.append(index)
+                continue
+            }
+            guard let translated = translate(
+                index, table: table, to: family, columnKinds: columnKinds, notes: &notes
+            ) else { continue }
+            kept.append(translated)
+        }
+        return Result(indexes: kept, notes: notes)
+    }
+
+    /// The indexes of a copy between two database types that share a type family, where the columns,
+    /// expressions and spellings come across as written and only each index's type is decided.
+    internal static func retyped(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> Result {
+        decided(indexes, table: table, from: source, to: target) { _ in nil }
+    }
+
+    private static func decided(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType,
+        refusal: (EditableIndexDefinition) -> String?
+    ) -> Result {
+        var kept: [EditableIndexDefinition] = []
+        var notes: [CrossEngineConversionNote] = []
+
+        for index in indexes {
+            guard !index.isPrimary else {
+                kept.append(index)
+                continue
+            }
+            if let note = tableKeyNote(index, table: table, from: source, to: target) {
+                notes.append(note)
+                continue
+            }
+            if let reason = refusal(index) {
+                notes.append(dropped(index, table: table, reason: reason))
+                continue
+            }
+            guard let type = resolvedType(index.type, from: source, to: target) else {
+                notes.append(droppedForType(index, table: table))
+                continue
+            }
+            var typed = index
+            typed.type = type
+            kept.append(typed)
+        }
+        return Result(indexes: kept, notes: notes)
+    }
+
+    /// The type an index read from a table on `source` takes on `target`, or nil where `target` has
+    /// no index of that kind.
+    ///
+    /// Decided whenever the two database types differ, not only when their families do. Redshift
+    /// shares PostgreSQL's family and reports `DISTKEY` and `SORTKEY` as index types, which no
+    /// `USING` clause names. So a type outside `knownTypes` keeps its name only when the source
+    /// reports its access method and the target is in PostgreSQL's family, and becomes a b-tree
+    /// when the source reports something else, which is what every such type became before the
+    /// vocabulary was opened. A copied table leaves Redshift's keys out before asking; a pasted row
+    /// gets the b-tree.
+    internal static func resolvedType(
+        _ type: EditableIndexDefinition.IndexType,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> EditableIndexDefinition.IndexType? {
+        guard source != target else { return type }
+        let family = SQLTypeFamily.of(target)
+        switch type {
+        case .btree:
+            return .btree
+        case .hash:
+            return family == .mysql || family == .postgres ? .hash : .btree
+        case .fulltext, .spatial:
+            return family == .mysql ? type : nil
+        case .gin, .gist, .brin, .spgist:
+            return family == .postgres ? type : nil
+        default:
+            guard accessMethodSources.contains(source) else { return .btree }
+            return family == .postgres ? type : nil
+        }
+    }
+
+    /// The database types whose index type is the server's own access method, read from `pg_am`, so
+    /// `BLOOM`, `HNSW` or `IVFFLAT` names something a PostgreSQL `USING` clause can write.
+    private static let accessMethodSources: Set<DatabaseType> = [.postgresql, .pglite]
+
+    /// The database types whose indexes, past the primary key, are keys of the table itself:
+    /// Redshift's `DISTKEY` and `SORTKEY`, Snowflake's clustering key, and BigQuery's clustering and
+    /// partitioning. None is an index anywhere else, and each carries the same name on every table,
+    /// so written as a b-tree the second table copied into one PostgreSQL schema was refused with
+    /// `relation "DISTKEY" already exists`.
+    private static let tableKeySources: Set<DatabaseType> = [.redshift, .snowflake, .bigQuery]
+
+    private static func tableKeyNote(
+        _ index: EditableIndexDefinition,
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> CrossEngineConversionNote? {
+        guard source != target, tableKeySources.contains(source) else { return nil }
+        return dropped(index, table: table, reason: String(
+            format: String(localized: "On %@ this is a key of the table, not an index."),
+            source.displayName
+        ))
+    }
+
+    private static func crossFamilyRefusal(_ index: EditableIndexDefinition, family: SQLTypeFamily) -> String? {
+        guard supportsSecondaryIndexes(family) else {
+            return String(localized: "This engine does not take a secondary index in a CREATE TABLE.")
+        }
+        /// An expression is written in the source engine's SQL, with its functions, casts and
+        /// operators, and nothing here can say it in the target's.
+        guard index.expressions.isEmpty else {
+            return String(
+                format: String(localized: "Its key includes %@, an expression in the source engine's SQL."),
+                index.expressions.joined(separator: ", ")
+            )
+        }
+        return nil
+    }
+
+    private static func translate(
+        _ index: EditableIndexDefinition,
+        table: String,
+        to family: SQLTypeFamily,
+        columnKinds: [String: CanonicalTypeKind],
+        notes: inout [CrossEngineConversionNote]
+    ) -> EditableIndexDefinition? {
+        let unbounded = index.columns.filter { CrossEngineKeyWidth.isUnbounded(columnKinds[$0.lowercased()]) }
+        if !unbounded.isEmpty, !supportsKeyPrefixes(family) {
+            notes.append(dropped(index, table: table, reason: String(
+                format: String(
+                    localized: "%@ is unbounded text or binary here, which this engine cannot index."
+                ),
+                unbounded.joined(separator: ", ")
+            )))
+            return nil
+        }
+
+        /// Without prefixes an index too wide for the engine can only be left out. Oracle refuses one
+        /// outright with ORA-01450, and SQL Server one whose fixed-length columns pass its limit.
+        if !supportsKeyPrefixes(family), let budget = CrossEngineKeyBudget.of(family),
+           let bytes = budget.checkedBytes(index.columns.compactMap { columnKinds[$0.lowercased()] }),
+           bytes > budget.indexBytes {
+            notes.append(dropped(index, table: table, reason: String(
+                format: String(localized: "Its columns pass the %@ bytes this engine can index."),
+                budget.indexBytes.formatted()
+            )))
+            return nil
+        }
+
+        var translated = index
+        translated.dropCatalogSpellings()
+        /// Carried to an engine without key prefixes the number is ignored by its driver, so it is
+        /// not carried at all.
+        translated.columnPrefixes = [:]
+        if supportsKeyPrefixes(family) {
+            guard let prefixes = CrossEngineKeyWidth.mysqlPrefixes(
+                columns: index.columns, declared: index.columnPrefixes, kinds: columnKinds
+            ) else {
+                notes.append(dropped(index, table: table, reason: String(
+                    localized: "Its columns pass the 3,072 bytes this engine can index, even with each cut to a prefix."
+                )))
+                return nil
+            }
+            translated.columnPrefixes = prefixes
+            let cut = index.columns.filter { prefixes[$0] != index.columnPrefixes[$0] }
+            if !cut.isEmpty, index.isUnique {
+                notes.append(uniqueOnPrefix(index, table: table, columns: cut))
+            }
+        }
+        /// The columns an index stores beside its key only save a table read. Leaving them out
+        /// changes neither the key nor what a unique index refuses.
+        if !index.includedColumns.isEmpty {
+            translated.includedColumns = []
+            notes.append(CrossEngineConversionNote(
+                table: table,
+                subject: index.name,
+                summary: String(
+                    format: String(localized: "%@ no longer stores its INCLUDE columns"), index.name
+                ),
+                reason: String(
+                    format: String(localized: "The copy writes no INCLUDE clause here, so %@ are left out of the index."),
+                    index.includedColumns.joined(separator: ", ")
+                ),
+                fidelity: .approximated
+            ))
+        }
+        /// A partial index is PostgreSQL's, SQLite's and DuckDB's syntax. Elsewhere the clause is
+        /// dropped and the index becomes a full one, which indexes more rather than less.
+        if index.whereClause?.nilIfEmpty != nil, !supportsPartialIndexes(family) {
+            translated.whereClause = nil
+            notes.append(CrossEngineConversionNote(
+                table: table,
+                subject: index.name,
+                summary: String(
+                    format: String(localized: "%@ stops being a partial index"), index.name
+                ),
+                reason: String(
+                    localized: "Its WHERE clause is not supported here, so it covers every row."
+                ),
+                fidelity: .approximated
+            ))
+        }
+        return translated
+    }
+
+    /// A prefix on a unique index is not the same constraint. Two rows differing only after the
+    /// prefix collide, so the copy fails part way through the data phase on a table the source
+    /// considered valid, and where the rows do fit the target enforces less than the source did.
+    private static func uniqueOnPrefix(
+        _ index: EditableIndexDefinition,
+        table: String,
+        columns: [String]
+    ) -> CrossEngineConversionNote {
+        CrossEngineConversionNote(
+            table: table,
+            subject: index.name,
+            summary: String(
+                format: String(localized: "%1$@ becomes unique on the first %2$lld characters"),
+                index.name, CrossEngineKeyWidth.prefixLength
+            ),
+            reason: String(
+                format: String(
+                    localized: "%@ is too wide for this engine to index whole, so only a prefix is indexed. Rows differing only past it are refused as duplicates."
+                ),
+                columns.joined(separator: ", ")
+            ),
+            fidelity: .approximated
+        )
+    }
+
+    private static func droppedForType(_ index: EditableIndexDefinition, table: String) -> CrossEngineConversionNote {
+        dropped(index, table: table, reason: String(
+            format: String(localized: "A %@ index has no equivalent on this engine."),
+            index.type.rawValue
+        ))
+    }
+
+    private static func dropped(
+        _ index: EditableIndexDefinition,
+        table: String,
+        reason: String
+    ) -> CrossEngineConversionNote {
+        CrossEngineConversionNote(
+            table: table,
+            subject: index.name,
+            summary: String(format: String(localized: "The index %@ is left out"), index.name),
+            reason: reason,
+            fidelity: .approximated
+        )
+    }
+
+    // MARK: - Family rules
+
+    /// ClickHouse's `CREATE TABLE` takes a sorting key and data-skipping indexes, neither of which
+    /// is what a b-tree index from another engine means, and its driver writes neither.
+    private static func supportsSecondaryIndexes(_ family: SQLTypeFamily) -> Bool {
+        family != .clickhouse
+    }
+
+    private static func supportsKeyPrefixes(_ family: SQLTypeFamily) -> Bool {
+        family == .mysql
+    }
+
+    private static func supportsPartialIndexes(_ family: SQLTypeFamily) -> Bool {
+        family == .postgres || family == .sqlite || family == .duckdb
+    }
+}

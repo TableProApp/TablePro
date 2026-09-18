@@ -4,10 +4,11 @@ import os
 import TableProDatabase
 import TableProModels
 
-final class RedisDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = RedisActor()
     private let host: String
     private let port: Int
+    private let username: String?
     private let password: String?
     private let database: Int
     let ssl: DriverSSLConfiguration
@@ -19,9 +20,17 @@ final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     // Set once during connect() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    init(host: String, port: Int, password: String?, database: Int = 0, ssl: DriverSSLConfiguration = .disabled) {
+    init(
+        host: String,
+        port: Int,
+        username: String? = nil,
+        password: String?,
+        database: Int = 0,
+        ssl: DriverSSLConfiguration = .disabled
+    ) {
         self.host = host
         self.port = port
+        self.username = username
         self.password = password
         self.database = database
         self.ssl = ssl
@@ -31,7 +40,14 @@ final class RedisDriver: DatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
-        try await actor.connect(host: host, port: port, password: password, database: database, ssl: ssl)
+        try await actor.connect(
+            host: host,
+            port: port,
+            username: username,
+            password: password,
+            database: database,
+            ssl: ssl
+        )
         serverVersion = try? await actor.fetchServerVersion()
     }
 
@@ -317,7 +333,7 @@ final class RedisDriver: DatabaseDriver, @unchecked Sendable {
 
 // MARK: - Redis Reply Value
 
-private enum RedisReplyValue: Sendable {
+nonisolated private enum RedisReplyValue: Sendable {
     case string(String)
     case integer(Int64)
     case array([RedisReplyValue])
@@ -335,9 +351,14 @@ private enum RedisReplyValue: Sendable {
         case .array(let items): return "[\(items.compactMap(\.stringRepresentation).joined(separator: ", "))]"
         }
     }
+
+    var errorMessage: String? {
+        guard case .error(let message) = self else { return nil }
+        return message
+    }
 }
 
-private func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
+nonisolated private func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
     guard let string else { return try body(nil) }
     return try string.withCString { try body($0) }
 }
@@ -356,7 +377,14 @@ private actor RedisActor {
         }
     }()
 
-    func connect(host: String, port: Int, password: String?, database: Int, ssl: DriverSSLConfiguration) throws {
+    func connect(
+        host: String,
+        port: Int,
+        username: String?,
+        password: String?,
+        database: Int,
+        ssl: DriverSSLConfiguration
+    ) throws {
         // Close existing connection if reconnecting
         close()
 
@@ -382,21 +410,12 @@ private actor RedisActor {
         if ssl.isEnabled {
             _ = Self.initSSL
 
-            let sslCtx: OpaquePointer = try host.withCString { hostCStr in
-                try withOptionalCString(ssl.existingCACertificatePath) { caCStr in
-                    var sslError = redisSSLContextError(0)
-                    var options = redisSSLOptions()
-                    memset(&options, 0, MemoryLayout<redisSSLOptions>.size)
-                    options.server_name = hostCStr
-                    options.cacert_filename = caCStr
-                    options.verify_mode = ssl.verifiesCertificate ? REDIS_SSL_VERIFY_PEER : REDIS_SSL_VERIFY_NONE
-
-                    guard let created = redisCreateSSLContextWithOptions(&options, &sslError) else {
-                        redisFree(context)
-                        throw RedisError.connectionFailed("Failed to create SSL context (error \(sslError.rawValue))")
-                    }
-                    return created
-                }
+            let sslCtx: OpaquePointer
+            do {
+                sslCtx = try Self.makeSSLContext(host: host, ssl: ssl)
+            } catch {
+                redisFree(context)
+                throw error
             }
 
             let result = redisInitiateSSLWithContext(context, sslCtx)
@@ -413,10 +432,23 @@ private actor RedisActor {
         self.ctx = context
 
         do {
-            if let password, !password.isEmpty {
-                let reply = try executeCommand(["AUTH", password])
+            if let authArgs = RedisAuthCommand.arguments(username: username, password: password) {
+                let reply = try executeCommand(authArgs)
                 if case .error(let msg) = reply {
-                    throw RedisError.connectionFailed("Authentication failed: \(msg)")
+                    throw RedisError.authenticationFailed(
+                        serverMessage: msg,
+                        failure: RedisAuthCommand.failure(
+                            serverError: msg,
+                            hadUsername: !(username ?? "").isEmpty,
+                            hadPassword: !(password ?? "").isEmpty
+                        )
+                    )
+                }
+            } else {
+                let probe = try executeCommand(RedisConnectProbe.command)
+                let outcome = RedisConnectProbe.outcome(errorMessage: probe.errorMessage)
+                if outcome != .established {
+                    throw RedisError.sessionUnverified(outcome)
                 }
             }
 
@@ -429,6 +461,32 @@ private actor RedisActor {
         } catch {
             close()
             throw error
+        }
+    }
+
+    private static func makeSSLContext(host: String, ssl: DriverSSLConfiguration) throws -> OpaquePointer {
+        try host.withCString { hostCStr in
+            try withOptionalCString(ssl.existingCACertificatePath) { caCStr in
+                try withOptionalCString(ssl.existingClientCertificatePath) { certCStr in
+                    try withOptionalCString(ssl.existingClientKeyPath) { keyCStr in
+                        var sslError = redisSSLContextError(0)
+                        var options = redisSSLOptions()
+                        memset(&options, 0, MemoryLayout<redisSSLOptions>.size)
+                        options.server_name = hostCStr
+                        options.cacert_filename = caCStr
+                        options.cert_filename = certCStr
+                        options.private_key_filename = keyCStr
+                        options.verify_mode = ssl.verifiesCertificate ? REDIS_SSL_VERIFY_PEER : REDIS_SSL_VERIFY_NONE
+
+                        guard let created = redisCreateSSLContextWithOptions(&options, &sslError) else {
+                            throw RedisError.connectionFailed(
+                                "Failed to create SSL context (error \(sslError.rawValue))"
+                            )
+                        }
+                        return created
+                    }
+                }
+            }
         }
     }
 
@@ -532,8 +590,10 @@ private actor RedisActor {
 
 // MARK: - Errors
 
-enum RedisError: Error, LocalizedError {
+nonisolated enum RedisError: Error, LocalizedError {
     case connectionFailed(String)
+    case authenticationFailed(serverMessage: String, failure: RedisAuthCommand.Failure)
+    case sessionUnverified(RedisConnectProbe.Outcome)
     case notConnected
     case queryFailed(String)
     case unsupported(String)
@@ -541,6 +601,19 @@ enum RedisError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .connectionFailed(let msg): return "Redis connection failed: \(msg)"
+        case .authenticationFailed(let serverMessage, let failure):
+            guard let hint = RedisAuthCommand.hint(for: failure) else {
+                return String(format: String(localized: "Redis authentication failed: %@"), serverMessage)
+            }
+            return String(
+                format: String(localized: "Redis authentication failed: %1$@ %2$@"),
+                serverMessage,
+                hint
+            )
+        case .sessionUnverified(let outcome):
+            let message = outcome.failureMessage ?? String(localized: "Redis connection failed")
+            guard let hint = outcome.failureHint else { return message }
+            return "\(message) \(hint)"
         case .notConnected: return "Not connected to Redis"
         case .queryFailed(let msg): return "Redis command failed: \(msg)"
         case .unsupported(let msg): return msg

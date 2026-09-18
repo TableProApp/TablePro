@@ -49,11 +49,18 @@ struct PairingApprovalSheet: View {
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
+            /// The one greedy child, and the reason the sheet needs a bound at all. A grouped
+            /// `Form` is a scroll container, so it answers any proposal with the whole proposed
+            /// height: unbounded, it measured `CGFloat.greatestFiniteMagnitude`, and the window
+            /// sized from that raised. Capping it here rather than fixing the sheet's own height
+            /// keeps the rest of the sheet free to grow with the text size. The sections scroll
+            /// inside the cap. (#2930)
+            .frame(maxHeight: 420)
 
             Divider()
             actionBar.padding()
         }
-        .frame(minWidth: 520, minHeight: 560)
+        .frame(width: 520)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
             if connectionAccess == .all {
@@ -67,15 +74,39 @@ struct PairingApprovalSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
+            /// The name is whatever the request asked to be called, so it is bounded here rather
+            /// than trusted to be short enough to lay out.
             Text(String(format: String(localized: "Allow %@ to access TablePro?"), request.clientName))
                 .font(.headline)
+                .lineLimit(2)
+                .truncationMode(.tail)
             Text(String(localized: "An external app is asking for an API token. Review the permissions before approving."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            destinationLabel
             countdownLabel
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
+    }
+
+    /// Where the one-time code is delivered, which is the only part of the request that says who
+    /// actually receives the grant. The client name above is a label the request chose for itself,
+    /// so approving on that alone approves a destination nobody was shown. Truncated in the middle
+    /// rather than the tail, because the scheme and the host are what a reader checks.
+    private var destinationLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up.forward.app")
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text(String(format: String(localized: "Sends the code to %@"), request.redirectDisplayValue))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
     }
 
     private var countdownLabel: some View {
@@ -131,7 +162,7 @@ struct PairingApprovalSheet: View {
                 Text(String(localized: "Select Connections")).tag(ConnectionAccessMode.selected)
             }
             .labelsHidden()
-            .onChange(of: connectionAccess) { _, newValue in
+            .onChange(of: connectionAccess) { newValue in
                 if newValue == .all {
                     selectedConnectionIds = Set(connections.map(\.id))
                 } else if selectedConnectionIds.isEmpty {
@@ -204,13 +235,11 @@ struct PairingApprovalSheet: View {
     }
 
     private var actionBar: some View {
-        HStack {
+        DialogFooter {
             Button(String(localized: "Deny"), role: .cancel) {
-                onComplete(.failure(MCPDataLayerError.userCancelled))
+                onComplete(.failure(DatabaseAccessError.userCancelled))
             }
             .keyboardShortcut(.cancelAction)
-
-            Spacer()
 
             Button(String(localized: "Approve")) {
                 let approval = PairingApproval(

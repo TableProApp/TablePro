@@ -1,0 +1,201 @@
+---
+title: AppleScript
+description: Scripting dictionary for connections, tabs, results and queries, with the gates a script has to clear
+---
+
+A script is an external client with no token, so what it may do is decided by the connection's
+**External Clients** level and by [Safe Mode](/features/safe-mode). The first time a script targets
+TablePro, macOS asks the sending app for Automation permission.
+
+Script Editor lists TablePro under Open Dictionary in its File menu.
+
+```applescript
+tell application "TablePro"
+  set result to run query "SELECT id, email FROM users LIMIT 5" in connection "Production"
+  columns of result --> {"id", "email"}
+  row count of result --> 5
+  values of item 1 of rows of result --> {"1", "ada@example.com"}
+end tell
+```
+
+## What a script may do
+
+| Level on the connection | A script may |
+|---|---|
+| Blocked | Nothing. The connection is not in `connections` at all |
+| Read only | Read. Any statement that is not a read is refused |
+| Read & Write | Read and write, subject to Safe Mode |
+
+Read Only is the default and the right level for most connections: reporting and export scripts
+need nothing more. Raise a connection to Read & Write in its **Advanced** pane only when a script has
+to write to it.
+
+Read & Write is not a way past Safe Mode. A statement that drops or truncates always raises a
+confirmation naming the app that sent it, whatever the level says, and Safe Mode's authentication
+step still runs.
+
+Automation permission is granted per sending app, not per connection. Granting Terminal control of
+TablePro lets any script run from Terminal read every connection that is not Blocked. Revoke it in
+**System Settings > Privacy & Security > Automation**.
+
+Every scripted statement is written to the history drawer under **AppleScript**, and to the
+execution audit log.
+
+## Objects
+
+```text
+application
+└── connection
+    └── tab
+```
+
+`connections` lists every saved connection whose **External Clients** level is not Blocked, sorted
+by name. Reach one by name or by id.
+
+```applescript
+tell application "TablePro"
+  name of every connection
+  connection id "9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
+  every connection whose connected is true
+end tell
+```
+
+### connection
+
+| Property | Type | |
+|---|---|---|
+| `id` | text | Stable. The same UUID the URL scheme takes |
+| `name` | text | |
+| `database type` | text | `PostgreSQL`, `MySQL`, and the rest |
+| `host`, `port` | text, integer | |
+| `current database` | text | The database in use, not the saved one |
+| `current schema` | text | On engines that have schemas |
+| `connected` | boolean | |
+| `safe mode` | enumeration | `silent`, `alert`, `alert full`, `authenticate`, `authenticate full`, `read only` |
+| `external access` | enumeration | `blocked`, `read only`, `read write` |
+
+No credential is reachable from a script, and neither is the account name. Every property is read only.
+
+### tab
+
+| Property | Type | |
+|---|---|---|
+| `id`, `name` | text | |
+| `kind` | enumeration | `query editor`, `table`, `create table`, `diagram`, `server dashboard`, `users and roles`, `query insights`, `object source` |
+| `table name`, `database name`, `schema name` | text | |
+| `query` | text | The SQL of a query tab |
+| `current result` | query result | The rows the tab is showing |
+| `selection` | query result | The rows selected in its grid |
+
+`current tab` and `current connection` on the application are the front window's.
+
+Every property is read only. To put SQL in front of someone, use the URL scheme's
+[query link](/external-api/url-scheme#run-a-query), which shows them the statement first.
+
+### query result
+
+A record. Assign it to a variable and the rows stay with it.
+
+| Property | Type | |
+|---|---|---|
+| `columns` | list of text | |
+| `rows` | list of result row | Each holds `values`, a list of text |
+| `row count` | integer | |
+| `rows affected` | integer | |
+| `truncated` | boolean | True when `row limit` cut the result short |
+| `execution time` | real | Milliseconds |
+| `status message` | text | What the server said, when it said anything |
+
+A cell is always text. NULL is the empty string, and binary is Base64.
+
+## Commands
+
+### run query
+
+```applescript
+run query "SELECT 1" in connection "Production" ¬
+  database "analytics" schema "public" row limit 1000 timeout 60
+```
+
+Runs one statement and returns a `query result`. No window opens and no tab is disturbed; the
+connection opens first if it is closed, which can prompt for a password.
+
+`row limit` defaults to 500 and caps at 10000. `timeout` defaults to 30 seconds and caps at 600.
+Several statements in one call are refused, as are statements that read files or run server-side
+code.
+
+AppleScript gives up on any command after two minutes. Wrap a long query in
+`with timeout of 300 seconds`.
+
+### open table
+
+```applescript
+tell application "TablePro"
+  set t to open table "orders" in connection "Production" schema "public"
+  row count of current result of t
+end tell
+```
+
+Opens the table in a tab and brings it forward, reusing a tab that already shows it. Returns the
+tab.
+
+### connect, disconnect, show
+
+```applescript
+tell application "TablePro"
+  connect connection "Production"
+  show connection "Production"
+  disconnect connection "Production"
+end tell
+```
+
+`connect` opens the session without opening a window. `show` brings the connection's window
+forward, opening one if it has none.
+
+### focus
+
+```applescript
+tell application "TablePro"
+  focus tab 1 of connection "Production"
+end tell
+```
+
+## Read the grid
+
+`selection` reads what is selected in the tab's grid, in display order, with hidden columns left out
+and the filter bar applied. An empty selection reads as zero rows; `current result` reads them all.
+
+```applescript
+tell application "TablePro"
+  set picked to selection of current tab
+  repeat with r in rows of picked
+    log item 1 of values of r
+  end repeat
+end tell
+```
+
+## Errors
+
+A refusal is an ordinary AppleScript error carrying the reason.
+
+```applescript
+try
+  tell application "TablePro"
+    run query "DELETE FROM users" in connection "Production"
+  end tell
+on error message number code
+  message --> "This connection is read only for external clients."
+end try
+```
+
+| Number | |
+|---|---|
+| `-1728` | No connection or tab by that name or id |
+| `-50` | The request is malformed: several statements in one call, or no database to run against |
+| `-10000` | Refused by Safe Mode or by **External Clients**, or cancelled at the confirmation |
+
+## Related
+
+- [URL scheme](/external-api/url-scheme) drives the GUI and returns nothing
+- [MCP tools](/external-api/mcp-tools) cover schema, export and server work a script cannot reach
+- [Safe Mode](/features/safe-mode) is the gate in front of every write

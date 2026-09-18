@@ -7,8 +7,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // MARK: - Mock Driver
@@ -357,6 +357,58 @@ struct SQLSchemaProviderFallbackTests {
         #expect(item.detail?.contains("INT") == true)
     }
 
+    @Test("A cached table outside the current schema keeps its schema in the fallback label")
+    func fallbackLabelKeepsSchemaOutsideCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db",
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders", schema: "public"),
+                TestFixtures.makeTableInfo(name: "orders", schema: "hr")
+            ],
+            driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: "hr")
+
+        let items = await provider.allColumnsFromCachedTables()
+
+        #expect(Set(items.map(\.label)) == ["orders.id", "hr.orders.id"])
+        #expect(Set(items.map(\.insertText)) == ["orders.id", "hr.orders.id"])
+    }
+
+    /// On an engine with an implicit schema a bare name means that schema, not the one being
+    /// browsed, so the browsed schema's table is the one that needs its schema in the label.
+    @Test("The fallback label leaves out only the engine's implicit schema")
+    func fallbackLabelLeavesOutOnlyTheImplicitSchema() async throws {
+        let connection = TestFixtures.makeConnection(type: .spanner)
+        let implicitSchema = try #require(connection.type.implicitSchemaName)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.currentSchema = "sales"
+        driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db",
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders", schema: implicitSchema),
+                TestFixtures.makeTableInfo(name: "orders", schema: "sales")
+            ],
+            driver: driver,
+            connection: connection
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: implicitSchema)
+        _ = await provider.getColumns(for: "orders", schema: "sales")
+
+        let items = await provider.allColumnsFromCachedTables()
+
+        #expect(Set(items.map(\.label)) == ["orders.id", "sales.orders.id"])
+    }
+
     // MARK: - Eager Column Loading
 
     @Test("resetForDatabase triggers eager column load via fetchAllColumns")
@@ -422,8 +474,8 @@ struct SQLSchemaProviderFallbackTests {
         #expect(cachedColumns.count == 2)
     }
 
-    @Test("Eager load respects maxCachedTables limit")
-    func eagerLoadRespectsMaxCachedTables() async throws {
+    @Test("Eager load caches a schema that fits the table limit")
+    func eagerLoadCachesASchemaThatFits() async {
         let driver = MockFallbackDriver()
         var tables: [TableInfo] = []
         for i in 0..<60 {
@@ -437,13 +489,32 @@ struct SQLSchemaProviderFallbackTests {
 
         let provider = SQLSchemaProvider()
         await provider.resetForDatabase("testdb", tables: tables, driver: driver)
+        await provider.waitForEagerColumnLoad()
 
-        // Wait for the eager load task
-        try await Task.sleep(nanoseconds: 300_000_000)
-
-        // allColumnsFromCachedTables should return at most 50 tables worth of columns
         let items = await provider.allColumnsFromCachedTables()
-        #expect(items.count <= 50)
+        #expect(items.count == 60)
+        #expect(Set(items.map(\.label)) == Set((0..<60).map { "col_\($0)" }))
+    }
+
+    @Test("Eager load caps the cache when the fetch returns more tables than the schema listed")
+    func eagerLoadCapsCacheWhenFetchOverruns() async {
+        let cap = SQLSchemaProvider.maxCachedTables
+        let driver = MockFallbackDriver()
+        for i in 0..<(cap + 25) {
+            driver.columnsPerTable["table_\(i)"] = [
+                TestFixtures.makeColumnInfo(name: "col_\(i)", isPrimaryKey: false)
+            ]
+        }
+        let listed = (0..<10).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
+        driver.tablesToReturn = listed
+
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase("testdb", tables: listed, driver: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let items = await provider.allColumnsFromCachedTables()
+        #expect(items.count == cap)
+        #expect(Set(items.map(\.label)).isSuperset(of: (0..<10).map { "col_\($0)" }))
     }
 
     @Test("allColumnsFromCachedTables uses canonical table names from tables list")

@@ -75,15 +75,16 @@ struct FilterSettings: Codable, Equatable {
 }
 
 @MainActor
-final class FilterSettingsStorage {
+final class FilterSettingsStorage: TableScopedSettingsStore {
     static let shared = FilterSettingsStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
 
     private static let legacyLastFiltersKeyPrefix = "com.TablePro.filter.lastFilters."
     private static let legacyKnownFilterKeysKey = "com.TablePro.filter.knownFilterKeys"
     private static let migrationCompleteKey = "com.TablePro.filterStateMigrationComplete"
     private static let compositeKeyMigrationKey = "com.TablePro.filterStateCompositeKeyMigrationComplete"
     private static let settingsKey = "com.TablePro.filter.settings"
+    private static let browseKeySuffix = ".browse"
 
     private let defaults: UserDefaults
 
@@ -213,7 +214,7 @@ final class FilterSettingsStorage {
         let fileURL = fileURL(forKey: key)
 
         guard !filters.isEmpty else {
-            lastFiltersCache.removeValue(forKey: key)
+            lastFiltersCache[key] = PersistedFilterState(filters: [])
             ioQueue.async {
                 try? FileManager.default.removeItem(at: fileURL)
             }
@@ -249,9 +250,71 @@ final class FilterSettingsStorage {
             schemaName: schemaName
         )
         let fileURL = fileURL(forKey: key)
-        lastFiltersCache.removeValue(forKey: key)
+        /// Cached as empty rather than removed. The delete runs on `ioQueue`, so a load between this
+        /// call and that work finds no cache entry, reads the file that is still there, and hands
+        /// back the filters the user just cleared.
+        lastFiltersCache[key] = PersistedFilterState(filters: [])
         ioQueue.async {
             try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
+
+    /// Moves a table's saved filters onto its new name. A rename keeps the columns the filters
+    /// name, so the working set is still valid; leaving it behind would silently drop it.
+    func renameTable(from oldScope: TableScope, to newScope: TableScope) {
+        let oldKey = oldScope.storageComponent
+        let newKey = newScope.storageComponent
+        guard oldKey != newKey else { return }
+        let oldBrowseKey = oldKey + Self.browseKeySuffix
+        let newBrowseKey = newKey + Self.browseKeySuffix
+        lastFiltersCache[newKey] = lastFiltersCache.removeValue(forKey: oldKey)
+        browseSearchCache[newBrowseKey] = browseSearchCache.removeValue(forKey: oldBrowseKey)
+
+        let moves = [(oldKey, newKey), (oldBrowseKey, newBrowseKey)].map { source, destination in
+            (fileURL(forKey: source), fileURL(forKey: destination))
+        }
+        ioQueue.async {
+            let fm = FileManager.default
+            for (source, destination) in moves where fm.fileExists(atPath: source.path) {
+                try? fm.removeItem(at: destination)
+                try? fm.moveItem(at: source, to: destination)
+            }
+        }
+    }
+
+    /// Moves every table's saved filters from one container to another, by rewriting the part of
+    /// each key that names the container. Keyed by prefix rather than by walking the table list,
+    /// because that list is loaded lazily and a table nobody opened this session still has a file.
+    func renameContainer(
+        connectionId: UUID,
+        fromDatabase: String,
+        fromSchema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        let oldPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: fromDatabase, schema: fromSchema
+        )
+        let newPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: toDatabase, schema: toSchema
+        )
+        guard oldPrefix != newPrefix else { return }
+
+        lastFiltersCache = Self.rekeyed(lastFiltersCache, fromPrefix: oldPrefix, toPrefix: newPrefix)
+        browseSearchCache = Self.rekeyed(browseSearchCache, fromPrefix: oldPrefix, toPrefix: newPrefix)
+
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            guard let files = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            else { return }
+            for file in files where file.pathExtension == "json" {
+                let key = file.deletingPathExtension().lastPathComponent
+                guard key.hasPrefix(oldPrefix) else { continue }
+                let moved = directory.appendingPathComponent("\(newPrefix + key.dropFirst(oldPrefix.count)).json")
+                try? fm.removeItem(at: moved)
+                try? fm.moveItem(at: file, to: moved)
+            }
         }
     }
 
@@ -342,20 +405,13 @@ final class FilterSettingsStorage {
             connectionId: connectionId,
             databaseName: databaseName,
             schemaName: schemaName
-        ) + ".browse"
+        ) + Self.browseKeySuffix
     }
 
-    func removeFilters(for connectionId: UUID) {
-        removeFilters(for: [connectionId])
-    }
-
-    func removeFilters(for connectionIds: Set<UUID>) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         guard !connectionIds.isEmpty else { return }
 
-        let encodedPrefixes = connectionIds.map { id in
-            let idString = id.uuidString
-            return (idString.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? idString) + "."
-        }
+        let encodedPrefixes = connectionIds.map { TableScope.storagePrefix(connectionId: $0) }
         let matchesConnection: (String) -> Bool = { name in
             encodedPrefixes.contains { name.hasPrefix($0) }
         }
@@ -377,34 +433,16 @@ final class FilterSettingsStorage {
         }
     }
 
-    func clearAllLastFilters() {
-        lastFiltersCache.removeAll()
-        browseSearchCache.removeAll()
-
-        let directory = filterStateDirectory
-        ioQueue.async {
-            let fm = FileManager.default
-            do {
-                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-                for file in files where file.pathExtension == "json" {
-                    try? fm.removeItem(at: file)
-                }
-            } catch {
-                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-            }
+    private static func rekeyed<Value>(
+        _ cache: [String: Value],
+        fromPrefix oldPrefix: String,
+        toPrefix newPrefix: String
+    ) -> [String: Value] {
+        var rekeyed = cache
+        for key in cache.keys where key.hasPrefix(oldPrefix) {
+            rekeyed[newPrefix + key.dropFirst(oldPrefix.count)] = rekeyed.removeValue(forKey: key)
         }
-    }
-
-    func customizedStorageKeys() -> [String] {
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: filterStateDirectory,
-            includingPropertiesForKeys: nil
-        ) else { return [] }
-
-        return files
-            .filter { $0.pathExtension == "json" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .filter { !$0.hasSuffix(".browse") }
+        return rekeyed
     }
 
     private func fileURL(forKey key: String) -> URL {
@@ -426,10 +464,7 @@ final class FilterSettingsStorage {
     }
 
     private static func resolvedFilterStateDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("FilterState", isDirectory: true)

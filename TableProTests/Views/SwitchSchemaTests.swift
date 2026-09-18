@@ -13,9 +13,82 @@ import Testing
 
 @testable import TablePro
 
+@MainActor
+private final class SchemaSwitchLatch {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        let pending = waiters
+        waiters = []
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+}
+
 @Suite("SwitchSchema")
 @MainActor
 struct SwitchSchemaTests {
+    /// A schema switch waiting for the driver is dropped when the connection is closed and opened
+    /// again before its turn. The toolbar then belongs to the reopened session, so restoring what the
+    /// old session showed would put a stale schema on it, and the drop is not a failure to report.
+    @Test("A schema switch dropped for a reopened session reads the toolbar back from the new session")
+    func droppedSchemaSwitchReadsToolbarFromReopenedSession() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let original = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: original)
+        session.browseSchema = "public"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        coordinator.toolbarState.currentSchema = "public"
+
+        let acquired = SchemaSwitchLatch()
+        let release = SchemaSwitchLatch()
+        let holder = Task { @MainActor in
+            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(connection.id) {
+                acquired.open()
+                await release.wait()
+            }
+        }
+        await acquired.wait()
+
+        let switchTask = Task { @MainActor in
+            await coordinator.switchSchema(to: "s2")
+        }
+        for _ in 0..<10_000 where DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) < 1 {
+            await Task.yield()
+        }
+        #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
+
+        DatabaseManager.shared.removeSession(for: connection.id)
+        var reopened = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        reopened.browseSchema = "reporting"
+        DatabaseManager.shared.injectSession(reopened, for: connection.id)
+
+        release.open()
+        try await holder.value
+        await switchTask.value
+
+        #expect(coordinator.toolbarState.currentSchema == "reporting")
+        #expect(original.switchSchemaCallCount == 0)
+    }
+
     private func makeTab(title: String, query: String, tabType: TabType, tableName: String? = nil) -> QueryTab {
         QueryTab(title: title, query: query, tabType: tabType, tableName: tableName)
     }

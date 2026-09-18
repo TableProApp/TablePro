@@ -13,7 +13,7 @@ import Testing
 struct BeancountDriverMetadataTests {
     @Test("registry exposes Beancount as a downloadable file-based driver")
     func registryMetadata() throws {
-        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forTypeId: "Beancount"))
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "Beancount"))
         #expect(snapshot.displayName == "Beancount")
         #expect(snapshot.isDownloadable == true)
         #expect(snapshot.connectionMode == .fileBased)

@@ -11,7 +11,7 @@ import TableProPluginKit
 
 @MainActor
 internal enum SampleDatabaseLauncher {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabase")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabase")
 
     private static let sampleOpenedCountKey = "com.TablePro.sample.openedCount"
     private static let sampleAutoSelectTable = "Track"
@@ -31,7 +31,7 @@ internal enum SampleDatabaseLauncher {
             installedURL = sampleService.installedFileURL
         } catch {
             logger.error(
-                "Failed to install sample database: \(error.localizedDescription, privacy: .public)"
+                "Failed to install sample database: \(error.publicLogShape, privacy: .public)"
             )
             onError(error)
             return
@@ -99,7 +99,7 @@ internal enum SampleDatabaseLauncher {
         _ connection: DatabaseConnection,
         onError: @MainActor @escaping (Error) -> Void
     ) {
-        WindowOpener.shared.orderOutWelcome()
+        WindowOpener.shared.closeWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(
@@ -115,7 +115,7 @@ internal enum SampleDatabaseLauncher {
                 WindowOpener.shared.openWelcome()
             } catch {
                 logger.error(
-                    "Failed to open sample database: \(error.localizedDescription, privacy: .public)"
+                    "Failed to open sample database: \(error.publicLogShape, privacy: .public)"
                 )
                 handleSampleLaunchFailure(error: error, connectionId: connection.id, onError: onError)
             }
@@ -127,16 +127,16 @@ internal enum SampleDatabaseLauncher {
         connectionId: UUID,
         onError: @MainActor @escaping (Error) -> Void
     ) {
-        for window in WindowLifecycleMonitor.shared.windows(for: connectionId) {
-            window.close()
-        }
+        /// Closes this connection only. The window hosts every open connection, so closing it
+        /// would take the rest down over a sample database that failed to open.
+        WindowManager.shared.closeWindow(for: connectionId)
         onError(error)
         WindowOpener.shared.openWelcome()
     }
 
     private static func bumpSampleOpenedCounter() {
-        let next = UserDefaults.standard.integer(forKey: sampleOpenedCountKey) + 1
-        UserDefaults.standard.set(next, forKey: sampleOpenedCountKey)
+        let next = AppStorageEnvironment.shared.defaults.integer(forKey: sampleOpenedCountKey) + 1
+        AppStorageEnvironment.shared.defaults.set(next, forKey: sampleOpenedCountKey)
     }
 
     private static func performReset(
@@ -162,7 +162,7 @@ internal enum SampleDatabaseLauncher {
         do {
             try sampleService.resetToBundled()
         } catch {
-            logger.error("Sample reset failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Sample reset failed: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could Not Reset Sample"),
                 message: error.localizedDescription,
@@ -178,7 +178,7 @@ internal enum SampleDatabaseLauncher {
                 AppEvents.shared.connectionUpdated.send(sampleConnection.id)
             } catch {
                 logger.warning(
-                    "Reopening sample after reset failed: \(error.localizedDescription, privacy: .public)"
+                    "Reopening sample after reset failed: \(error.publicLogShape, privacy: .public)"
                 )
             }
         }
@@ -198,6 +198,7 @@ extension WelcomeViewModel {
     func openSampleDatabase() {
         SampleDatabaseLauncher.open { [weak self] error in
             guard let self else { return }
+            self.connectionErrorRecovery = nil
             self.connectionError = SSLHandshakeError.formatted(error)
             self.showConnectionError = true
         }

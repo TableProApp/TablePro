@@ -2,6 +2,7 @@ import CloudKit
 import Foundation
 @testable import TablePro
 import Testing
+import TableProSyncTransport
 
 @Suite("SyncRecordMapper favorite tables")
 struct SyncRecordMapperFavoriteTableTests {

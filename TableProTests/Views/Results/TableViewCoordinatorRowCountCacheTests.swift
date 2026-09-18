@@ -45,9 +45,9 @@ struct TableViewCoordinatorRowCountCacheTests {
     func updateCacheReflectsAppendedRows() {
         let coordinator = makeCoordinator(rows: [])
 
-        coordinator.tableRowsMutator { rows in
+        _ = coordinator.tableRowsMutator { rows in
             _ = rows.appendInsertedRow(values: [.text("a")])
-            _ = rows.appendInsertedRow(values: [.text("b")])
+            return rows.appendInsertedRow(values: [.text("b")])
         }
         coordinator.updateCache()
 
@@ -64,8 +64,8 @@ struct TableViewCoordinatorRowCountCacheTests {
         ]
         let coordinator = makeCoordinator(rows: rows)
 
-        coordinator.tableRowsMutator { rows in
-            _ = rows.remove(rowIDs: [.existing(1)])
+        _ = coordinator.tableRowsMutator { rows in
+            rows.remove(rowIDs: [.existing(1)])
         }
         coordinator.updateCache()
 
@@ -80,8 +80,8 @@ struct TableViewCoordinatorRowCountCacheTests {
         ]
         let coordinator = makeCoordinator(rows: rows)
 
-        coordinator.tableRowsMutator { rows in
-            _ = rows.replace(rows: [[.text("x")], [.text("y")], [.text("z")], [.text("w")]])
+        _ = coordinator.tableRowsMutator { rows in
+            rows.replace(rows: [[.text("x")], [.text("y")], [.text("z")], [.text("w")]])
         }
         coordinator.updateCache()
 
@@ -102,8 +102,8 @@ struct TableViewCoordinatorRowCountCacheTests {
         #expect(coordinator.numberOfRows(in: tableView) == coordinator.tableRowsProvider().count)
     }
 
-    @Test("numberOfRows serves sortedIDs count when sorted")
-    func numberOfRowsServesSortedIDsCountWhenSorted() {
+    @Test("numberOfRows serves the display count when a value filter narrows the rows")
+    func numberOfRowsServesDisplayCountWhenFiltered() {
         let rows: ContiguousArray<Row> = [
             Row(id: .existing(0), values: [.text("a")]),
             Row(id: .existing(1), values: [.text("b")]),
@@ -111,14 +111,14 @@ struct TableViewCoordinatorRowCountCacheTests {
         ]
         let coordinator = makeCoordinator(rows: rows)
         let tableView = NSTableView()
-        coordinator.sortedIDs = [.existing(2), .existing(0)]
+        coordinator.valueFilteredIDs = [.existing(2), .existing(0)]
         coordinator.updateCache()
 
         #expect(coordinator.numberOfRows(in: tableView) == 2)
     }
 
-    @Test("sortedIDs count takes precedence over cachedRowCount fallback")
-    func sortedIDsCountPrecedesCache() {
+    @Test("the display count takes precedence over the cachedRowCount fallback")
+    func displayCountPrecedesCache() {
         let rows: ContiguousArray<Row> = [
             Row(id: .existing(0), values: [.text("a")]),
             Row(id: .existing(1), values: [.text("b")]),
@@ -126,7 +126,7 @@ struct TableViewCoordinatorRowCountCacheTests {
         ]
         let coordinator = makeCoordinator(rows: rows)
 
-        coordinator.sortedIDs = [.existing(2), .existing(0)]
+        coordinator.valueFilteredIDs = [.existing(2), .existing(0)]
         coordinator.updateCache()
 
         #expect(coordinator.cachedRowCount == 2)

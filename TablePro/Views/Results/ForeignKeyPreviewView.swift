@@ -5,15 +5,15 @@
 //  Read-only popover showing the referenced row for a foreign key cell.
 //
 
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class FKPreviewModel {
-    var cellValue: String?
-    var fkInfo: ForeignKeyInfo
+final class FKPreviewModel: ObservableObject {
+    @Published var cellValue: String?
+    @Published var fkInfo: ForeignKeyInfo
 
     init(cellValue: String?, fkInfo: ForeignKeyInfo) {
         self.cellValue = cellValue
@@ -27,8 +27,9 @@ private struct FKPreviewTaskKey: Equatable {
 }
 
 struct ForeignKeyPreviewView: View {
-    let model: FKPreviewModel
-    let connectionId: UUID
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @ObservedObject var model: FKPreviewModel
+    let scope: DatabaseScope
     let databaseType: DatabaseType
     let onNavigate: () -> Void
     let onDismiss: () -> Void
@@ -93,7 +94,7 @@ struct ForeignKeyPreviewView: View {
     @ViewBuilder
     private var content: some View {
         if cellValue == nil {
-            Text("NULL — no referenced row")
+            Text("NULL, no referenced row")
                 .foregroundStyle(.secondary)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -103,7 +104,7 @@ struct ForeignKeyPreviewView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 60)
         } else if let errorMessage {
-            Text(errorMessage)
+            RevealedTextView(errorMessage)
                 .foregroundStyle(.red)
                 .font(.callout)
                 .padding(10)
@@ -127,13 +128,13 @@ struct ForeignKeyPreviewView: View {
 
                             if let val = value {
                                 Text(val)
-                                    .font(.system(.callout, design: .monospaced))
+                                    .font(themeEngine.valueFontSwiftUI)
                                     .foregroundStyle(.primary)
                                     .lineLimit(3)
                                     .textSelection(.enabled)
                             } else {
                                 Text("NULL")
-                                    .font(.system(.callout, design: .monospaced))
+                                    .font(themeEngine.valueFontSwiftUI)
                                     .foregroundStyle(.tertiary)
                                     .italic()
                             }
@@ -176,38 +177,20 @@ struct ForeignKeyPreviewView: View {
             return
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        do {
+            let fetched = try await ForeignKeyRowFetcher.fetch(
+                origin: scope,
+                databaseType: databaseType,
+                reference: JSONForeignKeyRef(fkInfo),
+                value: value
+            )
+            if let fetched {
+                columns = fetched.columns
+                values = fetched.values.map { $0.asText }
+            }
+        } catch ForeignKeyRowFetcher.FetchFailure.noConnection {
             Self.logger.error("No active driver for FK preview")
             errorMessage = String(localized: "No database connection")
-            isLoading = false
-            return
-        }
-
-        let quotedTable: String
-        if let schema = fkInfo.referencedSchema {
-            quotedTable = "\(driver.quoteIdentifier(schema)).\(driver.quoteIdentifier(fkInfo.referencedTable))"
-        } else {
-            quotedTable = driver.quoteIdentifier(fkInfo.referencedTable)
-        }
-        let quotedColumn = driver.quoteIdentifier(fkInfo.referencedColumn)
-        let escapedValue = driver.escapeStringLiteral(value)
-
-        let limitClause: String
-        switch PluginManager.shared.paginationStyle(for: databaseType) {
-        case .offsetFetch:
-            limitClause = "OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY"
-        case .limit:
-            limitClause = "LIMIT 1"
-        }
-
-        let query = "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(escapedValue)' \(limitClause)"
-
-        do {
-            let result = try await driver.execute(query: query)
-            if let firstRow = result.rows.first {
-                columns = result.columns
-                values = firstRow.map { $0.asText }
-            }
         } catch {
             Self.logger.error("FK preview query failed: \(error.localizedDescription)")
             errorMessage = String(localized: "Failed to load referenced row")

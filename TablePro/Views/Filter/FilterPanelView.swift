@@ -4,9 +4,10 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct FilterPanelView: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
@@ -21,12 +22,17 @@ struct FilterPanelView: View {
     @State private var newPresetName = ""
     @State private var focusedFilterId: UUID?
     @State private var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
+    @State private var fieldPaths: [PluginFieldPath] = []
 
     private let maxFilterListHeight: CGFloat = 200
     @State private var filterRowsHeight: CGFloat = 0
 
     private var filterState: TabFilterState {
         coordinator.selectedTabFilterState
+    }
+
+    private var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle {
+        PluginManager.shared.caseSensitivityStyle(for: databaseType)
     }
 
     var body: some View {
@@ -51,20 +57,22 @@ struct FilterPanelView: View {
             focusedFilterId = filterState.filters.last?.id
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: columns) { _, newColumns in
+        .onChange(of: columns) { newColumns in
             if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
                 coordinator.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
                 focusedFilterId = filterState.filters.last?.id
             }
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: coordinator.currentTableName) { _, _ in
+        .onChange(of: coordinator.currentTableName) { _ in
             refreshRawSQLCompletionProvider()
+        }
+        .task(id: coordinator.currentTableName) {
+            await loadFieldPaths()
         }
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL)
         }
-        .onPreferenceChange(FilterRowsHeightKey.self) { filterRowsHeight = $0 }
     }
 
     private func toggleAllFiltersEnabled() {
@@ -165,6 +173,7 @@ struct FilterPanelView: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundStyle(.yellow)
                                     .help(String(localized: "Some columns in this preset don't exist in the current table"))
+                                    .accessibilityLabel(String(localized: "Some columns in this preset don't exist in the current table"))
                             }
                         }
                     }
@@ -172,7 +181,7 @@ struct FilterPanelView: View {
                 Divider()
             }
 
-            Button("Save as Preset...") {
+            Button("Save as Preset…") {
                 newPresetName = ""
                 showSavePresetAlert = true
             }
@@ -204,14 +213,15 @@ struct FilterPanelView: View {
             Button {
                 showSettingsPopover.toggle()
             } label: {
-                Label(String(localized: "Filter Settings..."), systemImage: "gearshape")
+                Label(String(localized: "Filter Settings…"), systemImage: "gearshape")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+                .accessibilityLabel(String(localized: "Filter options"))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .accessibilityLabel(String(localized: "Filter options"))
         .help(String(localized: "Filter options"))
         .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
             FilterSettingsPopover()
@@ -225,8 +235,12 @@ struct FilterPanelView: View {
                     filter: coordinator.filterBinding(for: filter),
                     columns: columns,
                     completions: completionItems(),
+                    caseSensitivityStyle: caseSensitivityStyle,
                     enumValuesByColumn: enumValuesByColumn,
                     rawSQLCompletionProvider: rawSQLCompletionProvider,
+                    columnMenu: columnMenu,
+                    fieldPaths: fieldPaths,
+                    rawFilterLabel: rawFilterLabel,
                     onAdd: {
                         coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id
@@ -245,6 +259,14 @@ struct FilterPanelView: View {
                     onApply: { applySoloFilter(filter) },
                     onSubmit: { applyAllValidFilters() },
                     onCancel: { closePanelAndFocusGrid() },
+                    isReorderEnabled: filterState.filters.count > 1,
+                    canMoveUp: coordinator.canMoveFilter(filter.id, direction: .up),
+                    canMoveDown: coordinator.canMoveFilter(filter.id, direction: .down),
+                    onMoveUp: { coordinator.moveFilter(filter.id, direction: .up) },
+                    onMoveDown: { coordinator.moveFilter(filter.id, direction: .down) },
+                    onDropFilter: { draggedID in
+                        coordinator.moveFilter(draggedID, onto: filter.id)
+                    },
                     focusedFilterId: $focusedFilterId
                 )
             }
@@ -253,11 +275,7 @@ struct FilterPanelView: View {
     }
 
     private var measuredFilterRows: some View {
-        filterRows.background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: FilterRowsHeightKey.self, value: proxy.size.height)
-            }
-        )
+        filterRows.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { filterRowsHeight = $0 }
     }
 
     @ViewBuilder
@@ -278,7 +296,8 @@ struct FilterPanelView: View {
 
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
         let presetColumns = preset.filters.map(\.columnName).filter { $0 != TableFilter.rawSQLColumn }
-        return presetColumns.allSatisfy { columns.contains($0) }
+        let knownPaths = Set(fieldPaths.map(\.path))
+        return presetColumns.allSatisfy { columns.contains($0) || knownPaths.contains($0) }
     }
 
     private func applyAllValidFilters() {
@@ -311,23 +330,46 @@ struct FilterPanelView: View {
         return isSQLDialect ? columns + sqlKeywords : columns
     }
 
+    private var columnMenu: FilterColumnMenu {
+        FilterColumnMenu.build(columns: columns, fieldPaths: fieldPaths)
+    }
+
+    /// A relational driver reports no field paths, so this settles to an empty list without a
+    /// round trip. `SQLSchemaProvider` caches per collection and folds concurrent callers into
+    /// one sample, so reopening the panel does not resample.
+    private func loadFieldPaths() async {
+        guard let tableName = coordinator.currentTableName, !tableName.isEmpty else {
+            fieldPaths = []
+            return
+        }
+        guard let scope = coordinator.selectedTabScope else {
+            fieldPaths = []
+            return
+        }
+        let provider = SchemaProviderRegistry.shared.getOrCreate(for: scope)
+        let paths = await provider.fieldPaths(for: tableName)
+        guard !Task.isCancelled else { return }
+        fieldPaths = paths
+    }
+
+    /// "Raw SQL" is the wrong name on a store that takes a filter document rather than SQL.
+    private var rawFilterLabel: String {
+        isSQLDialect ? String(localized: "Raw SQL") : String(localized: "Raw Filter")
+    }
+
     private func refreshRawSQLCompletionProvider() {
-        guard isSQLDialect, let tableName = coordinator.currentTableName else {
+        guard isSQLDialect,
+              let tableName = coordinator.currentTableName,
+              let scope = coordinator.selectedTabScope
+        else {
             rawSQLCompletionProvider = nil
             return
         }
-        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id)
+        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: scope)
         rawSQLCompletionProvider = RawSQLFilterCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
             tableName: tableName
         )
-    }
-}
-
-private struct FilterRowsHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }

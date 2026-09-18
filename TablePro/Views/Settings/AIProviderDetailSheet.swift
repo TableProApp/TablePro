@@ -25,14 +25,15 @@ struct AIProviderDetailSheet: View {
     @State private var testResult: TestResult?
     @State private var testTask: Task<Void, Never>?
 
-    @State private var copilotService = CopilotService.shared
+    @ObservedObject private var copilotService = CopilotService.shared
     @State private var copilotErrorMessage: String?
 
-    @State private var chatGPTCodexService = ChatGPTCodexService.shared
+    @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
 
-    @State private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
 
-    @State private var xaiService = XAIService.shared
+    @ObservedObject private var xaiService = XAIService.shared
 
     @State private var showRemoveConfirmation = false
 
@@ -99,6 +100,9 @@ struct AIProviderDetailSheet: View {
                     }
                     if draft.type == .cursor {
                         Task { await cursorAgentService.refreshStatus() }
+                    }
+                    if draft.type == .claudeAgent {
+                        Task { await claudeAgentService.performRefresh() }
                     }
                     if draft.type == .xai {
                         Task { await xaiService.refreshAuthState() }
@@ -170,14 +174,56 @@ struct AIProviderDetailSheet: View {
                 EmptyView()
             }
         case .none:
-            EmptyView()
+            if draft.type == .claudeAgent {
+                claudeAgentAuthSection
+            } else {
+                EmptyView()
+            }
         }
+    }
+
+    @ViewBuilder
+    private var claudeAgentAuthSection: some View {
+        Section {
+            HStack(spacing: 8) {
+                Image(systemName: claudeAgentService.state.isUsable
+                    ? "checkmark.circle.fill"
+                    : "exclamationmark.triangle.fill")
+                    .foregroundStyle(claudeAgentService.state.isUsable ? Color.green : Color.orange)
+                Text(claudeAgentService.statusDescription)
+                    .font(.callout)
+                Spacer()
+                Button(String(localized: "Recheck")) {
+                    claudeAgentService.refreshStatus()
+                }
+                .disabled(claudeAgentService.isRefreshing)
+            }
+            if let command = claudeAgentService.remedyCommand {
+                HStack {
+                    Text(command)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button(String(localized: "Copy")) {
+                        copyToPasteboard(command)
+                    }
+                }
+            }
+        } header: {
+            Text("Claude Code")
+        } footer: {
+            Text("Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        ClaudeAgentDisclosureSection()
     }
 
     private var apiKeyAuthSection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) {
+                .onChange(of: apiKey) { _ in
                     testResult = nil
                 }
             HStack {
@@ -218,7 +264,7 @@ struct AIProviderDetailSheet: View {
     private var cursorAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { testResult = nil }
+                .onChange(of: apiKey) { _ in testResult = nil }
             HStack {
                 Spacer()
                 Button {
@@ -281,6 +327,7 @@ struct AIProviderDetailSheet: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Copy install command"))
+                .accessibilityLabel(String(localized: "Copy install command"))
             } label: {
                 Text(CursorAgentCLI.installCommand)
                     .font(.system(.body, design: .monospaced))
@@ -349,7 +396,7 @@ struct AIProviderDetailSheet: View {
     private var xaiAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { testResult = nil }
+                .onChange(of: apiKey) { _ in testResult = nil }
             HStack {
                 Spacer()
                 Button {
@@ -619,7 +666,7 @@ struct AIProviderDetailSheet: View {
                 }
                 if allowsEndpointField {
                     TextField(String(localized: "Endpoint"), text: $draft.endpoint)
-                        .onChange(of: draft.endpoint) {
+                        .onChange(of: draft.endpoint) { _ in
                             scheduleFetchModels()
                             testResult = nil
                         }
@@ -912,8 +959,9 @@ struct AIProviderDetailSheet: View {
             do {
                 let models = try await provider.fetchAvailableModels()
                 guard !Task.isCancelled else { return }
-                fetchedModels = models
-                if draft.model.isEmpty, let first = models.first {
+                AIModelCatalog.shared.store(providerTypeID: draft.type.rawValue, models: models)
+                fetchedModels = models.map(\.id)
+                if draft.model.isEmpty, let first = fetchedModels.first {
                     draft.model = first
                 }
                 isFetchingModels = false

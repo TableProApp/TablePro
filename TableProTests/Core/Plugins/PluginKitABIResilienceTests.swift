@@ -31,17 +31,58 @@ struct PluginKitABIResilienceTests {
         #expect(driver.foreignKeyDisableStatements() == nil)
         #expect(driver.foreignKeyEnableStatements() == nil)
         #expect(driver.supportedMaintenanceOperations() == nil)
+        #expect(driver.maintenanceOperations() == nil)
         #expect(driver.buildExplainQuery("SELECT 1") == nil)
         #expect(driver.injectRowLimit("SELECT 1", limit: 100) == nil)
         #expect(driver.defaultExportQuery(table: "users") == nil)
         #expect(driver.createViewTemplate() == nil)
         #expect(driver.generateCreateTableSQL(definition: .init(tableName: "users", columns: [], primaryKeyColumns: [])) == nil)
+        #expect(driver.unsupportedStructureColumnFields.isEmpty)
+        #expect(driver.unsupportedIndexTypes.isEmpty)
+        #expect(driver.schemaOperationRefusal(.renameCheckConstraint(from: "a", to: "b")) == nil)
+        #expect(driver.checkConstraintRefusal == nil)
+        #expect(driver.createSchemaStatement(name: "app") == nil)
+        #expect(driver.createSchemaStatements(PluginSchemaDefinition(name: "app")) == nil)
+        #expect(driver.renameSchemaStatements(name: "app", to: "archive") == nil)
+        #expect(
+            driver.alterSchemaStatements(
+                from: PluginSchemaDetails(name: "app"),
+                to: PluginSchemaDefinition(name: "app")
+            ) == nil
+        )
+    }
+
+    @Test("A driver that answers only the older name list has it lifted into table-like descriptors")
+    func legacyMaintenanceNamesAreLifted() {
+        let lifted = PluginMaintenanceOperation.lifting(["VACUUM", "ANALYZE"])
+
+        #expect(lifted.map(\.name) == ["VACUUM", "ANALYZE"])
+        #expect(lifted.allSatisfy { $0.appliesTo == PluginObjectKind.allTableLike })
+        #expect(lifted.allSatisfy { $0.scope == .objectOrDatabase })
+        #expect(lifted.allSatisfy { $0.options.isEmpty })
+        #expect(lifted.allSatisfy { $0.applies(to: .view) })
     }
 
     @Test("A driver that omits defaulted requirements falls back to the documented asynchronous defaults")
     func asynchronousDefaults() async throws {
         let driver = makeMinimalDriver()
         #expect(try await driver.fetchSchemas().isEmpty)
+        #expect(try await driver.fetchExternalSchemaNames().isEmpty)
+        #expect(try await driver.fetchSchemaDetails(name: "app") == nil)
         #expect(try await driver.fetchApproximateRowCount(table: "users", schema: nil) == nil)
+        #expect(try await driver.fetchIndexDDL(table: "users", schema: nil).isEmpty)
+        #expect(try await driver.fetchCommentDDL(table: "users", schema: nil).isEmpty)
+        let base = QueryCompletionProfile(
+            resolvedDialect: nil,
+            statementCompletions: [CompletionEntry(label: "SELECT", insertText: "SELECT")],
+            revision: "fixture"
+        )
+        let resolved = try await driver.resolveQueryCompletionProfile(
+            databaseTypeId: "SQL Server",
+            base: base
+        )
+        #expect(resolved.resolvedDialect == nil)
+        #expect(resolved.statementCompletions.map(\.label) == ["SELECT"])
+        #expect(resolved.revision == "fixture")
     }
 }

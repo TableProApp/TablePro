@@ -31,6 +31,7 @@ internal enum PhpParseResult: Equatable {
 
 @MainActor
 internal struct PhpViewerView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let rawValue: String
     var onDismiss: (() -> Void)?
     var onPopOut: ((String) -> Void)?
@@ -39,11 +40,26 @@ internal struct PhpViewerView: View {
     @State private var parseResult: PhpParseResult = .idle
     @State private var searchText: String = ""
 
+    init(
+        rawValue: String,
+        onDismiss: (() -> Void)? = nil,
+        onPopOut: ((String) -> Void)? = nil,
+        initialViewMode: PhpViewMode = .tree,
+        initialParseResult: PhpParseResult = .idle
+    ) {
+        self.rawValue = rawValue
+        self.onDismiss = onDismiss
+        self.onPopOut = onPopOut
+        _viewMode = State(initialValue: initialViewMode)
+        _parseResult = State(initialValue: initialParseResult)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             viewerToolbar
             Divider()
             viewerContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(id: rawValue) {
             await loadParse()
@@ -54,11 +70,12 @@ internal struct PhpViewerView: View {
 
     private var viewerToolbar: some View {
         HStack(spacing: 8) {
-            Picker("", selection: $viewMode) {
+            Picker("View Mode", selection: $viewMode) {
                 Text(String(localized: "Tree")).tag(PhpViewMode.tree)
                 Text(String(localized: "Raw")).tag(PhpViewMode.raw)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .fixedSize()
             Spacer()
             if let onPopOut {
@@ -67,6 +84,7 @@ internal struct PhpViewerView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Open in Window"))
+                .accessibilityLabel(String(localized: "Open in Window"))
             }
         }
         .padding(.horizontal, 10)
@@ -112,7 +130,7 @@ internal struct PhpViewerView: View {
     private var rawBody: some View {
         ScrollView {
             Text(rawValue)
-                .font(.system(.body, design: .monospaced))
+                .font(themeEngine.valueFontSwiftUI)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -120,7 +138,7 @@ internal struct PhpViewerView: View {
     }
 
     private func errorPlaceholder(title: String, detail: String, systemImage: String) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(title, systemImage: systemImage)
         } description: {
             Text(detail)

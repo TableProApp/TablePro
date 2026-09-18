@@ -1,0 +1,97 @@
+//
+//  FindViewController.swift
+//  TableProEditorKit
+//
+//  Created by Khan Winter on 3/10/25.
+//
+
+import AppKit
+import TableProTextEngine
+
+/// Creates a container controller for displaying and hiding a find panel with a content view.
+final class FindViewController: NSViewController {
+    var viewModel: FindPanelViewModel
+
+    /// The amount of padding from the top of the view to inset the find panel by.
+    /// When set, the safe area is ignored, and the top padding is measured from the top of the view's frame.
+    var topPadding: CGFloat? {
+        didSet {
+            if viewModel.isShowingFindPanel {
+                setFindPanelConstraintShow()
+            }
+        }
+    }
+
+    var childView: NSView
+    var findPanel: FindPanelHostingView
+    var findPanelVerticalConstraint: NSLayoutConstraint!
+
+    /// The 'real' top padding amount.
+    /// Is equal to ``topPadding`` if set, or the view's top safe area inset if not.
+    var resolvedTopPadding: CGFloat {
+        (topPadding ?? view.safeAreaInsets.top)
+    }
+
+    init(target: FindPanelTarget, childView: NSView) {
+        viewModel = FindPanelViewModel(target: target)
+        self.childView = childView
+        findPanel = FindPanelHostingView(viewModel: viewModel)
+        super.init(nibName: nil, bundle: nil)
+        viewModel.dismiss = { [weak self] in
+            self?.hideFindPanel()
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() { // swiftlint:disable:this prohibited_super_call
+        /// See `PlainControllerView`: `super` looks for a nib on macOS 13 and raises.
+        if #available(macOS 14.0, *) {
+            super.loadView()
+        } else {
+            view = PlainControllerView.make()
+        }
+
+        // Set up the `childView` as a subview of our view. Constrained to all edges, except the top is constrained to
+        // the find panel's bottom
+        // The find panel is constrained to the top of the view.
+        // The find panel's top anchor when hidden, is equal to it's negated height hiding it above the view's contents.
+        // When visible, it's set to 0.
+
+        view.clipsToBounds = false
+        view.addSubview(childView)
+        // Ordered above the content so the panel wins hit-testing as well as drawing.
+        // `zPosition` alone only affects drawing, which left clicks falling through to the
+        // text view underneath.
+        view.addSubview(findPanel, positioned: .above, relativeTo: childView)
+        findPanel.wantsLayer = true
+
+        findPanelVerticalConstraint = findPanel.topAnchor.constraint(equalTo: view.topAnchor)
+
+        NSLayoutConstraint.activate([
+            // Constrain find panel
+            findPanelVerticalConstraint,
+            findPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            findPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            // Constrain child view
+            childView.topAnchor.constraint(equalTo: view.topAnchor),
+            childView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            childView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            childView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        if viewModel.isShowingFindPanel { // Update constraints for initial state
+            findPanel.isHidden = false
+            setFindPanelConstraintShow()
+        } else {
+            findPanel.isHidden = true
+            setFindPanelConstraintHide()
+        }
+    }
+}

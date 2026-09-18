@@ -37,8 +37,8 @@ final class ChatGPTCodexProvider: ChatTransport {
         )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
-        ChatGPTCodex.curatedModelIDs
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        ChatGPTCodex.curatedModelIDs.map { AIModelInfo(id: $0) }
     }
 
     func testConnection() async throws -> Bool {

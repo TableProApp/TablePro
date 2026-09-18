@@ -16,9 +16,9 @@ struct CloudPluginConnectionFieldsTests {
         return entry.snapshot
     }
 
-    @Test("DynamoDB, BigQuery, and Snowflake never offer the built-in password")
+    @Test("DynamoDB, BigQuery, Spanner, and Snowflake never offer the built-in password")
     func cloudPluginsHideBuiltInPassword() throws {
-        for typeId in ["DynamoDB", "BigQuery", "Snowflake"] {
+        for typeId in ["DynamoDB", "BigQuery", "Spanner", "Snowflake"] {
             let snapshot = try registrySnapshot(forTypeId: typeId)
             #expect(snapshot.connection.hidesBuiltInPassword)
         }

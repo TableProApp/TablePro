@@ -13,19 +13,18 @@ import os
 import TableProImport
 
 @MainActor
-@Observable
-final class TeamLibrarySyncCoordinator {
+final class TeamLibrarySyncCoordinator: ObservableObject {
     static let shared = TeamLibrarySyncCoordinator()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibrarySyncCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibrarySyncCoordinator")
 
     private let apiClient: TeamLibraryAPIClient
     private let store: TeamLibraryStore
     private let isFeatureAvailable: @MainActor () -> Bool
     private let credentialsProvider: @MainActor () -> (key: String, machineId: String)?
 
-    private(set) var library: TeamLibraryPullResponse = .empty
-    private(set) var isPublishing = false
+    @Published private(set) var library: TeamLibraryPullResponse = .empty
+    @Published private(set) var isPublishing = false
 
     init(
         apiClient: TeamLibraryAPIClient = LiveTeamLibraryAPIClient.shared,
@@ -73,6 +72,18 @@ final class TeamLibrarySyncCoordinator {
 
     func refresh() {
         Task { await pull() }
+    }
+
+    /// Drop the team's shared set, on disk and in the copy every view reads.
+    ///
+    /// Clearing the store alone is not enough: `library` is what the welcome window and the
+    /// Favorites sidebar render from, so a licence removed without this leaves the previous team's
+    /// connections and saved queries on screen, and openable, until the next launch.
+    func clear() async {
+        await store.clear()
+        library = .empty
+        TeamLibraryMetadataStorage.reset()
+        AppEvents.shared.teamLibraryDidUpdate.send()
     }
 
     @discardableResult

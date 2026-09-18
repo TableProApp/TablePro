@@ -3,23 +3,23 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@Observable
 @MainActor
-final class CloudflareTunnelPaneViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelPane")
+final class CloudflareTunnelPaneViewModel: ObservableObject {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelPane")
 
-    var state = CloudflareTunnelFormState()
+    @Published var state = CloudflareTunnelFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
-    var resolvedBinaryPath: String?
-    var didResolveBinary: Bool = false
-    var signInError: String?
+    @Published var resolvedBinaryPath: String?
+    @Published var didResolveBinary: Bool = false
+    @Published var signInError: String?
 
-    @ObservationIgnored private var loginProcess: Process?
+    private var loginProcess: Process?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }
@@ -41,14 +41,6 @@ final class CloudflareTunnelPaneViewModel {
                 || state.serviceTokenSecret.trimmingCharacters(in: .whitespaces).isEmpty {
                 issues.append(String(localized: "Service token ID and secret are required"))
             }
-        }
-
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudflare) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.cloudflare.displayName
-            ))
         }
 
         return issues
@@ -102,7 +94,7 @@ final class CloudflareTunnelPaneViewModel {
             Self.logger.info("Started cloudflared access login for \(hostname, privacy: .public)")
         } catch {
             signInError = error.localizedDescription
-            Self.logger.error("cloudflared access login failed to start: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("cloudflared access login failed to start: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

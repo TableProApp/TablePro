@@ -24,7 +24,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .cancelQuery, .materializedViews]
+        [.multiSchema, .cancelQuery, .materializedViews, .dataCompare]
     }
 
     func cacheColumnTypes(_ types: [String: String], key: String) {
@@ -89,11 +89,15 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return pluginResult(last, executionTime: Date().timeIntervalSince(start))
     }
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let statement = query.contains(";") ? (TrinoStatementSplitter.split(query).last ?? query) : query
-        return AsyncThrowingStream { continuation in
+        return PluginRowStream.make { continuation, abort in
             let driver = self
-            Task {
+            let streamTask = Task {
                 guard let client = driver.client else {
                     continuation.finish(throwing: TrinoError.notConnected)
                     return
@@ -120,6 +124,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

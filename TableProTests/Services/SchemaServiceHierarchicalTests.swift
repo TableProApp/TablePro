@@ -94,7 +94,7 @@ struct SchemaServiceHierarchicalTests {
         #expect(PluginManager.shared.databaseGroupingStrategy(for: .postgresql) == .bySchema)
     }
 
-    @Test("loadSchemaTables stores tables per schema without touching other schemas")
+    @Test("loadSchemaObjects stores tables per schema without touching other schemas")
     func perSchemaStorage() async {
         let service = SchemaService()
         let connectionId = UUID()
@@ -104,7 +104,7 @@ struct SchemaServiceHierarchicalTests {
             "marketing": [bigQueryTable("campaigns", schema: "marketing")]
         ]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "analytics").map(\.name) == ["events", "sessions"])
         #expect(service.tables(for: connectionId, schema: "marketing").isEmpty)
@@ -112,32 +112,32 @@ struct SchemaServiceHierarchicalTests {
         #expect(driver.fetchTablesCallCount["marketing"] == nil)
     }
 
-    @Test("loadSchemaTables is idempotent once a schema is loaded")
+    @Test("loadSchemaObjects is idempotent once a schema is loaded")
     func loadIsIdempotent() async {
         let service = SchemaService()
         let connectionId = UUID()
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
 
         #expect(driver.fetchTablesCallCount["analytics"] == 1)
     }
 
-    @Test("reloadSchemaTables refetches a single schema")
+    @Test("reloadSchemaObjects refetches a single schema")
     func reloadRefetches() async {
         let service = SchemaService()
         let connectionId = UUID()
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
         driver.tablesBySchema["analytics"] = [
             bigQueryTable("events", schema: "analytics"),
             bigQueryTable("clicks", schema: "analytics")
         ]
-        await service.reloadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.reloadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
 
         #expect(driver.fetchTablesCallCount["analytics"] == 2)
         #expect(service.tables(for: connectionId, schema: "analytics").map(\.name) == ["events", "clicks"])
@@ -169,7 +169,7 @@ struct SchemaServiceHierarchicalTests {
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
         #expect(!service.tables(for: connectionId, schema: "analytics").isEmpty)
 
         await service.invalidate(connectionId: connectionId)

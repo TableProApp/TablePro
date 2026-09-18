@@ -18,6 +18,15 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Snowflake"
+
+    static let supportsRenameTable = true
+
+    /// Off, and not because Snowflake refuses: `ALTER DATABASE ... RENAME TO` works and the driver
+    /// implements it. This tree hangs tables off schemas and draws no database rows at all, so
+    /// there is nowhere to raise the command from. Turn it back on with the row that reaches it.
+    static let supportsRenameDatabase = false
+
+    static let supportsRenameSchema = true
     static let databaseDisplayName = "Snowflake"
     static let iconName = "snowflake-icon"
     static let defaultPort = 443
@@ -35,6 +44,7 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let editorLanguage: EditorLanguage = .sql
     static let supportsForeignKeys = true
+    static let supportsRoutines = true
     static let supportsSchemaEditing = true
     static let supportsAddColumn = true
     static let supportsModifyColumn = true
@@ -254,7 +264,9 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .regexpLike,
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .ilikeOperator
     )
 
     static let explainVariants: [ExplainVariant] = [

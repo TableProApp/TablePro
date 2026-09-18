@@ -99,6 +99,113 @@ struct ClickHouseResponseClassifierTests {
         #expect(outcome.rows == [[.text("a\tb\nc\\d")]])
     }
 
+    // MARK: - The Full Escape Table ClickHouse Writes
+
+    @Test("Every escape the server emits is decoded, not left as two characters")
+    func serverEscapeTableIsDecoded() {
+        let outcome = classify(
+            headers: matchingFormatHeaders,
+            bodyText: "cr\tquote\tbell\tff\tnul\nString\tString\tString\tString\tString\n"
+                + "a\\rb\ta\\'b\ta\\bb\ta\\fb\ta\\0b\n"
+        )
+        #expect(outcome.rows == [[
+            .text("a\rb"),
+            .text("a'b"),
+            .text("a\u{8}b"),
+            .text("a\u{C}b"),
+            .text("a\u{0}b")
+        ]])
+    }
+
+    @Test("A column type name carrying escaped quotes is reported unescaped")
+    func columnTypeNameIsUnescaped() {
+        let outcome = classify(
+            headers: matchingFormatHeaders,
+            bodyText: "e\nEnum8(\\'q\\' = 1)\nq\n"
+        )
+        #expect(outcome.columnTypeNames == ["Enum8('q' = 1)"])
+    }
+
+    @Test("A column name carrying an escaped tab keeps the column count")
+    func columnNameWithEscapedTabIsOneColumn() {
+        let outcome = classify(headers: matchingFormatHeaders, bodyText: "a\\tb\nString\nv\n")
+        #expect(outcome.columns == ["a\tb"])
+        #expect(outcome.rows == [[.text("v")]])
+    }
+
+    // MARK: - Binary Values
+
+    @Test("A binary value stays bytes instead of being forced through a text decode")
+    func binaryValueStaysBytes() {
+        var body = Data("raw\nString\n".utf8)
+        body.append(contentsOf: [0xDE, 0xAD, 0xBE, 0xEF, 0x0A])
+        let outcome = ClickHouseResponseClassifier.classify(headers: matchingFormatHeaders, body: body)
+        #expect(outcome.rows == [[.bytes(Data([0xDE, 0xAD, 0xBE, 0xEF]))]])
+    }
+
+    @Test("A binary value in one column never mojibakes a text value in another")
+    func binaryValueLeavesOtherColumnsIntact() {
+        var body = Data("raw\ttxt\nString\tString\n".utf8)
+        body.append(contentsOf: [0xDE, 0xAD, 0xBE, 0xEF, 0x09])
+        body.append(contentsOf: Data("héllo\n".utf8))
+        let outcome = ClickHouseResponseClassifier.classify(headers: matchingFormatHeaders, body: body)
+        #expect(outcome.rows == [[.bytes(Data([0xDE, 0xAD, 0xBE, 0xEF])), .text("héllo")]])
+    }
+
+    @Test("One undecodable value makes the whole column bytes, losslessly")
+    func oneBinaryValueDemotesItsWholeColumn() {
+        var body = Data("v\nString\n".utf8)
+        body.append(contentsOf: Data("héllo\n".utf8))
+        body.append(contentsOf: [0xC3, 0x0A])
+        let outcome = ClickHouseResponseClassifier.classify(headers: matchingFormatHeaders, body: body)
+        #expect(outcome.rows == [
+            [.bytes(Data("héllo".utf8))],
+            [.bytes(Data([0xC3]))]
+        ])
+    }
+
+    @Test("A binary value does not demote a text column beside it")
+    func demotionIsPerColumn() {
+        var body = Data("a\tb\nString\tString\n".utf8)
+        body.append(contentsOf: [0xC3, 0x09])
+        body.append(contentsOf: Data("keep\n".utf8))
+        let outcome = ClickHouseResponseClassifier.classify(headers: matchingFormatHeaders, body: body)
+        #expect(outcome.rows == [[.bytes(Data([0xC3])), .text("keep")]])
+    }
+
+    @Test("A tab or newline inside binary data arrives escaped and never splits a field")
+    func escapedControlBytesInBinaryDoNotSplitFields() {
+        var body = Data("v\nString\n".utf8)
+        body.append(contentsOf: Array("\\t\\n".utf8))
+        body.append(contentsOf: [0x0B, 0x41, 0x0A])
+        let outcome = ClickHouseResponseClassifier.classify(headers: matchingFormatHeaders, body: body)
+        #expect(outcome.rows == [[.text("\t\n\u{B}A")]])
+    }
+
+    @Test("A body in another format that is not text is kept as bytes")
+    func nonTextRawBodyIsKeptAsBytes() {
+        let body = Data([0x00, 0x01, 0xFF, 0xFE])
+        let outcome = ClickHouseResponseClassifier.classify(headers: ["X-ClickHouse-Format": "Native"], body: body)
+        #expect(outcome.rows == [[.bytes(body)]])
+    }
+
+    @Test("A body cut by the byte cap mid-character still reads as text")
+    func cappedBodyCutMidCharacterIsText() {
+        let cap = 1_048_576
+        var body = Data(repeating: UInt8(ascii: "x"), count: cap - 1)
+        body.append(contentsOf: Data("é".utf8))
+        let outcome = ClickHouseResponseClassifier.classify(headers: ["X-ClickHouse-Format": "Pretty"], body: body)
+        #expect(outcome.isTruncated)
+        #expect(outcome.rows[0][0].asText?.utf8.count == cap - 1)
+    }
+
+    @Test("A body the cap did not cut is never trimmed to make it decode")
+    func uncutBodyIsNotTrimmed() {
+        let body = Data([0x61, 0x62, 0xC3])
+        let outcome = ClickHouseResponseClassifier.classify(headers: ["X-ClickHouse-Format": "Native"], body: body)
+        #expect(outcome.rows == [[.bytes(body)]])
+    }
+
     @Test("Rows beyond the limit are dropped and marked truncated")
     func rowLimitTruncates() {
         let outcome = classify(

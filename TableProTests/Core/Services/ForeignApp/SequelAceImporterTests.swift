@@ -98,15 +98,29 @@ struct SequelAceImporterTests {
 
     // MARK: - isAvailable
 
-    @Test("isAvailable returns true when file exists")
-    func testIsAvailable_whenFileExists_returnsTrue() throws {
-        try writeFavorites(makeFavoritesRoot(children: []))
-        #expect(importer.isAvailable() == true)
+    /// `isAvailable()` answers "is Sequel Ace installed", not "is there a favorites file". #1318
+    /// moved every foreign-app importer to LaunchServices and deleted this one's file-based
+    /// override; the case kept asserting the old contract and was quarantined rather than updated.
+    /// Its sibling below passed on CI only because Sequel Ace is not installed on the runner, which
+    /// made it assert nothing. Both now drive `resolveAppURL`, so neither depends on what happens to
+    /// be installed on the machine running them.
+    ///
+    /// DBeaver and DataGrip do keep a data-file arm on top of LaunchServices, because a Toolbox or
+    /// portable install can be invisible to it. A Sequel Ace install is an ordinary `.app`, so it
+    /// has no such arm and none is expected here.
+    @Test("isAvailable returns true when the app is installed")
+    func testIsAvailable_whenAppInstalled_returnsTrue() throws {
+        var imp = importer
+        imp.resolveAppURL = { _ in URL(fileURLWithPath: "/Applications/Sequel Ace.app") }
+        #expect(imp.isAvailable() == true)
     }
 
-    @Test("isAvailable returns false when file is missing")
-    func testIsAvailable_whenFileMissing_returnsFalse() {
-        #expect(importer.isAvailable() == false)
+    @Test("isAvailable is false when the app is absent, even with a favorites file present")
+    func testIsAvailable_whenAppMissingButFileExists_returnsFalse() throws {
+        try writeFavorites(makeFavoritesRoot(children: []))
+        var imp = importer
+        imp.resolveAppURL = { _ in nil }
+        #expect(imp.isAvailable() == false)
     }
 
     // MARK: - connectionCount

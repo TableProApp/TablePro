@@ -40,6 +40,7 @@ struct SSHProfileEditorView: View {
     @State private var selectedSSHConfigHost: String = ""
 
     @State private var showingDeleteConfirmation = false
+    @State private var saveError: String?
     @State private var connectionsUsingProfile = 0
     @State private var isTesting = false
     @State private var testSucceeded = false
@@ -95,18 +96,18 @@ struct SSHProfileEditorView: View {
             let entries = await Task.detached { SSHConfigParser.parse() }.value
             sshConfigEntries = entries
         }
-        .onChange(of: host) { _, _ in testSucceeded = false }
-        .onChange(of: port) { _, _ in testSucceeded = false }
-        .onChange(of: username) { _, _ in testSucceeded = false }
-        .onChange(of: authMethod) { _, _ in testSucceeded = false }
-        .onChange(of: sshPassword) { _, _ in testSucceeded = false }
-        .onChange(of: privateKeyPath) { _, _ in testSucceeded = false }
-        .onChange(of: keyPassphrase) { _, _ in testSucceeded = false }
-        .onChange(of: agentSocketOption) { _, _ in testSucceeded = false }
-        .onChange(of: customAgentSocketPath) { _, _ in testSucceeded = false }
-        .onChange(of: totpMode) { _, _ in testSucceeded = false }
-        .onChange(of: totpSecret) { _, _ in testSucceeded = false }
-        .onChange(of: jumpHosts) { _, _ in testSucceeded = false }
+        .onChange(of: host) { _ in testSucceeded = false }
+        .onChange(of: port) { _ in testSucceeded = false }
+        .onChange(of: username) { _ in testSucceeded = false }
+        .onChange(of: authMethod) { _ in testSucceeded = false }
+        .onChange(of: sshPassword) { _ in testSucceeded = false }
+        .onChange(of: privateKeyPath) { _ in testSucceeded = false }
+        .onChange(of: keyPassphrase) { _ in testSucceeded = false }
+        .onChange(of: agentSocketOption) { _ in testSucceeded = false }
+        .onChange(of: customAgentSocketPath) { _ in testSucceeded = false }
+        .onChange(of: totpMode) { _ in testSucceeded = false }
+        .onChange(of: totpSecret) { _ in testSucceeded = false }
+        .onChange(of: jumpHosts) { _ in testSucceeded = false }
         .onDisappear {
             testTask?.cancel()
         }
@@ -123,7 +124,7 @@ struct SSHProfileEditorView: View {
                         Text(entry.displayName).tag(entry.host)
                     }
                 }
-                .onChange(of: selectedSSHConfigHost) {
+                .onChange(of: selectedSSHConfigHost) { _ in
                     applySSHConfigEntry(selectedSSHConfigHost)
                 }
             }
@@ -159,7 +160,20 @@ struct SSHProfileEditorView: View {
                         prompt: Text("/path/to/agent.sock")
                     )
                 }
-                Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
+                Text(agentSocketOption.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                LabeledContent(String(localized: "Identity File")) {
+                    HStack {
+                        TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_ed25519.pub"))
+                        Button(String(localized: "Browse")) { browseForPrivateKey() }
+                            .controlSize(.small)
+                    }
+                }
+                Text(String(localized: """
+                Offers the agent key matching this public key file first. With IdentitiesOnly yes \
+                in ~/.ssh/config, only that key is offered.
+                """))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if authMethod == .keyboardInteractive {
@@ -269,7 +283,7 @@ struct SSHProfileEditorView: View {
                             Spacer()
                             Button {
                                 let idToRemove = jumpHost.id
-                                withAnimation { jumpHosts.removeAll { $0.id == idToRemove } }
+                                withMotion { jumpHosts.removeAll { $0.id == idToRemove } }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .frame(width: 24, height: 24)
@@ -304,7 +318,11 @@ struct SSHProfileEditorView: View {
             if isStoredProfile {
                 Button(role: .destructive) {
                     connectionsUsingProfile = ConnectionStorage.shared.loadConnections()
-                        .filter { $0.sshProfileId == existingProfile?.id }.count
+                        .filter { connection in
+                            guard case .profile(let id, _) = connection.sshTunnelMode else { return false }
+                            return id == existingProfile?.id
+                        }
+                        .count
                     showingDeleteConfirmation = true
                 } label: {
                     Text("Delete Profile")
@@ -317,7 +335,7 @@ struct SSHProfileEditorView: View {
                     Button("Cancel", role: .cancel) {}
                 } message: {
                     if connectionsUsingProfile > 0 {
-                        Text("\(connectionsUsingProfile) connection(s) use this profile. They will fall back to no SSH tunnel.")
+                        Text("\(connectionsUsingProfile) connection(s) use this profile. They keep this configuration as their own SSH tunnel.")
                     } else {
                         Text("This profile will be permanently deleted.")
                     }
@@ -344,7 +362,13 @@ struct SSHProfileEditorView: View {
             }
             .disabled(isTesting || !isValid)
 
-            if testSucceeded {
+            if let saveError {
+                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            } else if testSucceeded {
                 Text(String(localized: "Connected"))
                     .font(.caption)
                     .foregroundStyle(.green)
@@ -415,11 +439,18 @@ struct SSHProfileEditorView: View {
             totpPeriod: totpPeriod
         )
 
-        if isStoredProfile {
-            SSHProfileStorage.shared.updateProfile(profile)
-        } else {
-            SSHProfileStorage.shared.addProfile(profile)
+        let persisted = isStoredProfile
+            ? SSHProfileStorage.shared.updateProfile(profile)
+            : SSHProfileStorage.shared.addProfile(profile)
+
+        /// The keychain writes below are keyed by the profile id, so running them for a profile
+        /// that never reached disk would leave secrets nothing can name. Dismissing would also
+        /// report a save that did not happen.
+        guard persisted else {
+            saveError = String(localized: "Could not save the profile. Reopen the SSH settings and try again.")
+            return
         }
+        saveError = nil
 
         if (authMethod == .password || authMethod == .keyboardInteractive) && !sshPassword.isEmpty {
             SSHProfileStorage.shared.saveSSHPassword(sshPassword, for: profileId)
@@ -493,7 +524,10 @@ struct SSHProfileEditorView: View {
 
     private func deleteProfile() {
         guard let profile = existingProfile else { return }
-        SSHProfileStorage.shared.deleteProfile(profile)
+        guard SSHProfileStorage.shared.deleteProfile(profile) else {
+            saveError = String(localized: "Could not delete the profile. Reopen the SSH settings and try again.")
+            return
+        }
         onDelete?()
         dismiss()
     }

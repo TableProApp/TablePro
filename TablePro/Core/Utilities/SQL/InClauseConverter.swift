@@ -11,6 +11,11 @@ internal struct InClauseConverter {
     internal let columnTypes: [ColumnType]
     internal let escapeStringLiteral: ((String) -> String)?
 
+    /// What the engine puts in front of a string literal. SQL Server's `N` is the only one, and
+    /// without it an `IN` list pasted into a query on a non-Unicode collation matches the rows
+    /// whose text was already damaged rather than the rows the user copied.
+    internal var stringLiteralPrefix: String = ""
+
     private static let maxRows = 50_000
 
     func generateInClause(rows: [[PluginCellValue]]) -> String {
@@ -38,29 +43,23 @@ internal struct InClauseConverter {
     }
 
     private func formatScalar(_ value: String, type: ColumnType) -> String {
-        switch type {
-        case .integer:
-            if RowValueCopyFormatter.isIntegerLiteral(value) { return value }
-            return quoted(value)
-        case .decimal:
-            if Double(value) != nil { return value }
-            return quoted(value)
-        case .boolean:
-            switch value.lowercased() {
-            case "true", "1", "yes", "on":
+        if type.isBooleanType {
+            guard let synonym = ColumnTypeSQLQuoting.booleanSynonym(for: value) else { return quoted(value) }
+            switch synonym {
+            case .isTrue:
                 return "TRUE"
-            case "false", "0", "no", "off":
+            case .isFalse:
                 return "FALSE"
-            default:
+            @unknown default:
                 return quoted(value)
             }
-        case .blob, .text, .date, .timestamp, .datetime, .json, .enumType, .set, .spatial:
-            return quoted(value)
         }
+        guard ColumnTypeSQLQuoting.isNumericLiteral(value, for: type) else { return quoted(value) }
+        return value
     }
 
     private func quoted(_ value: String) -> String {
         let escaped = escapeStringLiteral?(value) ?? value.replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        return "\(stringLiteralPrefix)'\(escaped)'"
     }
 }

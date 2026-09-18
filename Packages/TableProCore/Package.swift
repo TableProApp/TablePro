@@ -1,37 +1,60 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 
 import PackageDescription
 
 let package = Package(
     name: "TableProCore",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v13),
         .iOS(.v17)
     ],
     products: [
         .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
+        .library(name: "TableProGeometry", targets: ["TableProGeometry"]),
         .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
         .library(name: "TableProImport", targets: ["TableProImport"]),
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
+        .library(name: "TableProSyncTransport", targets: ["TableProSyncTransport"]),
         .library(name: "TableProSync", targets: ["TableProSync"]),
         .library(name: "TableProAnalytics", targets: ["TableProAnalytics"]),
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
-        .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"])
+        .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
+        .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
+        .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
+        .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
+        .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
+        .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
+        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"])
     ],
     targets: [
+        .target(
+            name: "TableProNumberFormatting",
+            dependencies: [],
+            path: "Sources/TableProNumberFormatting"
+        ),
+        .target(
+            name: "TableProDocumentPath",
+            dependencies: [],
+            path: "Sources/TableProDocumentPath"
+        ),
         .target(
             name: "TableProCoreTypes",
             dependencies: [],
             path: "Sources/TableProCoreTypes"
         ),
         .target(
+            name: "TableProGeometry",
+            dependencies: [],
+            path: "Sources/TableProGeometry"
+        ),
+        .target(
             name: "TableProPluginKit",
             dependencies: [],
-            path: "Sources/TableProPluginKit",
-            exclude: ["Info.plist"]
+            path: "Sources/TableProPluginKit"
         ),
         .target(
             name: "TableProModels",
@@ -45,7 +68,7 @@ let package = Package(
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit"],
             path: "Sources/TableProDatabase"
         ),
         .target(
@@ -54,8 +77,13 @@ let package = Package(
             path: "Sources/TableProQuery"
         ),
         .target(
+            name: "TableProSyncTransport",
+            dependencies: [],
+            path: "Sources/TableProSyncTransport"
+        ),
+        .target(
             name: "TableProSync",
-            dependencies: ["TableProModels", "TableProCoreTypes"],
+            dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes"],
             path: "Sources/TableProSync"
         ),
         .target(
@@ -78,6 +106,51 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProTrinoCore"
         ),
+        .target(
+            name: "TableProGoogleCloud",
+            dependencies: [],
+            path: "Sources/TableProGoogleCloud"
+        ),
+        .target(
+            name: "TableProSpannerCore",
+            dependencies: ["TableProGoogleCloud"],
+            path: "Sources/TableProSpannerCore"
+        ),
+        .target(
+            name: "TableProWeaviateCore",
+            dependencies: [],
+            path: "Sources/TableProWeaviateCore"
+        ),
+        .target(
+            name: "TableProR2SQLCore",
+            dependencies: [],
+            path: "Sources/TableProR2SQLCore"
+        ),
+        .target(
+            name: "TableProConnectionLibrary",
+            dependencies: [],
+            path: "Sources/TableProConnectionLibrary"
+        ),
+        .testTarget(
+            name: "TableProConnectionLibraryTests",
+            dependencies: ["TableProConnectionLibrary"],
+            path: "Tests/TableProConnectionLibraryTests"
+        ),
+        .testTarget(
+            name: "TableProGeometryTests",
+            dependencies: ["TableProGeometry"],
+            path: "Tests/TableProGeometryTests"
+        ),
+        .testTarget(
+            name: "TableProNumberFormattingTests",
+            dependencies: ["TableProNumberFormatting"],
+            path: "Tests/TableProNumberFormattingTests"
+        ),
+        .testTarget(
+            name: "TableProDocumentPathTests",
+            dependencies: ["TableProDocumentPath"],
+            path: "Tests/TableProDocumentPathTests"
+        ),
         .testTarget(
             name: "TableProModelsTests",
             dependencies: ["TableProModels", "TableProPluginKit"],
@@ -90,7 +163,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProDatabaseTests",
-            dependencies: ["TableProDatabase", "TableProModels"],
+            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit"],
             path: "Tests/TableProDatabaseTests"
         ),
         .testTarget(
@@ -119,8 +192,28 @@ let package = Package(
             path: "Tests/TableProTrinoCoreTests"
         ),
         .testTarget(
+            name: "TableProGoogleCloudTests",
+            dependencies: ["TableProGoogleCloud"],
+            path: "Tests/TableProGoogleCloudTests"
+        ),
+        .testTarget(
+            name: "TableProSpannerCoreTests",
+            dependencies: ["TableProSpannerCore", "TableProGoogleCloud"],
+            path: "Tests/TableProSpannerCoreTests"
+        ),
+        .testTarget(
+            name: "TableProWeaviateCoreTests",
+            dependencies: ["TableProWeaviateCore"],
+            path: "Tests/TableProWeaviateCoreTests"
+        ),
+        .testTarget(
+            name: "TableProR2SQLCoreTests",
+            dependencies: ["TableProR2SQLCore"],
+            path: "Tests/TableProR2SQLCoreTests"
+        ),
+        .testTarget(
             name: "TableProSyncTests",
-            dependencies: ["TableProSync", "TableProModels"],
+            dependencies: ["TableProSync", "TableProSyncTransport", "TableProModels"],
             path: "Tests/TableProSyncTests"
         ),
         .testTarget(

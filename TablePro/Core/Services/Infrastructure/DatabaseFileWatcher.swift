@@ -12,7 +12,7 @@ import os
 
 @MainActor
 final class DatabaseFileWatcher {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseFileWatcher")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseFileWatcher")
 
     private var activeSources: [UUID: DispatchSourceFileSystemObject] = [:]
     private var debounceTasks: [UUID: Task<Void, Never>] = [:]
@@ -61,7 +61,7 @@ final class DatabaseFileWatcher {
 
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            Self.logger.error("Cannot open database file for watching: \(path, privacy: .public) errno=\(errno)")
+            Self.logger.error("Cannot open database file for watching: \(path, privacy: .private(mask: .hash)) errno=\(errno)")
             return
         }
 
@@ -71,20 +71,20 @@ final class DatabaseFileWatcher {
             queue: .global(qos: .utility)
         )
 
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { @Sendable [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.handleEvent(connectionId: connectionId)
             }
         }
 
-        source.setCancelHandler {
+        source.setCancelHandler { @Sendable in
             close(fd)
         }
 
         activeSources[connectionId] = source
         source.resume()
-        Self.logger.info("watching connId=\(connectionId, privacy: .public) path=\(path, privacy: .public)")
+        Self.logger.info("watching connId=\(connectionId, privacy: .public) path=\(path, privacy: .private(mask: .hash))")
     }
 
     private func handleEvent(connectionId: UUID) {

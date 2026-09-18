@@ -14,20 +14,31 @@
 
 import Foundation
 
+struct PostGISType: Equatable, Sendable {
+    let name: String
+    let schema: String
+}
+
 enum PostGISSpatialRewrite {
-    static let probeQuery = "SELECT oid, typname FROM pg_type WHERE typname IN ('geometry', 'geography')"
+    static let probeQuery = """
+        SELECT t.oid, t.typname, n.nspname
+        FROM pg_catalog.pg_type t
+        JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typname IN ('geometry', 'geography')
+        """
 
-    static let geometryConversionQuery =
-        "SELECT ST_AsEWKT(t::geometry) FROM unnest($1::text[]) WITH ORDINALITY AS x(t, ord) ORDER BY ord"
-    static let geographyConversionQuery =
-        "SELECT ST_AsEWKT(t::geography) FROM unnest($1::text[]) WITH ORDINALITY AS x(t, ord) ORDER BY ord"
+    /// A user savepoint of the same name is safe: PostgreSQL resolves a repeated savepoint name to
+    /// the newest one, so this RELEASE removes only the savepoint the rendering pass opened.
+    static let savepoint = "SAVEPOINT tablepro_spatial_render"
+    static let releaseSavepoint = "RELEASE SAVEPOINT tablepro_spatial_render"
+    static let rollbackToSavepoint = "ROLLBACK TO SAVEPOINT tablepro_spatial_render"
 
-    static func conversionQuery(forTypeName typeName: String) -> String? {
-        switch typeName {
-        case "geometry": return geometryConversionQuery
-        case "geography": return geographyConversionQuery
-        default: return nil
-        }
+    static func conversionQuery(for type: PostGISType) -> String? {
+        guard type.name == "geometry" || type.name == "geography" else { return nil }
+        let schema = PostgreSQLObjectQueries.quoteIdentifier(type.schema)
+        let qualifiedType = PostgreSQLObjectQueries.qualifiedName(schema: type.schema, name: type.name)
+        return "SELECT \(schema).ST_AsEWKT(($1::text[])[i]::\(qualifiedType)) "
+            + "FROM pg_catalog.generate_subscripts($1::text[], 1) AS i ORDER BY i"
     }
 
     static func arrayLiteral(from values: [String?]) -> String {

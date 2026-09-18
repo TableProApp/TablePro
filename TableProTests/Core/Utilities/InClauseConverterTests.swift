@@ -14,9 +14,34 @@ struct InClauseConverterTests {
     private func makeConverter(
         columnIndex: Int,
         columnTypes: [ColumnType],
-        escape: ((String) -> String)? = nil
+        escape: ((String) -> String)? = nil,
+        stringLiteralPrefix: String = ""
     ) -> InClauseConverter {
-        InClauseConverter(columnIndex: columnIndex, columnTypes: columnTypes, escapeStringLiteral: escape)
+        InClauseConverter(
+            columnIndex: columnIndex,
+            columnTypes: columnTypes,
+            escapeStringLiteral: escape,
+            stringLiteralPrefix: stringLiteralPrefix
+        )
+    }
+
+    /// An `IN` list pasted into a query on a SQL Server database with a non-Unicode collation
+    /// matched the rows whose text the server had already damaged, never the rows copied.
+    @Test("A text value carries the engine's literal prefix, and a number does not")
+    func textValuesCarryThePrefix() {
+        let converter = makeConverter(
+            columnIndex: 0,
+            columnTypes: [.text(rawType: nil)],
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(.mssql)
+        )
+        #expect(converter.generateInClause(rows: [[.text("日本語")], [.text("b")]]) == "(N'日本語', N'b')")
+
+        let numbers = makeConverter(
+            columnIndex: 0,
+            columnTypes: [.integer(rawType: nil)],
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(.mssql)
+        )
+        #expect(numbers.generateInClause(rows: [[.text("1")], [.text("2")]]) == "(1, 2)")
     }
 
     @Test("Empty rows yields empty parens")

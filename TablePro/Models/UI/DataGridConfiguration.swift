@@ -10,7 +10,7 @@ import Foundation
 struct DataGridConfiguration: Equatable {
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
-    var customDropdownOptions: [Int: [String]]?
+    var customDropdownOptions: [Int: [GridMenuOption]]?
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
@@ -20,4 +20,32 @@ struct DataGridConfiguration: Equatable {
     var tabType: TabType?
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
+
+    /// Columns drawn as a checkbox whose state the delegate owns, for a grid that reviews rows rather
+    /// than edits them. Keyed by index, because the column is the grid's own and has no name a table
+    /// column could share.
+    var checkboxColumns: Set<Int> = []
+
+    /// Whether the grid offers the commands that belong to a result: value filters, column hiding,
+    /// export and the JSON view. A grid whose rows are a comparison answers none of them, and a
+    /// command that does nothing is worse than one that is not there.
+    var supportsColumnCommands: Bool = true
+
+    /// Headings whose cells this grid must not let the user change, even though the rest of the grid
+    /// is editable. The Structure tab sets it per object kind: PostgreSQL takes a view's
+    /// `RENAME COLUMN` and `SET DEFAULT` and refuses its `SET NOT NULL` and `SET DATA TYPE`, so Name
+    /// and Default stay open while Nullable and Type lock. Name-keyed because that is the handle
+    /// `isColumnWritable` already works in. (#2726)
+    var lockedColumns: Set<String> = []
+
+    /// This grid shows rows of a result, so the Data Grid sort preferences apply to it.
+    ///
+    /// `tabType` cannot answer this: the Structure grid runs inside a `.table` tab and lists columns,
+    /// and a query result runs in a `.query` tab and is as much the data grid as a table is. The
+    /// question is what the grid holds, not which tab it sits in.
+    var appliesRowSortPreferences: Bool = false
+
+    /// Why these rows cannot be written back, when they cannot. A grid that silently refuses every
+    /// keystroke reads as broken, so the reason rides with the configuration and the grid shows it.
+    var editRefusalMessage: String?
 }

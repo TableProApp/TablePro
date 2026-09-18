@@ -89,6 +89,12 @@ extern void dbloginfree(LOGINREC *loginrec);
 extern RETCODE dbsetlname(LOGINREC *loginrec, const char *value, int which);
 extern RETCODE dbsetlversion(LOGINREC *loginrec, BYTE version);
 
+// Microsoft Entra ID access token, sent in the LOGIN7 FEDAUTH feature extension instead of a
+// user name and password. Added by scripts/patches/freetds/freetds-fedauth.patch; upstream
+// FreeTDS has no federated authentication. Separate from dbsetlname() because that caps values
+// at 128 bytes and writes them to the log, and an access token is neither short nor loggable.
+extern RETCODE dbsetlfedauthtoken(LOGINREC *loginrec, const char *token);
+
 // tdsdbopen is the real symbol; dbopen is a macro wrapper in the real header
 // (msdblib=1 enables MS SQL Server behavior — required for SQL Server connections)
 // Swift cannot expand C macros, so we expose a static inline function instead.
@@ -103,6 +109,9 @@ extern RETCODE dbcmd(DBPROCESS *dbproc, const char *cmdstring);
 extern RETCODE dbsqlexec(DBPROCESS *dbproc);
 extern RETCODE dbresults(DBPROCESS *dbproc);
 extern RETCODE dbnextrow(DBPROCESS *dbproc);
+// Rows the current result set reported, which for a statement that returns no rows is the count
+// the server put in DONE_IN_PROC. Valid only after dbresults() for that statement.
+extern DBINT dbcount(DBPROCESS *dbproc);
 
 extern int dbnumcols(DBPROCESS *dbproc);
 extern char *dbcolname(DBPROCESS *dbproc, int colnum);

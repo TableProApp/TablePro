@@ -23,10 +23,11 @@ struct InlineErrorBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             ScrollView(.vertical) {
-                Text(message)
+                RevealedTextView(message)
                     .font(.subheadline)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("query-error-message")
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         proxy.size.height
                     } action: { height in
@@ -35,7 +36,7 @@ struct InlineErrorBanner: View {
             }
             .frame(height: min(messageHeight, maxMessageHeight))
             .scrollDisabled(messageFits)
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollBounceBasedOnSize()
             if let onFixWithAI {
                 Button(String(localized: "Fix with AI")) { onFixWithAI() }
                     .controlSize(.small)

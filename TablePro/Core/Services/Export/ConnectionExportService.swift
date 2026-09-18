@@ -29,10 +29,55 @@ struct PreparedConnectionImport {
 
 @MainActor
 enum ConnectionExportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
     private static let currentFormatVersion = 1
 
     // MARK: - Export
+
+    /// Profiles travel by name, the way groups and tags already do. A raw id cannot resolve on the
+    /// importing Mac, which is how an imported connection ended up pointing at an SSH profile that
+    /// was not there.
+    private static func sshProfileName(for connection: DatabaseConnection) -> String? {
+        guard case .profile(let id, _) = connection.sshTunnelMode else { return nil }
+        return SSHProfileStorage.shared.profile(for: id)?.name
+    }
+
+    private static func credentialProfileName(for connection: DatabaseConnection) -> String? {
+        guard let id = connection.credentialMode.profileId else { return nil }
+        return CredentialProfileStorage.shared.profile(for: id)?.name
+    }
+
+    /// Metadata only. The password stays behind, and a profile reading its password from a file or
+    /// a command exports as a prompt: a shared bundle that carried a shell command would run it on
+    /// a Mac that never agreed to it.
+    private static func exportableCredentialProfiles(
+        for connections: [DatabaseConnection]
+    ) -> [ExportableCredentialProfile]? {
+        let ids = Set(connections.compactMap { $0.credentialMode.profileId })
+        guard !ids.isEmpty else { return nil }
+        let profiles = CredentialProfileStorage.shared.loadProfiles().filter { ids.contains($0.id) }
+        guard !profiles.isEmpty else { return nil }
+        return profiles.map { profile in
+            ExportableCredentialProfile(
+                name: profile.name,
+                username: profile.username,
+                passwordMode: portableMode(profile.passwordMode),
+                secureFieldIds: profile.secureFieldIds.isEmpty ? nil : profile.secureFieldIds
+            )
+        }
+    }
+
+    static func portableModeForTesting(_ mode: CredentialPasswordMode) -> String {
+        portableMode(mode)
+    }
+
+    private static func portableMode(_ mode: CredentialPasswordMode) -> String {
+        switch mode {
+        case .stored: "stored"
+        case .pgpass: "pgpass"
+        case .prompt, .source: "prompt"
+        }
+    }
 
     static func buildEnvelope(for connections: [DatabaseConnection]) -> ConnectionExportEnvelope {
         var groupNames: Set<String> = []
@@ -83,7 +128,9 @@ enum ConnectionExportService {
                     totpMode: sshConfig.totpMode == .none ? nil : sshConfig.totpMode.rawValue,
                     totpAlgorithm: sshConfig.totpAlgorithm == .sha1 ? nil : sshConfig.totpAlgorithm.rawValue,
                     totpDigits: sshConfig.totpDigits == 6 ? nil : sshConfig.totpDigits,
-                    totpPeriod: sshConfig.totpPeriod == 30 ? nil : sshConfig.totpPeriod
+                    totpPeriod: sshConfig.totpPeriod == 30 ? nil : sshConfig.totpPeriod,
+                    remoteFilePath: sshConfig.remoteFilePath.isEmpty ? nil : sshConfig.remoteFilePath,
+                    remoteFileAccess: sshConfig.remoteFileAccess == .readOnlyCopy ? nil : sshConfig.remoteFileAccess.rawValue
                 )
             } else {
                 exportableSSH = nil
@@ -104,19 +151,17 @@ enum ConnectionExportService {
 
             let color: String? = connection.color == .none ? nil : connection.color.rawValue
 
-            let safeModeLevel: String? = connection.safeModeLevel == .silent ? nil : connection.safeModeLevel.rawValue
+            let preferredLevel = connection.preferredSafeModeLevel
+            let safeModeLevel: String? = preferredLevel == .silent ? nil : preferredLevel.rawValue
 
             let aiPolicy: String? = connection.aiPolicy?.rawValue
 
             // Filter secure fields from additionalFields
             // If plugin metadata is unavailable, omit all fields to avoid leaking secrets
             let additionalFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+            if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
                 var filteredFields = connection.additionalFields
-                let secureFieldIds = snapshot.connection.additionalConnectionFields
-                    .filter(\.isSecure)
-                    .map(\.id)
-                for fieldId in secureFieldIds {
+                for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
                     filteredFields.removeValue(forKey: fieldId)
                 }
                 additionalFields = filteredFields.isEmpty ? nil : filteredFields
@@ -138,12 +183,15 @@ enum ConnectionExportService {
                 tagNames: resolvedTagNames.isEmpty ? nil : resolvedTagNames,
                 groupName: groupName,
                 sshProfileId: connection.sshProfileId?.uuidString,
+                sshProfileName: sshProfileName(for: connection),
+                credentialProfileName: credentialProfileName(for: connection),
                 safeModeLevel: safeModeLevel,
                 aiPolicy: aiPolicy,
                 additionalFields: additionalFields,
                 redisDatabase: connection.redisDatabase,
                 startupCommands: connection.startupCommands,
-                localOnly: connection.localOnly ? true : nil
+                localOnly: connection.localOnly ? true : nil,
+                tunnelCommand: connection.resolvedTunnelCommandConfig.map(ExportableTunnelCommand.init)
             )
 
             exportableConnections.append(exportable)
@@ -174,7 +222,8 @@ enum ConnectionExportService {
             connections: exportableConnections,
             groups: exportableGroups,
             tags: exportableTags,
-            credentials: nil
+            credentials: nil,
+            credentialProfiles: exportableCredentialProfiles(for: connections)
         )
     }
 
@@ -221,10 +270,8 @@ enum ConnectionExportService {
 
             // Collect plugin-specific secure fields
             var pluginSecureFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
-                let secureFieldIds = snapshot.connection.additionalConnectionFields
-                    .filter(\.isSecure)
-                    .map(\.id)
+            if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
+                let secureFieldIds = PluginManager.shared.secureConnectionFieldIds(for: connection.type)
                 if !secureFieldIds.isEmpty {
                     var fields: [String: String] = [:]
                     for fieldId in secureFieldIds {
@@ -264,7 +311,8 @@ enum ConnectionExportService {
             connections: baseEnvelope.connections,
             groups: baseEnvelope.groups,
             tags: baseEnvelope.tags,
-            credentials: credentialsMap.isEmpty ? nil : credentialsMap
+            credentials: credentialsMap.isEmpty ? nil : credentialsMap,
+            credentialProfiles: baseEnvelope.credentialProfiles
         )
     }
 
@@ -371,40 +419,45 @@ enum ConnectionExportService {
     @discardableResult
     static func performImport(
         _ preview: ConnectionImportPreview,
-        resolutions: [UUID: ImportResolution]
+        resolutions: [UUID: ImportResolution],
+        keepTunnelCommands: Bool = false
     ) -> ImportResult {
         if let envelopeGroups = preview.envelope.groups {
-            let existingGroups = GroupStorage.shared.loadGroups()
             for exportGroup in envelopeGroups {
-                let alreadyExists = existingGroups.contains {
+                /// Re-read per group rather than once for the envelope: two groups sharing a name
+                /// in one file both passed a snapshot taken before either was added.
+                let alreadyExists = GroupStorage.shared.loadGroups().contains {
                     $0.name.lowercased() == exportGroup.name.lowercased()
                 }
-                if !alreadyExists {
-                    let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
-                    let group = ConnectionGroup(name: exportGroup.name, color: color)
-                    GroupStorage.shared.addGroup(group)
+                guard !alreadyExists else { continue }
+                let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
+                let group = ConnectionGroup(name: exportGroup.name, color: color)
+                do {
+                    try GroupStorage.shared.addGroup(group)
+                } catch {
+                    Self.logger.error("Skipped importing group: \(error.publicLogShape, privacy: .public)")
                 }
             }
         }
 
         if let envelopeTags = preview.envelope.tags {
-            let existingTags = TagStorage.shared.loadTags()
             for exportTag in envelopeTags {
-                let alreadyExists = existingTags.contains {
+                /// Re-read per tag rather than once for the envelope: two tags sharing a name in
+                /// one file both passed a snapshot taken before either was added.
+                let alreadyExists = TagStorage.shared.loadTags().contains {
                     $0.name.lowercased() == exportTag.name.lowercased()
                 }
-                if !alreadyExists {
-                    // Match preset tags by name
-                    let preset = ConnectionTag.presets.first {
-                        $0.name.lowercased() == exportTag.name.lowercased()
-                    }
-                    if let preset {
-                        TagStorage.shared.addTag(preset)
-                    } else {
-                        let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
-                        let tag = ConnectionTag(name: exportTag.name, color: color)
-                        TagStorage.shared.addTag(tag)
-                    }
+                guard !alreadyExists else { continue }
+
+                let preset = ConnectionTag.presets.first {
+                    $0.name.lowercased() == exportTag.name.lowercased()
+                }
+                let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
+                let tag = preset ?? ConnectionTag(name: exportTag.name, color: color)
+                do {
+                    try TagStorage.shared.addTag(tag)
+                } catch {
+                    Self.logger.error("Skipped importing tag: \(error.publicLogShape, privacy: .public)")
                 }
             }
         }
@@ -414,23 +467,33 @@ enum ConnectionExportService {
             resolutions: resolutions,
             existingNames: ConnectionStorage.shared.loadConnections().map(\.name),
             tagIdsByName: tagIdsByName(),
-            groupIdsByName: groupIdsByName()
+            groupIdsByName: groupIdsByName(),
+            keepTunnelCommands: keepTunnelCommands
         )
 
         return performPreparedImport(prepared)
     }
 
+    /// `keepTunnelCommands` defaults to false so a route that has not asked the user cannot carry
+    /// one in by omission. Only the file import sheet, which shows the command and takes an answer,
+    /// passes true.
     static func prepareImport(
         _ preview: ConnectionImportPreview,
         resolutions: [UUID: ImportResolution],
         existingNames: [String] = [],
         tagIdsByName: [String: UUID],
-        groupIdsByName: [String: UUID]
+        groupIdsByName: [String: UUID],
+        keepTunnelCommands: Bool = false
     ) -> PreparedConnectionImport {
         var operations: [PreparedImportOperation] = []
         var connectionIdMap: [Int: UUID] = [:]
         var newConnectionIdMap: [Int: UUID] = [:]
         var takenNames = Set(existingNames.map { normalizedLookupKey($0) })
+
+        /// Before any connection is built, so the name a connection carries resolves to a profile
+        /// that is here. Nothing executable comes across: the bundle's password mode is one of
+        /// stored, prompt or pgpass, and a profile arrives with no password either way.
+        let importedProfileIds = createMissingCredentialProfiles(from: preview.envelope.credentialProfiles)
 
         let itemIndexMap: [UUID: Int] = Dictionary(
             uniqueKeysWithValues: preview.items.enumerated().map { ($1.id, $0) }
@@ -439,6 +502,7 @@ enum ConnectionExportService {
         for item in preview.items {
             let resolution = resolutions[item.id] ?? .skip
             guard let envelopeIndex = itemIndexMap[item.id] else { continue }
+            let exportable = keepTunnelCommands ? item.connection : item.connection.withoutTunnelCommand()
 
             switch resolution {
             case .skip:
@@ -448,17 +512,18 @@ enum ConnectionExportService {
                 let connectionId = UUID()
                 let name: String
                 if resolution == .importAsCopy {
-                    name = uniqueCopyName(for: item.connection.name, taken: takenNames)
+                    name = uniqueCopyName(for: exportable.name, taken: takenNames)
                 } else {
-                    name = item.connection.name
+                    name = exportable.name
                 }
                 takenNames.insert(normalizedLookupKey(name))
                 let connection = buildDatabaseConnection(
                     id: connectionId,
-                    from: item.connection,
+                    from: exportable,
                     name: name,
                     tagIdsByName: tagIdsByName,
-                    groupIdsByName: groupIdsByName
+                    groupIdsByName: groupIdsByName,
+                    importedProfileIds: importedProfileIds
                 )
                 operations.append(.add(connection))
                 connectionIdMap[envelopeIndex] = connectionId
@@ -467,10 +532,11 @@ enum ConnectionExportService {
             case .replace(let existingId):
                 let connection = buildDatabaseConnection(
                     id: existingId,
-                    from: item.connection,
-                    name: item.connection.name,
+                    from: exportable,
+                    name: exportable.name,
                     tagIdsByName: tagIdsByName,
-                    groupIdsByName: groupIdsByName
+                    groupIdsByName: groupIdsByName,
+                    importedProfileIds: importedProfileIds
                 )
                 operations.append(.replace(connection))
                 connectionIdMap[envelopeIndex] = existingId
@@ -568,6 +634,12 @@ enum ConnectionExportService {
             if let totpPeriod = ssh.totpPeriod {
                 queryItems.append(URLQueryItem(name: "sshTotpPeriod", value: String(totpPeriod)))
             }
+            if let remoteFilePath = ssh.remoteFilePath, !remoteFilePath.isEmpty {
+                queryItems.append(URLQueryItem(name: "sshRemoteFilePath", value: remoteFilePath))
+            }
+            if let remoteFileAccess = ssh.remoteFileAccess {
+                queryItems.append(URLQueryItem(name: "sshRemoteFileAccess", value: remoteFileAccess))
+            }
         }
 
         if let ssl = exportable.sslConfig {
@@ -638,12 +710,50 @@ enum ConnectionExportService {
 
     // MARK: - Private Helpers
 
+    /// Adds any profile the bundle names that this Mac does not have, and returns the ids of the
+    /// ones it created, keyed by the name the bundle used.
+    ///
+    /// A profile already on this Mac is left exactly as it is **and is not returned**. That is the
+    /// security boundary: only a profile this import created can be linked from an imported
+    /// connection, so a shared file cannot point a connection at credentials the user already had
+    /// by guessing what they called them.
+    private static func createMissingCredentialProfiles(
+        from profiles: [ExportableCredentialProfile]?
+    ) -> [String: UUID] {
+        guard let profiles, !profiles.isEmpty else { return [:] }
+        let existing = CredentialProfileStorage.shared.loadProfiles()
+        guard !CredentialProfileStorage.shared.lastLoadFailed else { return [:] }
+
+        var created: [String: UUID] = [:]
+        for profile in profiles {
+            let alreadyHere = existing.contains {
+                $0.name.compare(profile.name, options: .caseInsensitive) == .orderedSame
+            }
+            guard !alreadyHere else { continue }
+            let imported = CredentialProfile(
+                name: profile.name,
+                username: profile.username,
+                /// An imported profile never arrives with a password, so `stored` would mean
+                /// signing in with nothing. Asking is the honest default.
+                passwordMode: profile.passwordMode == "pgpass" ? .pgpass : .prompt,
+                secureFieldIds: profile.secureFieldIds ?? []
+            )
+            guard CredentialProfileStorage.shared.addProfile(imported) else { continue }
+            created[normalizedLookupKey(profile.name)] = imported.id
+        }
+        return created
+    }
+
+    /// `importedProfileIds` maps a bundle's profile name to the id of a profile **this import
+    /// created**. A profile that was already on this Mac is deliberately absent from it, so a
+    /// bundle can never select one of the user's existing credentials by naming it.
     static func buildDatabaseConnection(
         id: UUID,
         from exportable: ExportableConnection,
         name: String,
         tagIdsByName: [String: UUID],
-        groupIdsByName: [String: UUID]
+        groupIdsByName: [String: UUID],
+        importedProfileIds: [String: UUID] = [:]
     ) -> DatabaseConnection {
         // Build SSH configuration
         let sshConfig: SSHConfiguration
@@ -669,6 +779,8 @@ enum ConnectionExportService {
             config.totpAlgorithm = ssh.totpAlgorithm.flatMap { TOTPAlgorithm(rawValue: $0) } ?? .sha1
             config.totpDigits = ssh.totpDigits ?? 6
             config.totpPeriod = ssh.totpPeriod ?? 30
+            config.remoteFilePath = ssh.remoteFilePath ?? ""
+            config.remoteFileAccess = ssh.remoteFileAccess.flatMap { RemoteFileAccess(rawValue: $0) } ?? .readOnlyCopy
             sshConfig = config
         } else {
             sshConfig = SSHConfiguration()
@@ -694,7 +806,22 @@ enum ConnectionExportService {
             groupIdsByName[normalizedLookupKey(name)]
         }
 
-        let parsedSSHProfileId = exportable.sshProfileId.flatMap { UUID(uuidString: $0) }
+        /// Bound by id, never by the name the bundle carries.
+        ///
+        /// A bundle is something someone else wrote. Matching its `credentialProfileName` against
+        /// this Mac's own profiles would let a shared file pick which of your credentials a
+        /// connection signs in with: import a file naming `prod-reader`, open the connection it
+        /// describes, and your stored password, or the output of your own password command, goes
+        /// to whatever host that file names. An id is safe to honour because a UUID cannot be
+        /// guessed, so only a bundle exported from a Mac that genuinely had that profile carries
+        /// one that resolves. A name that matches nothing local creates a fresh profile instead,
+        /// and the connection links to that.
+        let resolvedSSHProfileId = exportable.sshProfileId
+            .flatMap { UUID(uuidString: $0) }
+            .flatMap { id in SSHProfileStorage.shared.profile(for: id)?.id }
+        let resolvedCredentialMode: CredentialMode = importedProfileIds[
+            normalizedLookupKey(exportable.credentialProfileName ?? "")
+        ].map { CredentialMode.profile(id: $0) } ?? .inline
 
         let finalHost = exportable.host.trimmingCharacters(in: .whitespaces).isEmpty
             ? "localhost" : exportable.host
@@ -712,7 +839,9 @@ enum ConnectionExportService {
             color: exportable.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
             tagIds: tagIds,
             groupId: groupId,
-            sshProfileId: parsedSSHProfileId,
+            sshProfileId: resolvedSSHProfileId,
+            credentialMode: resolvedCredentialMode,
+            tunnelCommandMode: exportable.tunnelCommand.map { .inline(TunnelCommandConfiguration($0)) } ?? .disabled,
             safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,
             aiPolicy: exportable.aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: exportable.redisDatabase,

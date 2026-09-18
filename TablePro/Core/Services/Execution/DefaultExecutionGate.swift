@@ -10,20 +10,34 @@ internal actor DefaultExecutionGate: ExecutionGate {
     private let authenticating: OperationAuthenticating
     private let safeModeLevelResolver: @Sendable (UUID) async -> SafeModeLevel
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
+    private let connectionNameResolver: @Sendable (UUID) async -> String?
+    private let auditLog: any ExecutionAuditLogging
 
     init(
         confirming: OperationConfirming,
         authenticating: OperationAuthenticating,
         safeModeLevelResolver: @escaping @Sendable (UUID) async -> SafeModeLevel,
-        forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool
+        forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool,
+        connectionNameResolver: @escaping @Sendable (UUID) async -> String? = { _ in nil },
+        auditLog: any ExecutionAuditLogging = ExecutionAuditLog.shared
     ) {
         self.confirming = confirming
         self.authenticating = authenticating
         self.safeModeLevelResolver = safeModeLevelResolver
         self.forcesWriteResolver = forcesWriteResolver
+        self.connectionNameResolver = connectionNameResolver
+        self.auditLog = auditLog
     }
 
+    /// A thin wrapper so every outcome is recorded once. `decide` has seven return points, and a
+    /// log call at each is one `return` away from a gap the next change opens silently.
     func authorize(_ request: OperationRequest) async -> OperationDecision {
+        let decision = await decide(request)
+        await auditLog.record(request: request, decision: decision)
+        return decision
+    }
+
+    private func decide(_ request: OperationRequest) async -> OperationDecision {
         let level = await safeModeLevelResolver(request.connectionId)
         let caps = request.capabilities
 
@@ -45,21 +59,35 @@ internal actor DefaultExecutionGate: ExecutionGate {
         }
 
         if level.blocksAllWrites, effectiveWrite {
-            return .denied(reason: String(localized: "Cannot execute write queries: connection is read-only"))
+            return .denied(reason: String(
+                localized: "Cannot execute write queries: TablePro's Safe Mode is set to read-only for this connection"
+            ))
         }
+
+        /// Narrower than `effectiveWrite`, which is true for every statement on a driver that
+        /// cannot be opened read-only. A caller asking to confirm its writes means the ones that
+        /// actually write, not every `GET` sent to Redis.
+        let isWriteStatement = request.kind.declaresWrite || tier == .write || tier == .destructive
 
         let isMetadataRead = request.kind == .metadataRead
         let needsConfirmation = !isMetadataRead
-            && (isDestructive || (level.requiresConfirmation && (effectiveWrite || level.appliesToAllQueries)))
+            && (isDestructive
+                || (isWriteStatement && caps.contains(.confirmsWrites))
+                || (level.requiresConfirmation && (effectiveWrite || level.appliesToAllQueries)))
         if needsConfirmation, !caps.contains(.preCleared), !caps.contains(.confirmationPreCleared) {
             if caps.contains(.cannotPrompt) {
                 return .denied(reason: String(localized: "Confirmation is required for this operation"))
             }
             let confirmed = await confirming.confirm(
-                sql: request.sql ?? "",
-                operationDescription: request.operationDescription,
-                connectionId: request.connectionId,
-                isDestructive: isDestructive
+                OperationConfirmationRequest(
+                    sql: request.sql,
+                    operationDescription: request.operationDescription,
+                    connectionId: request.connectionId,
+                    connectionName: await connectionNameResolver(request.connectionId),
+                    databaseType: request.databaseType,
+                    caller: request.caller,
+                    isDestructive: isDestructive
+                )
             )
             guard confirmed else {
                 return .denied(reason: String(localized: "Operation cancelled by user"))

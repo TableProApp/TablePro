@@ -11,7 +11,7 @@ import TableProAnalytics
 final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
     static let shared = MacAnalyticsProvider()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MacAnalyticsProvider")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MacAnalyticsProvider")
 
     private let defaults: UserDefaults
 
@@ -105,5 +105,22 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
         guard defaults.object(forKey: key) == nil else { return }
         defaults.set(Date(), forKey: key)
         Self.logger.info("Recorded \(label, privacy: .public) for first time")
+    }
+
+    /// Read from Sparkle rather than from a stored setting, because Sparkle owns these and a
+    /// managed preference or its own permission prompt can set them without the app involved.
+    ///
+    /// This is the only measure of whether a default that was flipped for every existing install
+    /// was accepted. It carries nothing about a person, a host or a query.
+    var updateInstallMode: String? {
+        let updater = SoftwareUpdater.shared
+        guard updater.automaticallyChecksForUpdates else { return "off" }
+        return updater.automaticallyDownloadsUpdates ? "automatic" : "notify"
+    }
+
+    var updateCheckInterval: Int? {
+        let updater = SoftwareUpdater.shared
+        guard updater.automaticallyChecksForUpdates else { return nil }
+        return Int(updater.updateCheckInterval)
     }
 }

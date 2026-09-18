@@ -11,7 +11,7 @@ extension VimEngine {
 
         if pendingReplaceCharForVisual {
             pendingReplaceCharForVisual = false
-            if char == "\u{1B}" { return true }
+            if char == "\u{1B}" || Self.isUnwritableControl(char) { return true }
             replaceVisualSelectionWithChar(char, in: buffer)
             return true
         }
@@ -34,6 +34,10 @@ extension VimEngine {
                 joinSelectedLines(withSpace: false, in: buffer)
                 return true
             }
+            return true
+        }
+
+        if handleVisualControl(char, linewise: isLinewise, in: buffer) {
             return true
         }
 

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSyncTransport
 
 @MainActor
 struct AppServices {
@@ -16,15 +17,17 @@ struct AppServices {
     let schemaService: SchemaService
     let schemaRefreshService: SchemaRefreshService
     let schemaProviderRegistry: SchemaProviderRegistry
+    let catalogChangeService: CatalogChangeService
     let sqlFavoriteManager: SQLFavoriteManager
     let favoriteTablesStorage: FavoriteTablesStorage
+    let favoriteDatabasesStorage: FavoriteDatabasesStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
     let groupStorage: GroupStorage
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
+    let credentialProfileStorage: CredentialProfileStorage
     let licenseManager: LicenseManager
-    let conflictResolver: ConflictResolver
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
@@ -46,16 +49,18 @@ struct AppServices {
         schemaService: .shared,
         schemaRefreshService: .shared,
         schemaProviderRegistry: .shared,
+        catalogChangeService: .shared,
         sqlFavoriteManager: .shared,
         favoriteTablesStorage: .shared,
+        favoriteDatabasesStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
         groupStorage: .shared,
         tagStorage: .shared,
         sshProfileStorage: .shared,
+        credentialProfileStorage: .shared,
         licenseManager: .shared,
-        conflictResolver: .shared,
-        syncMetadataStorage: .shared,
+        syncMetadataStorage: .appDefault,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
         queryHistoryManager: .shared,
@@ -68,7 +73,7 @@ struct AppServices {
     )
 }
 
-private struct AppServicesEnvironmentKey: EnvironmentKey {
+private struct AppServicesEnvironmentKey: @preconcurrency EnvironmentKey {
     @MainActor static var defaultValue: AppServices { .live }
 }
 

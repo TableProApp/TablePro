@@ -5,22 +5,24 @@
 
 import Foundation
 import os
+import TableProSyncTransport
 
 @MainActor
-final class FileColumnLayoutPersister: ColumnLayoutPersisting {
+final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettingsStore {
     static let shared: FileColumnLayoutPersister = {
         let persister = FileColumnLayoutPersister()
         persister.performScopeMigration()
         return persister
     }()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
     private static let legacyUserDefaultsPrefix = "com.TablePro.columns.layout."
     private static let legacyVisibilityPrefix = "com.TablePro.columns.hiddenColumns."
     private static let scopeMigrationKey = "com.TablePro.columnLayoutSchemaScopeMigrationComplete"
 
     private struct PersistedColumnLayout: Codable {
         var columnWidths: [String: CGFloat]
+        var columnContentWidths: [String: CGFloat]?
         var columnOrder: [String]?
         var hiddenColumns: [String]?
     }
@@ -51,12 +53,24 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     }
 
     func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {
-        guard !layout.columnWidths.isEmpty else { return }
+        guard !layout.columnWidths.isEmpty
+            || layout.columnContentWidths?.isEmpty == false
+            || layout.columnOrder != nil
+        else { return }
 
         var entries = loadEntries(for: key.connectionId)
-        var entry = entries[key.storageKey] ?? PersistedColumnLayout(columnWidths: [:], columnOrder: nil, hiddenColumns: nil)
+        var entry = entries[key.storageKey] ?? PersistedColumnLayout(
+            columnWidths: [:],
+            columnContentWidths: nil,
+            columnOrder: nil,
+            hiddenColumns: nil
+        )
         entry.columnWidths = layout.columnWidths
-        entry.columnOrder = layout.columnOrder
+        entry.columnContentWidths = layout.columnContentWidths
+        entry.columnOrder = ColumnLayoutState.mergedColumnOrder(
+            current: entry.columnOrder,
+            incoming: layout.columnOrder
+        )
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
@@ -66,10 +80,14 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
         let entries = loadEntries(for: key.connectionId)
         guard let persisted = entries[key.storageKey],
-              !persisted.columnWidths.isEmpty || persisted.columnOrder != nil else { return nil }
+              !persisted.columnWidths.isEmpty
+              || persisted.columnContentWidths?.isEmpty == false
+              || persisted.columnOrder != nil
+        else { return nil }
 
         var state = ColumnLayoutState()
         state.columnWidths = persisted.columnWidths
+        state.columnContentWidths = persisted.columnContentWidths
         state.columnOrder = persisted.columnOrder
         return state
     }
@@ -86,10 +104,18 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         removeLegacyHidden(for: key)
 
         var entries = loadEntries(for: key.connectionId)
-        var entry = entries[key.storageKey] ?? PersistedColumnLayout(columnWidths: [:], columnOrder: nil, hiddenColumns: nil)
+        var entry = entries[key.storageKey] ?? PersistedColumnLayout(
+            columnWidths: [:],
+            columnContentWidths: nil,
+            columnOrder: nil,
+            hiddenColumns: nil
+        )
         entry.hiddenColumns = hidden.isEmpty ? nil : Array(hidden)
 
-        if entry.columnWidths.isEmpty, entry.columnOrder == nil, entry.hiddenColumns == nil {
+        if entry.columnWidths.isEmpty,
+           entry.columnContentWidths?.isEmpty != false,
+           entry.columnOrder == nil,
+           entry.hiddenColumns == nil {
             clear(for: key)
             return
         }
@@ -98,6 +124,67 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
         syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+    }
+
+    /// Moves a table's saved widths, order and hidden columns onto its new name.
+    ///
+    /// Persisted before either sync marker is written, because `markDeleted` posts a change
+    /// notification that can start a sync, and a sync reading the old file would put the entry
+    /// back under the name that has gone.
+    func renameTable(from oldScope: TableScope, to newScope: TableScope) {
+        let oldKey = oldScope.storageComponent
+        let newKey = newScope.storageComponent
+        guard oldKey != newKey else { return }
+        var entries = loadEntries(for: oldScope.connectionId)
+        guard let entry = entries.removeValue(forKey: oldKey) else { return }
+        entries[newKey] = entry
+        cache[oldScope.connectionId] = entries
+        writeEntries(entries, for: oldScope.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey))
+        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: oldKey))
+    }
+
+    /// Moves every table's saved layout from one container to another. Same prefix rewrite as the
+    /// filter store, and for the same reason: the tables that have a layout are whatever the user
+    /// has opened over the life of the connection, not what is loaded now.
+    func renameContainer(
+        connectionId: UUID,
+        fromDatabase: String,
+        fromSchema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        let oldPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: fromDatabase, schema: fromSchema
+        )
+        let newPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: toDatabase, schema: toSchema
+        )
+        guard oldPrefix != newPrefix else { return }
+
+        var entries = loadEntries(for: connectionId)
+        let moving = entries.keys.filter { $0.hasPrefix(oldPrefix) }
+        guard !moving.isEmpty else { return }
+        for key in moving {
+            let moved = newPrefix + key.dropFirst(oldPrefix.count)
+            entries[moved] = entries.removeValue(forKey: key)
+        }
+        cache[connectionId] = entries
+        writeEntries(entries, for: connectionId)
+        for key in moving {
+            syncTracker.markDirty(.settings, id: Self.syncCategory(for: newPrefix + key.dropFirst(oldPrefix.count)))
+            syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key))
+        }
+    }
+
+    func purgeConnections(_ connectionIds: Set<UUID>) {
+        var deletedCategories: [String] = []
+        for connectionId in connectionIds {
+            deletedCategories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
+            cache[connectionId] = [:]
+            removeFile(for: connectionId)
+        }
+        syncTracker.markDeleted(.settings, ids: deletedCategories)
     }
 
     func clear(for key: ColumnLayoutTableKey) {
@@ -114,6 +201,31 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             writeEntries(entries, for: key.connectionId)
         }
         syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+    }
+
+    func clearGeometry(for key: ColumnLayoutTableKey) {
+        var entries = loadEntries(for: key.connectionId)
+        guard var entry = entries[key.storageKey] else { return }
+        entry.columnWidths = [:]
+        entry.columnContentWidths = nil
+        entry.columnOrder = nil
+
+        if entry.hiddenColumns?.isEmpty == false {
+            entries[key.storageKey] = entry
+            cache[key.connectionId] = entries
+            writeEntries(entries, for: key.connectionId)
+            syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+        } else {
+            entries.removeValue(forKey: key.storageKey)
+            if entries.isEmpty {
+                cache[key.connectionId] = [:]
+                removeFile(for: key.connectionId)
+            } else {
+                cache[key.connectionId] = entries
+                writeEntries(entries, for: key.connectionId)
+            }
+            syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+        }
     }
 
     static func syncCategory(for storageKey: String) -> String {
@@ -213,10 +325,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     }
 
     private static func resolvedStorageDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("ColumnLayout", isDirectory: true)

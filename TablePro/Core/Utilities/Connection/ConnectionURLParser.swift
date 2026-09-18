@@ -106,7 +106,7 @@ struct ConnectionURLParser {
         let isSrv = scheme == "mongodb+srv"
 
         let isFileBased = dbType == .sqlite || (dbType == .duckdb && scheme == "duckdb")
-            || PluginMetadataRegistry.shared.snapshot(forTypeId: dbType.pluginTypeId)?.connectionMode == .fileBased
+            || PluginMetadataRegistry.shared.snapshot(for: dbType)?.connectionMode == .fileBased
         if isFileBased {
             let path = String(trimmed[schemeEnd.upperBound...])
             return .success(ParsedConnectionURL(

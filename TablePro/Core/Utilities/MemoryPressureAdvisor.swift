@@ -10,7 +10,7 @@ import os
 /// Advises on tab eviction budget based on system memory and pressure state.
 @MainActor
 internal enum MemoryPressureAdvisor {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureAdvisor")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureAdvisor")
 
     /// Current memory pressure level from the OS dispatch source.
     private(set) static var isUnderPressure = false
@@ -20,14 +20,16 @@ internal enum MemoryPressureAdvisor {
             eventMask: [.warning, .critical, .normal],
             queue: .main
         )
-        source.setEventHandler {
-            let event = source.data
-            let wasPressured = isUnderPressure
-            isUnderPressure = event.contains(.warning) || event.contains(.critical)
-            if isUnderPressure && !wasPressured {
-                logger.info("Memory pressure detected — reducing tab eviction budget")
-            } else if !isUnderPressure && wasPressured {
-                logger.info("Memory pressure resolved — restoring tab eviction budget")
+        source.setEventHandler { @Sendable in
+            MainActor.assumeIsolated {
+                let event = source.data
+                let wasPressured = isUnderPressure
+                isUnderPressure = event.contains(.warning) || event.contains(.critical)
+                if isUnderPressure && !wasPressured {
+                    logger.info("Memory pressure detected, reducing tab eviction budget")
+                } else if !isUnderPressure && wasPressured {
+                    logger.info("Memory pressure resolved, restoring tab eviction budget")
+                }
             }
         }
         source.activate()

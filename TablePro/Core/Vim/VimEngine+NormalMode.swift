@@ -9,10 +9,6 @@ extension VimEngine {
     func processNormal(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length cyclomatic_complexity
         guard let buffer else { return false }
 
-        if let consumed = handleNormalControl(char, in: buffer) {
-            return consumed
-        }
-
         if let req = pendingFindChar {
             pendingFindChar = nil
             if char == "\u{1B}" { return true }
@@ -81,6 +77,10 @@ extension VimEngine {
         if pendingG {
             pendingG = false
             return handlePendingG(char, in: buffer)
+        }
+
+        if handleNormalControl(char, in: buffer) {
+            return true
         }
 
         switch char {
@@ -332,6 +332,7 @@ extension VimEngine {
         case "R":
             countPrefix = 0
             operatorCount = 0
+            replaceModeEdits.removeAll()
             setMode(.replace)
             return true
 

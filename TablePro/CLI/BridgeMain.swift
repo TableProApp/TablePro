@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 @main
 struct TableProMcpBridge {
@@ -9,43 +10,64 @@ struct TableProMcpBridge {
         ])
 
         let acquirer = MCPHandshakeAcquirer(logger: logger)
-        let handshake: MCPBridgeHandshake
-        do {
-            handshake = try await acquirer.acquire()
-        } catch {
-            logger.log(.error, "Handshake failed: \(error.localizedDescription)")
-            emitFatalJsonRpcError(message: "TablePro is not running. Launch the app and enable the MCP server.")
+        guard let opening = await openUpstream(acquirer: acquirer, logger: logger) else {
             exit(1)
         }
 
-        guard let credentials = handshake.credentials() else {
-            logger.log(.error, "Handshake produced invalid endpoint")
-            emitFatalJsonRpcError(message: "Invalid MCP server endpoint")
-            exit(1)
-        }
-
-        let credentialsProvider = MCPCachedUpstreamCredentialsProvider(initial: credentials) {
+        let credentialsProvider = MCPCachedUpstreamCredentialsProvider(initial: opening.credentials) {
             let refreshed = try await acquirer.acquire()
             guard let credentials = refreshed.credentials() else {
-                throw MCPHandshakeError.fileNotFound
+                throw MCPBridgeStartupError.invalidEndpoint
             }
-            logger.log(.info, "Re-acquired MCP handshake after upstream rejected the bridge")
+            _ = try await BridgeUpstreamHandshake.verifiedDiscovery(
+                handshake: refreshed,
+                credentials: credentials,
+                logger: logger
+            )
+            logger.log(.info, "Re-acquired and verified the MCP handshake")
             return credentials
         }
 
         let upstream = MCPStreamableHttpClientTransport(
-            configuration: MCPStreamableHttpClientConfiguration(
-                requestTimeout: .seconds(60),
-                serverInitiatedStream: false
-            ),
             credentialsProvider: credentialsProvider,
             errorLogger: logger
         )
 
-        let host = MCPStdioMessageTransport(errorLogger: logger)
-
-        let proxy = BridgeProxy(host: host, upstream: upstream, logger: logger)
+        let proxy = BridgeProxy(upstream: upstream, discovery: opening.discovery, logger: logger)
         await proxy.run()
+    }
+
+    private static func openUpstream(
+        acquirer: MCPHandshakeAcquirer,
+        logger: any MCPBridgeLogger
+    ) async -> (credentials: MCPUpstreamCredentials, discovery: BridgeDiscovery)? {
+        do {
+            let handshake = try await acquirer.acquire()
+            guard let credentials = handshake.credentials() else {
+                throw MCPBridgeStartupError.invalidEndpoint
+            }
+            let discovery = try await BridgeUpstreamHandshake.verifiedDiscovery(
+                handshake: handshake,
+                credentials: credentials,
+                logger: logger
+            )
+            return (credentials, discovery)
+        } catch {
+            logger.log(.error, "Bridge startup failed: \(error.localizedDescription)")
+            emitFatalJsonRpcError(message: startupMessage(for: error))
+            return nil
+        }
+    }
+
+    private static func startupMessage(for error: Error) -> String {
+        switch error {
+        case MCPBridgeStartupError.unverifiedInstance:
+            return "The local MCP endpoint did not prove it belongs to TablePro. Restart TablePro and try again."
+        case MCPBridgeStartupError.unsupportedUpstreamVersion:
+            return "This TablePro build does not speak \(MCPProtocolVersion.latest.rawValue). Update TablePro."
+        default:
+            return "TablePro is not running. Launch the app and enable the MCP server."
+        }
     }
 
     private static func emitFatalJsonRpcError(message: String) {

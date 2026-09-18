@@ -2,9 +2,10 @@
 set -euo pipefail
 
 ARCH="${1:-both}"
-LIBS_DIR="Libs"
+LIBS_DIR="${LIBS_DIR:-Libs}"
 OUT_DIR="$LIBS_DIR/dylibs"
-MIN_MACOS="14.0"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
+MIN_MACOS="$DEPLOY_TARGET"
 
 mkdir -p "$OUT_DIR"
 

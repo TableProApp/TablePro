@@ -1,0 +1,4 @@
+{
+  "$comment": "Per-release flags read by .github/workflows/build.yml. criticalUpdate marks the release as one Sparkle may interrupt a user about, which bypasses phased rollout, hides Skip and Remind Me Later, and reaches a user who has already downloaded it sooner. The bar for setting it is written in .claude/skills/release/SKILL.md and docs/development/releasing.mdx: data loss, an exposed security issue, a crash or hang on a common path, or a regression with no workaround. Set it in the release commit and set it back in the next one. The release job fails if it is true and this file did not change since the previous tag, which is what a leftover flag looks like.",
+  "criticalUpdate": false
+}

@@ -70,8 +70,10 @@ struct DatabaseTypeCassandraTests {
     }
 
     @Test("ScyllaDB icon name is cassandra-icon")
+    /// ScyllaDB has its own registry entry and its own asset, so it stopped borrowing Cassandra's
+    /// icon. The shared "Cassandra / ScyllaDB" entry still uses `cassandra-icon`; this one does not.
     func scylladbIconName() {
-        #expect(DatabaseType.scylladb.iconName == "cassandra-icon")
+        #expect(DatabaseType.scylladb.iconName == "scylladb-icon")
     }
 
     @Test("Cassandra is a downloadable plugin")

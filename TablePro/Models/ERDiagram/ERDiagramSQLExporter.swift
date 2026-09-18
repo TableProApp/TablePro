@@ -91,20 +91,11 @@ enum ERDiagramSQLExporter {
         return definition
     }
 
+    /// A column default already holds the SQL that follows `DEFAULT`, so the export writes it out.
+    /// Guessing whether an unquoted token was a literal exported Oracle's `SYSDATE` and `USER`, and
+    /// SQLite's `X'0102'`, as quoted strings that run and store different values.
     private static func formatDefaultValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        let passthroughKeywords: Set<String> = [
-            "NULL", "TRUE", "FALSE",
-            "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()",
-            "CURRENT_DATE", "CURRENT_TIME", "NOW()", "LOCALTIMESTAMP"
-        ]
-        if passthroughKeywords.contains(trimmed.uppercased()) { return trimmed }
-        if trimmed.hasPrefix("'") { return trimmed }
-        if trimmed.contains("(") || trimmed.contains("::") { return trimmed }
-        if Int64(trimmed) != nil { return trimmed }
-        if let number = Double(trimmed), number.isFinite { return trimmed }
-        let escaped = trimmed.replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        value.trimmingCharacters(in: .whitespaces)
     }
 
     private static func inlineForeignKeyClause(

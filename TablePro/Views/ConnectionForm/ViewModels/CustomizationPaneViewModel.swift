@@ -3,17 +3,17 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class CustomizationPaneViewModel {
-    var color: ConnectionColor = .none
-    var tagIds: [UUID] = []
-    var groupId: UUID?
-    var safeModeLevel: SafeModeLevel = .silent
+final class CustomizationPaneViewModel: ObservableObject {
+    @Published var color: ConnectionColor = .none
+    @Published var tagIds: [UUID] = []
+    @Published var groupId: UUID?
+    @Published var safeModeLevel: SafeModeLevel = .silent
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] { [] }
 
@@ -21,6 +21,6 @@ final class CustomizationPaneViewModel {
         color = connection.color
         tagIds = connection.tagIds
         groupId = connection.groupId
-        safeModeLevel = connection.safeModeLevel
+        safeModeLevel = connection.preferredSafeModeLevel
     }
 }

@@ -1,0 +1,53 @@
+//
+//  UserTypeRowView.swift
+//  TablePro
+//
+
+import SwiftUI
+
+enum UserTypeRowLogic {
+    static func accessibilityLabel(for type: UserDefinedTypeInfo) -> String {
+        "\(type.kind.displayName): \(type.name)"
+    }
+
+    /// The row shows the name; what the type is made of goes here, because that is what tells an
+    /// enum from a domain before the reader opens either.
+    static func tooltip(for type: UserDefinedTypeInfo) -> String {
+        var lines = [type.qualifiedName, type.kind.displayName]
+        switch type.kind {
+        case .enumeration where !type.enumLabels.isEmpty:
+            lines.append(type.enumLabels.joined(separator: ", "))
+        case .composite, .tableType:
+            if !type.fields.isEmpty {
+                lines.append(type.fields.map { "\($0.name) \($0.type)" }.joined(separator: ", "))
+            }
+        case .domain, .range, .aliasType:
+            if let baseType = type.baseType, !baseType.isEmpty { lines.append(baseType) }
+        default:
+            break
+        }
+        lines.append(contentsOf: type.attributes.map { "\($0.label): \($0.value)" })
+        return lines.joined(separator: "\n")
+    }
+}
+
+struct UserTypeRowView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    let type: UserDefinedTypeInfo
+
+    var body: some View {
+        Label {
+            Text(type.name)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        } icon: {
+            Image(systemName: type.kind.iconName)
+                .selectionAwareTint(Color.accentColor)
+                .frame(width: 16)
+        }
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(UserTypeRowLogic.accessibilityLabel(for: type))
+        .help(UserTypeRowLogic.tooltip(for: type))
+    }
+}

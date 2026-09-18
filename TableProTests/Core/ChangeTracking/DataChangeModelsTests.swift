@@ -30,14 +30,12 @@ struct DataChangeModelsTests {
     @Test("CellChange stores values correctly")
     func cellChangeStoresValues() {
         let cellChange = CellChange(
-            rowIndex: 5,
             columnIndex: 2,
             columnName: "email",
             oldValue: "old@example.com",
             newValue: "new@example.com"
         )
 
-        #expect(cellChange.rowIndex == 5)
         #expect(cellChange.columnIndex == 2)
         #expect(cellChange.columnName == "email")
         #expect(cellChange.oldValue == "old@example.com")
@@ -47,7 +45,6 @@ struct DataChangeModelsTests {
     @Test("CellChange with nil values")
     func cellChangeNilValues() {
         let cellChange = CellChange(
-            rowIndex: 0,
             columnIndex: 1,
             columnName: "description",
             oldValue: nil,
@@ -61,14 +58,12 @@ struct DataChangeModelsTests {
     @Test("CellChange has unique id")
     func cellChangeUniqueId() {
         let change1 = CellChange(
-            rowIndex: 1,
             columnIndex: 2,
             columnName: "name",
             oldValue: "old",
             newValue: "new"
         )
         let change2 = CellChange(
-            rowIndex: 1,
             columnIndex: 2,
             columnName: "name",
             oldValue: "old",
@@ -82,7 +77,6 @@ struct DataChangeModelsTests {
     @Test("RowChange stores values correctly")
     func rowChangeStoresValues() {
         let cellChange = CellChange(
-            rowIndex: 3,
             columnIndex: 1,
             columnName: "status",
             oldValue: "active",
@@ -90,13 +84,13 @@ struct DataChangeModelsTests {
         )
 
         let rowChange = RowChange(
-            rowIndex: 3,
+            rowID: .existing(3),
             type: .update,
             cellChanges: [cellChange],
             originalRow: ["1", "active", "user@example.com"]
         )
 
-        #expect(rowChange.rowIndex == 3)
+        #expect(rowChange.rowID == .existing(3))
         #expect(rowChange.type == .update)
         #expect(rowChange.cellChanges.count == 1)
         #expect(rowChange.cellChanges[0] == cellChange)
@@ -106,7 +100,7 @@ struct DataChangeModelsTests {
     @Test("RowChange with empty cellChanges")
     func rowChangeEmptyCellChanges() {
         let rowChange = RowChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             type: .insert,
             cellChanges: [],
             originalRow: nil
@@ -122,8 +116,8 @@ struct DataChangeModelsTests {
         let pending = TabChangeSnapshot()
 
         #expect(pending.changes.isEmpty)
-        #expect(pending.deletedRowIndices.isEmpty)
-        #expect(pending.insertedRowIndices.isEmpty)
+        #expect(pending.deletedRowIDs.isEmpty)
+        #expect(pending.insertedRowIDs.isEmpty)
         #expect(pending.modifiedCells.isEmpty)
         #expect(pending.insertedRowData.isEmpty)
         #expect(pending.primaryKeyColumns.isEmpty)
@@ -140,7 +134,7 @@ struct DataChangeModelsTests {
     @Test("TabChangeSnapshot hasChanges is true with changes")
     func tabPendingChangesHasChangesWithChanges() {
         let rowChange = RowChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             type: .update
         )
 
@@ -150,18 +144,18 @@ struct DataChangeModelsTests {
         #expect(pending.hasChanges)
     }
 
-    @Test("TabChangeSnapshot hasChanges is true with deletedRowIndices")
+    @Test("TabChangeSnapshot hasChanges is true with deletedRowIDs")
     func tabPendingChangesHasChangesWithDeleted() {
         var pending = TabChangeSnapshot()
-        pending.deletedRowIndices = [1, 2, 3]
+        pending.deletedRowIDs = [.existing(1), .existing(2), .existing(3)]
 
         #expect(pending.hasChanges)
     }
 
-    @Test("TabChangeSnapshot hasChanges is true with insertedRowIndices")
+    @Test("TabChangeSnapshot hasChanges is true with insertedRowIDs")
     func tabPendingChangesHasChangesWithInserted() {
         var pending = TabChangeSnapshot()
-        pending.insertedRowIndices = [0, 1]
+        pending.insertedRowIDs = [.inserted(UUID()), .inserted(UUID())]
 
         #expect(pending.hasChanges)
     }

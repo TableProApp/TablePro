@@ -1,0 +1,132 @@
+---
+title: Weaviate
+description: Connect to Weaviate, browse collections, edit objects by uuid, and run GraphQL
+---
+
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+Collections are tables, objects are rows, and `uuid` is the primary key. The editor speaks GraphQL, not SQL. Vector and hybrid search go through `/v1/graphql`. Browse and row edits use `/v1/objects`.
+
+<RegistryPlugin name="Weaviate" plugin="Weaviate Driver" />
+
+## Quick setup
+
+Click **New Connection…**, select **Weaviate**, enter host and port, pick an **Auth Method**, then click **Save & Connect**.
+
+There is no Database field. One connection reaches one Weaviate instance, and its collections are the objects.
+
+## Connection settings
+
+| Field | Description |
+|-------|-------------|
+| **Host** | Node hostname. `localhost` for Docker, a Weaviate Cloud hostname for hosted clusters |
+| **Port** | `8080` by default. Weaviate Cloud answers on `443` |
+| **Auth Method** | None, or API Key |
+| **API Key** | Sent as an `Authorization: Bearer` header, and only when **Auth Method** is API Key |
+| **Skip TLS Verification** | Advanced section. Trusts any certificate, even under **Verify CA** or **Verify Identity** |
+
+## Authentication
+
+| Auth Method | What is sent |
+|-------------|--------------|
+| **None** | Nothing. For a local node with anonymous access |
+| **API Key** | An `Authorization: Bearer` header. Paste the Weaviate Cloud key, or the key the local node was started with |
+
+Weaviate Cloud requires an API key and HTTPS. Set **SSL Mode** to **Required** (or **Verify Identity** if you have the CA) and **Auth Method** to API Key.
+
+## Browsing collections
+
+The sidebar lists collections from `GET /v1/schema`.
+
+Every grid has `uuid` first and `vector` last. `uuid` is the primary key. Both columns are read-only. Property columns come from the collection schema. Arrays and objects render as JSON in the cell.
+
+A vector is shown as a JSON number array. It is not a SQL BLOB and the inline editor does not write it back.
+
+Unfiltered pages load through `GET /v1/objects`. A column filter or a sort becomes a GraphQL `Get` with `where` and `sort`.
+
+## Filtering
+
+Filter values are typed from the collection schema: an `int` property filters as a number, a `date` property needs a full RFC 3339 timestamp such as `2024-01-31T00:00:00Z`, and an array property filters on one element.
+
+| Operators | What Weaviate runs |
+|----------|--------------------|
+| equals, not equals | `Equal`, `NotEqual` |
+| greater than, greater or equal, less than, less or equal | Numbers and dates only |
+| contains, not contains, starts with, ends with | `Like` with `*` wildcards, text properties only |
+| in list, not in list | `ContainsAny`, `ContainsNone` over a comma-separated list |
+| between | Two bounds, both inclusive |
+| is NULL, is not NULL | `IsNull`, which needs `indexNullState` on the collection |
+| is empty, is not empty | `len()`, which needs `indexPropertyLength` on the collection |
+
+**REGEX** has no Weaviate equivalent, and a filter Weaviate cannot run reports why instead of returning the whole collection.
+
+Grid edits are REST calls keyed by `uuid`.
+
+| Change | Request |
+|--------|---------|
+| New row | `POST /v1/objects`, with an `id` if you typed one |
+| Edited cells | `PATCH /v1/objects/{uuid}?class=Collection` |
+| Deleted row | `DELETE /v1/objects/{uuid}?class=Collection` |
+
+An update or delete with no `uuid` is skipped and logged.
+
+## GraphQL editor
+
+Type a GraphQL operation and run it. Weaviate's GraphQL API reads only: `{ Get { … } }` and `query { … }` work, and there is no mutation type. Writes go through REST.
+
+```graphql
+{
+  Get {
+    Article(
+      nearText: { concepts: ["search term"] }
+      limit: 10
+    ) {
+      title
+      _additional { id distance }
+    }
+  }
+}
+```
+
+`Get` responses render as a grid of the fields the query selected, with `_additional.id` mapped to `uuid`. The rest of `_additional`, such as `distance` and `score`, each become a column. Anything else, including `Aggregate`, is shown as formatted JSON.
+
+A REST line also runs, the way the other search drivers do:
+
+```http
+GET /v1/schema
+```
+
+A path without `/v1` gets it, so `GET /nodes` reaches `/v1/nodes`. A body goes on the same line as the path or on the lines under it.
+
+## SSL/TLS
+
+New connections start on **Disabled**, plain HTTP. Every other mode goes over HTTPS. **Preferred** and **Required (skip verify)** accept a self-signed certificate. See [SSL/TLS](/connections/ssl).
+
+## Limitations
+
+- Oracle-style SQL is not available. Use GraphQL, or the REST console for `/v1/schema` and `/v1/objects`.
+- gRPC is not used.
+- Cross-references are properties, not foreign keys. There are no routines, triggers, or schema edits from Structure.
+- Multi-tenancy is not exposed. Name a tenant in GraphQL if the collection requires one.
+- Paging stops at row 10,000. Weaviate refuses an offset and limit that add up past `QUERY_MAXIMUM_RESULTS`, which defaults to 10,000.
+- No [SSH tunnel](/connections/ssh-tunneling).
+- The plugin is registry-only. It is not on iPhone or iPad.
+
+## Troubleshooting
+
+### Authentication failed: …
+
+The API key was rejected, or the node expects a key and **Auth Method** is None. Weaviate Cloud needs both HTTPS and an API key.
+
+### The connection drops after the API key changes
+
+A revoked or rotated key fails the next health check, because the check reads `/v1/meta` rather than the unauthenticated readiness endpoint. Paste the new key and connect again.
+
+### Connection failed: …
+
+A TLS or network failure. For a self-signed certificate set **SSL Mode** to **Required (skip verify)**, or turn on **Skip TLS Verification**.
+
+## Related
+
+- [Import & Export](/features/import-export)
+- [Filtering](/features/filtering)

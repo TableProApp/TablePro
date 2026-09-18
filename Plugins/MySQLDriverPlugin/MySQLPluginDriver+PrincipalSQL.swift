@@ -8,38 +8,18 @@ import TableProPluginKit
 
 extension MySQLPluginDriver {
     func generateCreatePrincipalSQL(definition: PluginPrincipalDefinition) -> [String]? {
-        let account = grantAccount(definition.ref)
-        var statement = "CREATE USER \(account)"
-
-        if let password = definition.password, !password.isEmpty {
-            statement += " IDENTIFIED BY '\(escapeStringLiteral(password))'"
-        }
-        if let limit = definition.connectionLimit {
-            statement += " WITH MAX_USER_CONNECTIONS \(limit)"
-        }
-        return [statement]
+        accountStatements.create(definition)
     }
 
     func generateAlterPrincipalSQL(
         old: PluginPrincipalDefinition,
         new: PluginPrincipalDefinition
     ) -> [String]? {
-        var statements: [String] = []
-        let account = grantAccount(old.ref)
-
-        if old.connectionLimit != new.connectionLimit {
-            statements.append(
-                "ALTER USER \(account) WITH MAX_USER_CONNECTIONS \(new.connectionLimit ?? 0)"
-            )
-        }
-        if old.ref != new.ref {
-            statements.append("RENAME USER \(account) TO \(grantAccount(new.ref))")
-        }
-        return statements
+        accountStatements.alter(old: old, new: new)
     }
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
-        ["ALTER USER \(grantAccount(principal)) IDENTIFIED BY '\(escapeStringLiteral(password))'"]
+        accountStatements.setPassword(password, for: principal)
     }
 
     func generateDropPrincipalSQL(
@@ -55,6 +35,15 @@ extension MySQLPluginDriver {
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
         grantBuilder(for: changeSet.principal).revokeStatements(changeSet.grantsToRemove)
+    }
+
+    private var accountStatements: MySQLAccountStatements {
+        let identity = serverIdentity
+        return MySQLAccountStatements(
+            syntax: MySQLServerVersion.accountSyntax(banner: identity.banner, flavor: identity.flavor),
+            account: { self.grantAccount($0) },
+            literal: { self.escapeStringLiteral($0) }
+        )
     }
 
     private func grantBuilder(for principal: PluginPrincipalRef) -> PluginGrantSQLBuilder {

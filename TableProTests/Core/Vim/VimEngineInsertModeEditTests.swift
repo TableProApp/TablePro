@@ -3,8 +3,8 @@
 //  TableProTests
 //
 //  Spec for editing shortcuts available inside Insert mode: Ctrl+W (delete previous
-//  word), Ctrl+U (delete to line start), Ctrl+H (backspace), Ctrl+T (indent), Ctrl+D
-//  (outdent), Ctrl+J (newline), Ctrl+M (carriage return → newline).
+//  word), Ctrl+U (delete to line start), Ctrl+T (indent), Ctrl+D (outdent). Ctrl+H is
+//  left to the text view, whose deleteBackward it is.
 //
 
 import XCTest
@@ -89,11 +89,14 @@ final class VimEngineInsertModeEditTests: XCTestCase {
 
     // MARK: - Ctrl+H: Backspace
 
-    func testCtrlHDeletesPreviousChar() {
+    func testCtrlHIsLeftToTheTextViewBackspace() {
         enterInsert(at: 5)
-        _ = engine.process("\u{08}", shift: false) // Ctrl+H
-        XCTAssertEqual(buffer.text, "hell world\n",
-            "Ctrl+H should delete the char before the cursor")
+        let consumed = engine.process("\u{08}", shift: false) // Ctrl+H
+        XCTAssertFalse(
+            consumed,
+            "Ctrl+H in insert mode is the text view's deleteBackward, which handles selections and every cursor"
+        )
+        XCTAssertEqual(buffer.text, "hello world\n")
     }
 
     // MARK: - Ctrl+T / Ctrl+D: Indent / Outdent

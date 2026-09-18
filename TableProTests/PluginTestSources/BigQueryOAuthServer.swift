@@ -1,1 +1,0 @@
-../../Plugins/BigQueryDriverPlugin/BigQueryOAuthServer.swift

@@ -98,4 +98,29 @@ struct ChatToolArgumentDecoderTests {
         let args: JsonValue = .object(["max_rows": .string("ten")])
         #expect(ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500) == 500)
     }
+
+    @Test("optionalInt falls back instead of trapping on a number wider than Int")
+    func optionalIntOutOfRangeDouble() {
+        let args: JsonValue = .object(["max_rows": .double(1e30)])
+        #expect(ChatToolArgumentDecoder.optionalInt(args, key: "max_rows", default: 500) == 500)
+    }
+
+    @Test("optionalInt falls back instead of trapping on a non-finite number")
+    func optionalIntNonFiniteDouble() {
+        #expect(
+            ChatToolArgumentDecoder.optionalInt(
+                .object(["max_rows": .double(.infinity)]), key: "max_rows", default: 500
+            ) == 500
+        )
+        #expect(
+            ChatToolArgumentDecoder.optionalInt(
+                .object(["max_rows": .double(.nan)]), key: "max_rows", default: 500
+            ) == 500
+        )
+    }
+
+    @Test("optionalInt without a default returns nil when the key is absent")
+    func optionalIntNoDefaultMissingKey() {
+        #expect(ChatToolArgumentDecoder.optionalInt(.object([:]), key: "max_rows") == nil)
+    }
 }

@@ -11,7 +11,7 @@ import os
 internal final class LaunchIntentRouter {
     internal static let shared = LaunchIntentRouter()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LaunchIntentRouter")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LaunchIntentRouter")
 
     private init() {}
 
@@ -21,6 +21,7 @@ internal final class LaunchIntentRouter {
             case .openConnection,
                  .openTable,
                  .openQuery,
+                 .openAgentSession,
                  .openDatabaseURL,
                  .openDatabaseFile,
                  .openSQLFile,
@@ -28,7 +29,7 @@ internal final class LaunchIntentRouter {
                 try await TabRouter.shared.route(intent)
 
             case .openInspectorFile(let url):
-                Self.logger.debug("LaunchIntentRouter.route(.openInspectorFile(\(url.lastPathComponent, privacy: .public)))")
+                Self.logger.debug("LaunchIntentRouter.route(.openInspectorFile(\(url.lastPathComponent, privacy: .private(mask: .hash))))")
                 try await openInspectorDocument(at: url)
 
             case .importConnection(let exportable):
@@ -45,21 +46,24 @@ internal final class LaunchIntentRouter {
 
             case .installPlugin(let url):
                 try await installPlugin(url)
+
+            case .openSampleDatabase:
+                SampleDatabaseLauncher.open()
             }
         } catch let error as TabRouterError where error == .userCancelled {
             Self.logger.info("Intent cancelled by user")
-        } catch let error as MCPDataLayerError where error.isUserCancelled {
+        } catch let error as DatabaseAccessError where error.isUserCancelled {
             Self.logger.info("Pairing cancelled by user")
         } catch is CancellationError {
             Self.logger.info("Intent cancelled")
         } catch {
-            Self.logger.error("Intent failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Intent failed: \(error.publicLogShape, privacy: .public)")
             await presentError(error, for: intent)
         }
     }
 
     private func openInspectorDocument(at url: URL) async throws {
-        Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .public)")
+        Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .private(mask: .hash))")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, alreadyOpen, error in
                 Self.logger.debug("LaunchIntentRouter.openInspectorDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.localizedDescription ?? "nil", privacy: .public)")
@@ -68,7 +72,7 @@ internal final class LaunchIntentRouter {
                     return
                 }
                 if document == nil {
-                    Self.logger.warning("NSDocumentController returned no document for \(url.lastPathComponent, privacy: .public)")
+                    Self.logger.warning("NSDocumentController returned no document for \(url.lastPathComponent, privacy: .private(mask: .hash))")
                 }
                 continuation.resume()
             }
@@ -81,21 +85,72 @@ internal final class LaunchIntentRouter {
         WindowOpener.shared.openSettings(tab: .plugins)
     }
 
+    private func presentRecoverableError(_ error: Error, for intent: LaunchIntent, title: String) -> Bool {
+        guard let connectionId = Self.connectionId(for: intent),
+              let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }),
+              let action = ConnectionFailureClassifier.recoveryAction(for: error)
+        else { return false }
+        let info = ConnectionFailureClassifier.info(for: error)
+        AlertHelper.showRecoverableErrorSheet(
+            title: title,
+            message: [info.message, info.failureReason].compactMap { $0 }.joined(separator: "\n\n"),
+            recoverySuggestion: info.recoverySuggestion,
+            recoveryTitle: action.title,
+            window: NSApp.keyWindow
+        ) {
+            ConnectionRecoveryPerformer.perform(action, for: connection) {
+                Task { await LaunchIntentRouter.shared.route(intent) }
+            }
+        }
+        return true
+    }
+
+    private static func connectionId(for intent: LaunchIntent) -> UUID? {
+        switch intent {
+        case .openConnection(let id):
+            return id
+        case .openTable(let id, _, _, _, _):
+            return id
+        case .openQuery(let id, _):
+            return id
+        case .reopenClosedTab(let entry):
+            return entry.connectionId
+        default:
+            return nil
+        }
+    }
+
+    internal static func failedConnectionId(for intent: LaunchIntent, error: Error) -> UUID? {
+        connectionId(for: intent) ?? (error as? TabRouterError)?.windowConnectionId
+    }
+
     private func presentError(_ error: Error, for intent: LaunchIntent) async {
+        if let connectionId = Self.failedConnectionId(for: intent, error: error),
+           WindowManager.shared.hasOpenWindow(for: connectionId) {
+            Self.logger.info(
+                "Failure already shown in the connection window connId=\(connectionId, privacy: .public)"
+            )
+            return
+        }
+
         let title: String
         switch intent {
         case .pairIntegration:
             title = String(localized: "Pairing Failed")
         case .installPlugin:
             title = String(localized: "Plugin Installation Failed")
-        case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile,
-             .reopenClosedTab:
+        /// `openSampleDatabase` presents its own failure through `SampleDatabaseLauncher` and never
+        /// throws out of `route`, so this arm exists to keep the switch exhaustive rather than to
+        /// be reached. Grouped with the connection cases because that is what it opens.
+        case .openConnection, .openTable, .openQuery, .openAgentSession, .openDatabaseURL,
+             .openDatabaseFile, .reopenClosedTab, .openSampleDatabase:
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openInspectorFile:
             title = String(localized: "Could Not Open File")
         case .importConnection, .openConnectionShare, .startMCPServer:
             title = String(localized: "Action Failed")
         }
+        if presentRecoverableError(error, for: intent, title: title) { return }
         AlertHelper.showErrorSheet(
             title: title,
             message: error.localizedDescription,
@@ -111,6 +166,7 @@ extension TabRouterError: Equatable {
         case (.connectionNotFound(let l), .connectionNotFound(let r)): return l == r
         case (.malformedDatabaseURL(let l), .malformedDatabaseURL(let r)): return l == r
         case (.unsupportedIntent(let l), .unsupportedIntent(let r)): return l == r
+        case (.connectFailedInWindow(let l, _), .connectFailedInWindow(let r, _)): return l == r
         default: return false
         }
     }

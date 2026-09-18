@@ -14,21 +14,18 @@ enum ChangeType: Hashable {
 
 struct CellChange: Identifiable, Equatable {
     let id: UUID
-    let rowIndex: Int
     let columnIndex: Int
     let columnName: String
     let oldValue: PluginCellValue
     let newValue: PluginCellValue
 
     init(
-        rowIndex: Int,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
         newValue: PluginCellValue
     ) {
         self.id = UUID()
-        self.rowIndex = rowIndex
         self.columnIndex = columnIndex
         self.columnName = columnName
         self.oldValue = oldValue
@@ -38,41 +35,56 @@ struct CellChange: Identifiable, Equatable {
 
 struct RowChange: Identifiable, Equatable {
     let id: UUID
-    var rowIndex: Int
+    let rowID: RowID
     let type: ChangeType
     var cellChanges: [CellChange]
     let originalRow: [PluginCellValue]?
 
+    /// The order the user made this change in.
+    ///
+    /// Not the array position. `PendingChanges` removes a cancelled change by swapping the last
+    /// element into its slot, so array order stops matching edit order the first time anything is
+    /// undone. Statement generation has to know which change came first, because deleting a row
+    /// and reusing its unique value in a new one only works in that order.
+    var sequence: Int
+
     init(
-        rowIndex: Int,
+        rowID: RowID,
         type: ChangeType,
         cellChanges: [CellChange] = [],
-        originalRow: [PluginCellValue]? = nil
+        originalRow: [PluginCellValue]? = nil,
+        sequence: Int = 0
     ) {
         self.id = UUID()
-        self.rowIndex = rowIndex
+        self.rowID = rowID
         self.type = type
         self.cellChanges = cellChanges
         self.originalRow = originalRow
+        self.sequence = sequence
     }
 }
 
 struct RowChangeKey: Hashable {
-    let rowIndex: Int
+    let rowID: RowID
     let type: ChangeType
+}
+
+struct InsertedRowLocation {
+    let rowID: RowID
+    let storageIndex: Int
 }
 
 enum UndoAction {
     case cellEdit(
-            rowIndex: Int,
+            rowID: RowID,
             columnIndex: Int,
             columnName: String,
             previousValue: PluginCellValue,
             newValue: PluginCellValue,
             originalRow: [PluginCellValue]?
          )
-    case rowInsertion(rowIndex: Int)
-    case rowDeletion(rowIndex: Int, originalRow: [PluginCellValue])
-    case batchRowDeletion(rows: [(rowIndex: Int, originalRow: [PluginCellValue])])
-    case batchRowInsertion(rowIndices: [Int], rowValues: [[PluginCellValue]])
+    case rowInsertion(rowID: RowID)
+    case rowDeletion(rowID: RowID, originalRow: [PluginCellValue])
+    case batchRowDeletion(rows: [(rowID: RowID, originalRow: [PluginCellValue])])
+    case batchRowInsertion(rows: [InsertedRowLocation], rowValues: [[PluginCellValue]])
 }

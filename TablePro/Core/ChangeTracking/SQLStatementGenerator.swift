@@ -11,9 +11,16 @@ import os
 import TableProPluginKit
 
 /// A parameterized SQL statement with placeholders and bound values
-struct ParameterizedStatement {
+struct ParameterizedStatement: @unchecked Sendable {
     let sql: String
     let parameters: [Any?]
+}
+
+/// A statement plus the number of rows it is meant to touch, so a caller can hold the server to it.
+struct AttributedStatement: @unchecked Sendable {
+    let statement: ParameterizedStatement
+    let kind: RowWriteKind
+    let rowCount: Int
 }
 
 /// Generates SQL statements from data changes
@@ -21,24 +28,39 @@ struct SQLStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLStatementGenerator")
 
     let tableName: String
+    /// Written into every statement when set, so a generator can address a table outside whatever
+    /// schema the connection happens to be on. A grid edit leaves it nil and keeps the unqualified
+    /// name it has always produced; a copy between two databases sets it, because the table it
+    /// writes is not the one the driver is pointed at.
+    let schemaName: String?
     let columns: [String]
     let primaryKeyColumns: [String]
+    /// Server-computed columns. They reject any written value, so they are
+    /// dropped from every INSERT and UPDATE this generator produces.
+    let generatedColumns: Set<String>
+    let rowMatchPolicy: RowMatchPolicy
     let databaseType: DatabaseType
     let parameterStyle: ParameterStyle
     private let quoteIdentifierFn: (String) -> String
 
     init(
         tableName: String,
+        schemaName: String? = nil,
         columns: [String],
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
+        generatedColumns: Set<String> = [],
+        rowMatchPolicy: RowMatchPolicy = .none,
         parameterStyle: ParameterStyle? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws {
         self.tableName = tableName
+        self.schemaName = SchemaQualifiedName.explicitSchema(schemaName, databaseType: databaseType)
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
+        self.generatedColumns = generatedColumns
+        self.rowMatchPolicy = rowMatchPolicy
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         if let quoteIdentifier {
@@ -49,8 +71,15 @@ struct SQLStatementGenerator {
         }
     }
 
+    /// The table as every statement spells it.
+    var qualifiedTableName: String {
+        SchemaQualifiedName.render(
+            name: tableName, schema: schemaName, databaseType: databaseType, quote: quoteIdentifierFn
+        )
+    }
+
     private static func defaultParameterStyle(for databaseType: DatabaseType) -> ParameterStyle {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.parameterStyle ?? .questionMark
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
     }
 
     // MARK: - Public API
@@ -59,54 +88,69 @@ struct SQLStatementGenerator {
     /// - Parameters:
     ///   - changes: Array of row changes to process
     ///   - insertedRowData: Lazy storage for inserted row values
-    ///   - deletedRowIndices: Set of deleted row indices for validation
-    ///   - insertedRowIndices: Set of inserted row indices for validation
+    ///   - deletedRowIDs: Rows still marked as deleted
+    ///   - insertedRowIDs: Rows still marked as inserted
     /// - Returns: Array of parameterized SQL statements
     func generateStatements(
         from changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
     ) -> [ParameterizedStatement] {
-        var statements: [ParameterizedStatement] = []
+        generateAttributedStatements(
+            from: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
+        ).map(\.statement)
+    }
 
-        // Collect UPDATE and DELETE changes to batch them
-        var updateChanges: [RowChange] = []
-        var deleteChanges: [RowChange] = []
+    /// The same statements, each carrying how many rows it is meant to touch.
+    ///
+    /// Emitted in the order the user made the changes, because that order can be load-bearing: a
+    /// row deleted to free a unique value, and a new row taking that value, only work if the
+    /// DELETE runs first. Grouping every INSERT ahead of every DELETE, which is what this used to
+    /// do, turned that save into a constraint violation and rolled the whole thing back.
+    ///
+    /// Deletes still batch, but only across a consecutive run of them. That keeps the case that
+    /// matters, selecting many rows and pressing Delete, on one statement, while a delete
+    /// separated from another delete by an insert stays on its own side of it.
+    func generateAttributedStatements(
+        from changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
+    ) -> [AttributedStatement] {
+        var statements: [AttributedStatement] = []
+        var deleteRun: [RowChange] = []
 
-        for change in changes {
+        func flushDeleteRun() {
+            guard !deleteRun.isEmpty else { return }
+            statements.append(contentsOf: generateDeleteStatements(for: deleteRun))
+            deleteRun.removeAll(keepingCapacity: true)
+        }
+
+        for change in changes.sorted(by: { $0.sequence < $1.sequence }) {
             switch change.type {
             case .update:
-                updateChanges.append(change)
+                flushDeleteRun()
+                if let stmt = generateUpdateSQL(for: change) {
+                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowCount: 1))
+                }
             case .insert:
                 // SAFETY: Verify the row is still marked as inserted
-                guard insertedRowIndices.contains(change.rowIndex) else {
-                    continue
-                }
+                guard insertedRowIDs.contains(change.rowID) else { continue }
+                flushDeleteRun()
                 if let stmt = generateInsertSQL(for: change, insertedRowData: insertedRowData) {
-                    statements.append(stmt)
+                    statements.append(AttributedStatement(statement: stmt, kind: .insert, rowCount: 1))
                 }
             case .delete:
                 // SAFETY: Verify the row is still marked as deleted
-                guard deletedRowIndices.contains(change.rowIndex) else {
-                    continue
-                }
-                deleteChanges.append(change)
+                guard deletedRowIDs.contains(change.rowID) else { continue }
+                deleteRun.append(change)
             }
         }
-
-        // Generate individual UPDATE statements (safer than batched CASE/WHEN)
-        if !updateChanges.isEmpty {
-            for change in updateChanges {
-                if let stmt = generateUpdateSQL(for: change) {
-                    statements.append(stmt)
-                }
-            }
-        }
-
-        if !deleteChanges.isEmpty {
-            statements.append(contentsOf: generateDeleteStatements(for: deleteChanges))
-        }
+        flushDeleteRun()
 
         return statements
     }
@@ -122,16 +166,16 @@ struct SQLStatementGenerator {
 
     // MARK: - INSERT Generation
 
-    private func generateInsertSQL(for change: RowChange, insertedRowData: [Int: [PluginCellValue]])
+    private func generateInsertSQL(for change: RowChange, insertedRowData: [RowID: [PluginCellValue]])
         -> ParameterizedStatement?
     {
-        if let values = insertedRowData[change.rowIndex] {
-            return generateInsertSQLFromStoredData(rowIndex: change.rowIndex, values: values)
+        if let values = insertedRowData[change.rowID] {
+            return generateInsertSQLFromStoredData(values: values)
         }
         return generateInsertSQLFromCellChanges(for: change)
     }
 
-    private func generateInsertSQLFromStoredData(rowIndex: Int, values: [PluginCellValue])
+    private func generateInsertSQLFromStoredData(values: [PluginCellValue])
         -> ParameterizedStatement?
     {
         var nonDefaultColumns: [String] = []
@@ -143,6 +187,7 @@ struct SQLStatementGenerator {
 
             guard index < columns.count else { continue }
             let columnName = columns[index]
+            guard !generatedColumns.contains(columnName) else { continue }
 
             nonDefaultColumns.append(quoteIdentifierFn(columnName))
 
@@ -155,15 +200,42 @@ struct SQLStatementGenerator {
             }
         }
 
-        guard !nonDefaultColumns.isEmpty else { return nil }
+        guard !nonDefaultColumns.isEmpty else { return allDefaultsInsertStatement() }
 
         let columnList = nonDefaultColumns.joined(separator: ", ")
         let placeholders = placeholderParts.joined(separator: ", ")
 
         let sql =
-            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnList)) VALUES (\(placeholders))"
+            "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
+    }
+
+    /// A row whose every column the server fills in names no column at all, which is legal SQL and
+    /// has its own spelling per engine. Returning nothing instead dropped the row from the batch
+    /// while the rest of the save committed and reported success, so a new row in a table of
+    /// nothing but an identity column and defaults vanished without a word.
+    private func allDefaultsInsertStatement() -> ParameterizedStatement? {
+        switch SqlDialect.from(databaseTypeId: databaseType.rawValue) {
+        case .postgres, .sqlite:
+            return ParameterizedStatement(
+                sql: "INSERT INTO \(qualifiedTableName) DEFAULT VALUES", parameters: []
+            )
+        case .mysql:
+            return ParameterizedStatement(
+                sql: "INSERT INTO \(qualifiedTableName) () VALUES ()", parameters: []
+            )
+        default:
+            return defaultKeywordInsertStatement()
+        }
+    }
+
+    private func defaultKeywordInsertStatement() -> ParameterizedStatement? {
+        guard databaseType == .databend,
+              let column = columns.first(where: { !generatedColumns.contains($0) }) else { return nil }
+        return ParameterizedStatement(
+            sql: "INSERT INTO \(qualifiedTableName) (\(quoteIdentifierFn(column))) VALUES (DEFAULT)", parameters: []
+        )
     }
 
     func insertStatement(columns insertColumns: [String], values: [PluginCellValue])
@@ -179,7 +251,7 @@ struct SQLStatementGenerator {
         }.joined(separator: ", ")
 
         let sql =
-            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnList)) VALUES (\(placeholders))"
+            "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
@@ -201,7 +273,7 @@ struct SQLStatementGenerator {
         }.joined(separator: ", ")
 
         let sql =
-            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnList)) VALUES \(rowTuples)"
+            "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES \(rowTuples)"
 
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
@@ -215,14 +287,16 @@ struct SQLStatementGenerator {
     }
 
     func deleteAllRowsStatement() -> String {
-        "DELETE FROM \(quoteIdentifierFn(tableName))"
+        "DELETE FROM \(qualifiedTableName)"
     }
 
     private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?
     {
         guard !change.cellChanges.isEmpty else { return nil }
 
-        let nonDefaultChanges = change.cellChanges.filter { $0.newValue != .text("__DEFAULT__") }
+        let nonDefaultChanges = change.cellChanges.filter {
+            $0.newValue != .text("__DEFAULT__") && !generatedColumns.contains($0.columnName)
+        }
 
         guard !nonDefaultChanges.isEmpty else { return nil }
 
@@ -242,7 +316,7 @@ struct SQLStatementGenerator {
         }.joined(separator: ", ")
 
         let sql =
-            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnNames)) VALUES (\(placeholders))"
+            "INSERT INTO \(qualifiedTableName) (\(columnNames)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: parameters)
     }
@@ -252,8 +326,11 @@ struct SQLStatementGenerator {
     func generateUpdateSQL(for change: RowChange) -> ParameterizedStatement? {
         guard !change.cellChanges.isEmpty else { return nil }
 
+        let writableChanges = change.cellChanges.filter { !generatedColumns.contains($0.columnName) }
+        guard !writableChanges.isEmpty else { return nil }
+
         var parameters: [Any?] = []
-        let setClauses = change.cellChanges.map { cellChange -> String in
+        let setClauses = writableChanges.map { cellChange -> String in
             switch cellChange.newValue {
             case .text(let s) where s == "__DEFAULT__":
                 return "\(quoteIdentifierFn(cellChange.columnName)) = DEFAULT"
@@ -295,7 +372,7 @@ struct SQLStatementGenerator {
 
             let whereClause = conditions.joined(separator: " AND ")
             let sql =
-                "UPDATE \(quoteIdentifierFn(tableName)) SET \(setClauses) WHERE \(whereClause)"
+                "UPDATE \(qualifiedTableName) SET \(setClauses) WHERE \(whereClause)"
             return ParameterizedStatement(sql: sql, parameters: parameters)
         } else {
             guard let originalRow = change.originalRow else {
@@ -307,14 +384,15 @@ struct SQLStatementGenerator {
 
             var conditions: [String] = []
             for (index, columnName) in columns.enumerated() {
-                guard index < originalRow.count else { continue }
+                guard index < originalRow.count,
+                      !rowMatchPolicy.excludedColumns.contains(columnName) else { continue }
                 let value = originalRow[index]
-                let quotedColumn = quoteIdentifierFn(columnName)
+                let matched = rowMatchExpression(for: columnName)
                 if value.isNull {
-                    conditions.append("\(quotedColumn) IS NULL")
+                    conditions.append("\(matched) IS NULL")
                 } else {
                     parameters.append(value.asAny)
-                    conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
+                    conditions.append("\(matched) = \(placeholder(at: parameters.count - 1))")
                 }
             }
 
@@ -322,7 +400,7 @@ struct SQLStatementGenerator {
 
             let whereClause = conditions.joined(separator: " AND ")
             let sql =
-                "UPDATE \(quoteIdentifierFn(tableName)) SET \(setClauses) WHERE \(whereClause)"
+                "UPDATE \(qualifiedTableName) SET \(setClauses) WHERE \(whereClause)"
 
             return ParameterizedStatement(sql: sql, parameters: parameters)
         }
@@ -335,18 +413,26 @@ struct SQLStatementGenerator {
         let boundValue: PluginCellValue?
     }
 
-    private func generateDeleteStatements(for changes: [RowChange]) -> [ParameterizedStatement] {
+    private func generateDeleteStatements(for changes: [RowChange]) -> [AttributedStatement] {
         let rowMatches = changes.compactMap { deleteRowMatches(for: $0) }
         guard !rowMatches.isEmpty else { return [] }
 
-        var statements: [ParameterizedStatement] = []
+        var statements: [AttributedStatement] = []
         var chunk: [[DeleteColumnMatch]] = []
         var chunkParameterCount = 0
 
+        func flush() {
+            statements.append(
+                AttributedStatement(statement: deleteStatement(for: chunk), kind: .delete, rowCount: chunk.count)
+            )
+        }
+
+        let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchPolicy.excludedColumns.isEmpty
         for matches in rowMatches {
             let rowParameterCount = matches.count(where: { $0.boundValue != nil })
-            if !chunk.isEmpty, chunkParameterCount + rowParameterCount > maxBindParameters {
-                statements.append(deleteStatement(for: chunk))
+            if !chunk.isEmpty,
+               matchesOneRowPerStatement || chunkParameterCount + rowParameterCount > maxBindParameters {
+                flush()
                 chunk = []
                 chunkParameterCount = 0
             }
@@ -355,7 +441,7 @@ struct SQLStatementGenerator {
         }
 
         if !chunk.isEmpty {
-            statements.append(deleteStatement(for: chunk))
+            flush()
         }
 
         return statements
@@ -379,7 +465,8 @@ struct SQLStatementGenerator {
 
         var matches: [DeleteColumnMatch] = []
         for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
+            guard index < originalRow.count,
+                  !rowMatchPolicy.excludedColumns.contains(columnName) else { continue }
             let value = originalRow[index]
             if value.isNull {
                 matches.append(DeleteColumnMatch(column: columnName, boundValue: nil))
@@ -394,22 +481,36 @@ struct SQLStatementGenerator {
         var parameters: [Any?] = []
         let rowClauses = rows.map { matches -> String in
             let conditions = matches.map { match -> String in
+                let matched = rowMatchExpression(for: match.column)
                 guard let value = match.boundValue else {
-                    return "\(quoteIdentifierFn(match.column)) IS NULL"
+                    return "\(matched) IS NULL"
                 }
                 parameters.append(value.asAny)
-                return "\(quoteIdentifierFn(match.column)) = \(placeholder(at: parameters.count - 1))"
+                return "\(matched) = \(placeholder(at: parameters.count - 1))"
             }
             let joined = conditions.joined(separator: " AND ")
             return matches.count > 1 ? "(\(joined))" : joined
         }
 
         let whereClause = rowClauses.joined(separator: " OR ")
-        let sql = "DELETE FROM \(quoteIdentifierFn(tableName)) WHERE \(whereClause)"
+        let sql = "DELETE FROM \(qualifiedTableName) WHERE \(whereClause)"
         return ParameterizedStatement(sql: sql, parameters: parameters)
     }
 
     // MARK: - Helper Functions
+
+    /// What a keyless row match compares against for one column.
+    ///
+    /// A keyed match never reaches here: it compares the primary key, which is the one thing the
+    /// engine guarantees round-trips. For a keyless match the app has only the text the grid read,
+    /// and on the types the policy lists that text does not compare equal to the value it came
+    /// from, so the server is asked to render the column the same way before comparing. `CONCAT`
+    /// is what MySQL spells that; only MySQL-family engines list any such type today.
+    private func rowMatchExpression(for column: String) -> String {
+        let quoted = quoteIdentifierFn(column)
+        guard rowMatchPolicy.textColumns.contains(column) else { return quoted }
+        return "CONCAT(\(quoted))"
+    }
 
     /// Check if a string is a SQL function expression that should not be quoted
     private func isSQLFunctionExpression(_ value: String) -> Bool {

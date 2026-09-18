@@ -1,20 +1,26 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Build DataStax C/C++ driver (cassandra-cpp-driver) static library for TablePro
 # Usage: ./scripts/build-cassandra.sh [arm64|x86_64|both]
 #
 # Dependencies: cmake, libuv (built automatically), OpenSSL (from Libs/)
+#
+# Always rebuilds. It used to skip any artifact already present in Libs/, but download-libs.sh
+# vendors all eight of them, so the guards were satisfied on every machine and the script did
+# nothing: a CASSANDRA_VERSION bump produced no new binary. Publish the result with
+# scripts/publish-libs.sh, which is what makes it the version everyone else gets.
 
 CASSANDRA_VERSION="2.17.1"
 CASSANDRA_SHA256="e6ab5f5c60a916dd6c0dd9a19a883a4a1ab3d6b4e95cab925a186fecff08344e"
 LIBUV_VERSION="1.48.0"
 LIBUV_SHA256="7f1db8ac368d89d1baf163bac1ea5fe5120697a73910c8ae6b2fffb3551d59fb"
 BUILD_DIR="/tmp/cassandra-build"
-LIBS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Libs"
+LIBS_DIR="${LIBS_DIR:-$(cd "$(dirname "$0")/.." && pwd)/Libs}"
 HEADERS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Plugins/CassandraDriverPlugin/CCassandra/include"
 ARCH="${1:-both}"
-MACOS_TARGET="14.0"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
+MACOS_TARGET="$DEPLOY_TARGET"
 
 echo "Building DataStax Cassandra C driver $CASSANDRA_VERSION..."
 
@@ -26,11 +32,6 @@ mkdir -p "$HEADERS_DIR"
 build_libuv() {
     local arch=$1
     local uv_build_dir="$BUILD_DIR/libuv-build-${arch}"
-
-    if [ -f "$LIBS_DIR/libuv_${arch}.a" ]; then
-        echo "✅ libuv_${arch}.a already exists, skipping"
-        return 0
-    fi
 
     echo "📦 Building libuv $LIBUV_VERSION for $arch..."
     cd "$BUILD_DIR"
@@ -64,11 +65,6 @@ build_libuv() {
 build_cassandra() {
     local arch=$1
     local cass_build_dir="$BUILD_DIR/cassandra-build-${arch}"
-
-    if [ -f "$LIBS_DIR/libcassandra_${arch}.a" ]; then
-        echo "✅ libcassandra_${arch}.a already exists, skipping"
-        return 0
-    fi
 
     echo "📦 Building cassandra-cpp-driver $CASSANDRA_VERSION for $arch..."
     cd "$BUILD_DIR"
@@ -112,11 +108,6 @@ build_cassandra() {
 # --- Copy headers ---
 copy_headers() {
     echo "📋 Copying cassandra.h header..."
-
-    if [ -f "$HEADERS_DIR/cassandra.h" ]; then
-        echo "✅ cassandra.h already exists, skipping"
-        return 0
-    fi
 
     cd "$BUILD_DIR"
 

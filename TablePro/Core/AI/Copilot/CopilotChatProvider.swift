@@ -6,20 +6,37 @@
 import Foundation
 import os
 
-final class CopilotChatProvider: ChatTransport {
+final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotChatProvider")
 
-    private var conversationId: String?
-    private var turnIds: [String] = []
+    /// Copilot conversation state, per agent session.
+    ///
+    /// `AIProviderFactory` caches one provider per configuration, so this used to be one slot shared
+    /// by every session on that configuration: two sessions appended their turns to a single
+    /// server-side conversation and each was answered with the other's context, across connections
+    /// included, while their local transcripts stayed correctly separate. Serialising the turns does
+    /// not help, because that never changes what the provider points at.
+    private struct CopilotConversationState {
+        var conversationId: String?
+        var turnIds: [String] = []
+        var lastChatMode: String?
+    }
+
+    private var conversations: [UUID: CopilotConversationState] = [:]
     private let progressHandlers = OSAllocatedUnfairLock(
         initialState: [String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]()
     )
     private var isProgressHandlerRegistered = false
     private var isInvokeClientToolHandlerRegistered = false
     private var registeredToolNames: Set<String> = []
-    private var lastChatMode: String?
-    private let activeStream = OSAllocatedUnfairLock<(UUID, AsyncThrowingStream<ChatStreamEvent, Error>.Continuation)?>(
-        initialState: nil
+    /// One continuation per Copilot conversation.
+    ///
+    /// A single slot meant the most recently started stream owned every tool invocation, so with
+    /// two sessions on one configuration a tool request raised by session A was delivered to session
+    /// B and executed against B's database. `invokeClientTool` names its conversation; that is what
+    /// it is routed by.
+    private let streamsByConversation = OSAllocatedUnfairLock<[String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]>(
+        initialState: [:]
     )
 
     func streamChat(
@@ -27,18 +44,14 @@ final class CopilotChatProvider: ChatTransport {
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            let sessionId = UUID()
-            continuation.onTermination = { [weak self] _ in
-                self?.activeStream.withLock { current in
-                    if current?.0 == sessionId { current = nil }
-                }
-            }
+            let agentSessionId = options.sessionId
+            let token = "copilot-chat-\(UUID().uuidString)"
+            let registeredConversation = OSAllocatedUnfairLock<String?>(initialState: nil)
             let task = Task { @MainActor [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
                 }
-                let token = "copilot-chat-\(UUID().uuidString)"
                 do {
                     guard let client = CopilotService.shared.client else {
                         throw CopilotError.serverNotRunning
@@ -53,25 +66,26 @@ final class CopilotChatProvider: ChatTransport {
                     await self.ensureInvokeClientToolHandler()
                     await self.ensureToolsRegistered(tools: options.tools)
 
+                    var state = self.conversations[agentSessionId] ?? CopilotConversationState()
                     let desiredChatMode: String? = (!options.tools.isEmpty && !self.registeredToolNames.isEmpty)
                         ? "Agent" : nil
-                    if self.conversationId != nil, self.lastChatMode != desiredChatMode {
+                    if state.conversationId != nil, state.lastChatMode != desiredChatMode {
                         Self.logger.info(
                             "Copilot chat mode changed; resetting conversation to apply new mode"
                         )
-                        self.conversationId = nil
-                        self.turnIds.removeAll()
+                        state.conversationId = nil
+                        state.turnIds.removeAll()
                     }
-                    self.lastChatMode = desiredChatMode
+                    state.lastChatMode = desiredChatMode
+                    self.conversations[agentSessionId] = state
 
                     self.progressHandlers.withLock { $0[token] = continuation }
-                    self.activeStream.withLock { $0 = (sessionId, continuation) }
 
                     let userMessage = turns.last(where: { $0.role == .user })?.plainText ?? ""
                     let effectiveModel: String? = options.model.isEmpty ? nil : options.model
                     let toolsAvailable = !options.tools.isEmpty && !self.registeredToolNames.isEmpty
 
-                    if self.conversationId == nil {
+                    if state.conversationId == nil {
                         let systemPrefix = options.systemPrompt.map { $0 + "\n\n" } ?? ""
                         let conversationTurns = [CopilotConversationTurn(
                             request: systemPrefix + userMessage,
@@ -93,10 +107,21 @@ final class CopilotChatProvider: ChatTransport {
                             needToolCallConfirmation: toolsAvailable ? false : nil
                         )
                         let result = try await client.conversationCreate(params: params)
-                        self.conversationId = result.conversationId
-                        self.turnIds.append(result.turnId)
+                        state.conversationId = result.conversationId
+                        state.turnIds.append(result.turnId)
+                        self.conversations[agentSessionId] = state
+                        self.registerStream(
+                            continuation,
+                            for: result.conversationId,
+                            recordingInto: registeredConversation
+                        )
                         Self.logger.info("Created Copilot conversation: \(result.conversationId)")
-                    } else if let conversationId = self.conversationId {
+                    } else if let conversationId = state.conversationId {
+                        self.registerStream(
+                            continuation,
+                            for: conversationId,
+                            recordingInto: registeredConversation
+                        )
                         let params = CopilotConversationTurnParams(
                             workDoneToken: token,
                             conversationId: conversationId,
@@ -109,7 +134,8 @@ final class CopilotChatProvider: ChatTransport {
                             needToolCallConfirmation: toolsAvailable ? false : nil
                         )
                         let result = try await client.conversationTurn(params: params)
-                        self.turnIds.append(result.turnId)
+                        state.turnIds.append(result.turnId)
+                        self.conversations[agentSessionId] = state
                     }
                 } catch {
                     self.progressHandlers.withLock { $0.removeValue(forKey: token) }
@@ -117,32 +143,45 @@ final class CopilotChatProvider: ChatTransport {
                 }
             }
 
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 task.cancel()
+                guard let self else { return }
+                self.progressHandlers.withLock { $0.removeValue(forKey: token) }
+                guard let conversationId = registeredConversation.withLock({ $0 }) else { return }
+                self.streamsByConversation.withLock { $0.removeValue(forKey: conversationId) }
             }
         }
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    private func registerStream(
+        _ continuation: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation,
+        for conversationId: String,
+        recordingInto registeredConversation: OSAllocatedUnfairLock<String?>
+    ) {
+        registeredConversation.withLock { $0 = conversationId }
+        streamsByConversation.withLock { $0[conversationId] = continuation }
+    }
+
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
         guard let client = await CopilotService.shared.client else {
             throw CopilotError.serverNotRunning
         }
         let models = try await client.fetchCopilotModels()
         let chatModels = models.filter { $0.scopes?.contains("chat-panel") ?? false }
         let sorted = chatModels.sorted { ($0.isChatDefault ?? false) && !($1.isChatDefault ?? false) }
-        return sorted.map(\.id)
+        return sorted.map { AIModelInfo(id: $0.id, displayName: $0.modelName) }
     }
 
     func testConnection() async throws -> Bool {
         await CopilotService.shared.isAuthenticated
     }
 
-    func resetConversation() {
+    func resetConversation(sessionId: UUID) {
         isProgressHandlerRegistered = false
-        let id = conversationId
-        conversationId = nil
-        turnIds.removeAll()
+        let id = conversations[sessionId]?.conversationId
+        conversations.removeValue(forKey: sessionId)
         guard let id else { return }
+        streamsByConversation.withLock { $0.removeValue(forKey: id) }
         Task { @MainActor in
             guard let client = CopilotService.shared.client else { return }
             try? await client.conversationDestroy(conversationId: id)
@@ -150,8 +189,11 @@ final class CopilotChatProvider: ChatTransport {
         }
     }
 
-    func deleteLastTurn() {
-        guard let conversationId, let turnId = turnIds.popLast() else { return }
+    func deleteLastTurn(sessionId: UUID) {
+        guard var state = conversations[sessionId],
+              let conversationId = state.conversationId,
+              let turnId = state.turnIds.popLast() else { return }
+        conversations[sessionId] = state
         Task { @MainActor in
             guard let client = CopilotService.shared.client else { return }
             try? await client.conversationTurnDelete(conversationId: conversationId, turnId: turnId)
@@ -170,7 +212,7 @@ final class CopilotChatProvider: ChatTransport {
             Self.logger.info("Registered \(info.count) Copilot tools")
         } catch {
             Self.logger.warning(
-                "Copilot tools registration failed (likely older language server): \(error.localizedDescription, privacy: .public)"
+                "Copilot tools registration failed (likely older language server): \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -180,13 +222,13 @@ final class CopilotChatProvider: ChatTransport {
         guard !isInvokeClientToolHandlerRegistered else { return }
         isInvokeClientToolHandlerRegistered = true
         guard let client = CopilotService.shared.client else { return }
-        let activeStream = activeStream
+        let streamsByConversation = streamsByConversation
         await client.onDeferredRequest(method: "conversation/invokeClientTool") { data, requestId in
             Task { @MainActor in
                 await Self.handleInvokeClientTool(
                     data: data,
                     requestId: requestId,
-                    activeStream: activeStream
+                    streamsByConversation: streamsByConversation
                 )
             }
         }
@@ -200,14 +242,14 @@ final class CopilotChatProvider: ChatTransport {
     private static func handleInvokeClientTool(
         data: Data,
         requestId: Int,
-        activeStream: OSAllocatedUnfairLock<(UUID, AsyncThrowingStream<ChatStreamEvent, Error>.Continuation)?>
+        streamsByConversation: OSAllocatedUnfairLock<[String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]>
     ) async {
         let params: CopilotInvokeClientToolParams
         do {
             let envelope = try JSONDecoder().decode(InvokeClientToolEnvelope.self, from: data)
             params = envelope.params
         } catch {
-            Self.logger.error("Failed to decode invokeClientTool params: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode invokeClientTool params: \(error.publicLogShape, privacy: .public)")
             if let raw = String(data: data, encoding: .utf8) {
                 Self.logger.error("Raw invokeClientTool payload: \(raw, privacy: .public)")
             }
@@ -229,8 +271,8 @@ final class CopilotChatProvider: ChatTransport {
             await Self.sendToolReply(requestId: requestId, result: result)
         }
 
-        guard let continuation = activeStream.withLock({ $0?.1 }) else {
-            Self.logger.warning("No active stream continuation for invokeClientTool; cancelling")
+        guard let continuation = streamsByConversation.withLock({ $0[params.conversationId] }) else {
+            Self.logger.warning("No stream for the conversation invokeClientTool named; cancelling")
             await Self.sendErrorReply(requestId: requestId, message: "No active chat session")
             return
         }
@@ -252,7 +294,7 @@ final class CopilotChatProvider: ChatTransport {
         do {
             try await client.sendInvokeClientToolResponse(id: requestId, result: lspResult)
         } catch {
-            Self.logger.error("Failed to reply to invokeClientTool: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to reply to invokeClientTool: \(error.publicLogShape, privacy: .public)")
         }
     }
 

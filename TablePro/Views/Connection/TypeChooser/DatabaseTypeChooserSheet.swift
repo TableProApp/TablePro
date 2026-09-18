@@ -11,7 +11,7 @@ struct DatabaseTypeChooserSheet: View {
     let onImportFromURL: (() -> Void)?
     let onCancel: () -> Void
 
-    @State private var model = DatabaseTypeChooserModel()
+    @StateObject private var model = DatabaseTypeChooserModel()
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -52,8 +52,19 @@ struct DatabaseTypeChooserSheet: View {
 
             Spacer()
 
-            NativeSearchField(text: $model.searchText, placeholder: String(localized: "Search"))
-                .frame(width: 180)
+            /// Arrow keys are handed over by the search field's own `NSSearchFieldDelegate`, which
+            /// is the only route: a focused field editor consumes them as `doCommandBySelector:`
+            /// before `onMoveCommand` or `onKeyPress` can see them, and `searchFocused` is
+            /// macOS 15. `onSubmit` stays unwired, or Return would commit through both the field
+            /// editor and Continue's `.defaultAction`.
+            NativeSearchField(
+                text: $model.searchText,
+                placeholder: String(localized: "Search"),
+                onMoveUp: { model.moveHighlight(by: -1) },
+                onMoveDown: { model.moveHighlight(by: 1) },
+                accessibilityIdentifier: "database-type-chooser-search"
+            )
+            .frame(width: 180)
         }
         .padding(20)
     }
@@ -61,7 +72,7 @@ struct DatabaseTypeChooserSheet: View {
     @ViewBuilder
     private var content: some View {
         if model.groupedTypes.isEmpty {
-            ContentUnavailableView.search(text: model.searchText)
+            UnavailableStateView.search(text: model.searchText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { proxy in
@@ -94,6 +105,10 @@ struct DatabaseTypeChooserSheet: View {
                         proxy.scrollTo(initialType, anchor: .center)
                     }
                 }
+                .onChange(of: model.highlightedType) { highlighted in
+                    guard let highlighted else { return }
+                    proxy.scrollTo(highlighted)
+                }
             }
         }
     }
@@ -105,7 +120,7 @@ struct DatabaseTypeChooserSheet: View {
                     onImportFromURL()
                     dismiss()
                 } label: {
-                    Label(String(localized: "Import from URL..."), systemImage: "link")
+                    Label(String(localized: "Import from URL…"), systemImage: "link")
                 }
                 .help(String(localized: "Paste a connection URL to detect type and pre-fill fields"))
             }
@@ -137,15 +152,21 @@ struct DatabaseTypeChooserSheet: View {
 }
 
 private struct DatabaseTypeChooserRow: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     let type: DatabaseType
     let isCurrent: Bool
 
     var body: some View {
         HStack(spacing: 12) {
+            /// The row's icon is decoration the name already carries, and left unhidden it
+            /// publishes its own element, so VoiceOver reads "Cylinder Shape, Filled" ahead of the
+            /// driver. `Image(decorative:)` cannot cover it, because `DatabaseType.iconImage` also
+            /// returns an SF Symbol.
             type.iconImage
                 .renderingMode(.template)
-                .foregroundStyle(type.brandColor)
+                .foregroundStyle(type.themeColor)
                 .frame(width: 26, height: 26)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(type.rawValue)
@@ -174,6 +195,6 @@ private struct DatabaseTypeChooserRow: View {
     }
 
     private var shouldShowNotInstalledBadge: Bool {
-        type.isDownloadablePlugin && !PluginManager.shared.isDriverInstalled(for: type)
+        type.isDownloadablePlugin && !pluginManager.isDriverInstalled(for: type)
     }
 }

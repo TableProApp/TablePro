@@ -8,9 +8,30 @@ import OSLog
 import TableProPluginKit
 
 extension RedisPluginDriver {
+    /// The one door into an operation, so the paged read and the streamed read cannot disagree about
+    /// a command the server queued.
+    ///
+    /// The translation lives here rather than at the call sites because it was missing from one of
+    /// them: a command routed through `executeBoundedQuery` threw the queued error instead of
+    /// answering `QUEUED`, and nothing recorded it, so `EXEC`'s replies paired with the commands one
+    /// position out.
     func executeOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        do {
+            return try await runOperation(operation, connection: conn, startTime: startTime)
+        } catch let queued as RedisQueuedCommand {
+            guard operation.queuedCommandAnswer == .reportQueued else { throw queued }
+            recordQueued(queued.command)
+            return buildStatusResult(Self.queuedStatus, startTime: startTime)
+        }
+    }
+
+    private func runOperation(
+        _ operation: RedisOperation,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
@@ -21,6 +42,11 @@ extension RedisPluginDriver {
             return try await executeKeyBrowse(
                 pattern: pattern, typeScope: typeScope, limit: limit, offset: offset,
                 connection: conn, startTime: startTime
+            )
+
+        case .keyTree(let pattern, let limit):
+            return try await executeKeyTree(
+                pattern: pattern, limit: limit, connection: conn, startTime: startTime
             )
 
         case .hget, .hset, .hgetall, .hdel:
@@ -47,12 +73,12 @@ extension RedisPluginDriver {
 
     func executeKeyOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
         case .get(let key):
-            let result = try await conn.executeCommand(["GET", key])
+            let result = try await conn.run(["GET", key])
             let value = result.stringValue
             return PluginQueryResult(
                 columns: ["Key", "Value"],
@@ -63,21 +89,21 @@ extension RedisPluginDriver {
             )
 
         case .set(let key, let value, let options):
-            var args = ["SET", key, value]
+            var args = ["SET", key].asRedisArguments + [value]
             if let opts = options {
-                if let ex = opts.ex { args += ["EX", String(ex)] }
-                if let px = opts.px { args += ["PX", String(px)] }
-                if let exat = opts.exat { args += ["EXAT", String(exat)] }
-                if let pxat = opts.pxat { args += ["PXAT", String(pxat)] }
-                if opts.nx { args.append("NX") }
-                if opts.xx { args.append("XX") }
+                if let ex = opts.ex { args += ["EX", String(ex)].asRedisArguments }
+                if let px = opts.px { args += ["PX", String(px)].asRedisArguments }
+                if let exat = opts.exat { args += ["EXAT", String(exat)].asRedisArguments }
+                if let pxat = opts.pxat { args += ["PXAT", String(pxat)].asRedisArguments }
+                if opts.nx { args.append("NX".redisArgument) }
+                if opts.xx { args.append("XX".redisArgument) }
             }
-            _ = try await conn.executeCommand(args)
+            try await conn.run(args)
             return buildStatusResult("OK", startTime: startTime)
 
         case .del(let keys):
             let args = ["DEL"] + keys
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             let deleted = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["deleted"],
@@ -88,7 +114,7 @@ extension RedisPluginDriver {
             )
 
         case .keys(let pattern):
-            let result = try await conn.executeCommand(["KEYS", pattern])
+            let result = try await conn.run(["KEYS", pattern])
             guard let items = result.arrayValue else {
                 return buildEmptyKeyResult(startTime: startTime)
             }
@@ -100,14 +126,13 @@ extension RedisPluginDriver {
             )
 
         case .scan(let cursor, let pattern, let count):
-            var args = ["SCAN", String(cursor)]
-            if let p = pattern { args += ["MATCH", p] }
-            if let c = count { args += ["COUNT", String(c)] }
-            let result = try await conn.executeCommand(args)
-            return try await handleScanResult(result, connection: conn, startTime: startTime)
+            let page = try await conn.scanKeyspace(
+                cursor: cursor, pattern: pattern, type: nil, count: count ?? 200
+            )
+            return try await buildScanPageResult(page, connection: conn, startTime: startTime)
 
         case .type(let key):
-            let result = try await conn.executeCommand(["TYPE", key])
+            let result = try await conn.run(["TYPE", key])
             let typeName = result.stringValue ?? "none"
             return PluginQueryResult(
                 columns: ["Key", "Type"],
@@ -118,7 +143,7 @@ extension RedisPluginDriver {
             )
 
         case .ttl(let key):
-            let result = try await conn.executeCommand(["TTL", key])
+            let result = try await conn.run(["TTL", key])
             let ttl = result.intValue ?? -1
             return PluginQueryResult(
                 columns: ["Key", "TTL"],
@@ -129,7 +154,7 @@ extension RedisPluginDriver {
             )
 
         case .pttl(let key):
-            let result = try await conn.executeCommand(["PTTL", key])
+            let result = try await conn.run(["PTTL", key])
             let pttl = result.intValue ?? -1
             return PluginQueryResult(
                 columns: ["Key", "PTTL"],
@@ -140,17 +165,17 @@ extension RedisPluginDriver {
             )
 
         case .expire(let key, let seconds):
-            let result = try await conn.executeCommand(["EXPIRE", key, String(seconds)])
+            let result = try await conn.run(["EXPIRE", key, String(seconds)])
             let success = (result.intValue ?? 0) == 1
             return buildStatusResult(success ? "OK" : "Key not found", startTime: startTime)
 
         case .persist(let key):
-            let result = try await conn.executeCommand(["PERSIST", key])
+            let result = try await conn.run(["PERSIST", key])
             let success = (result.intValue ?? 0) == 1
             return buildStatusResult(success ? "OK" : "Key not found or no TTL", startTime: startTime)
 
         case .rename(let key, let newKey):
-            let reply = try await conn.executeCommand(["RENAME", key, newKey])
+            let reply = try await conn.run(["RENAME", key, newKey])
             if case .error(let msg) = reply {
                 throw RedisPluginError(code: 0, message: "RENAME failed: \(msg)")
             }
@@ -158,7 +183,7 @@ extension RedisPluginDriver {
 
         case .exists(let keys):
             let args = ["EXISTS"] + keys
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             let count = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["exists"],
@@ -177,12 +202,12 @@ extension RedisPluginDriver {
 
     func executeHashOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
         case .hget(let key, let field):
-            let result = try await conn.executeCommand(["HGET", key, field])
+            let result = try await conn.run(["HGET", key, field])
             let value = result.stringValue
             return PluginQueryResult(
                 columns: ["Field", "Value"],
@@ -193,11 +218,11 @@ extension RedisPluginDriver {
             )
 
         case .hset(let key, let fieldValues):
-            var args = ["HSET", key]
+            var args = ["HSET", key].asRedisArguments
             for (field, value) in fieldValues {
-                args += [field, value]
+                args += [field.redisArgument, value]
             }
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             let added = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["added"],
@@ -208,12 +233,12 @@ extension RedisPluginDriver {
             )
 
         case .hgetall(let key):
-            let result = try await conn.executeCommand(["HGETALL", key])
+            let result = try await conn.run(["HGETALL", key])
             return buildHashResult(result, startTime: startTime)
 
         case .hdel(let key, let fields):
             let args = ["HDEL", key] + fields
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             let removed = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["removed"],
@@ -232,17 +257,17 @@ extension RedisPluginDriver {
 
     func executeListOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
         case .lrange(let key, let start, let stop):
-            let result = try await conn.executeCommand(["LRANGE", key, String(start), String(stop)])
+            let result = try await conn.run(["LRANGE", key, String(start), String(stop)])
             return buildListResult(result, startOffset: start, startTime: startTime)
 
         case .lpush(let key, let values):
-            let args = ["LPUSH", key] + values
-            let result = try await conn.executeCommand(args)
+            let args = ["LPUSH", key].asRedisArguments + values
+            let result = try await conn.run(args)
             let length = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["length"],
@@ -253,8 +278,8 @@ extension RedisPluginDriver {
             )
 
         case .rpush(let key, let values):
-            let args = ["RPUSH", key] + values
-            let result = try await conn.executeCommand(args)
+            let args = ["RPUSH", key].asRedisArguments + values
+            let result = try await conn.run(args)
             let length = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["length"],
@@ -265,7 +290,7 @@ extension RedisPluginDriver {
             )
 
         case .llen(let key):
-            let result = try await conn.executeCommand(["LLEN", key])
+            let result = try await conn.run(["LLEN", key])
             let length = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["Key", "Length"],
@@ -284,17 +309,17 @@ extension RedisPluginDriver {
 
     func executeSetOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
         case .smembers(let key):
-            let result = try await conn.executeCommand(["SMEMBERS", key])
+            let result = try await conn.run(["SMEMBERS", key])
             return buildSetResult(result, startTime: startTime)
 
         case .sadd(let key, let members):
-            let args = ["SADD", key] + members
-            let result = try await conn.executeCommand(args)
+            let args = ["SADD", key].asRedisArguments + members
+            let result = try await conn.run(args)
             let added = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["added"],
@@ -305,8 +330,8 @@ extension RedisPluginDriver {
             )
 
         case .srem(let key, let members):
-            let args = ["SREM", key] + members
-            let result = try await conn.executeCommand(args)
+            let args = ["SREM", key].asRedisArguments + members
+            let result = try await conn.run(args)
             let removed = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["removed"],
@@ -317,7 +342,7 @@ extension RedisPluginDriver {
             )
 
         case .scard(let key):
-            let result = try await conn.executeCommand(["SCARD", key])
+            let result = try await conn.run(["SCARD", key])
             let count = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["Key", "Cardinality"],
@@ -336,7 +361,7 @@ extension RedisPluginDriver {
 
     func executeSortedSetOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
@@ -344,16 +369,16 @@ extension RedisPluginDriver {
             var args = ["ZRANGE", key, start, stop]
             args += flags
             let withScores = flags.contains("WITHSCORES")
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             return buildSortedSetResult(result, withScores: withScores, startTime: startTime)
 
         case .zadd(let key, let flags, let scoreMembers):
-            var args = ["ZADD", key]
-            args += flags
+            var args = ["ZADD", key].asRedisArguments
+            args += flags.asRedisArguments
             for (score, member) in scoreMembers {
-                args += [String(score), member]
+                args += [String(score).redisArgument, member]
             }
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             if flags.contains("INCR") {
                 // INCR mode returns the new score (or nil for NX miss)
                 let scoreStr = result.stringValue ?? "nil"
@@ -376,8 +401,8 @@ extension RedisPluginDriver {
             )
 
         case .zrem(let key, let members):
-            let args = ["ZREM", key] + members
-            let result = try await conn.executeCommand(args)
+            let args = ["ZREM", key].asRedisArguments + members
+            let result = try await conn.run(args)
             let removed = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["removed"],
@@ -388,7 +413,7 @@ extension RedisPluginDriver {
             )
 
         case .zcard(let key):
-            let result = try await conn.executeCommand(["ZCARD", key])
+            let result = try await conn.run(["ZCARD", key])
             let count = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["Key", "Cardinality"],
@@ -407,18 +432,18 @@ extension RedisPluginDriver {
 
     func executeStreamOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
         case .xrange(let key, let start, let end, let count):
             var args = ["XRANGE", key, start, end]
             if let c = count { args += ["COUNT", String(c)] }
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             return buildStreamResult(result, startTime: startTime)
 
         case .xlen(let key):
-            let result = try await conn.executeCommand(["XLEN", key])
+            let result = try await conn.run(["XLEN", key])
             let length = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["Key", "Length"],
@@ -437,12 +462,12 @@ extension RedisPluginDriver {
 
     func executeServerOperation(
         _ operation: RedisOperation,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
         case .ping:
-            _ = try await conn.executeCommand(["PING"])
+            try await conn.run(["PING"])
             return PluginQueryResult(
                 columns: ["ok"],
                 columnTypeNames: ["Int32"],
@@ -454,7 +479,7 @@ extension RedisPluginDriver {
         case .info(let section):
             var args = ["INFO"]
             if let s = section { args.append(s) }
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args)
             let infoText = result.stringValue ?? String(describing: result)
             return PluginQueryResult(
                 columns: ["info"],
@@ -465,7 +490,7 @@ extension RedisPluginDriver {
             )
 
         case .dbsize:
-            let result = try await conn.executeCommand(["DBSIZE"])
+            let result = try await conn.run(["DBSIZE"])
             let count = result.intValue ?? 0
             return PluginQueryResult(
                 columns: ["keys"],
@@ -476,7 +501,7 @@ extension RedisPluginDriver {
             )
 
         case .flushdb:
-            _ = try await conn.executeCommand(["FLUSHDB"])
+            try await conn.run(["FLUSHDB"])
             return buildStatusResult("OK", startTime: startTime)
 
         case .select(let database):
@@ -484,27 +509,27 @@ extension RedisPluginDriver {
             return buildStatusResult("OK", startTime: startTime)
 
         case .configGet(let parameter):
-            let result = try await conn.executeCommand(["CONFIG", "GET", parameter])
+            let result = try await conn.run(["CONFIG", "GET", parameter])
             return buildConfigResult(result, startTime: startTime)
 
         case .configSet(let parameter, let value):
-            _ = try await conn.executeCommand(["CONFIG", "SET", parameter, value])
+            try await conn.run(["CONFIG", "SET", parameter, value])
             return buildStatusResult("OK", startTime: startTime)
 
         case .command(let args):
-            let result = try await conn.executeCommand(args)
+            let result = try await conn.run(args.asRedisArguments)
             return buildGenericResult(result, startTime: startTime)
 
         case .multi:
-            _ = try await conn.executeCommand(["MULTI"])
+            try await conn.run(["MULTI"])
             return buildStatusResult("OK", startTime: startTime)
 
         case .exec:
-            let result = try await conn.executeCommand(["EXEC"])
+            let result = try await conn.run(["EXEC"])
             return buildGenericResult(result, startTime: startTime)
 
         case .discard:
-            _ = try await conn.executeCommand(["DISCARD"])
+            try await conn.run(["DISCARD"])
             return buildStatusResult("OK", startTime: startTime)
 
         default:

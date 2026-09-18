@@ -33,6 +33,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let urlSchemes: [String] = ["cassandra", "cql", "scylladb", "scylla"]
     static let requiresAuthentication = false
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
@@ -49,6 +51,10 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsForeignKeyDisable = false
     static let supportsSSH = true
     static let supportsSSL = true
+    /// CQL has neither. Its column definition is `column_name cql_type [STATIC] [column_mask]
+    /// [PRIMARY KEY]`, with no DEFAULT clause and no auto-increment, so the two cells the
+    /// `DriverPlugin` fallback would give this driver are cells nothing can be written into.
+    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
     static let columnTypesByCategory: [String: [String]] = [
         "Numeric": ["TINYINT", "SMALLINT", "INT", "BIGINT", "VARINT", "FLOAT", "DOUBLE", "DECIMAL", "COUNTER"],
         "String": ["TEXT", "VARCHAR", "ASCII"],
@@ -94,7 +100,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            autoLimitStyle: .limit
+            autoLimitStyle: .limit,
+            caseSensitivityStyle: .unsupported
         )
     }
 
@@ -188,15 +195,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         )
 
         if let keyspace {
-            stateLock.lock()
-            _currentKeyspace = keyspace
-            stateLock.unlock()
+            stateLock.withLock { _currentKeyspace = keyspace }
         }
 
         if let version = try? await connectionActor.serverVersion() {
-            stateLock.lock()
-            _cachedVersion = version
-            stateLock.unlock()
+            stateLock.withLock { _cachedVersion = version }
         }
 
         let caps = CassandraCapabilities(
@@ -258,21 +261,36 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard let bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap) as PluginQueryResult?
+        else {
+            return nil
+        }
+        /// The buffered path reports a read's row count here, so a bounded read reports the same
+        /// rather than the collector's neutral zero.
+        return PluginQueryResult(
+            columns: bounded.columns,
+            columnTypeNames: bounded.columnTypeNames,
+            rows: bounded.rows,
+            rowsAffected: bounded.rows.count,
+            executionTime: bounded.executionTime,
+            isTruncated: bounded.isTruncated,
+            statusMessage: bounded.statusMessage
+        )
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let cql = stripTrailingSemicolon(query)
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.connectionActor.streamQuery(cql, continuation: continuation)
+                    try await self.connectionActor.streamQuery(cql, abort: abort, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            _ = streamTask
         }
     }
 
@@ -414,6 +432,21 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         []
     }
 
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let ks = resolveKeyspace(schema)
+        let result = try await execute(query: """
+            SELECT index_name, kind, options
+            FROM system_schema.indexes
+            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
+              AND table_name = '\(escapeSingleQuote(table))'
+            """)
+        return CassandraIndexStatements.render(
+            rows: result.rows.map { row in row.map { $0.asText } },
+            keyspace: ks,
+            table: table,
+            quote: { "\"\(escapeIdentifier($0))\"" })
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let ks = resolveKeyspace(schema)
 
@@ -536,9 +569,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func switchDatabase(to database: String) async throws {
         try await connectionActor.switchKeyspace(database)
-        stateLock.lock()
-        _currentKeyspace = database
-        stateLock.unlock()
+        stateLock.withLock { _currentKeyspace = database }
     }
 
     // MARK: - Schemas (Cassandra uses keyspaces, not schemas)
@@ -569,7 +600,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Private Helpers
 
-    private func resolveKeyspace(_ schema: String?) -> String {
+    func resolveKeyspace(_ schema: String?) -> String {
         if let schema, !schema.isEmpty { return schema }
         stateLock.lock()
         defer { stateLock.unlock() }

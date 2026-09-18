@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import Testing
+import TableProSyncTransport
 
 @testable import TablePro
 
@@ -20,7 +21,8 @@ struct ConnectionStorageSyncDeleteTests {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("connections_\(unique).json")
+            .appendingPathComponent(unique)
+            .appendingPathComponent("connections.json")
         storageDirectory = fileURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
 

@@ -14,4 +14,15 @@ enum Delta: Equatable {
     case fullReplace
 
     static let none = Delta.cellsChanged([])
+
+    var changesRowSet: Bool {
+        switch self {
+        case .rowsInserted(let indices), .rowsRemoved(let indices):
+            return !indices.isEmpty
+        case .fullReplace:
+            return true
+        case .cellChanged, .cellsChanged, .columnsReplaced:
+            return false
+        }
+    }
 }

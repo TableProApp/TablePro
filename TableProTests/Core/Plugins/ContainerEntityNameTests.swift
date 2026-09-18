@@ -11,8 +11,8 @@ import Testing
 @MainActor
 @Suite("Container entity name and switch target")
 struct ContainerEntityNameTests {
-    private func snapshot(forTypeId typeId: String) -> PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)
+    private func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)
     }
 
     // MARK: - Container entity names
@@ -20,6 +20,11 @@ struct ContainerEntityNameTests {
     @Test("BigQuery container is Dataset")
     func bigQueryContainerIsDataset() {
         #expect(PluginManager.shared.containerEntityName(for: .bigQuery) == "Dataset")
+    }
+
+    @Test("Spanner container is Schema")
+    func spannerContainerIsSchema() {
+        #expect(PluginManager.shared.containerEntityName(for: .spanner) == "Schema")
     }
 
     @Test("Cassandra and ScyllaDB containers are Keyspace")
@@ -50,7 +55,7 @@ struct ContainerEntityNameTests {
 
     @Test("DriverPlugin defaults provide Database container")
     func driverPluginDefaultIsDatabase() {
-        #expect(snapshot(forTypeId: "MySQL")?.schema.containerEntityName == "Database")
+        #expect(snapshot(forRegisteredTypeId: "MySQL")?.schema.containerEntityName == "Database")
         #expect(PluginMetadataSnapshot.SchemaInfo.defaults.containerEntityName == "Database")
     }
 
@@ -79,12 +84,30 @@ struct ContainerEntityNameTests {
         #expect(PluginManager.shared.containerEntityName(for: .oracle) == "Schema")
         #expect(PluginManager.shared.databaseGroupingStrategy(for: .oracle) == .hierarchicalSchema)
         #expect(PluginManager.shared.supportsDatabaseTree(for: .oracle) == false)
-        #expect(snapshot(forTypeId: "Oracle")?.schema.defaultSchemaName == "")
+        #expect(snapshot(forRegisteredTypeId: "Oracle")?.schema.defaultSchemaName == "")
+    }
+
+    @Test("Dameng switches hierarchical schemas")
+    func damengContainerIsSchema() {
+        #expect(PluginManager.shared.containerSwitchTarget(for: .dameng) == .schema)
+        #expect(PluginManager.shared.containerEntityName(for: .dameng) == "Schema")
+        #expect(PluginManager.shared.databaseGroupingStrategy(for: .dameng) == .hierarchicalSchema)
+        #expect(PluginManager.shared.supportsDatabaseTree(for: .dameng) == false)
     }
 
     @Test("Engines supporting both prefer databases")
     func dualModeEnginesPreferDatabases() {
         #expect(PluginManager.shared.containerSwitchTarget(for: .postgresql) == .database)
+    }
+
+    /// A DuckDB catalog really is a database, so it keeps the default container name and
+    /// switches by database the way PostgreSQL does, with schemas one level below.
+    @Test("DuckDB containers are databases with a schema level")
+    func duckDBContainerIsDatabase() {
+        #expect(PluginManager.shared.containerEntityName(for: .duckdb) == "Database")
+        #expect(PluginManager.shared.containerSwitchTarget(for: .duckdb) == .database)
+        #expect(PluginManager.shared.supportsSchemaSwitching(for: .duckdb) == true)
+        #expect(PluginManager.shared.databaseGroupingStrategy(for: .duckdb) == .bySchema)
     }
 
     @Test("Engines without switching have no target")

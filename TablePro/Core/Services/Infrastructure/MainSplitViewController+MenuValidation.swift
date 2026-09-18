@@ -1,0 +1,604 @@
+//
+//  MainSplitViewController+MenuValidation.swift
+//  TablePro
+//
+
+import AppKit
+
+/// Everything the menu bar needs to decide whether a command applies, captured once
+/// per validation pass. Keeping it a plain value keeps `isEnabled` pure and testable,
+/// the same split `MainWindowToolbar+Validation` uses for the toolbar.
+struct MenuValidationContext: Equatable {
+    /// Comes from the window's own `ConnectionWindowPhase`, never from the presence of a
+    /// coordinator: the coordinator deliberately outlives a lost session so a reconnect keeps
+    /// the user's tabs, which made every connection-scoped command stay lit while dialing.
+    /// True whenever the window is showing a connection, connected or not, so a pane that
+    /// failed to dial can still be dismissed.
+    var hasSelectedWorkspace = false
+    var isConnected = false
+    var isReadOnly = false
+    var canUseTableResultCommands = false
+    var canUseGridFindCommands = false
+    /// Jump to Column reads the mounted data grid, so it needs one on screen with columns to list.
+    var canJumpToColumn = false
+    /// Each Focus command names a pane, so each needs that pane to exist and to hold a view that can
+    /// take the keyboard. A command that focuses nothing is a command that should be dimmed.
+    var canFocusObjectList = false
+    var canFocusEditor = false
+    var canFocusResults = false
+    var canFocusInspector = false
+    var canFocusAssistant = false
+    var canPresentHighlightRules = false
+    /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
+    var isQueryTab = false
+    /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
+    var hasResultRows = false
+    var isCurrentTabEditable = false
+    /// Add Row and Duplicate Row stage `DEFAULT` for every column the server fills in, which only
+    /// the table's own schema names. Until it lands, the result set's own metadata reports far less,
+    /// and an identity column would be staged as NULL that the server refuses.
+    var isCurrentTabSchemaResolved = false
+    var canRestorePreviousValues = false
+    var isQueryExecuting = false
+    /// Whether Stop still has something to act on. A batch whose `COMMIT` is on the wire is
+    /// executing and unstoppable at the same time, and `Cmd+.` must dim rather than fire into it.
+    var isQueryStoppable = false
+    var hasQueryText = false
+    var canClearQuery = false
+    var canClearResults = false
+    var hasPendingChanges = false
+    var hasDataPendingChanges = false
+    var hasRowSelection = false
+    /// Copy with headers and copy as JSON read the result grid's columns, so they need the data
+    /// grid's selection specifically, not the structure grid's.
+    var hasDataGridRowSelection = false
+    var hasTableSelection = false
+    /// Whether every selected object is one the engine can truncate. Separate from
+    /// `hasTableSelection` because a view is a perfectly good selection and a hopeless truncate.
+    var canTruncateSelectedTables = false
+    /// Whether every selected object is one the engine has a drop statement for. An engine with
+    /// no DDL for it must not be offered Delete, or the app invents SQL it cannot run.
+    var canDropSelectedTables = false
+    /// An editable tab only answers Delete when a row is selected. Without the row check the item
+    /// stayed enabled over a grid with no selection, fell through to the sidebar's drop path and
+    /// did nothing there.
+    var canDeleteSelectedRows: Bool { isCurrentTabEditable && hasRowSelection }
+    /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
+    /// item its key equivalent regardless, so an item enabled over a handler that returns at its
+    /// first guard swallows Command+V with no feedback.
+    var canPasteRows = false
+    var canCloseOtherTabs = false
+    var canCloseTabsForOtherDatabases = false
+    var canCloseAllTabs = false
+    var canPinResultTab = false
+    /// The selected tab's browse history. Separate flags rather than one, because Back and Forward
+    /// run out independently and an item that is disabled has to say which one it is.
+    var canNavigateBack = false
+    var canNavigateForward = false
+    /// First, Previous, Next and Last Page, which an engine that cannot skip rows never offers.
+    var canNavigatePages = false
+    var canSaveAsFavorite = false
+    var canSwitchSidebarLayout = false
+    var canToggleWorkspaceRail = false
+    /// Whether the connection's driver is holding an operating-system resource it can hand back
+    /// without ending the session. Only the embedded engines that lock their database file answer
+    /// yes, so the command is absent for every server-backed connection rather than present and
+    /// disabled: a command that can never apply to a connection is not a command it is missing.
+    var canReleaseFileLock = false
+    var canShowTableStructure = false
+    var canEditViewDefinition = false
+    var canShowObjectDDL = false
+    var canRefreshMaterializedView = false
+    var canEditObjectComment = false
+    var canCreateDatabase = false
+    var canCopyObjects = false
+    var canDuplicateDatabase = false
+    var hasMaintenanceOperations = false
+    var canUndo = false
+    var canRedo = false
+    var hasEditorForFind = false
+    var hasSelectionForFind = false
+    var hasActiveGridFind = false
+    var hasImportFormats = false
+    var supportsContainerSwitching = false
+    var supportsBackup = false
+    var supportsRestore = false
+    var supportsServerSideExport = false
+    var supportsServerDashboard = false
+    var supportsUserManagement = false
+    var supportsSchemaSwitching = false
+    var hasSessionContexts = false
+    var canFilterDatabases = false
+    var canFavoriteActiveDatabase = false
+    var hasDatabaseFilter = false
+}
+
+extension MainSplitViewController: NSMenuItemValidation {
+    /// A command that reaches the database carries `isConnected` even when it already has a
+    /// selection or tab condition of its own. Those conditions are not a substitute for it: a
+    /// window that is not connected shows the connecting or unavailable pane with its sidebar and
+    /// inspector collapsed, while the coordinator keeps the last tab and selection it saw so a
+    /// reconnect can restore them. Without it, Truncate Table and Delete stay lit over an error
+    /// screen, pointed at a session that is gone.
+    ///
+    /// This runs only when the window's content view controller is the responder that claimed the
+    /// selector, so a command a nearer responder implements is answered by that responder instead and
+    /// never reaches here. The Find commands rely on that: a focused editor claims and validates them
+    /// itself, so `hasEditorForFind` only ever decides the unfocused fallback.
+    /// What this window has to say about a command, or nil when the command is not its to decide.
+    ///
+    /// Nil is the whole point. A menu item whose selector this controller implements and that has no
+    /// arm here is a command that stays enabled over a window that cannot run it, and the suite is
+    /// green either way: that shipped as Clear Selection, lit on a window with nothing selected and
+    /// nothing to clear. `MenuValidationCoverageTests` reads the nil to say so.
+    static func resolvedEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        if let find = isFindCommandEnabled(selector, context: context) { return find }
+
+        switch selector {
+        case #selector(exportTables(_:)),
+             #selector(refreshDatabase(_:)),
+             #selector(openQuickSwitcher(_:)),
+             #selector(toggleQueryHistory(_:)),
+             #selector(toggleResults(_:)),
+             #selector(showPreviousResult(_:)),
+             #selector(showNextResult(_:)),
+             #selector(closeResultTab(_:)),
+             #selector(focusSidebarFilter(_:)),
+             #selector(showERDiagram(_:)),
+             #selector(previewFKReference(_:)),
+             #selector(selectNumberedTab(_:)):
+            return context.isConnected
+
+        case #selector(goToFirstPage(_:)),
+             #selector(goToPreviousPage(_:)),
+             #selector(goToNextPage(_:)),
+             #selector(goToLastPage(_:)):
+            return context.isConnected && context.canNavigatePages
+
+        case #selector(saveDocument(_:)):
+            return context.isConnected && !context.isReadOnly && context.hasPendingChanges
+        case #selector(saveDocumentAs(_:)):
+            return context.isConnected && context.isQueryTab
+        case #selector(exportQueryResults(_:)):
+            return context.isConnected && context.hasResultRows
+
+        /// AppKit validated New Tab for free while it was its own selector.
+        /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so this is
+        /// ours to enable and disable now. Close went back to `performClose:`, which every
+        /// window validates for itself.
+        case #selector(newEditorTab(_:)):
+            return context.isConnected
+        case #selector(closeConnection(_:)):
+            return context.hasSelectedWorkspace
+        /// Not `isConnected`, unlike the rest of the Database menu. The switcher lists the app's
+        /// open connections and the user's saved ones, needs nothing from the session, and is the
+        /// command that leaves a connection that has stopped working.
+        case #selector(switchConnection(_:)):
+            return context.hasSelectedWorkspace
+        case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
+            return context.isConnected
+
+        case #selector(closeOtherTabs(_:)):
+            return context.canCloseOtherTabs
+        case #selector(closeTabsForOtherContainers(_:)):
+            return context.canCloseTabsForOtherDatabases
+        case #selector(closeAllTabs(_:)):
+            return context.canCloseAllTabs
+
+        case #selector(importData(_:)):
+            return context.isConnected && !context.isReadOnly && context.hasImportFormats
+        case #selector(backupDatabase(_:)):
+            return context.isConnected && context.supportsBackup
+        case #selector(restoreDatabase(_:)):
+            return context.isConnected && context.supportsRestore && !context.isReadOnly
+        case #selector(serverSideExport(_:)):
+            /// The server does the writing, so this is a write on the connection and a read-only
+            /// Safe Mode has to stop it the same way Restore is stopped.
+            return context.isConnected && context.supportsServerSideExport && !context.isReadOnly
+
+        case #selector(executeQuery(_:)),
+             #selector(executeAllStatements(_:)),
+             #selector(executeQueryWithoutLimit(_:)),
+             #selector(explainQuery(_:)),
+             #selector(formatQuery(_:)):
+            return context.isConnected && context.hasQueryText
+        /// Both hand their statement to the assistant, which will not open with the feature off.
+        /// They validated on the query alone, so with AI off the item stayed enabled, the shortcut
+        /// fired and nothing happened at all: no pane, no alert, nothing.
+        case #selector(explainQueryWithAI(_:)),
+             #selector(optimizeQueryWithAI(_:)):
+            return context.isConnected && context.hasQueryText && AppSettingsManager.shared.ai.enabled
+        /// Reachable while the connection is still dialling: agent mode draws the prompt the user
+        /// typed, which is exactly what they are waiting with, so gating on `isConnected` would make
+        /// the command dead in the one state it is most wanted.
+        case #selector(setContentModeFromMenu(_:)),
+             #selector(toggleContentModeFromMenu(_:)):
+            return context.hasSelectedWorkspace && AppSettingsManager.shared.ai.enabled
+        case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
+            return context.hasEditorForFind
+        case #selector(removeInvisibleCharacters(_:)):
+            return context.hasEditorForFind && context.hasQueryText
+        case #selector(goToPreviousStatement(_:)), #selector(goToNextStatement(_:)):
+            return context.isQueryTab
+        case #selector(runStatementAndAdvance(_:)):
+            return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
+        case #selector(cancelQuery(_:)):
+            return context.isQueryExecuting && context.isQueryStoppable
+        case #selector(clearQuery(_:)):
+            return context.canClearQuery
+        case #selector(clearResults(_:)):
+            return context.canClearResults
+        case #selector(previewSQL(_:)):
+            return context.isConnected && context.hasDataPendingChanges
+        case #selector(saveAsFavorite(_:)):
+            return context.canSaveAsFavorite
+
+        case #selector(addRow(_:)), #selector(duplicateRow(_:)):
+            return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
+                && context.isCurrentTabSchemaResolved
+        case #selector(restorePreviousValues(_:)):
+            return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
+        case #selector(truncateTable(_:)):
+            return context.isConnected && context.canTruncateSelectedTables && !context.isReadOnly
+        case #selector(jumpToColumn(_:)):
+            return context.isConnected && context.canJumpToColumn
+        case #selector(undo(_:)):
+            return context.canUndo
+        case #selector(redo(_:)):
+            return context.canRedo
+        case #selector(copy(_:)):
+            return context.hasRowSelection || context.hasTableSelection
+        case #selector(copySelectedRows(_:)):
+            return context.hasRowSelection
+        case #selector(copyRowsWithHeaders(_:)),
+             #selector(copyRowsAsJson(_:)):
+            return context.hasDataGridRowSelection
+        case #selector(paste(_:)):
+            return context.isConnected && context.canPasteRows
+        case #selector(delete(_:)):
+            return context.isConnected && (context.canDeleteSelectedRows || context.canDropSelectedTables)
+
+        case #selector(createNewTable(_:)), #selector(createNewView(_:)):
+            return context.isConnected && !context.isReadOnly
+        case #selector(createNewDatabase(_:)):
+            return context.canCreateDatabase
+        case #selector(copyObjectsToDatabase(_:)):
+            return context.canCopyObjects
+        case #selector(duplicateCurrentDatabase(_:)):
+            return context.canDuplicateDatabase
+        case #selector(showTableStructure(_:)),
+             #selector(editViewDefinition(_:)),
+             #selector(showObjectDDL(_:)),
+             #selector(copyObjectDDL(_:)),
+             #selector(refreshMaterializedView(_:)),
+             #selector(editObjectComment(_:)):
+            return objectCommandIsEnabled(selector, context: context)
+        case #selector(runMaintenanceOperation(_:)):
+            return context.isConnected && context.hasMaintenanceOperations
+        case #selector(switchToSchema(_:)):
+            return context.isConnected && context.supportsSchemaSwitching
+        case #selector(setFavoriteDatabaseEnvironment(_:)), #selector(removeFavoriteDatabase(_:)):
+            return context.isConnected && context.canFavoriteActiveDatabase
+        case #selector(filterDatabases(_:)):
+            return context.isConnected && context.canFilterDatabases
+        case #selector(showAllDatabases(_:)):
+            return context.isConnected && context.canFilterDatabases && context.hasDatabaseFilter
+        case #selector(openContainerSwitcher(_:)):
+            return context.isConnected && context.supportsContainerSwitching
+        case #selector(openSchemaSwitcher(_:)):
+            return context.isConnected && context.supportsSchemaSwitching
+        case #selector(setSafeModeLevel(_:)):
+            return context.isConnected
+        case #selector(releaseFileLock(_:)):
+            return context.isConnected && context.canReleaseFileLock
+        case #selector(switchSessionContext(_:)):
+            return context.isConnected && context.hasSessionContexts
+        case #selector(showServerDashboard(_:)):
+            return context.isConnected && context.supportsServerDashboard
+        case #selector(showUsersAndRoles(_:)):
+            return context.isConnected && context.supportsUserManagement
+        case #selector(showQueryInsights(_:)):
+            return context.isConnected
+
+        case #selector(toggleFilterBar(_:)):
+            return context.isConnected && context.canUseTableResultCommands
+        case #selector(showHighlightRules(_:)):
+            return context.isConnected && context.canPresentHighlightRules
+        case #selector(pinResult(_:)):
+            return context.canPinResultTab
+        case #selector(navigateBack(_:)):
+            return context.isConnected && context.canNavigateBack
+        case #selector(navigateForward(_:)):
+            return context.isConnected && context.canNavigateForward
+        case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
+            return context.canSwitchSidebarLayout
+        case #selector(showTablesSidebarTab(_:)), #selector(showFavoritesSidebarTab(_:)):
+            return context.isConnected
+        default:
+            return isWindowCommandEnabled(selector, context: context)
+        }
+    }
+
+    /// The commands the window answers for itself rather than on behalf of the connection it shows.
+    ///
+    /// Each Focus command follows the pane it names, so one that would focus nothing is dimmed
+    /// rather than silently doing nothing: `makeFirstResponder` accepts a view that cannot take the
+    /// keyboard and reports success.
+    private static func isWindowCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        switch selector {
+        case #selector(toggleWorkspaceRail(_:)),
+             #selector(showPreviousWorkspace(_:)),
+             #selector(showNextWorkspace(_:)):
+            return context.canToggleWorkspaceRail
+
+        case #selector(focusObjectList(_:)): return context.canFocusObjectList
+        case #selector(focusEditor(_:)): return context.canFocusEditor
+        case #selector(focusResults(_:)): return context.canFocusResults
+        case #selector(focusInspector(_:)): return context.canFocusInspector
+        case #selector(focusAssistant(_:)): return context.canFocusAssistant
+
+        /// Escape clears the selection wherever one is, so the command needs a window showing a
+        /// connection and something that can hold a selection, not merely a window.
+        case #selector(clearSelection(_:)): return context.isConnected
+
+        /// Unconditional on purpose, and stated rather than left to the fall-through. The window is
+        /// the last responder to answer these, and what it does with them is change the editor font
+        /// size, which is an app setting and needs no session. A focused diagram claims them first.
+        case #selector(zoomIn(_:)), #selector(zoomOut(_:)): return true
+
+        default: return nil
+        }
+    }
+
+    /// What AppKit is told. A command this window does not own is left enabled, which is what keeps
+    /// `performClose:` and the rest of the system's own items working.
+    static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+        resolvedEnablement(selector, context: context) ?? true
+    }
+
+    /// The Edit menu's Find commands, which are the window's last-resort answer. A focused editor claims and
+    /// validates them itself, so what these decide is only what happens when nothing nearer took the selector:
+    /// Find falls back to the result grid's find bar, and the two editor-only commands dim.
+    private static func isFindCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        switch selector {
+        case #selector(performFind(_:)):
+            return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
+        case #selector(findNext(_:)), #selector(findPrevious(_:)):
+            return context.hasEditorForFind || context.hasActiveGridFind
+        case #selector(performFindAndReplace(_:)):
+            return context.hasEditorForFind
+        case #selector(useSelectionForFind(_:)):
+            return context.hasSelectionForFind
+        default:
+            return nil
+        }
+    }
+
+    /// The commands that act on the object selected in the sidebar. They answer on the same facts
+    /// the sidebar's own contextual menu reads, so a command the sidebar omits is dimmed here rather
+    /// than enabled over an object it cannot act on.
+    private static func objectCommandIsEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+        guard context.isConnected else { return false }
+        switch selector {
+        case #selector(showTableStructure(_:)):
+            return context.canShowTableStructure
+        case #selector(editViewDefinition(_:)):
+            return !context.isReadOnly && context.canEditViewDefinition
+        case #selector(showObjectDDL(_:)), #selector(copyObjectDDL(_:)):
+            return context.canShowObjectDDL
+        case #selector(refreshMaterializedView(_:)):
+            return context.canRefreshMaterializedView
+        case #selector(editObjectComment(_:)):
+            return context.canEditObjectComment
+        default:
+            return false
+        }
+    }
+
+    /// The workspace-rail facts come from the window in both branches. They are true of the window,
+    /// not of the connection it happens to be showing, and reading them off a connection that has
+    /// no coordinator left disabled the only menu route to the window's other connections.
+    var menuValidationContext: MenuValidationContext {
+        guard let actions = commandActions else {
+            return MenuValidationContext(
+                hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
+                canToggleWorkspaceRail: canToggleWorkspaceRail
+            )
+        }
+        return MenuValidationContext(
+            hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
+            isConnected: isConnected,
+            isReadOnly: actions.isReadOnly,
+            canUseTableResultCommands: actions.canUseTableResultCommands,
+            canUseGridFindCommands: actions.canUseGridFindCommands,
+            canJumpToColumn: actions.canJumpToColumn,
+            canFocusObjectList: canFocusObjectList,
+            canFocusEditor: canFocusEditor,
+            canFocusResults: canFocusResults,
+            canFocusInspector: canFocusInspector,
+            canFocusAssistant: canFocusAssistant,
+            canPresentHighlightRules: actions.canPresentHighlightRules,
+            isQueryTab: actions.isQueryTab,
+            hasResultRows: actions.hasResultRows,
+            isCurrentTabEditable: actions.isCurrentTabEditable,
+            isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
+            canRestorePreviousValues: actions.canRestorePreviousValues,
+            isQueryExecuting: actions.isQueryExecuting,
+            isQueryStoppable: actions.isQueryStoppable,
+            hasQueryText: actions.hasQueryText,
+            canClearQuery: actions.canClearQuery,
+            canClearResults: actions.canClearResults,
+            hasPendingChanges: actions.hasPendingChanges,
+            hasDataPendingChanges: actions.hasDataPendingChanges,
+            hasRowSelection: actions.hasRowSelection,
+            hasDataGridRowSelection: actions.hasDataGridRowSelection,
+            hasTableSelection: actions.hasTableSelection,
+            canTruncateSelectedTables: actions.canTruncateSelectedTables,
+            canDropSelectedTables: actions.canDropSelectedTables,
+            canPasteRows: actions.canPasteRows,
+            canCloseOtherTabs: actions.canCloseOtherTabs,
+            canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
+            canCloseAllTabs: actions.canCloseAllTabs,
+            canPinResultTab: actions.canPinResultTab,
+            canNavigateBack: actions.canNavigateBack,
+            canNavigateForward: actions.canNavigateForward,
+            canNavigatePages: actions.canNavigatePages,
+            canSaveAsFavorite: actions.canSaveAsFavorite,
+            canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
+            canToggleWorkspaceRail: canToggleWorkspaceRail,
+            canReleaseFileLock: canReleaseFileLock,
+            canShowTableStructure: actions.canShowTableStructure,
+            canEditViewDefinition: actions.canEditViewDefinition,
+            canShowObjectDDL: actions.canShowObjectDDL,
+            canRefreshMaterializedView: actions.canRefreshMaterializedView,
+            canEditObjectComment: actions.canEditObjectComment,
+            canCreateDatabase: actions.canCreateDatabase,
+            canCopyObjects: actions.canCopyObjects,
+            canDuplicateDatabase: actions.canDuplicateDatabase,
+            hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
+            canUndo: actions.canUndo,
+            canRedo: actions.canRedo,
+            hasEditorForFind: EditorEventRouter.shared.keyWindowHasEditor,
+            hasSelectionForFind: EditorEventRouter.shared.keyWindowEditorHasSelectionForFind,
+            hasActiveGridFind: actions.hasActiveGridFind,
+            hasImportFormats: !actions.availableImportFormats.isEmpty,
+            supportsContainerSwitching: actions.supportsContainerSwitching,
+            supportsBackup: actions.supportsBackup,
+            supportsRestore: actions.supportsRestore,
+            supportsServerSideExport: actions.supportsServerSideExport,
+            supportsServerDashboard: actions.supportsServerDashboard,
+            supportsUserManagement: actions.supportsUserManagement,
+            supportsSchemaSwitching: actions.supportsSchemaSwitching,
+            hasSessionContexts: actions.hasSessionContexts,
+            canFilterDatabases: actions.canFilterDatabases,
+            canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,
+            hasDatabaseFilter: actions.hasDatabaseFilter
+        )
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        applyDynamicTitle(to: menuItem)
+        guard let action = menuItem.action else { return false }
+        /// AppKit asks this method for the View menu and `validateUserInterfaceItem` for everything
+        /// else, so a rule that lives in only one of them holds for only half the routes to the
+        /// command. The sidebar is the window's and stands in every phase; the two trailing
+        /// surfaces need a session to open and none to close.
+        if action == #selector(toggleSidebar(_:)) { return true }
+        if action == #selector(toggleInspector(_:)) { return canToggleTrailingPane }
+        /// The assistant is the one surface a setting can take away, so its command goes with it
+        /// rather than staying enabled over a pane that would refuse to open.
+        if action == #selector(toggleAssistant(_:)) { return canRevealAssistant }
+        if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
+        if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
+        if action == #selector(requestDisconnect) { return canDisconnect }
+        if action == #selector(retryConnection) { return canReconnect }
+        return Self.isEnabled(action, context: menuValidationContext)
+    }
+
+    private func isCurrentContentMode(_ menuItem: NSMenuItem) -> Bool {
+        guard let raw = menuItem.representedObject as? String,
+              let mode = ConnectionWorkspaceContentMode(rawValue: raw) else { return false }
+        return contentMode == mode
+    }
+
+    /// Assigning a title or state that has not changed still posts an item-changed notification,
+    /// which makes an open menu re-lay-out and cancel tracking. Validation runs on every menu
+    /// update, so the writes have to be conditional or the menu bar flickers and a click on an
+    /// item dismisses the menu instead of firing it.
+    private func applyDynamicTitle(to menuItem: NSMenuItem) {
+        guard let action = menuItem.action else { return }
+        switch action {
+        case #selector(toggleSidebar(_:)):
+            setTitle(isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", on: menuItem)
+        case #selector(toggleInspector(_:)):
+            setTitle(isInspectorVisible ? "Hide Inspector" : "Show Inspector", on: menuItem)
+        case #selector(toggleAssistant(_:)):
+            setTitle(isAssistantVisible ? "Hide Assistant" : "Show Assistant", on: menuItem)
+        case #selector(toggleWorkspaceRail(_:)):
+            setTitle(isWorkspaceRailEnabled ? "Hide Connections" : "Show Connections", on: menuItem)
+        case #selector(undo(_:)):
+            setResolvedTitle(commandActions?.resolvedUndoTitle ?? String(localized: "Undo"), on: menuItem)
+        case #selector(redo(_:)):
+            setResolvedTitle(commandActions?.resolvedRedoTitle ?? String(localized: "Redo"), on: menuItem)
+        case #selector(toggleFilterBar(_:)):
+            setTitle(commandActions?.isFilterBarVisible == true ? "Hide Filter Bar" : "Show Filter Bar", on: menuItem)
+        case #selector(toggleQueryHistory(_:)):
+            setTitle(
+                commandActions?.isQueryHistoryVisible == true ? "Hide Query History" : "Show Query History",
+                on: menuItem
+            )
+        case #selector(toggleResults(_:)):
+            setTitle(commandActions?.isResultsVisible == true ? "Hide Results" : "Show Results", on: menuItem)
+        case #selector(pinResult(_:)):
+            setTitle(commandActions?.isResultTabPinned == true ? "Unpin Result" : "Pin Result", on: menuItem)
+        case #selector(closeTabsForOtherContainers(_:)):
+            setResolvedTitle(
+                commandActions?.closeTabsForOtherDatabasesTitle
+                    ?? String(localized: "Close Tabs for Other Databases"),
+                on: menuItem
+            )
+        case #selector(openContainerSwitcher(_:)):
+            setResolvedTitle(
+                commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database…"),
+                on: menuItem
+            )
+        /// The driver names this one, because what it gives back differs: DuckDB's file lock is
+        /// not a server's connection slot. The fallback is what the disabled item reads as for
+        /// every connection that holds nothing.
+        case #selector(releaseFileLock(_:)):
+            setResolvedTitle(
+                ConnectionFileLockAction.commandTitle(connectionId: workspaces.selectedConnectionId)
+                    ?? String(localized: "Release File Lock"),
+                on: menuItem
+            )
+        case #selector(setResultView(_:)):
+            setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
+        case #selector(setContentModeFromMenu(_:)):
+            setState(isCurrentContentMode(menuItem) ? .on : .off, on: menuItem)
+        case #selector(useFlatSidebarLayout(_:)):
+            setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
+        case #selector(useTreeSidebarLayout(_:)):
+            setState(commandActions?.sidebarLayout == .tree ? .on : .off, on: menuItem)
+        case #selector(showTablesSidebarTab(_:)):
+            setState(selectedSidebarTab == .tables ? .on : .off, on: menuItem)
+        case #selector(showFavoritesSidebarTab(_:)):
+            setState(selectedSidebarTab == .favorites ? .on : .off, on: menuItem)
+        default:
+            return
+        }
+    }
+
+    /// The item carries its mode in `representedObject`, so enablement has to see the item rather
+    /// than the selector the shared table keys on.
+    private func canShowResultView(_ menuItem: NSMenuItem) -> Bool {
+        guard let raw = menuItem.representedObject as? String,
+              let mode = ResultsViewMode(rawValue: raw) else { return false }
+        return commandActions?.availableResultsViewModes.contains(mode) ?? false
+    }
+
+    private func canChooseSafeModeLevel(_ menuItem: NSMenuItem) -> Bool {
+        guard isConnected,
+              let raw = menuItem.representedObject as? String,
+              let level = SafeModeLevel(rawValue: raw) else { return false }
+        return commandActions?.coordinator?.connection.safeModeFloor?.allows(level) ?? true
+    }
+
+    private func isCurrentResultView(_ menuItem: NSMenuItem) -> Bool {
+        guard let raw = menuItem.representedObject as? String else { return false }
+        return commandActions?.resultsViewMode?.rawValue == raw
+    }
+
+    private func setTitle(_ key: String.LocalizationValue, on menuItem: NSMenuItem) {
+        setResolvedTitle(String(localized: key), on: menuItem)
+    }
+
+    private func setResolvedTitle(_ title: String, on menuItem: NSMenuItem) {
+        guard menuItem.title != title else { return }
+        menuItem.title = title
+    }
+
+    private func setState(_ state: NSControl.StateValue, on menuItem: NSMenuItem) {
+        guard menuItem.state != state else { return }
+        menuItem.state = state
+    }
+}

@@ -4,6 +4,7 @@ import TableProPluginKit
 enum DefaultSortResolver {
     static func resolveSortState(
         behavior: DefaultSortBehavior,
+        direction: SortDirection,
         pluginHint: DefaultSortHint,
         primaryKeyColumns: [String],
         allColumns: [String]
@@ -28,7 +29,7 @@ enum DefaultSortResolver {
         var columnsOut: [SortColumn] = []
         for name in names {
             guard let index = allColumns.firstIndex(of: name) else { continue }
-            columnsOut.append(SortColumn(columnIndex: index, direction: .ascending))
+            columnsOut.append(SortColumn(columnIndex: index, direction: direction, columnName: name))
         }
         guard !columnsOut.isEmpty else { return SortState() }
         return SortState(columns: columnsOut, source: .defaultSort)

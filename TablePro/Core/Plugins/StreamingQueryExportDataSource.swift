@@ -28,10 +28,10 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+        guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        return pluginDriver.streamRows(query: query)
+        return adapter.streamRows(query: query)
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {

@@ -1,258 +1,326 @@
-//
-//  BigQueryStatementGeneratorTests.swift
-//  TableProTests
-//
-//  Tests for BigQueryStatementGenerator (compiled via symlink from BigQueryDriverPlugin).
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
 
+private func generator(
+    table: String = "t",
+    columns: [String]
+) -> BigQueryStatementGenerator {
+    BigQueryStatementGenerator(projectId: "p", dataset: "d", tableName: table, columns: columns)
+}
+
+private func generate(
+    _ generator: BigQueryStatementGenerator,
+    _ changes: [PluginRowChange],
+    insertedRowData: [Int: [PluginCellValue]] = [:],
+    deleted: Set<Int> = [],
+    inserted: Set<Int> = []
+) -> [(statement: String, parameters: [PluginCellValue])]? {
+    generator.generateStatements(
+        from: changes,
+        insertedRowData: insertedRowData,
+        deletedRowIndices: deleted,
+        insertedRowIndices: inserted
+    )
+}
+
 @Suite("BigQueryStatementGenerator - INSERT")
 struct BigQueryStatementGeneratorInsertTests {
-    @Test("Generates INSERT with correct table quoting")
-    func basicInsert() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "myproj", dataset: "mydata", tableName: "users",
-            columns: ["id", "name", "age"],
-            columnTypeNames: ["INT64", "STRING", "INT64"]
-        )
-        let change = PluginRowChange(
-            rowIndex: 0, type: .insert,
-            cellChanges: [
-                (columnIndex: 0, columnName: "id", oldValue: nil, newValue: "1"),
-                (columnIndex: 1, columnName: "name", oldValue: nil, newValue: "Alice"),
-                (columnIndex: 2, columnName: "age", oldValue: nil, newValue: "30")
-            ],
-            originalRow: nil
-        )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [0: ["1", "Alice", "30"]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
+    @Test("Every value is a placeholder bound in column order")
+    func insertBindsEveryValue() throws {
+        let gen = generator(table: "users", columns: ["id", "name", "age"])
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = try #require(generate(gen, [change], insertedRowData: [0: ["1", "Alice", "30"]], inserted: [0]))
         #expect(result.count == 1)
-        let sql = result[0].statement
-        #expect(sql.contains("`myproj.mydata.users`"))
-        #expect(sql.contains("INSERT INTO"))
-        #expect(sql.contains("1"))
-        #expect(sql.contains("'Alice'"))
-        #expect(sql.contains("30"))
+        #expect(result[0].statement == "INSERT INTO `p`.`d`.`users` (`id`, `name`, `age`) VALUES (?, ?, ?)")
+        #expect(result[0].parameters == ["1", "Alice", "30"])
     }
 
-    @Test("INT64 values are unquoted")
-    func numericInsert() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["val"],
-            columnTypeNames: ["INT64"]
-        )
-        let change = PluginRowChange(
-            rowIndex: 0, type: .insert,
-            cellChanges: [(columnIndex: 0, columnName: "val", oldValue: nil, newValue: "42")],
-            originalRow: nil
-        )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [0: ["42"]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        let sql = result[0].statement
-        #expect(sql.contains("VALUES (42)"))
+    @Test("A NULL value is bound as a null parameter")
+    func insertBindsNull() throws {
+        let gen = generator(columns: ["a", "b"])
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = try #require(generate(gen, [change], insertedRowData: [0: ["val", nil]], inserted: [0]))
+        #expect(result[0].statement == "INSERT INTO `p`.`d`.`t` (`a`, `b`) VALUES (?, ?)")
+        #expect(result[0].parameters == ["val", .null])
     }
 
-    @Test("NULL values generate NULL keyword")
-    func nullInsert() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["a", "b"],
-            columnTypeNames: ["STRING", "STRING"]
-        )
-        let change = PluginRowChange(
-            rowIndex: 0, type: .insert,
-            cellChanges: [
-                (columnIndex: 0, columnName: "a", oldValue: nil, newValue: "val"),
-                (columnIndex: 1, columnName: "b", oldValue: nil, newValue: nil)
-            ],
-            originalRow: nil
-        )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [0: ["val", nil]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        let sql = result[0].statement
-        #expect(sql.contains("NULL"))
+    @Test("The DEFAULT sentinel leaves the column out of the INSERT")
+    func insertSkipsDefaultSentinel() throws {
+        let gen = generator(columns: ["id", "created_at", "name"])
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let row: [PluginCellValue] = ["7", .text(BigQueryStatementGenerator.defaultSentinel), "Bob"]
+        let result = try #require(generate(gen, [change], insertedRowData: [0: row], inserted: [0]))
+        #expect(result[0].statement == "INSERT INTO `p`.`d`.`t` (`id`, `name`) VALUES (?, ?)")
+        #expect(result[0].parameters == ["7", "Bob"])
     }
 
-    @Test("BOOL values format as TRUE/FALSE")
-    func boolInsert() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["flag"],
-            columnTypeNames: ["BOOL"]
-        )
+    @Test("A row of only DEFAULT sentinels inserts DEFAULT into the first column")
+    func insertAllDefaults() throws {
+        let gen = generator(columns: ["id", "name"])
+        let sentinel = PluginCellValue.text(BigQueryStatementGenerator.defaultSentinel)
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = try #require(generate(gen, [change], insertedRowData: [0: [sentinel, sentinel]], inserted: [0]))
+        #expect(result[0].statement == "INSERT INTO `p`.`d`.`t` (`id`) VALUES (DEFAULT)")
+        #expect(result[0].parameters.isEmpty)
+    }
+
+    @Test("A bytes value is bound as a bytes parameter")
+    func insertBindsBytes() throws {
+        let gen = generator(columns: ["payload"])
+        let bytes = Data([0x00, 0x27, 0xFF])
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = try #require(generate(gen, [change], insertedRowData: [0: [.bytes(bytes)]], inserted: [0]))
+        #expect(result[0].statement == "INSERT INTO `p`.`d`.`t` (`payload`) VALUES (?)")
+        #expect(result[0].parameters == [.bytes(bytes)])
+    }
+
+    @Test("A quote in a value never reaches the SQL text")
+    func insertKeepsQuotesOutOfSQL() throws {
+        let gen = generator(columns: ["name"])
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = try #require(generate(gen, [change], insertedRowData: [0: ["x\\' OR TRUE --"]], inserted: [0]))
+        #expect(!result[0].statement.contains("OR TRUE"))
+        #expect(result[0].parameters == ["x\\' OR TRUE --"])
+    }
+
+    @Test("An INSERT without row data uses the changed cells")
+    func insertFromCellChanges() throws {
+        let gen = generator(columns: ["id", "name"])
         let change = PluginRowChange(
-            rowIndex: 0, type: .insert,
-            cellChanges: [(columnIndex: 0, columnName: "flag", oldValue: nil, newValue: "true")],
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 1, columnName: "name", oldValue: nil, newValue: "Ann")],
             originalRow: nil
         )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [0: ["true"]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        #expect(result[0].statement.contains("TRUE"))
+        let result = try #require(generate(gen, [change], inserted: [0]))
+        #expect(result[0].statement == "INSERT INTO `p`.`d`.`t` (`name`) VALUES (?)")
+        #expect(result[0].parameters == ["Ann"])
     }
 }
 
 @Suite("BigQueryStatementGenerator - UPDATE")
 struct BigQueryStatementGeneratorUpdateTests {
-    @Test("Generates UPDATE with SET and WHERE")
-    func basicUpdate() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "users",
-            columns: ["id", "name"],
-            columnTypeNames: ["INT64", "STRING"]
-        )
+    @Test("SET values come before WHERE values in the parameter list")
+    func basicUpdate() throws {
+        let gen = generator(table: "users", columns: ["id", "name"])
         let change = PluginRowChange(
-            rowIndex: 0, type: .update,
+            rowIndex: 0,
+            type: .update,
             cellChanges: [(columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Bob")],
             originalRow: ["1", "Alice"]
         )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [:],
-            deletedRowIndices: [], insertedRowIndices: []
-        )
+        let result = try #require(generate(gen, [change]))
         #expect(result.count == 1)
-        let sql = result[0].statement
-        #expect(sql.contains("UPDATE `p.d.users`"))
-        #expect(sql.contains("SET `name` = 'Bob'"))
-        #expect(sql.contains("WHERE `id` = 1 AND `name` = 'Alice'"))
+        #expect(result[0].statement == "UPDATE `p`.`d`.`users` SET `name` = ? WHERE `id` = ? AND `name` = ?")
+        #expect(result[0].parameters == ["Bob", "1", "Alice"])
     }
 
-    @Test("Skips STRUCT/ARRAY columns in WHERE clause")
-    func skipsComplexTypesInWhere() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["id", "metadata", "tags"],
-            columnTypeNames: ["INT64", "STRUCT<a INT64>", "ARRAY<STRING>"]
-        )
+    @Test("Values that look like JSON stay in the WHERE clause")
+    func keepsBracketValuesInWhere() throws {
+        let gen = generator(columns: ["id", "label", "tags"])
         let change = PluginRowChange(
-            rowIndex: 0, type: .update,
+            rowIndex: 0,
+            type: .update,
             cellChanges: [(columnIndex: 0, columnName: "id", oldValue: "1", newValue: "2")],
-            originalRow: ["1", "{\"a\":1}", "[\"tag1\"]"]
+            originalRow: ["1", "{draft}", "[tag1]"]
         )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [:],
-            deletedRowIndices: [], insertedRowIndices: []
-        )
-        let sql = result[0].statement
-        #expect(sql.contains("`id` = 1"))
-        #expect(!sql.contains("`metadata`"))
-        #expect(!sql.contains("`tags`"))
+        let result = try #require(generate(gen, [change]))
+        #expect(result[0].statement.contains("`label` = ?"))
+        #expect(result[0].statement.contains("`tags` = ?"))
+        #expect(result[0].parameters == ["2", "1", "{draft}", "[tag1]"])
     }
 
     @Test("NULL original values use IS NULL in WHERE")
-    func nullInWhere() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["id", "note"],
-            columnTypeNames: ["INT64", "STRING"]
-        )
+    func nullInWhere() throws {
+        let gen = generator(columns: ["id", "note"])
         let change = PluginRowChange(
-            rowIndex: 0, type: .update,
+            rowIndex: 0,
+            type: .update,
             cellChanges: [(columnIndex: 1, columnName: "note", oldValue: nil, newValue: "hello")],
             originalRow: ["1", nil]
         )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [:],
-            deletedRowIndices: [], insertedRowIndices: []
+        let result = try #require(generate(gen, [change]))
+        #expect(result[0].statement == "UPDATE `p`.`d`.`t` SET `note` = ? WHERE `id` = ? AND `note` IS NULL")
+        #expect(result[0].parameters == ["hello", "1"])
+    }
+
+    @Test("The DEFAULT sentinel writes DEFAULT in SET")
+    func updateWritesDefault() throws {
+        let gen = generator(columns: ["id", "status"])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (
+                    columnIndex: 1,
+                    columnName: "status",
+                    oldValue: "old",
+                    newValue: .text(BigQueryStatementGenerator.defaultSentinel)
+                )
+            ],
+            originalRow: ["1", "old"]
         )
-        let sql = result[0].statement
-        #expect(sql.contains("`note` IS NULL"))
+        let result = try #require(generate(gen, [change]))
+        #expect(result[0].statement == "UPDATE `p`.`d`.`t` SET `status` = DEFAULT WHERE `id` = ? AND `status` = ?")
+        #expect(result[0].parameters == ["1", "old"])
+    }
+
+    @Test("An UPDATE without an original row refuses the whole batch")
+    func updateWithoutKeyRefusesBatch() {
+        let gen = generator(columns: ["id", "name"])
+        let insert = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let update = PluginRowChange(
+            rowIndex: 1,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "name", oldValue: "a", newValue: "b")],
+            originalRow: nil
+        )
+        let result = generate(gen, [insert, update], insertedRowData: [0: ["1", "x"]], inserted: [0])
+        #expect(result == nil)
+    }
+
+    @Test("The ownership probe with no cell changes gets an empty list")
+    func ownershipProbe() {
+        let gen = generator(columns: ["id"])
+        let probe = PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil)
+        let result = generate(gen, [probe])
+        #expect(result?.isEmpty == true)
     }
 }
 
 @Suite("BigQueryStatementGenerator - DELETE")
 struct BigQueryStatementGeneratorDeleteTests {
-    @Test("Generates DELETE with WHERE from original row")
-    func basicDelete() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["id", "name"],
-            columnTypeNames: ["INT64", "STRING"]
-        )
-        let change = PluginRowChange(
-            rowIndex: 0, type: .delete,
-            cellChanges: [],
-            originalRow: ["42", "Alice"]
-        )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [:],
-            deletedRowIndices: [0], insertedRowIndices: []
-        )
+    @Test("Generates DELETE keyed on the original row")
+    func basicDelete() throws {
+        let gen = generator(columns: ["id", "name"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["42", "Alice"])
+        let result = try #require(generate(gen, [change], deleted: [0]))
         #expect(result.count == 1)
-        let sql = result[0].statement
-        #expect(sql.contains("DELETE FROM `p.d.t`"))
-        #expect(sql.contains("`id` = 42"))
-        #expect(sql.contains("`name` = 'Alice'"))
+        #expect(result[0].statement == "DELETE FROM `p`.`d`.`t` WHERE `id` = ? AND `name` = ?")
+        #expect(result[0].parameters == ["42", "Alice"])
     }
 
-    @Test("DELETE without original row is skipped")
+    @Test("A bytes key is bound as a bytes parameter")
+    func deleteBindsBytesKey() throws {
+        let gen = generator(columns: ["hash"])
+        let bytes = Data([0xDE, 0xAD])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.bytes(bytes)])
+        let result = try #require(generate(gen, [change], deleted: [0]))
+        #expect(result[0].parameters == [.bytes(bytes)])
+    }
+
+    @Test("A DELETE without an original row refuses the whole batch")
     func deleteWithoutOriginalRow() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["id"],
-            columnTypeNames: ["INT64"]
-        )
-        let change = PluginRowChange(
-            rowIndex: 0, type: .delete,
-            cellChanges: [],
-            originalRow: nil
-        )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [:],
-            deletedRowIndices: [0], insertedRowIndices: []
-        )
-        #expect(result.isEmpty)
+        let gen = generator(columns: ["id"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: nil)
+        #expect(generate(gen, [change], deleted: [0]) == nil)
     }
 }
 
-@Suite("BigQueryStatementGenerator - String Escaping")
-struct BigQueryStatementGeneratorEscapingTests {
-    @Test("Single quotes in values are escaped with doubling")
-    func singleQuoteEscaping() {
+@Suite("BigQueryStatementGenerator - Identifiers")
+struct BigQueryStatementGeneratorIdentifierTests {
+    @Test("Backticks and backslashes in names are escaped")
+    func escapesIdentifiers() throws {
         let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["name"],
-            columnTypeNames: ["STRING"]
+            projectId: "my-proj",
+            dataset: "d",
+            tableName: "we`ird\\",
+            columns: ["c`1"]
         )
-        let change = PluginRowChange(
-            rowIndex: 0, type: .insert,
-            cellChanges: [(columnIndex: 0, columnName: "name", oldValue: nil, newValue: "O'Brien")],
-            originalRow: nil
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = try #require(generate(gen, [change], insertedRowData: [0: ["v"]], inserted: [0]))
+        #expect(result[0].statement == "INSERT INTO `my-proj`.`d`.`we\\`ird\\\\` (`c\\`1`) VALUES (?)")
+    }
+}
+
+@Suite("BigQueryStatementGenerator - Row Key")
+struct BigQueryStatementGeneratorRowKeyTests {
+    private func keyed(
+        columns: [String],
+        primaryKey: [String] = [],
+        nonComparable: Set<String> = []
+    ) -> BigQueryStatementGenerator {
+        BigQueryStatementGenerator(
+            projectId: "p",
+            dataset: "d",
+            tableName: "t",
+            columns: columns,
+            primaryKeyColumns: primaryKey,
+            nonComparableColumns: nonComparable
         )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [0: ["O'Brien"]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        #expect(result[0].statement.contains("O''Brien"))
     }
 
-    @Test("FLOAT64 values are unquoted")
-    func floatUnquoted() {
-        let gen = BigQueryStatementGenerator(
-            projectId: "p", dataset: "d", tableName: "t",
-            columns: ["score"],
-            columnTypeNames: ["FLOAT64"]
-        )
+    @Test("A declared primary key keys the UPDATE on exactly its columns")
+    func updateKeysOnPrimaryKey() throws {
+        let gen = keyed(columns: ["id", "name", "tags"], primaryKey: ["id"])
         let change = PluginRowChange(
-            rowIndex: 0, type: .insert,
-            cellChanges: [(columnIndex: 0, columnName: "score", oldValue: nil, newValue: "3.14")],
-            originalRow: nil
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "name", oldValue: "a", newValue: "b")],
+            originalRow: ["7", "a", "[1,2]"]
         )
-        let result = gen.generateStatements(
-            from: [change], insertedRowData: [0: ["3.14"]],
-            deletedRowIndices: [], insertedRowIndices: [0]
+        let result = try #require(generate(gen, [change]))
+        #expect(result[0].statement == "UPDATE `p`.`d`.`t` SET `name` = ? WHERE `id` = ?")
+        #expect(result[0].parameters == ["b", "7"])
+    }
+
+    @Test("A composite primary key keys the DELETE on every key column, NULL as IS NULL")
+    func deleteKeysOnCompositePrimaryKey() throws {
+        let gen = keyed(columns: ["a", "b", "note"], primaryKey: ["b", "a"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", nil, "x"])
+        let result = try #require(generate(gen, [change], deleted: [0]))
+        #expect(result[0].statement == "DELETE FROM `p`.`d`.`t` WHERE `b` IS NULL AND `a` = ?")
+        #expect(result[0].parameters == ["1"])
+    }
+
+    @Test("A primary key column missing from the result refuses the batch")
+    func missingPrimaryKeyColumnRefuses() {
+        let gen = keyed(columns: ["name"], primaryKey: ["id"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["a"])
+        #expect(generate(gen, [change], deleted: [0]) == nil)
+    }
+
+    @Test("A primary key column past the end of the original row refuses the batch")
+    func shortOriginalRowRefuses() {
+        let gen = keyed(columns: ["name", "id"], primaryKey: ["id"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["a"])
+        #expect(generate(gen, [change], deleted: [0]) == nil)
+    }
+
+    @Test("Without a primary key, ARRAY and JSON columns are left out of the key")
+    func keylessSkipsNonComparable() throws {
+        let gen = keyed(columns: ["id", "tags", "payload", "name"], nonComparable: ["tags", "payload"])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 3, columnName: "name", oldValue: "a", newValue: "b")],
+            originalRow: ["1", "[1]", "{}", "a"]
         )
-        #expect(result[0].statement.contains("VALUES (3.14)"))
+        let result = try #require(generate(gen, [change]))
+        #expect(result[0].statement == "UPDATE `p`.`d`.`t` SET `name` = ? WHERE `id` = ? AND `name` = ?")
+        #expect(result[0].parameters == ["b", "1", "a"])
+    }
+
+    @Test("A column of unknown type stays in the key")
+    func unknownTypeStaysInKey() throws {
+        let gen = keyed(columns: ["id", "mystery"], nonComparable: ["tags"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "?"])
+        let result = try #require(generate(gen, [change], deleted: [0]))
+        #expect(result[0].statement == "DELETE FROM `p`.`d`.`t` WHERE `id` = ? AND `mystery` = ?")
+    }
+
+    @Test("A row with no comparable column refuses the batch")
+    func nothingComparableRefuses() {
+        let gen = keyed(columns: ["tags", "shape"], nonComparable: ["tags", "shape"])
+        let update = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 0, columnName: "tags", oldValue: "[1]", newValue: "[2]")],
+            originalRow: ["[1]", "POINT(0 0)"]
+        )
+        let delete = PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["[1]", "POINT(0 0)"])
+        #expect(generate(gen, [update]) == nil)
+        #expect(generate(gen, [delete], deleted: [1]) == nil)
     }
 }

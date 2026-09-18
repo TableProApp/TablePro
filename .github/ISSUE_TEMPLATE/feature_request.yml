@@ -42,6 +42,7 @@ body:
         - Oracle
         - DuckDB
         - BigQuery
+        - Spanner
         - Cassandra
         - Cloudflare D1
         - DynamoDB

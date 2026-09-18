@@ -11,9 +11,8 @@ extension AIChatViewModel {
     struct PromptContext: Sendable {
         let databaseType: DatabaseType
         let databaseName: String
-        let tables: [TableInfo]
-        let columnsByTable: [String: [ColumnInfo]]
-        let foreignKeys: [String: [ForeignKeyInfo]]
+        let tables: [AISchemaTable]
+        let defaultSchema: String?
         let currentQuery: String?
         let queryResults: String?
         let settings: AISettings
@@ -34,20 +33,20 @@ extension AIChatViewModel {
         let task: Task<Void, Never> = Task { [weak self] in
             let columns: [ColumnInfo]
             do {
-                columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                columns = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
                     try await driver.fetchColumns(table: tableName)
                 }
             } catch {
-                Self.logger.warning("Column fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Column fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 columns = []
             }
             let fkMap: [String: [ForeignKeyInfo]]
             do {
-                fkMap = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
                     try await driver.fetchForeignKeys(forTables: [tableName])
                 }
             } catch {
-                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 fkMap = [:]
             }
             guard !Task.isCancelled, let self else { return }
@@ -107,12 +106,12 @@ extension AIChatViewModel {
                 let name = table.name
                 group.addTask {
                     do {
-                        let cols = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId, workload: .bulk) { driver in
+                        let cols = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
                             try await driver.fetchColumns(table: name)
                         }
                         return (name, cols)
                     } catch {
-                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                         return (name, [])
                     }
                 }
@@ -127,14 +126,14 @@ extension AIChatViewModel {
         let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[$0.name] == nil }
         guard needsFKFetch else { return }
         do {
-            let fkMap = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId, workload: .bulk) { driver in
+            let fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
                 try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
             }
             for (name, fks) in fkMap {
                 foreignKeysByTable[name] = fks
             }
         } catch {
-            Self.logger.warning("Foreign key bulk fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Foreign key bulk fetch failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -142,10 +141,9 @@ extension AIChatViewModel {
         guard let connection else { return nil }
         return PromptContext(
             databaseType: connection.type,
-            databaseName: services.databaseManager.activeDatabaseName(for: connection),
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: foreignKeysByTable,
+            databaseName: services.databaseManager.browseDatabaseName(for: connection),
+            tables: schemaTables(),
+            defaultSchema: defaultSchema(for: connection),
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
             settings: settings,
@@ -176,12 +174,28 @@ extension AIChatViewModel {
             services.pluginManager.sqlDialect(for: $0.type)?.identifierQuote
         } ?? "\""
         let section = AISchemaContext.buildSchemaSection(
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: foreignKeysByTable,
+            tables: schemaTables(),
+            defaultSchema: connection.flatMap { defaultSchema(for: $0) },
             maxTables: settings.maxSchemaTables,
             identifierQuote: identifierQuote
         )
         return section.isEmpty ? nil : section
+    }
+
+    /// `tables` lists the one schema the session browses, where a table name is unique, so the
+    /// name-keyed column and foreign key maps join to it by name.
+    private func schemaTables() -> [AISchemaTable] {
+        tables.map { table in
+            AISchemaTable(
+                table: table,
+                columns: columnsByTable[table.name] ?? [],
+                foreignKeys: foreignKeysByTable[table.name] ?? []
+            )
+        }
+    }
+
+    private func defaultSchema(for connection: DatabaseConnection) -> String? {
+        connection.type.implicitSchemaName
+            ?? services.databaseManager.session(for: connection.id)?.browseSchema
     }
 }

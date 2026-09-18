@@ -8,44 +8,62 @@ import Testing
 
 @Suite("PostGISSpatialRewrite.conversionQuery")
 struct PostGISConversionQueryTests {
-    @Test("geometry maps to the geometry conversion query")
-    func geometry() {
-        #expect(PostGISSpatialRewrite.conversionQuery(forTypeName: "geometry")
-            == PostGISSpatialRewrite.geometryConversionQuery)
+    private let geometry = PostGISType(name: "geometry", schema: "public")
+    private let geography = PostGISType(name: "geography", schema: "gis")
+
+    @Test("geometry casts each element to the probed geometry type")
+    func geometryQuery() throws {
+        let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geometry))
+        #expect(query.contains("\"public\".ST_AsEWKT(($1::text[])[i]::\"public\".\"geometry\")"))
     }
 
-    @Test("geography maps to the geography conversion query")
-    func geography() {
-        #expect(PostGISSpatialRewrite.conversionQuery(forTypeName: "geography")
-            == PostGISSpatialRewrite.geographyConversionQuery)
+    @Test("geography casts each element to the probed geography type")
+    func geographyQuery() throws {
+        let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geography))
+        #expect(query.contains("\"gis\".ST_AsEWKT(($1::text[])[i]::\"gis\".\"geography\")"))
     }
 
     @Test("Unknown type name returns nil")
     func unknown() {
-        #expect(PostGISSpatialRewrite.conversionQuery(forTypeName: "text") == nil)
-        #expect(PostGISSpatialRewrite.conversionQuery(forTypeName: "raster") == nil)
-        #expect(PostGISSpatialRewrite.conversionQuery(forTypeName: "") == nil)
+        #expect(PostGISSpatialRewrite.conversionQuery(for: PostGISType(name: "text", schema: "public")) == nil)
+        #expect(PostGISSpatialRewrite.conversionQuery(for: PostGISType(name: "raster", schema: "public")) == nil)
+        #expect(PostGISSpatialRewrite.conversionQuery(for: PostGISType(name: "", schema: "public")) == nil)
     }
 
-    @Test("geometry query applies ST_AsEWKT over a text array parameter cast per element")
-    func geometryQueryShape() {
-        let query = PostGISSpatialRewrite.geometryConversionQuery
-        #expect(query.contains("ST_AsEWKT(t::geometry)"))
-        #expect(query.contains("unnest($1::text[])"))
-        #expect(query.contains("ORDER BY ord"))
+    @Test("Elements are walked by generate_subscripts, which 9.1 has, in array order")
+    func portableOrdering() throws {
+        let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geometry))
+        #expect(query.contains("pg_catalog.generate_subscripts($1::text[], 1) AS i ORDER BY i"))
+        #expect(!query.contains("WITH ORDINALITY"))
+        #expect(!query.contains("unnest"))
     }
 
-    @Test("geography query casts each element to geography")
-    func geographyQueryShape() {
-        let query = PostGISSpatialRewrite.geographyConversionQuery
-        #expect(query.contains("ST_AsEWKT(t::geography)"))
-        #expect(query.contains("unnest($1::text[])"))
+    @Test("A schema name is quoted as an identifier, not interpolated")
+    func schemaIsQuoted() throws {
+        let query = try #require(
+            PostGISSpatialRewrite.conversionQuery(for: PostGISType(name: "geometry", schema: "we\"ird"))
+        )
+        #expect(query.contains("\"we\"\"ird\".\"geometry\""))
     }
 
     @Test("Conversion query reads a single bound parameter, never the user statement")
-    func singleParameter() {
-        #expect(PostGISSpatialRewrite.geometryConversionQuery.contains("$1"))
-        #expect(!PostGISSpatialRewrite.geometryConversionQuery.contains("$2"))
+    func singleParameter() throws {
+        let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geometry))
+        #expect(query.contains("$1"))
+        #expect(!query.contains("$2"))
+    }
+
+    @Test("The savepoint that isolates the conversion inside a transaction is released on both paths")
+    func savepointStatements() {
+        #expect(PostGISSpatialRewrite.savepoint == "SAVEPOINT tablepro_spatial_render")
+        #expect(PostGISSpatialRewrite.rollbackToSavepoint == "ROLLBACK TO SAVEPOINT tablepro_spatial_render")
+        #expect(PostGISSpatialRewrite.releaseSavepoint == "RELEASE SAVEPOINT tablepro_spatial_render")
+    }
+
+    @Test("The probe reads each spatial type's namespace")
+    func probeReadsNamespace() {
+        #expect(PostGISSpatialRewrite.probeQuery.contains("n.nspname"))
+        #expect(PostGISSpatialRewrite.probeQuery.contains("JOIN pg_catalog.pg_namespace n"))
     }
 }
 

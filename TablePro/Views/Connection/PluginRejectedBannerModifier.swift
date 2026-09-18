@@ -7,9 +7,12 @@ import SwiftUI
 
 struct PluginRejectedBannerModifier: ViewModifier {
     let databaseType: DatabaseType
-    private let pluginManager = PluginManager.shared
-    private let registryClient = RegistryClient.shared
-    private let installTracker = PluginInstallTracker.shared
+    /// Observed, all three. The banner shows and hides on `rejectedPlugins` and draws install progress
+    /// from the other two; held as plain constants it kept the state it had when the form opened, so
+    /// a plugin updated from the banner went on being reported as rejected.
+    @ObservedObject private var pluginManager = PluginManager.shared
+    @ObservedObject private var registryClient = RegistryClient.shared
+    @ObservedObject private var installTracker = PluginInstallTracker.shared
 
     @State private var errorMessage: String?
     @State private var showError = false
@@ -84,9 +87,11 @@ struct PluginRejectedBannerModifier: ViewModifier {
             case .stagedPendingActivation:
                 Image(systemName: "clock.arrow.circlepath")
                     .foregroundStyle(.orange)
+                    .accessibilityLabel(String(localized: "Restart to activate"))
             case .completed:
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
+                    .accessibilityLabel(String(localized: "Installed"))
             case .failed:
                 updateButton(registryPlugin: registryPlugin)
             }

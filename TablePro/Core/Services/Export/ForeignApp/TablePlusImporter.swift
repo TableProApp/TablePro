@@ -26,8 +26,8 @@ struct TablePlusImporter: ForeignAppImporter {
     ]
 
     var readKeychain: ForeignKeychainRead = ForeignKeychainReader.readPassword
-    var keyFileExists: (_ path: String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
-    var resolveAppURL: (_ bundleIdentifier: String) -> URL? = {
+    var keyFileExists: @Sendable (_ path: String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
     }
 
@@ -106,7 +106,12 @@ struct TablePlusImporter: ForeignAppImporter {
                 }
 
                 if includePasswords, !credentialsAborted, let connId = entry["ID"] as? String {
-                    let creds = readCredentials(for: connId, abortFlag: &credentialsAborted)
+                    let creds = readCredentials(
+                        for: connId,
+                        databaseMode: TablePlusPasswordMode.resolve(entry["DatabasePasswordMode"]),
+                        serverMode: TablePlusPasswordMode.resolve(entry["ServerPasswordMode"]),
+                        abortFlag: &credentialsAborted
+                    )
                     if creds.password != nil || creds.sshPassword != nil || creds.keyPassphrase != nil {
                         credentials[String(index)] = creds
                     }
@@ -166,8 +171,10 @@ struct TablePlusImporter: ForeignAppImporter {
             throw ForeignAppImportError.parseError("Missing ConnectionName")
         }
 
-        let driverString = entry["Driver"] as? String ?? ""
-        let dbType = mapDriver(driverString)
+        let driver = entry["Driver"] as? String ?? ""
+        let dbType = Self.databaseType(forDriver: driver)
+        let filePathField = ForeignAppDatabaseType.localFilePathField(for: dbType)
+        let filePath = filePathField == nil ? nil : (entry["DatabasePath"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
         let host = entry["DatabaseHost"] as? String ?? "localhost"
         let port: Int
@@ -176,14 +183,24 @@ struct TablePlusImporter: ForeignAppImporter {
         } else if let strPort = entry["DatabasePort"] as? String, let parsed = Int(strPort) {
             port = parsed
         } else {
-            port = defaultPort(for: dbType)
+            port = filePath == nil ? ForeignAppDatabaseType.defaultPort(for: dbType) : 0
         }
         let username = entry["DatabaseUser"] as? String ?? ""
         let database: String
-        if dbType == "SQLite" {
-            database = entry["DatabasePath"] as? String ?? ""
-        } else {
+        var additionalFields: [String: String] = [:]
+        switch (filePath, filePathField) {
+        case (let path?, .database?):
+            database = path
+        case (let path?, .additionalField(let fieldId)?):
+            database = ""
+            additionalFields[fieldId] = path
+        default:
             database = entry["DatabaseName"] as? String ?? ""
+        }
+
+        let databaseMode = TablePlusPasswordMode.resolve(entry["DatabasePasswordMode"])
+        if databaseMode.promptsForPassword, !Self.hidesBuiltInPassword(dbType, fields: additionalFields) {
+            additionalFields["promptForPassword"] = "true"
         }
 
         let groupName: String?
@@ -194,7 +211,7 @@ struct TablePlusImporter: ForeignAppImporter {
         }
 
         let sshConfig = parseSSHConfig(entry)
-        let sslConfig = parseSSLConfig(entry)
+        let sslConfig = parseSSLConfig(entry, driver: driver)
         let color = mapEnvironmentColor(entry["Enviroment"] as? String)
 
         return ExportableConnection(
@@ -212,7 +229,7 @@ struct TablePlusImporter: ForeignAppImporter {
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,
-            additionalFields: nil,
+            additionalFields: additionalFields.isEmpty ? nil : additionalFields,
             redisDatabase: nil,
             startupCommands: nil,
             localOnly: nil
@@ -251,33 +268,31 @@ struct TablePlusImporter: ForeignAppImporter {
         return keyFileExists(PathPortability.expandHome(resolved)) ? resolved : ""
     }
 
-    private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {
+    private func parseSSLConfig(_ entry: [String: Any], driver: String) -> ExportableSSLConfig? {
         guard entry.keys.contains("tLSMode") else { return nil }
         let tlsMode = entry["tLSMode"] as? Int ?? 0
-
-        let mode: String
-        switch tlsMode {
-        case 0: mode = SSLMode.preferred.rawValue
-        case 1: mode = SSLMode.required.rawValue
-        case 2: mode = SSLMode.verifyCa.rawValue
-        case 3: mode = SSLMode.verifyIdentity.rawValue
-        default: return nil
-        }
+        let form = TablePlusTLSVocabulary.form(forDriver: driver)
+        guard tlsMode >= 0, tlsMode < form.modes.count else { return nil }
 
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
-        func certPath(_ index: Int) -> String? {
-            guard index < paths.count, !paths[index].isEmpty else { return nil }
-            return paths[index]
+        func certPath(_ slot: Int?) -> String? {
+            guard let slot, slot < paths.count, !paths[slot].isEmpty else { return nil }
+            return paths[slot]
         }
         return ExportableSSLConfig(
-            mode: mode,
-            caCertificatePath: certPath(0),
-            clientCertificatePath: certPath(1),
-            clientKeyPath: certPath(2)
+            mode: form.modes[tlsMode].rawValue,
+            caCertificatePath: certPath(form.slots.certificateAuthority),
+            clientCertificatePath: certPath(form.slots.clientCertificate),
+            clientKeyPath: certPath(form.slots.clientKey)
         )
     }
 
-    private func readCredentials(for connectionId: String, abortFlag: inout Bool) -> ExportableCredentials {
+    private func readCredentials(
+        for connectionId: String,
+        databaseMode: TablePlusPasswordMode,
+        serverMode: TablePlusPasswordMode,
+        abortFlag: inout Bool
+    ) -> ExportableCredentials {
         func read(_ account: String) -> String? {
             guard !abortFlag else { return nil }
             switch readKeychain(Self.keychainService, account) {
@@ -291,8 +306,8 @@ struct TablePlusImporter: ForeignAppImporter {
             }
         }
 
-        let dbPassword = read("\(connectionId)_database")
-        let sshPassword = read("\(connectionId)_server")
+        let dbPassword = databaseMode.storesPasswordInKeychain ? read("\(connectionId)_database") : nil
+        let sshPassword = serverMode.storesPasswordInKeychain ? read("\(connectionId)_server") : nil
         let keyPassphrase = read("\(connectionId)_server_key")
         return ExportableCredentials(
             password: dbPassword,
@@ -304,30 +319,25 @@ struct TablePlusImporter: ForeignAppImporter {
         )
     }
 
-    private func mapDriver(_ driver: String) -> String {
-        switch driver {
-        case "MySQL": return "MySQL"
-        case "PostgreSQL": return "PostgreSQL"
-        case "Mongo": return "MongoDB"
-        case "SQLite": return "SQLite"
-        case "Redis": return "Redis"
-        case "MSSQL": return "SQL Server"
-        case "Redshift": return "Redshift"
-        case "MariaDB": return "MariaDB"
-        case "CockroachDB": return "CockroachDB"
-        default: return driver
+    private static func hidesBuiltInPassword(_ typeId: String, fields: [String: String]) -> Bool {
+        guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: typeId)) else {
+            return false
         }
+        if snapshot.connection.hidesBuiltInPassword {
+            return true
+        }
+        return snapshot.connection.additionalConnectionFields.hidesPassword(forValues: fields)
     }
 
-    private func defaultPort(for dbType: String) -> Int {
-        switch dbType {
-        case "MySQL", "MariaDB": return 3_306
-        case "PostgreSQL", "Redshift": return 5_432
-        case "CockroachDB": return 26_257
-        case "MongoDB": return 27_017
-        case "Redis": return 6_379
-        case "SQL Server": return 1_433
-        default: return 0
+    private static func databaseType(forDriver driver: String) -> String {
+        switch driver {
+        case "MicrosoftSQLServer": return DatabaseType.mssql.rawValue
+        case "Mongo": return DatabaseType.mongodb.rawValue
+        case "Cockroach": return DatabaseType.cockroachdb.rawValue
+        case "CloudflareD1": return DatabaseType.cloudflareD1.rawValue
+        case "LibSQL": return DatabaseType.libsql.rawValue
+        case "ElasticSearch": return DatabaseType.elasticsearch.rawValue
+        default: return ForeignAppDatabaseType.resolve(driver)
         }
     }
 

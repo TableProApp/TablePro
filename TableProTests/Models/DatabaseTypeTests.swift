@@ -33,6 +33,11 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.sqlite.defaultPort == 0)
     }
 
+    @Test("Spanner default port is 0")
+    func testSpannerDefaultPort() {
+        #expect(DatabaseType.spanner.defaultPort == 0)
+    }
+
     @Test("MongoDB default port is 27017")
     func testMongoDBDefaultPort() {
         #expect(DatabaseType.mongodb.defaultPort == 27_017)
@@ -50,6 +55,9 @@ struct DatabaseTypeTests {
     @Test("Raw value matches display name", arguments: [
         (DatabaseType.mysql, "MySQL"),
         (DatabaseType.mariadb, "MariaDB"),
+        (DatabaseType.tidb, "TiDB"),
+        (DatabaseType.databend, "Databend"),
+        (DatabaseType.oceanbase, "OceanBase"),
         (DatabaseType.postgresql, "PostgreSQL"),
         (DatabaseType.sqlite, "SQLite"),
         (DatabaseType.mongodb, "MongoDB"),
@@ -57,6 +65,7 @@ struct DatabaseTypeTests {
         (DatabaseType.redshift, "Redshift"),
         (DatabaseType.mssql, "SQL Server"),
         (DatabaseType.oracle, "Oracle"),
+        (DatabaseType.dameng, "Dameng"),
         (DatabaseType.clickhouse, "ClickHouse"),
         (DatabaseType.duckdb, "DuckDB"),
         (DatabaseType.cassandra, "Cassandra"),
@@ -101,6 +110,21 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mariadb.pluginTypeId == "MySQL")
     }
 
+    @Test("TiDB pluginTypeId maps to MySQL plugin")
+    func testTiDBPluginTypeId() {
+        #expect(DatabaseType.tidb.pluginTypeId == "MySQL")
+    }
+
+    @Test("Databend pluginTypeId maps to MySQL plugin")
+    func testDatabendPluginTypeId() {
+        #expect(DatabaseType.databend.pluginTypeId == "MySQL")
+    }
+
+    @Test("OceanBase pluginTypeId maps to MySQL plugin")
+    func testOceanBasePluginTypeId() {
+        #expect(DatabaseType.oceanbase.pluginTypeId == "MySQL")
+    }
+
     @Test("Redshift pluginTypeId maps to PostgreSQL plugin")
     func testRedshiftPluginTypeId() {
         #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
@@ -136,7 +160,10 @@ struct DatabaseTypeTests {
 
     @Test("libmariadb-family engines default SSL mode to preferred (2-pass connect)", arguments: [
         DatabaseType.mysql,
-        DatabaseType.mariadb
+        DatabaseType.mariadb,
+        DatabaseType.tidb,
+        DatabaseType.databend,
+        DatabaseType.oceanbase
     ])
     func testMariaDBClientEnginesDefaultSSLPreferred(type: DatabaseType) {
         #expect(type.defaultSSLMode == .preferred)
@@ -172,6 +199,9 @@ struct DatabaseTypeTests {
         DatabaseType.cockroachdb,
         DatabaseType.mysql,
         DatabaseType.mariadb,
+        DatabaseType.tidb,
+        DatabaseType.databend,
+        DatabaseType.oceanbase,
         DatabaseType.mssql
     ])
     func testOpportunisticTLSSupported(type: DatabaseType) {

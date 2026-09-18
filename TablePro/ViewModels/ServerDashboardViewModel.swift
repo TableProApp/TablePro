@@ -1,26 +1,26 @@
+import Combine
 import Foundation
 import os
 
 @MainActor
-@Observable
-final class ServerDashboardViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ServerDashboard")
+final class ServerDashboardViewModel: ObservableObject {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ServerDashboard")
 
     // MARK: - Configuration
 
     let connectionId: UUID
     let databaseType: DatabaseType
-    private(set) var provider: ServerDashboardQueryProvider?
+    @Published private(set) var provider: ServerDashboardQueryProvider?
 
     // MARK: - Data
 
-    var sessions: [DashboardSession] = []
-    var metrics: [DashboardMetric] = []
-    var slowQueries: [DashboardSlowQuery] = []
+    @Published var sessions: [DashboardSession] = []
+    @Published var metrics: [DashboardMetric] = []
+    @Published var slowQueries: [DashboardSlowQuery] = []
 
     // MARK: - Refresh State
 
-    var refreshInterval: DashboardRefreshInterval = .fiveSeconds {
+    @Published var refreshInterval: DashboardRefreshInterval = .fiveSeconds {
         didSet {
             guard oldValue != refreshInterval else { return }
             if refreshTask != nil || refreshInterval != .off {
@@ -29,29 +29,31 @@ final class ServerDashboardViewModel {
         }
     }
 
-    var isPaused: Bool = false
-    var isRefreshing: Bool = false
-    var lastRefreshDate: Date?
-    var panelErrors: [DashboardPanel: String] = [:]
+    @Published var isPaused: Bool = false
+    @Published var isRefreshing: Bool = false
+    @Published var lastRefreshDate: Date?
+    @Published var panelErrors: [DashboardPanel: String] = [:]
 
     // MARK: - Sort State
 
-    var sessionSortOrder: [KeyPathComparator<DashboardSession>] = [
+    @Published var sessionSortOrder: [KeyPathComparator<DashboardSession>] = [
         KeyPathComparator(\DashboardSession.durationSeconds, order: .reverse),
     ]
 
     // MARK: - Kill / Cancel Confirmation
 
-    var showKillConfirmation: Bool = false
-    var pendingKillProcessId: String?
-    var showCancelConfirmation: Bool = false
-    var pendingCancelProcessId: String?
-    var actionError: String?
+    @Published var showKillConfirmation: Bool = false
+    @Published var pendingKillProcessId: String?
+    @Published var showCancelConfirmation: Bool = false
+    @Published var pendingCancelProcessId: String?
+    @Published var actionError: String?
 
     // MARK: - Private
 
-    @ObservationIgnored nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private let services: AppServices
+    nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
+    private let services: AppServices
+    private var providerServerVersion: String?
+    private var hasAdoptedServerVersion = false
 
     // MARK: - Computed Properties
 
@@ -115,14 +117,28 @@ final class ServerDashboardViewModel {
 
     // MARK: - Data Fetching
 
+    /// The provider is built once per server version, because it also answers `supportedPanels`,
+    /// `canKillSessions` and `canCancelQueries` for the toolbar between refreshes.
+    private func adoptProvider(forServerVersion serverVersion: String?) {
+        guard serverVersion != providerServerVersion || !hasAdoptedServerVersion else { return }
+        providerServerVersion = serverVersion
+        hasAdoptedServerVersion = true
+        guard let resolved = ServerDashboardQueryProviderFactory.provider(
+            for: databaseType, serverVersion: serverVersion
+        ) else { return }
+        provider = resolved
+    }
+
     func refreshNow() async {
         guard !isRefreshing else { return }
-        guard let provider else {
+        guard provider != nil else {
             Self.logger.warning("No query provider available for \(self.databaseType.rawValue)")
             return
         }
 
-        guard services.databaseManager.driver(for: connectionId) != nil else { return }
+        guard let liveDriver = services.databaseManager.driver(for: connectionId) else { return }
+        adoptProvider(forServerVersion: liveDriver.serverVersion)
+        guard let provider else { return }
 
         isRefreshing = true
         defer { isRefreshing = false }

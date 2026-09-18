@@ -124,4 +124,65 @@ final class VimEngineReplaceTests: XCTestCase {
         escape()
         XCTAssertEqual(engine.mode, .normal)
     }
+
+    // MARK: - Control characters never become text
+
+    private let backspace: Character = "\u{7F}"
+
+    func testBackspaceInReplaceModeRestoresOverwrittenCharacters() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        key("R", shift: true)
+        _ = engine.process("X", shift: true)
+        _ = engine.process("Y", shift: true)
+        key(backspace)
+        XCTAssertEqual(buffer.text, "Xello world\nsecond line\n")
+        XCTAssertEqual(pos, 1)
+        key(backspace)
+        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        XCTAssertEqual(pos, 0)
+    }
+
+    func testBackspaceInReplaceModeRemovesAppendedCharacters() {
+        buffer.setSelectedRange(NSRange(location: 11, length: 0))
+        key("R", shift: true)
+        keys("!?")
+        XCTAssertEqual(buffer.text, "hello world!?\nsecond line\n")
+        key(backspace)
+        key(backspace)
+        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        XCTAssertEqual(pos, 11)
+    }
+
+    func testBackspaceBeforeReplaceStartOnlyMovesLeft() {
+        buffer.setSelectedRange(NSRange(location: 3, length: 0))
+        key("R", shift: true)
+        key(backspace)
+        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        XCTAssertEqual(pos, 2)
+    }
+
+    func testReplaceModeNeverWritesAControlCharacter() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        key("R", shift: true)
+        key("\u{03}")
+        key("\u{1D}")
+        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+    }
+
+    func testReplaceCharCancelsOnBackspace() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("r")
+        key(backspace)
+        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        XCTAssertEqual(engine.mode, .normal)
+        keys("rH")
+        XCTAssertEqual(buffer.text, "Hello world\nsecond line\n", "The cancelled r must not leave a pending replace")
+    }
+
+    func testVisualReplaceCancelsOnBackspace() {
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("vlr")
+        key(backspace)
+        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+    }
 }

@@ -17,7 +17,6 @@ public final class AnalyticsHeartbeatService {
 
     private let provider: AnalyticsEnvironmentProvider
 
-    // swiftlint:disable:next force_unwrapping
     private let analyticsUrl: URL
 
     private let heartbeatInterval: TimeInterval
@@ -28,6 +27,9 @@ public final class AnalyticsHeartbeatService {
     private let cooldownInterval: TimeInterval
 
     private static let lastHeartbeatKey = "com.TablePro.analytics.lastHeartbeatDate"
+
+    /// Injected so a sandboxed run keeps its cooldown stamp out of the real defaults domain.
+    private let defaults: UserDefaults
 
     private let session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -46,16 +48,18 @@ public final class AnalyticsHeartbeatService {
 
     public init(
         provider: AnalyticsEnvironmentProvider,
-        analyticsUrl: URL = URL(string: "https://api.tablepro.app/v1/analytics")!, // swiftlint:disable:this force_unwrapping
+        analyticsUrl: URL = URL(string: "https://api.tablepro.app/v1/analytics")!,
         heartbeatInterval: TimeInterval = 24 * 60 * 60,
         initialDelay: TimeInterval = 10,
-        cooldownInterval: TimeInterval = 20 * 60 * 60
+        cooldownInterval: TimeInterval = 20 * 60 * 60,
+        defaults: UserDefaults = .standard
     ) {
         self.provider = provider
         self.analyticsUrl = analyticsUrl
         self.heartbeatInterval = heartbeatInterval
         self.initialDelay = initialDelay
         self.cooldownInterval = cooldownInterval
+        self.defaults = defaults
     }
 
     // MARK: - Public API
@@ -131,7 +135,9 @@ public final class AnalyticsHeartbeatService {
             hasLicense: provider.hasLicense,
             connectionAttemptedAt: provider.connectionAttemptedAt,
             connectionSucceededAt: provider.connectionSucceededAt,
-            firstQueryExecutedAt: provider.firstQueryExecutedAt
+            firstQueryExecutedAt: provider.firstQueryExecutedAt,
+            updateInstallMode: provider.updateInstallMode,
+            updateCheckInterval: provider.updateCheckInterval
         )
     }
 
@@ -141,13 +147,13 @@ public final class AnalyticsHeartbeatService {
     }
 
     private func isCooldownElapsed() -> Bool {
-        guard let last = UserDefaults.standard.object(forKey: Self.lastHeartbeatKey) as? Date else {
+        guard let last = defaults.object(forKey: Self.lastHeartbeatKey) as? Date else {
             return true
         }
         return Date().timeIntervalSince(last) >= cooldownInterval
     }
 
     private func recordHeartbeatTimestamp() {
-        UserDefaults.standard.set(Date(), forKey: Self.lastHeartbeatKey)
+        defaults.set(Date(), forKey: Self.lastHeartbeatKey)
     }
 }

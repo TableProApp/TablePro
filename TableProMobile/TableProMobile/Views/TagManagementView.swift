@@ -8,6 +8,7 @@ struct TagManagementView: View {
     @State private var showingAddTag = false
 
     var body: some View {
+        let usage = ConnectionLibraryEditing.tagUsageCounts(in: appState.connections)
         NavigationStack {
             List {
                 ForEach(appState.tags) { tag in
@@ -17,9 +18,9 @@ struct TagManagementView: View {
                         }
                     } label: {
                         HStack(spacing: 12) {
-                            Circle()
-                                .fill(ConnectionColorPicker.swiftUIColor(for: tag.color))
-                                .frame(width: 12, height: 12)
+                            Image(systemName: "tag.fill")
+                                .foregroundStyle(ConnectionColorPicker.swiftUIColor(for: tag.color))
+                                .accessibilityHidden(true)
 
                             Text(tag.name)
                                 .foregroundStyle(.primary)
@@ -32,8 +33,7 @@ struct TagManagementView: View {
 
                             Spacer()
 
-                            let count = appState.connections.filter { $0.tagId == tag.id }.count
-                            Text("\(count)")
+                            Text("\(usage[tag.id] ?? 0)")
                                 .foregroundStyle(.secondary)
                                 .font(.subheadline)
                         }
@@ -74,6 +74,7 @@ struct TagManagementView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel(Text("Add Tag"))
                     CloseButton { dismiss() }
                 }
             }

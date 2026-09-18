@@ -23,7 +23,7 @@ struct ExportStateTests {
         #expect(state.totalRows == 0)
         #expect(state.statusMessage == "")
         #expect(state.errorMessage == nil)
-        #expect(state.warningMessage == nil)
+        #expect(state.warnings.isEmpty)
     }
 
     @Test("Value semantics — copy is independent")
@@ -83,7 +83,7 @@ struct ExportStateTests {
         state.errorMessage = "Some error"
         #expect(state.errorMessage == "Some error")
 
-        state.warningMessage = "Some warning"
-        #expect(state.warningMessage == "Some warning")
+        state.warnings = ["Some warning"]
+        #expect(state.warnings == ["Some warning"])
     }
 }

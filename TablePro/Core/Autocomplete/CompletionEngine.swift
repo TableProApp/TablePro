@@ -11,6 +11,9 @@ import TableProPluginKit
 /// Completion context returned by the engine
 struct CompletionContext {
     let items: [SQLCompletionItem]
+    /// The wider ranked pool an open popup re-ranks against as the prefix grows. `items` is the
+    /// slice of it the popup shows.
+    let candidates: [SQLCompletionItem]
     let replacementRange: NSRange
     let sqlContext: SQLContext
 }
@@ -51,10 +54,6 @@ final class CompletionEngine {
         provider.updateFavoriteKeywords(keywords)
     }
 
-    func retrySchemaIfNeeded() async {
-        await provider.retrySchemaIfNeeded()
-    }
-
     /// Statement-start keyword items available synchronously, without schema access.
     /// Used to seed a filterable completion context before the async fetch completes.
     func keywordCompletions() -> [SQLCompletionItem] {
@@ -67,6 +66,24 @@ final class CompletionEngine {
         provider.allFavoriteItems()
     }
 
+    /// Filters, ranks and cases an open session's candidates for `prefix`.
+    ///
+    /// The engine is the single gate every SQL completion item passes through on its way to a UI
+    /// surface, so the case policy is applied here rather than at each surface. `prefix` arrives in
+    /// the case the user typed it; the matcher lowercases internally.
+    func rank(
+        _ items: [SQLCompletionItem],
+        prefix: String,
+        context: SQLContext,
+        keywordCase: SQLKeywordCase
+    ) -> [SQLCompletionItem] {
+        SQLCompletionCasing.applied(
+            to: provider.filterRankAndLimit(items, prefix: prefix, context: context),
+            typedPrefix: prefix,
+            policy: keywordCase
+        )
+    }
+
     /// Completions for a single-table filter expression (a bare WHERE-clause
     /// fragment such as `id = 1 AND na`). The fragment is completed as the WHERE
     /// clause it denotes and columns are scoped to `tableName`, so suggestions
@@ -74,7 +91,8 @@ final class CompletionEngine {
     func filterCompletions(
         fragment: String,
         cursorPosition: Int,
-        tableName: String
+        tableName: String,
+        keywordCase: SQLKeywordCase = .default
     ) async -> CompletionContext? {
         let clausePrefix = "WHERE "
         let prefixLength = (clausePrefix as NSString).length
@@ -84,6 +102,7 @@ final class CompletionEngine {
         guard let context = await getCompletions(
             text: analysisText,
             cursorPosition: cursorPosition + prefixLength,
+            keywordCase: keywordCase,
             forcedTableReferences: references
         ) else {
             return nil
@@ -95,6 +114,7 @@ final class CompletionEngine {
 
         return CompletionContext(
             items: context.items,
+            candidates: context.candidates,
             replacementRange: mappedRange,
             sqlContext: context.sqlContext
         )
@@ -105,6 +125,7 @@ final class CompletionEngine {
     func getCompletions(
         text: String,
         cursorPosition: Int,
+        keywordCase: SQLKeywordCase = .default,
         forcedTableReferences: [TableReference]? = nil
     ) async -> CompletionContext? {
         let nsText = text as NSString
@@ -128,7 +149,7 @@ final class CompletionEngine {
 
         let adjustedCursor = cursorPosition - windowOffset
 
-        let (items, context) = await provider.getCompletions(
+        let (items, candidates, context) = await provider.completionSession(
             text: analysisText,
             cursorPosition: adjustedCursor,
             forcedTableReferences: forcedTableReferences
@@ -163,7 +184,8 @@ final class CompletionEngine {
         )
 
         return CompletionContext(
-            items: items,
+            items: SQLCompletionCasing.applied(to: items, typedPrefix: context.prefix, policy: keywordCase),
+            candidates: candidates,
             replacementRange: replacementRange,
             sqlContext: adjustedContext
         )

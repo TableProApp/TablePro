@@ -50,10 +50,74 @@ struct QueryExecutorTests {
         #expect(name == "user logs")
     }
 
+    @Test("extractTableName parses MQL getCollection notation")
+    func extractTableNameMQLGetCollection() {
+        let plain = QuerySqlParser.extractTableName(from: #"db.getCollection("user logs").find({})"#)
+        let escaped = QuerySqlParser.extractTableName(from: #"db.getCollection("say\"hi").find({})"#)
+        let shadowed = QuerySqlParser.extractTableName(from: #"db.getCollection("stats").countDocuments({})"#)
+        #expect(plain == "user logs")
+        #expect(escaped == "say\"hi")
+        #expect(shadowed == "stats")
+    }
+
     @Test("extractTableName returns nil when no FROM clause")
     func extractTableNameNoMatch() {
         #expect(QuerySqlParser.extractTableName(from: "SHOW TABLES") == nil)
         #expect(QuerySqlParser.extractTableName(from: "CREATE TABLE foo (id INT)") == nil)
+    }
+
+    // MARK: - Schema-qualified sources
+
+    /// A generated write names the table without a qualifier and lets the session resolve it, so a
+    /// schema the session is not pointed at must stay read-only.
+
+    @Test("A qualified source resolves when it names the session's own schema")
+    func qualifiedSourceMatchingSessionSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM public.users u WHERE u.id = 1",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == "users")
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM \"public\".\"users\"",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == "users")
+    }
+
+    @Test("A qualified source naming another schema stays read-only")
+    func qualifiedSourceOtherSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM analytics.users u WHERE u.id = 1",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == nil)
+    }
+
+    @Test("A qualified source stays read-only when the session schema is unknown")
+    func qualifiedSourceWithoutSessionSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM public.users u WHERE u.id = 1",
+            dialect: .postgres
+        ) == nil)
+    }
+
+    @Test("Schema matching ignores case")
+    func qualifiedSourceCaseInsensitive() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM PUBLIC.users u",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == "users")
+    }
+
+    @Test("An unqualified source is unaffected by the session schema")
+    func unqualifiedSourceIgnoresSessionSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM users u WHERE u.id = 1",
+            dialect: .postgres,
+            browseSchema: "analytics"
+        ) == "users")
     }
 
     @Test("stripTrailingOrderBy removes a trailing ORDER BY clause")
@@ -108,6 +172,88 @@ struct QueryExecutorTests {
         #expect(!QueryExecutor.isDDLStatement("DELETE FROM foo"))
     }
 
+    // MARK: - Sorting a query result
+
+    @Test("applyingOrderBy puts the clause before a LIMIT the user wrote")
+    func applyingOrderByPrecedesLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"total\" ASC",
+            to: "SELECT * FROM orders LIMIT 100",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"total\" ASC LIMIT 100")
+    }
+
+    @Test("applyingOrderBy keeps the user's LIMIT when replacing an existing ORDER BY")
+    func applyingOrderByKeepsLimitWhenReplacing() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"total\" DESC",
+            to: "SELECT * FROM orders ORDER BY id LIMIT 100",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"total\" DESC LIMIT 100")
+    }
+
+    @Test("applyingOrderBy preserves a LIMIT with an OFFSET")
+    func applyingOrderByPreservesOffset() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"id\" ASC",
+            to: "SELECT * FROM orders LIMIT 10 OFFSET 20",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"id\" ASC LIMIT 10 OFFSET 20")
+    }
+
+    @Test("applyingOrderBy appends to a query with no row-limiting clause")
+    func applyingOrderByAppendsWhenNoLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"id\" ASC",
+            to: "SELECT * FROM orders",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"id\" ASC")
+    }
+
+    @Test("applyingOrderBy ignores a LIMIT inside a subquery")
+    func applyingOrderByIgnoresSubqueryLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"id\" ASC",
+            to: "SELECT * FROM (SELECT * FROM t LIMIT 5) s",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM (SELECT * FROM t LIMIT 5) s ORDER BY \"id\" ASC")
+    }
+
+    @Test("applyingOrderBy with no columns strips the old ORDER BY and keeps the LIMIT")
+    func applyingOrderByEmptyClauseKeepsLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "",
+            to: "SELECT * FROM orders ORDER BY id LIMIT 100",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders LIMIT 100")
+    }
+
+    @Test("applyingOrderBy with no columns drops an OFFSET FETCH tail, which needs an ORDER BY")
+    func applyingOrderByEmptyClauseDropsAnsiTail() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "",
+            to: "SELECT * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY",
+            lexicalDialect: .generic
+        )
+        #expect(sorted == "SELECT * FROM t")
+    }
+
+    @Test("applyingOrderBy leaves a column named offset alone")
+    func applyingOrderByIgnoresOffsetColumn() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "`name` ASC",
+            to: "SELECT offset, name FROM events",
+            lexicalDialect: .mysql
+        )
+        #expect(sorted == "SELECT offset, name FROM events ORDER BY `name` ASC")
+    }
+
     // MARK: - Row cap qualification
 
     @Test("qualifiesForRowCap accepts SELECT and WITH queries on query tabs")
@@ -133,6 +279,34 @@ struct QueryExecutorTests {
         ))
         #expect(!QueryExecutor.qualifiesForRowCap(
             sql: "SELECTX FROM t", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts the other row-producing statement forms")
+    func qualifiesForRowCapRowProducingForms() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "(SELECT * FROM events) UNION ALL (SELECT * FROM events_archive)",
+            tabType: .query,
+            databaseType: .postgresql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "TABLE big_table", tabType: .query, databaseType: .postgresql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "VALUES (1), (2), (3)", tabType: .query, databaseType: .postgresql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "((SELECT * FROM t))", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
+    @Test("qualifiesForRowCap still rejects a write hidden behind a leading parenthesis")
+    func qualifiesForRowCapParenthesisedWrite() {
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "(DELETE FROM users)", tabType: .query, databaseType: .postgresql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "( SELECT * FROM t INTO OUTFILE '/tmp/x' )", tabType: .query, databaseType: .mysql
         ))
     }
 

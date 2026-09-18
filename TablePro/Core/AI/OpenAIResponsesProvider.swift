@@ -54,7 +54,11 @@ final class OpenAIResponsesProvider: ChatTransport {
         )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
@@ -68,7 +72,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("OpenAI Responses model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("OpenAI Responses model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
         }
         guard let httpResponse = response as? HTTPURLResponse,

@@ -82,6 +82,22 @@ struct BigQueryTypeMapperColumnInfoTests {
         #expect(infos[1].isNullable == true)
         #expect(infos[1].comment == nil)
     }
+
+    @Test("Columns in the declared primary key are flagged")
+    func declaredPrimaryKey() {
+        let fields = [field("tenant", "STRING"), field("id", "INT64"), field("payload", "JSON")]
+        let infos = BigQueryTypeMapper.columnInfos(from: fields, primaryKey: ["tenant", "id"])
+        #expect(infos.map(\.isPrimaryKey) == [true, true, false])
+    }
+
+    @Test("A tables.get response carries its declared primary key")
+    func tableConstraintsDecode() throws {
+        let json = #"{"tableConstraints":{"primaryKey":{"columns":["tenant","id"]}}}"#
+        let resource = try JSONDecoder().decode(BQTableResource.self, from: Data(json.utf8))
+        #expect(resource.primaryKeyColumns == ["tenant", "id"])
+        let bare = try JSONDecoder().decode(BQTableResource.self, from: Data("{}".utf8))
+        #expect(bare.primaryKeyColumns.isEmpty)
+    }
 }
 
 @Suite("BigQueryTypeMapper - Row Flattening")
@@ -311,5 +327,53 @@ struct BigQueryTypeMapperJSONDecodingTests {
         )
         #expect(BigQueryTypeMapper.flattenRows(from: roundTripped, schema: schema)[0][0].asText
             == #"[{"name":"a"},{"name":"b"}]"#)
+    }
+}
+
+@Suite("BigQueryTypeMapper - Comparability")
+struct BigQueryTypeMapperComparabilityTests {
+    @Test("ARRAY, JSON and GEOGRAPHY columns are not comparable")
+    func nonComparableScalars() {
+        let names = BigQueryTypeMapper.nonComparableColumnNames(from: [
+            field("id", "INT64"),
+            field("tags", "STRING", mode: "REPEATED"),
+            field("payload", "JSON"),
+            field("area", "GEOGRAPHY"),
+            field("name", "STRING", mode: "NULLABLE")
+        ])
+        #expect(names == ["tags", "payload", "area"])
+    }
+
+    @Test("A STRUCT is comparable only when every field inside it is")
+    func structComparability() {
+        let names = BigQueryTypeMapper.nonComparableColumnNames(from: [
+            field("plain", "RECORD", fields: [field("a", "INT64"), field("b", "STRING")]),
+            field("nested", "STRUCT", fields: [field("inner", "RECORD", fields: [field("j", "JSON")])]),
+            field("withArray", "RECORD", fields: [field("xs", "INT64", mode: "REPEATED")])
+        ])
+        #expect(names == ["nested", "withArray"])
+    }
+}
+
+@Suite("BigQueryTypeMapper - Column Kinds")
+struct BigQueryTypeMapperColumnKindTests {
+    @Test("Scalar types map to the filter literal kind")
+    func scalarKinds() {
+        let kinds = BigQueryTypeMapper.columnKinds(from: [
+            field("s", "STRING"),
+            field("i", "INT64"),
+            field("n", "NUMERIC"),
+            field("f", "FLOAT64"),
+            field("b", "BOOL"),
+            field("d", "DATE"),
+            field("xs", "INT64", mode: "REPEATED")
+        ])
+        #expect(kinds["s"] == .text)
+        #expect(kinds["i"] == .integer)
+        #expect(kinds["n"] == .decimal)
+        #expect(kinds["f"] == .decimal)
+        #expect(kinds["b"] == .boolean)
+        #expect(kinds["d"] == .other)
+        #expect(kinds["xs"] == .other)
     }
 }

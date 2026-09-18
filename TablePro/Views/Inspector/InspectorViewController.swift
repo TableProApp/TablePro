@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -76,6 +77,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             onNextPage: { [weak self] in self?.goToPage(offsetBy: 1) }
         )
         let hosting = NSHostingView(rootView: rootView)
+        hosting.sizingOptions = []
         hosting.translatesAutoresizingMaskIntoConstraints = false
         let container = NSView()
         container.addSubview(hosting)
@@ -130,7 +132,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     fileprivate func handlePasteRows() {
         guard let inspectorDocument else { return }
-        guard let raw = NSPasteboard.general.string(forType: .string), !raw.isEmpty else { return }
+        guard let raw = ClipboardService.shared.readText(), !raw.isEmpty else { return }
         let lines = raw.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r\n" })
         var rows: [[String]] = []
         rows.reserveCapacity(lines.count)
@@ -283,13 +285,11 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func insertStoreIndex(anchoredBy sender: Any?, below: Bool) -> Int {
-        let anchorDisplayRow: Int? = if let item = sender as? NSMenuItem {
-            item.tag
-        } else if below {
-            state.selectedRowIndices.max()
-        } else {
-            state.selectedRowIndices.min()
-        }
+        let anchorDisplayRow = InspectorRowMenuBuilder.insertAnchorDisplayRow(
+            sender: sender,
+            selectedDisplayRows: state.selectedRowIndices,
+            below: below
+        )
         return InspectorRowInsertion.storeIndex(
             anchorDisplayRow: anchorDisplayRow,
             below: below,
@@ -309,10 +309,9 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     @objc func inspectorRenameColumn(_ sender: Any?) {
-        guard let menuItem = sender as? NSMenuItem,
-              let inspector = inspectorDocument,
-              menuItem.tag >= 0, menuItem.tag < inspector.columnNames.count else { return }
-        let column = menuItem.tag
+        guard let inspector = inspectorDocument,
+              let column = InspectorColumnMenuBuilder.clickedColumn(from: sender),
+              column >= 0, column < inspector.columnNames.count else { return }
         let current = inspector.columnNames[column]
         promptForColumnName(title: String(localized: "Rename Column"), initial: current) { [weak self] name in
             guard let self, let name, !name.isEmpty, name != current else { return }
@@ -343,7 +342,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     private func columnInsertAnchor(from sender: Any?, toRight: Bool) -> Int? {
         guard let inspector = inspectorDocument else { return nil }
-        let clicked = (sender as? NSMenuItem).map(\.tag)
+        let clicked = InspectorColumnMenuBuilder.clickedColumn(from: sender)
         return InspectorColumnTargets.insertAnchor(
             clicked: clicked,
             fullySelected: selectedFullColumns(),
@@ -367,7 +366,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func selectedFullColumns() -> IndexSet {
-        gridDelegate.coordinator?.selectionController.selectedFullColumns() ?? IndexSet()
+        gridDelegate.coordinator?.selectionController.selectedFullColumnDataIndices() ?? IndexSet()
     }
 
     private func performDeleteColumns(_ columns: [Int]) {
@@ -424,10 +423,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     private func structuralTargetColumn(from sender: Any?) -> Int? {
         guard let inspector = inspectorDocument, !inspector.columnNames.isEmpty else { return nil }
         let count = inspector.columnNames.count
-        if let menuItem = sender as? NSMenuItem, menuItem.tag >= 0, menuItem.tag < count {
-            return menuItem.tag
+        if let clicked = InspectorColumnMenuBuilder.clickedColumn(from: sender), clicked >= 0, clicked < count {
+            return clicked
         }
-        if let first = gridDelegate.coordinator?.selectionController.selection.affectedColumns.min(),
+        if let first = gridDelegate.coordinator?.selectionController.affectedDataColumns().min(),
            first >= 0, first < count {
             return first
         }
@@ -453,14 +452,15 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             action: nil
         )
         mode.selectedSegment = 0
+        mode.setAccessibilityLabel(String(localized: "Split mode"))
         let stack = accessoryStack(with: [field, mode])
         alert.accessoryView = stack
+        alert.window.initialFirstResponder = field
 
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             self?.applySplit(column: column, separator: field.stringValue, isRegex: mode.selectedSegment == 1)
         }
-        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
     }
 
     private func promptMergeColumns(_ column: Int) {
@@ -480,6 +480,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         field.placeholderString = String(localized: "Separator (optional)")
         field.usesSingleLineMode = true
         alert.accessoryView = accessoryStack(with: [field])
+        alert.window.initialFirstResponder = field
 
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self, let inspector = self.inspectorDocument else { return }
@@ -487,7 +488,6 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             inspector.mergeColumns(at: column, separator: field.stringValue)
             if let removedName { self.removeLayoutKey(removedName) }
         }
-        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
     }
 
     private func applySplit(column: Int, separator: String, isRegex: Bool) {
@@ -516,6 +516,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         alert.beginSheetModal(for: window)
     }
 
+    /// A fixed width truncates a longer localized segment label, and a row count times a guessed
+    /// row height is not the height the stack actually lays out to.
     private func accessoryStack(with views: [NSView]) -> NSStackView {
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
@@ -523,9 +525,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         for view in views {
-            view.widthAnchor.constraint(equalToConstant: 260).isActive = true
+            view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
         }
-        stack.frame = NSRect(x: 0, y: 0, width: 260, height: CGFloat(views.count) * 32)
+        stack.layoutSubtreeIfNeeded()
+        stack.frame = NSRect(origin: .zero, size: stack.fittingSize)
         return stack
     }
 
@@ -561,6 +564,9 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         if let width = state.columnLayout.columnWidths.removeValue(forKey: oldName) {
             state.columnLayout.columnWidths[newName] = width
         }
+        if let width = state.columnLayout.columnContentWidths?.removeValue(forKey: oldName) {
+            state.columnLayout.columnContentWidths?[newName] = width
+        }
         if state.columnLayout.hiddenColumns.remove(oldName) != nil {
             state.columnLayout.hiddenColumns.insert(newName)
         }
@@ -571,6 +577,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             state.columnLayout.columnOrder = state.columnLayout.columnOrder?.filter { $0 != name }
         }
         state.columnLayout.columnWidths.removeValue(forKey: name)
+        state.columnLayout.columnContentWidths?.removeValue(forKey: name)
         state.columnLayout.hiddenColumns.remove(name)
     }
 
@@ -587,6 +594,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             state.columnLayout.columnOrder = order
         }
         state.columnLayout.columnWidths.removeValue(forKey: oldName)
+        state.columnLayout.columnContentWidths?.removeValue(forKey: oldName)
         state.columnLayout.hiddenColumns.remove(oldName)
     }
 
@@ -608,13 +616,15 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         textField.stringValue = initial
         textField.usesSingleLineMode = true
         alert.accessoryView = textField
+        alert.window.initialFirstResponder = textField
         alert.beginSheetModal(for: window) { response in
             let trimmed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             completion(response == .alertFirstButtonReturn ? trimmed : nil)
         }
-        DispatchQueue.main.async {
-            alert.window.makeFirstResponder(textField)
-        }
+    }
+
+    @objc func performFind(_ sender: Any?) {
+        toggleInspectorFilter(sender)
     }
 
     @objc func toggleInspectorFilter(_ sender: Any?) {
@@ -942,21 +952,20 @@ private enum SortKey: Sendable {
 }
 
 @MainActor
-@Observable
-final class InspectorViewState {
-    var tableRows = TableRows()
-    var selectedRowIndices: Set<Int> = []
-    var sortState = SortState()
-    var columnLayout = ColumnLayoutState()
-    var columnNames: [String] = []
-    var totalRowCount: Int = 0
-    var visibleRowCount: Int = 0
-    var pageOffset: Int = 0
-    var pageSize: Int = 1_000
-    var pageCount: Int = 1
-    var isComputing: Bool = false
-    var isFilterVisible: Bool = false
-    var filters: [FilterClause] = []
+final class InspectorViewState: ObservableObject {
+    @Published var tableRows = TableRows()
+    @Published var selectedRowIndices: Set<Int> = []
+    @Published var sortState = SortState()
+    @Published var columnLayout = ColumnLayoutState()
+    @Published var columnNames: [String] = []
+    @Published var totalRowCount: Int = 0
+    @Published var visibleRowCount: Int = 0
+    @Published var pageOffset: Int = 0
+    @Published var pageSize: Int = 1_000
+    @Published var pageCount: Int = 1
+    @Published var isComputing: Bool = false
+    @Published var isFilterVisible: Bool = false
+    @Published var filters: [FilterClause] = []
 }
 
 @MainActor
@@ -988,6 +997,10 @@ private final class InspectorGridDelegate: DataGridViewDelegate {
         owner?.handlePasteRows()
     }
 
+    func dataGridCanPasteRows() -> Bool {
+        ClipboardService.shared.hasText
+    }
+
     func dataGridSortStateChanged(_ state: SortState) {
         owner?.handleSortChanged(state)
     }
@@ -1010,8 +1023,8 @@ private final class InspectorGridDelegate: DataGridViewDelegate {
 }
 
 private struct InspectorRootView: View {
-    @Bindable var state: InspectorViewState
-    let changeManager: AnyChangeManager
+    @ObservedObject var state: InspectorViewState
+    @ObservedObject var changeManager: AnyChangeManager
     let delegate: any DataGridViewDelegate
     let onFilterChanged: () -> Void
     let onPreviousPage: () -> Void
@@ -1050,7 +1063,7 @@ private struct InspectorRootView: View {
     }
 
     private var emptyStateView: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             state.totalRowCount == 0
                 ? String(localized: "No rows")
                 : String(localized: "No matching rows"),

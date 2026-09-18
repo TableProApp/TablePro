@@ -1,0 +1,73 @@
+---
+title: Remote Database Files
+description: Work with a SQLite database on an SSH server, live on the server or as a read-only copy on this Mac
+---
+
+A SQLite database on an SSH server can be reached two ways, and the **Open** menu beside the path is where you choose. Run your statements on the server against the live file, or fetch a read-only copy and open it here.
+
+The choice turns on where SQLite runs. Its file locking is only reliable for a process on the same machine as the file, so a client that wrote across the network would eventually corrupt the database. Running on the server keeps every read and write on that one machine; the copy sidesteps the question by never writing at all.
+
+## Set one up
+
+<Steps>
+  <Step title="Choose the transport">
+    Create or edit a SQLite connection, open the **Network** tab, and set **Connect via** to **Remote Database File**.
+  </Step>
+  <Step title="Name the server">
+    Fill in **SSH Host**, **SSH Port**, and **SSH User**, then pick an authentication method. Password, private key, SSH agent, keyboard-interactive, jump hosts, and one-time codes all work the way they do for a tunnel, and a saved [SSH profile](/connections/ssh-profiles) supplies all of it at once.
+  </Step>
+  <Step title="Name the file">
+    Put the database's path on the server in **Path**. An absolute path is taken as written. A relative path, or one starting `~`, resolves against the SSH account's home directory.
+  </Step>
+  <Step title="Choose how it opens">
+    Set **Open** to **On the Server** for live reads and writes, or **As a Read-Only Copy** to browse a snapshot on this Mac. New connections start on the server.
+  </Step>
+</Steps>
+
+<Check>
+The connection list shows the origin as `deploy@prod-1:/srv/app.db` instead of a local path, so a remote database never reads like one of your own.
+</Check>
+
+## On the Server
+
+Your statements run on the host, so the sidebar, the grid, the SQL editor and every structure edit act on the live database, alongside whatever else is writing it. Nothing is copied and nothing is installed: TablePro sends a small Python program over the SSH connection, and that program opens the file with the server's own SQLite.
+
+The server needs `python3`, version 3.6 or newer, with its standard library. Ubuntu, Debian and RHEL cloud images ship it; a stripped container may not. When it is missing, the connection fails with a message that says so, and **As a Read-Only Copy** is the fallback.
+
+<Warning>
+Statements run on the server as your SSH user, against the live database. A write commits in place. Leave [Safe Mode](/features/safe-mode) at **Read-Only** on connections you only mean to browse.
+</Warning>
+
+The server's SQLite is the one that runs the query, so its version sets what the editor and the structure tools can do. A `DROP COLUMN` needs 3.35, and editing a `CHECK` constraint through `ALTER TABLE` needs 3.53; on an older server the statement is refused with the server's own error. `SELECT version()` in the editor reports what the server runs.
+
+## As a Read-Only Copy
+
+The database is fetched over SFTP, opened from the copy on this Mac, and the original on the server is never written to. The connection runs at Safe Mode [**Read-Only**](/features/safe-mode#connections-that-are-always-read-only): editing a cell, running an `INSERT`, and altering a table are all refused, because an edit would land in the copy and disappear the next time the file was fetched.
+
+Where the server carries `sqlite3` 3.27 or newer, it is asked for a `VACUUM INTO` snapshot and that is what comes down. This is the case worth having: the snapshot is taken while other programs keep writing and is still internally consistent. Measured against a database taking 22,518 committed transactions during the copy, the snapshot passed `PRAGMA integrity_check`.
+
+Otherwise the file is copied directly, along with any `-wal` or `-journal` beside it. Those are not optional. A database in WAL mode keeps committed rows in `-wal` until a checkpoint moves them, so the main file alone is short of the most recent work.
+
+<Warning>
+A direct copy of a database another program is writing at that moment can hold a mix of old and new pages. Take one when nothing else is writing, install `sqlite3` on the server so the snapshot path is available, or open the database on the server instead.
+</Warning>
+
+What arrives is checked before anything opens it: the byte count has to match what the server reported, the file has to start like a SQLite database, and it has to pass `integrity_check`. A transfer cut short by a dropped session leaves an intact header and a plausible prefix, and `sqlite3_open` on that reports success and shows an empty database.
+
+## Reconnecting
+
+Closing a connection ends the server session, or leaves the copy on disk. Opening it again reconnects, or compares the file on the server against what was fetched and reuses the copy when neither its size, its modification time, nor its write-ahead log has moved. The health check watches a live server session and reconnects it after a dropped connection, the same way an SSH tunnel recovers.
+
+## Limitations
+
+No remote file browser. Type the path.
+
+SQLite only. DuckDB and libSQL open local files too, but their recovery-log naming and their local-versus-remote modes need handling this does not yet have.
+
+Two connections naming one remote file each open their own session or copy. Two copies of TablePro on two Macs cannot see each other; the server's own locking keeps their writes apart.
+
+## Related
+
+- [SSH Tunneling](/connections/ssh-tunneling) for reaching a database server rather than a file
+- [SSH Profiles](/connections/ssh-profiles) for reusing one bastion across connections
+- [SQLite](/databases/sqlite)

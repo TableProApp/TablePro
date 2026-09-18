@@ -8,7 +8,7 @@ struct MCPSettings: Codable, Equatable {
     var queryTimeoutSeconds: Int
     var logQueriesInHistory: Bool
     var requireAuthentication: Bool
-    var allowRemoteConnections: Bool
+    var connectionApproval: MCPConnectionApproval
 
     static let `default` = MCPSettings(
         enabled: false,
@@ -18,7 +18,7 @@ struct MCPSettings: Codable, Equatable {
         queryTimeoutSeconds: 30,
         logQueriesInHistory: true,
         requireAuthentication: true,
-        allowRemoteConnections: false
+        connectionApproval: .oncePerConnection
     )
 
     init(
@@ -29,7 +29,7 @@ struct MCPSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 30,
         logQueriesInHistory: Bool = true,
         requireAuthentication: Bool = true,
-        allowRemoteConnections: Bool = false
+        connectionApproval: MCPConnectionApproval = .oncePerConnection
     ) {
         self.enabled = enabled
         self.port = port
@@ -38,7 +38,7 @@ struct MCPSettings: Codable, Equatable {
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.logQueriesInHistory = logQueriesInHistory
         self.requireAuthentication = requireAuthentication
-        self.allowRemoteConnections = allowRemoteConnections
+        self.connectionApproval = connectionApproval
     }
 
     init(from decoder: Decoder) throws {
@@ -51,6 +51,32 @@ struct MCPSettings: Codable, Equatable {
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 30
         logQueriesInHistory = try container.decodeIfPresent(Bool.self, forKey: .logQueriesInHistory) ?? true
         requireAuthentication = try container.decodeIfPresent(Bool.self, forKey: .requireAuthentication) ?? true
-        allowRemoteConnections = try container.decodeIfPresent(Bool.self, forKey: .allowRemoteConnections) ?? false
+        connectionApproval = try container.decodeIfPresent(
+            MCPConnectionApproval.self, forKey: .connectionApproval
+        ) ?? .oncePerConnection
+
+        maxRowLimit = validatedMaxRowLimit
+        defaultRowLimit = validatedDefaultRowLimit
+        queryTimeoutSeconds = validatedQueryTimeoutSeconds
+    }
+
+    var validatedMaxRowLimit: Int {
+        maxRowLimit.clamped(to: SettingsValidationRules.mcpRowLimitRange)
+    }
+
+    var validatedDefaultRowLimit: Int {
+        defaultRowLimit.clamped(to: SettingsValidationRules.mcpRowLimitRange)
+    }
+
+    var validatedQueryTimeoutSeconds: Int {
+        queryTimeoutSeconds.clamped(to: SettingsValidationRules.mcpQueryTimeoutRange)
+    }
+
+    var effectiveDefaultRowLimit: Int {
+        min(validatedDefaultRowLimit, validatedMaxRowLimit)
+    }
+
+    var requestableRowLimitRange: ClosedRange<Int> {
+        SettingsValidationRules.mcpRowLimitRange.lowerBound...validatedMaxRowLimit
     }
 }

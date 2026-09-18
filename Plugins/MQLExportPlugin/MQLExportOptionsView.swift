@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct MQLExportOptionsView: View {
-    @Bindable var plugin: MQLExportPlugin
+    @ObservedObject var plugin: MQLExportPlugin
 
     private static let batchSizeOptions = [100, 500, 1_000, 5_000]
 
@@ -26,7 +26,7 @@ struct MQLExportOptionsView: View {
 
                 Spacer()
 
-                Picker("", selection: $plugin.settings.batchSize) {
+                Picker(String(localized: "Rows per insertMany", bundle: .main), selection: $plugin.settings.batchSize) {
                     ForEach(Self.batchSizeOptions, id: \.self) { size in
                         Text("\(size)")
                             .tag(size)

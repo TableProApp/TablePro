@@ -3,12 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class CopilotService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotService")
+@MainActor
+final class CopilotService: ObservableObject {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotService")
     static let shared = CopilotService()
 
     enum Status: Sendable, Equatable {
@@ -29,17 +30,17 @@ final class CopilotService {
         }
     }
 
-    private(set) var status: Status = .stopped
-    private(set) var authState: AuthState = .signedOut
-    private(set) var statusMessage: String?
+    @Published private(set) var status: Status = .stopped
+    @Published private(set) var authState: AuthState = .signedOut
+    @Published private(set) var statusMessage: String?
 
-    @ObservationIgnored private var lspClient: LSPClient?
-    @ObservationIgnored private var transport: LSPTransport?
-    @ObservationIgnored private var serverGeneration: Int = 0
-    @ObservationIgnored private var restartTask: Task<Void, Never>?
-    @ObservationIgnored private var restartAttempt: Int = 0
-    @ObservationIgnored private let authManager = CopilotAuthManager()
-    @ObservationIgnored private lazy var unauthenticatedStop = CopilotIdleStopController(
+    private var lspClient: LSPClient?
+    private var transport: LSPTransport?
+    private var serverGeneration: Int = 0
+    private var restartTask: Task<Void, Never>?
+    private var restartAttempt: Int = 0
+    private let authManager = CopilotAuthManager()
+    private lazy var unauthenticatedStop = CopilotIdleStopController(
         timeout: Self.unauthenticatedTimeout,
         isAuthenticated: { [weak self] in self?.isAuthenticated ?? true },
         isRunning: { [weak self] in self?.status == .running },

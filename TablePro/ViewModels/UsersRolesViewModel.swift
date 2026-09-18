@@ -1,11 +1,10 @@
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class UsersRolesViewModel {
+final class UsersRolesViewModel: ObservableObject {
     enum DetailSegment: String, CaseIterable, Identifiable {
         case privileges
         case attributes
@@ -60,9 +59,10 @@ final class UsersRolesViewModel {
         var ownedObjectReassignment = false
         var scopeSearch = false
         var restrictsBrowsing = false
+        var connectionLimit = true
     }
 
-    static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
     static let scopeSearchLimit = 200
 
     let connectionId: UUID
@@ -71,36 +71,33 @@ final class UsersRolesViewModel {
     let changeManager = PrincipalChangeManager()
     let privilegeTree = PrivilegeTreeModel()
 
-    private(set) var capabilities = Capabilities()
-    private(set) var databases: [String] = []
-    private(set) var connectedPrincipal: PluginPrincipalRef?
-    private(set) var loadError: String?
-    private(set) var grantsError: String?
+    @Published private(set) var capabilities = Capabilities()
+    @Published private(set) var databases: [String] = []
+    @Published private(set) var connectedPrincipal: PluginPrincipalRef?
+    @Published private(set) var loadError: String?
+    @Published private(set) var grantsError: String?
 
-    var isLoading = false
-    var isResolvingDrop = false
-    var previewStatements: [SchemaStatement] = []
-    var applyFailure: String?
+    @Published var isLoading = false
+    @Published var isResolvingDrop = false
+    @Published var previewStatements: [SchemaStatement] = []
+    @Published var applyFailure: String?
 
-    var selection: PluginPrincipalRef?
-    var selectedRefs: Set<PluginPrincipalRef> = []
-    var selectedScopes: Set<PluginPrivilegeScope> = []
-    var detailSegment: DetailSegment = .privileges
-    var scopeMode: ScopeMode = .all
-    var principalFilter = ""
-    var scopeFilter = ""
-    var privilegeFilter = ""
-    var activeSheet: ActiveSheet?
-    var actionError: String?
+    @Published var selection: PluginPrincipalRef?
+    @Published var selectedRefs: Set<PluginPrincipalRef> = []
+    @Published var selectedScopes: Set<PluginPrivilegeScope> = []
+    @Published var detailSegment: DetailSegment = .privileges
+    @Published var scopeMode: ScopeMode = .all
+    @Published var principalFilter = ""
+    @Published var scopeFilter = ""
+    @Published var privilegeFilter = ""
+    @Published var activeSheet: ActiveSheet?
+    @Published var actionError: String?
 
-    @ObservationIgnored
-    private(set) var loader: PrincipalListLoader?
+    @Published private(set) var loader: PrincipalListLoader?
 
-    @ObservationIgnored
     let expansionStore: PrivilegeExpansionStore
 
-    @ObservationIgnored
-    var scopeSearchTask: Task<Void, Never>?
+    @Published var scopeSearchTask: Task<Void, Never>?
 
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.connectionId = connectionId
@@ -198,7 +195,8 @@ final class UsersRolesViewModel {
             roleMembership: driver.supportsRoleMembership,
             ownedObjectReassignment: driver.supportsOwnedObjectReassignment,
             scopeSearch: driver.supportsGrantableScopeSearch,
-            restrictsBrowsing: driver.restrictsGrantBrowsingToCurrentDatabase
+            restrictsBrowsing: driver.restrictsGrantBrowsingToCurrentDatabase,
+            connectionLimit: PluginManager.shared.supportsPrincipalConnectionLimit(for: databaseType)
         )
         changeManager.cascades = { driver.privilegeCascades(from: $0, to: $1) }
 
@@ -221,7 +219,7 @@ final class UsersRolesViewModel {
                 databases: databases,
                 catalog: snapshot.catalog,
                 restrictsBrowsing: capabilities.restrictsBrowsing,
-                currentDatabase: DatabaseManager.shared.activeSessions[connectionId]?.activeDatabase,
+                currentDatabase: DatabaseManager.shared.activeSessions[connectionId]?.resolvedBrowseDatabase,
                 loader: loader
             )
 

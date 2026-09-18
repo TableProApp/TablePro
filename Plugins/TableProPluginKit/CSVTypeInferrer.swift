@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct CSVTypeInferrer {
     public typealias InferredType = InspectorColumnType
@@ -9,16 +10,16 @@ public struct CSVTypeInferrer {
         "true", "false", "yes", "no", "t", "f", "y", "n"
     ]
 
-    private static let isoFormatter: ISO8601DateFormatter = {
+    private static let isoFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
 
-    private static let dateOnlyFormatter: ISO8601DateFormatter = {
+    private static let dateOnlyFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
-        return formatter
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
 
     public static func infer(column values: [String]) -> InferredType {
@@ -53,8 +54,8 @@ public struct CSVTypeInferrer {
     }
 
     private static func isDate(_ value: String) -> Bool {
-        if isoFormatter.date(from: value) != nil { return true }
-        if dateOnlyFormatter.date(from: value) != nil { return true }
+        if isoFormatter.withLockUnchecked({ $0.date(from: value) }) != nil { return true }
+        if dateOnlyFormatter.withLockUnchecked({ $0.date(from: value) }) != nil { return true }
         return false
     }
 }

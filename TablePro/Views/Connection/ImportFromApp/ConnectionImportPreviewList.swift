@@ -8,6 +8,9 @@ import TableProImport
 
 struct ConnectionImportPreviewList: View {
     let items: [ImportItem]
+    /// Replace rebuilds the saved connection from the incoming one, so a source that carries only
+    /// part of a connection (AWS discovery has no SSH, SSL, group or tag) does not offer it.
+    var allowsReplace = true
     @Binding var selectedIds: Set<UUID>
     @Binding var duplicateResolutions: [UUID: ImportResolution]
 
@@ -74,7 +77,7 @@ struct ConnectionImportPreviewList: View {
                     set: { duplicateResolutions[item.id] = $0 }
                 )) {
                     Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
-                    if case .duplicate(let existingId, _) = item.status {
+                    if allowsReplace, case .duplicate(let existingId, _) = item.status {
                         Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
                     }
                     Text(String(localized: "Skip")).tag(ImportResolution.skip)
@@ -97,10 +100,17 @@ struct ConnectionImportPreviewList: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.callout)
                 .foregroundStyle(.green)
+               .accessibilityLabel(String(localized: "Ready"))
         case .warnings:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.yellow)
+               .accessibilityLabel(String(localized: "Warning"))
+        case .unsupportedType:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.callout)
+                .foregroundStyle(.orange)
+               .accessibilityLabel(String(localized: "Unsupported"))
         case .duplicate:
             EmptyView()
         }
@@ -108,8 +118,8 @@ struct ConnectionImportPreviewList: View {
 
     @ViewBuilder
     private func warningText(for status: ImportItemStatus) -> some View {
-        if case .warnings(let messages) = status, let first = messages.first {
-            Text(" — \(first)")
+        if let message = status.message {
+            Text(verbatim: ", \(message)")
                 .foregroundStyle(.orange)
         }
     }

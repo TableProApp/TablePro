@@ -10,24 +10,27 @@ struct DatabaseTreeFilterPopover: View {
 
     @Binding var selectedDatabases: Set<String>
 
-    @Bindable private var treeService = DatabaseTreeMetadataService.shared
+    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var searchText: String = ""
 
     private static let width: CGFloat = 300
 
-    private var selectableDatabases: [DatabaseMetadata] {
+    private var databases: [DatabaseMetadata] {
         treeService.databases(for: connectionId)
-            .filter { !$0.isSystemDatabase }
+    }
+
+    private var showsSystemContainers: Bool {
+        settingsManager.general.showSystemContainers
+    }
+
+    private var selectableDatabases: [DatabaseMetadata] {
+        DatabaseTreeVisibility.filterCandidates(databases, showsSystem: showsSystemContainers)
     }
 
     private var matchingDatabases: [DatabaseMetadata] {
         guard !searchText.isEmpty else { return selectableDatabases }
         return selectableDatabases.filter { SidebarNameFilter.matches(query: searchText, candidate: $0.name) }
-    }
-
-    private var shownCount: Int {
-        guard !selectedDatabases.isEmpty else { return selectableDatabases.count }
-        return selectableDatabases.filter { selectedDatabases.contains($0.name) }.count
     }
 
     var body: some View {
@@ -58,14 +61,14 @@ struct DatabaseTreeFilterPopover: View {
     @ViewBuilder
     private var content: some View {
         if selectableDatabases.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Databases"),
                 systemImage: "cylinder",
                 description: Text(String(localized: "Connect to load the database list."))
             )
             .frame(maxWidth: .infinity, minHeight: 160)
         } else if matchingDatabases.isEmpty {
-            ContentUnavailableView.search(text: searchText)
+            UnavailableStateView.search(text: searchText)
                 .frame(maxWidth: .infinity, minHeight: 160)
         } else {
             databaseList
@@ -98,17 +101,30 @@ struct DatabaseTreeFilterPopover: View {
                 selectedDatabases = []
             }
             .buttonStyle(.borderless)
-            .disabled(selectedDatabases.isEmpty)
+            .disabled(!isFiltering)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
+    private var isFiltering: Bool {
+        DatabaseTreeVisibility.isFiltering(
+            selected: selectedDatabases,
+            databases: databases,
+            showsSystem: showsSystemContainers
+        )
+    }
+
     private var countLabel: String {
-        guard !selectedDatabases.isEmpty else {
+        guard isFiltering else {
             return String(localized: "Showing all databases")
         }
-        return String(format: String(localized: "Showing %1$lld of %2$lld"), shownCount, selectableDatabases.count)
+        let summary = DatabaseTreeVisibility.summary(
+            databases: databases,
+            selected: selectedDatabases,
+            showsSystem: showsSystemContainers
+        )
+        return String(format: String(localized: "Showing %1$lld of %2$lld"), summary.shown, summary.total)
     }
 
     private func databaseBinding(for database: String) -> Binding<Bool> {

@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -50,16 +50,21 @@ struct ExportState {
     var totalRows: Int = 0
     var statusMessage: String = ""
     var errorMessage: String?
-    var warningMessage: String?
+    var warnings: [String] = []
+
+    /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
+    /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
+    /// takes the caution icon, and drops its "Do not show this again" checkbox.
+    var notes: [String] = []
 }
 
 // MARK: - Export Service
 
-@MainActor @Observable
-final class ExportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
+@MainActor
+final class ExportService: ObservableObject {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
 
-    var state = ExportState()
+    @Published var state = ExportState()
 
     private let driver: DatabaseDriver?
     private let databaseType: DatabaseType
@@ -69,31 +74,65 @@ final class ExportService {
         self.databaseType = databaseType
     }
 
-    /// Convenience initializer for query results export (no driver needed).
-    init(databaseType: DatabaseType) {
-        self.driver = nil
+    /// Rows already in memory still need the engine that produced them: a SQL export has to quote
+    /// identifiers and escape literals the way that engine reads them back. The driver is asked for
+    /// nothing but those two pure functions here, so an installed handle is enough and no lease is
+    /// taken. It is optional only because a connection can be gone by the time the sheet runs, and
+    /// the formats that carry no SQL still export fine without one.
+    init(queryResultsDriver driver: DatabaseDriver?, databaseType: DatabaseType) {
+        self.driver = driver
         self.databaseType = databaseType
+    }
+
+    /// The one table a query export writes. `QueryExportOptions` says why it carries no structure.
+    private static func queryResultExportTable(
+        named name: String,
+        plugin: any ExportFormatPlugin
+    ) -> PluginExportTable {
+        let optionValues = QueryExportOptions.dataOnly(
+            columns: type(of: plugin).perTableOptionColumns,
+            defaults: plugin.defaultTableOptionValues()
+        )
+        return PluginExportTable(
+            name: name,
+            databaseName: "",
+            tableType: "query",
+            optionValues: optionValues,
+            schema: nil,
+            kind: .table
+        )
     }
 
     // MARK: - Cancellation
 
-    var isCancelled: Bool = false
-
     func cancelExport() {
-        isCancelled = true
         currentProgress?.cancel()
     }
 
-    private var currentProgress: PluginExportProgress?
+    @Published private var currentProgress: PluginExportProgress?
+
+    /// The status line a plugin writes with `PluginExportProgress.setStatus`. Nothing observed it,
+    /// so "Compressing..." never reached a user in any export. The empty guard sits outside the hop
+    /// deliberately: the channel is seeded empty and `fetchTotalRowCount` may already have put its
+    /// own message in `statusMessage`.
+    private func observeStatus(on nsProgress: Progress) -> NSKeyValueObservation {
+        nsProgress.observe(\.localizedAdditionalDescription) { [weak self] observed, _ in
+            let status = observed.localizedAdditionalDescription ?? ""
+            guard !status.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                self?.state.statusMessage = status
+            }
+        }
+    }
 
     // MARK: - Public API
 
     func export(
-        tables: [ExportTableItem],
+        objects: [ExportObjectItem],
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard !tables.isEmpty else {
+        guard !objects.isEmpty else {
             throw ExportError.noTablesSelected
         }
 
@@ -101,13 +140,11 @@ final class ExportService {
             throw ExportError.formatNotFound(config.formatId)
         }
 
-        state = ExportState(isExporting: true, totalTables: tables.count)
-        isCancelled = false
+        state = ExportState(isExporting: true, totalTables: objects.count)
 
         defer {
             state.isExporting = false
-            isCancelled = false
-            state.statusMessage = ""
+                state.statusMessage = ""
             currentProgress = nil
         }
 
@@ -115,9 +152,10 @@ final class ExportService {
             throw ExportError.notConnected
         }
 
-        state.totalRows = await fetchTotalRowCount(for: tables, driver: driver)
-
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
+
+        state.totalRows = await fetchTotalRowCount(
+            for: objects.filter { $0.kind.carriesRows }, driver: driver, dataSource: dataSource)
 
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -143,12 +181,20 @@ final class ExportService {
         }
         defer { descObservation.invalidate() }
 
-        let pluginTables = tables.map { table in
+        let statusObservation = observeStatus(on: nsProgress)
+        defer { statusObservation.invalidate() }
+
+        let pluginTables = objects.map { object in
             PluginExportTable(
-                name: table.name,
-                databaseName: table.databaseName,
-                tableType: table.type.rawValue.lowercased(),
-                optionValues: table.optionValues
+                name: object.name,
+                databaseName: dataSource.pluginDatabaseName(for: object.databaseName),
+                tableType: object.kind.rawValue,
+                optionValues: object.optionValues,
+                schema: dataSource.exportSchema(for: object.databaseName),
+                kind: object.kind,
+                identity: object.identity,
+                parentTable: object.parentTable,
+                rowScope: object.rowScope
             )
         }
 
@@ -170,9 +216,8 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        if !result.warnings.isEmpty {
-            state.warningMessage = result.warnings.joined(separator: "\n")
-        }
+        state.warnings = result.warnings + dataSource.cappedTableWarnings
+        state.notes = result.notes
     }
 
     // MARK: - Statement Timeout
@@ -207,12 +252,10 @@ final class ExportService {
 
         let totalRows = tableRows.count
         state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
-        isCancelled = false
 
         defer {
             state.isExporting = false
-            isCancelled = false
-            state.statusMessage = ""
+                state.statusMessage = ""
             currentProgress = nil
         }
 
@@ -245,12 +288,10 @@ final class ExportService {
         }
         defer { descObservation.invalidate() }
 
-        let exportTable = PluginExportTable(
-            name: config.fileName,
-            databaseName: "",
-            tableType: "query",
-            optionValues: plugin.defaultTableOptionValues()
-        )
+        let statusObservation = observeStatus(on: nsProgress)
+        defer { statusObservation.invalidate() }
+
+        let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
 
         let result: ExportFormatResult
         do {
@@ -267,9 +308,8 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        if !result.warnings.isEmpty {
-            state.warningMessage = result.warnings.joined(separator: "\n")
-        }
+        state.warnings = result.warnings
+        state.notes = result.notes
     }
 
     func exportStreamingQuery(
@@ -286,17 +326,15 @@ final class ExportService {
 
         let estimatedRows = 0
         state = ExportState(isExporting: true, totalTables: 1, totalRows: estimatedRows)
-        isCancelled = false
 
         defer {
             state.isExporting = false
-            isCancelled = false
-            state.statusMessage = ""
+                state.statusMessage = ""
             currentProgress = nil
         }
 
         let dataSource = StreamingQueryExportDataSource(
-            query: query,
+            query: LeadingRowsStatement.resolve(query, rowCap: nil, databaseType: databaseType).sql,
             driver: driver,
             databaseType: databaseType
         )
@@ -313,12 +351,10 @@ final class ExportService {
         }
         defer { observation.invalidate() }
 
-        let exportTable = PluginExportTable(
-            name: config.fileName,
-            databaseName: "",
-            tableType: "query",
-            optionValues: plugin.defaultTableOptionValues()
-        )
+        let statusObservation = observeStatus(on: nsProgress)
+        defer { statusObservation.invalidate() }
+
+        let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
 
         await suppressStatementTimeout(on: driver)
         let result: ExportFormatResult
@@ -338,23 +374,44 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        if !result.warnings.isEmpty {
-            state.warningMessage = result.warnings.joined(separator: "\n")
-        }
+        let capWarning = Self.leadingRowsCapWarning(
+            exportedRows: progress.processedRows,
+            pagination: PaginationCapability.of(databaseType)
+        )
+        state.warnings = result.warnings + [capWarning].compactMap { $0 }
+        state.notes = result.notes
+    }
+
+    /// A query result exported from an engine that returns only its leading rows stops at the
+    /// engine's ceiling, so a file that reached it is named as partial rather than passing as whole.
+    static func leadingRowsCapWarning(exportedRows: Int, pagination: PaginationCapability) -> String? {
+        guard let maximum = pagination.maximumRows, exportedRows >= maximum else { return nil }
+        return String(
+            format: String(localized: "Only the first %lld rows were exported, the most this database returns from one query."),
+            maximum
+        )
     }
 
     // MARK: - Row Count Fetching
 
-    private func qualifiedTableRef(for table: ExportTableItem, driver: DatabaseDriver) -> String {
-        if table.databaseName.isEmpty {
-            return driver.quoteIdentifier(table.name)
-        }
-        let quotedDb = driver.quoteIdentifier(table.databaseName)
-        let quotedTable = driver.quoteIdentifier(table.name)
-        return "\(quotedDb).\(quotedTable)"
+    private func qualifiedTableRef(for table: ExportObjectItem, driver: DatabaseDriver) -> String {
+        SchemaQualifiedName.render(
+            name: table.name,
+            schema: table.databaseName,
+            databaseType: databaseType,
+            quote: driver.quoteIdentifier
+        )
     }
 
-    private func fetchTotalRowCount(for tables: [ExportTableItem], driver: DatabaseDriver) async -> Int {
+    /// The non-SQL count goes through the data source, which knows the container each object was
+    /// listed under. Asking the driver directly answers about whichever one it is leased to, so an
+    /// export spanning two databases counted one of them twice and reported a total no progress bar
+    /// could reach.
+    private func fetchTotalRowCount(
+        for tables: [ExportObjectItem],
+        driver: DatabaseDriver,
+        dataSource: ExportDataSourceAdapter
+    ) async -> Int {
         guard !tables.isEmpty else { return 0 }
 
         var total = 0
@@ -363,7 +420,10 @@ final class ExportService {
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
             for table in tables {
                 do {
-                    if let count = try await driver.fetchApproximateRowCount(table: table.name) {
+                    let count = try await dataSource.fetchApproximateRowCount(
+                        table: table.name, databaseName: table.databaseName
+                    )
+                    if let count {
                         total += count
                     }
                 } catch {
@@ -372,8 +432,8 @@ final class ExportService {
                 }
             }
             if failedCount > 0 {
-                Self.logger.warning("\(failedCount) table(s) failed row count - progress indicator may be inaccurate")
-                state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
+                Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
+                state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
             }
             return total
         }
@@ -414,9 +474,18 @@ final class ExportService {
         }
 
         if failedCount > 0 {
-            Self.logger.warning("\(failedCount) table(s) failed row count - progress indicator may be inaccurate")
-            state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
+            Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
+            state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
         }
         return total
+    }
+
+    /// Counts pick between an explicit singular and plural key. Automatic grammar agreement is a
+    /// SwiftUI `Text` facility: `String(localized:)` returns the markup verbatim.
+    private static func estimatedProgressMessage(uncountedTables: Int) -> String {
+        let template = uncountedTables == 1
+            ? String(localized: "Progress estimated (%lld table could not be counted)")
+            : String(localized: "Progress estimated (%lld tables could not be counted)")
+        return String(format: template, Int64(uncountedTables))
     }
 }

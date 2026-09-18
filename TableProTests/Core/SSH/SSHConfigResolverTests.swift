@@ -338,8 +338,11 @@ struct SSHConfigResolverTests {
         #expect(resolved.username == "canonicalized")
     }
 
-    @Test("Match final runs without CanonicalizeHostname and overrides first pass")
-    func matchFinalOverridesFirstPass() {
+    /// This used to assert the opposite. ssh keeps the first value it obtained for a keyword and
+    /// that holds across both passes: `ssh -G target` on this exact file reports `firstuser` and
+    /// 2200, so a `Match final` block supplies a default rather than overriding an earlier value.
+    @Test("Match final runs without CanonicalizeHostname and does not override the first pass")
+    func matchFinalDoesNotOverrideFirstPass() {
         let document = SSHConfigParser.parseDocumentContent("""
         Host *
             User firstuser
@@ -353,8 +356,25 @@ struct SSHConfigResolverTests {
             document: document,
             env: Self.stubEnv
         )
+        #expect(resolved.username == "firstuser")
+        #expect(resolved.port == 2200)
+    }
+
+    @Test("Match final still supplies a value no earlier block set")
+    func matchFinalSuppliesUnsetValue() {
+        let document = SSHConfigParser.parseDocumentContent("""
+        Host target
+            Port 2200
+        Match final host target
+            User finaluser
+        """)
+        let resolved = SSHConfigResolver.resolve(
+            makeConfig(host: "target"),
+            document: document,
+            env: Self.stubEnv
+        )
         #expect(resolved.username == "finaluser")
-        #expect(resolved.port == 9999)
+        #expect(resolved.port == 2200)
     }
 
     @Test("Match canonical does not apply when CanonicalizeHostname is off")

@@ -2,16 +2,18 @@
 //  JSONCodeEditor.swift
 //  TablePro
 //
-//  JSON text view backed by CodeEditSourceEditor (tree-sitter), sharing the
+//  JSON text view backed by TableProEditorKit (tree-sitter), sharing the
 //  app's editor theme and font with the SQL editor.
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
 internal struct JSONCodeEditor: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     let isEditable: Bool
 
@@ -33,9 +35,22 @@ internal struct JSONCodeEditor: View {
             state: $editorState
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: colorScheme) {
-            configuration = Self.makeConfiguration(isEditable: isEditable)
+        .onChange(of: colorScheme) { _ in
+            rebuildConfiguration()
         }
+        .onChange(of: settingsManager.editor) { _ in
+            rebuildConfiguration()
+        }
+        .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
+            rebuildConfiguration()
+        }
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            rebuildConfiguration()
+        }
+    }
+
+    private func rebuildConfiguration() {
+        configuration = Self.makeConfiguration(isEditable: isEditable)
     }
 
     private static func makeConfiguration(isEditable: Bool) -> SourceEditorConfiguration {
@@ -51,10 +66,9 @@ internal struct JSONCodeEditor: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.preview(
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                invisibleCharacters: !isEditable || AppSettingsManager.shared.editor.showInvisibleCharacters
             )
         )
     }

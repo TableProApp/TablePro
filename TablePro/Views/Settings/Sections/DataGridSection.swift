@@ -43,10 +43,16 @@ struct DataGridSection: View {
                     Text(behavior.displayName).tag(behavior)
                 }
             }
+
+            Picker("Sort direction:", selection: $settings.defaultSortDirection) {
+                ForEach(SortDirection.allCases) { direction in
+                    Text(direction.displayName).tag(direction)
+                }
+            }
         } header: {
             Text("Data Grid")
         } footer: {
-            Text("Default row sort is applied when a table first opens. Click a column header to override it.")
+            Text("Default row sort is applied when a table first opens. Sort direction also sets which way the first click on a column header sorts.")
         }
 
         Section("Pagination") {

@@ -10,7 +10,7 @@ import Foundation
 import os
 
 /// Persistent storage for app settings
-final class AppSettingsStorage {
+final class AppSettingsStorage: Sendable {
     static let shared = AppSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsStorage")
 
@@ -31,13 +31,19 @@ final class AppSettingsStorage {
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
-        static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
+        static let notifications = "com.TablePro.settings.notifications"
+        static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
         static let legacyJsonFieldHeight = "rightSidebar.jsonFieldHeight"
     }
 
-    init(userDefaults: UserDefaults = .standard) {
+    /// The storage environment's defaults, not `.standard`. A UI test runs against a per-sandbox
+    /// suite, and reading the standard domain here put every setting, the onboarding flag among
+    /// them, in the machine's real preferences: a developer who had finished onboarding never saw
+    /// it under test, a fresh runner saw it until the first case skipped it, and every case after
+    /// that inherited the skip.
+    init(userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = userDefaults
     }
 
@@ -156,6 +162,14 @@ final class AppSettingsStorage {
 
     // MARK: - MCP Settings
 
+    func loadNotifications() -> NotificationSettings {
+        load(key: Keys.notifications, default: .default)
+    }
+
+    func saveNotifications(_ settings: NotificationSettings) {
+        save(settings, key: Keys.notifications)
+    }
+
     func loadMCP() -> MCPSettings {
         load(key: Keys.mcp, default: .default)
     }
@@ -192,16 +206,14 @@ final class AppSettingsStorage {
         defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
     }
 
-    // MARK: - Onboarding
+    // MARK: - Welcome Sheet
 
-    /// Check if user has completed onboarding
-    func hasCompletedOnboarding() -> Bool {
-        defaults.bool(forKey: Keys.hasCompletedOnboarding)
+    func hasSeenWelcomeSheet() -> Bool {
+        defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
     }
 
-    /// Mark onboarding as completed
-    func setOnboardingCompleted() {
-        defaults.set(true, forKey: Keys.hasCompletedOnboarding)
+    func markWelcomeSheetSeen() {
+        defaults.set(true, forKey: Keys.hasSeenWelcomeSheet)
     }
 
     // MARK: - Reset
@@ -220,6 +232,7 @@ final class AppSettingsStorage {
         saveMCP(.default)
         defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
+        defaults.removeObject(forKey: PreferenceKeys.rowInspectorTextFieldHeight.name)
         defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
     }
 

@@ -1,44 +1,23 @@
 import Foundation
-import os
 
 actor MCPSseWriter {
-    static let keepAliveInterval: Duration = .seconds(30)
+    static let keepAliveInterval: Duration = .seconds(15)
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.SseWriter")
-
-    private let context: HttpConnectionContext
+    private let emit: @Sendable (Data) async -> Void
+    private let isAlive: @Sendable () async -> Bool
     private var keepAliveTask: Task<Void, Never>?
     private var stopped = false
 
-    init(context: HttpConnectionContext) {
-        self.context = context
+    init(
+        emit: @escaping @Sendable (Data) async -> Void,
+        isAlive: @escaping @Sendable () async -> Bool
+    ) {
+        self.emit = emit
+        self.isAlive = isAlive
     }
 
-    func startStream(sessionId: MCPSessionId) async {
-        await context.writeSseStreamHeaders(sessionId: sessionId)
-        startKeepAlive()
-    }
-
-    func writeFrame(_ frame: SseFrame) async {
-        guard !stopped else { return }
-        await context.writeSseFrame(frame)
-    }
-
-    func writeComment(_ text: String) async {
-        guard !stopped else { return }
-        await context.writeRaw(Data("\u{003A} \(text)\n\n".utf8))
-    }
-
-    func stop() async {
-        if stopped { return }
-        stopped = true
-        keepAliveTask?.cancel()
-        keepAliveTask = nil
-        await context.cancel()
-    }
-
-    private func startKeepAlive() {
-        keepAliveTask?.cancel()
+    func start() {
+        guard keepAliveTask == nil, !stopped else { return }
         keepAliveTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.keepAliveInterval)
@@ -48,14 +27,33 @@ actor MCPSseWriter {
         }
     }
 
+    func writeFrame(_ frame: SseFrame) async {
+        guard !stopped else { return }
+        await emit(SseEncoder.encode(frame))
+    }
+
+    func writeComment(_ text: String) async {
+        guard !stopped else { return }
+        await emit(Self.commentPayload(text))
+    }
+
+    func stop() {
+        guard !stopped else { return }
+        stopped = true
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
+    }
+
     private func emitKeepAlive() async {
         guard !stopped else { return }
-        if await context.isCancelled() {
-            keepAliveTask?.cancel()
-            keepAliveTask = nil
-            stopped = true
+        guard await isAlive() else {
+            stop()
             return
         }
-        await context.writeRaw(Data("\u{003A} keep-alive\n\n".utf8))
+        await emit(Self.commentPayload(""))
+    }
+
+    private static func commentPayload(_ text: String) -> Data {
+        text.isEmpty ? Data(":\r\n".utf8) : Data(": \(text)\r\n".utf8)
     }
 }

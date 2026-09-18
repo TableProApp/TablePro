@@ -1,0 +1,87 @@
+---
+title: Connection Import
+description: Every query parameter a tablepro://import link accepts, and which ones the app refuses
+---
+
+Passwords are never accepted in an import link, and neither is anything else that decides where a
+credential comes from. What is left is the rest of the connection form, one query parameter per
+field, and a review sheet the user reads before anything is saved.
+
+```text
+tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin
+```
+
+`name`, `host` and `type` are required. `type` takes any registered database type name,
+case-insensitive: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`,
+`Cassandra`, and every other type a loaded plugin registers.
+
+Enum-valued parameters must match a listed value exactly, since these are stored raw values rather
+than display names, and an unrecognized one falls back rather than failing the link. Percent-encode
+values that contain spaces: `sslMode=Verify%20CA`.
+
+## Core parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `port` | Server port. Defaults to the type's standard port. |
+| `username` | Database username. |
+| `database` | Default database name. |
+| `color` | Sidebar color: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, `Gray` or `None`. Falls back to `None`. |
+| `tagName` | Tag to assign. Repeat the parameter for more than one tag. |
+| `groupName` | Group to place the connection in. |
+| `safeModeLevel` | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull` or `readOnly`. Falls back to `silent`. |
+| `aiPolicy` | `alwaysAllow`, `askEachTime` or `never`. Falls back to the app default. |
+| `redisDatabase` | Redis database index to select on connect. |
+| `startupCommands` | SQL to run after connecting. The review sheet shows it in full. |
+| `localOnly` | `1` keeps the connection off iCloud sync. |
+
+## SSH parameters
+
+Set `ssh=1`, or none of these are read.
+
+| Parameter | Description |
+|-----------|-------------|
+| `sshHost` | SSH server hostname. |
+| `sshPort` | SSH port. Default `22`. |
+| `sshUsername` | SSH username. |
+| `sshAuthMethod` | `Password`, `Private Key`, `SSH Agent`, `Keyboard Interactive` or `None`. Falls back to `Password`. |
+| `sshPrivateKeyPath` | Path to the private key file. |
+| `sshAgentSocketPath` | Custom SSH agent socket path. |
+| `sshJumpHosts` | JSON array of `{host, port, username, authMethod, privateKeyPath}`. Jump `authMethod` is `Private Key` or `SSH Agent`, falling back to `SSH Agent`. |
+| `sshTotpMode` | `none`, `auto_generate` or `prompt_at_connect`. Falls back to `none`. |
+| `sshTotpAlgorithm` | `SHA1`, `SHA256` or `SHA512`. Default `SHA1`. |
+| `sshTotpDigits` | Code length. Default `6`. |
+| `sshTotpPeriod` | Period in seconds. Default `30`. |
+
+## SSL parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `sslMode` | `Disabled`, `Preferred`, `Required`, `Verify CA` or `Verify Identity`. Falls back to `Disabled`. |
+| `sslCaCertPath` | CA certificate file path. |
+| `sslClientCertPath` | Client certificate file path. |
+| `sslClientKeyPath` | Client key file path. |
+
+## Driver fields
+
+An `af_` prefix passes a driver-specific field straight to the plugin: `af_replicaSet=myrs` sets
+`replicaSet` on a [MongoDB](/databases/mongodb) connection. Field names come from the plugin, so the
+engine's own page is where they are listed.
+
+Six field names are dropped on import, along with any name starting with `aws`, because each decides
+where a credential comes from: `af_preConnectScript`, `af_preTunnelHost`, `af_preTunnelPort`,
+`af_promptForPassword`, `af_sslClientKeyPassphrase` and `af_usePgpass`. The same rule covers
+`.tablepro` files, described in
+[Connection Sharing](/features/connection-sharing#import). Add any of these by hand in the connection
+editor afterwards.
+
+## What the user sees
+
+The review sheet shows the type, host and port, database, username, SSH auth method, SSL mode, color,
+tag, group, driver fields, and startup SQL. Only the name is editable. **Add Connection** saves it;
+when a connection with the same name, host, port and type is already there, the sheet warns
+*"A connection with this name, host, and type already exists."* and the button becomes
+**Add as Copy**.
+
+The saved connection has no password, so open it in the connection editor and add one before
+connecting.

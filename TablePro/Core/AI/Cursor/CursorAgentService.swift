@@ -3,14 +3,15 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class CursorAgentService {
+@MainActor
+final class CursorAgentService: ObservableObject {
     static let shared = CursorAgentService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CursorAgentService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CursorAgentService")
 
     enum AuthState: Sendable, Equatable {
         case notInstalled
@@ -24,11 +25,11 @@ final class CursorAgentService {
         }
     }
 
-    private(set) var authState: AuthState = .signedOut
-    private(set) var errorMessage: String?
+    @Published private(set) var authState: AuthState = .signedOut
+    @Published private(set) var errorMessage: String?
 
-    @ObservationIgnored private let cli: CursorAgentCLI
-    @ObservationIgnored private var signInTask: Task<Void, Never>?
+    private let cli: CursorAgentCLI
+    private var signInTask: Task<Void, Never>?
 
     init(cli: CursorAgentCLI = CursorAgentCLI()) {
         self.cli = cli
@@ -66,7 +67,7 @@ final class CursorAgentService {
                         : result.output
                 }
             } catch {
-                Self.logger.error("Cursor CLI sign-in failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Cursor CLI sign-in failed: \(error.publicLogShape, privacy: .public)")
                 if !Task.isCancelled {
                     errorMessage = error.localizedDescription
                 }

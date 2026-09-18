@@ -4,7 +4,6 @@
 //
 
 import CryptoKit
-import Darwin
 import Foundation
 import os
 
@@ -69,6 +68,14 @@ actor PluginInstaller {
     func commitStagedUpdate(pluginId: String, into userPluginsDir: URL) async throws -> URL {
         guard let stagedURL = stagedUpdates[pluginId] else {
             throw PluginError.notFound
+        }
+        guard let stagedBundle = Bundle(url: stagedURL) else {
+            throw PluginError.invalidBundle("Cannot create bundle from \(stagedURL.lastPathComponent)")
+        }
+        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: stagedBundle)
+        if case .developerID(let identity) = trust,
+           !PluginDeveloperTrustStore.shared.isTrusted(identity) {
+            throw PluginError.developerNotTrusted(identity: identity)
         }
         let bundleName = stagedURL.deletingPathExtension().lastPathComponent
         let destURL = userPluginsDir.appendingPathComponent("\(bundleName).tableplugin", isDirectory: true)
@@ -181,10 +188,19 @@ actor PluginInstaller {
             )
         }
 
-        guard let downloadURL = URL(string: binary.downloadURL) else {
+        // The registry manifest is fetched over the network, so the URL it names is untrusted
+        // input. The code-signature check is the real gate, but nothing should be fetched over
+        // cleartext on the way to it.
+        guard let downloadURL = URL(string: binary.downloadURL),
+              downloadURL.scheme?.lowercased() == "https" else {
             throw PluginError.downloadFailed("Invalid download URL")
         }
 
+        /// Zero here is "not started", not "nought per cent done", and nothing else arrives until
+        /// the whole file is down: measured on a 25.7 MB download with a known `Content-Length`,
+        /// `download(from:delegate:)` delivered no `URLSessionDownloadDelegate` byte callbacks at
+        /// all, because the async form routes only `URLSessionTaskDelegate` messages to a per-task
+        /// delegate. Anything drawing this has to stay indeterminate until a fraction moves.
         await progressHandler(.downloading(fraction: 0))
 
         let (tempDownloadURL, response) = try await context.session.download(from: downloadURL)
@@ -214,7 +230,10 @@ actor PluginInstaller {
             throw PluginError.invalidBundle("Cannot create bundle from \(bundleURL.lastPathComponent)")
         }
 
-        try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
+        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: stagedBundle)
+        if case .developerID(let identity) = trust {
+            try await Self.requireTrust(in: identity, pluginName: registryPlugin.name)
+        }
 
         try Self.validateStagedABI(
             bundleURL: bundleURL,
@@ -232,6 +251,19 @@ actor PluginInstaller {
     nonisolated static func stagingRoot(for userPluginsDir: URL) -> URL {
         userPluginsDir.deletingLastPathComponent()
             .appendingPathComponent("PluginStaging", isDirectory: true)
+    }
+
+    /// Asks once per developer, not once per plugin, and records the answer only on yes. Declining
+    /// aborts the install, so a plugin never lands on disk unless its signer is trusted.
+    private static func requireTrust(in identity: PluginDeveloperIdentity, pluginName: String) async throws {
+        guard !PluginDeveloperTrustStore.shared.isTrusted(identity) else { return }
+
+        let decision = await MainActor.run { PluginDeveloperTrustAlertPrompt() }
+            .prompt(for: identity, pluginName: pluginName)
+        guard decision == .trust else {
+            throw PluginError.developerNotTrusted(identity: identity)
+        }
+        PluginDeveloperTrustStore.shared.trust(identity)
     }
 
     nonisolated static func extractZip(at zipURL: URL, into destDir: URL) throws {
@@ -262,13 +294,7 @@ actor PluginInstaller {
     }
 
     nonisolated static func stripQuarantine(at url: URL) {
-        let path = url.path
-        let result = path.withCString { removexattr($0, "com.apple.quarantine", 0) }
-        guard result != 0 else { return }
-        let code = errno
-        if code != ENOATTR {
-            logger.warning("Failed to remove quarantine xattr at \(url.lastPathComponent): errno=\(code)")
-        }
+        DownloadedBinary.stripQuarantine(at: url)
     }
 
     nonisolated static func validateStagedABI(

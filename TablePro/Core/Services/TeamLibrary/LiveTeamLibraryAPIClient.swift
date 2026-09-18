@@ -10,7 +10,7 @@
 import Foundation
 import os
 
-final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient {
+final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient, Sendable {
     static let shared = LiveTeamLibraryAPIClient()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryAPIClient")

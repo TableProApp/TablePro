@@ -10,7 +10,7 @@ import TableProPluginKit
 
 /// Foreign key definition for schema modification (editable structure tab)
 struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
-    let id: UUID
+    var id: UUID
     var name: String
     var columns: [String]
     var referencedTable: String
@@ -41,10 +41,13 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
         )
     }
 
-    /// Check if this definition is valid (not a placeholder)
+    /// Whether this describes a constraint rather than a placeholder row.
+    ///
+    /// The name is deliberately not part of it. `CONSTRAINT name` is optional in every dialect
+    /// TablePro speaks, and requiring it here is the same rule that deleted the user's foreign keys
+    /// on the way to `CREATE TABLE`.
     var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !columns.isEmpty &&
+        !columns.isEmpty &&
             !referencedTable.trimmingCharacters(in: .whitespaces).isEmpty &&
             !referencedColumns.isEmpty
     }
@@ -61,6 +64,25 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             onDelete: ReferentialAction(rawValue: fkInfo.onDelete.uppercased()) ?? .noAction,
             onUpdate: ReferentialAction(rawValue: fkInfo.onUpdate.uppercased()) ?? .noAction
         )
+    }
+
+    /// One definition per constraint from rows that drivers report one per column, in the order each
+    /// constraint's first row arrives. Columns keep row order, which is key order; everything else
+    /// comes from the constraint's first row.
+    static func grouping(_ rows: [ForeignKeyInfo]) -> [EditableForeignKeyDefinition] {
+        var names: [String] = []
+        var rowsByName: [String: [ForeignKeyInfo]] = [:]
+        for row in rows {
+            if rowsByName[row.name] == nil { names.append(row.name) }
+            rowsByName[row.name, default: []].append(row)
+        }
+        return names.compactMap { name in
+            guard let constraintRows = rowsByName[name], let first = constraintRows.first else { return nil }
+            var definition = from(first)
+            definition.columns = constraintRows.map(\.column)
+            definition.referencedColumns = constraintRows.map(\.referencedColumn)
+            return definition
+        }
     }
 
     func toPlugin() -> PluginForeignKeyDefinition {
@@ -87,5 +109,11 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             onDelete: onDelete.rawValue,
             onUpdate: onUpdate.rawValue
         )
+    }
+
+    func withNewIdentity() -> EditableForeignKeyDefinition {
+        var copy = self
+        copy.id = UUID()
+        return copy
     }
 }

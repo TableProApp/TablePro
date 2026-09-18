@@ -19,6 +19,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Current connection status
     var status: ConnectionStatus { get }
 
+    var hasLostConnection: Bool { get }
+
     /// Server version string (e.g., "8.0.35" for MySQL)
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
@@ -27,6 +29,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Connect to the database
     func connect() async throws
+
+    /// Connect while reporting the steps this driver can see from inside its own handshake.
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws
 
     /// Disconnect from the database
     func disconnect()
@@ -41,6 +46,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Apply query execution timeout (seconds, 0 = no limit)
     func applyQueryTimeout(_ seconds: Int) async throws
+
+    /// What the command that hands this connection's held resource back should be called, or nil
+    /// when the driver holds nothing it can give up. A per-connection answer, not a per-engine one.
+    var releasableResourceCommandTitle: String? { get }
+
+    /// Hands that resource back now, keeping the session alive. A result that did not release is
+    /// a refusal rather than a failure, and carries the reason: re-acquiring the resource would
+    /// not restore what the session is currently holding.
+    func releaseIdleResource() async throws -> PluginResourceRelease
+
+    func resolveQueryCompletionProfile(
+        databaseTypeId: String,
+        base: QueryCompletionProfile
+    ) async throws -> QueryCompletionProfile
 
     // MARK: - Query Execution
 
@@ -62,6 +81,13 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// - Returns: Query result with `isTruncated` set when the cap clipped rows
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult
 
+    /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
+    /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
+    ///
+    /// Call this only for a statement already classified as a read. Bounding means abandoning the
+    /// rest of the fetch, which for some drivers cancels the statement on the server.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
@@ -69,8 +95,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
-    /// Fetch the direct partitions of one partitioned table
-    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo]
+    /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
+    /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
+    /// a MySQL or Oracle partition name is unique only within its own table.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo]
 
     /// Fetch columns for a specific table
     func fetchColumns(table: String) async throws -> [ColumnInfo]
@@ -83,14 +111,33 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
+    /// Dotted field paths a document store exposes for a collection, for query authoring.
+    /// Default implementation returns nothing, which is correct for every SQL driver.
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
+
     /// Fetch indexes for a specific table
     func fetchIndexes(table: String) async throws -> [IndexInfo]
 
     /// Fetch foreign keys for a specific table
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo]
 
+    /// The same reads for a table in a named container, for a caller that knows which one it means.
+    ///
+    /// A caller that names a container for one part of a table's description and not the rest gets
+    /// a description of two different tables: the columns of one and the indexes, keys and size of
+    /// whichever the connection happens to be on. Each of these defaults to the unqualified read,
+    /// so a driver that cannot tell containers apart is unaffected.
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo]
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo]
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo]
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
+    func fetchTableDDL(table: String, schema: String?) async throws -> String
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String]
+
     /// Fetch triggers for a specific table
     func fetchTriggers(table: String) async throws -> [TriggerInfo]
+    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo]
 
     /// Trigger editing hooks (optional — nil when unsupported)
     func createTriggerTemplate(table: String) -> String?
@@ -99,9 +146,19 @@ protocol DatabaseDriver: AnyObject, Sendable {
     var triggerEditUsesReplace: Bool { get }
     var supportsTransactionalDDL: Bool { get }
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
+    var unsupportedIndexTypes: Set<String> { get }
+
+    /// Why the connected server has no check constraints to list or edit, or nil when it has.
+    var checkConstraintRefusal: String? { get }
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
+
+    /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
+    /// per table, which is too expensive to run ahead of the user.
+    var providesBulkForeignKeyFetch: Bool { get }
 
     /// Fetch foreign keys for a specific set of tables.
     /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
@@ -115,8 +172,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Returns nil when the driver can't count a filtered set, so the caller falls back.
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
 
+    /// Fetch an exact row count for a user-initiated request. Drivers that cap their automatic
+    /// counts to keep browsing responsive must not apply that cap here.
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
+
+    /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
+    /// Empty on an engine whose CREATE TABLE carries them inline. Default returns empty.
+    func fetchIndexDDL(table: String) async throws -> [String]
+
+    /// The COMMENT statements that reattach this relation's comment and its column comments. Empty
+    /// on an engine whose CREATE TABLE carries them inline. Default returns empty.
+    func fetchCommentDDL(table: String) async throws -> [String]
 
     /// Fetch dependent type definitions (e.g., PostgreSQL enum types) for a table.
     /// Returns array of (typeName, labels) pairs. Default returns empty.
@@ -138,13 +207,35 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch list of schemas in the current database (PostgreSQL only)
     func fetchSchemas() async throws -> [String]
 
-    /// Fetch stored procedures for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+    /// Names of schemas whose objects live in a catalog outside the database.
+    /// Default implementation returns an empty set; drivers that support them override.
+    func fetchExternalSchemaNames() async throws -> Set<String>
 
-    /// Fetch user-defined functions for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch every stored procedure and function in the given schema (or the current schema if
+    /// nil), in one round trip. Callers that want one kind filter the result rather than asking
+    /// twice, so an engine is never queried twice for what a single catalog read answers.
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo]
+
+    /// Fetch the source of one routine. The routine must be one this driver listed, because its
+    /// `identity` is the driver's own key for finding it again.
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String
+
+    /// Fetch every named type the user created in the given schema, or the current schema if nil.
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo]
+
+    /// Read one type again, definition and labels included. The type must be one this driver
+    /// listed, because its `identity` is the driver's own key for finding it again.
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
+
+    func createTypeTemplate(schema: String?) -> String?
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String?
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
+
+    /// Fetch every trigger in the given schema, across all its tables.
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
+
+    /// Fetch the source of one trigger.
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -159,18 +250,61 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func dropDatabase(name: String) async throws
 
+    func dropSchema(name: String) async throws
+
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws
+
+    func renameDatabase(name: String, to newName: String) async throws
+
+    func renameSchema(name: String, to newName: String) async throws
+
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]?
+
+    func renameSchemaStatements(name: String, to newName: String) -> [String]?
+
+    func alterSchemaStatements(from current: PluginSchemaDetails, to target: PluginSchemaDefinition) -> [String]?
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails?
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
     func switchSessionContext(id: String, to value: String) async throws
 
     // MARK: - Maintenance
 
-    /// Returns the list of supported maintenance operations (e.g. "VACUUM", "ANALYZE").
-    /// Returns nil if maintenance is not supported.
-    func supportedMaintenanceOperations() -> [String]?
+    /// The maintenance operations this connection offers, each with the object kinds it may name, its
+    /// scope and its options. Returns nil if maintenance is not supported.
+    ///
+    /// Descriptors rather than names, because the menu has to decide whether an operation applies to
+    /// the object the user clicked: PostgreSQL skips a `VACUUM` on a view with a WARNING and the
+    /// success command tag `VACUUM`, and refuses a `REINDEX` on one outright.
+    func maintenanceOperations() -> [PluginMaintenanceOperation]?
 
-    /// Generates SQL statements for a maintenance operation.
-    func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]?
+    /// Generates SQL statements for a maintenance operation. The single source of the statement, so
+    /// the confirmation sheet previews this rather than writing its own copy of the SQL.
+    ///
+    /// A nil `schema` means the caller genuinely has none to offer. Everything in the app does, and
+    /// passes it: PostgreSQL resolves a bare name against `pg_temp` first, so a temp table of the
+    /// same name is what got maintained.
+    func maintenanceStatements(
+        operation: String,
+        table: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String]?
+
+    // MARK: - Object Comments and Materialized Views
+
+    /// Nil for an object kind the engine cannot comment on. Takes the object's own schema, never
+    /// the connection's current one, because the object named may live anywhere in the tree.
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String?
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String?
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability?
 
     // MARK: - Query Cancellation
 
@@ -186,11 +320,17 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Begin a transaction
     func beginTransaction() async throws
 
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws
+
     /// Commit the current transaction
     func commitTransaction() async throws
 
     /// Rollback the current transaction
     func rollbackTransaction() async throws
+
+    /// What the session is holding, so nothing the app owns opens, commits or rolls back a
+    /// transaction over one the user already has open on the same session.
+    func sessionTransactionState() async -> PluginSessionTransactionState
 
     /// Access to the underlying plugin driver for query building dispatch
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { get }
@@ -224,13 +364,54 @@ protocol SchemaSwitchable: DatabaseDriver {
     func switchSchema(to schema: String) async throws
 }
 
+extension SchemaSwitchable {
+    /// A driver already on the schema needs no statement, and sending one anyway is a round trip that
+    /// can fail on its own. Every schema switch the app issues goes through here, so no two of them can
+    /// disagree about when it is redundant: the pooled metadata driver kept sending an `ALTER SESSION`
+    /// the session driver knew to skip, and on Oracle that spare statement was the one that hung (#2294).
+    func switchSchemaIfNeeded(to schema: String) async throws {
+        guard currentSchema != schema else { return }
+        try await switchSchema(to: schema)
+    }
+}
+
+/// Protocol for drivers that know which database they are on. An embedded engine names
+/// its database from the file it opened, so the session cannot derive it from the
+/// connection definition the way a networked engine can.
+protocol DatabaseReporting: DatabaseDriver {
+    var currentDatabase: String? { get }
+}
+
 /// Default implementation for common operations
 extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
 
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
+        try await connect()
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    func fetchIndexDDL(table: String) async throws -> [String] { [] }
+
+    func fetchCommentDDL(table: String) async throws -> [String] { [] }
+
+    func resolveQueryCompletionProfile(
+        databaseTypeId: String,
+        base: QueryCompletionProfile
+    ) async throws -> QueryCompletionProfile {
+        base
+    }
+
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await beginTransaction()
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
 
     func quoteIdentifier(_ name: String) -> String {
         SQLEscaping.quoteIdentifier(name)
@@ -255,9 +436,39 @@ extension DatabaseDriver {
         try await fetchColumns(table: table)
     }
 
-    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
+        try await fetchIndexes(table: table)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        try await fetchForeignKeys(table: table)
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
+        try await fetchCheckConstraints(table: table)
+    }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        try await fetchApproximateRowCount(table: table)
+    }
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        try await fetchTableDDL(table: table)
+    }
+
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        try await fetchIndexDDL(table: table)
+    }
+
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
+        try await fetchCommentDDL(table: table)
+    }
+
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] { [] }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] { [] }
 
     func createTriggerTemplate(table: String) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String) async throws -> String? { nil }
@@ -265,9 +476,17 @@ extension DatabaseDriver {
     var triggerEditUsesReplace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
+    var unsupportedIndexTypes: Set<String> { [] }
+    var checkConstraintRefusal: String? { nil }
+
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")
     }
+
+    var releasableResourceCommandTitle: String? { nil }
+
+    func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
 
     func testConnection() async throws -> Bool {
         try await connect()
@@ -279,6 +498,34 @@ extension DatabaseDriver {
         throw NSError(domain: "DatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
+
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "DatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
+    }
+
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameTable
+    }
+
+    func renameDatabase(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameDatabase
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameSchema
+    }
+
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }
+
+    func renameSchemaStatements(name: String, to newName: String) -> [String]? { nil }
+
+    func alterSchemaStatements(
+        from current: PluginSchemaDetails,
+        to target: PluginSchemaDefinition
+    ) -> [String]? { nil }
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? { nil }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
 
@@ -309,6 +556,8 @@ extension DatabaseDriver {
         }
         return results
     }
+
+    var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
@@ -359,6 +608,10 @@ extension DatabaseDriver {
         return result
     }
 
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        []
+    }
+
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).
     /// Drivers should override with a single bulk query where possible.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
@@ -406,22 +659,75 @@ extension DatabaseDriver {
 
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? { nil }
+    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
 
-    func supportedMaintenanceOperations() -> [String]? { nil }
-    func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? { nil }
+    func maintenanceStatements(
+        operation: String,
+        table: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String]? { nil }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        nil
+    }
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? { nil }
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        nil
+    }
 
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
+
+    func fetchExternalSchemaNames() async throws -> Set<String> { [] }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         try await fetchTables()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        throw PluginObjectSourceError.unsupported(routine.name)
+    }
+
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] { [] }
+
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
+        guard let definition = type.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(type.name)
+        }
+        return type
+    }
+
+    func createTypeTemplate(schema: String?) -> String? { nil }
+
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
+        nil
+    }
+
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
+        nil
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        throw PluginObjectSourceError.unsupported(trigger.name)
+    }
 
     var supportsTransactions: Bool { true }
+
+    var hasLostConnection: Bool { false }
 
     func cancelQuery() throws {
     }
@@ -437,7 +743,7 @@ extension DatabaseDriver {
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
 
     /// Async variant that awaits background plugin loading instead of blocking the main thread.
     /// Preferred for all call sites that are already in an async context.
@@ -446,7 +752,7 @@ enum DatabaseDriverFactory {
         passwordOverride: String? = nil,
         awaitPlugins: Bool
     ) async throws -> DatabaseDriver {
-        await PluginManager.shared.prepareForConnecting(to: connection.type)
+        try await PluginManager.shared.prepareForConnecting(to: connection.type)
         return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
 
@@ -454,17 +760,8 @@ enum DatabaseDriverFactory {
         for connection: DatabaseConnection,
         passwordOverride: String? = nil
     ) async throws -> DatabaseDriver {
-        let pluginId = connection.type.pluginTypeId
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
-            if let reason = PluginManager.shared.outdatedReconcileReason(forTypeId: pluginId) {
-                throw PluginError.pluginUpdateUnavailable(reason: reason)
-            }
-            if connection.type.isDownloadablePlugin {
-                throw PluginError.pluginNotInstalled(connection.type.rawValue)
-            }
-            throw DatabaseError.connectionFailed(
-                "\(pluginId) driver plugin not loaded. The plugin may be disabled or missing from the PlugIns directory."
-            )
+            throw PluginManager.shared.driverUnavailableError(for: connection.type)
         }
         var ssl = connection.sslConfig
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
@@ -479,10 +776,11 @@ enum DatabaseDriverFactory {
             additionalFields["enableCleartextPlugin"] = "true"
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
+        additionalFields["connectionId"] = connection.id.uuidString
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
-            username: connection.username,
+            username: ConnectionCredentialResolver.resolveUsername(for: connection),
             password: try await resolvePassword(for: connection, fields: additionalFields, override: passwordOverride),
             database: connection.database,
             ssl: ssl,
@@ -492,84 +790,26 @@ enum DatabaseDriverFactory {
         return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
     }
 
-    private static func resolveIAMPassword(
-        for connection: DatabaseConnection,
-        fields: [String: String]
-    ) async throws -> String {
-        let source = fields["awsAuth"] ?? "accessKey"
-        let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields)
-
-        if connection.type == .redis {
-            guard let region = fields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
-                throw AWSAuthError.regionUnknown(host: connection.host)
-            }
-            guard connection.sslConfig.mode != .disabled else {
-                throw AWSAuthError.missingConfiguration(
-                    String(localized: "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
-                )
-            }
-            guard let replicationGroupId = fields["awsReplicationGroupId"].flatMap({ $0.isEmpty ? nil : $0 }) else {
-                throw AWSAuthError.missingConfiguration(
-                    String(localized: "Enter the ElastiCache cache name (replication group ID) to use IAM authentication.")
-                )
-            }
-            return ElastiCacheAuthTokenGenerator.generateToken(
-                replicationGroupId: replicationGroupId,
-                region: region,
-                userId: connection.username,
-                credentials: credentials
-            )
-        }
-
-        let endpoint = try RDSSigningEndpointResolver.resolve(
-            configuredHost: connection.host,
-            configuredPort: connection.port,
-            preTunnelHost: connection.preTunnelHost,
-            preTunnelPort: connection.preTunnelPort,
-            override: fields["awsRDSEndpoint"],
-            defaultPort: PluginMetadataRegistry.shared
-                .snapshot(forTypeId: connection.type.pluginTypeId)?.defaultPort ?? connection.port
-        )
-
-        let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
-        guard let region = explicitRegion ?? RDSEndpoint.region(forHost: endpoint.host) else {
-            throw AWSAuthError.regionUnknown(host: endpoint.host)
-        }
-        return RDSAuthTokenGenerator.generateToken(
-            host: endpoint.host,
-            port: endpoint.port,
-            region: region,
-            username: connection.username,
-            credentials: credentials
-        )
-    }
-
     private static func resolvePassword(
         for connection: DatabaseConnection,
         fields: [String: String],
         override: String? = nil
     ) async throws -> String {
-        if connection.usesAWSIAM, !connection.resolvesAWSIAMInDriver {
-            return try await resolveIAMPassword(for: connection, fields: fields)
-        }
-        if let override { return override }
-        if let passwordSource = connection.passwordSource {
-            return try await PasswordSourceResolver.resolve(passwordSource)
-        }
-        if connection.usePgpass {
-            let pgpassHost = connection.preTunnelHost ?? connection.host
-            let pgpassPort = connection.preTunnelPort ?? connection.port
-            return PgpassReader.resolve(
-                host: pgpassHost.isEmpty ? "localhost" : pgpassHost,
-                port: pgpassPort,
-                database: connection.database,
-                username: connection.username
-            ) ?? ""
-        }
-        return ConnectionStorage.shared.loadPassword(for: connection.id) ?? ""
+        try await ConnectionCredentialResolver.resolvePassword(
+            for: connection,
+            fields: fields,
+            override: override
+        )
     }
 
-    private static func buildAdditionalFields(
+    /// The fields a connect would build for this connection, for a consumer that needs the same
+    /// credential resolution without creating a driver. Nil when the plugin is not loaded.
+    static func resolvedAdditionalFields(for connection: DatabaseConnection) -> [String: String]? {
+        guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else { return nil }
+        return buildAdditionalFields(for: connection, plugin: plugin)
+    }
+
+    static func buildAdditionalFields(
         for connection: DatabaseConnection,
         plugin: any DriverPlugin
     ) -> [String: String] {
@@ -583,14 +823,27 @@ enum DatabaseDriverFactory {
             fields[key] = value
         }
 
-        let secureFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
-            .filter(\.isSecure)
-        for field in secureFields {
-            if fields[field.id] == nil || fields[field.id]?.isEmpty == true {
-                if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
-                    fieldId: field.id, for: connection.id
+        /// The superset, not the rendered form's list. A connection saved while a variant was
+        /// still being offered its primary's whole form holds those values in the Keychain, and
+        /// the connection still acts on them: a Redshift connection with `awsAuth` set reaches
+        /// `resolveIAMPassword`, which reads `awsSecretAccessKey` from here. Loading only what the
+        /// form renders today would leave that secret behind and fail the connect, with no AWS
+        /// section left in the form to turn it off.
+        let credentialProfile = connection.credentialMode.profileId
+            .flatMap { CredentialProfileStorage.shared.profile(for: $0) }
+        for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
+            if fields[fieldId] == nil || fields[fieldId]?.isEmpty == true {
+                /// A linked profile owns the field when it declares it, so the secret lives once
+                /// under the profile's id rather than once per connection.
+                if let credentialProfile, credentialProfile.secureFieldIds.contains(fieldId),
+                   let profileValue = CredentialProfileStorage.shared.loadSecureField(
+                       fieldId: fieldId, for: credentialProfile.id
+                   ) {
+                    fields[fieldId] = profileValue
+                } else if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
+                    fieldId: fieldId, for: connection.id
                 ) {
-                    fields[field.id] = secureValue
+                    fields[fieldId] = secureValue
                 }
             }
         }

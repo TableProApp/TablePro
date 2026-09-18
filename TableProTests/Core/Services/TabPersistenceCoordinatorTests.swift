@@ -7,16 +7,21 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("TabPersistenceCoordinator")
 @MainActor
 struct TabPersistenceCoordinatorTests {
     // MARK: - Helpers
 
+    /// A coordinator that has already consulted the disk, which is what every save path requires.
+    /// The refusal to write before that is covered on its own by `TabPersistenceWriteGateTests`.
     private func makeCoordinator() -> TabPersistenceCoordinator {
-        TabPersistenceCoordinator(connectionId: UUID())
+        let coordinator = TabPersistenceCoordinator(connectionId: UUID())
+        coordinator.markObservedTabs()
+        return coordinator
     }
 
     private func makeTabs(count: Int) -> [QueryTab] {
@@ -64,7 +69,7 @@ struct TabPersistenceCoordinatorTests {
             #expect(restored.tabType == original.tabType)
         }
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -76,7 +81,7 @@ struct TabPersistenceCoordinatorTests {
         coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
         await sleep()
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
 
         let result = await coordinator.restoreFromDisk()
@@ -100,12 +105,80 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.selectedTabId == selectedId)
         #expect(result.source == .disk)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
-    @Test("Large query over 500KB is truncated to empty string in persisted tab")
-    func largeQueryIsTruncated() async {
+    @Test("A queued older snapshot cannot overwrite a newer synchronous save")
+    func synchronousSaveSupersedesQueuedSnapshot() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let oldTabs = makeTabs(count: 1)
+        var newTab = oldTabs[0]
+        newTab.title = "Newest"
+        newTab.content.query = "SELECT 180"
+        let oldWriteToken = TabDiskActor.issueWriteToken(for: connectionId)
+
+        TabDiskActor.saveSync(
+            connectionId: connectionId,
+            tabs: [newTab.toPersistedTab()],
+            selectedTabId: newTab.id
+        )
+        let staleWriteApplied = try await TabDiskActor.shared.save(
+            connectionId: connectionId,
+            tabs: oldTabs.map { $0.toPersistedTab() },
+            selectedTabId: oldTabs[0].id,
+            writeToken: oldWriteToken
+        )
+
+        let state = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(staleWriteApplied == false)
+        #expect(state?.tabs.count == 1)
+        #expect(state?.tabs[0].title == "Newest")
+        #expect(state?.tabs[0].query == "SELECT 180")
+    }
+
+    @Test("A synchronous coordinator save supersedes its queued asynchronous snapshot")
+    func synchronousCoordinatorSaveSupersedesQueuedSnapshot() async {
+        let coordinator = makeCoordinator()
+        defer { TabDiskActor.clearSync(connectionId: coordinator.connectionId) }
+        let oldTabs = makeTabs(count: 1)
+        var newTab = oldTabs[0]
+        newTab.title = "Newest"
+        newTab.content.query = "SELECT 180"
+
+        coordinator.saveNow(tabs: oldTabs, selectedTabId: oldTabs[0].id)
+        coordinator.saveNowSync(tabs: [newTab], selectedTabId: newTab.id)
+        await Task.yield()
+
+        let state = await TabDiskActor.shared.load(connectionId: coordinator.connectionId)
+        #expect(state?.tabs.count == 1)
+        #expect(state?.tabs[0].title == "Newest")
+        #expect(state?.tabs[0].query == "SELECT 180")
+    }
+
+    @Test("A queued older snapshot cannot recreate state after a synchronous clear")
+    func synchronousClearSupersedesQueuedSnapshot() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabs = makeTabs(count: 1)
+        let oldWriteToken = TabDiskActor.issueWriteToken(for: connectionId)
+
+        TabDiskActor.clearSync(connectionId: connectionId)
+        let staleWriteApplied = try await TabDiskActor.shared.save(
+            connectionId: connectionId,
+            tabs: tabs.map { $0.toPersistedTab() },
+            selectedTabId: tabs[0].id,
+            writeToken: oldWriteToken
+        )
+
+        let state = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(staleWriteApplied == false)
+        #expect(state == nil)
+    }
+
+    @Test("A query over 500KB survives a save and restore through its sidecar")
+    func largeQueryRoundTripsThroughOverflowFile() async {
         let coordinator = makeCoordinator()
         let largeQuery = String(repeating: "A", count: 600_000)
         var tab = QueryTab(id: UUID(), title: "Big", query: largeQuery, tabType: .query)
@@ -117,10 +190,10 @@ struct TabPersistenceCoordinatorTests {
         let result = await coordinator.restoreFromDisk()
 
         #expect(result.tabs.count == 1)
-        #expect(result.tabs[0].content.query == "")
+        #expect(result.tabs[0].content.query == largeQuery)
         #expect(result.tabs[0].title == "Big")
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -136,7 +209,7 @@ struct TabPersistenceCoordinatorTests {
 
         #expect(result.source == .disk)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -162,7 +235,7 @@ struct TabPersistenceCoordinatorTests {
             #expect(restored.id == original.id)
         }
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -178,7 +251,7 @@ struct TabPersistenceCoordinatorTests {
         let beforeClear = await coordinator.restoreFromDisk()
         #expect(beforeClear.tabs.count == 2)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
 
         let afterClear = await coordinator.restoreFromDisk()
@@ -202,7 +275,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs.contains { $0.id == previewTab.id })
         #expect(result.tabs.allSatisfy { !$0.isPreview })
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -220,7 +293,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].id == previewTab.id)
         #expect(result.tabs[0].isPreview == false)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -237,7 +310,7 @@ struct TabPersistenceCoordinatorTests {
         let result = await coordinator.restoreFromDisk()
         #expect(result.selectedTabId == previewTab.id)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -257,7 +330,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].content.sourceFileURL == url)
         #expect(result.tabs[0].id == tab.id)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -283,7 +356,7 @@ struct TabPersistenceCoordinatorTests {
             #expect(restored.content.sourceFileURL == original.content.sourceFileURL)
         }
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
     }
 
@@ -308,7 +381,75 @@ struct TabPersistenceCoordinatorTests {
         #expect(restored.id == tab.id)
         #expect(restored.tabType == .table)
 
-        coordinator.clearSavedState()
+        coordinator.clearForUserClosedAllTabs()
         await sleep()
+    }
+
+    // MARK: - Empty tab lists must never delete saved work (#1997)
+
+    @Test("An empty async save leaves saved tabs on disk")
+    func emptyAsyncSaveDoesNotDeleteSavedTabs() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 2)
+        coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
+        await sleep()
+
+        coordinator.saveNow(tabs: [], selectedTabId: nil)
+        await sleep()
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.count == 2)
+        #expect(result.source == .disk)
+
+        coordinator.clearForUserClosedAllTabs()
+        await sleep()
+    }
+
+    @Test("An empty quit-time save leaves saved tabs on disk")
+    func emptySyncSaveDoesNotDeleteSavedTabs() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 3)
+        coordinator.saveNowSync(tabs: tabs, selectedTabId: tabs[1].id)
+
+        coordinator.saveNowSync(tabs: [], selectedTabId: nil)
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.count == 3)
+        #expect(result.selectedTabId == tabs[1].id)
+
+        coordinator.clearForUserClosedAllTabs()
+        await sleep()
+    }
+
+    @Test("An unsaved query survives a quit-time save that follows an empty one")
+    func draftSurvivesEmptySaveThenRestore() async {
+        let coordinator = makeCoordinator()
+        var draft = QueryTab(id: UUID(), title: "Query 1", query: "", tabType: .query)
+        draft.content.query = "SELECT * FROM never_saved_to_a_file"
+        coordinator.saveNowSync(tabs: [draft], selectedTabId: draft.id)
+
+        coordinator.saveNowSync(tabs: [], selectedTabId: nil)
+        coordinator.saveNow(tabs: [], selectedTabId: nil)
+        await sleep()
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.count == 1)
+        #expect(result.tabs[0].content.query == "SELECT * FROM never_saved_to_a_file")
+
+        coordinator.clearForUserClosedAllTabs()
+        await sleep()
+    }
+
+    @Test("Closing every tab still discards the saved state")
+    func userClosingAllTabsClearsSavedState() async {
+        let coordinator = makeCoordinator()
+        let tabs = makeTabs(count: 2)
+        coordinator.saveNowSync(tabs: tabs, selectedTabId: tabs[0].id)
+
+        coordinator.clearForUserClosedAllTabs()
+
+        let result = await coordinator.restoreFromDisk()
+        #expect(result.tabs.isEmpty)
+        #expect(result.source == .none)
     }
 }

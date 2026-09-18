@@ -10,39 +10,22 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
         self.secureStore = secureStore
     }
 
-    /// Set pending connectionId atomically via the TunnelStore actor.
-    /// Must be called before createTunnel to enable connectionId-based Keychain lookup.
-    func setPendingConnectionId(_ id: UUID) async {
-        await tunnelStore.setPending(id)
-    }
-
     func createTunnel(
         config: SSHConfiguration,
+        connectionId: UUID,
         remoteHost: String,
         remotePort: Int
     ) async throws -> TableProDatabase.SSHTunnel {
-        let connId = await tunnelStore.consumePending()
-
-        // Resolve SSH credentials using macOS-compatible Keychain keys
-        let sshPassword: String?
-        let keyPassphrase: String?
-
         var resolvedConfig = config
 
-        if let connId {
-            sshPassword = try? secureStore.retrieve(
-                forKey: "com.TablePro.sshpassword.\(connId.uuidString)")
-            keyPassphrase = try? secureStore.retrieve(
-                forKey: "com.TablePro.keypassphrase.\(connId.uuidString)")
+        let sshPassword = try? secureStore.retrieve(
+            forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)")
+        let keyPassphrase = try? secureStore.retrieve(
+            forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)")
 
-            // Restore key content from Keychain if not in config
-            if resolvedConfig.privateKeyData == nil || resolvedConfig.privateKeyData?.isEmpty == true {
-                resolvedConfig.privateKeyData = try? secureStore.retrieve(
-                    forKey: "com.TablePro.sshkeydata.\(connId.uuidString)")
-            }
-        } else {
-            sshPassword = nil
-            keyPassphrase = nil
+        if resolvedConfig.privateKeyData == nil || resolvedConfig.privateKeyData?.isEmpty == true {
+            resolvedConfig.privateKeyData = try? secureStore.retrieve(
+                forKey: "com.TablePro.sshkeydata.\(connectionId.uuidString)")
         }
 
         let tunnel = try await SSHTunnelFactory.create(
@@ -53,38 +36,46 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
             keyPassphrase: keyPassphrase
         )
 
-        let effectiveId = connId ?? UUID()
-        await tunnelStore.add(tunnel, connectionId: effectiveId)
+        let tunnelId = UUID()
+        await tunnelStore.add(tunnel, id: tunnelId, connectionId: connectionId)
 
         let port = await tunnel.port
-        return TableProDatabase.SSHTunnel(localHost: "127.0.0.1", localPort: port)
+        return TableProDatabase.SSHTunnel(id: tunnelId, localHost: "127.0.0.1", localPort: port)
     }
 
     func closeTunnel(for connectionId: UUID) async throws {
-        guard let tunnel = await tunnelStore.remove(connectionId: connectionId) else { return }
+        for tunnel in await tunnelStore.removeAll(connectionId: connectionId) {
+            await tunnel.close()
+        }
+    }
+
+    func closeTunnel(id: UUID) async throws {
+        guard let tunnel = await tunnelStore.remove(id: id) else { return }
         await tunnel.close()
     }
 }
 
+/// Keyed by tunnel rather than by connection, because a cancelled attempt and the retry that
+/// replaced it both own a tunnel for the same connection, and the loser must close only its own.
 private actor TunnelStore {
-    var tunnels: [UUID: SSHTunnel] = [:]
-    private var pendingConnectionId: UUID?
-
-    func setPending(_ id: UUID) {
-        pendingConnectionId = id
+    private struct Entry {
+        let connectionId: UUID
+        let tunnel: SSHTunnel
     }
 
-    func consumePending() -> UUID? {
-        let id = pendingConnectionId
-        pendingConnectionId = nil
-        return id
+    private var entries: [UUID: Entry] = [:]
+
+    func add(_ tunnel: SSHTunnel, id: UUID, connectionId: UUID) {
+        entries[id] = Entry(connectionId: connectionId, tunnel: tunnel)
     }
 
-    func add(_ tunnel: SSHTunnel, connectionId: UUID) {
-        tunnels[connectionId] = tunnel
+    func remove(id: UUID) -> SSHTunnel? {
+        entries.removeValue(forKey: id)?.tunnel
     }
 
-    func remove(connectionId: UUID) -> SSHTunnel? {
-        tunnels.removeValue(forKey: connectionId)
+    func removeAll(connectionId: UUID) -> [SSHTunnel] {
+        let matching = entries.filter { $0.value.connectionId == connectionId }
+        for key in matching.keys { entries.removeValue(forKey: key) }
+        return matching.values.map(\.tunnel)
     }
 }

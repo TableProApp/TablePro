@@ -8,29 +8,11 @@
 
 import CMariaDB
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 
-// MySQL/MariaDB field flag and charset constants
-internal let mysqlNotNullFlag: UInt = 0x0001
-internal let mysqlPriKeyFlag: UInt = 0x0002
-internal let mysqlBinaryFlag: UInt = 0x0080
-internal let mysqlEnumFlag: UInt = 0x0100
-internal let mysqlAutoIncrementFlag: UInt = 0x0200
-internal let mysqlSetFlag: UInt = 0x0800
-internal let mysqlBinaryCharset: UInt32 = 63
-
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
-
-internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
-    PluginColumnInfo(
-        name: name,
-        dataType: typeName,
-        isNullable: (flags & mysqlNotNullFlag) == 0,
-        isPrimaryKey: (flags & mysqlPriKeyFlag) != 0,
-        identityKind: (flags & mysqlAutoIncrementFlag) != 0 ? .byDefault : nil
-    )
-}
 
 // MARK: - Error Types
 
@@ -38,6 +20,24 @@ struct MariaDBPluginError: Error {
     let code: UInt32
     let message: String
     let sqlState: String?
+
+    /// Set when the statement waited out the client's own socket timeout rather than the server
+    /// dropping the connection. The two arrive as the same `2013`, and only this one leaves a copy
+    /// of the statement running on the server, so it is never replayed.
+    var outlastedSocketTimeout = false
+
+    /// `1317 Query execution was interrupted` is what the server answers a `KILL QUERY`, so the
+    /// deadline reports its own stop under the code and SQLSTATE a native statement timeout uses.
+    static func queryTimeoutExceeded(seconds: Int) -> MariaDBPluginError {
+        MariaDBPluginError(
+            code: 1_317,
+            message: String(
+                format: String(localized: "Query stopped after running past the %d second query timeout"),
+                seconds
+            ),
+            sqlState: "70100"
+        )
+    }
 
     static let notConnected = MariaDBPluginError(
         code: 0, message: String(localized: "Not connected to database"), sqlState: nil)
@@ -58,92 +58,10 @@ struct MariaDBPluginQueryResult {
     let insertId: UInt64
     let isTruncated: Bool
     let columnMeta: [PluginColumnInfo]
-}
 
-// MARK: - SSL Configuration
-
-// MARK: - Type Mapping
-
-func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
-    let field = fieldPtr.pointee
-    let flags = UInt(field.flags)
-    let length = field.length
-
-    // MariaDB extended metadata: detect JSON stored as LONGTEXT.
-    // `MARIADB_CONST_STRING` is length-prefixed (not null-terminated), so we must read
-    // exactly `attr.length` bytes. `String(cString:)` would scan past the buffer into
-    // adjacent memory and intermittently fail the comparison when that memory is non-zero.
-    var attr = MARIADB_CONST_STRING()
-    if mariadb_field_attr(&attr, fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME) == 0,
-       let str = attr.str, attr.length > 0,
-       let value = String(data: Data(bytes: str, count: Int(attr.length)), encoding: .utf8),
-       value == "json" {
-        return "JSON"
-    }
-
-    if (flags & mysqlEnumFlag) != 0 { return "ENUM" }
-    if (flags & mysqlSetFlag) != 0 { return "SET" }
-
-    return mariaDBTypeName(
-        typeRaw: field.type.rawValue,
-        flags: flags,
-        charsetnr: field.charsetnr,
-        length: field.length
-    )
-}
-
-/// Pure mapping from raw MySQL/MariaDB field type code + flags to TablePro's
-/// column-type-name string. Separated from `mysqlTypeToString` so it can be
-/// unit-tested without an actual `MYSQL_FIELD` struct.
-internal func mariaDBTypeName(
-    typeRaw: UInt32,
-    flags: UInt,
-    charsetnr: UInt32,
-    length: UInt
-) -> String {
-    // Binary flag alone is insufficient — MariaDB sets it on text columns with
-    // binary collation (e.g. utf8mb4_bin for JSON). Only charset 63 is truly binary.
-    let isBinary = (flags & mysqlBinaryFlag) != 0 && charsetnr == mysqlBinaryCharset
-
-    switch typeRaw {
-    case 0: return "DECIMAL"
-    case 1: return "TINYINT"
-    case 2: return "SMALLINT"
-    case 3: return "INT"
-    case 4: return "FLOAT"
-    case 5: return "DOUBLE"
-    case 6: return "NULL"
-    case 7: return "TIMESTAMP"
-    case 8: return "BIGINT"
-    case 9: return "MEDIUMINT"
-    case 10: return "DATE"
-    case 11: return "TIME"
-    case 12: return "DATETIME"
-    case 13: return "YEAR"
-    case 14: return "NEWDATE"
-    case 15: return "VARCHAR"
-    case 16: return "BIT"
-    case 245: return "JSON"
-    case 246: return "NEWDECIMAL"
-    case 247: return "ENUM"
-    case 248: return "SET"
-    case 249:
-        return isBinary ? "TINYBLOB" : "TINYTEXT"
-    case 250:
-        return isBinary ? "MEDIUMBLOB" : "MEDIUMTEXT"
-    case 251:
-        return isBinary ? "LONGBLOB" : "LONGTEXT"
-    case 252:
-        if isBinary {
-            return length > 65_535 ? "LONGBLOB" : "BLOB"
-        } else {
-            return length > 65_535 ? "LONGTEXT" : "TEXT"
-        }
-    case 253: return isBinary ? "VARBINARY" : "VARCHAR"
-    case 254: return isBinary ? "BINARY" : "CHAR"
-    case 255: return "GEOMETRY"
-    default: return "UNKNOWN"
-    }
+    /// Send to first row, measured from just before the statement goes out. Separates the server's
+    /// own work from the time spent pulling the rest of the result across the wire.
+    var firstRowTime: TimeInterval?
 }
 
 // MARK: - Connection Class
@@ -151,6 +69,16 @@ internal func mariaDBTypeName(
 final class MariaDBPluginConnection: @unchecked Sendable {
     private var mysql: UnsafeMutablePointer<MYSQL>?
     private let queue = DispatchQueue(label: "com.TablePro.mariadb.plugin", qos: .userInitiated)
+
+    /// Serial, and separate from `queue`, which the read being cancelled is sitting on. Serial so a
+    /// user pressing Stop repeatedly opens one connection at a time rather than one per press.
+    private let cancelQueue = DispatchQueue(label: "com.TablePro.mariadb.plugin.cancel", qos: .userInitiated)
+
+    /// The deadline's own queue, so a statement stopped by the query timeout never waits behind a
+    /// Stop the user pressed, or the other way round.
+    internal let deadlineQueue = DispatchQueue(label: "com.TablePro.mariadb.plugin.deadline", qos: .userInitiated)
+
+    internal let statementWatch = MySQLStatementWatch()
 
     private let host: String
     private let port: UInt32
@@ -160,17 +88,131 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let sslConfig: SSLConfiguration
     private let enableCleartextPlugin: Bool
     private let queryTimeoutSeconds: Int
+    private let connectionEncoding: MySQLConnectionEncoding
+
+    /// How long a read may go silent before libmariadb reports the connection lost, which is the
+    /// only thing separating its own timeout from a server-side drop.
+    internal let socketTimeoutSeconds: UInt32
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _isCancelled: Bool = false
+
+    /// The session's `SQL_SELECT_LIMIT` as this connection last confirmed it, `nil` while it still
+    /// holds `baselineSelectLimit`. Only ever touched from `queue`, which every statement path runs on.
+    private var appliedSelectLimit: UInt64?
+
+    /// What the session held before this connection first took the variable over, so restoring it
+    /// gives back a limit the server, an `init_connect` or the connection's own startup SQL had set
+    /// rather than overwriting it with `DEFAULT`. Read lazily, because startup commands run after
+    /// `connect()` returns. `nil` means it has not been captured, or could not be.
+    private var baselineSelectLimit: UInt64?
+    private var hasCapturedBaselineSelectLimit = false
+
+    /// Whether the connection that actually succeeded negotiated TLS. `.preferred` falls back to
+    /// plaintext, so the configured mode does not say what the transport ended up being, and the
+    /// `KILL` connection has to repeat what worked rather than what was asked for.
+    private var effectiveSSLEnforced = false
+
+    private var _flavor: MySQLServerFlavor = .mysql
+    private var _killTarget: MySQLKillTarget = .threadId
+
+    /// Set when the server has no statement timeout of its own, so the driver stops a statement
+    /// that runs past the query timeout with `KILL QUERY` from a second connection.
+    private var _statementDeadline: MySQLStatementDeadline?
+
+    internal var statementDeadline: MySQLStatementDeadline? {
+        stateLock.withLock { _statementDeadline }
+    }
+
+    internal func adopt(statementDeadline: MySQLStatementDeadline?) {
+        stateLock.withLock { _statementDeadline = statementDeadline }
+    }
+
+    internal var flavor: MySQLServerFlavor {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _flavor
+    }
+
+    internal var killTarget: MySQLKillTarget {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _killTarget
+    }
+
+    /// Whether a `KILL QUERY` this connection sent is still sitting on the server waiting for the
+    /// next statement to collect. Written from the cancel queue and the statement queue, so it lives
+    /// under the same lock the flavor does.
+    private var _killLatch = MySQLKillLatch()
+
+    private func recordKillDelivered(generation: Int) {
+        stateLock.withLock { _killLatch.recordDelivered(generation: generation) }
+    }
+
+    private func recordKillInterrupted(generation: Int) {
+        stateLock.withLock { _killLatch.recordInterrupted(generation: generation) }
+    }
+
+    private func takeKillAbsorption() -> Bool {
+        stateLock.withLock { _killLatch.takeAbsorption() }
+    }
+
+    /// Notes the server's own interruption code on the way past, so a kill this statement collected
+    /// is not absorbed a second time by the next one. It never changes the error it is handed.
+    private func noting(_ error: MariaDBPluginError, generation: Int) -> MariaDBPluginError {
+        guard flavor.isInterruptedByKill(errno: error.code, message: error.message) else { return error }
+        recordKillInterrupted(generation: generation)
+        return error
+    }
+
+    /// Runs before every statement this connection sends, on the statement queue.
+    ///
+    /// Draining the cancel queue first is what makes the latch mean anything: a kill dispatched for
+    /// the statement that just ended may not have reached the server yet, and reading the latch
+    /// before it went out would let it arrive during the statement below instead.
+    internal func absorbLatchedKillIfNeeded() {
+        cancelQueue.sync {}
+        guard takeKillAbsorption(), MySQLKillLatch.absorbsLatchedKill(flavor: flavor) else { return }
+        consumePendingInterrupt()
+    }
+
+    func adopt(flavor: MySQLServerFlavor, killTarget: MySQLKillTarget) {
+        stateLock.lock()
+        _flavor = flavor
+        _killTarget = killTarget
+        stateLock.unlock()
+    }
 
     var isConnected: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _isConnected
+    }
+
+    /// Whether the server says the session is inside a transaction, from the status flags in the
+    /// reply to the last statement. This is the one thing about the session the server does
+    /// answer for free, and it is exact where reading the statement text is a guess: measured on
+    /// MySQL 8.4.11, it reports the transaction that `SET autocommit = 0` plus a plain `SELECT`
+    /// opens, the one inside `/*!40101 BEGIN */`, and the one an `XA START` opens, none of which
+    /// the text can show.
+    var isInTransaction: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isInTransaction
+    }
+
+    private var _isInTransaction = false
+
+    private func recordTransactionState(on mysql: UnsafeMutablePointer<MYSQL>) {
+        var serverStatus: UInt32 = 0
+        guard mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus) == 0 else { return }
+        let isOpen = (serverStatus & UInt32(SERVER_STATUS_IN_TRANS)) != 0
+        stateLock.lock()
+        _isInTransaction = isOpen
+        stateLock.unlock()
     }
 
     private var isShuttingDown: Bool {
@@ -194,7 +236,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         database: String,
         sslConfig: SSLConfiguration,
         enableCleartextPlugin: Bool = false,
-        queryTimeoutSeconds: Int = 0
+        queryTimeoutSeconds: Int = 0,
+        connectionEncoding: MySQLConnectionEncoding = .utf8
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -204,6 +247,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.sslConfig = sslConfig
         self.enableCleartextPlugin = enableCleartextPlugin
         self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.connectionEncoding = connectionEncoding
+        self.socketTimeoutSeconds = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
     }
 
     deinit {
@@ -246,6 +291,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 self._cachedServerVersion = String(cString: versionPtr)
             }
 
+            self.effectiveSSLEnforced = mysql_get_ssl_cipher(handle) != nil
+            self.appliedSelectLimit = nil
+            self.baselineSelectLimit = nil
+            self.hasCapturedBaselineSelectLimit = false
+
             self.stateLock.lock()
             self.mysql = handle
             self._isConnected = true
@@ -264,14 +314,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var timeout: UInt32 = 10
         mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
 
-        var readTimeout = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
+        var readTimeout = socketTimeoutSeconds
         mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
 
-        var writeTimeout = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
+        var writeTimeout = socketTimeoutSeconds
         mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
 
         var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
         mysql_options(mysql, MYSQL_OPT_PROTOCOL, &protocol_tcp)
+
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
         var sslEnforce: my_bool = enforceSSL ? 1 : 0
         mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
@@ -334,7 +387,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
         }
 
-        if result == nil {
+        guard result != nil, MariaDBCharacterSet.establishSession(on: mysql, encoding: connectionEncoding) else {
             let error = readError(from: mysql)
             mysql_close(mysql)
             throw error
@@ -343,18 +396,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private func readError(from mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {
-        let code = mysql_errno(mysql)
-        let message: String
-        if let msgPtr = mysql_error(mysql) {
-            message = String(cString: msgPtr)
-        } else {
-            message = "Unknown error"
-        }
-        var sqlState: String?
-        if let statePtr = mysql_sqlstate(mysql), statePtr[0] != 0 {
-            sqlState = String(cString: statePtr)
-        }
-        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
+        MariaDBPluginError(
+            code: mysql_errno(mysql),
+            message: mysql_error(mysql).map(decodedMessage) ?? "Unknown error",
+            sqlState: sqlState(mysql_sqlstate(mysql))
+        )
     }
 
     func disconnect() {
@@ -378,25 +424,93 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Cancellation
 
+    /// Stop reaches the server over a second connection, and building one is a TCP connect, a TLS
+    /// handshake and an auth exchange. `DatabaseManager.cancelRunningQuery` calls this synchronously
+    /// from the main actor on purpose, because the user is waiting, so the connect cannot happen
+    /// there: against a host that has stopped answering, which is exactly when someone presses Stop,
+    /// `mysql_real_connect` blocks for the full five-second `MYSQL_OPT_CONNECT_TIMEOUT`.
+    ///
+    /// The half the caller needs is the gate, which is already synchronous: it is what makes the
+    /// in-flight read give up. The kill is server-side cleanup and carries only a thread id, no
+    /// handle, so it is safe to finish on its own queue.
     func cancelCurrentQuery() {
-        stateLock.lock()
-        _isCancelled = true
-        stateLock.unlock()
+        guard let generation = cancellationGate.cancel() else { return }
 
-        guard let mysql = mysql else { return }
-        killQueryOnServer(threadId: mysql_thread_id(mysql))
+        guard let mysql = mysql, let statement = killStatement(for: mysql) else { return }
+        cancelQueue.async { [self] in
+            killQueryOnServer(statement: statement, generation: generation)
+        }
     }
 
-    private func killQueryOnServer(threadId: UInt) {
-        guard threadId > 0 else { return }
+    internal func killStatement(for mysql: UnsafeMutablePointer<MYSQL>) -> String? {
+        killTarget.statement(threadId: mysql_thread_id(mysql))
+    }
 
+    /// The server thread this connection is on, read before a statement goes out so a kill still
+    /// has somewhere to go once the handle itself is unusable.
+    internal var currentThreadId: UInt {
+        guard let mysql = self.mysql else { return 0 }
+        return mysql_thread_id(mysql)
+    }
+
+    /// The kill has to reach the server the query is running on, which means repeating the transport
+    /// the primary connection chose. Without `MYSQL_OPT_PROTOCOL` a host spelled `localhost` resolves
+    /// to the default unix socket and the `port` argument is ignored, so `KILL QUERY` lands on a
+    /// different server, where that thread id belongs to somebody else's session.
+    ///
+    /// It carries the same credentials, so it may not be a weaker channel than the primary, and it
+    /// repeats the transport the primary actually got rather than the configured mode. Both TLS
+    /// options are always set: left unset, the bundled connector requires TLS, so every kill against
+    /// a server without TLS failed with 2026 and Stop did nothing. Reading the configured mode
+    /// instead would break `.preferred`, the default, the same way: the primary succeeds through its
+    /// plaintext fallback and every kill after it repeats the attempt that already failed.
+    private func killQueryOnServer(statement killQuery: String, generation: Int) {
+        guard let killConn = openKillConnection() else {
+            logger.warning("\(killQuery, privacy: .public) could not open a connection")
+            return
+        }
+        defer { mysql_close(killConn) }
+        guard sendKill(killQuery, on: killConn) else { return }
+        recordKillDelivered(generation: generation)
+    }
+
+    /// Opened outside any lock the statement's own completion waits on: against a server across the
+    /// internet this is 800-1900ms of TCP, TLS and auth.
+    internal func openKillConnection() -> UnsafeMutablePointer<MYSQL>? {
         let killConn = mysql_init(nil)
-        guard let killConn = killConn else { return }
+        guard let killConn = killConn else { return nil }
 
         var killTimeout: UInt32 = 5
         mysql_options(killConn, MYSQL_OPT_CONNECT_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_READ_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_WRITE_TIMEOUT, &killTimeout)
+
+        var killProtocol = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
+        mysql_options(killConn, MYSQL_OPT_PROTOCOL, &killProtocol)
+
+        var killAllowLocalInfile: UInt32 = 0
+        mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
+
+        var killSSLEnforce: my_bool = effectiveSSLEnforced ? 1 : 0
+        mysql_options(killConn, MYSQL_OPT_SSL_ENFORCE, &killSSLEnforce)
+        var killSSLVerify: my_bool = effectiveSSLEnforced && sslConfig.verifiesCertificate ? 1 : 0
+        mysql_options(killConn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &killSSLVerify)
+        if effectiveSSLEnforced {
+            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+                _ = sslConfig.caCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CA, $0) }
+            }
+            if !sslConfig.clientCertificatePath.isEmpty {
+                _ = sslConfig.clientCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CERT, $0) }
+            }
+            if !sslConfig.clientKeyPath.isEmpty {
+                _ = sslConfig.clientKeyPath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_KEY, $0) }
+            }
+        }
+
+        if enableCleartextPlugin {
+            var killEnableCleartext: my_bool = 1
+            mysql_options(killConn, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &killEnableCleartext)
+        }
 
         let killResult = host.withCString { hostPtr in
             user.withCString { userPtr in
@@ -410,26 +524,133 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
         }
 
-        if killResult != nil {
-            let killQuery = "KILL QUERY \(threadId)"
-            _ = killQuery.withCString { queryPtr in
-                mysql_real_query(killConn, queryPtr, UInt(killQuery.utf8.count))
-            }
+        guard killResult != nil else {
+            logger.warning("KILL QUERY could not connect: \(self.errorMessage(from: killConn))")
+            mysql_close(killConn)
+            return nil
         }
-
-        mysql_close(killConn)
+        return killConn
     }
 
-    private func consumeCancellation() -> Bool {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard _isCancelled else { return false }
-        _isCancelled = false
+    /// Whether the kill went out. The caller records an interrupt only on `true`, so a refused or
+    /// unreachable kill never leaves a statement reported as stopped when it is still running.
+    @discardableResult
+    internal func sendKill(_ killQuery: String, on killConn: UnsafeMutablePointer<MYSQL>) -> Bool {
+        let killStatus = killQuery.withCString { queryPtr in
+            mysql_real_query(killConn, queryPtr, UInt(killQuery.utf8.count))
+        }
+        guard killStatus == 0 else {
+            logger.warning("\(killQuery, privacy: .public) rejected: \(self.errorMessage(from: killConn))")
+            return false
+        }
         return true
     }
 
-    private static func isExpectedInterruption(errno: UInt32, wasTruncated: Bool) -> Bool {
-        wasTruncated && errno == UInt32(ER_QUERY_INTERRUPTED)
+    /// Runs a statement whose only job is to test and clear the server's `KILL QUERY` flag, for a
+    /// kill that arrived after the statement it was meant for had already finished. Without it the
+    /// flag reaches the next statement: measured on MySQL 5.5.62, 5.6.51 and MariaDB 5.5.64, the
+    /// statement after an idle kill failed with `ERROR 1317` and an `INSERT ... SELECT` inserted
+    /// nothing. It costs the session its `ROW_COUNT()` and `FOUND_ROWS()`, which installing the row
+    /// cap already costs.
+    internal func consumePendingInterrupt() {
+        guard let mysql = self.mysql else { return }
+        let probe = "SELECT 1"
+        _ = probe.withCString { probePtr in
+            mysql_real_query(mysql, probePtr, UInt(probe.utf8.count))
+        }
+        if let discarded = mysql_store_result(mysql) {
+            while mysql_fetch_row(discarded) != nil {}
+            mysql_free_result(discarded)
+        }
+    }
+
+    /// Stops a statement the client gave up on while the server kept running it. The primary handle
+    /// is already unusable, so the thread id captured before the statement went out is the only way
+    /// back to it.
+    internal func killOrphanedStatement(threadId: UInt) {
+        guard let statement = killTarget.statement(threadId: threadId) else { return }
+        cancelQueue.async { [self] in
+            guard let killConn = openKillConnection() else { return }
+            defer { mysql_close(killConn) }
+            sendKill(statement, on: killConn)
+        }
+    }
+
+    private func errorMessage(from mysql: UnsafeMutablePointer<MYSQL>) -> String {
+        let code = mysql_errno(mysql)
+        guard let messagePtr = mysql_error(mysql) else { return "error \(code)" }
+        return "\(code) \(String(cString: messagePtr))"
+    }
+
+    // MARK: - Server-Side Row Cap
+
+    /// `SQL_SELECT_LIMIT` is session state, so it is reconciled before every statement rather than
+    /// left set: it bounds any later `SELECT` on this connection, `information_schema` and
+    /// `SHOW FULL COLUMNS` included. The cache moves only once the server confirms the change, so a
+    /// failed reset is something the next statement retries rather than a silent truncation.
+    /// Taken the first time this connection is about to own the variable, not at connect: the
+    /// connection's startup commands run after `connect()` returns, so a `SET SESSION
+    /// SQL_SELECT_LIMIT` among them would otherwise be captured too late to be restored and lost.
+    private func captureBaselineSelectLimit(from mysql: UnsafeMutablePointer<MYSQL>) {
+        guard !hasCapturedBaselineSelectLimit else { return }
+        hasCapturedBaselineSelectLimit = true
+
+        let probe = flavor.selectLimitProbeStatement
+        let status = probe.withCString { probePtr in
+            mysql_real_query(mysql, probePtr, UInt(probe.utf8.count))
+        }
+        guard status == 0, let result = mysql_store_result(mysql) else { return }
+        defer { mysql_free_result(result) }
+        guard let row = mysql_fetch_row(result), let valuePtr = row[0] else { return }
+        baselineSelectLimit = UInt64(String(cString: valuePtr))
+    }
+
+    private func reconcileSelectLimit(
+        rowCap: Int?,
+        statement query: String,
+        on mysql: UnsafeMutablePointer<MYSQL>
+    ) throws {
+        /// Only trustworthy while this connection holds no limit of its own: a statement misread as
+        /// single-row would otherwise keep a stale cap installed and end early under it, and the
+        /// client would compare that short count against the current cap and call it complete.
+        if appliedSelectLimit == nil, rowCap != nil, mysqlStatementReturnsAtMostOneRow(query) {
+            return
+        }
+
+        let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
+        let sessionFlavor = flavor
+        let statement: String
+        switch mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired) {
+        case .none:
+            return
+        case .apply(let rows):
+            captureBaselineSelectLimit(from: mysql)
+            statement = sessionFlavor.selectLimitStatement(rows: rows)
+        case .reset:
+            statement = baselineSelectLimit.map { sessionFlavor.selectLimitStatement(rows: $0) }
+                ?? sessionFlavor.selectLimitResetStatement
+        }
+
+        let status = statement.withCString { statementPtr in
+            mysql_real_query(mysql, statementPtr, UInt(statement.utf8.count))
+        }
+        if let discarded = mysql_store_result(mysql) {
+            mysql_free_result(discarded)
+        }
+        guard status == 0 else {
+            let error = getError()
+            logger.warning("SQL_SELECT_LIMIT not reconciled: \(self.errorMessage(from: mysql))")
+            /// Failing to install a cap costs only the client-side fallback. Failing to move one that
+            /// is already installed would run the statement under a stricter limit than it asked for
+            /// and report the short result as complete.
+            guard appliedSelectLimit == nil else { throw error }
+            return
+        }
+        appliedSelectLimit = desired
+    }
+
+    private func isExpectedInterruption(errno: UInt32, message: String, wasTruncated: Bool) -> Bool {
+        wasTruncated && flavor.isInterruptedByKill(errno: errno, message: message)
     }
 
     // MARK: - Query Execution
@@ -458,20 +679,42 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private func executeQuerySync(_ query: String, rowCap: Int? = nil) throws -> MariaDBPluginQueryResult {
+        try runStatement(query) { try self.runTextStatement(query, rowCap: rowCap) }
+    }
+
+    private func runTextStatement(_ query: String, rowCap: Int?) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+        defer { recordTransactionState(on: mysql) }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
+        /// Started before the `SQL_SELECT_LIMIT` reconciliation rather than after it. That
+        /// reconciliation is a round trip of its own, and leaving it outside this clock charges it
+        /// to `total - firstRow`, which the breakdown presents as row transfer.
+        let sentAt = Date()
+        try reconcileSelectLimit(rowCap: rowCap, statement: query, on: mysql)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
         let queryStatus = query.withCString { queryPtr in
             mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
         }
 
         if queryStatus != 0 {
-            throw self.getError()
+            throw noting(self.getError(), generation: generation)
         }
 
         let resultPtr = mysql_use_result(mysql)
 
+        /// No result set, reported as the server sent it. A `SELECT` lands here when it projected
+        /// nothing to the client (`INTO @var`, `INTO OUTFILE`, `INTO DUMPFILE`) and when a proxy
+        /// answers the read with an OK packet, and an ordinary empty `SELECT` never does: measured on
+        /// MySQL 5.5 to 9.7, MariaDB 11.4 and TiDB, every result set carries its columns. The driver
+        /// used to guess the columns with a `DESCRIBE` of a name scraped out of the statement, which
+        /// turned a statement the server had accepted into `1146 Table 'db.information_schema'
+        /// doesn't exist`.
         if resultPtr == nil {
             let fieldCount = mysql_field_count(mysql)
             if fieldCount == 0 {
@@ -480,117 +723,95 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 return MariaDBPluginQueryResult(
                     columns: [], columnTypes: [], columnTypeNames: [],
                     rows: [], affectedRows: affected, insertId: insertId, isTruncated: false,
-                    columnMeta: []
+                    columnMeta: [],
+                    firstRowTime: Date().timeIntervalSince(sentAt)
                 )
             } else {
                 throw self.getError()
             }
         }
 
-        let numFields = Int(mysql_num_fields(resultPtr))
-        var columns: [String] = []
-        var columnTypes: [UInt32] = []
-        var columnTypeNames: [String] = []
-        var columnIsBinary: [Bool] = []
-        var columnMeta: [PluginColumnInfo] = []
-        columns.reserveCapacity(numFields)
-        columnTypes.reserveCapacity(numFields)
-        columnTypeNames.reserveCapacity(numFields)
-        columnIsBinary.reserveCapacity(numFields)
-        columnMeta.reserveCapacity(numFields)
-
-        if let fields = mysql_fetch_fields(resultPtr) {
-            for i in 0..<numFields {
-                let field = fields[i]
-                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
-                columns.append(columnName)
-                let fieldFlags = UInt(field.flags)
-                var fieldType = field.type.rawValue
-                if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
-                if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
-                columnTypes.append(fieldType)
-                let typeName = mysqlTypeToString(fields + i)
-                columnTypeNames.append(typeName)
-                columnIsBinary.append(
-                    MariaDBFieldClassifier.isBinary(
-                        typeRaw: field.type.rawValue,
-                        charset: field.charsetnr
-                    )
-                )
-                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
-            }
-        }
+        let sessionFlavor = flavor
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(resultPtr),
+            count: Int(mysql_num_fields(resultPtr)),
+            encoding: connectionEncoding,
+            flavor: sessionFlavor
+        )
 
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
 
-        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
-        var truncated = false
+        let maxRows = mysqlClampedRowCap(rowCap) ?? PluginRowLimits.emergencyMax
+        let fetchLimit = maxRows == PluginRowLimits.emergencyMax ? maxRows : maxRows + 1
+        var serverSentMore = false
+        var firstRowTime: TimeInterval?
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
-            if consumeCancellation() {
+            if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
+            if cancellationGate.isCancelled(generation) {
                 while mysql_fetch_row(resultPtr) != nil {}
                 mysql_free_result(resultPtr)
                 throw CancellationError()
             }
 
-            if rows.count >= maxRows {
-                truncated = true
+            if rows.count >= fetchLimit {
+                serverSentMore = true
                 break
             }
 
-            let lengths = mysql_fetch_lengths(resultPtr)
-
-            var row: [PluginCellValue] = []
-            row.reserveCapacity(numFields)
-
-            for i in 0..<numFields {
-                if let fieldPtr = rowPtr[i] {
-                    let length = Int(clamping: lengths?[i] ?? 0)
-                    let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
-
-                    if columnTypes[i] == 255 {
-                        row.append(.text(GeometryWKBParser.parse(bufferPtr)))
-                    } else if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
-                        row.append(.text(MariaDBFieldClassifier.bitFieldToString(bufferPtr)))
-                    } else if columnIsBinary[i] {
-                        row.append(.bytes(Data(bufferPtr)))
-                    } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                        row.append(.text(str))
-                    } else {
-                        row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                    }
-                } else {
-                    row.append(.null)
-                }
-            }
-            rows.append(row)
+            rows.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
         }
 
+        let outcome = mysqlBoundedFetchOutcome(
+            fetchedRows: rows.count,
+            rowCap: maxRows,
+            serverSentMore: serverSentMore
+        )
+        let truncated = outcome.isTruncated
         if truncated {
             logger.warning("Result set truncated at \(maxRows) rows")
-            killQueryOnServer(threadId: mysql_thread_id(mysql))
+            rows.removeLast(rows.count - outcome.keptRows)
+        }
+        if outcome.serverIgnoredLimit {
+            if !sessionFlavor.dropsIdleSessionOnKillQuery, let statement = killStatement(for: mysql) {
+                killQueryOnServer(statement: statement, generation: generation)
+            }
             while mysql_fetch_row(resultPtr) != nil {}
         }
 
-        if consumeCancellation() {
+        if cancellationGate.isCancelled(generation) {
             mysql_free_result(resultPtr)
             throw CancellationError()
         }
 
         let fetchErrno = mysql_errno(mysql)
-        if fetchErrno != 0, !Self.isExpectedInterruption(errno: fetchErrno, wasTruncated: truncated) {
-            let error = getError()
-            mysql_free_result(resultPtr)
-            throw error
+        if fetchErrno != 0 {
+            let error = noting(getError(), generation: generation)
+            if !isExpectedInterruption(
+                errno: fetchErrno, message: error.message, wasTruncated: outcome.serverIgnoredLimit
+            ) {
+                mysql_free_result(resultPtr)
+                throw error
+            }
         }
 
         mysql_free_result(resultPtr)
 
+        if sessionFlavor.isDatabend, let affected = DatabendResultShape.affectedRowCount(columns: columns.names, rows: rows) {
+            return MariaDBPluginQueryResult(
+                columns: [], columnTypes: [], columnTypeNames: [],
+                rows: [], affectedRows: affected, insertId: 0, isTruncated: false,
+                columnMeta: [],
+                firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+            )
+        }
+
         return MariaDBPluginQueryResult(
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
+            columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
             rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
-            columnMeta: columnMeta
+            columnMeta: columns.metadata,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
         )
     }
 
@@ -673,12 +894,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func fetchResultSet(
         from stmt: UnsafeMutablePointer<MYSQL_STMT>,
         metadata: UnsafeMutablePointer<MYSQL_RES>,
-        columns: [String],
-        columnTypes: [UInt32],
-        columnTypeNames: [String],
-        columnIsBinary: [Bool],
-        rowCap: Int? = nil
-    ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
+        columns: MySQLResultColumns,
+        rowCap: Int? = nil,
+        generation: Int,
+        sentAt: Date
+    ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool, firstRowTime: TimeInterval) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
         var resultBuffers: [UnsafeMutableRawPointer] = []
@@ -712,8 +932,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         var rows: [[PluginCellValue]] = []
-        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
-        var truncated = false
+        let maxRows = mysqlClampedRowCap(rowCap) ?? PluginRowLimits.emergencyMax
+        let fetchLimit = maxRows == PluginRowLimits.emergencyMax ? maxRows : maxRows + 1
+        var serverSentMore = false
+        /// `mysql_stmt_execute` returns once the server has answered with a header, which on an
+        /// unbuffered statement can be long before the first tuple exists. Only a fetch that
+        /// returns a row proves the server produced one.
+        var firstRowTime: TimeInterval?
 
         while true {
             let fetchStatus = mysql_stmt_fetch(stmt)
@@ -721,18 +946,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if fetchStatus != 0, fetchStatus != MYSQL_DATA_TRUNCATED {
                 throw getStmtError(stmt)
             }
+            if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
 
-            if consumeCancellation() {
+            if cancellationGate.isCancelled(generation) {
                 throw CancellationError()
             }
 
-            if rows.count >= maxRows {
-                truncated = true
+            if rows.count >= fetchLimit {
+                serverSentMore = true
                 break
             }
 
-            // Re-fetch truncated columns with correctly sized buffers
             if fetchStatus == MYSQL_DATA_TRUNCATED {
+                var grewBuffer = false
                 for i in 0..<numFields {
                     let actualLength = Int(resultBinds[i].length?.pointee ?? 0)
                     if actualLength > Int(resultBinds[i].buffer_length) {
@@ -743,40 +969,39 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         resultBuffers[i] = newBuffer
                         resultBinds[i].buffer = newBuffer
                         resultBinds[i].buffer_length = UInt(actualLength)
+                        grewBuffer = true
                         if mysql_stmt_fetch_column(stmt, &resultBinds[i], UInt32(i), 0) != 0 {
                             logger.warning("mysql_stmt_fetch_column failed for column \(i)")
                         }
                     }
                 }
-            }
-
-            var row: [PluginCellValue] = []
-            for i in 0..<numFields {
-                if resultBinds[i].is_null?.pointee == 1 {
-                    row.append(.null)
-                } else {
-                    let length = Int(resultBinds[i].length?.pointee ?? 0)
-                    let buffer = resultBuffers[i].assumingMemoryBound(to: UInt8.self)
-                    let data = Data(bytes: buffer, count: length)
-                    if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
-                        row.append(.text(MariaDBFieldClassifier.bitFieldToString(data)))
-                    } else if columnIsBinary[i] {
-                        row.append(.bytes(data))
-                    } else if let str = String(data: data, encoding: .utf8) {
-                        row.append(.text(str))
-                    } else {
-                        row.append(.text(String(data: data, encoding: .isoLatin1) ?? ""))
-                    }
+                if grewBuffer, mysql_stmt_bind_result(stmt, &resultBinds) != 0 {
+                    throw getStmtError(stmt)
                 }
             }
-            rows.append(row)
+
+            rows.append(columns.row(encoding: connectionEncoding) { index in
+                guard resultBinds[index].is_null?.pointee != 1 else { return nil }
+                let length = Int(resultBinds[index].length?.pointee ?? 0)
+                return UnsafeRawBufferPointer(start: resultBuffers[index], count: length)
+            })
         }
 
-        if truncated {
+        let outcome = mysqlBoundedFetchOutcome(
+            fetchedRows: rows.count,
+            rowCap: maxRows,
+            serverSentMore: serverSentMore
+        )
+        if outcome.isTruncated {
             logger.warning("Prepared statement result truncated at \(maxRows) rows")
+            rows.removeLast(rows.count - outcome.keptRows)
         }
 
-        return (rows: rows, isTruncated: truncated)
+        return (
+            rows: rows,
+            isTruncated: outcome.isTruncated,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+        )
     }
 
     private func executeParameterizedQuerySync(
@@ -784,9 +1009,31 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         parameters: [PluginCellValue],
         rowCap: Int? = nil
     ) throws -> MariaDBPluginQueryResult {
+        guard flavor.preparesOnServer else {
+            return try executeQuerySync(DatabendLiteral.inline(query, parameters: parameters), rowCap: rowCap)
+        }
+        return try runStatement(query) {
+            try self.runPreparedStatement(query, parameters: parameters, rowCap: rowCap)
+        }
+    }
+
+    private func runPreparedStatement(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int?
+    ) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+        defer { recordTransactionState(on: mysql) }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
+        /// Ahead of both the reconciliation and the prepare, for the reason the text path gives.
+        let sentAt = Date()
+        try reconcileSelectLimit(rowCap: rowCap, statement: query, on: mysql)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
         guard let stmt = mysql_stmt_init(mysql) else {
             throw MariaDBPluginError(code: 0, message: "Failed to initialize prepared statement", sqlState: nil)
@@ -818,13 +1065,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             defer { bindings.cleanup() }
 
             if mysql_stmt_execute(stmt) != 0 {
-                throw getStmtError(stmt)
+                throw noting(getStmtError(stmt), generation: generation)
             }
         } else {
             if mysql_stmt_execute(stmt) != 0 {
-                throw getStmtError(stmt)
+                throw noting(getStmtError(stmt), generation: generation)
             }
         }
+        let executedAt = Date().timeIntervalSince(sentAt)
 
         let fieldCount = Int(mysql_stmt_field_count(stmt))
 
@@ -834,7 +1082,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             return MariaDBPluginQueryResult(
                 columns: [], columnTypes: [], columnTypeNames: [],
                 rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false,
-                columnMeta: []
+                columnMeta: [],
+                firstRowTime: executedAt
             )
         }
 
@@ -846,46 +1095,24 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_free_result(metadata)
         }
 
-        var columns: [String] = []
-        var columnTypes: [UInt32] = []
-        var columnTypeNames: [String] = []
-        var columnIsBinary: [Bool] = []
-        var columnMeta: [PluginColumnInfo] = []
-        let numFields = Int(mysql_num_fields(metadata))
-
-        if let fields = mysql_fetch_fields(metadata) {
-            for i in 0..<numFields {
-                let field = fields[i]
-                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
-                columns.append(columnName)
-                let fieldFlags = UInt(field.flags)
-                var fieldType = field.type.rawValue
-                if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
-                if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
-                columnTypes.append(fieldType)
-                let typeName = mysqlTypeToString(fields + i)
-                columnTypeNames.append(typeName)
-                columnIsBinary.append(
-                    MariaDBFieldClassifier.isBinary(
-                        typeRaw: field.type.rawValue,
-                        charset: field.charsetnr
-                    )
-                )
-                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
-            }
-        }
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(metadata),
+            count: Int(mysql_num_fields(metadata)),
+            encoding: connectionEncoding,
+            flavor: flavor
+        )
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary, rowCap: rowCap
+            columns: columns, rowCap: rowCap, generation: generation, sentAt: sentAt
         )
 
         return MariaDBPluginQueryResult(
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
+            columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
             insertId: 0, isTruncated: fetchResult.isTruncated,
-            columnMeta: columnMeta
+            columnMeta: columns.metadata,
+            firstRowTime: fetchResult.firstRowTime
         )
     }
 
@@ -893,166 +1120,101 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        let queue = self.queue
 
-        final class StreamState: @unchecked Sendable {
-            var resultPtr: UnsafeMutablePointer<MYSQL_RES>?
-            var drained = false
-            let lock = NSLock()
-        }
-        let streamState = StreamState()
-
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            continuation.onTermination = { @Sendable _ in
-                queue.async {
-                    streamState.lock.lock()
-                    let ptr = streamState.resultPtr
-                    let alreadyDrained = streamState.drained
-                    streamState.drained = true
-                    streamState.lock.unlock()
-                    guard let resultPtr = ptr, !alreadyDrained else { return }
-                    while mysql_fetch_row(resultPtr) != nil {}
-                    mysql_free_result(resultPtr)
-                }
-            }
-
-            queue.async { [self] in
-                guard !isShuttingDown, let mysql = self.mysql else {
-                    continuation.finish(throwing: MariaDBPluginError.notConnected)
-                    return
-                }
-
-                let queryStatus = queryToRun.withCString { queryPtr in
-                    mysql_real_query(mysql, queryPtr, UInt(queryToRun.utf8.count))
-                }
-
-                if queryStatus != 0 {
-                    continuation.finish(throwing: self.getError())
-                    return
-                }
-
-                let resultPtr = mysql_use_result(mysql)
-
-                if resultPtr == nil {
-                    let fieldCount = mysql_field_count(mysql)
-                    if fieldCount == 0 {
-                        continuation.finish()
-                    } else {
-                        continuation.finish(throwing: self.getError())
+        /// The drain belongs to the producer. Enqueued from `onTermination` it would sit behind the
+        /// producer on this one serial queue and run only after the whole result had been read,
+        /// which is why the abort is a polled flag instead.
+        return PluginRowStream.make { continuation, abort in
+            self.queue.async { [self] in
+                do {
+                    try runStatement(queryToRun) {
+                        try self.streamStatement(queryToRun, continuation: continuation, abort: abort)
                     }
-                    return
-                }
-
-                streamState.lock.lock()
-                streamState.resultPtr = resultPtr
-                streamState.lock.unlock()
-
-                let numFields = Int(mysql_num_fields(resultPtr))
-                var columns: [String] = []
-                var columnTypes: [UInt32] = []
-                var columnTypeNames: [String] = []
-                var columnIsBinary: [Bool] = []
-                columns.reserveCapacity(numFields)
-                columnTypes.reserveCapacity(numFields)
-                columnTypeNames.reserveCapacity(numFields)
-                columnIsBinary.reserveCapacity(numFields)
-
-                if let fields = mysql_fetch_fields(resultPtr) {
-                    for i in 0..<numFields {
-                        let field = fields[i]
-                        if let namePtr = field.name {
-                            columns.append(String(cString: namePtr))
-                        } else {
-                            columns.append("column_\(i)")
-                        }
-                        let fieldFlags = UInt(field.flags)
-                        var fieldType = field.type.rawValue
-                        if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
-                        if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
-                        columnTypes.append(fieldType)
-                        columnTypeNames.append(mysqlTypeToString(fields + i))
-                        columnIsBinary.append(
-                            MariaDBFieldClassifier.isBinary(
-                                typeRaw: field.type.rawValue,
-                                charset: field.charsetnr
-                            )
-                        )
-                    }
-                }
-
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: columns,
-                    columnTypeNames: columnTypeNames,
-                    estimatedRowCount: nil
-                )))
-
-                let batchSize = 5_000
-                var batch: [PluginRow] = []
-                batch.reserveCapacity(batchSize)
-                while let rowPtr = mysql_fetch_row(resultPtr) {
-                    if Task.isCancelled {
-                        while mysql_fetch_row(resultPtr) != nil {}
-                        streamState.lock.lock()
-                        streamState.drained = true
-                        streamState.lock.unlock()
-                        mysql_free_result(resultPtr)
-                        continuation.finish(throwing: CancellationError())
-                        return
-                    }
-
-                    let lengths = mysql_fetch_lengths(resultPtr)
-
-                    var row: [PluginCellValue] = []
-                    row.reserveCapacity(numFields)
-
-                    for i in 0..<numFields {
-                        if let fieldPtr = rowPtr[i] {
-                            let length = Int(clamping: lengths?[i] ?? 0)
-                            let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
-
-                            if columnTypes[i] == 255 {
-                                row.append(.text(GeometryWKBParser.parse(bufferPtr)))
-                            } else if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
-                                row.append(.text(MariaDBFieldClassifier.bitFieldToString(bufferPtr)))
-                            } else if columnIsBinary[i] {
-                                row.append(.bytes(Data(bufferPtr)))
-                            } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                                row.append(.text(str))
-                            } else {
-                                row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                            }
-                        } else {
-                            row.append(.null)
-                        }
-                    }
-
-                    batch.append(row)
-                    if batch.count >= batchSize {
-                        continuation.yield(.rows(batch))
-                        batch.removeAll(keepingCapacity: true)
-                    }
-                }
-                if !batch.isEmpty {
-                    continuation.yield(.rows(batch))
-                }
-
-                if mysql_errno(mysql) != 0 {
-                    let error = self.getError()
-                    streamState.lock.lock()
-                    streamState.drained = true
-                    streamState.lock.unlock()
-                    mysql_free_result(resultPtr)
+                    continuation.finish()
+                } catch {
                     continuation.finish(throwing: error)
-                    return
                 }
-
-                streamState.lock.lock()
-                streamState.drained = true
-                streamState.lock.unlock()
-                mysql_free_result(resultPtr)
-                continuation.finish()
             }
         }
+    }
+
+    private func streamStatement(
+        _ queryToRun: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        abort: PluginStreamAbort
+    ) throws {
+        guard !isShuttingDown, let mysql = self.mysql else {
+            throw MariaDBPluginError.notConnected
+        }
+        defer { recordTransactionState(on: mysql) }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
+        guard !abort.isAborted else { return }
+
+        try reconcileSelectLimit(rowCap: nil, statement: queryToRun, on: mysql)
+
+        let queryStatus = queryToRun.withCString { queryPtr in
+            mysql_real_query(mysql, queryPtr, UInt(queryToRun.utf8.count))
+        }
+
+        if queryStatus != 0 {
+            throw noting(getError(), generation: generation)
+        }
+
+        let resultPtr = mysql_use_result(mysql)
+
+        if resultPtr == nil {
+            guard mysql_field_count(mysql) == 0 else { throw noting(getError(), generation: generation) }
+            return
+        }
+
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(resultPtr),
+            count: Int(mysql_num_fields(resultPtr)),
+            encoding: connectionEncoding,
+            flavor: flavor
+        )
+
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns.names,
+            columnTypeNames: columns.typeNames,
+            estimatedRowCount: nil
+        )))
+
+        let batchSize = 5_000
+        var batch: [PluginRow] = []
+        batch.reserveCapacity(batchSize)
+        while let rowPtr = mysql_fetch_row(resultPtr) {
+            if abort.isAborted || cancellationGate.isCancelled(generation) {
+                /// Same shape as the capped buffered read: stop the server first, then
+                /// drain what is already in flight so the connection stays usable.
+                if let statement = killStatement(for: mysql) {
+                    killQueryOnServer(statement: statement, generation: generation)
+                }
+                while mysql_fetch_row(resultPtr) != nil {}
+                mysql_free_result(resultPtr)
+                throw CancellationError()
+            }
+
+            batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
+            if batch.count >= batchSize {
+                continuation.yield(.rows(batch))
+                batch.removeAll(keepingCapacity: true)
+            }
+        }
+        if !batch.isEmpty {
+            continuation.yield(.rows(batch))
+        }
+
+        if mysql_errno(mysql) != 0 {
+            let error = noting(getError(), generation: generation)
+            mysql_free_result(resultPtr)
+            throw error
+        }
+
+        mysql_free_result(resultPtr)
     }
 
     // MARK: - Server Information
@@ -1067,38 +1229,43 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard let mysql = mysql else {
             return MariaDBPluginError.notConnected
         }
-
-        let code = mysql_errno(mysql)
-        let message: String
-        if let msgPtr = mysql_error(mysql) {
-            message = String(cString: msgPtr)
-        } else {
-            message = "Unknown error"
-        }
-
-        var sqlState: String?
-        if let statePtr = mysql_sqlstate(mysql), statePtr[0] != 0 {
-            sqlState = String(cString: statePtr)
-        }
-
-        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
+        return readError(from: mysql)
     }
 
+    /// A killed or server-timed-out prepared fetch leaves `mysql_stmt_errno` at 0 and reports the
+    /// reason on the connection handle instead: measured on MySQL 5.7.44, `fetch rc=1 stmt errno 0
+    /// '' conn errno 3024`. Reading only the statement threw code 0 with an empty message, so the
+    /// user was shown nothing at all.
     private func getStmtError(_ stmt: UnsafeMutablePointer<MYSQL_STMT>) -> MariaDBPluginError {
         let code = mysql_stmt_errno(stmt)
-        let message: String
-        if let msgPtr = mysql_stmt_error(stmt) {
-            message = String(cString: msgPtr)
-        } else {
-            message = "Unknown statement error"
+        guard code == 0, let mysql = self.mysql, mysql_errno(mysql) != 0 else {
+            return MariaDBPluginError(
+                code: code,
+                message: mysql_stmt_error(stmt).map(decodedMessage) ?? "Unknown statement error",
+                sqlState: sqlState(mysql_stmt_sqlstate(stmt))
+            )
         }
+        return readError(from: mysql)
+    }
 
-        var sqlState: String?
-        if let statePtr = mysql_stmt_sqlstate(stmt), statePtr[0] != 0 {
-            sqlState = String(cString: statePtr)
+    private func decodedMessage(_ message: UnsafePointer<CChar>) -> String {
+        mysqlSessionText(cString: message, encoding: connectionEncoding)
+    }
+
+    private func sqlState(_ state: UnsafePointer<CChar>?) -> String? {
+        guard let state, state[0] != 0 else { return nil }
+        return String(cString: state)
+    }
+
+    private func textProtocolRow(
+        _ row: MYSQL_ROW,
+        lengths: UnsafeMutablePointer<UInt>?,
+        columns: MySQLResultColumns
+    ) -> [PluginCellValue] {
+        columns.row(encoding: connectionEncoding) { index in
+            guard let value = row[index] else { return nil }
+            return UnsafeRawBufferPointer(start: value, count: Int(clamping: lengths?[index] ?? 0))
         }
-
-        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
     }
 }
 

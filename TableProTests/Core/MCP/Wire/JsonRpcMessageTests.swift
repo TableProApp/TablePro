@@ -204,4 +204,89 @@ final class JsonRpcMessageTests: XCTestCase {
             XCTAssertEqual(error as? JsonRpcDecodingError, .missingMethod)
         }
     }
+
+    func testSpecificationErrorCodesSurviveARoundTrip() throws {
+        for code in [
+            JsonRpcErrorCode.headerMismatch,
+            JsonRpcErrorCode.missingRequiredClientCapability,
+            JsonRpcErrorCode.unsupportedProtocolVersion
+        ] {
+            let message = JsonRpcMessage.errorResponse(
+                JsonRpcErrorResponse(id: .number(1), error: JsonRpcError(code: code, message: "x"))
+            )
+            let decoded = try JsonRpcCodec.decode(try JsonRpcCodec.encode(message))
+            XCTAssertEqual(decoded, message, "code \(code) must survive the wire")
+        }
+    }
+
+    func testUnsupportedProtocolVersionDataRoundTrips() throws {
+        let payload = JsonValue.object([
+            "supported": .array(MCPProtocolVersion.supportedRawValues.map { .string($0) }),
+            "requested": .string("1999-01-01")
+        ])
+        let message = JsonRpcMessage.errorResponse(
+            JsonRpcErrorResponse(
+                id: .number(2),
+                error: JsonRpcError(
+                    code: JsonRpcErrorCode.unsupportedProtocolVersion,
+                    message: "Unsupported protocol version",
+                    data: payload
+                )
+            )
+        )
+        let decoded = try JsonRpcCodec.decode(try JsonRpcCodec.encode(message))
+        guard case .errorResponse(let response) = decoded else {
+            XCTFail("Expected errorResponse")
+            return
+        }
+        XCTAssertEqual(
+            response.error.data?["supported"]?.arrayValue?.compactMap(\.stringValue),
+            MCPProtocolVersion.supportedRawValues
+        )
+    }
+
+    func testRequestMetaSurvivesTheWire() throws {
+        let params = JsonValue.object([
+            "name": .string("run_query"),
+            "_meta": .object([
+                MCPMetaKeys.protocolVersion: .string(MCPProtocolVersion.latest.rawValue),
+                MCPMetaKeys.clientCapabilities: .object([:])
+            ])
+        ])
+        let message = JsonRpcMessage.request(JsonRpcRequest(id: .number(3), method: "tools/call", params: params))
+        let decoded = try JsonRpcCodec.decode(try JsonRpcCodec.encode(message))
+        guard case .request(let request) = decoded else {
+            XCTFail("Expected request")
+            return
+        }
+        XCTAssertTrue(MCPRequestMeta.declaresModernProtocol(params: request.params))
+        XCTAssertEqual(
+            MCPRequestMeta.metaObject(in: request.params)?[MCPMetaKeys.protocolVersion]?.stringValue,
+            MCPProtocolVersion.latest.rawValue
+        )
+    }
+
+    func testNotificationCarriesNoIdAfterARoundTrip() throws {
+        let message = JsonRpcMessage.notification(
+            JsonRpcNotification(method: "notifications/progress", params: .object(["progress": .double(0.25)]))
+        )
+        let data = try JsonRpcCodec.encode(message)
+        let decoded = try JsonRpcCodec.decode(data)
+        guard case .notification = decoded else {
+            XCTFail("Expected notification")
+            return
+        }
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(json.contains("\"id\""))
+    }
+
+    func testDecodeRejectsAJsonFragment() {
+        XCTAssertThrowsError(try JsonRpcCodec.decode(Data("\"hello\"".utf8)))
+    }
+
+    func testDecodeRejectsAnEmptyBody() {
+        XCTAssertThrowsError(try JsonRpcCodec.decode(Data())) { error in
+            XCTAssertEqual(error as? JsonRpcDecodingError, .missingJsonRpcVersion)
+        }
+    }
 }

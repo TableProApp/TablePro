@@ -8,9 +8,9 @@ public enum SqlDialect: String, Sendable, CaseIterable {
 
     public static func from(databaseTypeId: String) -> SqlDialect {
         switch databaseTypeId {
-        case "PostgreSQL", "Redshift", "Greenplum", "AlloyDB", "Citus", "CockroachDB":
+        case "PostgreSQL", "Redshift", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite":
             return .postgres
-        case "MySQL", "MariaDB":
+        case "MySQL", "MariaDB", "TiDB", "OceanBase":
             return .mysql
         case "SQLite", "libSQL", "Turso", "DuckDB", "Cloudflare D1":
             return .sqlite

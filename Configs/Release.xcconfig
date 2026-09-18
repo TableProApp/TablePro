@@ -1,0 +1,14 @@
+#include "Base.xcconfig"
+
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
+ENABLE_NS_ASSERTIONS = NO
+MTL_ENABLE_DEBUG_INFO = NO
+SWIFT_COMPILATION_MODE = wholemodule
+
+// scripts/build-release.sh used to pass these three on the xcodebuild command line, where an
+// override reaches every target in the graph, SPM packages included. They belong to this project's
+// Release configuration and nothing else. LLVM_LTO is the Clang knob: it reaches the nine C bridge
+// modules, not Swift, which has its own SWIFT_LTO and leaves it off.
+GCC_OPTIMIZATION_LEVEL = s
+SWIFT_OPTIMIZATION_LEVEL = -O
+LLVM_LTO = YES_THIN

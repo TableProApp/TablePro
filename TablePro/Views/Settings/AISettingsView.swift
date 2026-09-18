@@ -14,9 +14,9 @@ struct AISettingsView: View {
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
-    @State private var chatGPTCodexService = ChatGPTCodexService.shared
-    @State private var cursorAgentService = CursorAgentService.shared
-    @State private var xaiService = XAIService.shared
+    @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
+    @ObservedObject private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var xaiService = XAIService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -26,17 +26,19 @@ struct AISettingsView: View {
                 activeProviderSection
                 providersSection
                 inlineSuggestionsSection
+                agentSection
                 contextSection
                 CustomSlashCommandsSection(storage: CustomSlashCommandStorage.shared)
                 privacySection
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .task { refreshKeyAvailability() }
         .task { await chatGPTCodexService.refreshAuthState() }
         .task { await cursorAgentService.refreshStatus() }
         .task { await xaiService.refreshAuthState() }
-        .onChange(of: settings.providers.map(\.id)) {
+        .onChange(of: settings.providers.map(\.id)) { _ in
             refreshKeyAvailability()
         }
         .sheet(item: editingProviderBinding) { provider in
@@ -170,6 +172,7 @@ struct AISettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.caption.bold())
                         .foregroundStyle(Color.accentColor)
+                        .accessibilityLabel(String(localized: "Active"))
                 }
             }
             .frame(width: 14)
@@ -213,7 +216,8 @@ struct AISettingsView: View {
         } label: {
             Label(String(localized: "Add Provider…"), systemImage: "plus")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
     }
 
@@ -243,6 +247,27 @@ struct AISettingsView: View {
             Text("Inline Suggestions")
         } footer: {
             Text("Inline SQL suggestions appear as you type. Press Tab to accept, Escape to dismiss.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Agent
+
+    private var agentSection: some View {
+        Section {
+            Toggle("Limit tool calls per reply", isOn: $settings.maxToolRoundtripsEnabled)
+            Stepper(
+                String(format: String(localized: "Tool call limit: %d"), settings.maxToolRoundtrips),
+                value: $settings.maxToolRoundtrips,
+                in: AISettings.maxToolRoundtripsRange,
+                step: 5
+            )
+            .disabled(!settings.maxToolRoundtripsEnabled)
+        } header: {
+            Text("Agent")
+        } footer: {
+            Text("Agent mode calls tools in a loop until it finishes or hits this limit, then pauses so you can continue. Raising it costs more tokens per reply.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

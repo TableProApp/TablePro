@@ -5,7 +5,7 @@
 
 import Foundation
 
-final class TransferDialogStorage {
+final class TransferDialogStorage: Sendable {
     static let shared = TransferDialogStorage()
 
     private let defaults: UserDefaults

@@ -1,12 +1,12 @@
-import XCTest
 @testable import TableProImport
+import XCTest
 
 final class ConnectionImportAnalyzerTests: XCTestCase {
     private let allTypes: Set<String> = ["MySQL", "PostgreSQL", "Redis"]
 
     func testMatchingHostPortDatabaseUserIsDuplicate() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3306,
+            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", redisDatabase: nil
         )
         let envelope = makeEnvelope(connections: [makeConnection()])
@@ -24,7 +24,7 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
 
     func testDifferentUsernameIsNotDuplicate() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3306,
+            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3_306,
             database: "test", username: "someoneelse", redisDatabase: nil
         )
         let preview = ConnectionImportAnalyzer.analyze(
@@ -36,16 +36,75 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
         }
     }
 
-    func testUnknownTypeProducesWarning() {
-        let connection = makeConnection(type: "Cassandra")
+    func testUnknownTypeIsUnsupportedAndNotSelectedByDefault() {
+        let connection = makeConnection(type: "Vertica")
         let preview = ConnectionImportAnalyzer.analyze(
             makeEnvelope(connections: [connection]),
             existingConnections: [], registeredTypeIds: allTypes, fileExists: { _ in true }
         )
-        guard case .warnings(let messages) = preview.items[0].status else {
-            return XCTFail("expected warnings")
+        guard case .unsupportedType(let typeId) = preview.items[0].status else {
+            return XCTFail("expected unsupportedType")
         }
-        XCTAssertTrue(messages.contains { $0.contains("Cassandra") })
+        XCTAssertEqual(typeId, "Vertica")
+        XCTAssertFalse(preview.items[0].status.isSelectedByDefault)
+        XCTAssertEqual(preview.items[0].connection.type, "Vertica")
+        XCTAssertEqual(preview.items[0].status.message?.contains("Vertica"), true)
+    }
+
+    func testTypeDifferingOnlyInCaseIsCanonicalized() {
+        let preview = ConnectionImportAnalyzer.analyze(
+            makeEnvelope(connections: [makeConnection(type: "postgresql")]),
+            existingConnections: [], registeredTypeIds: allTypes, fileExists: { _ in true }
+        )
+        guard case .ready = preview.items[0].status else {
+            return XCTFail("expected ready")
+        }
+        XCTAssertEqual(preview.items[0].connection.type, "PostgreSQL")
+    }
+
+    func testExactTypeIsKeptAsIs() {
+        let preview = ConnectionImportAnalyzer.analyze(
+            makeEnvelope(connections: [makeConnection(type: "Redis")]),
+            existingConnections: [], registeredTypeIds: allTypes, fileExists: { _ in true }
+        )
+        XCTAssertEqual(preview.items[0].connection.type, "Redis")
+        XCTAssertTrue(preview.items[0].status.isSelectedByDefault)
+    }
+
+    func testDuplicateOfUnsupportedTypeStaysDuplicate() {
+        let existing = ConnectionDuplicateCandidate(
+            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3_306,
+            database: "test", username: "root", redisDatabase: nil
+        )
+        let preview = ConnectionImportAnalyzer.analyze(
+            makeEnvelope(connections: [makeConnection(type: "Vertica")]),
+            existingConnections: [existing], registeredTypeIds: allTypes, fileExists: { _ in true }
+        )
+        guard case .duplicate = preview.items[0].status else {
+            return XCTFail("expected duplicate")
+        }
+    }
+
+    func testResolverPrefersExactMatch() {
+        let ids: Set<String> = ["libSQL", "LIBSQL"]
+        XCTAssertEqual(ConnectionTypeResolver.canonicalTypeId("LIBSQL", registeredTypeIds: ids), "LIBSQL")
+    }
+
+    func testResolverRefusesAnAmbiguousCaseInsensitiveMatch() {
+        let ids: Set<String> = ["libSQL", "LIBSQL"]
+        XCTAssertNil(ConnectionTypeResolver.canonicalTypeId("libsql", registeredTypeIds: ids))
+    }
+
+    func testResolverReturnsNilForEmptyAndUnknownTypes() {
+        XCTAssertNil(ConnectionTypeResolver.canonicalTypeId("", registeredTypeIds: allTypes))
+        XCTAssertNil(ConnectionTypeResolver.canonicalTypeId("Greenplum", registeredTypeIds: allTypes))
+    }
+
+    func testStatusSelectionDefaults() {
+        XCTAssertTrue(ImportItemStatus.ready.isSelectedByDefault)
+        XCTAssertTrue(ImportItemStatus.warnings(["w"]).isSelectedByDefault)
+        XCTAssertFalse(ImportItemStatus.duplicate(existingId: UUID(), existingName: "x").isSelectedByDefault)
+        XCTAssertFalse(ImportItemStatus.unsupportedType("Vertica").isSelectedByDefault)
     }
 
     func testMissingSSHKeyProducesWarning() {
@@ -73,11 +132,11 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
 
     func testRedisDatabaseDistinguishesDuplicates() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Redis 0", host: "127.0.0.1", port: 6379,
+            id: UUID(), name: "Redis 0", host: "127.0.0.1", port: 6_379,
             database: "", username: "", redisDatabase: 0
         )
         let connection = ExportableConnection(
-            name: "Redis 1", host: "127.0.0.1", port: 6379, database: "", username: "", type: "Redis",
+            name: "Redis 1", host: "127.0.0.1", port: 6_379, database: "", username: "", type: "Redis",
             sshConfig: nil, sslConfig: nil, color: nil, tagName: nil, groupName: nil, sshProfileId: nil,
             safeModeLevel: nil, aiPolicy: nil, additionalFields: nil,
             redisDatabase: 1, startupCommands: nil, localOnly: nil

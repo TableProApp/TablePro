@@ -75,7 +75,7 @@ struct ClipboardConnectionBanner: View {
         if rendered.count > 60 {
             let prefix = rendered.prefix(48)
             let suffix = rendered.suffix(8)
-            rendered = "\(prefix)...\(suffix)"
+            rendered = "\(prefix)…\(suffix)"
         }
         return rendered
     }

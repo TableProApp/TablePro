@@ -1,0 +1,108 @@
+---
+title: Cloudflare R2 SQL
+description: Query Apache Iceberg tables in an R2 bucket with Cloudflare's read-only SQL engine
+---
+
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+One connection reads one R2 bucket that has R2 Data Catalog turned on. Queries travel as HTTPS requests to `api.sql.cloudflarestorage.com`, R2 SQL runs them against the bucket's Iceberg tables, and it bills by the bytes each query scans.
+
+<RegistryPlugin name="Cloudflare R2 SQL" plugin="Cloudflare R2 SQL Driver" />
+
+## Connection settings
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| **Account ID** | Yes | Your Cloudflare account ID |
+| **Bucket** | Yes | The R2 bucket whose catalog holds the tables |
+| **API Token** | Yes | Token with R2 SQL, R2 Data Catalog and R2 Storage access, entered in the password field (labeled **API Token** here). Stored in the macOS Keychain |
+
+There is no host, port, Database field, SSH tunnel or SSL/TLS section: the endpoint is fixed and always HTTPS, and the warehouse name comes from the account ID and bucket. Click **Test Connection**, then **Save & Connect**.
+
+## Connection URL
+
+R2 SQL has no connection URL. Fill in the form instead.
+
+## Getting your credentials
+
+<Steps>
+  <Step title="Turn on the catalog">
+    In the [Cloudflare dashboard](https://dash.cloudflare.com), open the bucket under **R2 Object Storage**, then **Settings > R2 Data Catalog**, and enable it. A bucket without the catalog has no tables to query.
+  </Step>
+  <Step title="Copy the account ID">
+    It is in the dashboard's right sidebar, or run `npx wrangler whoami`.
+  </Step>
+  <Step title="Create the token">
+    Create an [R2 API token](https://developers.cloudflare.com/r2/api/tokens/) with R2 SQL read, R2 Data Catalog read, and R2 Storage access. R2 SQL needs all three: the catalog for the table list, storage for the data files, and SQL to run the query.
+  </Step>
+</Steps>
+
+<Warning>
+The token reaches every bucket its permissions cover, not only the one this connection names.
+</Warning>
+
+## Namespaces and tables
+
+Iceberg groups tables into namespaces, and each namespace is a schema here: the sidebar lists the bucket's namespaces with their tables inside, and the toolbar switcher reads **Namespace**. The list comes from `SHOW NAMESPACES` and `SHOW TABLES IN`, and a table's columns from `DESCRIBE`. None of the three scans data. A column's Iceberg `doc` shows as its comment in the Structure tab.
+
+Name the namespace in a query tab:
+
+```sql
+SELECT user_id, event, ts
+FROM logs.events
+WHERE ts >= '2026-01-01T00:00:00Z'
+ORDER BY ts DESC
+LIMIT 1000
+```
+
+R2 SQL converts nothing implicitly: quote strings, leave numbers bare, and give timestamps a time zone.
+
+## Read-only connections
+
+R2 SQL runs `SELECT`, `SHOW`, `DESCRIBE` and `EXPLAIN`, and rejects every write. The connection runs at Safe Mode **Read-Only** whatever level it was given, so cell editing, row insert and delete, and import are off, and the Structure tab only reads. Export works. See [Safe Mode](/features/safe-mode#connections-that-are-always-read-only).
+
+## Pagination
+
+R2 SQL cannot skip rows and returns at most 10,000 from one query. A table tab shows its leading rows: the rows-per-page menu stops at 10,000, the page buttons are gone, and the status bar reads `Rows 1-500` until **Count Exactly** fills in the total. Filter and sort to decide which rows load, because both run in the query. See [Pages and row counts](/features/data-grid#pages-and-row-counts).
+
+Past the first 10,000, page by key in a query tab, carrying the last value of the previous page forward:
+
+```sql
+SELECT * FROM logs.events
+WHERE event_id > '01HQ7Z2K3M4N5P6Q7R8S9T0V'
+ORDER BY event_id
+LIMIT 1000
+```
+
+A query with no `LIMIT` would stop at R2 SQL's own default of 500 rows, so every read you did not limit is sent with one: the [row cap](/customization/data-settings) plus one row, or 10,000 for **Fetch All** and exports.
+
+## Cost
+
+Each query is billed on the bytes it scans, with a minimum per query, and a table tab's automatic row count would be one more scan every time the tab loaded. That count only runs when you click **Count Exactly**. `SHOW`, `DESCRIBE` and `EXPLAIN` scan nothing. [R2 SQL pricing](https://developers.cloudflare.com/r2-sql/platform/pricing/) has the current rates.
+
+## Limitations
+
+- No writes, DDL, or transactions. Load tables through an Iceberg writer such as Spark, PyIceberg, or R2 Pipelines.
+- 10,000 rows per query. A table export or copy stops there and names each table it cut short; export a filtered or keyed subset for the rest.
+- `OFFSET` is rejected. Page by key, as in [Pagination](#pagination).
+- Two output columns with the same name come back as one. Alias them in the query.
+- No primary keys, foreign keys, or indexes, so rows cannot be edited and the ER diagram has no relationships.
+- One bucket per connection. Add a connection for each bucket.
+
+## Troubleshooting
+
+### `Authentication error`
+
+The token is missing a permission or belongs to another account. Check it carries R2 SQL, R2 Data Catalog and R2 Storage access, and that **Account ID** is the account that owns the bucket.
+
+### No namespaces after connecting
+
+The bucket has R2 Data Catalog turned off, or the catalog holds no tables yet. Turn the catalog on in the bucket's settings, then refresh the sidebar.
+
+### `SHOW TABLES returned columns TablePro does not recognize: …`
+
+R2 SQL answered a catalog statement in a shape this version of the driver cannot read. Update the plugin from **Settings > Plugins**.
+
+### `unsupported feature: OFFSET clause is not supported`
+
+A query tab query uses `OFFSET`. Rewrite it with keyset paging, as in [Pagination](#pagination).

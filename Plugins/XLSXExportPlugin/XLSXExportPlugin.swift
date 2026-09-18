@@ -3,12 +3,12 @@
 //  XLSXExportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
+final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Excel format"
@@ -20,12 +20,13 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
     typealias Settings = XLSXExportOptions
     static let settingsStorageId = "xlsx"
 
-    var settings = XLSXExportOptions() {
+    @Published var settings = XLSXExportOptions() {
         didSet { saveSettings() }
     }
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(XLSXExportOptionsView(plugin: self))
     }
@@ -164,9 +165,7 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
 
         }
 
-        try await Task.detached(priority: .userInitiated) {
-            try writer.write(to: destination)
-        }.value
+        try await writer.write(to: destination)
 
         progress.finalizeTable()
 

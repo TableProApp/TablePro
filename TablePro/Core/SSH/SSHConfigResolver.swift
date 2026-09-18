@@ -10,13 +10,29 @@ struct ResolverEnvironment: Sendable {
     var runShell: @Sendable (String) -> Bool
     var canonicalize: @Sendable (String, SSHCanonicalizationOptions) -> String?
     var currentLocalUser: @Sendable () -> String
+    /// `%l` and `%L`, and through them `%C`. Injected because the real value is whatever this Mac
+    /// is called, which no test can predict.
+    var localHostname: @Sendable () -> String
+
+    init(
+        runShell: @escaping @Sendable (String) -> Bool,
+        canonicalize: @escaping @Sendable (String, SSHCanonicalizationOptions) -> String?,
+        currentLocalUser: @escaping @Sendable () -> String,
+        localHostname: @escaping @Sendable () -> String = { SSHTokenContext.systemHostname() }
+    ) {
+        self.runShell = runShell
+        self.canonicalize = canonicalize
+        self.currentLocalUser = currentLocalUser
+        self.localHostname = localHostname
+    }
 
     static let live = ResolverEnvironment(
         runShell: SSHMatchExecutor.evaluate,
         canonicalize: { host, options in
             SSHHostnameCanonicalizer.canonicalize(host: host, options: options)
         },
-        currentLocalUser: { NSUserName() }
+        currentLocalUser: { NSUserName() },
+        localHostname: { SSHTokenContext.systemHostname() }
     )
 }
 
@@ -70,21 +86,34 @@ enum SSHConfigResolver {
         env: ResolverEnvironment
     ) -> ResolvedSSHTarget {
         let localUser = env.currentLocalUser()
+        var failure: SSHTokenExpansionError?
 
         var firstPass = ResolutionState()
         applyMatchingBlocks(
             blocks: document.blocks,
-            originalHost: originalHost,
-            currentHost: originalHost,
-            formUser: formUser,
-            localUser: localUser,
-            phase: .first,
-            canonicalizing: false,
+            pass: PassInputs(
+                originalHost: originalHost,
+                currentHost: originalHost,
+                formUser: formUser,
+                formPort: formPort,
+                localUser: localUser,
+                phase: .first,
+                canonicalizing: false
+            ),
             into: &firstPass,
+            failure: &failure,
             env: env
         )
 
-        let resolvedHost = firstPass.hostName ?? originalHost
+        // `%h` inside `HostName` is the host as it stood before this `HostName` applied, which is
+        // the original target: ssh expands it against `host_arg`, and a second `HostName` never
+        // takes effect because the keyword is first-wins. So `Hostname %h` is a no-op that names
+        // the host the connection already asked for, which is exactly what `Host *.*` relies on.
+        let substitutedHost = expandHostName(
+            firstPass.hostName,
+            against: originalHost,
+            failure: &failure
+        ) ?? originalHost
 
         let canonicalOptions = SSHCanonicalizationOptions(
             mode: firstPass.canonicalizeHostname ?? .no,
@@ -94,22 +123,26 @@ enum SSHConfigResolver {
             permittedCNAMEs: firstPass.canonicalizePermittedCNAMEs
         )
         let canonicalizedHost: String
-        if canonicalOptions.mode != .no, let canonical = env.canonicalize(resolvedHost, canonicalOptions) {
+        if canonicalOptions.mode != .no, let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
             canonicalizedHost = canonical
         } else {
-            canonicalizedHost = resolvedHost
+            canonicalizedHost = substitutedHost
         }
 
         var secondPass = ResolutionState()
         applyMatchingBlocks(
             blocks: document.blocks,
-            originalHost: originalHost,
-            currentHost: canonicalizedHost,
-            formUser: formUser,
-            localUser: localUser,
-            phase: .second,
-            canonicalizing: canonicalOptions.mode != .no,
+            pass: PassInputs(
+                originalHost: originalHost,
+                currentHost: canonicalizedHost,
+                formUser: formUser,
+                formPort: formPort,
+                localUser: localUser,
+                phase: .second,
+                canonicalizing: canonicalOptions.mode != .no
+            ),
             into: &secondPass,
+            failure: &failure,
             env: env
         )
 
@@ -117,44 +150,116 @@ enum SSHConfigResolver {
 
         let effectivePort = formPort ?? merged.port ?? 22
         let effectiveUser = !formUser.isEmpty ? formUser : (merged.user ?? "")
-        let effectiveAgentSocket = !formAgentSocket.isEmpty
-            ? formAgentSocket
-            : (merged.identityAgent ?? "")
+        let effectiveHost = canonicalizedHost.isEmpty ? originalHost : canonicalizedHost
+
+        let proxyContext = SSHTokenContext(
+            originalHost: originalHost,
+            hostname: effectiveHost,
+            port: effectivePort,
+            remoteUser: effectiveUser.isEmpty ? nil : effectiveUser,
+            localUser: localUser,
+            localHostname: env.localHostname()
+        )
+
+        // Split the hops before expanding them, the way ssh does. Expanding first lets a value
+        // carrying a comma, `%r` with a username like `bob,evil.example.net`, turn one configured
+        // hop into two and route the session through a host the config never named.
+        let effectiveProxyJump: [SSHJumpHost]
+        if formJumpHosts.isEmpty, let proxyJump = merged.proxyJump {
+            effectiveProxyJump = SSHConfigParser.splitProxyJumpHops(proxyJump).compactMap { hop in
+                expand(hop, scope: .proxy, keyword: "ProxyJump", with: proxyContext, failure: &failure)
+                    .flatMap(SSHConfigParser.parseProxyJumpHop)
+            }
+        } else {
+            effectiveProxyJump = []
+        }
+
+        // `%j` is the jump host actually in effect, and with several hops ssh names the LAST one,
+        // the hop nearest the target. Jump hosts typed into the form override the config's
+        // `ProxyJump` the way `ssh -J` does, so they are what `%j` and therefore `%C` are built
+        // from, or an `IdentityFile` keyed on `%C` names a key for a hop nobody uses.
+        let jumpHostForTokens = (formJumpHosts.isEmpty ? effectiveProxyJump : formJumpHosts).last?.host
+        var fileContext = proxyContext
+        fileContext.jumpHost = jumpHostForTokens
+        fileContext.hostKeyAlias = merged.hostKeyAlias
 
         let effectiveIdentityFiles: [String]
         if !formIdentityFile.isEmpty {
             effectiveIdentityFiles = [formIdentityFile]
         } else {
-            let tokenContext = SSHTokenContext(
-                originalHost: originalHost,
-                hostname: canonicalizedHost,
-                port: effectivePort,
-                remoteUser: effectiveUser.isEmpty ? nil : effectiveUser
-            )
-            effectiveIdentityFiles = merged.identityFiles.map {
-                SSHPathUtilities.expandTilde(tokenContext.expand($0))
+            effectiveIdentityFiles = merged.identityFiles.compactMap { path in
+                expand(path, scope: .standard, keyword: "IdentityFile", with: fileContext, failure: &failure)
+                    .map(SSHPathUtilities.expandTilde)
             }
         }
 
-        let effectiveProxyJump: [SSHJumpHost]
-        if formJumpHosts.isEmpty, let proxyJump = merged.proxyJump {
-            effectiveProxyJump = SSHConfigParser.parseProxyJump(proxyJump)
+        let effectiveAgentSocket: String
+        let agentSocketOrigin: AgentSocketOrigin
+        if !formAgentSocket.isEmpty {
+            effectiveAgentSocket = formAgentSocket
+            agentSocketOrigin = .agentSocketSetting
+        } else if let identityAgent = merged.identityAgent, !identityAgent.isEmpty {
+            let expanded = expand(
+                identityAgent,
+                scope: .standard,
+                keyword: "IdentityAgent",
+                with: fileContext,
+                failure: &failure
+            )
+            effectiveAgentSocket = expanded.map(SSHPathUtilities.expandTilde) ?? ""
+            agentSocketOrigin = .identityAgentDirective
         } else {
-            effectiveProxyJump = []
+            effectiveAgentSocket = ""
+            agentSocketOrigin = .environment
         }
 
         return ResolvedSSHTarget(
             originalHost: originalHost,
-            host: canonicalizedHost.isEmpty ? originalHost : canonicalizedHost,
+            host: effectiveHost,
             port: effectivePort,
             username: effectiveUser,
             identityFiles: effectiveIdentityFiles,
             agentSocketPath: effectiveAgentSocket,
+            agentSocketOrigin: agentSocketOrigin,
             identitiesOnly: merged.identitiesOnly ?? false,
             useKeychain: merged.useKeychain ?? true,
             addKeysToAgent: merged.addKeysToAgent ?? false,
-            proxyJump: effectiveProxyJump
+            proxyJump: effectiveProxyJump,
+            expansionFailure: failure
         )
+    }
+
+    // MARK: - Token expansion
+
+    /// Expands one directive value, keeping the first failure so the connect path can report which
+    /// keyword and token stopped it. ssh refuses to start at all on one of these, and passing the
+    /// raw value through instead is what sent the two characters `%h` to `getaddrinfo`.
+    private static func expand(
+        _ value: String,
+        scope: SSHTokenScope,
+        keyword: String,
+        with context: SSHTokenContext,
+        failure: inout SSHTokenExpansionError?
+    ) -> String? {
+        do {
+            return try context.expand(value, scope: scope, keyword: keyword)
+        } catch let error as SSHTokenExpansionError {
+            logger.warning("\(error.explanation, privacy: .public)")
+            if failure == nil { failure = error }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    private static func expandHostName(
+        _ hostName: String?,
+        against originalHost: String,
+        failure: inout SSHTokenExpansionError?
+    ) -> String? {
+        guard let hostName, !hostName.isEmpty else { return nil }
+        let context = SSHTokenContext(originalHost: originalHost, hostname: originalHost)
+        return expand(hostName, scope: .hostname, keyword: "HostName", with: context, failure: &failure)
     }
 
     // MARK: - Block evaluation
@@ -164,37 +269,77 @@ enum SSHConfigResolver {
         case second
     }
 
+    /// Everything a block is matched against. The two host values are deliberately separate:
+    /// `Host` patterns are compared to the host the connection named, `Match host` to the one a
+    /// `HostName` substituted.
+    private struct MatchInputs {
+        let originalHost: String
+        let hostForHostPatterns: String
+        let hostForMatchHost: String
+        let formUser: String
+        let localUser: String
+        let resolvedUser: String?
+        let formPort: Int?
+        let resolvedPort: Int?
+        let phase: Phase
+        let canonicalizing: Bool
+
+        /// What the connection would use if resolution stopped here. `Match exec` reads the port
+        /// and user the way every other keyword does, so an implicit 22 has to be a 22: leaving
+        /// `%p` empty made `test x%p = x22` fail and silently drop the block's directives.
+        var effectivePort: Int { formPort ?? resolvedPort ?? 22 }
+        var effectiveUser: String? {
+            let user = !formUser.isEmpty ? formUser : (resolvedUser ?? "")
+            return user.isEmpty ? nil : user
+        }
+    }
+
+    /// The values a pass is evaluated against that do not change while it runs.
+    private struct PassInputs {
+        let originalHost: String
+        let currentHost: String
+        let formUser: String
+        let formPort: Int?
+        let localUser: String
+        let phase: Phase
+        let canonicalizing: Bool
+    }
+
     private static func applyMatchingBlocks(
         blocks: [SSHConfigBlock],
-        originalHost: String,
-        currentHost: String,
-        formUser: String,
-        localUser: String,
-        phase: Phase,
-        canonicalizing: Bool,
+        pass: PassInputs,
         into state: inout ResolutionState,
+        failure: inout SSHTokenExpansionError?,
         env: ResolverEnvironment
     ) {
-        var workingHost: String = phase == .second ? currentHost : (state.hostName ?? currentHost)
-
         for block in blocks {
-            guard blockMatches(
-                block,
-                originalHost: originalHost,
-                currentHost: workingHost,
-                formUser: formUser,
-                localUser: localUser,
-                phase: phase,
-                canonicalizing: canonicalizing,
-                env: env
-            ) else { continue }
+            // `Match host` sees the substituted hostname, so the running `HostName` has to be
+            // expanded before it is compared. `Host` patterns do not: ssh matches those against the
+            // host the connection named, so feeding them the substitution made wildcard blocks for
+            // a private domain apply to an alias that never mentioned it.
+            let matchHost = expandHostName(
+                state.hostName,
+                against: pass.originalHost,
+                failure: &failure
+            ) ?? pass.currentHost
+            let inputs = MatchInputs(
+                originalHost: pass.originalHost,
+                hostForHostPatterns: pass.currentHost,
+                hostForMatchHost: matchHost,
+                formUser: pass.formUser,
+                localUser: pass.localUser,
+                resolvedUser: state.user,
+                formPort: pass.formPort,
+                resolvedPort: state.port,
+                phase: pass.phase,
+                canonicalizing: pass.canonicalizing
+            )
+
+            guard blockMatches(block, inputs: inputs, failure: &failure, env: env) else { continue }
 
             for directive in block.directives {
                 warnIfRoutingDirectiveIgnored(directive)
                 state.apply(directive)
-            }
-            if phase == .first {
-                workingHost = state.hostName ?? workingHost
             }
         }
     }
@@ -213,105 +358,118 @@ enum SSHConfigResolver {
 
     private static func blockMatches(
         _ block: SSHConfigBlock,
-        originalHost: String,
-        currentHost: String,
-        formUser: String,
-        localUser: String,
-        phase: Phase,
-        canonicalizing: Bool,
+        inputs: MatchInputs,
+        failure: inout SSHTokenExpansionError?,
         env: ResolverEnvironment
     ) -> Bool {
         switch block.criteria {
         case .global:
             // Global directives apply only in the first pass; the second pass
             // is reserved for Match canonical/final overrides.
-            return phase == .first
+            return inputs.phase == .first
 
         case .host(let patterns):
             // Same reasoning: Host blocks apply in the first pass. The second
             // pass only carries Match canonical and Match final overrides.
-            guard phase == .first else { return false }
-            return SSHHostPatternMatcher.matches(host: currentHost, patterns: patterns)
+            guard inputs.phase == .first else { return false }
+            return SSHHostPatternMatcher.matches(host: inputs.hostForHostPatterns, patterns: patterns)
 
         case .match(let conditions):
-            let isSecondPassMatch = conditions.contains(where: {
-                if case .canonical = $0 { return true }
-                if case .final = $0 { return true }
+            // Only an un-negated `canonical` or `final` defers a block to the second pass. ssh
+            // evaluates `Match !final` on the first one, where `final` is false, so treating the
+            // negation as a second-pass criterion meant it could never apply at all.
+            let isSecondPassMatch = conditions.contains { condition in
+                guard !condition.negated else { return false }
+                if case .canonical = condition.test { return true }
+                if case .final = condition.test { return true }
                 return false
-            })
+            }
             // Plain Match blocks (no canonical/final) run only on the first pass;
             // Match canonical/final run only on the second pass.
-            if isSecondPassMatch && phase != .second { return false }
-            if !isSecondPassMatch && phase != .first { return false }
+            if isSecondPassMatch && inputs.phase != .second { return false }
+            if !isSecondPassMatch && inputs.phase != .first { return false }
 
-            return matchConditionsHold(
-                conditions,
-                originalHost: originalHost,
-                currentHost: currentHost,
-                formUser: formUser,
-                localUser: localUser,
-                phase: phase,
-                canonicalizing: canonicalizing,
-                env: env
-            )
+            return matchConditionsHold(conditions, inputs: inputs, failure: &failure, env: env)
         }
     }
 
     private static func matchConditionsHold(
         _ conditions: [MatchCondition],
-        originalHost: String,
-        currentHost: String,
-        formUser: String,
-        localUser: String,
-        phase: Phase,
-        canonicalizing: Bool,
+        inputs: MatchInputs,
+        failure: inout SSHTokenExpansionError?,
         env: ResolverEnvironment
     ) -> Bool {
         for condition in conditions {
-            switch condition {
-            case .all:
-                continue
-
-            case .canonical:
-                if !canonicalizing { return false }
-
-            case .final:
-                continue
-
-            case .host(let patterns):
-                if !SSHHostPatternMatcher.matches(host: currentHost, patterns: patterns) {
-                    return false
-                }
-
-            case .originalHost(let patterns):
-                if !SSHHostPatternMatcher.matches(host: originalHost, patterns: patterns) {
-                    return false
-                }
-
-            case .user(let patterns):
-                if !SSHHostPatternMatcher.matches(host: formUser, patterns: patterns) {
-                    return false
-                }
-
-            case .localUser(let patterns):
-                if !SSHHostPatternMatcher.matches(host: localUser, patterns: patterns) {
-                    return false
-                }
-
-            case .exec(let command):
-                let context = SSHTokenContext(
-                    originalHost: originalHost,
-                    hostname: currentHost,
-                    port: nil,
-                    remoteUser: formUser.isEmpty ? nil : formUser
-                )
-                let expanded = context.expand(command)
-                if !env.runShell(expanded) {
-                    return false
-                }
+            // A criterion that could not be evaluated fails the block whichever way it was
+            // written. Reporting it as "did not hold" instead let a negated one be satisfied by
+            // its own failure, so a `Match !exec` block applied precisely when its probe broke.
+            guard let holds = conditionHolds(condition.test, inputs: inputs, failure: &failure, env: env) else {
+                return false
             }
+            if holds == condition.negated { return false }
         }
         return true
+    }
+
+    /// Returns nil when the criterion could not be evaluated at all, which is not the same as it
+    /// not holding.
+    private static func conditionHolds(
+        _ test: MatchTest,
+        inputs: MatchInputs,
+        failure: inout SSHTokenExpansionError?,
+        env: ResolverEnvironment
+    ) -> Bool? {
+        switch test {
+        case .all:
+            return true
+
+        case .canonical:
+            return inputs.canonicalizing
+
+        case .final:
+            // True only on the final pass, which is what makes `Match !final` a first-pass
+            // criterion. Answering true everywhere left the negation permanently unsatisfiable.
+            return inputs.phase == .second
+
+        case .host(let patterns):
+            // `Match host` folds case on both sides, which `Host` does not.
+            return SSHHostPatternMatcher.matches(
+                host: inputs.hostForMatchHost,
+                patterns: patterns,
+                caseSensitive: false
+            )
+
+        case .originalHost(let patterns):
+            return SSHHostPatternMatcher.matches(host: inputs.originalHost, patterns: patterns)
+
+        case .user(let patterns):
+            let user = !inputs.formUser.isEmpty ? inputs.formUser : (inputs.resolvedUser ?? "")
+            return SSHHostPatternMatcher.matches(host: user, patterns: patterns)
+
+        case .localUser(let patterns):
+            return SSHHostPatternMatcher.matches(host: inputs.localUser, patterns: patterns)
+
+        case .exec(let command):
+            // `Match exec` takes the full token set, and the port and remote user are part of it.
+            // Passing neither left `%p` and `%r` in the command, so a probe like `nc -z %h %p` ran
+            // against a literal `%p`, failed, and silently dropped whatever the block set.
+            let context = SSHTokenContext(
+                originalHost: inputs.originalHost,
+                hostname: inputs.hostForMatchHost,
+                port: inputs.effectivePort,
+                remoteUser: inputs.effectiveUser,
+                localUser: inputs.localUser,
+                localHostname: env.localHostname()
+            )
+            guard let expanded = expand(
+                command,
+                scope: .matchExec,
+                keyword: "Match exec",
+                with: context,
+                failure: &failure
+            ) else { return nil }
+            return env.runShell(expanded)
+        }
     }
 }
 
@@ -321,6 +479,7 @@ private struct ResolutionState {
     var hostName: String?
     var port: Int?
     var user: String?
+    var hostKeyAlias: String?
     var identityFiles: [String] = []
     var identityAgent: String?
     var proxyJump: String?
@@ -336,11 +495,14 @@ private struct ResolutionState {
     mutating func apply(_ directive: SSHDirective) {
         switch directive {
         case .hostName(let value):
-            if hostName == nil { hostName = value }
+            // An empty argument is not a value. Taking it as one resolved the host to "".
+            if hostName == nil, !value.isEmpty { hostName = value }
         case .port(let value):
             if port == nil { port = value }
         case .user(let value):
-            if user == nil { user = value }
+            if user == nil, !value.isEmpty { user = value }
+        case .hostKeyAlias(let value):
+            if hostKeyAlias == nil, !value.isEmpty { hostKeyAlias = value }
         case .identityFile(let value):
             identityFiles.append(value)
         case .identityAgent(let value):
@@ -368,25 +530,33 @@ private struct ResolutionState {
         }
     }
 
-    /// Merge another state on top of this one. Non-nil scalars in `other`
-    /// overwrite this state's values; lists in `other` overwrite if non-empty.
-    /// Used to apply `Match final` overrides on top of first-pass values.
+    /// Fold the second pass into the first. ssh keeps the first value it obtained for a keyword,
+    /// and that holds across both passes: a `Match final` block supplies a default for something no
+    /// earlier block set, it does not override one. Letting the second pass win made a `Match final`
+    /// fallback discard every per-host `User` and `Port`. `IdentityFile` accumulates across the
+    /// whole parse rather than being replaced, so a shared key added late joins the per-host ones.
     func merging(_ other: ResolutionState) -> ResolutionState {
         var result = self
-        if let value = other.hostName { result.hostName = value }
-        if let value = other.port { result.port = value }
-        if let value = other.user { result.user = value }
-        if !other.identityFiles.isEmpty { result.identityFiles = other.identityFiles }
-        if let value = other.identityAgent { result.identityAgent = value }
-        if let value = other.proxyJump { result.proxyJump = value }
-        if let value = other.identitiesOnly { result.identitiesOnly = value }
-        if let value = other.addKeysToAgent { result.addKeysToAgent = value }
-        if let value = other.useKeychain { result.useKeychain = value }
-        if let value = other.canonicalizeHostname { result.canonicalizeHostname = value }
-        if !other.canonicalDomains.isEmpty { result.canonicalDomains = other.canonicalDomains }
-        if let value = other.canonicalizePermittedCNAMEs { result.canonicalizePermittedCNAMEs = value }
-        if let value = other.canonicalizeFallbackLocal { result.canonicalizeFallbackLocal = value }
-        if let value = other.canonicalizeMaxDots { result.canonicalizeMaxDots = value }
+        // `hostName` is deliberately absent: the connect host is settled from the first pass before
+        // the second one runs, and ssh ignores a `HostName` in a final pass for the same reason.
+        if result.port == nil { result.port = other.port }
+        if result.user == nil { result.user = other.user }
+        if result.hostKeyAlias == nil { result.hostKeyAlias = other.hostKeyAlias }
+        result.identityFiles.append(contentsOf: other.identityFiles)
+        if result.identityAgent == nil { result.identityAgent = other.identityAgent }
+        if result.proxyJump == nil { result.proxyJump = other.proxyJump }
+        if result.identitiesOnly == nil { result.identitiesOnly = other.identitiesOnly }
+        if result.addKeysToAgent == nil { result.addKeysToAgent = other.addKeysToAgent }
+        if result.useKeychain == nil { result.useKeychain = other.useKeychain }
+        if result.canonicalizeHostname == nil { result.canonicalizeHostname = other.canonicalizeHostname }
+        if result.canonicalDomains.isEmpty { result.canonicalDomains = other.canonicalDomains }
+        if result.canonicalizePermittedCNAMEs == nil {
+            result.canonicalizePermittedCNAMEs = other.canonicalizePermittedCNAMEs
+        }
+        if result.canonicalizeFallbackLocal == nil {
+            result.canonicalizeFallbackLocal = other.canonicalizeFallbackLocal
+        }
+        if result.canonicalizeMaxDots == nil { result.canonicalizeMaxDots = other.canonicalizeMaxDots }
         return result
     }
 }

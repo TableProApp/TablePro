@@ -15,7 +15,7 @@ import TableProPluginKit
 final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MySQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "MySQL/MariaDB support via libmariadb"
+    static let pluginDescription = "MySQL, MariaDB, TiDB, Databend, and OceanBase support via libmariadb"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "MySQL"
@@ -23,19 +23,33 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mysql-icon"
     static let defaultPort = 3306
     static let additionalConnectionFields: [ConnectionField] =
-        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
-    static let additionalDatabaseTypeIds: [String] = ["MariaDB"]
+        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()] + [
+        ConnectionField(
+            id: "mysqlIdleReleaseMinutes",
+            label: String(localized: "Release the Server Connection After (minutes, 0 to keep it)"),
+            defaultValue: "0",
+            fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
+            section: .advanced
+        ),
+        MySQLConnectionEncoding.connectionField
+        ]
+    static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend", "OceanBase"]
 
     // MARK: - UI/Capability Metadata
 
     static let urlSchemes: [String] = ["mysql"]
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "explain-json", label: "EXPLAIN (JSON)", sqlPrefix: "EXPLAIN FORMAT=JSON"),
+        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .mysqlComposite),
+        ExplainVariant(
+            id: "explain-json",
+            label: "EXPLAIN (JSON)",
+            sqlPrefix: "EXPLAIN FORMAT=JSON",
+            format: .mysqlComposite
+        ),
     ]
     static let brandColorHex = "#FF9500"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
-    static let systemDatabaseNames: [String] = ["information_schema", "mysql", "performance_schema", "sys"]
+    static let systemDatabaseNames: [String] = MySQLSystemDatabases.mysql
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT"],
         "Float": ["FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "REAL"],
@@ -48,7 +62,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let structureColumnFields: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .autoIncrement, .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .onUpdate,
+        .autoIncrement, .comment, .charset, .collation
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
@@ -92,12 +107,28 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true
+    static let supportsRenameTable = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = true
+
+    static func driverVariant(for databaseTypeId: String) -> String? {
+        switch databaseTypeId {
+        case MySQLServerFlavor.tidbVariant, MySQLServerFlavor.databendVariant, MySQLServerFlavor.oceanbaseVariant:
+            return databaseTypeId
+        default:
+            return nil
+        }
+    }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

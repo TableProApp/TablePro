@@ -43,7 +43,7 @@ internal protocol CommandLineToolInstalling {
 internal final class CommandLineToolInstaller: CommandLineToolInstalling {
     internal static let shared = CommandLineToolInstaller()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CommandLineToolInstaller")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CommandLineToolInstaller")
     private static let toolName = "tablepro"
     private static let marker = "# TablePro command line tool"
     private static let scriptContents = """
@@ -104,7 +104,7 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
         guard status != .conflict else { throw CommandLineToolError.conflict(toolPath) }
 
         if canWriteDirectly, writeShimDirectly() {
-            Self.logger.info("Installed command line tool at \(self.toolPath, privacy: .public)")
+            Self.logger.info("Installed command line tool at \(self.toolPath, privacy: .private(mask: .hash))")
             return
         }
 
@@ -125,7 +125,7 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
             throw CommandLineToolError.conflict(toolPath)
         case .installed:
             if (try? fileManager.removeItem(atPath: toolPath)) != nil {
-                Self.logger.info("Removed command line tool at \(self.toolPath, privacy: .public)")
+                Self.logger.info("Removed command line tool at \(self.toolPath, privacy: .private(mask: .hash))")
                 return
             }
             try runPrivileged(uninstallCommand)
@@ -147,7 +147,7 @@ internal final class CommandLineToolInstaller: CommandLineToolInstalling {
             try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: toolPath)
             return true
         } catch {
-            Self.logger.debug("Direct write failed, escalating: \(error.localizedDescription, privacy: .public)")
+            Self.logger.debug("Direct write failed, escalating: \(error.publicLogShape, privacy: .public)")
             return false
         }
     }

@@ -5,10 +5,11 @@
 
 import Foundation
 import os
+import SwiftUI
 import TableProPluginKit
 
 extension AIChatViewModel {
-    static let maxToolRoundtrips = 10
+    static let hardToolRoundtripCeiling = 500
 
     struct ToolRoundtripContinuation {
         let nextAssistantID: UUID
@@ -31,7 +32,17 @@ extension AIChatViewModel {
     }
 
     func startStreaming() {
-        guard case .idle = streamingState else { return }
+        switch streamingState {
+        case .idle, .pausedAtToolLimit:
+            break
+        case .loading, .streaming, .awaitingApproval, .failed:
+            return
+        }
+
+        if isAwaitingConnection {
+            heldTurnAwaitsConnection = true
+            return
+        }
 
         let settings = services.appSettings.ai
 
@@ -60,6 +71,39 @@ extension AIChatViewModel {
             }
         }
 
+        beginStreamingTurn(
+            resolved: resolved,
+            settings: settings,
+            includeWalkthroughDirective: pendingWalkthroughBeforeSQL != nil
+        )
+    }
+
+    func continueToolLoop() {
+        guard case .pausedAtToolLimit = streamingState else { return }
+
+        let settings = services.appSettings.ai
+        let resolved = AIProviderFactory.resolve(
+            settings: settings,
+            overrideProviderId: selectedProviderId,
+            overrideModel: selectedModel
+        )
+        guard let resolved else {
+            errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
+            return
+        }
+
+        beginStreamingTurn(
+            resolved: resolved,
+            settings: settings,
+            includeWalkthroughDirective: pendingWalkthroughBeforeSQL != nil
+        )
+    }
+
+    private func beginStreamingTurn(
+        resolved: AIProviderFactory.ResolvedProvider,
+        settings: AISettings,
+        includeWalkthroughDirective: Bool
+    ) {
         let assistantMessage = ChatTurn(
             role: .assistant,
             blocks: [],
@@ -96,7 +140,7 @@ extension AIChatViewModel {
                     resolved: resolved,
                     assistantID: assistantID,
                     settings: settings,
-                    includeWalkthroughDirective: self.pendingWalkthroughBeforeSQL != nil
+                    includeWalkthroughDirective: includeWalkthroughDirective
                 )
                 self.prepTask = nil
             }
@@ -109,9 +153,15 @@ extension AIChatViewModel {
         resolved: AIProviderFactory.ResolvedProvider,
         assistantID: UUID,
         settings: AISettings,
-        includeWalkthroughDirective: Bool = false
+        includeWalkthroughDirective: Bool = false,
+        registry: ChatToolRegistry? = nil
     ) {
         let chatMode = settings.chatMode
+        let scope = ChatToolScope(sessionId: sessionId, connectionId: connection?.id, mode: chatMode)
+        let roundtripLimit = min(
+            settings.effectiveMaxToolRoundtrips ?? Self.hardToolRoundtripCeiling,
+            Self.hardToolRoundtripCeiling
+        )
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             var currentAssistantID = assistantID
             do {
@@ -128,10 +178,21 @@ extension AIChatViewModel {
                 )
                 guard preflightOK else { return }
 
-                let toolSpecs = await MainActor.run { ChatToolRegistry.shared.allSpecs(for: chatMode) }
+                let toolSpecs = await MainActor.run {
+                    (registry ?? ChatToolRegistry.shared).specs(in: scope)
+                }
                 var workingTurns = chatMessages
+                var executedRoundtrips = 0
 
-                for roundtrip in 0..<Self.maxToolRoundtrips {
+                while true {
+                    if executedRoundtrips >= roundtripLimit {
+                        await self.pauseAtToolLimit(
+                            assistantID: currentAssistantID,
+                            count: executedRoundtrips
+                        )
+                        return
+                    }
+
                     let round = try await self.consumeStreamRound(
                         resolved: resolved,
                         systemPrompt: systemPrompt,
@@ -143,11 +204,6 @@ extension AIChatViewModel {
                     if round.cancelled { return }
                     if round.toolUseOrder.isEmpty { break }
 
-                    if roundtrip == Self.maxToolRoundtrips - 1 {
-                        await self.failTooManyRoundtrips(assistantID: currentAssistantID)
-                        break
-                    }
-
                     let assembled = Self.assembleToolUseBlocks(
                         order: round.toolUseOrder,
                         names: round.toolUseNames,
@@ -158,21 +214,28 @@ extension AIChatViewModel {
                         ChatToolContext(
                             connectionId: self.connection?.id,
                             bridge: ChatToolBootstrap.bridge,
-                            authPolicy: ChatToolBootstrap.authPolicy
+                            authPolicy: ChatToolBootstrap.authPolicy,
+                            sessionId: self.sessionId
                         )
                     }
-                    let toolUseBlocks = await self.resolveAndAwaitApprovals(
+                    let approvals = await self.resolveAndAwaitApprovals(
                         assembledBlocks: assembled,
-                        assistantID: currentAssistantID
+                        assistantID: currentAssistantID,
+                        registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
+                    let toolUseBlocks = approvals.blocks
                     let approvedBlocks = toolUseBlocks.filter {
                         if case .approved = $0.approvalState { return true }
                         return false
                     }
                     let executedResults = await Self.executeToolUses(
-                        approvedBlocks, mode: chatMode, context: context
+                        approvedBlocks,
+                        scope: scope,
+                        context: context,
+                        explicitlyApproved: approvals.explicitlyApproved,
+                        registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -189,6 +252,7 @@ extension AIChatViewModel {
                     currentAssistantID = continuation.nextAssistantID
                     workingTurns.append(continuation.assistantTurn)
                     workingTurns.append(continuation.userTurn)
+                    executedRoundtrips += 1
                 }
 
                 guard !Task.isCancelled else { return }
@@ -227,17 +291,16 @@ extension AIChatViewModel {
 
     @MainActor
     func finalizeStreamingMessage(id: UUID) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        messages[idx].finishStreamingTextBlock()
+        turn(withID: id)?.finishStreamingTextBlock()
     }
 
     @MainActor
     func resolveWalkthroughIfNeeded(id: UUID) {
         guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
         pendingWalkthroughBeforeSQL = nil
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        guard let turn = turn(withID: id) else { return }
 
-        let textBlocks = messages[idx].blocks.filter { block in
+        let textBlocks = turn.blocks.filter { block in
             if case .text = block.kind { return true }
             return false
         }
@@ -259,17 +322,17 @@ extension AIChatViewModel {
         guard case .text(let openText) = tail[0].kind else { return }
         let prose = WalkthroughEnvelopeParser.stripFence(from: openText)
         let consumedIDs = Set(tail.dropFirst().map(\.id))
-        messages[idx].blocks.removeAll { consumedIDs.contains($0.id) }
+        turn.blocks.removeAll { consumedIDs.contains($0.id) }
 
         if prose.isEmpty {
-            messages[idx].blocks.removeAll { $0.id == tail[0].id }
+            turn.blocks.removeAll { $0.id == tail[0].id }
         } else {
             tail[0].setKind(.text(prose))
         }
 
         guard let envelope = WalkthroughEnvelopeParser.parse(from: joined) else { return }
         let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
-        messages[idx].appendBlock(.sqlWalkthrough(walkthrough))
+        turn.appendBlock(.sqlWalkthrough(walkthrough))
     }
 
     private func consumeStreamRound(
@@ -286,37 +349,113 @@ extension AIChatViewModel {
                 model: resolved.model,
                 systemPrompt: systemPrompt,
                 tools: toolSpecs,
-                reasoningEffort: resolved.config.reasoningEffort
+                reasoningEffort: resolved.config.reasoningEffort,
+                sessionId: sessionId
             )
         )
 
-        var pendingContent = ""
-        var pendingUsage: AITokenUsage?
+        let buffer = StreamTextBuffer()
+        let reasoningIDMap = ReasoningBlockIDMap()
+        let ticker = startFlushTicker(buffer: buffer, assistantID: assistantID, idMap: reasoningIDMap)
+        defer {
+            ticker.cancel()
+            if !Task.isCancelled {
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+            }
+        }
+
+        return try await runProducerLoop(
+            stream: stream,
+            buffer: buffer,
+            reasoningIDMap: reasoningIDMap,
+            assistantID: assistantID,
+            chatMode: chatMode
+        )
+    }
+
+    private func startFlushTicker(
+        buffer: StreamTextBuffer,
+        assistantID: UUID,
+        idMap: ReasoningBlockIDMap
+    ) -> Task<Void, Never> {
+        let clock = streamFlushClock
+        let interval = streamFlushInterval
+        return Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await clock.sleep(for: interval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, let self else { return }
+                self.drainBuffer(buffer, assistantID: assistantID, idMap: idMap)
+            }
+        }
+    }
+
+    @MainActor
+    private func drainBuffer(_ buffer: StreamTextBuffer, assistantID: UUID, idMap: ReasoningBlockIDMap) {
+        drainBufferedText(buffer, assistantID: assistantID)
+        drainBufferedReasoning(buffer, assistantID: assistantID, idMap: idMap)
+    }
+
+    @MainActor
+    private func drainBufferedText(_ buffer: StreamTextBuffer, assistantID: UUID) {
+        guard buffer.hasBufferedText else { return }
+        let drained = buffer.drainText()
+        guard let turn = turn(withID: assistantID) else { return }
+        if !drained.text.isEmpty {
+            turn.appendStreamingToken(drained.text)
+        }
+        if let usage = drained.usage {
+            turn.usage = usage
+        }
+    }
+
+    @MainActor
+    private func drainBufferedReasoning(
+        _ buffer: StreamTextBuffer,
+        assistantID: UUID,
+        idMap: ReasoningBlockIDMap
+    ) {
+        guard buffer.hasBufferedReasoning, let turn = turn(withID: assistantID) else { return }
+        for chunk in buffer.drainReasoning() {
+            turn.appendReasoningDelta(
+                providerBlockID: chunk.providerBlockID,
+                text: chunk.text,
+                idMap: &idMap.value
+            )
+        }
+    }
+
+    private func runProducerLoop(
+        stream: AsyncThrowingStream<ChatStreamEvent, Error>,
+        buffer: StreamTextBuffer,
+        reasoningIDMap: ReasoningBlockIDMap,
+        assistantID: UUID,
+        chatMode: AIChatMode
+    ) async throws -> StreamRoundResult {
         var toolUseOrder: [String] = []
         var toolUseNames: [String: String] = [:]
         var toolUseInputs: [String: String] = [:]
         var toolUseMetadata: [String: [String: String]] = [:]
-        var reasoningIDMap: [String: UUID] = [:]
-        let flushInterval: ContinuousClock.Duration = .milliseconds(150)
-        var lastFlushTime: ContinuousClock.Instant = .now
+        var hasRenderedFirstText = false
 
         for try await event in stream {
             guard !Task.isCancelled else { break }
             switch event {
             case .textDelta(let token):
-                pendingContent += token
+                drainBufferedReasoning(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                buffer.appendText(token)
+                if !hasRenderedFirstText, buffer.hasBufferedText {
+                    hasRenderedFirstText = true
+                    drainBufferedText(buffer, assistantID: assistantID)
+                }
             case .usage(let usage):
-                pendingUsage = usage
+                buffer.setUsage(usage)
             case .toolUseStart(let id, let name, let providerMetadata):
-                if !pendingContent.isEmpty {
-                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
-                    pendingContent = ""
-                    pendingUsage = nil
-                    lastFlushTime = .now
-                }
-                await MainActor.run { [weak self] in
-                    self?.finalizeStreamingMessage(id: assistantID)
-                }
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                finalizeStreamingMessage(id: assistantID)
                 if toolUseInputs[id] == nil {
                     toolUseOrder.append(id)
                     toolUseInputs[id] = ""
@@ -330,34 +469,26 @@ extension AIChatViewModel {
             case .toolUseEnd:
                 break
             case .toolInvocationRequest(let block, let replyToken):
-                await self.dispatchCopilotInvocation(
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                await dispatchCopilotInvocation(
                     block: block, replyToken: replyToken,
                     assistantID: assistantID, mode: chatMode
                 )
             case .reasoningStart(let providerID):
-                if !pendingContent.isEmpty {
-                    await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
-                    pendingContent = ""
-                    pendingUsage = nil
-                    lastFlushTime = .now
-                }
-                await self.startReasoning(providerID: providerID, assistantID: assistantID, idMap: &reasoningIDMap)
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                turn(withID: assistantID)?
+                    .startReasoningBlock(providerBlockID: providerID, idMap: &reasoningIDMap.value)
             case .reasoningDelta(let providerID, let text):
-                await self.appendReasoning(providerID: providerID, text: text, assistantID: assistantID, idMap: &reasoningIDMap)
+                drainBufferedText(buffer, assistantID: assistantID)
+                buffer.appendReasoning(providerBlockID: providerID, text: text)
             case .reasoningEnd(let providerID, let opaque):
-                await self.finalizeReasoning(providerID: providerID, opaque: opaque, assistantID: assistantID, idMap: &reasoningIDMap)
+                drainBuffer(buffer, assistantID: assistantID, idMap: reasoningIDMap)
+                turn(withID: assistantID)?.finalizeReasoningBlock(
+                    providerBlockID: providerID,
+                    opaque: opaque,
+                    idMap: &reasoningIDMap.value
+                )
             }
-
-            if ContinuousClock.now - lastFlushTime >= flushInterval {
-                await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
-                pendingContent = ""
-                pendingUsage = nil
-                lastFlushTime = .now
-            }
-        }
-
-        if !Task.isCancelled, !pendingContent.isEmpty || pendingUsage != nil {
-            await self.flushPending(content: pendingContent, usage: pendingUsage, into: assistantID)
         }
 
         return StreamRoundResult(
@@ -367,42 +498,6 @@ extension AIChatViewModel {
             toolUseMetadata: toolUseMetadata,
             cancelled: Task.isCancelled
         )
-    }
-
-    private func startReasoning(providerID: String, assistantID: UUID, idMap: inout [String: UUID]) async {
-        let captured = idMap
-        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
-            var localMap = captured
-            self.messages[idx].startReasoningBlock(providerBlockID: providerID, idMap: &localMap)
-            return localMap
-        }
-        idMap = updated
-    }
-
-    private func appendReasoning(providerID: String, text: String, assistantID: UUID, idMap: inout [String: UUID]) async {
-        let captured = idMap
-        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
-            var localMap = captured
-            _ = self.messages[idx].appendReasoningDelta(providerBlockID: providerID, text: text, idMap: &localMap)
-            return localMap
-        }
-        idMap = updated
-    }
-
-    private func finalizeReasoning(providerID: String, opaque: ReasoningOpaque?, assistantID: UUID, idMap: inout [String: UUID]) async {
-        let captured = idMap
-        let updated = await MainActor.run { [weak self] () -> [String: UUID] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID }) else { return captured }
-            var localMap = captured
-            self.messages[idx].finalizeReasoningBlock(providerBlockID: providerID, opaque: opaque, idMap: &localMap)
-            return localMap
-        }
-        idMap = updated
     }
 
     nonisolated static func buildSystemPrompt(
@@ -415,8 +510,7 @@ extension AIChatViewModel {
                 databaseType: $0.databaseType,
                 databaseName: $0.databaseName,
                 tables: $0.tables,
-                columnsByTable: $0.columnsByTable,
-                foreignKeys: $0.foreignKeys,
+                defaultSchema: $0.defaultSchema,
                 currentQuery: $0.currentQuery,
                 queryResults: $0.queryResults,
                 settings: $0.settings,
@@ -439,18 +533,20 @@ extension AIChatViewModel {
         return "\(base)\n\n\(directive)"
     }
 
-    private func failTooManyRoundtrips(assistantID: UUID) async {
+    private func pauseAtToolLimit(assistantID: UUID, count: Int) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
-            self.errorMessage = String(
-                localized: "AI made too many tool calls in one response. Try simplifying the request."
-            )
             self.finalizeStreamingMessage(id: assistantID)
             if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
                self.messages[idx].blocks.isEmpty {
                 self.messages.remove(at: idx)
             }
-            self.streamingState = .failed(nil)
+            self.streamingState = .pausedAtToolLimit(count: count)
+            self.streamingTask = nil
+            self.persistCurrentConversation()
+            AccessibilityAnnouncement.post(
+                String(format: String(localized: "Paused after %d tool calls."), count)
+            )
         }
     }
 
@@ -495,21 +591,6 @@ extension AIChatViewModel {
                 assistantTurn: assistantWire,
                 userTurn: userTurn
             )
-        }
-    }
-
-    func flushPending(content: String, usage: AITokenUsage?, into assistantID: UUID) async {
-        guard !content.isEmpty || usage != nil else { return }
-        await MainActor.run { [weak self] in
-            guard let self,
-                  let idx = self.messages.firstIndex(where: { $0.id == assistantID })
-            else { return }
-            if !content.isEmpty {
-                self.messages[idx].appendStreamingToken(content)
-            }
-            if let usage {
-                self.messages[idx].usage = usage
-            }
         }
     }
 
@@ -559,14 +640,18 @@ extension AIChatViewModel {
 
     nonisolated static func executeToolUses(
         _ blocks: [ToolUseBlock],
-        mode: AIChatMode,
+        scope: ChatToolScope,
         context: ChatToolContext,
+        explicitlyApproved: Set<String> = [],
         registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
         await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
             for (index, block) in blocks.enumerated() {
+                let blockContext = context.carrying(
+                    approvalWasExplicit: explicitlyApproved.contains(block.id)
+                )
                 group.addTask {
-                    (index, await runToolUse(block, mode: mode, context: context, registry: registry))
+                    (index, await runToolUse(block, scope: scope, context: blockContext, registry: registry))
                 }
             }
             var indexed: [(Int, ToolResultBlock)] = []
@@ -577,19 +662,20 @@ extension AIChatViewModel {
 
     nonisolated private static func runToolUse(
         _ block: ToolUseBlock,
-        mode: AIChatMode,
+        scope: ChatToolScope,
         context: ChatToolContext,
         registry: ChatToolRegistry?
     ) async -> ToolResultBlock {
+        let mode = scope.mode
         if Task.isCancelled {
             return ToolResultBlock(toolUseId: block.id, content: "Cancelled", isError: true)
         }
         let resolution = await MainActor.run { () -> ToolResolution in
             let activeRegistry = registry ?? ChatToolRegistry.shared
-            guard activeRegistry.isToolAllowed(name: block.name, in: mode) else {
+            guard activeRegistry.isToolAllowed(name: block.name, in: scope) else {
                 return .blocked
             }
-            guard let tool = activeRegistry.tool(named: block.name, in: mode) else {
+            guard let tool = activeRegistry.tool(named: block.name, in: scope) else {
                 return .missing
             }
             return .resolved(tool)
@@ -624,7 +710,7 @@ extension AIChatViewModel {
             )
         } catch {
             AIChatViewModel.logger.warning(
-                "Tool \(block.name, privacy: .public) execution failed: \(error.localizedDescription, privacy: .public)"
+                "Tool \(block.name, privacy: .public) execution failed: \(error.publicLogShape, privacy: .public)"
             )
             return ToolResultBlock(
                 toolUseId: block.id,

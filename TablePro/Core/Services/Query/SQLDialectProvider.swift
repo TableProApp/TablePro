@@ -38,7 +38,7 @@ private struct EmptyDialect: SQLDialectProvider {
 struct SQLDialectFactory {
     static func createDialect(for databaseType: DatabaseType) -> SQLDialectProvider {
         if let descriptor = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: databaseType.pluginTypeId
+            for: databaseType
         )?.editor.sqlDialect {
             return PluginDialectAdapter(descriptor: descriptor)
         }

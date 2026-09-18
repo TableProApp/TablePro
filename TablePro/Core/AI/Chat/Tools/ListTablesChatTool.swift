@@ -10,7 +10,6 @@ struct ListTablesChatTool: ChatTool {
     let description = String(localized: "List tables and views in the active database of a connection.")
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
-            "connection_id": ChatToolSchemaBuilder.connectionId,
             "database": ChatToolSchemaBuilder.string(
                 description: "Database name. Pass null to use current.",
                 optional: true
@@ -25,20 +24,18 @@ struct ListTablesChatTool: ChatTool {
     let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try context.resolveConnectionId(input)
+        let connectionId = try await ChatToolTarget.authorized(context: context, input: input, tool: name)
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
         let includeRowCounts = ChatToolArgumentDecoder.optionalBool(input, key: "include_row_counts", default: false)
 
-        if let database {
-            _ = try await context.bridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-        if let schema {
-            _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
-        }
-
-        let payload = try await context.bridge.listTables(
+        let scope = try await context.bridge.resolveScope(
             connectionId: connectionId,
+            database: database,
+            schema: schema
+        )
+        let payload = try await context.bridge.listTables(
+            scope: scope,
             includeRowCounts: includeRowCounts
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))

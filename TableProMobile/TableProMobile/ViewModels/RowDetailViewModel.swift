@@ -14,6 +14,7 @@ final class RowDetailViewModel {
     let table: TableInfo?
     let session: ConnectionSession?
     let databaseType: DatabaseType
+    let schema: String?
     let safeModeLevel: SafeModeLevel
 
     private(set) var rows: [Row]
@@ -41,6 +42,7 @@ final class RowDetailViewModel {
         session: ConnectionSession? = nil,
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
+        schema: String? = nil,
         safeModeLevel: SafeModeLevel = .off,
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
@@ -53,6 +55,7 @@ final class RowDetailViewModel {
         self.session = session
         self.columnDetails = columnDetails
         self.databaseType = databaseType
+        self.schema = schema
         self.safeModeLevel = safeModeLevel
         self.foreignKeys = foreignKeys
         self.onSaved = onSaved
@@ -65,13 +68,14 @@ final class RowDetailViewModel {
 
     // MARK: - Computed
 
-    var isView: Bool {
-        guard let table else { return false }
-        return table.type == .view || table.type == .materializedView
+    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    var allowsRowEditing: Bool {
+        table?.type.allowsRowEditing ?? false
     }
 
     var canEdit: Bool {
-        table != nil && session != nil && !columnDetails.isEmpty && !isView
+        table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
             && columnDetails.contains(where: { $0.isPrimaryKey })
     }
@@ -108,6 +112,12 @@ final class RowDetailViewModel {
         guard index >= 0, index < columns.count else { return false }
         let column = columns[index]
         return columnDetail(for: column.name)?.isPrimaryKey ?? column.isPrimaryKey
+    }
+
+    func isNullable(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return true }
+        let column = columns[index]
+        return columnDetail(for: column.name)?.isNullable ?? column.isNullable
     }
 
     // MARK: - Edit Lifecycle
@@ -183,7 +193,9 @@ final class RowDetailViewModel {
 
         let sql = SQLBuilder.buildUpdate(
             table: table.name,
+            schema: schema,
             type: databaseType,
+            driver: session.driver,
             changes: changes,
             primaryKeys: pkValues
         )
@@ -212,7 +224,7 @@ final class RowDetailViewModel {
         defer { isSaving = false }
 
         do {
-            _ = try await session.driver.execute(query: sql)
+            try await session.driver.executeWrite([sql])
             guard currentIndex >= 0, currentIndex < rows.count else { return false }
             let newCells = editedValues.map { value -> Cell in
                 value.map { Cell.text($0) } ?? .null

@@ -330,7 +330,7 @@ struct SQLFormatterServiceTests {
     @Test("Keywords not uppercased when option is false")
     func keywordsNotUppercased() throws {
         var options = SQLFormatterOptions.default
-        options.uppercaseKeywords = false
+        options.keywordCase = .preserve
         let result = try formatter.format("select * from users", dialect: .mysql, options: options).formattedSQL
         #expect(result.contains("select"))
         #expect(result.contains("from"))
@@ -629,5 +629,19 @@ struct SQLFormatterServiceTests {
         let first = try format(sql)
         let second = try format(first)
         #expect(first == second)
+    }
+
+    // MARK: - Unterminated Constructs
+
+    @Test("Formats a query whose string literal is unterminated and ends in a backslash")
+    func unterminatedLiteralEndingInBackslash() throws {
+        let formatted = try format("select * from t where c like 'C:\\")
+        #expect(formatted.contains("'C:\\"))
+    }
+
+    @Test("Formats a query whose block comment is unterminated")
+    func unterminatedBlockComment() throws {
+        let formatted = try format("select 1; /* note")
+        #expect(formatted.hasSuffix("/* note"))
     }
 }

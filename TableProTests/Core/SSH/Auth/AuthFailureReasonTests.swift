@@ -52,6 +52,66 @@ struct AuthFailureReasonTests {
         #expect(description.localizedCaseInsensitiveContains("agent"))
     }
 
+    @Test("An unreachable agent names the socket source, not a key (#2583)")
+    func agentUnavailableMessage() {
+        for origin in AgentSocketOrigin.allCases {
+            let description = SSHTunnelError.authenticationFailed(
+                reason: .agentUnavailable(origin)
+            ).errorDescription ?? ""
+
+            #expect(description.localizedCaseInsensitiveContains("agent"))
+            #expect(!description.localizedCaseInsensitiveContains("private key"))
+            #expect(!description.localizedCaseInsensitiveContains("passphrase"))
+        }
+    }
+
+    @Test("Each socket source sends the user somewhere it can actually be changed (#2583)")
+    func agentUnavailableNamesItsOwnSource() {
+        func message(_ origin: AgentSocketOrigin) -> String {
+            SSHTunnelError.authenticationFailed(reason: .agentUnavailable(origin)).errorDescription ?? ""
+        }
+
+        #expect(message(.agentSocketSetting).localizedCaseInsensitiveContains("Agent Socket"))
+        #expect(message(.identityAgentDirective).localizedCaseInsensitiveContains("IdentityAgent"))
+        #expect(message(.environment).localizedCaseInsensitiveContains("SSH_AUTH_SOCK"))
+
+        #expect(!message(.identityAgentDirective).localizedCaseInsensitiveContains("SSH_AUTH_SOCK"))
+        #expect(!message(.environment).localizedCaseInsensitiveContains("IdentityAgent"))
+    }
+
+    @Test("ssh-add is only offered for the agent ssh-add can reach (#2583)")
+    func agentNoIdentitiesMessage() {
+        func message(_ origin: AgentSocketOrigin) -> String {
+            SSHTunnelError.authenticationFailed(reason: .agentNoIdentities(origin)).errorDescription ?? ""
+        }
+
+        for origin in AgentSocketOrigin.allCases {
+            #expect(message(origin).localizedCaseInsensitiveContains("agent"))
+            #expect(!message(origin).localizedCaseInsensitiveContains("password"))
+        }
+
+        #expect(message(.environment).localizedCaseInsensitiveContains("ssh-add"))
+        #expect(!message(.agentSocketSetting).localizedCaseInsensitiveContains("ssh-add"))
+        #expect(!message(.identityAgentDirective).localizedCaseInsensitiveContains("ssh-add"))
+    }
+
+    @Test("An unavailable method names the server, not a credential (#2583)")
+    func methodUnavailableMessage() {
+        let error = SSHTunnelError.authenticationFailed(reason: .methodUnavailable)
+        let description = error.errorDescription ?? ""
+
+        #expect(description.localizedCaseInsensitiveContains("server"))
+        #expect(!description.localizedCaseInsensitiveContains("password"))
+        #expect(!description.localizedCaseInsensitiveContains("private key"))
+    }
+
+    @Test("Only a method nothing was offered through is exempt from defining a chain's failure")
+    func onlyMethodUnavailableSkipsAttemptReporting() {
+        for reason in AuthFailureReason.allCases {
+            #expect(reason.describesAnAttempt == (reason != .methodUnavailable))
+        }
+    }
+
     @Test("Passwordless reason points at the server, not the user's credentials")
     func passwordlessRejectedMessage() {
         let error = SSHTunnelError.authenticationFailed(reason: .passwordlessRejected)

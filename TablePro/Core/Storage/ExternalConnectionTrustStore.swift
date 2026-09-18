@@ -23,7 +23,7 @@ internal protocol ExternalConnectionTrustChecking {
 internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecking {
     internal static let shared = ExternalConnectionTrustStore()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ExternalConnectionTrustStore")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ExternalConnectionTrustStore")
     private static let storageKey = "com.TablePro.externalConnectionTrust.entries"
 
     private let defaults: UserDefaults

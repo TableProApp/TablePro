@@ -16,6 +16,10 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private var cachedServerVersion: String?
 
+    /// CockroachDB's `pg_catalog` is a compatibility shim and `aclexplode` only became a builtin in
+    /// v22.2, so the schema ACL is not read here. The owner and the comment still are.
+    var supportsSchemaACLIntrospection: Bool { false }
+
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries,
@@ -24,6 +28,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .cancelQuery,
             .batchExecute,
             .materializedViews,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 
@@ -55,11 +61,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let resolvedSchema = schema ?? core.currentSchema
         let query = """
             SELECT table_name, table_type
             FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
+            WHERE table_schema = \(PostgreSQLObjectQueries.quoteLiteral(resolvedSchema))
             ORDER BY table_name
             """
         let result = try await execute(query: query)
@@ -72,16 +78,18 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = Self.columnsQuery(schemaLiteral: schemaLiteral, tableFilter: "AND c.table_name = '\(safeTable)'")
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = Self.columnsQuery(
+            schema: resolvedSchema,
+            tableFilter: "AND c.table_name = \(PostgreSQLObjectQueries.quoteLiteral(table))"
+        )
         let result = try await execute(query: query)
         return result.rows.compactMap { Self.mapColumnRow($0, includesTableName: false) }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = Self.columnsQuery(schemaLiteral: schemaLiteral, tableFilter: "", includesTableName: true)
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = Self.columnsQuery(schema: resolvedSchema, tableFilter: "", includesTableName: true)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -93,8 +101,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let quotedTable = quoteIdentifier(table)
-        let query = "SHOW INDEXES FROM \(quoteIdentifier(core.currentSchema)).\(quotedTable)"
+        let query = CockroachRelationSQL.showIndexes(table: table, schema: schema ?? core.currentSchema)
         let result = try await execute(query: query)
 
         guard let columnIndex = result.columns.firstIndex(of: "column_name"),
@@ -114,14 +121,14 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                   let columnName = row[columnIndex].asText else { continue }
 
             if let implicitIndex, implicitIndex < row.count,
-               row[implicitIndex].asText.map(Self.isTruthy) == true {
+               PostgreSQLCatalogBoolean.isTrue(row[implicitIndex].asText) {
                 continue
             }
 
             if columnsByIndex[indexName] == nil {
                 order.append(indexName)
                 if let nonUniqueIndex, nonUniqueIndex < row.count {
-                    uniqueByIndex[indexName] = row[nonUniqueIndex].asText.map(Self.isTruthy) == false
+                    uniqueByIndex[indexName] = row[nonUniqueIndex].asText.map { !PostgreSQLCatalogBoolean.isTrue($0) } ?? false
                 } else {
                     uniqueByIndex[indexName] = false
                 }
@@ -139,54 +146,24 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.table_schema = rc.constraint_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON rc.unique_constraint_name = ccu.constraint_name
-                AND rc.unique_constraint_schema = ccu.table_schema
-            WHERE tc.table_name = '\(safeTable)'
-                AND tc.table_schema = '\(schemaLiteral)'
-                AND tc.constraint_type = 'FOREIGN KEY'
-            ORDER BY tc.constraint_name
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard row.count >= 6,
-                  let name = row[0].asText,
-                  let column = row[1].asText,
-                  let refTable = row[2].asText,
-                  let refColumn = row[3].asText
-            else { return nil }
-            return PluginForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                onDelete: row[4].asText ?? "NO ACTION",
-                onUpdate: row[5].asText ?? "NO ACTION"
+        let query = PostgreSQLCatalogForeignKeys.query(
+            schema: schema ?? core.currentSchema,
+            table: table,
+            excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
+                serverVersionNumber: core.serverVersionNumber
             )
-        }
+        )
+        let result = try await execute(query: query)
+        return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows.map { $0.map(\.asText) })
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let quotedTable = quoteIdentifier(table)
-        let result = try await execute(query: "SHOW CREATE TABLE \(quoteIdentifier(core.currentSchema)).\(quotedTable)")
+        let result = try await execute(
+            query: CockroachRelationSQL.showCreateTable(table: table, schema: schema ?? core.currentSchema)
+        )
         guard let ddl = Self.createStatement(from: result) else {
             throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
         }
@@ -194,8 +171,9 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let quotedView = quoteIdentifier(view)
-        let result = try await execute(query: "SHOW CREATE VIEW \(quoteIdentifier(core.currentSchema)).\(quotedView)")
+        let result = try await execute(
+            query: CockroachRelationSQL.showCreateView(view: view, schema: schema ?? core.currentSchema)
+        )
         guard let ddl = Self.createStatement(from: result) else {
             throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
         }
@@ -219,11 +197,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDb = escapeLiteral(database)
+        let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let query = """
             SELECT COUNT(*)
             FROM information_schema.tables
-            WHERE table_catalog = '\(escapedDb)'
+            WHERE table_catalog = \(databaseLiteral)
               AND table_schema NOT IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension')
             """
         let tableCount = (try? await execute(query: query))
@@ -255,10 +233,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Query Helpers
 
     private static func columnsQuery(
-        schemaLiteral: String,
+        schema: String,
         tableFilter: String,
         includesTableName: Bool = false
     ) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         let selectPrefix = includesTableName ? "c.table_name,\n" : ""
         let orderBy = includesTableName ? "c.table_name, c.ordinal_position" : "c.ordinal_position"
         return """
@@ -285,9 +264,9 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
                 WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(schemaLiteral)'
+                    AND tc.table_schema = \(schemaLiteral)
             ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(schemaLiteral)' \(tableFilter)
+            WHERE c.table_schema = \(schemaLiteral) \(tableFilter)
             ORDER BY \(orderBy)
             """
     }
@@ -334,10 +313,5 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let createIndex = result.columns.firstIndex(of: "create_statement") ?? (row.count > 1 ? 1 : 0)
         guard createIndex < row.count, let ddl = row[createIndex].asText, !ddl.isEmpty else { return nil }
         return ddl
-    }
-
-    private static func isTruthy(_ value: String) -> Bool {
-        let lowered = value.lowercased()
-        return lowered == "t" || lowered == "true"
     }
 }

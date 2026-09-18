@@ -9,15 +9,10 @@ internal struct LinkedFavoriteRowView: View {
     let favorite: LinkedSQLFavorite
 
     var body: some View {
-        rowContent
-            .draggable(LinkedFavoriteTransfer(fileURL: favorite.fileURL))
-    }
-
-    private var rowContent: some View {
         HStack(spacing: 6) {
             Image(systemName: "doc.text")
                 .font(.callout)
-                .foregroundStyle(.blue)
+                .selectionAwareTint(.blue)
                 .accessibilityHidden(true)
 
             Text(favorite.name)
@@ -29,7 +24,7 @@ internal struct LinkedFavoriteRowView: View {
             if !favorite.isUTF8 {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.yellow)
+                    .selectionAwareTint(.yellow)
                     .help(String(format: String(localized: "Non-UTF-8 file (%@). Saving may change the encoding."), favorite.encodingName))
                     .accessibilityHidden(true)
             }
@@ -40,10 +35,7 @@ internal struct LinkedFavoriteRowView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(
-                        Capsule()
-                            .fill(Color(nsColor: .quaternaryLabelColor))
-                    )
+                    .background(Capsule().fill(.quaternary))
                     .accessibilityHidden(true)
             }
         }
@@ -69,7 +61,7 @@ internal struct LinkedFolderRowLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "link.circle.fill")
-                .foregroundStyle(.blue)
+                .selectionAwareTint(.blue)
                 .accessibilityHidden(true)
             Text(folder.name)
                 .lineLimit(1)

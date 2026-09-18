@@ -1,55 +1,64 @@
+//
+//  ConnectToolTests.swift
+//  TableProTests
+//
+
 import Foundation
-import TableProPluginKit
 @testable import TablePro
 import Testing
 
 @Suite("ConnectTool")
 struct ConnectToolTests {
-    @Test("Missing connection_id returns invalidParams")
-    func missingConnectionId() async throws {
-        let tool = ConnectTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
+    private let tool = ConnectTool()
 
-        await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object([:]),
-                context: context,
-                services: services
-            )
-        }
+    private func call(_ arguments: JsonValue) async throws -> MCPToolCallResult {
+        try await tool.call(
+            arguments: arguments,
+            context: MCPToolTestHarness.context(),
+            services: MCPToolTestHarness.services()
+        )
     }
 
-    @Test("Malformed connection_id returns invalidParams")
-    func malformedConnectionId() async throws {
-        let tool = ConnectTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
-
-        await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object([
-                    "connection_id": .string("not-a-uuid")
-                ]),
-                context: context,
-                services: services
-            )
-        }
-    }
-
-    @Test("Tool exposes expected metadata")
-    func metadata() {
+    @Test("Opening a session is a write, so the tool needs the write scope")
+    func metadata() throws {
         #expect(ConnectTool.name == "connect")
-        #expect(ConnectTool.requiredScopes == [.toolsRead])
+        #expect(ConnectTool.requiredScopes == [.toolsWrite])
+        #expect(ConnectTool.annotations.readOnlyHint == false)
         let schema = ConnectTool.inputSchema
         #expect(schema["type"]?.stringValue == "object")
-        let required = schema["required"]?.arrayValue?.compactMap(\.stringValue)
-        #expect(required == ["connection_id"])
+        #expect(schema["required"]?.arrayValue?.compactMap(\.stringValue) == ["connection_id"])
+        let output = try #require(ConnectTool.outputSchema)
+        #expect(output["properties"]?["connection_id"] != nil)
+    }
+
+    @Test("Missing connection_id is a protocol error")
+    func missingConnectionId() async throws {
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object([:]))
+        }
+    }
+
+    @Test("A malformed connection id is a tool error the model can fix")
+    func malformedConnectionId() async throws {
+        let result = try await call(.object(["connection_id": .string("not-a-uuid")]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("invalid_argument:") == true)
+    }
+
+    @Test("An unknown connection is reported as not found")
+    func unknownConnectionIsNotFound() async throws {
+        let result = try await call(.object(["connection_id": .string(UUID().uuidString)]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("not_found:") == true)
+    }
+
+    @Test("An unknown parameter is rejected")
+    func unknownParameterIsRejected() async throws {
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "timeout_seconds": .int(5)
+            ]))
+        }
     }
 }

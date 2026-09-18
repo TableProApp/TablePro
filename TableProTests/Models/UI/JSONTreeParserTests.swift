@@ -29,7 +29,7 @@ struct JSONTreeParserTests {
         #expect(messageNode.valueType == .string)
         #expect(messageNode.rawValue == longString)
         #expect(messageNode.displayValue == "\"\(longString)\"")
-        #expect(!messageNode.displayValue.contains("..."))
+        #expect(!messageNode.displayValue.contains("…"))
     }
 
     @Test("Tree parser still rejects oversized documents")

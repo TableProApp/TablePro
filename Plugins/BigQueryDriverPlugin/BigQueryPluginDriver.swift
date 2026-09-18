@@ -1,13 +1,6 @@
-//
-//  BigQueryPluginDriver.swift
-//  BigQueryDriverPlugin
-//
-//  PluginDatabaseDriver implementation for Google BigQuery.
-//  Routes both tagged browsing hooks and GoogleSQL queries through BigQueryConnection.
-//
-
 import Foundation
 import os
+import TableProGoogleCloud
 import TableProPluginKit
 
 internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -16,28 +9,41 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         let cachedAt: Date
     }
 
-    private let config: DriverConnectionConfig
-    private var _connection: BigQueryConnection?
+    static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryPluginDriver")
+
+    private static let cacheTTL: TimeInterval = 300
+    private static let serverVersionName = "Google BigQuery"
+    private static let metadataDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    let config: DriverConnectionConfig
+    let parameterTypes = BigQueryParameterTypeCache()
+    let runningStatements = BigQueryRunningStatements()
+
     private let lock = NSLock()
+    private var _connection: BigQueryConnection?
+    private var _projectId: String?
     private var _serverVersion: String?
     private var _currentDataset: String?
     private var _tableSchemaCache: [String: CachedResource] = [:]
-    private static let cacheTTL: TimeInterval = 300
-    private var _columnCache: [String: [String]] = [:]
-    private var _columnTypeCache: [String: [String]] = [:]
-    private var _queryTimeoutSeconds: Int = 300
+    private var _queryTimeoutSeconds: Int?
+    private var _lastJobElapsed: TimeInterval?
 
-    private var connection: BigQueryConnection? {
+    init(config: DriverConnectionConfig) {
+        self.config = config
+    }
+
+    var connection: BigQueryConnection? {
         lock.withLock { _connection }
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryPluginDriver")
-    private static let metadataDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
+    var projectId: String? {
+        lock.withLock { _projectId }
+    }
 
     var serverVersion: String? {
         lock.withLock { _serverVersion }
@@ -58,22 +64,39 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             .multiSchema,
             .cancelQuery,
             .materializedViews,
+            .dataCompare,
         ]
+    }
+
+    var lastJobElapsed: TimeInterval? {
+        get { lock.withLock { _lastJobElapsed } }
+        set { lock.withLock { _lastJobElapsed = newValue } }
     }
 
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
 
+    func requireConnection() throws -> BigQueryConnection {
+        guard let connection else { throw BigQueryError.notConnected }
+        return connection
+    }
+
+    func dataset(for schema: String?) -> String {
+        if let schema, !schema.isEmpty { return schema }
+        return currentSchema ?? ""
+    }
+
+    func qualifiedTable(_ table: String, schema: String?, projectId: String) -> String {
+        BigQueryQueryBuilder.qualifiedTable(projectId: projectId, dataset: dataset(for: schema), table: table)
+    }
+
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "`", with: "\\`")
-        return "`\(escaped)`"
+        GoogleSQLLiteral.quotedIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "'", with: "''")
+        GoogleSQLLiteral.escapedStringBody(value)
     }
 
     func castColumnToText(_ column: String) -> String {
@@ -85,633 +108,18 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func defaultExportQuery(table: String, schema: String?) -> String? {
-        guard let conn = connection else { return nil }
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        return "SELECT * FROM `\(conn.projectId).\(dataset).\(table)`"
+        guard let projectId else { return nil }
+        return "SELECT * FROM \(qualifiedTable(table, schema: schema, projectId: projectId))"
     }
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        guard let conn = connection else { return nil }
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        return ["TRUNCATE TABLE `\(conn.projectId).\(dataset).\(table)`"]
+        guard let projectId else { return nil }
+        return ["TRUNCATE TABLE \(qualifiedTable(table, schema: schema, projectId: projectId))"]
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        guard let conn = connection else { return nil }
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let objType = objectType.uppercased()
-        return "DROP \(objType) IF EXISTS `\(conn.projectId).\(dataset).\(name)`"
-    }
-
-    init(config: DriverConnectionConfig) {
-        self.config = config
-    }
-
-    // MARK: - Connection Management
-
-    func connect() async throws {
-        let conn = BigQueryConnection(config: config)
-        try await conn.connect()
-
-        lock.withLock {
-            _connection = conn
-            _serverVersion = "Google BigQuery"
-        }
-
-        // Auto-select the first available dataset (like PostgreSQL selects "public")
-        do {
-            let datasets = try await fetchSchemas()
-            let nonSystem = datasets.filter { !$0.uppercased().contains("INFORMATION_SCHEMA") }
-            if let firstDataset = nonSystem.first {
-                lock.withLock { _currentDataset = firstDataset }
-            }
-        } catch {
-            Self.logger.info("Could not auto-select dataset: \(error.localizedDescription)")
-        }
-    }
-
-    func disconnect() {
-        lock.withLock {
-            _connection?.disconnect()
-            _connection = nil
-            _tableSchemaCache.removeAll()
-            _columnCache.removeAll()
-            _columnTypeCache.removeAll()
-            _currentDataset = nil
-        }
-    }
-
-    func ping() async throws {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-        try await conn.ping()
-    }
-
-    // MARK: - Schema Navigation
-
-    func fetchSchemas() async throws -> [String] {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-        return try await conn.listDatasets()
-    }
-
-    func switchSchema(to schema: String) async throws {
-        lock.withLock { _currentDataset = schema }
-    }
-
-    // MARK: - Query Execution
-
-    func execute(query: String) async throws -> PluginQueryResult {
-        let startTime = Date()
-
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Health monitor sends "SELECT 1" as a ping
-        if trimmed.lowercased() == "select 1" {
-            try await conn.ping()
-            return PluginQueryResult(
-                columns: ["ok"],
-                columnTypeNames: ["INT64"],
-                rows: [[.text("1")]],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        // Dry run for EXPLAIN queries
-        if trimmed.uppercased().hasPrefix("EXPLAIN ") {
-            let actualSQL = String(trimmed.dropFirst(8))
-            let dataset = lock.withLock { _currentDataset }
-            let dryResult = try await conn.dryRunQuery(actualSQL, defaultDataset: dataset)
-
-            let bytesProcessed = dryResult.totalBytesProcessed ?? "0"
-            let bytesBilled = dryResult.totalBytesBilled ?? "0"
-            let cacheHit = dryResult.cacheHit == true ? "Yes" : "No"
-
-            return PluginQueryResult(
-                columns: ["Metric", "Value"],
-                columnTypeNames: ["STRING", "STRING"],
-                rows: [
-                    [.text("Total Bytes Processed"), .text(formatBytes(bytesProcessed))],
-                    [.text("Total Bytes Billed"), .text(formatBytes(bytesBilled))],
-                    [.text("Cache Hit"), .text(cacheHit)],
-                    [.text("Estimated Cost (USD)"), .text(estimateCost(bytesBilled))]
-                ],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        if BigQueryQueryBuilder.isTaggedQuery(trimmed) {
-            return try await executeTaggedQuery(trimmed, conn: conn, startTime: startTime)
-        }
-
-        let dataset = lock.withLock { _currentDataset }
-        let result: BQExecuteResult
-        do {
-            result = try await conn.executeQuery(trimmed, defaultDataset: dataset)
-        } catch let error as BigQueryError {
-            if case .jobFailed(let msg) = error, msg.lowercased().contains("partition") {
-                throw BigQueryError.jobFailed(
-                    "\(msg)\n\nTip: This table requires a partition filter. Add a WHERE clause on the partition column."
-                )
-            }
-            throw error
-        }
-        let response = result.queryResponse
-
-        guard let schema = response.schema, let fields = schema.fields, !fields.isEmpty else {
-            return PluginQueryResult(
-                columns: ["Result"],
-                columnTypeNames: ["STRING"],
-                rows: [[.text("Statement executed")]],
-                rowsAffected: result.dmlAffectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
-                statusMessage: buildCostMessage(result)
-            )
-        }
-
-        let columns = fields.map(\.name)
-        let typeNames = BigQueryTypeMapper.columnTypeNames(from: schema)
-        let rows = BigQueryTypeMapper.flattenRows(from: response, schema: schema)
-
-        return PluginQueryResult(
-            columns: columns,
-            columnTypeNames: typeNames,
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
-            statusMessage: buildCostMessage(result)
-        )
-    }
-
-    // MARK: - Query Cancellation
-
-    func cancelQuery() throws {
-        connection?.cancelCurrentRequest()
-    }
-
-    func applyQueryTimeout(_ seconds: Int) async throws {
-        lock.withLock { _queryTimeoutSeconds = max(seconds, 30) }
-        connection?.setQueryTimeout(lock.withLock { _queryTimeoutSeconds })
-    }
-
-    // MARK: - Schema Operations
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let dataset = schema ?? (lock.withLock { _currentDataset })
-        guard let datasetId = dataset, !datasetId.isEmpty else {
-            Self.logger.warning("fetchTables: no dataset selected")
-            return []
-        }
-
-        let entries = try await conn.listTables(datasetId: datasetId)
-        return entries.map { entry in
-            let bqType = entry.type ?? "TABLE"
-            let tableType: String
-            switch bqType {
-            case "VIEW":
-                tableType = "VIEW"
-            case "MATERIALIZED_VIEW":
-                tableType = "MATERIALIZED_VIEW"
-            case "EXTERNAL":
-                tableType = "TABLE"
-            default:
-                tableType = "TABLE"
-            }
-            return PluginTableInfo(name: entry.tableReference.tableId, type: tableType)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let tableResource = try await cachedGetTable(datasetId: dataset, tableId: table, conn: conn)
-
-        guard let fields = tableResource.schema?.fields else { return [] }
-
-        let columnInfos = BigQueryTypeMapper.columnInfos(from: fields)
-
-        let tableSchema = BQTableSchema(fields: tableResource.schema?.fields)
-        lock.withLock {
-            _columnCache["\(dataset).\(table)"] = columnInfos.map(\.name)
-            _columnTypeCache["\(dataset).\(table)"] = BigQueryTypeMapper.columnTypeNames(from: tableSchema)
-        }
-
-        return columnInfos
-    }
-
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let tableResource = try await cachedGetTable(datasetId: dataset, tableId: table, conn: conn)
-
-        var indexes: [PluginIndexInfo] = []
-
-        if let clustering = tableResource.clustering, let fields = clustering.fields, !fields.isEmpty {
-            indexes.append(PluginIndexInfo(
-                name: "CLUSTERING",
-                columns: fields,
-                isUnique: false,
-                isPrimary: false,
-                type: "CLUSTERING"
-            ))
-        }
-
-        if let partitioning = tableResource.timePartitioning, let field = partitioning.field {
-            indexes.append(PluginIndexInfo(
-                name: "TIME_PARTITIONING",
-                columns: [field],
-                isUnique: false,
-                isPrimary: false,
-                type: "PARTITION (\(partitioning.type ?? "DAY"))"
-            ))
-        }
-
-        if let rp = tableResource.rangePartitioning, let field = rp.field {
-            let rangeDesc = rp.range.map {
-                " [\($0.start ?? "0")-\($0.end ?? "?") by \($0.interval ?? "?")]"
-            } ?? ""
-            indexes.append(PluginIndexInfo(
-                name: "RANGE_PARTITIONING",
-                columns: [field],
-                isUnique: false,
-                isPrimary: false,
-                type: "RANGE\(rangeDesc)"
-            ))
-        }
-
-        return indexes
-    }
-
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        []
-    }
-
-    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let tableResource = try await cachedGetTable(datasetId: dataset, tableId: table, conn: conn)
-
-        if let numRows = tableResource.numRows, let count = Int64(numRows) {
-            return Int(count)
-        }
-        return nil
-    }
-
-    func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let fqDataset = "`\(conn.projectId).\(dataset).INFORMATION_SCHEMA.TABLES`"
-        let sql = "SELECT ddl FROM \(fqDataset) WHERE table_name = '\(escapeStringLiteral(table))'"
-
-        let result = try await conn.executeQuery(sql, defaultDataset: dataset)
-
-        if let row = result.queryResponse.rows?.first, let cell = row.f?.first,
-           case .string(let ddl) = cell.v
-        {
-            return ddl
-        }
-
-        throw BigQueryError.invalidResponse("No DDL found for table '\(table)'")
-    }
-
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let escapedView = escapeStringLiteral(view)
-
-        // Try regular views first
-        let viewSQL = "SELECT view_definition FROM `\(conn.projectId).\(dataset).INFORMATION_SCHEMA.VIEWS` WHERE table_name = '\(escapedView)'"
-        let viewResult = try? await conn.executeQuery(viewSQL, defaultDataset: dataset)
-        if let row = viewResult?.queryResponse.rows?.first, let cell = row.f?.first,
-           case .string(let definition) = cell.v
-        {
-            return definition
-        }
-
-        // Fallback: get DDL from INFORMATION_SCHEMA.TABLES (works for materialized views too)
-        let ddlSQL = "SELECT ddl FROM `\(conn.projectId).\(dataset).INFORMATION_SCHEMA.TABLES` WHERE table_name = '\(escapedView)'"
-        let ddlResult = try await conn.executeQuery(ddlSQL, defaultDataset: dataset)
-        if let row = ddlResult.queryResponse.rows?.first, let cell = row.f?.first,
-           case .string(let ddl) = cell.v
-        {
-            return ddl
-        }
-
-        throw BigQueryError.invalidResponse("No view definition found for '\(view)'")
-    }
-
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        guard let conn = connection else { throw BigQueryError.notConnected }
-        let dataset = schema ?? (lock.withLock { _currentDataset }) ?? ""
-        let tableResource = try await cachedGetTable(datasetId: dataset, tableId: table, conn: conn)
-
-        let numRows = tableResource.numRows.flatMap { Int64($0) }
-        let numBytes = tableResource.numBytes.flatMap { Int64($0) }
-
-        var parts: [String] = []
-        if let desc = tableResource.description, !desc.isEmpty {
-            parts.append(desc)
-        }
-        if let partitioning = tableResource.timePartitioning {
-            parts.append("Partitioned: \(partitioning.field ?? "ingestion time") (\(partitioning.type ?? "DAY"))")
-        }
-        if let rp = tableResource.rangePartitioning, let field = rp.field {
-            let rangeDesc = rp.range.map { " [\($0.start ?? "0")-\($0.end ?? "?") by \($0.interval ?? "?")]" } ?? ""
-            parts.append("Range partitioned: \(field)\(rangeDesc)")
-        }
-        if let labels = tableResource.labels, !labels.isEmpty {
-            let labelStr = labels.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
-            parts.append("Labels: \(labelStr)")
-        }
-        if let exp = tableResource.expirationTime, let ms = Double(exp) {
-            let date = Date(timeIntervalSince1970: ms / 1000)
-            parts.append("Expires: \(Self.metadataDateFormatter.string(from: date))")
-        }
-        if let created = tableResource.creationTime, let ms = Double(created) {
-            let date = Date(timeIntervalSince1970: ms / 1000)
-            parts.append("Created: \(Self.metadataDateFormatter.string(from: date))")
-        }
-
-        return PluginTableMetadata(
-            tableName: table,
-            dataSize: numBytes,
-            totalSize: numBytes,
-            rowCount: numRows,
-            comment: parts.isEmpty ? nil : parts.joined(separator: " | "),
-            engine: tableResource.type
-        )
-    }
-
-    func fetchDatabases() async throws -> [String] {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-        return [conn.projectId]
-    }
-
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let datasets = try await conn.listDatasets()
-        return PluginDatabaseMetadata(
-            name: database,
-            tableCount: datasets.count
-        )
-    }
-
-    // MARK: - NoSQL Query Building Hooks
-
-    func buildBrowseQuery(
-        table: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        buildBrowseQuery(
-            table: table, schema: nil, sortColumns: sortColumns,
-            columns: columns, limit: limit, offset: offset
-        )
-    }
-
-    func buildBrowseQuery(
-        table: String,
-        schema: String?,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let dataset: String = lock.withLock {
-            let ds = schema ?? _currentDataset ?? ""
-            _columnCache["\(ds).\(table)"] = columns
-            return ds
-        }
-        return BigQueryQueryBuilder.encodeBrowseQuery(
-            table: table, dataset: dataset,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
-    func buildFilteredQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        buildFilteredQuery(
-            table: table, schema: nil, filters: filters, logicMode: logicMode,
-            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
-        )
-    }
-
-    func buildFilteredQuery(
-        table: String,
-        schema: String?,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let dataset: String = lock.withLock {
-            let ds = schema ?? _currentDataset ?? ""
-            _columnCache["\(ds).\(table)"] = columns
-            return ds
-        }
-        return BigQueryQueryBuilder.encodeFilteredQuery(
-            table: table, dataset: dataset,
-            filters: filters, logicMode: logicMode,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
-    // MARK: - Statement Generation
-
-    func generateStatements(
-        table: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        changes: [PluginRowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        guard let conn = connection else { return nil }
-
-        let dataset = lock.withLock { _currentDataset } ?? ""
-
-        // Block DML on external tables
-        let tableType: String? = lock.withLock {
-            _tableSchemaCache["\(dataset).\(table)"]?.resource.type
-        }
-        if tableType?.uppercased() == "EXTERNAL" {
-            Self.logger.warning("DML not supported on external table '\(table)'")
-            return nil
-        }
-
-        let typeNames: [String] = lock.withLock {
-            let cacheKey = "\(dataset).\(table)"
-            if let cached = _columnTypeCache[cacheKey] {
-                return cached
-            }
-            if let resource = _tableSchemaCache[cacheKey]?.resource,
-               let fields = resource.schema?.fields
-            {
-                return BigQueryTypeMapper.columnTypeNames(from: BQTableSchema(fields: fields))
-            }
-            return columns.map { _ in "STRING" }
-        }
-
-        let generator = BigQueryStatementGenerator(
-            projectId: conn.projectId,
-            dataset: dataset,
-            tableName: table,
-            columns: columns,
-            columnTypeNames: typeNames
-        )
-
-        return generator.generateStatements(
-            from: changes,
-            insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
-        )
-    }
-
-    // MARK: - Streaming
-
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            let streamTask = Task {
-                do {
-                    try await self.performStreamRows(query: query, continuation: continuation)
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
-        }
-    }
-
-    private func performStreamRows(
-        query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
-        guard let conn = connection else {
-            throw BigQueryError.notConnected
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dataset = lock.withLock { _currentDataset }
-
-        let sql: String
-        if BigQueryQueryBuilder.isTaggedQuery(trimmed) {
-            guard let params = BigQueryQueryBuilder.decode(trimmed) else {
-                throw BigQueryError.invalidResponse("Failed to decode tagged query")
-            }
-            let resolvedDataset = resolveDataset(from: params)
-            let columns = lock.withLock { _columnCache["\(resolvedDataset).\(params.table)"] } ?? []
-            let resolvedParams = BigQueryQueryParams(
-                table: params.table, dataset: resolvedDataset, sortColumns: params.sortColumns,
-                limit: params.limit, offset: params.offset, filters: params.filters,
-                logicMode: params.logicMode, searchText: params.searchText, searchColumns: params.searchColumns
-            )
-            sql = BigQueryQueryBuilder.buildSQL(
-                from: resolvedParams, projectId: conn.projectId, columns: columns
-            )
-        } else {
-            sql = trimmed.replacingOccurrences(
-                of: ";\\s*\\z", with: "", options: .regularExpression
-            )
-        }
-
-        let jobInfo = try await conn.executeJobAndWait(sql, defaultDataset: dataset)
-        defer { conn.clearCurrentJob() }
-
-        let firstPage = try await conn.getQueryResults(
-            jobId: jobInfo.jobId, location: jobInfo.location
-        )
-
-        guard let schema = firstPage.schema, let fields = schema.fields, !fields.isEmpty else {
-            continuation.yield(.header(PluginStreamHeader(
-                columns: ["Result"],
-                columnTypeNames: ["STRING"],
-                estimatedRowCount: nil
-            )))
-            continuation.finish()
-            return
-        }
-
-        let columns = fields.map(\.name)
-        let typeNames = BigQueryTypeMapper.columnTypeNames(from: schema)
-        let estimatedCount = firstPage.totalRows.flatMap { Int($0) }
-
-        continuation.yield(.header(PluginStreamHeader(
-            columns: columns,
-            columnTypeNames: typeNames,
-            estimatedRowCount: estimatedCount
-        )))
-
-        let flatRows = BigQueryTypeMapper.flattenRows(from: firstPage, schema: schema)
-        if !flatRows.isEmpty {
-            continuation.yield(.rows(flatRows))
-        }
-
-        var pageToken = firstPage.pageToken
-
-        while let token = pageToken {
-            try Task.checkCancellation()
-
-            let nextPage = try await conn.getQueryResults(
-                jobId: jobInfo.jobId, location: jobInfo.location, pageToken: token
-            )
-
-            let nextRows = BigQueryTypeMapper.flattenRows(from: nextPage, schema: schema)
-            if !nextRows.isEmpty {
-                continuation.yield(.rows(nextRows))
-            }
-
-            pageToken = nextPage.pageToken
-        }
-
-        continuation.finish()
+        guard let projectId, let keyword = Self.droppableObjectKeyword(objectType) else { return nil }
+        return "DROP \(keyword) IF EXISTS \(qualifiedTable(name, schema: schema, projectId: projectId))"
     }
 
     func buildExplainQuery(_ sql: String) -> String? {
@@ -726,212 +134,396 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         "CREATE OR REPLACE VIEW \(quoteIdentifier(viewName)) AS\nSELECT * FROM table_name;"
     }
 
-    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
-        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
-    }
-
-    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        guard let conn = connection else { throw BigQueryError.notConnected }
-        let escaped = request.name.replacingOccurrences(of: "`", with: "\\`")
-        _ = try await conn.executeQuery("CREATE SCHEMA `\(escaped)`")
-    }
-
-    func dropDatabase(name: String) async throws {
-        guard let conn = connection else { throw BigQueryError.notConnected }
-        let escaped = name.replacingOccurrences(of: "`", with: "\\`")
-        _ = try await conn.executeQuery("DROP SCHEMA `\(escaped)`")
-    }
-
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        guard let conn = connection else { return nil }
-        let dataset = lock.withLock { _currentDataset } ?? ""
-        let fqTable = "`\(conn.projectId).\(dataset).\(table)`"
-        var sql = "ALTER TABLE \(fqTable) ADD COLUMN \(quoteIdentifier(column.name)) \(column.dataType)"
+        guard let projectId else { return nil }
+        var sql = "ALTER TABLE \(qualifiedTable(table, schema: nil, projectId: projectId)) "
+            + "ADD COLUMN \(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable {
             sql += " NOT NULL"
         }
         if let comment = column.comment, !comment.isEmpty {
-            sql += " OPTIONS(description='\(escapeStringLiteral(comment))')"
+            sql += " OPTIONS(description=\(GoogleSQLLiteral.quotedString(comment)))"
         }
         return sql
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        guard let conn = connection else { return nil }
-        let dataset = lock.withLock { _currentDataset } ?? ""
-        let fqTable = "`\(conn.projectId).\(dataset).\(table)`"
-        return "ALTER TABLE \(fqTable) DROP COLUMN \(quoteIdentifier(columnName))"
+        guard let projectId else { return nil }
+        return "ALTER TABLE \(qualifiedTable(table, schema: nil, projectId: projectId)) "
+            + "DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
     func allTablesMetadataSQL(schema: String?) -> String? {
         nil
     }
 
-    // MARK: - Bulk Column Fetch
+    private static func droppableObjectKeyword(_ objectType: String) -> String? {
+        let keyword = objectType.uppercased()
+        switch keyword {
+        case "TABLE", "VIEW", "MATERIALIZED VIEW", "EXTERNAL TABLE", "FUNCTION", "PROCEDURE", "TABLE FUNCTION":
+            return keyword
+        default:
+            return nil
+        }
+    }
+
+    func connect() async throws {
+        let conn: BigQueryConnection
+        do {
+            conn = BigQueryConnection(
+                credentials: try BigQueryCredentialFactory.credentials(config: config),
+                location: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.location]),
+                maximumBytesBilled: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.maximumBytesBilled])
+            )
+            if let timeout = lock.withLock({ _queryTimeoutSeconds }) {
+                conn.setQueryTimeout(timeout)
+            }
+            try await conn.connect()
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+
+        lock.withLock {
+            _connection = conn
+            _projectId = conn.projectId
+            _serverVersion = Self.serverVersionName
+        }
+
+        do {
+            let datasets = try await fetchSchemas()
+            let firstUserDataset = datasets.first { !$0.uppercased().contains("INFORMATION_SCHEMA") }
+            if let firstUserDataset {
+                lock.withLock {
+                    if _currentDataset == nil {
+                        _currentDataset = firstUserDataset
+                    }
+                }
+            }
+        } catch {
+            Self.logger.info("Could not auto-select a dataset: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func disconnect() {
+        runningStatements.cancelAll()
+        let closing: BigQueryConnection? = lock.withLock {
+            let current = _connection
+            _connection = nil
+            _tableSchemaCache.removeAll()
+            _currentDataset = nil
+            return current
+        }
+        parameterTypes.removeAll()
+        closing?.disconnect()
+    }
+
+    func ping() async throws {
+        do {
+            try await requireConnection().ping()
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+    }
+
+    func fetchSchemas() async throws -> [String] {
+        do {
+            return try await requireConnection().listDatasets()
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+    }
+
+    func switchSchema(to schema: String) async throws {
+        lock.withLock { _currentDataset = schema }
+    }
+
+    func fetchDatabases() async throws -> [String] {
+        let conn = try requireConnection()
+        return [conn.projectId]
+    }
+
+    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
+        let datasets = try await fetchSchemas()
+        return PluginDatabaseMetadata(name: database, tableCount: datasets.count)
+    }
+
+    func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        PluginCreateDatabaseFormSpec(fields: [], footnote: nil)
+    }
+
+    func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        _ = try await execute(query: "CREATE SCHEMA \(quoteIdentifier(request.name))")
+    }
+
+    func dropDatabase(name: String) async throws {
+        _ = try await execute(query: "DROP SCHEMA \(quoteIdentifier(name))")
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        let datasetId = dataset(for: schema)
+        guard !datasetId.isEmpty else {
+            Self.logger.warning("fetchTables: no dataset selected")
+            return []
+        }
+        do {
+            let entries = try await requireConnection().listTables(datasetId: datasetId)
+            return entries
+                .map { PluginTableInfo(name: $0.tableReference.tableId, type: Self.tableType(for: $0.type)) }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+    }
+
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
+        let resource = try await cachedTable(datasetId: dataset(for: schema), tableId: table)
+        guard let fields = resource.schema?.fields else { return [] }
+        return BigQueryTypeMapper.columnInfos(from: fields, primaryKey: resource.primaryKeyColumns)
+    }
+
+    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
+        let resource = try await cachedTable(datasetId: dataset(for: schema), tableId: table)
+        var indexes: [PluginIndexInfo] = []
+
+        if let fields = resource.clustering?.fields, !fields.isEmpty {
+            indexes.append(PluginIndexInfo(
+                name: "CLUSTERING",
+                columns: fields,
+                isUnique: false,
+                isPrimary: false,
+                type: "CLUSTERING"
+            ))
+        }
+
+        if let partitioning = resource.timePartitioning, let field = partitioning.field {
+            indexes.append(PluginIndexInfo(
+                name: "TIME_PARTITIONING",
+                columns: [field],
+                isUnique: false,
+                isPrimary: false,
+                type: "PARTITION (\(partitioning.type ?? "DAY"))"
+            ))
+        }
+
+        if let rangePartitioning = resource.rangePartitioning, let field = rangePartitioning.field {
+            indexes.append(PluginIndexInfo(
+                name: "RANGE_PARTITIONING",
+                columns: [field],
+                isUnique: false,
+                isPrimary: false,
+                type: "RANGE\(Self.rangeDescription(rangePartitioning))"
+            ))
+        }
+
+        return indexes
+    }
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
+        []
+    }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        let resource = try await cachedTable(datasetId: dataset(for: schema), tableId: table)
+        return resource.numRows.flatMap { Int64($0) }.map { Int($0) }
+    }
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        let datasetId = dataset(for: schema)
+        let sql = try informationSchemaQuery(
+            column: "ddl",
+            view: "TABLES",
+            datasetId: datasetId,
+            objectName: table
+        )
+        guard let ddl = try await firstText(of: sql, datasetId: datasetId) else {
+            throw BigQueryError.ddlNotFound(table)
+        }
+        return ddl
+    }
+
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
+        let datasetId = dataset(for: schema)
+        let viewSQL = try informationSchemaQuery(
+            column: "view_definition",
+            view: "VIEWS",
+            datasetId: datasetId,
+            objectName: view
+        )
+        if let definition = try? await firstText(of: viewSQL, datasetId: datasetId) {
+            return definition
+        }
+        let ddlSQL = try informationSchemaQuery(column: "ddl", view: "TABLES", datasetId: datasetId, objectName: view)
+        guard let ddl = try await firstText(of: ddlSQL, datasetId: datasetId) else {
+            throw BigQueryError.viewDefinitionNotFound(view)
+        }
+        return ddl
+    }
+
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        let resource = try await cachedTable(datasetId: dataset(for: schema), tableId: table)
+        let numBytes = resource.numBytes.flatMap { Int64($0) }
+        let parts = Self.metadataSummary(resource)
+        return PluginTableMetadata(
+            tableName: table,
+            dataSize: numBytes,
+            totalSize: numBytes,
+            rowCount: resource.numRows.flatMap { Int64($0) },
+            comment: parts.isEmpty ? nil : parts.joined(separator: " | "),
+            engine: resource.type
+        )
+    }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        guard let conn = connection else { throw BigQueryError.notConnected }
-        let dataset = schema ?? lock.withLock { _currentDataset } ?? ""
-        guard !dataset.isEmpty else { return [:] }
-
+        let datasetId = dataset(for: schema)
+        guard !datasetId.isEmpty else { return [:] }
         do {
-            let query = """
-                SELECT table_name, column_name, data_type, is_nullable
-                FROM `\(conn.projectId).\(dataset).INFORMATION_SCHEMA.COLUMNS`
-                ORDER BY table_name, ordinal_position
-                """
-
-            let result = try await conn.executeQuery(query, defaultDataset: dataset)
-            let response = result.queryResponse
-            guard let rows = response.rows else { return [:] }
-
-            var allColumns: [String: [PluginColumnInfo]] = [:]
-            for row in rows {
-                guard let cells = row.f, cells.count >= 4 else { continue }
-                let tableName: String
-                let colName: String
-                let dataType: String
-                let nullable: String
-
-                if case .string(let t) = cells[0].v { tableName = t } else { continue }
-                if case .string(let c) = cells[1].v { colName = c } else { continue }
-                if case .string(let d) = cells[2].v { dataType = d } else { continue }
-                if case .string(let n) = cells[3].v { nullable = n } else { continue }
-
-                let info = PluginColumnInfo(
-                    name: colName,
-                    dataType: dataType,
-                    isNullable: nullable.uppercased() == "YES",
-                    isPrimaryKey: false
-                )
-                allColumns[tableName, default: []].append(info)
-            }
-
-            return allColumns
+            return try await bulkColumns(datasetId: datasetId)
         } catch {
-            Self.logger.info("Bulk column fetch failed, falling back to per-table: \(error.localizedDescription)")
-            let tables = try await fetchTables(schema: schema)
-            var result: [String: [PluginColumnInfo]] = [:]
-            for table in tables {
-                result[table.name] = try await fetchColumns(table: table.name, schema: schema)
+            Self.logger.info(
+                "Bulk column fetch failed, reading tables one by one: \(error.localizedDescription, privacy: .public)"
+            )
+            var columns: [String: [PluginColumnInfo]] = [:]
+            for table in try await fetchTables(schema: schema) {
+                columns[table.name] = try await fetchColumns(table: table.name, schema: schema)
             }
-            return result
+            return columns
         }
     }
 
-    // MARK: - Private Helpers
-
-    /// Resolve the dataset from tagged query params, falling back to _currentDataset.
-    /// Needed because tagged queries may be built by a probe driver (no connection state).
-    private func resolveDataset(from params: BigQueryQueryParams) -> String {
-        let encoded = params.dataset
-        if !encoded.isEmpty { return encoded }
-        return lock.withLock { _currentDataset } ?? ""
+    private func bulkColumns(datasetId: String) async throws -> [String: [PluginColumnInfo]] {
+        let conn = try requireConnection()
+        let source = BigQueryQueryBuilder.qualifiedTable(
+            projectId: conn.projectId,
+            dataset: datasetId,
+            table: "INFORMATION_SCHEMA"
+        ) + ".COLUMNS"
+        let sql = """
+            SELECT table_name, column_name, data_type, is_nullable
+            FROM \(source)
+            ORDER BY table_name, ordinal_position
+            """
+        let result = try await conn.executeQuery(sql, defaultDataset: datasetId)
+        var columns: [String: [PluginColumnInfo]] = [:]
+        for row in result.queryResponse.rows ?? [] {
+            let cells = row.f ?? []
+            guard cells.count >= 4,
+                  case .string(let tableName) = cells[0].v,
+                  case .string(let columnName) = cells[1].v,
+                  case .string(let dataType) = cells[2].v,
+                  case .string(let nullable) = cells[3].v
+            else { continue }
+            columns[tableName, default: []].append(PluginColumnInfo(
+                name: columnName,
+                dataType: dataType,
+                isNullable: nullable.uppercased() == "YES",
+                isPrimaryKey: false
+            ))
+        }
+        return columns
     }
 
-    private func executeTaggedQuery(
-        _ query: String,
-        conn: BigQueryConnection,
-        startTime: Date
-    ) async throws -> PluginQueryResult {
-        guard let params = BigQueryQueryBuilder.decode(query) else {
-            throw BigQueryError.invalidResponse("Failed to decode tagged query")
-        }
-
-        let dataset = resolveDataset(from: params)
-        let columns = lock.withLock { _columnCache["\(dataset).\(params.table)"] } ?? []
-        let resolvedParams = BigQueryQueryParams(
-            table: params.table, dataset: dataset, sortColumns: params.sortColumns,
-            limit: params.limit, offset: params.offset, filters: params.filters,
-            logicMode: params.logicMode, searchText: params.searchText, searchColumns: params.searchColumns
-        )
-        let sql = BigQueryQueryBuilder.buildSQL(
-            from: resolvedParams, projectId: conn.projectId, columns: columns
-        )
-
-        let result: BQExecuteResult
-        do {
-            result = try await conn.executeQuery(sql, defaultDataset: dataset)
-        } catch let error as BigQueryError {
-            if case .jobFailed(let msg) = error, msg.lowercased().contains("partition") {
-                throw BigQueryError.jobFailed(
-                    "\(msg)\n\nTip: This table requires a partition filter. Add a WHERE clause on the partition column."
-                )
-            }
-            throw error
-        }
-
-        guard let schema = result.queryResponse.schema, let fields = schema.fields else {
-            return PluginQueryResult.empty
-        }
-
-        let colNames = fields.map(\.name)
-        let typeNames = BigQueryTypeMapper.columnTypeNames(from: schema)
-        let rows = BigQueryTypeMapper.flattenRows(from: result.queryResponse, schema: schema)
-
-        lock.withLock { _columnCache["\(params.dataset).\(params.table)"] = colNames }
-
-        return PluginQueryResult(
-            columns: colNames,
-            columnTypeNames: typeNames,
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
-            statusMessage: buildCostMessage(result)
-        )
-    }
-
-    private func cachedGetTable(
+    private func informationSchemaQuery(
+        column: String,
+        view: String,
         datasetId: String,
-        tableId: String,
-        conn: BigQueryConnection
-    ) async throws -> BQTableResource {
+        objectName: String
+    ) throws -> String {
+        let conn = try requireConnection()
+        let source = BigQueryQueryBuilder.qualifiedTable(
+            projectId: conn.projectId,
+            dataset: datasetId,
+            table: "INFORMATION_SCHEMA"
+        ) + ".\(view)"
+        return "SELECT \(column) FROM \(source) WHERE table_name = \(GoogleSQLLiteral.quotedString(objectName))"
+    }
+
+    private func firstText(of sql: String, datasetId: String) async throws -> String? {
+        do {
+            let result = try await requireConnection().executeQuery(sql, defaultDataset: datasetId)
+            guard let cell = result.queryResponse.rows?.first?.f?.first, case .string(let text) = cell.v else {
+                return nil
+            }
+            return text
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+    }
+
+    func cachedTableFields(datasetId: String, tableId: String) -> [BQTableFieldSchema]? {
+        lock.withLock { _tableSchemaCache["\(datasetId).\(tableId)"]?.resource.schema?.fields }
+    }
+
+    func cachedTable(datasetId: String, tableId: String) async throws -> BQTableResource {
         let cacheKey = "\(datasetId).\(tableId)"
         let cached: CachedResource? = lock.withLock { _tableSchemaCache[cacheKey] }
         if let cached, Date().timeIntervalSince(cached.cachedAt) < Self.cacheTTL {
             return cached.resource
         }
+        do {
+            let resource = try await requireConnection().getTable(datasetId: datasetId, tableId: tableId)
+            lock.withLock {
+                _tableSchemaCache[cacheKey] = CachedResource(resource: resource, cachedAt: Date())
+            }
+            return resource
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+    }
 
-        let resource = try await conn.getTable(datasetId: datasetId, tableId: tableId)
+    func storeQueryTimeout(_ seconds: Int) -> BigQueryConnection? {
         lock.withLock {
-            _tableSchemaCache[cacheKey] = CachedResource(resource: resource, cachedAt: Date())
+            _queryTimeoutSeconds = seconds
+            return _connection
         }
-        return resource
     }
 
-    private func buildCostMessage(_ result: BQExecuteResult) -> String? {
-        guard let processed = result.totalBytesProcessed, processed != "0" else { return nil }
+    private static func tableType(for bigQueryType: String?) -> String {
+        switch bigQueryType {
+        case "VIEW":
+            return "VIEW"
+        case "MATERIALIZED_VIEW":
+            return "MATERIALIZED_VIEW"
+        default:
+            return "TABLE"
+        }
+    }
+
+    private static func rangeDescription(_ partitioning: BQTableResource.BQRangePartitioning) -> String {
+        guard let range = partitioning.range else { return "" }
+        return " [\(range.start ?? "0")-\(range.end ?? "?") by \(range.interval ?? "?")]"
+    }
+
+    private static func metadataSummary(_ resource: BQTableResource) -> [String] {
         var parts: [String] = []
-        parts.append("Processed: \(formatBytes(processed))")
-        if let billed = result.totalBytesBilled, billed != "0" {
-            parts.append("Billed: \(formatBytes(billed))")
-            parts.append(estimateCost(billed))
+        if let description = resource.description, !description.isEmpty {
+            parts.append(description)
         }
-        if result.cacheHit == true {
-            parts.append("(cached)")
+        if let partitioning = resource.timePartitioning {
+            parts.append("Partitioned: \(partitioning.field ?? "ingestion time") (\(partitioning.type ?? "DAY"))")
         }
-        return parts.joined(separator: " | ")
+        if let rangePartitioning = resource.rangePartitioning, let field = rangePartitioning.field {
+            parts.append("Range partitioned: \(field)\(rangeDescription(rangePartitioning))")
+        }
+        if let labels = resource.labels, !labels.isEmpty {
+            parts.append("Labels: " + labels.map { "\($0.key)=\($0.value)" }.joined(separator: ", "))
+        }
+        if let expiration = resource.expirationTime.flatMap(Double.init) {
+            parts.append("Expires: \(formattedDate(milliseconds: expiration))")
+        }
+        if let created = resource.creationTime.flatMap(Double.init) {
+            parts.append("Created: \(formattedDate(milliseconds: created))")
+        }
+        return parts
     }
 
-    private func formatBytes(_ bytesStr: String) -> String {
-        guard let bytes = Int64(bytesStr), bytes > 0 else { return "0 B" }
-        let units = ["B", "KB", "MB", "GB", "TB"]
-        var value = Double(bytes)
-        var unitIndex = 0
-        while value >= 1024 && unitIndex < units.count - 1 {
-            value /= 1024
-            unitIndex += 1
-        }
-        if unitIndex == 0 { return "\(bytes) B" }
-        return String(format: "%.2f %@", value, units[unitIndex])
+    private static func formattedDate(milliseconds: Double) -> String {
+        metadataDateFormatter.string(from: Date(timeIntervalSince1970: milliseconds / 1_000))
     }
 
-    private func estimateCost(_ bytesBilledStr: String) -> String {
-        guard let bytes = Int64(bytesBilledStr), bytes > 0 else { return "~$0.00" }
-        // BigQuery on-demand pricing: $6.25 per TB
-        let tb = Double(bytes) / (1024 * 1024 * 1024 * 1024)
-        let cost = tb * 6.25
-        if cost < 0.01 { return "~$0.01" }
-        return String(format: "~$%.4f", cost)
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }

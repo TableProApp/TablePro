@@ -74,6 +74,7 @@ struct StoredConnection: Codable {
 
     // SSH tunnel mode (v2 JSON blob preserving jump hosts + profile links)
     let sshTunnelModeJson: Data?
+    let credentialModeJson: Data?
 
     // Cloudflare Access TCP tunnel mode (JSON blob)
     let cloudflareTunnelModeJson: Data?
@@ -83,6 +84,9 @@ struct StoredConnection: Codable {
 
     // SOCKS proxy mode (JSON blob)
     let socksProxyModeJson: Data?
+
+    // Tunnel command mode (JSON blob)
+    let tunnelCommandModeJson: Data?
 
     // Plugin-driven additional fields
     let additionalFields: [String: String]?
@@ -123,7 +127,7 @@ struct StoredConnection: Codable {
         self.groupId = connection.groupId?.uuidString
         self.sshProfileId = connection.sshProfileId?.uuidString
 
-        self.safeModeLevel = connection.safeModeLevel.rawValue
+        self.safeModeLevel = connection.preferredSafeModeLevel.rawValue
 
         self.externalAccess = connection.externalAccess.rawValue
 
@@ -155,6 +159,7 @@ struct StoredConnection: Codable {
 
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
+        self.credentialModeJson = try? JSONEncoder().encode(connection.credentialMode)
 
         // Cloudflare tunnel mode (only persisted when enabled)
         self.cloudflareTunnelModeJson = connection.isCloudflareEnabled
@@ -169,6 +174,11 @@ struct StoredConnection: Codable {
         // SOCKS proxy mode (only persisted when enabled)
         self.socksProxyModeJson = connection.isSOCKSProxyEnabled
             ? (try? JSONEncoder().encode(connection.socksProxyMode))
+            : nil
+
+        // Tunnel command mode (only persisted when enabled)
+        self.tunnelCommandModeJson = connection.isTunnelCommandEnabled
+            ? (try? JSONEncoder().encode(connection.tunnelCommandMode))
             : nil
 
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
@@ -193,9 +203,11 @@ struct StoredConnection: Codable {
         case mongoAuthSource, mongoReadPreference, mongoWriteConcern, redisDatabase
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
         case sshTunnelModeJson
+        case credentialModeJson
         case cloudflareTunnelModeJson
         case cloudSQLProxyModeJson
         case socksProxyModeJson
+        case tunnelCommandModeJson
         case additionalFields
         case localOnly
         case isSample
@@ -241,9 +253,11 @@ struct StoredConnection: Codable {
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
+        try container.encodeIfPresent(credentialModeJson, forKey: .credentialModeJson)
         try container.encodeIfPresent(cloudflareTunnelModeJson, forKey: .cloudflareTunnelModeJson)
         try container.encodeIfPresent(cloudSQLProxyModeJson, forKey: .cloudSQLProxyModeJson)
         try container.encodeIfPresent(socksProxyModeJson, forKey: .socksProxyModeJson)
+        try container.encodeIfPresent(tunnelCommandModeJson, forKey: .tunnelCommandModeJson)
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
@@ -317,9 +331,11 @@ struct StoredConnection: Codable {
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
+        credentialModeJson = try container.decodeIfPresent(Data.self, forKey: .credentialModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         cloudSQLProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudSQLProxyModeJson)
         socksProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .socksProxyModeJson)
+        tunnelCommandModeJson = try container.decodeIfPresent(Data.self, forKey: .tunnelCommandModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
         passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
@@ -341,6 +357,9 @@ struct StoredConnection: Codable {
         sshConfig.totpAlgorithm = TOTPAlgorithm(rawValue: totpAlgorithm) ?? .sha1
         sshConfig.totpDigits = totpDigits
         sshConfig.totpPeriod = totpPeriod
+
+        let resolvedCredentialMode: CredentialMode = credentialModeJson
+            .flatMap { try? JSONDecoder().decode(CredentialMode.self, from: $0) } ?? .inline
 
         // Prefer sshTunnelModeJson (v2 format) over legacy flat fields
         let resolvedTunnelMode: SSHTunnelMode
@@ -381,6 +400,14 @@ struct StoredConnection: Codable {
             resolvedSOCKSProxyMode = decoded
         } else {
             resolvedSOCKSProxyMode = .disabled
+        }
+
+        let resolvedTunnelCommandMode: TunnelCommandMode
+        if let json = tunnelCommandModeJson,
+           let decoded = try? JSONDecoder().decode(TunnelCommandMode.self, from: json) {
+            resolvedTunnelCommandMode = decoded
+        } else {
+            resolvedTunnelCommandMode = .disabled
         }
 
         var resolvedSSLCaPath = sslCaCertificatePath
@@ -441,9 +468,11 @@ struct StoredConnection: Codable {
             groupId: parsedGroupId,
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
+            credentialMode: resolvedCredentialMode,
             cloudflareTunnelMode: resolvedCloudflareMode,
             cloudSQLProxyMode: resolvedCloudSQLProxyMode,
             socksProxyMode: resolvedSOCKSProxyMode,
+            tunnelCommandMode: resolvedTunnelCommandMode,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
             aiPolicy: parsedAIPolicy,
             aiRules: aiRules,

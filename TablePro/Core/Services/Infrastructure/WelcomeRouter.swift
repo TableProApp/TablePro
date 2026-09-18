@@ -6,7 +6,6 @@
 import AppKit
 import Combine
 import Foundation
-import Observation
 import TableProImport
 
 internal struct PendingConnectionError {
@@ -30,23 +29,24 @@ internal enum WelcomeRequest {
     case exportConnections
     case importConnections
     case importFromApp
+    case importFromAWS
     case importFromURL
     case openProjectFolder
+    case showWelcomeSheet
 }
 
 @MainActor
-@Observable
-internal final class WelcomeRouter {
+internal final class WelcomeRouter: ObservableObject {
     internal static let shared = WelcomeRouter()
 
-    private(set) var pendingRequest: WelcomeRequest?
-    private(set) var pendingImport: ExportableConnection?
-    private(set) var pendingConnectionShare: URL?
-    private(set) var pendingSQLFiles: [URL] = []
-    private(set) var pendingError: PendingConnectionError?
-    private(set) var pendingPluginInstall: DatabaseConnection?
+    @Published private(set) var pendingRequest: WelcomeRequest?
+    @Published private(set) var pendingImport: ExportableConnection?
+    @Published private(set) var pendingConnectionShare: URL?
+    @Published private(set) var pendingSQLFiles: [URL] = []
+    @Published private(set) var pendingError: PendingConnectionError?
+    @Published private(set) var pendingPluginInstall: DatabaseConnection?
 
-    @ObservationIgnored private var databaseDidConnectCancellable: AnyCancellable?
+    private var databaseDidConnectCancellable: AnyCancellable?
 
     internal init(appEvents: AppEvents = .shared) {
         databaseDidConnectCancellable = appEvents.databaseDidConnect

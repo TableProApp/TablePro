@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Type Classifier")
 struct ColumnTypeClassifierTests {
@@ -21,9 +22,26 @@ struct ColumnTypeClassifierTests {
         return false
     }
 
+    private func isJson(_ type: ColumnType) -> Bool {
+        if case .json = type { return true }
+        return false
+    }
+
     private func isInteger(_ type: ColumnType) -> Bool {
         if case .integer = type { return true }
         return false
+    }
+
+    // MARK: - Nested Types
+
+    @Test("Nested container types classify as JSON", arguments: ["ARRAY", "MAP", "ROW", "STRUCT"])
+    func nestedContainersAreJson(rawTypeName: String) {
+        #expect(isJson(classifier.classify(rawTypeName: rawTypeName)))
+    }
+
+    @Test("struct classifies as JSON regardless of case")
+    func lowercaseStructIsJson() {
+        #expect(isJson(classifier.classify(rawTypeName: "struct")))
     }
 
     private func isDecimal(_ type: ColumnType) -> Bool {
@@ -191,6 +209,21 @@ struct ColumnTypeClassifierTests {
         @Test("SMALLINT classifies as integer")
         func smallint() {
             #expect(isInteger(classifier.classify(rawTypeName: "SMALLINT")))
+        }
+
+        @Test("The catalog's INT UNSIGNED classifies as integer and keeps its raw spelling")
+        func intUnsignedIsInteger() {
+            #expect(classifier.classify(rawTypeName: "INT UNSIGNED") == .integer(rawType: "INT UNSIGNED"))
+        }
+
+        @Test("Trailing UNSIGNED, SIGNED and ZEROFILL never decide the type")
+        func trailingAttributesAreIgnored() {
+            #expect(isInteger(classifier.classify(rawTypeName: "BIGINT UNSIGNED")))
+            #expect(isInteger(classifier.classify(rawTypeName: "int(10) unsigned zerofill")))
+            #expect(isInteger(classifier.classify(rawTypeName: "TINYINT SIGNED")))
+            #expect(isDecimal(classifier.classify(rawTypeName: "DECIMAL(10,2) UNSIGNED")))
+            #expect(isDecimal(classifier.classify(rawTypeName: "DOUBLE UNSIGNED")))
+            #expect(classifier.classify(rawTypeName: "TINYINT(1) UNSIGNED").isBooleanType)
         }
 
         @Test("ENUM('a','b','c') classifies as enum")
@@ -930,6 +963,213 @@ struct ColumnTypeClassifierTests {
         @Test("varchar(255) classifies as text")
         func varcharIsText() {
             #expect(isText(classifier.classify(rawTypeName: "varchar(255)")))
+        }
+    }
+
+    @Suite("Array Types")
+    struct ArrayTypes {
+        private let classifier = ColumnTypeClassifier()
+
+        private func element(_ rawTypeName: String) -> ColumnType? {
+            classifier.classify(rawTypeName: rawTypeName).arrayElement
+        }
+
+        @Test("A bracket suffix classifies the element type")
+        func classifiesElementType() {
+            #expect(element("text[]") == .text(rawType: "text"))
+            #expect(element("integer[]") == .integer(rawType: "integer"))
+            #expect(element("numeric[]") == .decimal(rawType: "numeric"))
+            #expect(element("boolean[]") == .boolean(rawType: "boolean"))
+            #expect(element("timestamptz[]") == .timestamp(rawType: "timestamptz"))
+            #expect(element("uuid[]") == .text(rawType: "uuid"))
+        }
+
+        @Test("An enum array keeps the element's enum classification")
+        func classifiesEnumArray() {
+            #expect(element("ENUM[]")?.isEnumType == true)
+            #expect(element("ENUM[](mood)")?.isEnumType == true)
+        }
+
+        @Test("The raw type name survives classification")
+        func preservesRawTypeName() {
+            #expect(classifier.classify(rawTypeName: "ENUM[](mood)").rawType == "ENUM[](mood)")
+            #expect(classifier.classify(rawTypeName: "text[]").rawType == "text[]")
+        }
+
+        @Test("Element editing is offered for scalar and JSON elements")
+        func gatesElementEditing() {
+            #expect(classifier.classify(rawTypeName: "ENUM[]").supportsElementEditing)
+            #expect(classifier.classify(rawTypeName: "text[]").supportsElementEditing)
+            #expect(classifier.classify(rawTypeName: "integer[]").supportsElementEditing)
+            #expect(classifier.classify(rawTypeName: "jsonb[]").supportsElementEditing)
+            #expect(!classifier.classify(rawTypeName: "bytea[]").supportsElementEditing)
+            #expect(!classifier.classify(rawTypeName: "text").supportsElementEditing)
+        }
+
+        @Test("The element type picks which editor its elements get")
+        func namesElementEditor() {
+            #expect(classifier.classify(rawTypeName: "jsonb[]").arrayElementEditor == .json)
+            #expect(classifier.classify(rawTypeName: "json[]").arrayElementEditor == .json)
+            #expect(classifier.classify(rawTypeName: "text[]").arrayElementEditor == .scalar)
+            #expect(classifier.classify(rawTypeName: "integer[]").arrayElementEditor == .scalar)
+            #expect(classifier.classify(rawTypeName: "ENUM[]").arrayElementEditor == .scalar)
+            #expect(classifier.classify(rawTypeName: "bytea[]").arrayElementEditor == nil)
+            #expect(classifier.classify(rawTypeName: "geometry[]").arrayElementEditor == nil)
+            #expect(classifier.classify(rawTypeName: "jsonb").arrayElementEditor == nil)
+        }
+
+        /// The badge vocabulary is semantic rather than the SQL spelling, so `jsonb[]` badges as
+        /// `json[]` exactly as scalar `jsonb` badges as `json`. #2897 read that as a lost `b`.
+        @Test("A jsonb array keeps its raw type name behind the semantic badge")
+        func keepsRawTypeBehindBadge() {
+            let type = classifier.classify(rawTypeName: "jsonb[]")
+            #expect(type.rawType == "jsonb[]")
+            #expect(type.badgeLabel == "json[]")
+            #expect(classifier.classify(rawTypeName: "jsonb").badgeLabel == "json")
+        }
+
+        @Test("Array badges and display names name the element")
+        func describesElement() {
+            #expect(classifier.classify(rawTypeName: "text[]").badgeLabel == "string[]")
+            #expect(classifier.classify(rawTypeName: "ENUM[]").badgeLabel == "enum[]")
+            #expect(classifier.classify(rawTypeName: "text[]").displayName == "Text Array")
+        }
+
+        /// PostgreSQL spells a domain's array through `format_type`, which puts the parameters
+        /// before the brackets. The base/params split dropped everything after the last `)`, so the
+        /// `[]` was lost and the column classified as its element: a `bit(8)[]` got the boolean
+        /// dropdown, which writes a scalar into an array column.
+        @Test("A parameterized array keeps its brackets")
+        func classifiesParameterizedArrays() {
+            let numeric = classifier.classify(rawTypeName: "numeric(10,2)[]")
+            #expect(numeric.arrayElement == .decimal(rawType: "numeric(10,2)"))
+            #expect(numeric.rawType == "numeric(10,2)[]")
+            #expect(numeric.supportsElementEditing)
+
+            #expect(classifier.classify(rawTypeName: "bit(8)[]").arrayElement != nil)
+            #expect(!classifier.classify(rawTypeName: "bit(8)[]").isBooleanType)
+            #expect(
+                classifier.classify(rawTypeName: "character varying(255)[]").arrayElement
+                    == .text(rawType: "character varying(255)")
+            )
+            #expect(classifier.classify(rawTypeName: "timestamp(3) with time zone[]").arrayElement != nil)
+        }
+
+        /// The app's own spelling for an enum array puts the `[]` on the base and the labels in the
+        /// parentheses, which is the one array form the suffix test cannot see.
+        @Test("The enum array spelling still resolves its labels")
+        func classifiesEnumArraySpelling() {
+            let type = classifier.classify(rawTypeName: "ENUM[](mood)")
+            #expect(type.arrayElement?.isEnumType == true)
+            #expect(type.rawType == "ENUM[](mood)")
+        }
+
+        @Test("Types that are not bracket arrays keep their existing classification")
+        func leavesOtherTypesAlone() {
+            #expect(classifier.classify(rawTypeName: "ARRAY").isJsonType)
+            #expect(classifier.classify(rawTypeName: "Array(String)").isJsonType)
+            #expect(classifier.classify(rawTypeName: "ENUM").isEnumType)
+            #expect(classifier.classify(rawTypeName: "ENUM(mood)").isEnumType)
+            #expect(classifier.classify(rawTypeName: "SET('a','b')").isSetType)
+            #expect(classifier.classify(rawTypeName: "[]").arrayElement == nil)
+        }
+    }
+
+    @Suite("GoogleSQL Composite and Bytes Types")
+    struct GoogleSQLTypes {
+        private let classifier = ColumnTypeClassifier()
+
+        @Test("Angle-bracket ARRAY and STRUCT types classify as JSON whatever they hold")
+        func angleBracketCompositesAreJson() {
+            for raw in ["ARRAY<BOOL>", "ARRAY<STRING(MAX)>", "STRUCT<a INT64, b BOOL>", "array<int64>"] {
+                #expect(classifier.classify(rawTypeName: raw) == .json(rawType: raw), "\(raw)")
+            }
+        }
+
+        @Test("BYTES classifies as binary with or without a length")
+        func bytesIsBlob() {
+            for raw in ["BYTES", "BYTES(16)", "BYTES(MAX)"] {
+                #expect(classifier.classify(rawTypeName: raw) == .blob(rawType: raw), "\(raw)")
+            }
+        }
+
+        @Test("Lowercase bytes from a schemaless SurrealDB column stays text")
+        func lowercaseBytesStaysText() {
+            for raw in ["bytes", "Bytes", "bytes(16)"] {
+                #expect(classifier.classify(rawTypeName: raw) == .text(rawType: raw), "\(raw)")
+            }
+        }
+
+        @Test("Neighbouring types keep their existing classification")
+        func neighbouringTypesUnchanged() {
+            #expect(classifier.classify(rawTypeName: "BOOL") == .boolean(rawType: "BOOL"))
+            #expect(classifier.classify(rawTypeName: "BOOLEAN") == .boolean(rawType: "BOOLEAN"))
+            #expect(classifier.classify(rawTypeName: "ARRAY") == .json(rawType: "ARRAY"))
+            #expect(classifier.classify(rawTypeName: "Array(String)") == .json(rawType: "Array(String)"))
+            #expect(classifier.classify(rawTypeName: "boolean[]").arrayElement == .boolean(rawType: "boolean"))
+        }
+
+        @Test("Elasticsearch structured types classify as JSON")
+        func elasticsearchStructuredTypes() {
+            #expect(classifier.classify(rawTypeName: "nested") == .json(rawType: "nested"))
+            #expect(classifier.classify(rawTypeName: "flattened") == .json(rawType: "flattened"))
+            #expect(classifier.classify(rawTypeName: "object") == .json(rawType: "object"))
+        }
+    }
+
+    // MARK: - Spatial
+
+    @Suite("Spatial Types")
+    struct SpatialTests {
+        private let classifier = ColumnTypeClassifier()
+
+        private func isSpatial(_ type: ColumnType) -> Bool {
+            if case .spatial = type { return true }
+            return false
+        }
+
+        /// `GEO_POINT` ends in `INT`, and `classifyByPattern` tests `hasSuffix("INT")` before any
+        /// spatial arm, so an Elasticsearch `geo_point` column classified as an integer. That drove
+        /// its cell alignment, its sort comparator and its filter operators, all wrong, with or
+        /// without a map.
+        @Test("geo_point is spatial, not an integer")
+        func geoPointIsNotAnInteger() {
+            for raw in ["geo_point", "GEO_POINT", "Geo_Point"] {
+                #expect(isSpatial(classifier.classify(rawTypeName: raw)), "\(raw)")
+                #expect(classifier.classify(rawTypeName: raw) != .integer(rawType: raw), "\(raw)")
+            }
+        }
+
+        /// MySQL 8.0.11 renamed GEOMETRYCOLLECTION, and its catalog reports `geomcollection` for a
+        /// column declared with either spelling. Measured on MySQL 8.4.11.
+        @Test("MySQL's own GEOMCOLLECTION spelling is spatial")
+        func geomCollectionSpelling() {
+            for raw in ["geomcollection", "GEOMCOLLECTION", "GEOMETRYCOLLECTION"] {
+                #expect(isSpatial(classifier.classify(rawTypeName: raw)), "\(raw)")
+            }
+        }
+
+        @Test("Per-engine spatial spellings classify as spatial", arguments: [
+            "geo_shape", "SDO_GEOMETRY", "ST_GEOMETRY", "Ring",
+            "geometry", "geography", "POINT", "linestring", "polygon",
+            "multipoint", "multilinestring", "multipolygon",
+        ])
+        func engineSpellings(raw: String) {
+            #expect(isSpatial(classifier.classify(rawTypeName: raw)), "\(raw)")
+        }
+
+        @Test("A parameterised or wrapped spatial type keeps its family")
+        func parameterisedSpatial() {
+            #expect(isSpatial(classifier.classify(rawTypeName: "geometry(MultiPolygon,4326)")))
+            #expect(isSpatial(classifier.classify(rawTypeName: "Nullable(Point)")))
+        }
+
+        /// The new entries must not drag neighbouring names into the spatial family.
+        @Test("Neighbouring names keep their classification")
+        func neighboursUnchanged() {
+            #expect(classifier.classify(rawTypeName: "INT") == .integer(rawType: "INT"))
+            #expect(classifier.classify(rawTypeName: "BIGINT") == .integer(rawType: "BIGINT"))
+            #expect(classifier.classify(rawTypeName: "POINTER") == .text(rawType: "POINTER"))
         }
     }
 }

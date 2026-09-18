@@ -23,9 +23,25 @@ extension TeradataPluginDriver {
         return parts.filter { !$0.isEmpty }.joined(separator: " ")
     }
 
+    /// Teradata's referential constraints carry no `ON DELETE` or `ON UPDATE` action, so none is
+    /// written. `ForeignKeyDialect` offers the editor only NO ACTION for the same reason.
+    private func foreignKeyDefinition(_ foreignKey: PluginForeignKeyDefinition) -> String {
+        let columns = foreignKey.columns.map(identifier).joined(separator: ", ")
+        let constraint = foreignKey.name.isEmpty ? "" : "CONSTRAINT \(identifier(foreignKey.name)) "
+        let referenced = foreignKey.referencedSchema.flatMap { $0.isEmpty ? nil : $0 }
+            .map { "\(identifier($0)).\(identifier(foreignKey.referencedTable))" }
+            ?? qualified(foreignKey.referencedTable)
+        var definition = "\(constraint)FOREIGN KEY (\(columns)) REFERENCES \(referenced)"
+        if !foreignKey.referencedColumns.isEmpty {
+            definition += " (\(foreignKey.referencedColumns.map(identifier).joined(separator: ", ")))"
+        }
+        return definition
+    }
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        let columnDefinitions = definition.columns.compactMap { generateColumnDefinitionSQL(column: $0) }
+        var columnDefinitions = definition.columns.compactMap { generateColumnDefinitionSQL(column: $0) }
         guard !columnDefinitions.isEmpty else { return nil }
+        columnDefinitions.append(contentsOf: definition.foreignKeys.map(foreignKeyDefinition))
         var sql = "CREATE MULTISET TABLE \(qualified(definition.tableName)) (\n"
         sql += "    " + columnDefinitions.joined(separator: ",\n    ")
         sql += "\n)"

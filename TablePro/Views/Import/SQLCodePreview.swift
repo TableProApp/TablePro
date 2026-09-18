@@ -5,12 +5,14 @@
 //  Read-only SQL code preview with tree-sitter syntax highlighting
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
-/// Read-only SQL code preview with syntax highlighting powered by CodeEditSourceEditor
+/// Read-only SQL code preview with syntax highlighting powered by TableProEditorKit
 struct SQLCodePreview: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
 
     @State private var editorState = SourceEditorState()
@@ -25,9 +27,10 @@ struct SQLCodePreview: View {
                 $text,
                 language: .sql,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
             )
-            .onChange(of: colorScheme) {
+            .onChange(of: colorScheme) { _ in
                 editorConfiguration = Self.makeConfiguration()
             }
         }
@@ -48,10 +51,9 @@ struct SQLCodePreview: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: true,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.inline(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

@@ -1,1 +1,0 @@
-../../Plugins/OracleDriverPlugin/OracleCellFormatting.swift

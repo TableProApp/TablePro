@@ -18,13 +18,19 @@ struct StructureSortDescriptor {
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .primaryKey, .autoIncrement, .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .onUpdate, .generated, .generationExpression,
+        .primaryKey, .autoIncrement, .comment, .charset, .collation
+    ]
+
+    private static let booleanFields: [StructureColumnField] = [
+        .nullable, .primaryKey, .autoIncrement, .onUpdate
     ]
 
     private let changeManager: StructureChangeManager
     private let tab: StructureTab
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
+    private let serverSupport: StructureServerSupport
     let orderedColumnFields: [StructureColumnField]
     private let filterText: String?
     private let sortDescriptor: StructureSortDescriptor?
@@ -61,6 +67,12 @@ final class StructureRowProvider {
                 String(localized: "On Delete"),
                 String(localized: "On Update")
             ]
+        case .checkConstraints:
+            return [
+                String(localized: "Name"),
+                String(localized: "Expression"),
+                String(localized: "Columns")
+            ]
         case .ddl, .parts, .triggers:
             return []
         }
@@ -70,43 +82,98 @@ final class StructureRowProvider {
         Array(repeating: .text(rawType: nil), count: columns.count)
     }
 
+    /// Every column whose cell opens a menu: the ones with a fixed option list, plus the ones whose
+    /// list the delegate builds per row.
     var dropdownColumns: Set<Int> {
+        Set(customDropdownOptions.keys).union(rowDependentDropdownColumns)
+    }
+
+    /// Columns whose list is a function of the row, so it cannot live in `customDropdownOptions`.
+    ///
+    /// On the Foreign Keys grid these are Columns (1), Ref Table (2) and Ref Columns (3): the first
+    /// offers the table's own columns, the second the database's tables, and the third the columns
+    /// of whichever table that row names. Every list keeps a `Custom…` entry, so a table the app has
+    /// not loaded is still reachable by typing.
+    ///
+    /// On the Indexes grid it is Type, which lists the row's own type beside the known ones.
+    var rowDependentDropdownColumns: Set<Int> {
         switch tab {
-        case .columns:
-            var result: Set<Int> = []
-            if let i = orderedColumnFields.firstIndex(of: .nullable) { result.insert(i) }
-            if let i = orderedColumnFields.firstIndex(of: .primaryKey) { result.insert(i) }
-            if let i = orderedColumnFields.firstIndex(of: .autoIncrement) { result.insert(i) }
-            return result
-        case .indexes:
-            return [3]
-        case .foreignKeys:
-            return []
-        case .ddl, .parts, .triggers:
-            return []
+        case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
+        case .indexes: [Self.indexTypeColumn]
+        case .columns, .checkConstraints, .ddl, .parts, .triggers: []
         }
     }
 
-    /// Custom dropdown options for specific columns (non-YES/NO dropdowns)
-    var customDropdownOptions: [Int: [String]] {
+    /// The Indexes grid's Type column.
+    static let indexTypeColumn = 2
+
+    /// The menu an Indexes grid cell opens for `index`, or nil for a column whose list does not
+    /// depend on the row. Shared by the Structure tab and Create Table so the two cannot drift.
+    static func indexMenuOptions(
+        columnIndex: Int,
+        index: EditableIndexDefinition,
+        serverSupport: StructureServerSupport
+    ) -> [GridMenuOption]? {
+        guard columnIndex == indexTypeColumn else { return nil }
+        return GridMenuOption.values(serverSupport.indexTypeChoices(keeping: index.type).map(\.rawValue))
+    }
+
+    /// Explicit option lists for every dropdown column, keyed by column index.
+    /// Structure flags are schema properties, not data values, so they always offer
+    /// the same YES/NO pair the grid displays and never a NULL option.
+    ///
+    /// The Default column is the one open vocabulary here: it holds the SQL that follows the
+    /// `DEFAULT` keyword, so its list ends in `Custom…` and the cell still takes typed SQL.
+    var customDropdownOptions: [Int: [GridMenuOption]] {
         switch tab {
         case .foreignKeys:
-            let actions = EditableForeignKeyDefinition.ReferentialAction.allCases.map(\.rawValue)
-            return [5: actions, 6: actions]
+            /// Offering every action to every engine is how a DuckDB user reached
+            /// `Parser Error: FOREIGN KEY constraints cannot use CASCADE, SET NULL or SET DEFAULT`
+            /// from a menu that presented CASCADE as valid. An engine with no `ON UPDATE` clause at
+            /// all, Oracle among them, still offers NO ACTION so the cell keeps a closed list rather
+            /// than falling back to free text.
+            let dialect = ForeignKeyDialect.forType(databaseType)
+            let deleteActions = dialect.deleteActions.isEmpty ? [.noAction] : dialect.deleteActions
+            let updateActions = dialect.updateActions.isEmpty ? [.noAction] : dialect.updateActions
+            return [
+                5: GridMenuOption.values(deleteActions.map(\.rawValue)),
+                6: GridMenuOption.values(updateActions.map(\.rawValue))
+            ]
         case .indexes:
-            let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
-            return [2: types]
-        case .columns, .ddl, .parts, .triggers:
+            return [3: GridMenuOption.values(Self.booleanOptions)]
+        case .columns:
+            var result: [Int: [GridMenuOption]] = [:]
+            for field in Self.booleanFields {
+                guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
+                result[index] = GridMenuOption.values(Self.booleanOptions)
+            }
+            if let index = orderedColumnFields.firstIndex(of: .generated) {
+                result[index] = GridMenuOption.values(Self.generationOptions)
+            }
+            if let index = orderedColumnFields.firstIndex(of: .defaultValue) {
+                result[index] = ColumnDefaultVocabulary.options(for: databaseType)
+            }
+            return result
+        case .checkConstraints, .ddl, .parts, .triggers:
             return [:]
         }
     }
+
+
+    static let booleanOptions = ["YES", "NO"]
+
+    static let notGeneratedOption = String(localized: "Not generated")
+
+    /// Every engine that offers a choice is offered both; a driver that supports only one kind
+    /// declares only the fields it can honour and the DDL generator spells the keyword it needs.
+    static let generationOptions = [notGeneratedOption] + GenerationKind.allCases.map(\.rawValue)
 
     var typePickerColumns: Set<Int> {
         switch tab {
         case .columns:
             if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
-        case .indexes, .foreignKeys, .ddl, .parts, .triggers:
+        case .indexes, .foreignKeys, .checkConstraints, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -120,6 +187,7 @@ final class StructureRowProvider {
         tab: StructureTab,
         databaseType: DatabaseType = .mysql,
         additionalFields: Set<StructureColumnField> = [],
+        serverSupport: StructureServerSupport,
         filterText: String? = nil,
         sortDescriptor: StructureSortDescriptor? = nil
     ) {
@@ -127,9 +195,14 @@ final class StructureRowProvider {
         self.tab = tab
         self.databaseType = databaseType
         self.additionalFields = additionalFields
+        self.serverSupport = serverSupport
         self.filterText = filterText
         self.sortDescriptor = sortDescriptor
-        self.orderedColumnFields = Self.orderedFields(for: databaseType, additionalFields: additionalFields)
+        self.orderedColumnFields = Self.orderedFields(
+            for: databaseType,
+            additionalFields: additionalFields,
+            serverSupport: serverSupport
+        )
 
         let allRows = Self.buildAllRows(
             tab: tab, changeManager: changeManager, orderedColumnFields: self.orderedColumnFields
@@ -141,11 +214,12 @@ final class StructureRowProvider {
 
     static func orderedFields(
         for databaseType: DatabaseType,
-        additionalFields: Set<StructureColumnField> = []
+        additionalFields: Set<StructureColumnField> = [],
+        serverSupport: StructureServerSupport
     ) -> [StructureColumnField] {
         let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
         let fields = pluginFields.union(additionalFields)
-        return canonicalFieldOrder.filter { fields.contains($0) }
+        return canonicalFieldOrder.filter { fields.contains($0) && serverSupport.offers($0) }
     }
 
     // MARK: - Row Access
@@ -153,6 +227,58 @@ final class StructureRowProvider {
     func row(at index: Int) -> [String?]? {
         guard index >= 0, index < cachedRows.count else { return nil }
         return cachedRows[index].row
+    }
+
+    func sourceIndex(atDisplay displayRow: Int) -> Int? {
+        guard displayRow >= 0, displayRow < cachedRows.count else { return nil }
+        return cachedRows[displayRow].sourceIndex
+    }
+
+    /// Fields whose working value differs from the value the schema was loaded with.
+    /// An entity that does not exist on the server yet has nothing to compare against,
+    /// so it reports no modified fields and the grid's inserted-row tint carries that state.
+    func modifiedFieldIndices(atDisplay displayRow: Int) -> Set<Int> {
+        guard let sourceIndex = sourceIndex(atDisplay: displayRow),
+              let working = row(at: displayRow),
+              let original = originalRow(atSource: sourceIndex) else { return [] }
+        return Set(working.indices.filter { index in
+            let originalValue = index < original.count ? original[index] : nil
+            return working[index] != originalValue
+        })
+    }
+
+    func isPendingDelete(atDisplay displayRow: Int) -> Bool {
+        guard let sourceIndex = sourceIndex(atDisplay: displayRow) else { return false }
+        return changeManager.deleteInsertState(for: sourceIndex, tab: tab).isDeleted
+    }
+
+    private func originalRow(atSource sourceIndex: Int) -> [String?]? {
+        switch tab {
+        case .columns:
+            guard sourceIndex < changeManager.workingColumns.count else { return nil }
+            let id = changeManager.workingColumns[sourceIndex].id
+            guard let original = changeManager.currentColumns.first(where: { $0.id == id }) else { return nil }
+            return Self.row(for: original, orderedColumnFields: orderedColumnFields)
+        case .indexes:
+            guard sourceIndex < changeManager.workingIndexes.count else { return nil }
+            let id = changeManager.workingIndexes[sourceIndex].id
+            guard let original = changeManager.currentIndexes.first(where: { $0.id == id }) else { return nil }
+            return Self.row(for: original)
+        case .foreignKeys:
+            guard sourceIndex < changeManager.workingForeignKeys.count else { return nil }
+            let id = changeManager.workingForeignKeys[sourceIndex].id
+            guard let original = changeManager.currentForeignKeys.first(where: { $0.id == id }) else { return nil }
+            return Self.row(for: original)
+        case .checkConstraints:
+            guard sourceIndex < changeManager.workingCheckConstraints.count else { return nil }
+            let id = changeManager.workingCheckConstraints[sourceIndex].id
+            guard let original = changeManager.currentCheckConstraints.first(where: { $0.id == id }) else {
+                return nil
+            }
+            return Self.row(for: original)
+        case .ddl, .parts, .triggers:
+            return nil
+        }
     }
 
     // MARK: - Private Helpers
@@ -170,52 +296,82 @@ final class StructureRowProvider {
         switch tab {
         case .columns:
             return changeManager.workingColumns.enumerated().map { index, column in
-                let row = orderedColumnFields.map { field -> String? in
-                    switch field {
-                    case .name: column.name
-                    case .type: column.dataType
-                    case .nullable: column.isNullable ? "YES" : "NO"
-                    case .defaultValue: column.defaultValue ?? ""
-                    case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
-                    case .autoIncrement: column.autoIncrement ? "YES" : "NO"
-                    case .comment: column.comment ?? ""
-                    case .charset: column.charset ?? ""
-                    case .collation: column.collation ?? ""
-                    }
-                }
-                return IndexedRow(sourceIndex: index, row: row)
+                IndexedRow(sourceIndex: index, row: row(for: column, orderedColumnFields: orderedColumnFields))
             }
         case .indexes:
             return changeManager.workingIndexes.enumerated().map { index, indexInfo in
-                let columnsStr = indexInfo.columns.map { col in
-                    if let prefix = indexInfo.columnPrefixes[col] {
-                        return "\(col)(\(prefix))"
-                    }
-                    return col
-                }.joined(separator: ", ")
-                return IndexedRow(sourceIndex: index, row: [
-                    indexInfo.name,
-                    columnsStr,
-                    indexInfo.type.rawValue,
-                    indexInfo.isUnique ? "YES" : "NO",
-                    indexInfo.whereClause ?? ""
-                ])
+                IndexedRow(sourceIndex: index, row: row(for: indexInfo))
             }
         case .foreignKeys:
             return changeManager.workingForeignKeys.enumerated().map { index, fk in
-                IndexedRow(sourceIndex: index, row: [
-                    fk.name,
-                    fk.columns.joined(separator: ", "),
-                    fk.referencedTable,
-                    fk.referencedColumns.joined(separator: ", "),
-                    fk.referencedSchema ?? "",
-                    fk.onDelete.rawValue,
-                    fk.onUpdate.rawValue
-                ])
+                IndexedRow(sourceIndex: index, row: row(for: fk))
+            }
+        case .checkConstraints:
+            return changeManager.workingCheckConstraints.enumerated().map { index, constraint in
+                IndexedRow(sourceIndex: index, row: row(for: constraint))
             }
         case .ddl, .parts, .triggers:
             return []
         }
+    }
+
+    private static func row(for constraint: EditableCheckConstraintDefinition) -> [String?] {
+        [
+            constraint.name,
+            constraint.expression,
+            constraint.columns.joined(separator: ", ")
+        ]
+    }
+
+    private static func row(
+        for column: EditableColumnDefinition,
+        orderedColumnFields: [StructureColumnField]
+    ) -> [String?] {
+        orderedColumnFields.map { field -> String? in
+            switch field {
+            case .name: column.name
+            case .type: column.dataType
+            case .nullable: column.isNullable ? "YES" : "NO"
+            case .defaultValue: column.defaultValue ?? ""
+            case .onUpdate: column.onUpdate != nil ? "YES" : "NO"
+            case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
+            case .autoIncrement: column.autoIncrement ? "YES" : "NO"
+            case .comment: column.comment ?? ""
+            case .charset: column.charset ?? ""
+            case .collation: column.collation ?? ""
+            case .generated: column.generationKind?.rawValue ?? Self.notGeneratedOption
+            case .generationExpression: column.generationExpression ?? ""
+            @unknown default: nil
+            }
+        }
+    }
+
+    private static func row(for index: EditableIndexDefinition) -> [String?] {
+        let columnsStr = index.columns.map { col in
+            if let prefix = index.columnPrefixes[col] {
+                return "\(col)(\(prefix))"
+            }
+            return col
+        }.joined(separator: ", ")
+        return [
+            index.name,
+            columnsStr,
+            index.type.rawValue,
+            index.isUnique ? "YES" : "NO",
+            index.whereClause ?? ""
+        ]
+    }
+
+    private static func row(for fk: EditableForeignKeyDefinition) -> [String?] {
+        [
+            fk.name,
+            fk.columns.joined(separator: ", "),
+            fk.referencedTable,
+            fk.referencedColumns.joined(separator: ", "),
+            fk.referencedSchema ?? "",
+            fk.onDelete.rawValue,
+            fk.onUpdate.rawValue
+        ]
     }
 
     private static func applyFilterAndSort(
@@ -254,7 +410,8 @@ extension StructureRowProvider {
         return TableRows.from(
             queryRows: typedRows,
             columns: columns,
-            columnTypes: columnTypes
+            columnTypes: columnTypes,
+            columnNullable: Dictionary(uniqueKeysWithValues: columns.map { ($0, false) })
         )
     }
 }

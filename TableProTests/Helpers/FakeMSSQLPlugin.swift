@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 @testable import TablePro
 
@@ -52,8 +53,12 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { "dbo" }
     var parameterStyle: ParameterStyle { .questionMark }
 
+    /// The one fact a driver reports about a connection the server has closed under it.
+    var hasLostConnection = false
+    private(set) var disconnectCallCount = 0
+
     func connect() async throws {}
-    func disconnect() {}
+    func disconnect() { disconnectCallCount += 1 }
 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
@@ -78,6 +83,11 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "[\(escaped)]"
     }
 
+    func qualifiedName(schema: String?, table: String) -> String {
+        guard let schema, !schema.isEmpty else { return quoteIdentifier(table) }
+        return "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
+    }
+
     func buildBrowseQuery(
         table: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
@@ -85,9 +95,23 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = quoteIdentifier(table)
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        let target = qualifiedName(schema: schema, table: table)
         let orderBy = orderByClause(sortColumns: sortColumns, columns: columns) ?? "ORDER BY (SELECT NULL)"
-        return "SELECT * FROM \(quotedTable) \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        return "SELECT * FROM \(target) \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
     }
 
     func buildFilteredQuery(
@@ -99,8 +123,24 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = quoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        let target = qualifiedName(schema: schema, table: table)
+        var query = "SELECT * FROM \(target)"
         let whereClause = whereClause(filters: filters, logicMode: logicMode)
         if !whereClause.isEmpty {
             query += " WHERE \(whereClause)"
@@ -136,21 +176,17 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 }
 
 enum FakeMSSQLPluginRegistration {
-    private static var didRegister = false
-    private static let lock = NSLock()
+    private static let didRegister = OSAllocatedUnfairLock(initialState: false)
 
     @MainActor
     static func registerIfNeeded() {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didRegister else { return }
-        let manager = PluginManager.shared
-        if manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] != nil {
-            didRegister = true
-            return
+        let alreadyRegistered = didRegister.withLock { registered -> Bool in
+            defer { registered = true }
+            return registered
         }
-        let instance = FakeMSSQLPlugin()
-        manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] = instance
-        didRegister = true
+        guard !alreadyRegistered else { return }
+        let manager = PluginManager.shared
+        guard manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] == nil else { return }
+        manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] = FakeMSSQLPlugin()
     }
 }

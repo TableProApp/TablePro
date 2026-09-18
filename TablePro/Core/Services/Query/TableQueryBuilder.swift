@@ -16,6 +16,7 @@ struct TableQueryBuilder {
     private let databaseType: DatabaseType
     private var pluginDriver: (any PluginDatabaseDriver)?
     private let dialect: SQLDialectDescriptor?
+    private let pagination: PaginationCapability
     private let dialectQuote: (String) -> String
 
     // MARK: - Initialization
@@ -24,11 +25,13 @@ struct TableQueryBuilder {
         databaseType: DatabaseType,
         pluginDriver: (any PluginDatabaseDriver)? = nil,
         dialect: SQLDialectDescriptor? = nil,
+        pagination: PaginationCapability,
         dialectQuote: ((String) -> String)? = nil
     ) {
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
         self.dialect = dialect
+        self.pagination = pagination
         self.dialectQuote = dialectQuote ?? { name in
             let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
@@ -53,10 +56,7 @@ struct TableQueryBuilder {
     // MARK: - Query Building
 
     private func qualifiedTable(_ tableName: String, schema: String?) -> String {
-        if let schema {
-            return "\(quote(schema)).\(quote(tableName))"
-        }
-        return quote(tableName)
+        SchemaQualifiedName.render(name: tableName, schema: schema, databaseType: databaseType, quote: quote)
     }
 
     func buildBaseQuery(
@@ -69,10 +69,13 @@ struct TableQueryBuilder {
         offset: Int = 0
     ) -> String {
         if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
+            let targetColumns = selectColumns ?? columns
+            let sortCols = SortColumnResolver.resolvedIndices(
+                for: sortState, displayColumns: columns, targetColumns: targetColumns
+            )
             if let result = pluginDriver.buildBrowseQuery(
                 table: tableName, schema: schemaName, sortColumns: sortCols,
-                columns: selectColumns ?? columns, limit: limit, offset: offset
+                columns: targetColumns, limit: limit, offset: offset
             ) {
                 return result
             }
@@ -96,19 +99,24 @@ struct TableQueryBuilder {
         logicMode: FilterLogicMode = .and,
         sortState: SortState? = nil,
         columns: [String] = [],
+        columnTypes: [ColumnType] = [],
         selectColumns: [String]? = nil,
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
         if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
-            let filterTuples = filters
+            let targetColumns = selectColumns ?? columns
+            let sortCols = SortColumnResolver.resolvedIndices(
+                for: sortState, displayColumns: columns, targetColumns: targetColumns
+            )
+            let queryFilters = filters
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
-                .map(\.asPluginFilterTuple)
+                .map(\.asPluginQueryFilter)
             if let result = pluginDriver.buildFilteredQuery(
-                table: tableName, schema: schemaName, filters: filterTuples,
+                table: tableName, schema: schemaName, queryFilters: queryFilters,
                 logicMode: logicMode == .and ? "and" : "or",
-                sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset
+                sortColumns: sortCols, columns: targetColumns, limit: limit, offset: offset,
+                columnKinds: pluginColumnKinds(columns: columns, columnTypes: columnTypes)
             ) {
                 return result
             }
@@ -119,7 +127,10 @@ struct TableQueryBuilder {
 
         if let dialect {
             let activeFilters = filters.filter { $0.isEnabled }
-            let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
+            let filterGen = FilterSQLGenerator(
+                dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
+                stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            )
             let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
             if !whereClause.isEmpty {
                 query += " \(whereClause)"
@@ -146,7 +157,10 @@ struct TableQueryBuilder {
         offset: Int = 0
     ) -> String {
         if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
+            let targetColumns = selectColumns ?? columns
+            let sortCols = SortColumnResolver.resolvedIndices(
+                for: sortState, displayColumns: columns, targetColumns: targetColumns
+            )
             var tuples: [(column: String, op: String, value: String)] = []
             let trimmedPattern = pattern.trimmingCharacters(in: .whitespaces)
             if !trimmedPattern.isEmpty {
@@ -158,7 +172,7 @@ struct TableQueryBuilder {
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, schema: schemaName, filters: tuples,
                 logicMode: "and", sortColumns: sortCols,
-                columns: selectColumns ?? columns, limit: limit, offset: offset
+                columns: targetColumns, limit: limit, offset: offset
             ) {
                 return result
             }
@@ -174,13 +188,18 @@ struct TableQueryBuilder {
         tableName: String,
         schemaName: String? = nil,
         filters: [TableFilter],
-        logicMode: FilterLogicMode = .and
+        logicMode: FilterLogicMode = .and,
+        columns: [String] = [],
+        columnTypes: [ColumnType] = []
     ) -> String? {
         guard let dialect else { return nil }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
         let activeFilters = filters.filter { $0.isEnabled }
-        let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
+        let filterGen = FilterSQLGenerator(
+            dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+        )
         let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
 
         guard !whereClause.isEmpty else {
@@ -191,23 +210,24 @@ struct TableQueryBuilder {
 
     // MARK: - Private Helpers
 
+    private func pluginColumnKinds(columns: [String], columnTypes: [ColumnType]) -> [String: PluginColumnKind] {
+        ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
+            .mapValues(\.pluginColumnKind)
+    }
+
     private func selectClause(_ selectColumns: [String]?) -> String {
         guard let selectColumns, !selectColumns.isEmpty else { return "*" }
         return selectColumns.map { quote($0) }.joined(separator: ", ")
     }
 
     private func buildPaginationClause(limit: Int, offset: Int) -> String {
+        guard pagination.allowsSeeking else {
+            return "LIMIT \(pagination.clampedRowCount(limit))"
+        }
         if let dialect, dialect.paginationStyle == .offsetFetch {
             return "OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         }
         return "LIMIT \(limit) OFFSET \(offset)"
-    }
-
-    private func sortColumnsAsTuples(_ sortState: SortState?) -> [(columnIndex: Int, ascending: Bool)] {
-        sortState?.columns.compactMap { sortCol -> (columnIndex: Int, ascending: Bool)? in
-            guard sortCol.columnIndex >= 0 else { return nil }
-            return (sortCol.columnIndex, sortCol.direction == .ascending)
-        } ?? []
     }
 
     private func orderByOrOffsetFetchDefault(sortState: SortState?, columns: [String]) -> String? {
@@ -223,8 +243,9 @@ struct TableQueryBuilder {
         guard let state = sortState, state.isSorting else { return nil }
 
         let parts = state.columns.compactMap { sortCol -> String? in
-            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
-            let columnName = columns[sortCol.columnIndex]
+            guard let columnName = SortColumnResolver.clauseColumnName(for: sortCol, displayColumns: columns) else {
+                return nil
+            }
             let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
             let quotedColumn = quote(columnName)
             return "\(quotedColumn) \(direction)"

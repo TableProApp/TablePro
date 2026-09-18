@@ -76,7 +76,7 @@ public final class TrinoSessionState: @unchecked Sendable {
             if let transactionId = responseHeaders.first(protocolHeaders.startedTransactionId) {
                 _transactionId = transactionId
             }
-            if responseHeaders.first(protocolHeaders.clearTransactionId) != nil {
+            if responseHeaders.contains(protocolHeaders.clearTransactionId) {
                 _transactionId = nil
             }
         }

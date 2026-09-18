@@ -86,17 +86,32 @@ struct ERDiagramSQLExporterTests {
         #expect(sql.contains("\"status\" varchar NOT NULL DEFAULT 'active'"))
     }
 
-    @Test("Unquoted string default is quoted")
-    func unquotedStringDefaultIsQuoted() {
+    /// A column default holds the SQL that follows `DEFAULT`, so the export writes it as it stands.
+    /// Guessing at an unquoted token exported Oracle's own keywords and a SQLite blob literal as
+    /// quoted strings, which run and store something else.
+    @Test(
+        "Every default is exported exactly as it is held",
+        arguments: [
+            (value: "'active'", rendered: "'active'"),
+            (value: "SYSDATE", rendered: "SYSDATE"),
+            (value: "SYSTIMESTAMP", rendered: "SYSTIMESTAMP"),
+            (value: "USER", rendered: "USER"),
+            (value: "X'0102'", rendered: "X'0102'"),
+            (value: "'active'::character varying", rendered: "'active'::character varying"),
+            (value: "nextval('t_id_seq'::regclass)", rendered: "nextval('t_id_seq'::regclass)"),
+            (value: "(datetime('now'))", rendered: "(datetime('now'))"),
+            (value: "'inf'", rendered: "'inf'")
+        ]
+    )
+    func defaultsAreExportedVerbatim(value: String, rendered: String) {
         let sql = ERDiagramSQLExporter.generate(
             tableNames: ["t"],
-            allColumns: ["t": [column("status", type: "varchar", nullable: false, defaultValue: "active")]],
+            allColumns: ["t": [column("status", type: "varchar", nullable: false, defaultValue: value)]],
             allForeignKeys: [:],
             isSQLite: false,
             quoteIdentifier: quote
         )
-        #expect(sql.contains("\"status\" varchar NOT NULL DEFAULT 'active'"))
-        #expect(!sql.contains("DEFAULT active"))
+        #expect(sql.contains("\"status\" varchar NOT NULL DEFAULT \(rendered)"), "\(value)")
     }
 
     @Test("Numeric, expression, and keyword defaults pass through unquoted")
@@ -115,24 +130,6 @@ struct ERDiagramSQLExporterTests {
         #expect(sql.contains("\"count\" integer NOT NULL DEFAULT 0"))
         #expect(sql.contains("\"created\" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP"))
         #expect(sql.contains("\"uid\" uuid NOT NULL DEFAULT gen_random_uuid()"))
-    }
-
-    @Test("Non-finite numeric-looking string defaults are quoted")
-    func infinityLikeStringDefaultIsQuoted() {
-        let sql = ERDiagramSQLExporter.generate(
-            tableNames: ["t"],
-            allColumns: ["t": [
-                column("a", type: "varchar", nullable: false, defaultValue: "inf"),
-                column("b", type: "varchar", nullable: false, defaultValue: "nan")
-            ]],
-            allForeignKeys: [:],
-            isSQLite: false,
-            quoteIdentifier: quote
-        )
-        #expect(sql.contains("\"a\" varchar NOT NULL DEFAULT 'inf'"))
-        #expect(sql.contains("\"b\" varchar NOT NULL DEFAULT 'nan'"))
-        #expect(!sql.contains("DEFAULT inf"))
-        #expect(!sql.contains("DEFAULT nan"))
     }
 
     @Test("Composite primary key becomes a trailing clause")

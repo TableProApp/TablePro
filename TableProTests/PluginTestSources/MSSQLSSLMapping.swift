@@ -1,1 +1,0 @@
-../../Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift

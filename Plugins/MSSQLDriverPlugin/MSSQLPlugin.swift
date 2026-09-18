@@ -74,6 +74,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "SQL Server"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
     static let defaultPort = 1433
@@ -84,7 +86,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "sql",
             fieldType: .dropdown(options: [
                 .init(value: "sql", label: "SQL Server Authentication"),
-                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
             ]),
             section: .authentication
         ),
@@ -110,7 +113,10 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             )
         ),
         ConnectionField(id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo")
-    ]
+    ] + EntraAuthFields.standard(
+        gatedBy: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+        value: MSSQLAuthMethod.entra.rawValue
+    )
 
     // MARK: - UI/Capability Metadata
 
@@ -181,12 +187,20 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
-        autoLimitStyle: .top
+        autoLimitStyle: .top,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true
+    static let supportsDropSchema = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsUserDefinedTypeBrowse = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = false
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
@@ -206,6 +220,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
     /// and the value the user typed is server-allocated anyway.
     var identityColumnsByTable: [String: Set<String>] = [:]
+
+    /// Computed columns observed during a column fetch, keyed by table name. SQL Server rejects an
+    /// explicit value for one the same way it does for IDENTITY: "The column cannot be modified
+    /// because it is either a computed column or is the result of a UNION operator."
+    var computedColumnsByTable: [String: Set<String>] = [:]
     let identityCacheLock = NSLock()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
@@ -231,6 +250,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .multiSchema,
             .cancelQuery,
             .batchExecute,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 
@@ -253,7 +274,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView {
             return "CREATE OR ALTER VIEW \(quoted) AS\nSELECT * FROM table_name;"
         }
-        return "IF OBJECT_ID('\(viewName)', 'V') IS NOT NULL DROP VIEW \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
+        let viewLiteral = MSSQLStringLiteral.quoted(viewName)
+        return "IF OBJECT_ID(\(viewLiteral), 'V') IS NOT NULL DROP VIEW \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
     }
 
     func castColumnToText(_ column: String) -> String {
@@ -265,10 +287,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         self._currentSchema = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
     }
 
-    private var escapedSchema: String {
-        _currentSchema.replacingOccurrences(of: "'", with: "''")
-    }
-
     // MARK: - Connection
 
     func connect() async throws {
@@ -277,7 +295,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
             let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
-            let options = MSSQLConnectionOptions(
+            let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
+            var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
                 user: config.username,
@@ -289,6 +308,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
             )
+            options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
+            options.caCertificatePath = config.ssl.caCertificatePath
+            options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
         } catch let error as MSSQLCoreError {
@@ -320,7 +342,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         if let result = try? await executeInternal("SELECT @@VERSION"),
            let versionStr = result.rows.first?.first?.asText {
-            _serverVersion = String(versionStr.prefix(50))
+            _serverVersion = MSSQLServerBanner.displayText(from: versionStr)
         }
     }
 
@@ -342,6 +364,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
             return nil
         }
+    }
+
+    /// `EntraOAuthError` deliberately escapes unwrapped. The connection form checks for it to
+    /// offer a browser sign-in, and wrapping it in a plugin error would erase that.
+    private func resolveEntraTokenIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .entra else { return nil }
+        return try await EntraCredentialResolver.shared.accessToken(fields: config.additionalFields)
     }
 
     private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
@@ -383,6 +412,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func beginTransaction() async throws {
         _ = try await execute(query: "BEGIN TRANSACTION")
+    }
+
+    /// One round trip, and only when a caller is about to own a transaction on this session. It
+    /// goes through `executeInternal` rather than `execute` so the app's query cancellation and
+    /// history never see it.
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let result = try? await executeInternal(MSSQLSessionTransaction.probe) else { return .unknown }
+        let row = result.rows.first
+        return MSSQLSessionTransaction.state(
+            tranCount: row?.first?.asText,
+            transactionState: row?.dropFirst().first?.asText
+        )
     }
 
     // MARK: - Query Execution
@@ -471,6 +512,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var nonDefaultColumns: [String] = []
         var parameters: [PluginCellValue] = []
         let identityColumns = cachedIdentityColumns(for: table)
+        let computedColumns = cachedComputedColumns(for: table)
 
         for (index, value) in values.enumerated() {
             if value.asText == "__DEFAULT__" { continue }
@@ -480,6 +522,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             // an explicit value fail unless `SET IDENTITY_INSERT <table> ON` was issued,
             // so always omit them and let the server assign the next value.
             if identityColumns.contains(columnName) { continue }
+            if computedColumns.contains(columnName) { continue }
             nonDefaultColumns.append("[\(columnName.replacingOccurrences(of: "]", with: "]]"))]")
             parameters.append(value)
         }
@@ -571,16 +614,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let conn = freeTDSConn else {
             return AsyncThrowingStream { $0.finish(throwing: MSSQLPluginError.notConnected) }
         }
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
+                    /// A plain `Task {}` inherits context but is not a child, so cancelling the
+                    /// outer task never reaches this one. The abort closure is what does.
                     Task {
                         do {
-                            try await conn.streamQuery(query, continuation: coreContinuation)
+                            try await conn.streamQuery(
+                                query,
+                                isAborted: { abort.isAborted },
+                                continuation: coreContinuation
+                            )
                         } catch let error as MSSQLCoreError {
                             coreContinuation.finish(throwing: MSSQLPluginError(coreError: error))
                         } catch {
@@ -611,9 +664,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 
@@ -632,26 +683,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try await execute(query: query)
         }
 
-        let (convertedQuery, paramDecls, paramAssigns) = Self.buildSpExecuteSql(
-            query: query, parameters: parameters.map { $0.asText }
+        let statement = MSSQLParameterBatch.spExecuteSql(
+            query: query, parameters: parameters.map(Self.parameter)
         )
 
-        guard !paramDecls.isEmpty else {
+        guard !statement.isEmpty else {
             return try await execute(query: query)
         }
 
-        let sql = "EXEC sp_executesql N'\(Self.escapeNString(convertedQuery))', N'\(paramDecls)', \(paramAssigns)"
+        let sql = "EXEC sp_executesql N'\(Self.escapeNString(statement.query))', "
+            + "N'\(statement.declarations)', \(statement.assignments)"
         return try await execute(query: sql)
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let esc = (schema ?? _currentSchema).replacingOccurrences(of: "'", with: "''")
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let objectName = "[\(esc)].[\(escapedTable)]"
+        let objectLiteral = MSSQLStringLiteral.quoted(
+            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
         let sql = """
             SELECT SUM(p.rows)
             FROM sys.partitions p
-            WHERE p.object_id = OBJECT_ID(N'\(objectName)') AND p.index_id IN (0, 1)
+            WHERE p.object_id = OBJECT_ID(\(objectLiteral)) AND p.index_id IN (0, 1)
             """
         let result = try await execute(query: sql)
         if let row = result.rows.first, let cell = row.first, let str = cell.asText {
@@ -716,15 +767,24 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let whereClause = PluginSQLFilter.buildWhereClause(
-            filters: filters,
-            logicMode: logicMode,
-            quoteIdentifier: mssqlQuoteIdentifier,
-            escapeValue: mssqlEscapeValue,
-            regexCondition: { quoted, value in
-                "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
-            }
+        buildFilteredQuery(
+            table: table, schema: schema, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
         )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
+        let whereClause = mssqlWhereClause(filters: filters, logicMode: logicMode, columnKinds: columnKinds)
         let orderBy = PluginSQLFilter.buildOrderByClause(
             sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
         ) ?? "ORDER BY (SELECT NULL)"
@@ -740,13 +800,44 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         quoteIdentifier(identifier)
     }
 
-    private func mssqlEscapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame { return "NULL" }
-        if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame { return "1" }
-        if trimmed.caseInsensitiveCompare("FALSE") == .orderedSame { return "0" }
-        if Int(trimmed) != nil || Double(trimmed) != nil { return trimmed }
-        return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
+    /// The shared builder writes the `LIKE` arms' literal itself rather than asking for one, so
+    /// SQL Server answers those arms first and lets every other operator fall through to it.
+    private func mssqlWhereClause(
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String {
+        let conditions = filters.compactMap { filter -> String? in
+            let quoted = mssqlQuoteIdentifier(filter.column)
+            if let like = MSSQLStringLiteral.likeCondition(
+                quotedColumn: quoted, op: filter.op, value: filter.value
+            ) {
+                return like
+            }
+            return PluginSQLFilter.buildFilterCondition(
+                column: filter.column,
+                op: filter.op,
+                value: filter.value,
+                kind: columnKinds[filter.column],
+                quoteIdentifier: mssqlQuoteIdentifier,
+                escapeTypedValue: mssqlEscapeValue,
+                regexCondition: { quoted, value in
+                    "\(quoted) LIKE \(MSSQLStringLiteral.quoted("%\(value)%"))"
+                }
+            )
+        }
+        guard !conditions.isEmpty else { return "" }
+        return conditions.joined(separator: logicMode == "and" ? " AND " : " OR ")
+    }
+
+    private func mssqlEscapeValue(_ value: String, kind: PluginColumnKind?) -> String {
+        PluginSQLLiteral.escapedLiteral(
+            value,
+            kind: kind,
+            trueLiteral: "1",
+            falseLiteral: "0",
+            quote: MSSQLStringLiteral.quoted
+        )
     }
 
 
@@ -754,61 +845,17 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// Convert `?` placeholders to `@p1, @p2, ...` and build sp_executesql components.
     /// Returns: (convertedQuery, paramDeclarations, paramAssignments)
-    private static func buildSpExecuteSql(
-        query: String,
-        parameters: [String?]
-    ) -> (String, String, String) {
-        var converted = ""
-        var paramIndex = 0
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        let chars = Array(query)
-        let length = chars.count
-
-        var i = 0
-        while i < length {
-            let char = chars[i]
-
-            // Handle doubled quotes (T-SQL escape: '' inside strings, "" inside identifiers)
-            if char == "'" && inSingleQuote && i + 1 < length && chars[i + 1] == "'" {
-                converted.append("''")
-                i += 2
-                continue
-            }
-            if char == "\"" && inDoubleQuote && i + 1 < length && chars[i + 1] == "\"" {
-                converted.append("\"\"")
-                i += 2
-                continue
-            }
-
-            if char == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
-            } else if char == "\"" && !inSingleQuote {
-                inDoubleQuote.toggle()
-            }
-
-            if char == "?" && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
-                paramIndex += 1
-                converted.append("@p\(paramIndex)")
-            } else {
-                converted.append(char)
-            }
-            i += 1
+    /// A binary cell has no text, and asking it for some is how every one of them reached the
+    /// server as `NULL`.
+    private static func parameter(_ value: PluginCellValue) -> MSSQLParameter {
+        switch value {
+        case .null:
+            return .null
+        case .text(let text):
+            return .text(text)
+        case .bytes(let data):
+            return .bytes(data)
         }
-
-        let count = paramIndex
-        guard count > 0 else {
-            return (converted, "", "")
-        }
-        let decls = (1...count).map { "@p\($0) NVARCHAR(MAX)" }.joined(separator: ", ")
-        let assigns = (1...count).map { i -> String in
-            if let value = parameters[i - 1] {
-                return "@p\(i) = N'\(escapeNString(value))'"
-            }
-            return "@p\(i) = NULL"
-        }.joined(separator: ", ")
-
-        return (converted, decls, assigns)
     }
 
     /// Escape single quotes for N'...' string literals in SQL Server.
@@ -816,9 +863,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         value.replacingOccurrences(of: "'", with: "''")
     }
 
-    func effectiveSchemaEscaped(_ schema: String?) -> String {
-        let raw = schema ?? _currentSchema
-        return raw.replacingOccurrences(of: "'", with: "''")
+    func effectiveSchema(_ schema: String?) -> String {
+        guard let schema, !schema.isEmpty else { return _currentSchema }
+        return schema
+    }
+
+    func effectiveSchemaQuoted(_ schema: String?) -> String {
+        MSSQLStringLiteral.quoted(effectiveSchema(schema))
     }
 
 }

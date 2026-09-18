@@ -9,7 +9,7 @@
 #endif
 
 /* CONC-492: Allow to build plugins outside of MariaDB Connector/C
-   source tree when ma_global.h was not included. */
+   source tree wnen ma_global.h was not included. */
 #if !defined(_global_h) && !defined(MY_GLOBAL_INCLUDED)
 typedef unsigned char uchar;
 #endif

@@ -42,6 +42,16 @@ struct JSONImportPluginTests {
         #expect(JSONImportParsing.cellValue(from: try field(#"{"big": 9007199254740993}"#, "big")) == .text("9007199254740993"))
     }
 
+    @Test("Imported doubles keep every digit needed to round-trip")
+    func testDoubleValuesRoundTrip() throws {
+        #expect(
+            JSONImportParsing.cellValue(from: try field(#"{"d": -3.9192320754595876e-07}"#, "d"))
+                == .text("-3.9192320754595876e-07")
+        )
+        #expect(JSONImportParsing.cellValue(from: try field(#"{"d": 1847.27}"#, "d")) == .text("1847.27"))
+        #expect(JSONImportParsing.cellValue(from: try field(#"{"d": 0.1}"#, "d")) == .text("0.1"))
+    }
+
     @Test("Strings pass through unchanged")
     func testStringValue() {
         #expect(JSONImportParsing.cellValue(from: "hello") == .text("hello"))

@@ -15,8 +15,8 @@ import Testing
 @Suite("ExtractTableName")
 @MainActor
 struct ExtractTableNameTests {
-    private func makeCoordinator() -> MainContentCoordinator {
-        let connection = TestFixtures.makeConnection(database: "db_a")
+    private func makeCoordinator(type: DatabaseType = .mysql) -> MainContentCoordinator {
+        let connection = TestFixtures.makeConnection(database: "db_a", type: type)
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
@@ -161,5 +161,61 @@ struct ExtractTableNameTests {
 
         let result = coordinator.extractTableName(from: "INSERT INTO users VALUES (1)")
         #expect(result == nil)
+    }
+
+    // MARK: - Table editability (#2150)
+
+    @Test("SQL: a table alias resolves to the table")
+    func sqlTableAlias() {
+        let coordinator = makeCoordinator(type: .postgresql)
+        defer { coordinator.teardown() }
+
+        #expect(coordinator.extractTableName(from: "select * from users u WHERE u.id = 1;") == "users")
+        #expect(coordinator.extractTableName(from: "SELECT * FROM users AS u WHERE u.id = 1") == "users")
+    }
+
+    @Test("A query tab whose SELECT uses a table alias is editable")
+    func aliasedQueryTabIsEditable() {
+        let coordinator = makeCoordinator(type: .postgresql)
+        defer { coordinator.teardown() }
+
+        let sql = "select * from users u WHERE u.id = 1"
+        let tab = QueryTab(query: sql, tabType: .query)
+        let resolved = coordinator.resolveTableEditability(tab: tab, sql: sql)
+
+        #expect(resolved.tableName == "users")
+        #expect(resolved.isEditable)
+    }
+
+    @Test("A query tab reading from more than one table stays read-only")
+    func multiSourceQueryTabIsNotEditable() {
+        let coordinator = makeCoordinator(type: .postgresql)
+        defer { coordinator.teardown() }
+
+        let joinSQL = "SELECT * FROM users u JOIN orders o ON o.user_id = u.id"
+        let joined = coordinator.resolveTableEditability(tab: QueryTab(query: joinSQL, tabType: .query), sql: joinSQL)
+        #expect(joined.tableName == nil)
+        #expect(!joined.isEditable)
+
+        let unionSQL = "SELECT * FROM users u WHERE u.id > 0 UNION SELECT * FROM admins a WHERE a.id > 0"
+        let unioned = coordinator.resolveTableEditability(tab: QueryTab(query: unionSQL, tabType: .query), sql: unionSQL)
+        #expect(unioned.tableName == nil)
+        #expect(!unioned.isEditable)
+    }
+
+    @Test("PostgreSQL jsonb path operators are not read as comments")
+    func postgresJsonbOperatorsResolve() {
+        let coordinator = makeCoordinator(type: .postgresql)
+        defer { coordinator.teardown() }
+
+        #expect(coordinator.extractTableName(from: "SELECT data #>> '{name}' FROM users WHERE id = 1") == "users")
+    }
+
+    @Test("A MySQL hash comment does not hide the table")
+    func mysqlHashCommentIsTrivia() {
+        let coordinator = makeCoordinator(type: .mysql)
+        defer { coordinator.teardown() }
+
+        #expect(coordinator.extractTableName(from: "SELECT * # FROM evil\nFROM users") == "users")
     }
 }

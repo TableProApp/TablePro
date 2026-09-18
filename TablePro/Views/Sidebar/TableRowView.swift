@@ -14,6 +14,8 @@ enum TableRowLogic {
         case .foreignTable:     return "link"
         case .systemTable:      return "tablecells.badge.ellipsis"
         case .partitionedTable: return "rectangle.split.3x1"
+        case .externalTable:    return "externaldrive.connected.to.line.below"
+        case .sequence:         return "number"
         }
     }
 
@@ -25,12 +27,31 @@ enum TableRowLogic {
         case .foreignTable:     return String(localized: "Foreign Table")
         case .systemTable:      return String(localized: "System Table")
         case .partitionedTable: return String(localized: "Partitioned Table")
+        case .externalTable:    return String(localized: "External Table")
+        case .sequence:         return String(localized: "Sequence")
         }
     }
 
-    static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool, isFavorite: Bool = false) -> String {
-        let kind = accessibilityKindLabel(for: table.type)
+    static func showsLeadingIcon(showObjectIcons: Bool, isPendingTruncate: Bool, isPendingDelete: Bool) -> Bool {
+        showObjectIcons || isPendingTruncate || isPendingDelete
+    }
+
+    static func accessibilityLabel(
+        table: TableInfo,
+        isPendingDelete: Bool,
+        isPendingTruncate: Bool,
+        isFavorite: Bool = false,
+        kindOverride: String? = nil,
+        bound: String? = nil
+    ) -> String {
+        let kind = kindOverride ?? accessibilityKindLabel(for: table.type)
         var label = String(format: String(localized: "%@: %@"), kind, table.name)
+        if let bound, !bound.isEmpty {
+            label += ", " + bound
+        }
+        if let partitions = SidebarPartitionRow.tableAccessibilitySuffix(partitionCount: table.partitionCount) {
+            label += ", " + partitions
+        }
         if isPendingDelete {
             label += ", " + String(localized: "pending delete")
         } else if isPendingTruncate {
@@ -43,19 +64,42 @@ enum TableRowLogic {
 }
 
 struct TableRow: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let table: TableInfo
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
     var isFavorite: Bool = false
+    var showsPartitionCount: Bool = false
+    /// Set when the row stands for a partition that is a relation of its own. It draws beside the
+    /// name like a comment does, and it is not the comment: the comment is what the server stores
+    /// against the object, and it is hidden behind its own setting.
+    var partitionBound: String?
     var onToggleFavorite: (() -> Void)?
 
     @State private var isHovered = false
 
+    private var visiblePartitionCount: String? {
+        guard showsPartitionCount, table.type == .partitionedTable else { return nil }
+        return SidebarPartitionRow.countLabel(partitionCount: table.partitionCount)
+    }
+
     private var visibleComment: String? {
-        guard AppSettingsManager.shared.general.showObjectComments,
+        guard settingsManager.general.showObjectComments,
               let comment = table.comment, !comment.isEmpty
         else { return nil }
         return comment
+    }
+
+    private var showsObjectIcon: Bool {
+        settingsManager.general.showObjectIcons
+    }
+
+    private var showsLeadingIcon: Bool {
+        TableRowLogic.showsLeadingIcon(
+            showObjectIcons: showsObjectIcon,
+            isPendingTruncate: isPendingTruncate,
+            isPendingDelete: isPendingDelete
+        )
     }
 
     @ViewBuilder
@@ -63,11 +107,11 @@ struct TableRow: View {
         if isPendingDelete {
             Image(systemName: "minus.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.red)
+                .selectionAwareTint(.red)
         } else if isPendingTruncate {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .selectionAwareTint(.orange)
         }
     }
 
@@ -86,34 +130,44 @@ struct TableRow: View {
                             .truncationMode(.tail)
                             .help(visibleComment)
                     }
+                    if let partitionBound {
+                        Text(partitionBound)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(partitionBound)
+                    }
+                    if let visiblePartitionCount {
+                        Text(visiblePartitionCount)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             } icon: {
-                Image(systemName: TableRowLogic.iconName(for: table.type))
-                    .sidebarTint(Color.accentColor)
-                    .frame(width: 16)
-                    .overlay(alignment: .bottomTrailing) {
-                        pendingStateBadge
-                    }
+                if showsObjectIcon {
+                    Image(systemName: TableRowLogic.iconName(for: table.type))
+                        .selectionAwareTint(Color.accentColor)
+                        .frame(width: 16)
+                        .overlay(alignment: .bottomTrailing) {
+                            pendingStateBadge
+                        }
+                } else {
+                    pendingStateBadge
+                        .frame(width: 16)
+                }
             }
+            .sidebarRowIcon(visible: showsLeadingIcon)
 
             Spacer(minLength: 4)
 
             if let onToggleFavorite {
-                let starVisible = isFavorite || isHovered
-                Button(action: onToggleFavorite) {
-                    Image(systemName: isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
-                        .contentShape(Rectangle())
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
-                .opacity(starVisible ? 1 : 0)
-                .allowsHitTesting(starVisible)
-                .accessibilityHidden(true)
-                .help(isFavorite
-                      ? String(localized: "Remove from Favorites")
-                      : String(localized: "Add to Favorites"))
+                FavoriteStarButton(
+                    isFavorite: isFavorite,
+                    isRowHovered: isHovered,
+                    toggle: onToggleFavorite
+                )
             }
         }
         .onHover { isHovered = $0 }
@@ -123,27 +177,11 @@ struct TableRow: View {
                 table: table,
                 isPendingDelete: isPendingDelete,
                 isPendingTruncate: isPendingTruncate,
-                isFavorite: isFavorite
+                isFavorite: isFavorite,
+                kindOverride: partitionBound == nil ? nil : SidebarPartitionRow.kindLabel,
+                bound: partitionBound
             )
         )
         .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))
-    }
-}
-
-private struct FavoriteAccessibilityAction: ViewModifier {
-    let isFavorite: Bool
-    let toggle: (() -> Void)?
-
-    func body(content: Content) -> some View {
-        if let toggle {
-            content.accessibilityAction(
-                named: isFavorite
-                    ? Text("Remove from Favorites")
-                    : Text("Add to Favorites"),
-                toggle
-            )
-        } else {
-            content
-        }
     }
 }

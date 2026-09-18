@@ -11,12 +11,12 @@ struct DataGridUpdateSnapshot: Equatable {
     let rowDisplayCount: Int
     let columnCount: Int
     let columns: [String]
-    let sortedIDsCount: Int?
     let valueFilteredIDsCount: Int?
     let displayFormats: [ValueDisplayFormat?]
+    let highlightRules: [HighlightRule]
     let configuration: DataGridConfiguration
     let isEditable: Bool
-    let hasMoveDelegate: Bool
+    let rowReorder: DataGridRowReorder
     let rowHeight: CGFloat
     let alternatingRows: Bool
     let reloadVersion: Int

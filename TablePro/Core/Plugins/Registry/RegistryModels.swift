@@ -108,8 +108,8 @@ extension RegistryPlugin {
         currentKitVersion: Int,
         minimumKitVersion: Int
     ) throws -> RegistryBinary {
-        let highestInRange = binaries
-            .filter { $0.architecture == arch }
+        let forThisArchitecture = binaries.filter { $0.architecture == arch }
+        let highestInRange = forThisArchitecture
             .compactMap { binary -> (binary: RegistryBinary, kit: Int)? in
                 guard let kit = binary.pluginKitVersion, kit >= minimumKitVersion, kit <= currentKitVersion else {
                     return nil
@@ -120,6 +120,15 @@ extension RegistryPlugin {
 
         if let highestInRange {
             return highestInRange.binary
+        }
+
+        // Every published binary being above this app's PluginKit version is a stale app, not a
+        // missing architecture, and saying "architecture" sends the user looking at their CPU.
+        // It is the ordinary outcome of the registry's retention policy: once the two newest kit
+        // versions are both above what an app ships, that app can install nothing at all.
+        let publishedKits = forThisArchitecture.compactMap(\.pluginKitVersion)
+        if let oldest = publishedKits.min(), oldest > currentKitVersion {
+            throw PluginError.appTooOldForPlugin(oldestPublishedKit: oldest, appKit: currentKitVersion)
         }
 
         throw PluginError.noCompatibleBinary

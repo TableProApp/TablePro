@@ -14,7 +14,7 @@ struct SQLiteFileExtensionsTests {
 
     @Test("Plugin metadata registry exposes the canonical SQLite extensions")
     func registryHasCanonicalExtensions() throws {
-        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forTypeId: "SQLite"))
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "SQLite"))
         #expect(snapshot.schema.fileExtensions.sorted() == Self.canonical.sorted())
     }
 

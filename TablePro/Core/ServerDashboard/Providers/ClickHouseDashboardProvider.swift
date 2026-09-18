@@ -123,24 +123,11 @@ private extension ClickHouseDashboardProvider {
     }
 
     func formatDuration(seconds: Int) -> String {
-        if seconds >= 3_600 {
-            return "\(seconds / 3_600)h \((seconds % 3_600) / 60)m"
-        } else if seconds >= 60 {
-            return "\(seconds / 60)m \(seconds % 60)s"
-        }
-        return "\(seconds)s"
+        DurationFormatting.string(seconds: seconds)
     }
 
     func formatBytes(_ string: String) -> String {
-        guard let bytes = Double(string) else { return string }
-        if bytes >= 1_073_741_824 {
-            return String(format: "%.1f GB", bytes / 1_073_741_824)
-        } else if bytes >= 1_048_576 {
-            return String(format: "%.1f MB", bytes / 1_048_576)
-        } else if bytes >= 1_024 {
-            return String(format: "%.1f KB", bytes / 1_024)
-        }
-        return "\(Int(bytes)) B"
+        ByteSizeFormatting.string(byteString: string)
     }
 
     func metricDisplay(for metric: String) -> (String, String) {

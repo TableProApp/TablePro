@@ -1,14 +1,14 @@
 import Foundation
-import Testing
 import TableProDatabase
-import TableProModels
-import TableProQuery
 @testable import TableProMobile
+import TableProModels
+import TableProPluginKit
+import TableProQuery
+import Testing
 
 @MainActor
 @Suite("DataBrowserViewModel")
 struct DataBrowserViewModelTests {
-
     private func makeSession(driver: MockDatabaseDriver) -> ConnectionSession {
         ConnectionSession(
             connectionId: UUID(),
@@ -188,6 +188,77 @@ struct DataBrowserViewModelTests {
         let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
         #expect(success == false)
         #expect(vm.operationError != nil)
+    }
+
+    @Test("deleteRow on an idle session opens a read-write transaction and commits it")
+    func deleteWrapsIdleSession() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        driver.scriptedTransactionState = .idle
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0)),
+            .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        #expect(success == true)
+        #expect(driver.beganTransactionModes == [.readWrite])
+        #expect(driver.didCommitTransaction)
+    }
+
+    @Test("a failed delete rolls the transaction back")
+    func deleteFailureRollsBack() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        driver.scriptedTransactionState = .idle
+        driver.scriptedExecuteResults = [.failure(MockDatabaseDriver.MockError.scripted)]
+
+        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        #expect(success == false)
+        #expect(driver.didRollbackTransaction)
+        #expect(!driver.didCommitTransaction)
+    }
+
+    @Test("deleteRow joins a transaction the session already holds")
+    func deleteJoinsOpenTransaction() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        driver.scriptedTransactionState = .explicitTransaction
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0)),
+            .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        #expect(success == true)
+        #expect(!driver.didBeginTransaction)
+        #expect(!driver.didCommitTransaction)
     }
 
     @Test("changePageSize resets currentPage and totalRows")

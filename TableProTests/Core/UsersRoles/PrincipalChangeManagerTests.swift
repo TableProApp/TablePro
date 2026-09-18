@@ -168,6 +168,45 @@ struct PrincipalChangeManagerTests {
         #expect(definition.canLogin == false)
     }
 
+    /// The attribute forms carry no password field, so every edit they stage arrives with none.
+    /// Taking it wholesale left a `CREATE USER` with no `IDENTIFIED BY`, and the fold is the only
+    /// way a new account gets a connection limit at all.
+    @Test("An attribute edit folded into a staged create keeps the create's password")
+    func foldKeepsTheStagedPassword() {
+        let carol = PluginPrincipalRef(name: "carol")
+        let manager = makeManager()
+        manager.stageCreate(PluginPrincipalDefinition(ref: carol, password: "secret", canLogin: true))
+
+        manager.stageAlter(
+            PluginPrincipalDefinition(ref: carol, canLogin: true, connectionLimit: 4),
+            for: carol
+        )
+
+        let changes = manager.pendingChanges()
+        #expect(changes.count == 1)
+        guard case let .create(definition) = changes[0] else {
+            Issue.record("expected a single create carrying the edit")
+            return
+        }
+        #expect(definition.password == "secret")
+        #expect(definition.connectionLimit == 4)
+    }
+
+    @Test("A password the edit does carry replaces the staged one")
+    func foldTakesAnIncomingPassword() {
+        let carol = PluginPrincipalRef(name: "carol")
+        let manager = makeManager()
+        manager.stageCreate(PluginPrincipalDefinition(ref: carol, password: "secret"))
+
+        manager.stageAlter(PluginPrincipalDefinition(ref: carol, password: "newer"), for: carol)
+
+        guard case let .create(definition) = manager.pendingChanges().first else {
+            Issue.record("expected a single create carrying the edit")
+            return
+        }
+        #expect(definition.password == "newer")
+    }
+
     @Test("Removing a staged create takes its password and grants with it")
     func unstageCreateClearsEverything() {
         let carol = PluginPrincipalRef(name: "carol")

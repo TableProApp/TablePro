@@ -9,15 +9,15 @@ import Testing
 
 /// Minimal stub implementing PluginDatabaseDriver for testing buildExplainQuery.
 /// Returns a fixed explain string or nil depending on configuration.
-private final class StubExplainDriver: PluginDatabaseDriver {
+private final class StubExplainDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
 
-    private let explainResult: ((String) -> String?)?
+    private let explainResult: (@Sendable (String) -> String?)?
 
-    init(explainResult: ((String) -> String?)? = nil) {
+    init(explainResult: (@Sendable (String) -> String?)? = nil) {
         self.explainResult = explainResult
     }
 

@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSyncTransport
 import Testing
 
 @Suite("ConnectionStorage Persistence")
@@ -94,22 +95,26 @@ struct ConnectionStoragePersistenceTests {
     }
 
     @Test("duplicating a connection carries tunnel modes and their secrets")
-    func duplicateCarriesTunnelModesAndSecrets() {
+    func duplicateCarriesTunnelModesAndSecrets() throws {
         var connection = DatabaseConnection(name: "Tunnels", type: .postgresql)
         connection.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
         connection.cloudSQLProxyMode = .inline(CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i"))
         connection.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com", username: "u"))
+        connection.tunnelCommandMode = .inline(
+            TunnelCommandConfiguration(method: .kubectl, kubernetesNamespace: "prod", kubernetesResource: "service/pg")
+        )
         storage.addConnection(connection)
         storage.saveCloudflareTokenId("token-id", for: connection.id)
         storage.saveCloudflareTokenSecret("token-secret", for: connection.id)
         storage.saveCloudSQLProxyServiceAccountKey("{\"type\":\"service_account\"}", for: connection.id)
         storage.saveSOCKSProxyPassword("proxy-pw", for: connection.id)
 
-        let duplicate = storage.duplicateConnection(connection)
+        let duplicate = try #require(storage.duplicateConnection(connection))
 
         #expect(duplicate.cloudflareTunnelMode == connection.cloudflareTunnelMode)
         #expect(duplicate.cloudSQLProxyMode == connection.cloudSQLProxyMode)
         #expect(duplicate.socksProxyMode == connection.socksProxyMode)
+        #expect(duplicate.tunnelCommandMode == connection.tunnelCommandMode)
         #expect(storage.loadCloudflareTokenId(for: duplicate.id) == "token-id")
         #expect(storage.loadCloudflareTokenSecret(for: duplicate.id) == "token-secret")
         #expect(storage.loadCloudSQLProxyServiceAccountKey(for: duplicate.id) == "{\"type\":\"service_account\"}")
@@ -117,6 +122,7 @@ struct ConnectionStoragePersistenceTests {
 
         let reloaded = storage.loadConnections().first { $0.id == duplicate.id }
         #expect(reloaded?.socksProxyMode == connection.socksProxyMode)
+        #expect(reloaded?.tunnelCommandMode == connection.tunnelCommandMode)
     }
 
     @Test("deleting a connection removes its SOCKS proxy password")
@@ -131,12 +137,12 @@ struct ConnectionStoragePersistenceTests {
     }
 
     @Test("duplicating a connection preserves its password source")
-    func duplicatePreservesPasswordSource() {
+    func duplicatePreservesPasswordSource() throws {
         var connection = DatabaseConnection(name: "Source", type: .postgresql)
         connection.passwordSource = .file(path: "~/.config/tablepro/db.pw")
         storage.addConnection(connection)
 
-        let duplicate = storage.duplicateConnection(connection)
+        let duplicate = try #require(storage.duplicateConnection(connection))
         #expect(duplicate.id != connection.id)
         #expect(duplicate.passwordSource == .file(path: "~/.config/tablepro/db.pw"))
 

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct DynamoDBItemFlattener {
@@ -269,18 +270,9 @@ struct DynamoDBItemFlattener {
     }
 
     private static func serializeToJson(_ value: Any) -> String {
-        do {
-            let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
-            if let json = String(data: data, encoding: .utf8) {
-                let nsJson = json as NSString
-                if nsJson.length > maxNestedJsonLength {
-                    return String(json.prefix(maxNestedJsonLength)) + "..."
-                }
-                return json
-            }
-        } catch {
-            // Fall through
+        guard let json = NumberText.json(from: value) else {
+            return String(describing: value)
         }
-        return String(describing: value)
+        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
     }
 }

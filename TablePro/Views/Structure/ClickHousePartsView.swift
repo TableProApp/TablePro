@@ -13,7 +13,12 @@ struct ClickHousePartsView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePartsView")
 
     let tableName: String
-    let connectionId: UUID
+
+    /// The tab's own scope, not the connection alone. ClickHouse switches database by writing one
+    /// field on the shared driver and nothing puts it back, so a statement built from that driver
+    /// names whichever database the sidebar last reached rather than the table on screen.
+    let scope: DatabaseScope
+    let connection: DatabaseConnection
     let reloadToken: Int
 
     @State private var parts: [ClickHousePartInfo] = []
@@ -32,7 +37,7 @@ struct ClickHousePartsView: View {
                         .font(.largeTitle)
                         .foregroundStyle(.orange)
                         .accessibilityHidden(true)
-                    Text(error)
+                    RevealedTextView(error)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -108,15 +113,15 @@ struct ClickHousePartsView: View {
     // MARK: - Actions
 
     private func optimizeTable() {
-        Task {
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let sql = "OPTIMIZE TABLE \(driver.quoteIdentifier(tableName)) FINAL"
-            do {
-                _ = try await driver.execute(query: sql)
-                await loadParts()
-            } catch {
-                Self.logger.error("Optimize failed: \(error.localizedDescription, privacy: .public)")
-            }
+        Task { @MainActor in
+            guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
+            await run(
+                ClickHousePartStatements.optimize(
+                    database: scope.database, table: tableName, quote: driver.quoteIdentifier
+                ),
+                description: String(localized: "Optimize Table"),
+                kind: .maintenance
+            )
         }
     }
 
@@ -134,15 +139,17 @@ struct ClickHousePartsView: View {
             )
             guard confirmed else { return }
 
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DROP PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
-            do {
-                _ = try await driver.execute(query: sql)
-                selection.removeAll()
-                await loadParts()
-            } catch {
-                Self.logger.error("Drop partition failed: \(error.localizedDescription, privacy: .public)")
-            }
+            guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
+            let sql = ClickHousePartStatements.dropPartition(
+                database: scope.database,
+                table: tableName,
+                partition: partitionValue,
+                quote: driver.quoteIdentifier,
+                escape: driver.escapeStringLiteral
+            )
+            guard await run(sql, description: String(localized: "Drop Partition"), kind: .destructiveQuery)
+            else { return }
+            selection.removeAll()
         }
     }
 
@@ -160,15 +167,64 @@ struct ClickHousePartsView: View {
             )
             guard confirmed else { return }
 
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DETACH PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
-            do {
-                _ = try await driver.execute(query: sql)
-                selection.removeAll()
-                await loadParts()
-            } catch {
-                Self.logger.error("Detach partition failed: \(error.localizedDescription, privacy: .public)")
+            guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
+            let sql = ClickHousePartStatements.detachPartition(
+                database: scope.database,
+                table: tableName,
+                partition: partitionValue,
+                quote: driver.quoteIdentifier,
+                escape: driver.escapeStringLiteral
+            )
+            guard await run(sql, description: String(localized: "Detach Partition"), kind: .destructiveQuery)
+            else { return }
+            selection.removeAll()
+        }
+    }
+
+    /// Every statement here names the tab's own database and runs on a driver leased to it, and goes
+    /// through the gate first: a partition drop is data loss, and a connection set to confirm those
+    /// was dropping one on the strength of this view's own alert alone.
+    /// Answers whether the statement actually ran. A denial, a cancelled confirmation or a failure
+    /// leaves the partition where it was, so the caller keeps the user's selection rather than
+    /// clearing it as though the action had gone through.
+    @MainActor
+    @discardableResult
+    private func run(_ sql: String, description: String, kind: OperationKind) async -> Bool {
+        let scope = scope
+        do {
+            let decision = await ExecutionGateProvider.shared.authorize(
+                OperationRequest(
+                    connectionId: scope.connectionId,
+                    databaseType: connection.type,
+                    sql: sql,
+                    kind: kind,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: description
+                )
+            )
+            guard case .authorized = decision else {
+                errorMessage = decision.deniedReason
+                return false
             }
+            _ = try await DatabaseManager.shared.withScopedDriver(
+                scope: scope,
+                route: DatabaseManager.shared.schemaChangeRoute(for: scope),
+                cancellation: .protectedWrite
+            ) { driver in
+                try await driver.execute(query: sql)
+            }
+            if kind != .maintenance {
+                CatalogChangeService.post(
+                    .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+                )
+            }
+            await loadParts()
+            return true
+        } catch {
+            Self.logger.error("\(description, privacy: .public) failed: \(error.publicLogShape, privacy: .public)")
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -185,21 +241,14 @@ struct ClickHousePartsView: View {
         isLoading = true
         errorMessage = nil
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            errorMessage = String(localized: "Not connected to ClickHouse")
-            isLoading = false
-            return
-        }
-
+        let scope = scope
+        let tableName = tableName
         do {
-            let sql = """
-                SELECT partition, name, rows, bytes_on_disk,
-                       toString(modification_time) AS mod_time, active
-                FROM system.parts
-                WHERE database = currentDatabase() AND table = '\(driver.escapeStringLiteral(tableName))'
-                ORDER BY partition, name
-                """
-            let result = try await driver.execute(query: sql)
+            let result = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.execute(query: ClickHousePartStatements.parts(
+                    database: scope.database, table: tableName, escape: driver.escapeStringLiteral
+                ))
+            }
             parts = result.rows.compactMap { row -> ClickHousePartInfo? in
                 guard let name = row[safe: 1]?.asText else { return nil }
                 let partition = row[safe: 0]?.asText ?? ""
@@ -217,7 +266,7 @@ struct ClickHousePartsView: View {
                 )
             }
         } catch {
-            Self.logger.error("Failed to load parts: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load parts: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
         }
 
@@ -231,15 +280,6 @@ struct ClickHousePartsView: View {
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {
-        switch bytes {
-        case 0..<1_024:
-            return "\(bytes) B"
-        case 1_024..<1_048_576:
-            return String(format: "%.0f KB", Double(bytes) / 1_024)
-        case 1_048_576..<1_073_741_824:
-            return String(format: "%.1f MB", Double(bytes) / 1_048_576)
-        default:
-            return String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
-        }
+        ByteSizeFormatting.string(bytes: bytes)
     }
 }

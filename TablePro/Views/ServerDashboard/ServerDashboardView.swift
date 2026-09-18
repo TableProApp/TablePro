@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ServerDashboardView: View {
-    @Bindable var viewModel: ServerDashboardViewModel
+    @ObservedObject var viewModel: ServerDashboardViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -9,7 +9,7 @@ struct ServerDashboardView: View {
             Divider()
 
             if viewModel.supportedPanels.isEmpty {
-                ContentUnavailableView(
+                UnavailableStateView(
                     String(localized: "Dashboard Not Available"),
                     systemImage: "gauge.with.dots.needle.0percent",
                     description: Text("Server monitoring is not available for this database type.")
@@ -44,7 +44,7 @@ struct ServerDashboardView: View {
             Button(String(localized: "OK"), role: .cancel) { viewModel.actionError = nil }
         } message: {
             if let error = viewModel.actionError {
-                Text(error)
+                Text(verbatim: RevealedText(error).plainText)
             }
         }
     }

@@ -2,7 +2,7 @@ import Foundation
 
 public enum MSSQLSchemaQueries {
     public static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        MSSQLStringLiteral.escaped(value)
     }
 
     public static func escapeBracket(_ value: String) -> String {
@@ -11,6 +11,86 @@ public enum MSSQLSchemaQueries {
 
     public static func bracketed(schema: String, table: String) -> String {
         "[\(escapeBracket(schema))].[\(escapeBracket(table))]"
+    }
+
+    /// Both catalog views are scoped to a database, so each is qualified with the one asked about. Read unqualified
+    /// they describe whichever database the connection is using, which reported that database's size and table
+    /// count under every name. `size` counts 8 KB pages and is cast before multiplying: the session runs with
+    /// ANSI_WARNINGS off, so an int overflow past 2 GB comes back as NULL rather than as an error.
+    public static func databaseMetadata(database: String) -> String {
+        let qualified = "[\(escapeBracket(database))]"
+        return """
+            SELECT
+                (SELECT SUM(CAST(size AS bigint)) * 8192 FROM \(qualified).sys.database_files) AS size_bytes,
+                (SELECT COUNT(*) FROM \(qualified).sys.tables) AS table_count
+            """
+    }
+
+    /// Every database's file size from the server-wide view, for a database whose own catalog cannot be read
+    /// because it is offline or the login has no access to it.
+    public static let allDatabaseSizes = """
+        SELECT d.name, SUM(CAST(mf.size AS bigint)) * 8192 AS size_bytes
+        FROM sys.databases d
+        LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
+        GROUP BY d.name
+        """
+
+    /// Renders `CREATE INDEX` for the rows `sys.indexes` joined to `sys.index_columns` returns,
+    /// one statement per index, in the order the rows arrive.
+    ///
+    /// Each row is `name, type_desc, is_unique, filter_definition, column_name,
+    /// is_included_column, is_descending_key`. The kind is written out because a table can hold
+    /// only one clustered index: scripting every index as `CLUSTERED`, which is what the driver
+    /// used to report, makes the server reject the second one. `filter_definition` already arrives
+    /// parenthesised, so it is spliced in as it stands.
+    public static func indexStatements(
+        rows: [[String?]],
+        schema: String,
+        table: String
+    ) -> [String] {
+        var order: [String] = []
+        var keys: [String: [String]] = [:]
+        var included: [String: [String]] = [:]
+        var kind: [String: String] = [:]
+        var unique: [String: Bool] = [:]
+        var filter: [String: String] = [:]
+
+        for row in rows {
+            guard let name = row[safe: 0] ?? nil, let column = row[safe: 4] ?? nil else { continue }
+            if keys[name] == nil, included[name] == nil {
+                order.append(name)
+                keys[name] = []
+                included[name] = []
+                kind[name] = (row[safe: 1] ?? nil) ?? "NONCLUSTERED"
+                unique[name] = (row[safe: 2] ?? nil) == "1"
+                if let predicate = row[safe: 3] ?? nil, !predicate.isEmpty {
+                    filter[name] = predicate
+                }
+            }
+            let quoted = "[\(escapeBracket(column))]"
+            if (row[safe: 5] ?? nil) == "1" {
+                included[name]?.append(quoted)
+            } else {
+                let descending = (row[safe: 6] ?? nil) == "1"
+                keys[name]?.append(descending ? "\(quoted) DESC" : quoted)
+            }
+        }
+
+        return order.compactMap { name -> String? in
+            guard let keyColumns = keys[name], !keyColumns.isEmpty else { return nil }
+            var statement = "CREATE "
+            if unique[name] == true { statement += "UNIQUE " }
+            statement += "\(kind[name] ?? "NONCLUSTERED") INDEX [\(escapeBracket(name))]"
+            statement += " ON \(bracketed(schema: schema, table: table))"
+            statement += " (\(keyColumns.joined(separator: ", ")))"
+            if let includedColumns = included[name], !includedColumns.isEmpty {
+                statement += " INCLUDE (\(includedColumns.joined(separator: ", ")))"
+            }
+            if let predicate = filter[name] {
+                statement += " WHERE \(predicate)"
+            }
+            return statement + ";"
+        }
     }
 
     public static func qualifiedName(schema: String?, table: String) -> String {
@@ -69,19 +149,19 @@ public enum MSSQLSchemaQueries {
         """
 
     public static func tables(schema: String) -> String {
-        let s = escape(schema)
+        let s = MSSQLStringLiteral.quoted(schema)
         return """
             SELECT t.TABLE_NAME, t.TABLE_TYPE
             FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = '\(s)'
+            WHERE t.TABLE_SCHEMA = \(s)
               AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
             ORDER BY t.TABLE_NAME
             """
     }
 
     public static func columns(schema: String, table: String) -> String {
-        let s = escape(schema)
-        let t = escape(table)
+        let s = MSSQLStringLiteral.quoted(schema)
+        let t = MSSQLStringLiteral.quoted(table)
         return """
             SELECT
                 c.COLUMN_NAME,
@@ -92,7 +172,8 @@ public enum MSSQLSchemaQueries {
                 c.IS_NULLABLE,
                 c.COLUMN_DEFAULT,
                 COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
+                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
@@ -101,17 +182,17 @@ public enum MSSQLSchemaQueries {
                     ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
                     AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
                 WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = '\(s)'
-                    AND tc.TABLE_NAME = '\(t)'
+                    AND tc.TABLE_SCHEMA = \(s)
+                    AND tc.TABLE_NAME = \(t)
             ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_NAME = '\(t)'
-              AND c.TABLE_SCHEMA = '\(s)'
+            WHERE c.TABLE_NAME = \(t)
+              AND c.TABLE_SCHEMA = \(s)
             ORDER BY c.ORDINAL_POSITION
             """
     }
 
     public static func indexes(schema: String, table: String) -> String {
-        let object = bracketed(schema: schema, table: table)
+        let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
         return """
             SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name
             FROM sys.indexes i
@@ -119,15 +200,15 @@ public enum MSSQLSchemaQueries {
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c
                 ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE i.object_id = OBJECT_ID('\(object)')
+            WHERE i.object_id = OBJECT_ID(\(object))
               AND i.name IS NOT NULL
             ORDER BY i.index_id, ic.key_ordinal
             """
     }
 
     public static func foreignKeys(schema: String, table: String) -> String {
-        let s = escape(schema)
-        let t = escape(table)
+        let s = MSSQLStringLiteral.quoted(schema)
+        let t = MSSQLStringLiteral.quoted(table)
         return """
             SELECT
                 fk.name AS constraint_name,
@@ -145,7 +226,7 @@ public enum MSSQLSchemaQueries {
             JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
             JOIN sys.columns cr
                 ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE tp.name = '\(t)' AND s.name = '\(s)'
+            WHERE tp.name = \(t) AND s.name = \(s)
             ORDER BY fk.name
             """
     }
@@ -171,6 +252,7 @@ public struct MSSQLColumnRow: Sendable, Equatable {
     public let defaultValue: String?
     public let isIdentity: Bool
     public let isPrimaryKey: Bool
+    public let isComputed: Bool
 
     public init(
         name: String,
@@ -181,7 +263,8 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         isNullable: Bool,
         defaultValue: String?,
         isIdentity: Bool,
-        isPrimaryKey: Bool
+        isPrimaryKey: Bool,
+        isComputed: Bool = false
     ) {
         self.name = name
         self.dataType = dataType
@@ -192,6 +275,7 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         self.defaultValue = defaultValue
         self.isIdentity = isIdentity
         self.isPrimaryKey = isPrimaryKey
+        self.isComputed = isComputed
     }
 
     public var displayType: String {
@@ -270,7 +354,8 @@ public extension MSSQLSchemaQueries {
             isNullable: (row[safe: 5] ?? nil) == "YES",
             defaultValue: row[safe: 6] ?? nil,
             isIdentity: (row[safe: 7] ?? nil) == "1",
-            isPrimaryKey: (row[safe: 8] ?? nil) == "1"
+            isPrimaryKey: (row[safe: 8] ?? nil) == "1",
+            isComputed: (row[safe: 9] ?? nil) == "1"
         )
     }
 

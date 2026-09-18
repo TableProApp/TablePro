@@ -4,9 +4,12 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 
 /// A named group (folder) for organizing database connections
 struct ConnectionGroup: Identifiable, Hashable, Codable {
+    static let maxNestingDepth = LibraryGroupGraph.maxNestingDepth
+
     let id: UUID
     var name: String
     var color: ConnectionColor

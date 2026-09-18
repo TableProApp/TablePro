@@ -1,5 +1,5 @@
 import Foundation
-import GSS
+@preconcurrency import GSS
 import TableProMSSQLCore
 
 enum MSSQLKerberosCredentials {

@@ -15,7 +15,17 @@ final class RowDisplayBox {
 
 @MainActor
 final class RowDisplayCache {
-    private var storage: [RowID: RowDisplayBox] = [:]
+    /// A box is a reference and callers mutate one in place before handing it back, so the cost
+    /// recorded at insertion is the only number that still describes what was added. Recomputing it
+    /// from the box on removal subtracts a different figure than was added and drifts `totalCost`
+    /// away from the budget it is there to enforce.
+    private struct Entry {
+        let box: RowDisplayBox
+        let cost: Int
+    }
+
+    private var storage: [RowID: Entry] = [:]
+    private var highlights: [RowID: RowHighlight] = [:]
     private var insertionOrder: [RowID] = []
     private var insertionHead: Int = 0
     private var totalCost: Int = 0
@@ -28,25 +38,60 @@ final class RowDisplayCache {
     }
 
     func box(forID id: RowID) -> RowDisplayBox? {
-        storage[id]
+        storage[id]?.box
     }
 
-    func setBox(_ box: RowDisplayBox, forID id: RowID, cost: Int) {
+    func setBox(_ box: RowDisplayBox, forID id: RowID) {
+        let cost = Self.rowCost(box.values)
         if let existing = storage[id] {
-            totalCost -= rowCost(existing.values)
+            totalCost -= existing.cost
         } else {
             insertionOrder.append(id)
         }
-        storage[id] = box
+        storage[id] = Entry(box: box, cost: cost)
         totalCost += cost
         evictIfNeeded()
     }
 
+    func highlight(forID id: RowID) -> RowHighlight? {
+        highlights[id]
+    }
+
+    func setHighlight(_ highlight: RowHighlight, forID id: RowID) {
+        if highlights.count >= countLimit {
+            highlights.removeAll(keepingCapacity: true)
+        }
+        highlights[id] = highlight
+    }
+
+    func clearHighlight(forID id: RowID) {
+        highlights.removeValue(forKey: id)
+    }
+
+    func clearHighlights() {
+        highlights.removeAll(keepingCapacity: true)
+    }
+
     func removeAll() {
         storage.removeAll(keepingCapacity: true)
+        highlights.removeAll(keepingCapacity: true)
         insertionOrder.removeAll(keepingCapacity: true)
         insertionHead = 0
         totalCost = 0
+    }
+
+    /// Drops one row's formatted values while keeping its box, so the next read
+    /// reformats from the current cell values. Row ids are positional, so a row
+    /// whose content changed in place keeps its id and would otherwise be served
+    /// its pre-edit text.
+    func clearValues(forID id: RowID) {
+        highlights.removeValue(forKey: id)
+        guard let existing = storage[id] else { return }
+        totalCost -= existing.cost
+        for index in existing.box.values.indices {
+            existing.box.values[index] = nil
+        }
+        storage[id] = Entry(box: existing.box, cost: 0)
     }
 
     private func evictIfNeeded() {
@@ -55,7 +100,7 @@ final class RowDisplayCache {
             let oldest = insertionOrder[insertionHead]
             insertionHead += 1
             if let removed = storage.removeValue(forKey: oldest) {
-                totalCost -= rowCost(removed.values)
+                totalCost -= removed.cost
             }
         }
         if insertionHead > 10_000 {
@@ -64,10 +109,10 @@ final class RowDisplayCache {
         }
     }
 
-    private func rowCost(_ values: ContiguousArray<String?>) -> Int {
+    private static func rowCost(_ values: ContiguousArray<String?>) -> Int {
         var total = 0
         for value in values {
-            if let s = value { total &+= s.utf8.count }
+            if let value { total &+= value.utf8.count }
         }
         return total
     }

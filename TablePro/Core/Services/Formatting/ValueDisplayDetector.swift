@@ -26,6 +26,12 @@ enum ValueDisplayDetector {
 
             if let format = detectUuid(columnType: columnType, columnName: columnName) {
                 results[i] = format
+            } else if let format = detectBinaryText(
+                columnType: columnType,
+                columnIndex: i,
+                sampleValues: sampleValues
+            ) {
+                results[i] = format
             } else if let format = detectTimestamp(columnType: columnType, columnName: columnName, sampleValue: sampleValue) {
                 results[i] = format
             }
@@ -61,6 +67,49 @@ enum ValueDisplayDetector {
         }
 
         return nil
+    }
+
+    // MARK: - Binary Text Detection
+
+    /// A binary column whose every sampled value reads as text is a column holding text, so it
+    /// renders as text instead of as hex nobody can read.
+    ///
+    /// Every sample has to agree, and at least one has to carry content: one readable value among
+    /// hashes is a coincidence, and a column of empty values says nothing either way. A cell that
+    /// disagrees later still falls back to hex on its own, per value.
+    ///
+    /// A `.text` sample opts the column out entirely. That is a driver that already decoded the
+    /// binary itself, MongoDB's legacy UUIDs among them, and second-guessing it would undo the
+    /// per-connection byte order it was decoded under.
+    private static func detectBinaryText(
+        columnType: ColumnType?,
+        columnIndex: Int,
+        sampleValues: [[PluginCellValue]]?
+    ) -> ValueDisplayFormat? {
+        guard let columnType, columnType.isBlobType else { return nil }
+        guard let sampleValues, !sampleValues.isEmpty else { return nil }
+
+        var sawContent = false
+        for row in sampleValues {
+            guard columnIndex < row.count else { continue }
+            switch row[columnIndex] {
+            case .null:
+                continue
+            case .text:
+                return nil
+            case .bytes(let data):
+                guard let text = BinaryTextDecoder.decode(
+                    data,
+                    columnType: columnType,
+                    maxBytes: BinaryTextDecoder.maxProbeBytes
+                ) else {
+                    return nil
+                }
+                sawContent = sawContent || !text.isEmpty
+            }
+        }
+
+        return sawContent ? .text : nil
     }
 
     // MARK: - Timestamp Detection

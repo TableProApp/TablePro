@@ -1,9 +1,11 @@
 import CLibPQ
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 
-final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = PostgreSQLActor()
     private let host: String
     private let port: Int
@@ -18,6 +20,11 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // Set once during connect()/switchSchema() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
     nonisolated(unsafe) private(set) var serverVersion: String?
+    nonisolated(unsafe) private(set) var serverVersionNumber: Int32 = 0
+
+    nonisolated(unsafe) private var reportsIdentityColumns: Bool?
+
+    private var effectiveSchema: String { currentSchema ?? "public" }
 
     init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
         self.host = host
@@ -33,7 +40,16 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
+        _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
+        serverVersionNumber = await actor.serverVersionNumber()
+        await adoptServerSchema()
+    }
+
+    private func adoptServerSchema() async {
+        guard let schema = try? await actor.execute("SELECT current_schema()").rows.first?.first ?? nil,
+              !schema.isEmpty else { return }
+        currentSchema = schema
     }
 
     func disconnect() async throws {
@@ -82,6 +98,10 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                     let beginResult = try await actor.beginStream(query: query)
                     switch beginResult {
                     case .commandOk(let affectedRows):
+                        if let abandoned = await actor.takeAbandonedCopyError() {
+                            continuation.finish(throwing: abandoned)
+                            return
+                        }
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
                         }
@@ -103,6 +123,10 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                         }
                         await actor.endStream()
+                        if let abandoned = await actor.takeAbandonedCopyError() {
+                            continuation.finish(throwing: abandoned)
+                            return
+                        }
                         continuation.finish()
                     }
                 } catch is CancellationError {
@@ -126,7 +150,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safe = schemaName.replacingOccurrences(of: "'", with: "''")
         let raw = try await actor.execute("""
             SELECT table_name, table_type
@@ -149,34 +173,26 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
-        let raw = try await actor.execute("""
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.character_maximum_length,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN (
-                SELECT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(safeSchema)'
-                    AND tc.table_name = '\(safeTbl)'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(safeSchema)' AND c.table_name = '\(safeTbl)'
-            ORDER BY c.ordinal_position
-            """)
+        let result: RawPGResult
+        if reportsIdentityColumns == false {
+            result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: false))
+        } else {
+            do {
+                result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: true))
+                reportsIdentityColumns = true
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                reportsIdentityColumns = false
+                result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: false))
+            }
+        }
 
-        return raw.rows.enumerated().compactMap { index, row in
+        return result.rows.enumerated().compactMap { index, row in
             guard row.count >= 6, let name = row[0], let dataType = row[1] else { return nil }
             let maxLen = row[4].flatMap { Int($0) }
             return ColumnInfo(
@@ -187,13 +203,45 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                 defaultValue: row[3],
                 comment: nil,
                 characterMaxLength: maxLen,
-                ordinalPosition: index
+                ordinalPosition: index,
+                isAutoIncrement: ColumnMetadataRules.postgresIsAutoIncrement(
+                    isIdentity: row.count > 6 ? row[6] : nil, columnDefault: row[3]
+                ),
+                isGenerated: ColumnMetadataRules.postgresIsGenerated(
+                    isGenerated: row.count > 7 ? row[7] : nil
+                )
             )
         }
     }
 
+    private func columnsQuery(schema: String, table: String, identity: Bool) -> String {
+        let identityColumns = identity ? ",\n                c.is_identity,\n                c.is_generated" : ""
+        return """
+            SELECT
+                c.column_name,
+                c.data_type,
+                c.is_nullable,
+                c.column_default,
+                c.character_maximum_length,
+                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk\(identityColumns)
+            FROM information_schema.columns c
+            LEFT JOIN (
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+                    AND tc.table_schema = '\(schema)'
+                    AND tc.table_name = '\(table)'
+            ) pk ON c.column_name = pk.column_name
+            WHERE c.table_schema = '\(schema)' AND c.table_name = '\(table)'
+            ORDER BY c.ordinal_position
+            """
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
@@ -241,49 +289,35 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let schemaName = schema ?? "public"
-        let safeTbl = table.replacingOccurrences(of: "'", with: "''")
-        let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
+        let raw = try await actor.execute(
+            Self.foreignKeysQuery(
+                schema: schema ?? effectiveSchema,
+                table: table,
+                serverVersionNumber: serverVersionNumber
+            )
+        )
 
-        let raw = try await actor.execute("""
-            SELECT
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name
-                AND tc.table_schema = ccu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.table_schema = rc.constraint_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-                AND tc.table_schema = '\(safeSchema)'
-                AND tc.table_name = '\(safeTbl)'
-            ORDER BY tc.constraint_name
-            """)
-
-        return raw.rows.compactMap { row in
-            guard row.count >= 6,
-                  let name = row[0],
-                  let column = row[1],
-                  let refTable = row[2],
-                  let refColumn = row[3] else { return nil }
-            return ForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                onDelete: row[4] ?? "NO ACTION",
-                onUpdate: row[5] ?? "NO ACTION"
+        return PostgreSQLCatalogForeignKeys.foreignKeys(from: raw.rows).map { key in
+            ForeignKeyInfo(
+                name: key.name,
+                column: key.column,
+                referencedTable: key.referencedTable,
+                referencedColumn: key.referencedColumn,
+                referencedSchema: key.referencedSchema,
+                onDelete: key.onDelete,
+                onUpdate: key.onUpdate
             )
         }
+    }
+
+    static func foreignKeysQuery(schema: String, table: String, serverVersionNumber: Int32) -> String {
+        PostgreSQLCatalogForeignKeys.query(
+            schema: schema,
+            table: table,
+            excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
+                serverVersionNumber: serverVersionNumber
+            )
+        )
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -309,7 +343,11 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
-        _ = try await actor.execute("BEGIN")
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        _ = try await actor.execute(postgresBeginTransactionStatement(mode: mode))
     }
 
     func commitTransaction() async throws {
@@ -319,6 +357,23 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     func rollbackTransaction() async throws {
         _ = try await actor.execute("ROLLBACK")
     }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        await actor.transactionState()
+    }
+}
+
+nonisolated enum PostgreSQLSessionTransaction {
+    static func state(from status: PGTransactionStatusType) -> DriverTransactionState {
+        switch status {
+        case PQTRANS_IDLE:
+            return .idle
+        case PQTRANS_INTRANS, PQTRANS_INERROR, PQTRANS_ACTIVE:
+            return .explicitTransaction
+        default:
+            return .unknown
+        }
+    }
 }
 
 // MARK: - PostgreSQL Actor (thread-safe C API access)
@@ -326,7 +381,11 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor PostgreSQLActor {
     private var conn: OpaquePointer?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) throws {
+    private static let connectTimeout: TimeInterval = 15
+    private static let pollSliceMilliseconds: Int32 = 100
+
+    /// `PQconnectdb` blocks with no way to abort, so a cancelled connect can never stop dialing.
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) async throws {
         guard (1...65_535).contains(port) else {
             throw PostgreSQLError.connectionFailed(
                 "Port \(port) is out of range. Use a value between 1 and 65535."
@@ -335,31 +394,72 @@ private actor PostgreSQLActor {
         // Close existing connection if reconnecting
         if let conn { PQfinish(conn); self.conn = nil }
 
-        let escapedHost = escapeConnParam(host)
-        let escapedUser = escapeConnParam(user)
-        let escapedPass = escapeConnParam(password)
-        let escapedDb = escapeConnParam(database)
+        let connStr = PostgreSQLConnectionString.build(
+            host: host,
+            port: port,
+            database: database,
+            user: user,
+            password: password,
+            ssl: ssl
+        )
 
-        var connStr = "host='\(escapedHost)' port='\(port)' dbname='\(escapedDb)' " +
-            "user='\(escapedUser)' password='\(escapedPass)' connect_timeout='10' sslmode='\(ssl.postgresSSLMode)'"
-        if let caPath = ssl.existingCACertificatePath {
-            connStr += " sslrootcert='\(escapeConnParam(caPath))'"
+        guard let connection = PQconnectStart(connStr) else {
+            throw PostgreSQLError.connectionFailed(String(localized: "Could not start a connection."))
         }
 
-        let connection = PQconnectdb(connStr)
+        var adopted = false
+        defer { if !adopted { PQfinish(connection) } }
 
-        guard PQstatus(connection) == CONNECTION_OK else {
-            let msg = connection.flatMap { String(cString: PQerrorMessage($0)) } ?? "Unknown error"
-            PQfinish(connection)
-            throw PostgreSQLError.connectionFailed(msg)
+        guard PQstatus(connection) != CONNECTION_BAD else {
+            throw PostgreSQLError.connectionFailed(Self.message(from: connection))
         }
+
+        try await pollUntilConnected(connection)
 
         self.conn = connection
+        adopted = true
     }
 
-    private func escapeConnParam(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+    private func pollUntilConnected(_ connection: OpaquePointer) async throws {
+        let deadline = Date().addingTimeInterval(Self.connectTimeout)
+        var status = PGRES_POLLING_WRITING
+
+        while true {
+            try Task.checkCancellation()
+
+            switch status {
+            case PGRES_POLLING_OK:
+                return
+            case PGRES_POLLING_FAILED:
+                throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+            case PGRES_POLLING_READING, PGRES_POLLING_WRITING:
+                let socket = PQsocket(connection)
+                guard socket >= 0 else {
+                    throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+                }
+                guard Date() < deadline else {
+                    throw PostgreSQLError.connectionFailed(String(localized: "Connection timed out."))
+                }
+
+                let events = status == PGRES_POLLING_READING ? Int16(POLLIN) : Int16(POLLOUT)
+                var descriptor = pollfd(fd: socket, events: events, revents: 0)
+                let ready = poll(&descriptor, 1, Self.pollSliceMilliseconds)
+                guard ready >= 0 else {
+                    throw PostgreSQLError.connectionFailed(String(localized: "Connection failed while waiting on the socket."))
+                }
+                guard ready > 0 else { continue }
+
+                status = PQconnectPoll(connection)
+            default:
+                status = PQconnectPoll(connection)
+            }
+        }
+    }
+
+    private static func message(from connection: OpaquePointer?) -> String {
+        guard let connection else { return String(localized: "Unknown error") }
+        let text = String(cString: PQerrorMessage(connection))
+        return text.isEmpty ? String(localized: "Unknown error") : text
     }
 
     func close() {
@@ -377,6 +477,16 @@ private actor PostgreSQLActor {
             PQcancel(cancel, &errbuf, Int32(errbuf.count))
             PQfreeCancel(cancel)
         }
+    }
+
+    func serverVersionNumber() -> Int32 {
+        guard let conn else { return 0 }
+        return PQserverVersion(conn)
+    }
+
+    func transactionState() -> DriverTransactionState {
+        guard let conn else { return .unknown }
+        return PostgreSQLSessionTransaction.state(from: PQtransactionStatus(conn))
     }
 
     func serverVersion() -> String? {
@@ -398,12 +508,18 @@ private actor PostgreSQLActor {
         guard let conn else { throw PostgreSQLError.notConnected }
 
         let start = Date()
+        let cancelsOutput = cancelsAbandonedOutput(conn)
         let result = PQexec(conn, query)
         defer {
             if result != nil { PQclear(result) }
         }
 
         let status = PQresultStatus(result)
+
+        if let copy = result.flatMap(LibPQCopyState.copy(of:)) {
+            _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+            throw PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+        }
 
         if status == PGRES_FATAL_ERROR {
             let msg = result.flatMap { String(cString: PQresultErrorMessage($0)) } ?? "Unknown error"
@@ -465,10 +581,14 @@ private actor PostgreSQLActor {
 
     private var pendingResult: OpaquePointer?
     private var streamingFinished = true
+    private var abandonedCopy: LibPQCopy?
+    private var streamCancelsAbandonedOutput = false
 
     func beginStream(query: String) throws -> PGBeginStreamResult {
         guard let conn else { throw PostgreSQLError.notConnected }
+        streamCancelsAbandonedOutput = cancelsAbandonedOutput(conn)
         endStream()
+        abandonedCopy = nil
 
         guard PQsendQuery(conn, query) == 1 else {
             throw PostgreSQLError.queryFailed(String(cString: PQerrorMessage(conn)))
@@ -485,6 +605,12 @@ private actor PostgreSQLActor {
         }
 
         let status = PQresultStatus(firstResult)
+        if let copy = LibPQCopyState.copy(of: firstResult) {
+            PQclear(firstResult)
+            drainResults()
+            abandonedCopy = nil
+            throw PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+        }
         switch status {
         case PGRES_COMMAND_OK:
             let affectedStr = String(cString: PQcmdTuples(firstResult))
@@ -573,10 +699,36 @@ private actor PostgreSQLActor {
             pendingResult = nil
         }
         guard let conn else { return }
-        while let extra = PQgetResult(conn) {
-            PQclear(extra)
-        }
+        let outcome = finishPendingResults(conn, cancellingOutput: streamCancelsAbandonedOutput)
+        guard let copy = outcome.abandonedCopy, abandonedCopy == nil else { return }
+        abandonedCopy = copy
     }
+
+    /// A COPY the drain ended is reported, never swallowed: `INSERT INTO t VALUES (1); COPY t FROM
+    /// STDIN` used to stream as a plain "INSERT 0 1" with the COPY silently discarded.
+    func takeAbandonedCopyError() -> PostgreSQLError? {
+        guard let copy = abandonedCopy else { return nil }
+        abandonedCopy = nil
+        return PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+    }
+
+    private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
+        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput)
+        guard let stuck = outcome.stuckInCopy else { return outcome }
+        Self.logger.fault(
+            "libpq stayed in \(String(describing: stuck.direction), privacy: .public); dropping the connection"
+        )
+        close()
+        return outcome
+    }
+
+    /// Cancelling inside a transaction block aborts it, so the cancel that keeps a `COPY TO STDOUT`
+    /// from transferring the whole table is sent only outside one.
+    private func cancelsAbandonedOutput(_ conn: OpaquePointer) -> Bool {
+        PQtransactionStatus(conn) != PQTRANS_INTRANS
+    }
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "PostgreSQLActor")
 
     private func parseColumns(_ result: OpaquePointer) -> [ColumnInfo] {
         let colCount = Int(PQnfields(result))
@@ -612,7 +764,7 @@ private actor PostgreSQLActor {
     }
 }
 
-enum PGBeginStreamResult: Sendable {
+nonisolated enum PGBeginStreamResult: Sendable {
     case tuples([ColumnInfo])
     case commandOk(affectedRows: Int)
 }
@@ -651,7 +803,7 @@ nonisolated private func pgOidToTypeName(_ oid: UInt32) -> String {
     }
 }
 
-private struct RawPGResult: Sendable {
+nonisolated private struct RawPGResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -662,7 +814,7 @@ private struct RawPGResult: Sendable {
 
 // MARK: - Errors
 
-enum PostgreSQLError: Error, LocalizedError {
+nonisolated enum PostgreSQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

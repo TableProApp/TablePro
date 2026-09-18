@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 enum JSONImportParsing {
@@ -79,7 +80,7 @@ enum JSONImportParsing {
             if CFGetTypeID(number) == CFBooleanGetTypeID() {
                 return .text(number.boolValue ? "true" : "false")
             }
-            return .text(number.stringValue)
+            return .text(NumberText.text(for: number))
         case let string as String:
             return .text(string)
         default:
@@ -88,13 +89,7 @@ enum JSONImportParsing {
     }
 
     private static func serialize(_ object: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
-              let string = String(data: data, encoding: .utf8)
-        else {
-            return String(describing: object)
-        }
-        return string
+        NumberText.json(from: object) ?? String(describing: object)
     }
 
     // MARK: - Source introspection

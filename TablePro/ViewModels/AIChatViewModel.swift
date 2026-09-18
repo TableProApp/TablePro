@@ -3,55 +3,59 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
-@MainActor @Observable
-final class AIChatViewModel {
-    static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
+@MainActor
+final class AIChatViewModel: ObservableObject {
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
 
     enum StreamingState {
         case idle
         case loading
         case streaming(assistantID: UUID)
         case awaitingApproval
+        case pausedAtToolLimit(count: Int)
         case failed(AIProviderError?)
     }
 
-    var messages: [ChatTurn] = []
-    var inputText: String = ""
-    var streamingState: StreamingState = .idle
-    var errorMessage: String?
-    var conversations: [AIConversation] = []
-    var activeConversationID: UUID?
-    var showAIAccessConfirmation = false
-    var selectedProviderId: UUID?
-    var selectedModel: String?
-    var availableModels: [UUID: [String]] = [:]
-    var attachedContext: [ContextItem] = []
-    var attachedImages: [ChatImageInput] = []
-    var savedQueries: [SQLFavorite] = []
+    @Published var messages: [ChatTurn] = []
+    @Published var inputText: String = ""
+    @Published var streamingState: StreamingState = .idle
+    @Published var errorMessage: String?
+    @Published var conversations: [AIConversation] = []
+    @Published var activeConversationID: UUID?
+    @Published var showAIAccessConfirmation = false
+    @Published var selectedProviderId: UUID?
+    @Published var selectedModel: String?
+    @Published var availableModels: [UUID: [String]] = [:]
+    @Published var attachedContext: [ContextItem] = []
+    @Published var attachedImages: [ChatImageInput] = []
+    @Published var savedQueries: [SQLFavorite] = []
 
-    var connection: DatabaseConnection?
+    @Published var connection: DatabaseConnection?
+
+    var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
+    var streamFlushInterval: Duration = .milliseconds(50)
 
     var tables: [TableInfo] {
         guard let id = connection?.id else { return [] }
         return services.schemaService.tables(for: id)
     }
 
-    var columnsByTable: [String: [ColumnInfo]] = [:]
-    var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
+    @Published var columnsByTable: [String: [ColumnInfo]] = [:]
+    @Published var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
 
-    var currentQuery: String?
-    var queryResults: String?
+    @Published var currentQuery: String?
+    @Published var queryResults: String?
 
     var isStreaming: Bool {
         switch streamingState {
         case .loading, .streaming:
             return true
-        case .idle, .awaitingApproval, .failed:
+        case .idle, .awaitingApproval, .pausedAtToolLimit, .failed:
             return false
         }
     }
@@ -60,6 +64,13 @@ final class AIChatViewModel {
         if case .failed = streamingState { return true }
         return false
     }
+
+    var toolLimitPauseCount: Int? {
+        if case .pausedAtToolLimit(let count) = streamingState { return count }
+        return nil
+    }
+
+    var isPausedAtToolLimit: Bool { toolLimitPauseCount != nil }
 
     var lastError: AIProviderError? {
         if case .failed(let error) = streamingState { return error }
@@ -70,22 +81,74 @@ final class AIChatViewModel {
         lastError?.isRetryable ?? true
     }
 
-    @ObservationIgnored var pendingWalkthroughBeforeSQL: String?
-    @ObservationIgnored var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored var inFlightSchemaLoad: Task<Void, Never>?
-    @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
-    @ObservationIgnored var prepTask: Task<Void, Never>?
+    var pendingWalkthroughBeforeSQL: String?
+    var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
+    var inFlightSchemaLoad: Task<Void, Never>?
+    nonisolated(unsafe) var streamingTask: Task<Void, Never>?
+    var prepTask: Task<Void, Never>?
 
-    @ObservationIgnored let services: AppServices
+    let services: AppServices
     var chatStorage: AIChatStorage { services.aiChatStorage }
-    var sessionApprovedConnections: Set<UUID> = []
-    @ObservationIgnored var cachedSavedQueries: [UUID: SQLFavorite] = [:]
+    @Published var sessionApprovedConnections: Set<UUID> = []
+    var cachedSavedQueries: [UUID: SQLFavorite] = [:]
 
     static let maxMessageCount = 200
 
-    init(services: AppServices = .live) {
+    /// The session this engine belongs to.
+    ///
+    /// Injected rather than minted here, because a restored session has to be the same session:
+    /// identity derived inside the engine cannot round-trip, so every guarantee keyed on it
+    /// (reopening by id, the rail's selection, per-session provider state) silently degraded to
+    /// "make another one".
+    let sessionId: UUID
+
+    /// The conversation to pull in when this engine is first looked at, if it is resuming one.
+    ///
+    /// Restore is lazy on purpose: reading every stored conversation at launch is quadratic in the
+    /// number of sessions, and `init` used to call `loadConversations()`, so opening any connection
+    /// window read the whole chat history off disk even with the assistant never revealed.
+    private var conversationToRestore: UUID?
+    private var didRestoreConversation = false
+
+    var pendingConversationToRestore: UUID? { conversationToRestore }
+    var hasRestoredConversation: Bool { didRestoreConversation }
+
+    /// Whether the connection this session names is still being opened.
+    ///
+    /// Agent mode draws its composer over a connect on purpose, so a turn can be submitted before
+    /// there is a session to run its tools against. Every such turn used to open a stream anyway,
+    /// which reached the tools with no connection behind them and answered the user's first
+    /// question with a row of failures. The turn is appended to the transcript as usual and the
+    /// stream is held until the connect lands, which is what a live composer during a connect
+    /// promises.
+    var isAwaitingConnection = false {
+        didSet {
+            guard oldValue, !isAwaitingConnection else { return }
+            releaseHeldTurn()
+        }
+    }
+
+    /// A turn that was submitted during a connect and has not been streamed yet.
+    var heldTurnAwaitsConnection = false
+
+    private func releaseHeldTurn() {
+        guard heldTurnAwaitsConnection else { return }
+        heldTurnAwaitsConnection = false
+        startStreaming()
+    }
+
+    func markConversationRestored() {
+        didRestoreConversation = true
+    }
+
+    init(
+        services: AppServices = .live,
+        sessionId: UUID = UUID(),
+        restoringConversation conversationId: UUID? = nil
+    ) {
         self.services = services
-        loadConversations()
+        self.sessionId = sessionId
+        self.conversationToRestore = conversationId
     }
 
     deinit {
@@ -167,18 +230,23 @@ final class AIChatViewModel {
         attachedContext.removeAll { $0.stableKey == item.stableKey }
     }
 
+    func turn(withID id: UUID) -> ChatTurn? {
+        messages.first { $0.id == id }
+    }
+
     func cancelStream() {
         pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
-        ToolApprovalCenter.shared.cancelAll()
+        ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
-            messages[idx].finishStreamingTextBlock()
-            if messages[idx].blocks.isEmpty {
+            let turn = messages[idx]
+            turn.finishStreamingTextBlock()
+            if turn.blocks.isEmpty {
                 messages.remove(at: idx)
             }
         }
@@ -205,7 +273,7 @@ final class AIChatViewModel {
               let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant })
         else { return }
 
-        AIProviderFactory.copilotDeleteLastTurn()
+        AIProviderFactory.copilotDeleteLastTurn(sessionId: sessionId)
         messages.remove(at: lastAssistantIndex)
         clearError()
         startStreaming()
@@ -219,7 +287,7 @@ final class AIChatViewModel {
     }
 
     func startNewConversation() {
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
         messages.removeAll()
@@ -229,7 +297,7 @@ final class AIChatViewModel {
 
     func switchConversation(to id: UUID) {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
         messages = conversation.messages.map { ChatTurn(wire: $0) }
@@ -237,8 +305,20 @@ final class AIChatViewModel {
         clearError()
     }
 
+    /// Releases everything this conversation holds, keeping what the user typed.
+    ///
+    /// Window close, disconnect and a lost session all reach here, and none of them is the user
+    /// throwing a conversation away. It used to empty `messages` with nothing written to disk while
+    /// `cancelStream()` next door persisted first, so the three ordinary ways a window goes away
+    /// each dropped a reply that was still arriving.
+    ///
+    /// Cancelling the task is also not enough on its own to release a turn parked on an approval
+    /// card: a `CheckedContinuation` is not resumed by cancellation, so the suspended turn held the
+    /// provider and its open stream for the life of the process.
     func clearSessionData() {
-        AIProviderFactory.resetCopilotConversation()
+        ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
+        persistCurrentConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
@@ -292,7 +372,8 @@ final class AIChatViewModel {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        return (config.id, models)
+                        AIModelCatalog.shared.store(providerTypeID: config.type.rawValue, models: models)
+                        return (config.id, models.map(\.id))
                     } catch is CancellationError {
                         return (config.id, nil)
                     } catch {

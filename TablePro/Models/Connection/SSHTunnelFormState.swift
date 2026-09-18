@@ -37,6 +37,19 @@ struct SSHTunnelFormState {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
+    /// What the keychain held for the inline namespace when the form opened, so an emptied field
+    /// can be told apart from a keychain that could not be read.
+    private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
+    private(set) var storedKeyPassphraseState: ConnectionStorage.StoredSecretState = .absent
+
+    // Remote database file
+    var remoteFilePath: String = ""
+
+    /// New connections default to running on the server, which is what a user reaching for a remote
+    /// SQLite database wants; loading an existing connection overwrites this with its saved value,
+    /// and a connection saved before the live mode existed decodes as the read-only copy.
+    var remoteFileAccess: RemoteFileAccess = .onServer
+
     // MARK: - Computed Properties
 
     var selectedProfile: SSHProfile? {
@@ -63,15 +76,23 @@ struct SSHTunnelFormState {
             totpMode: totpMode,
             totpAlgorithm: totpAlgorithm,
             totpDigits: totpDigits,
-            totpPeriod: totpPeriod
+            totpPeriod: totpPeriod,
+            remoteFilePath: remoteFilePath,
+            remoteFileAccess: remoteFileAccess
         )
     }
 
+    /// A profile describes a server, not a file, so the remote path is overlaid onto whichever
+    /// configuration is in play. Two connections through one bastion routinely name two different
+    /// databases, so the path cannot live on the profile.
     func buildSSHConfig() -> SSHConfiguration {
-        if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
-            return profile.toSSHConfiguration()
+        guard let profileId, let profile = profiles.first(where: { $0.id == profileId }) else {
+            return buildInlineConfig()
         }
-        return buildInlineConfig()
+        var config = profile.toSSHConfiguration()
+        config.remoteFilePath = remoteFilePath
+        config.remoteFileAccess = remoteFileAccess
+        return config
     }
 
     // MARK: - Load Methods
@@ -85,10 +106,14 @@ struct SSHTunnelFormState {
             enabled = true
             profileId = nil
             populateFields(from: config)
+            remoteFilePath = config.remoteFilePath
+            remoteFileAccess = config.remoteFileAccess
         case .profile(let id, let snapshot):
             enabled = true
             profileId = id
             populateFields(from: snapshot)
+            remoteFilePath = connection.sshConfig.remoteFilePath
+            remoteFileAccess = connection.sshConfig.remoteFileAccess
         }
     }
 
@@ -101,17 +126,32 @@ struct SSHTunnelFormState {
             totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId) ?? ""
         } else {
             // Inline/disabled: load from connection keychain namespace
+            storedPasswordState = storage.sshPasswordState(for: connectionId)
+            storedKeyPassphraseState = storage.keyPassphraseState(for: connectionId)
             password = storage.loadSSHPassword(for: connectionId) ?? ""
             keyPassphrase = storage.loadKeyPassphrase(for: connectionId) ?? ""
             totpSecret = storage.loadTOTPSecret(for: connectionId) ?? ""
         }
     }
 
+    /// The user emptied an inline SSH secret that had a value. Without this the old secret stays in
+    /// the keychain and the next connect still authenticates with it.
+    var clearsStoredPassword: Bool {
+        password.isEmpty && storedPasswordState == .stored
+    }
+
+    var clearsStoredKeyPassphrase: Bool {
+        keyPassphrase.isEmpty && storedKeyPassphraseState == .stored
+    }
+
     /// Build the SSHTunnelMode for saving to the connection.
     func buildTunnelMode() -> SSHTunnelMode {
         guard enabled else { return .disabled }
         if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
-            return .profile(id: profileId, snapshot: profile.toSSHConfiguration())
+            var snapshot = profile.toSSHConfiguration()
+            snapshot.remoteFilePath = remoteFilePath
+            snapshot.remoteFileAccess = remoteFileAccess
+            return .profile(id: profileId, snapshot: snapshot)
         }
         return .inline(buildInlineConfig())
     }

@@ -13,9 +13,13 @@ struct SlowQueryListView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if let error {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    Label {
+                        RevealedTextView(error)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.orange)
                 }
             }
             .padding(.horizontal, 12)

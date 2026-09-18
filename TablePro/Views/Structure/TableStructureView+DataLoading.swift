@@ -15,12 +15,27 @@ import UniformTypeIdentifiers
 // MARK: - Data Loading
 
 extension TableStructureView {
+    /// Runs once per session, not once per view. The view is rebuilt whenever the tab is deselected
+    /// or switched to Data and back, and `loadSchemaForEditing` re-baselines the change manager,
+    /// which clears every staged edit, its validation errors and its undo stack. So a rebuild reads
+    /// what the session already holds rather than fetching over the top of the user's work.
+    ///
+    /// A genuine refresh still refetches, through `onRefreshData`, which asks before discarding.
     @Sendable
     func loadInitialData() async {
+        guard !session.hasLoaded else {
+            isInitialLoading = false
+            isLoading = false
+            return
+        }
         await loadColumns()
         await loadTabDataIfNeeded(.indexes)
         await loadTabDataIfNeeded(.foreignKeys)
+        if session.availableTabs.contains(.checkConstraints) {
+            await loadTabDataIfNeeded(.checkConstraints)
+        }
         loadSchemaForEditing()
+        session.hasLoaded = true
         isInitialLoading = false
     }
 
@@ -29,9 +44,7 @@ extension TableStructureView {
         errorMessage = nil
 
         do {
-            columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                try await driver.fetchColumns(table: tableName)
-            }
+            columns = try await structureLoader.columns()
             tabData.markFetched(.columns)
         } catch {
             errorMessage = error.localizedDescription
@@ -49,43 +62,23 @@ extension TableStructureView {
         do {
             switch tab {
             case .columns:
-                columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    try await driver.fetchColumns(table: tableName)
-                }
+                columns = try await structureLoader.columns()
             case .indexes:
-                indexes = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    try await driver.fetchIndexes(table: tableName)
-                }
+                indexes = try await structureLoader.indexes()
             case .foreignKeys:
-                foreignKeys = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    try await driver.fetchForeignKeys(table: tableName)
-                }
+                foreignKeys = try await structureLoader.foreignKeys()
+            case .checkConstraints:
+                checkConstraints = try await structureLoader.checkConstraints()
             case .ddl:
-                ddlStatement = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                    let sequences = try await driver.fetchDependentSequences(forTable: tableName)
-                    let enumTypes = try await driver.fetchDependentTypes(forTable: tableName)
-                    let baseDDL = try await driver.fetchTableDDL(table: tableName)
-                    if sequences.isEmpty && enumTypes.isEmpty {
-                        return baseDDL
-                    }
-                    var preamble = ""
-                    for seq in sequences {
-                        preamble += seq.ddl + "\n\n"
-                    }
-                    for enumType in enumTypes {
-                        let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                        let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
-                        preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
-                    }
-                    return preamble + "\n" + baseDDL
+                let table = tableName
+                ddlStatement = try await structureLoader.perform { driver in
+                    try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: true)
                 }
             case .triggers:
                 do {
-                    triggers = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                        try await driver.fetchTriggers(table: tableName)
-                    }
+                    triggers = try await structureLoader.triggers()
                 } catch {
-                    Self.logger.error("Failed to load triggers: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to load triggers: \(error.publicLogShape, privacy: .public)")
                     triggers = []
                 }
             case .parts:
@@ -93,11 +86,13 @@ extension TableStructureView {
             }
             tabData.markFetched(tab)
         } catch {
-            Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            errorMessage = error.localizedDescription
         }
     }
 
     func loadSchemaForEditing() {
+        session.serverSupport = StructureServerSupport.forConnection(connection.id)
         let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
         let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
         let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes
@@ -107,6 +102,7 @@ extension TableStructureView {
             columns: columns,
             indexes: indexes,
             foreignKeys: foreignKeys,
+            checkConstraints: checkConstraints,
             primaryKey: primaryKey
         )
     }
@@ -130,6 +126,11 @@ extension TableStructureView {
     }
 
     func onIndexesChanged() {
+        guard !isReloadingAfterSave, !isInitialLoading else { return }
+        loadSchemaForEditing()
+    }
+
+    func onCheckConstraintsChanged() {
         guard !isReloadingAfterSave, !isInitialLoading else { return }
         loadSchemaForEditing()
     }
@@ -174,6 +175,7 @@ extension TableStructureView {
 
     private func reloadAllTabs() async {
         tabData.markAllStale()
+        session.gridDelegate.referenceMenus.invalidateTableLists()
         partsReloadToken += 1
         await reloadCoreTabs()
         if selectedTab == .ddl {
@@ -193,14 +195,7 @@ extension TableStructureView {
 
         let includesForeignKeys = connection.type.supportsForeignKeys
         do {
-            let reloaded = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id) { driver in
-                let fetchedColumns = try await driver.fetchColumns(table: tableName)
-                let fetchedIndexes = try await driver.fetchIndexes(table: tableName)
-                let fetchedForeignKeys = includesForeignKeys
-                    ? try await driver.fetchForeignKeys(table: tableName)
-                    : []
-                return (columns: fetchedColumns, indexes: fetchedIndexes, foreignKeys: fetchedForeignKeys)
-            }
+            let reloaded = try await structureLoader.coreTabs(includingForeignKeys: includesForeignKeys)
 
             columns = reloaded.columns
             indexes = reloaded.indexes
@@ -211,7 +206,7 @@ extension TableStructureView {
                 tabData.markFetched(.foreignKeys)
             }
         } catch {
-            Self.logger.error("Failed to reload structure: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to reload structure: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }

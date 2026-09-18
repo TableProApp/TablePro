@@ -21,17 +21,10 @@ struct TableProMobileApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                Group {
-                    if appState.hasCompletedOnboarding {
-                        ConnectionListView()
-                            .environment(appState)
-                    } else {
-                        OnboardingView()
-                            .environment(appState)
-                    }
-                }
-                .blur(radius: lockState.isLocked ? 20 : 0)
-                .allowsHitTesting(!lockState.isLocked)
+                SceneRootView(connectionManager: appState.connectionManager)
+                    .environment(appState)
+                    .blur(radius: lockState.isLocked ? 20 : 0)
+                    .allowsHitTesting(!lockState.isLocked)
 
                 if lockState.isLocked {
                     LockScreenView()
@@ -40,6 +33,8 @@ struct TableProMobileApp: App {
                 }
             }
             .animation(.default, value: lockState.isLocked)
+            .hostKeyPrompt()
+            .entraSignInPrompt()
             .onOpenURL { url in
                 if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
                     appState.pendingImportURL = url
@@ -75,16 +70,14 @@ struct TableProMobileApp: App {
             lockState.handleScenePhase(phase)
             switch phase {
             case .active:
+                Task { await appState.queryActivities.reapOrphans() }
+                appState.backgroundRelease.cancelPreparation()
                 MemoryPressureMonitor.shared.start()
                 appState.retryLoadIfFailed()
                 if AppPreferences.isCloudSyncEnabled && appState.loadStatus == .ready {
                     syncTask?.cancel()
                     syncTask = Task {
-                        await appState.syncCoordinator.sync(
-                            localConnections: appState.connections,
-                            localGroups: appState.groups,
-                            localTags: appState.tags
-                        )
+                        await appState.syncCoordinator.sync()
                     }
                 }
                 if heartbeatTask == nil {
@@ -94,13 +87,20 @@ struct TableProMobileApp: App {
                     heartbeatService = service
                     heartbeatTask = service.startPeriodicHeartbeat()
                 }
+            case .inactive:
+                appState.backgroundRelease.prepareForSuspension()
             case .background:
                 syncTask?.cancel()
                 syncTask = nil
                 heartbeatTask?.cancel()
                 heartbeatTask = nil
                 heartbeatService = nil
-                Task { await appState.connectionManager.disconnectAll() }
+                Task {
+                    let released = await appState.backgroundRelease.releaseForSuspension()
+                    for connectionId in released {
+                        await appState.queryActivities.endEverything(forConnection: connectionId, outcome: .interrupted)
+                    }
+                }
                 scheduleBackgroundSync()
             default:
                 break
@@ -133,11 +133,7 @@ struct TableProMobileApp: App {
             return
         }
         Self.backgroundLogger.info("Background sync starting")
-        await appState.syncCoordinator.sync(
-            localConnections: appState.connections,
-            localGroups: appState.groups,
-            localTags: appState.tags
-        )
+        await appState.syncCoordinator.sync()
         Self.backgroundLogger.info("Background sync completed")
     }
 }

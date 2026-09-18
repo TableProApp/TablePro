@@ -36,10 +36,10 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -48,8 +48,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -68,10 +68,10 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: nil, newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: nil, newValue: "Johnny")
                 ],
                 originalRow: ["1", nil, "john@example.com"]
             )
@@ -80,8 +80,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -95,10 +95,10 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: nil
             )
@@ -107,8 +107,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.isEmpty)
@@ -119,11 +119,11 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -132,8 +132,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -149,15 +149,15 @@ struct SQLStatementGeneratorNoPKTests {
     func testDeleteNoPKMultipleRows() throws {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
-            RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
+            RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: ["1", "John", "john@example.com"]),
+            RowChange(rowID: .existing(1), type: .delete, cellChanges: [], originalRow: ["2", "Jane", "jane@example.com"])
         ]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0, 1],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0), .existing(1)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -175,7 +175,7 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .delete,
                 cellChanges: [],
                 originalRow: [nil, nil, nil]
@@ -185,8 +185,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -202,7 +202,7 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .delete,
                 cellChanges: [],
                 originalRow: nil
@@ -212,8 +212,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
         )
 
         #expect(statements.isEmpty)
@@ -226,15 +226,15 @@ struct SQLStatementGeneratorNoPKTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             ),
             RowChange(
-                rowIndex: 1,
+                rowID: .existing(1),
                 type: .delete,
                 cellChanges: [],
                 originalRow: ["2", "Jane", "jane@example.com"]
@@ -244,8 +244,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [1],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(1)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 2)
@@ -256,13 +256,13 @@ struct SQLStatementGeneratorNoPKTests {
     @Test("INSERT + DELETE without PK — INSERT unaffected")
     func testInsertDeleteNoPK() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [PluginCellValue]] = [
-            0: ["3", "Bob", "bob@example.com"]
+        let insertedRowData: [RowID: [PluginCellValue]] = [
+            .existing(0): ["3", "Bob", "bob@example.com"]
         ]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil),
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil),
             RowChange(
-                rowIndex: 1,
+                rowID: .existing(1),
                 type: .delete,
                 cellChanges: [],
                 originalRow: ["2", "Jane", "jane@example.com"]
@@ -272,8 +272,8 @@ struct SQLStatementGeneratorNoPKTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: [1],
-            insertedRowIndices: [0]
+            deletedRowIDs: [.existing(1)],
+            insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 2)

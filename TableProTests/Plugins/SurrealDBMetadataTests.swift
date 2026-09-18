@@ -12,7 +12,7 @@ import Testing
 @MainActor
 struct SurrealDBMetadataTests {
     private var snapshot: PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: "SurrealDB")
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "SurrealDB")
     }
 
     @Test("SurrealDB is offered before the plugin is installed")

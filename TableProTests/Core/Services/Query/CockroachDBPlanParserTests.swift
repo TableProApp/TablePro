@@ -7,6 +7,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("CockroachDB Plan Parser")
@@ -96,8 +97,9 @@ struct CockroachDBPlanParserTests {
         #expect(parser.parse(rawText: "distribution: local\nvectorized: true") == nil)
     }
 
-    @Test("Factory returns CockroachDB parser for .cockroachdb")
-    func factoryReturnsCockroachParser() {
-        #expect(QueryPlanParserFactory.parser(for: .cockroachdb) is CockroachDBPlanParser)
+    @Test("A CockroachDB plan resolves to the CockroachDB parser")
+    func registryReturnsCockroachParser() {
+        let format = ExplainFormatResolver.resolve(declared: .plainText, databaseType: .cockroachdb)
+        #expect(ExplainPlanParserRegistry.parser(for: format) is CockroachDBPlanParser)
     }
 }

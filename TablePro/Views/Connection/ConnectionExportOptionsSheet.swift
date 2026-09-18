@@ -8,6 +8,7 @@ import TableProImport
 import UniformTypeIdentifiers
 
 struct ConnectionExportOptionsSheet: View {
+    @ObservedObject private var licenseManager = LicenseManager.shared
     let connections: [DatabaseConnection]
 
     @Environment(\.dismiss) private var dismiss
@@ -19,7 +20,7 @@ struct ConnectionExportOptionsSheet: View {
     @State private var exportError: String?
 
     private var isProAvailable: Bool {
-        LicenseManager.shared.isFeatureAvailable(.encryptedExport)
+        licenseManager.isFeatureAvailable(.encryptedExport)
     }
 
     private var passphraseState: ConnectionExportPassphraseState {
@@ -101,7 +102,7 @@ struct ConnectionExportOptionsSheet: View {
                         .toggleStyle(.checkbox)
                         .disabled(!isProAvailable)
                     if !isProAvailable {
-                        ProBadge()
+                        ProBadge(feature: .encryptedExport)
                     }
                 }
                 Text("Off by default. Turn it on to encrypt saved passwords with a passphrase.")
@@ -157,11 +158,10 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private var footer: some View {
-        HStack {
+        DialogFooter {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Spacer()
-            Button("Export...") { performExport() }
+            Button("Export…") { performExport() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canExport)

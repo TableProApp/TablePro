@@ -9,6 +9,12 @@ import TableProPluginKit
 internal struct ResultsJsonView: View {
     let tableRows: TableRows
     let selectedRowIndices: Set<Int>
+    let displayIDs: [RowID]?
+    let deletedRowIDs: Set<RowID>
+    let valueFilter: GridValueFilterState
+    let dataRevision: Int
+    let displayRevision: Int
+    let columnLayout: ColumnLayoutState
 
     @State private var viewMode: JSONViewMode
     @State private var treeSearchText = ""
@@ -16,27 +22,78 @@ internal struct ResultsJsonView: View {
     @State private var parseError: JSONTreeParseError?
     @State private var prettyText = ""
     @State private var cachedJson = ""
+    @State private var resolvedRowCount: Int
+    @State private var heldBackDeletionCount = 0
+    @State private var hasRendered = false
     @State private var copied = false
-    @State private var renderToken: Int = 0
     @State private var copyCooldownTask: Task<Void, Never>?
 
     init(
         tableRows: TableRows,
-        selectedRowIndices: Set<Int>
+        selectedRowIndices: Set<Int>,
+        displayIDs: [RowID]?,
+        deletedRowIDs: Set<RowID>,
+        valueFilter: GridValueFilterState,
+        dataRevision: Int,
+        displayRevision: Int,
+        columnLayout: ColumnLayoutState
     ) {
         self.tableRows = tableRows
         self.selectedRowIndices = selectedRowIndices
+        self.displayIDs = displayIDs
+        self.deletedRowIDs = deletedRowIDs
+        self.valueFilter = valueFilter
+        self.dataRevision = dataRevision
+        self.displayRevision = displayRevision
+        self.columnLayout = columnLayout
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
+        self._resolvedRowCount = State(
+            initialValue: selectedRowIndices.isEmpty
+                ? (displayIDs?.count ?? tableRows.count)
+                : selectedRowIndices.count
+        )
     }
 
+    private struct RenderKey: Equatable {
+        let dataRevision: Int
+        let displayRevision: Int
+        let selectedRowIndices: Set<Int>
+        let deletedRowIDs: Set<RowID>
+        let valueFilter: GridValueFilterState
+        let hiddenColumns: Set<String>
+        let columnOrder: [String]?
+    }
+
+    private var renderKey: RenderKey {
+        RenderKey(
+            dataRevision: dataRevision,
+            displayRevision: displayRevision,
+            selectedRowIndices: selectedRowIndices,
+            deletedRowIDs: deletedRowIDs,
+            valueFilter: valueFilter,
+            hiddenColumns: columnLayout.hiddenColumns,
+            columnOrder: columnLayout.columnOrder
+        )
+    }
+
+    /// Says how much of the result is on screen, and why the rest is not.
+    ///
+    /// Rows marked for deletion are left out of the document, so the count has to name them or they
+    /// read as rows that silently went missing.
     private var rowCountText: String {
         let rowCount = tableRows.count
-        let selectedCount = selectedRowIndices.count
-        let displaying = selectedCount == 0 ? rowCount : selectedCount
-        if selectedRowIndices.isEmpty || displaying == rowCount {
+        if heldBackDeletionCount > 0 {
+            return String(
+                format: String(localized: "%1$d of %2$d rows, %3$d marked for deletion"),
+                resolvedRowCount,
+                rowCount,
+                heldBackDeletionCount
+            )
+        }
+        if resolvedRowCount == rowCount {
             return String(format: String(localized: "%d rows"), rowCount)
         }
-        return String(format: String(localized: "%d of %d rows"), displaying, rowCount)
+        return String(format: String(localized: "%d of %d rows"), resolvedRowCount, rowCount)
     }
 
     var body: some View {
@@ -46,10 +103,10 @@ internal struct ResultsJsonView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { startRebuild() }
-        .onChange(of: selectedRowIndices) { startRebuild() }
-        .onChange(of: tableRows.count) { startRebuild() }
-        .onChange(of: viewMode) {
+        .task(id: renderKey) {
+            await rebuild()
+        }
+        .onChange(of: viewMode) { _ in
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
         }
     }
@@ -93,7 +150,7 @@ internal struct ResultsJsonView: View {
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
-            .disabled(isInitialComputePending)
+            .disabled(!hasRendered)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -101,19 +158,15 @@ internal struct ResultsJsonView: View {
 
     // MARK: - Content
 
-    private var isInitialComputePending: Bool {
-        prettyText.isEmpty
-    }
-
     @ViewBuilder
     private var content: some View {
         if tableRows.rows.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Data"),
                 systemImage: "curlybraces",
                 description: Text(String(localized: "Execute a query to view results as JSON"))
             )
-        } else if isInitialComputePending {
+        } else if !hasRendered {
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -134,7 +187,7 @@ internal struct ResultsJsonView: View {
     }
 
     private func treeErrorView(_ error: JSONTreeParseError) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(
                 error == .tooLarge
                     ? String(localized: "JSON Too Large")
@@ -152,57 +205,68 @@ internal struct ResultsJsonView: View {
 
     // MARK: - JSON Generation
 
-    private func startRebuild() {
-        renderToken &+= 1
-        let token = renderToken
-        let columns = tableRows.columns
-        let columnTypes = tableRows.columnTypes
-        let rowsSnapshot = tableRows.rows
+    private func rebuild() async {
+        let snapshot = tableRows
+        let ids = displayIDs
         let selectedIndices = selectedRowIndices
+        let deletedIDs = deletedRowIDs
+        let layout = columnLayout
 
-        Task { @MainActor in
-            let result = await Task.detached(priority: .userInitiated) {
-                Self.computeJson(
-                    columns: columns,
-                    columnTypes: columnTypes,
-                    rows: rowsSnapshot,
-                    selectedIndices: selectedIndices
-                )
-            }.value
+        let result = await Task.detached(priority: .userInitiated) {
+            Self.computeJson(
+                tableRows: snapshot,
+                displayIDs: ids,
+                selectedIndices: selectedIndices,
+                deletedRowIDs: deletedIDs,
+                columnLayout: layout
+            )
+        }.value
 
-            guard token == renderToken else { return }
-            cachedJson = result.json
-            prettyText = result.pretty
-            switch result.parseResult {
-            case .success(let node):
-                parsedTree = node
-                parseError = nil
-            case .failure(let error):
-                parsedTree = nil
-                parseError = error
-            }
+        guard !Task.isCancelled else { return }
+        cachedJson = result.json
+        prettyText = result.pretty
+        resolvedRowCount = result.resolvedCount
+        heldBackDeletionCount = result.skippedDeletedCount
+        switch result.parseResult {
+        case .success(let node):
+            parsedTree = node
+            parseError = nil
+        case .failure(let error):
+            parsedTree = nil
+            parseError = error
         }
+        hasRendered = true
     }
 
-    nonisolated private static func computeJson(
-        columns: [String],
-        columnTypes: [ColumnType],
-        rows: ContiguousArray<Row>,
-        selectedIndices: Set<Int>
-    ) -> (json: String, pretty: String, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
-        let allRows: [[PluginCellValue]] = rows.map { Array($0.values) }
-        let displayRows: [[PluginCellValue]]
-        if selectedIndices.isEmpty {
-            displayRows = allRows
-        } else {
-            displayRows = selectedIndices.sorted().compactMap {
-                allRows.indices.contains($0) ? allRows[$0] : nil
-            }
-        }
-        let converter = JsonRowConverter(columns: columns, columnTypes: columnTypes)
-        let json = converter.generateJson(rows: displayRows)
-        let pretty = json.prettyPrintedAsJson() ?? json
-        let parseResult = JSONTreeParser.parse(json)
-        return (json: json, pretty: pretty, parseResult: parseResult)
+    struct RenderedJson {
+        let json: String
+        let pretty: String
+        let resolvedCount: Int
+        let skippedDeletedCount: Int
+        let parseResult: Result<JSONTreeNode, JSONTreeParseError>
+    }
+
+    /// Renders the rows the grid is showing, through the same serializer as Copy as JSON.
+    nonisolated static func computeJson(
+        tableRows: TableRows,
+        displayIDs: [RowID]?,
+        selectedIndices: Set<Int>,
+        deletedRowIDs: Set<RowID> = [],
+        columnLayout: ColumnLayoutState
+    ) -> RenderedJson {
+        let output = ResultJsonSerializer.serialize(
+            tableRows: tableRows,
+            displayIDs: displayIDs,
+            selectedDisplayIndices: selectedIndices,
+            deletedRowIDs: deletedRowIDs,
+            columns: .fromColumnLayout(columnLayout, columns: tableRows.columns)
+        )
+        return RenderedJson(
+            json: output.json,
+            pretty: output.json.prettyPrintedAsJson() ?? output.json,
+            resolvedCount: output.rowCount,
+            skippedDeletedCount: output.skippedDeletedCount,
+            parseResult: JSONTreeParser.parse(output.json)
+        )
     }
 }

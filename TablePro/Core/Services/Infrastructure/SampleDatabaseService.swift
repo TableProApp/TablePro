@@ -34,7 +34,7 @@ internal final class SampleDatabaseService {
         connectionInspector: DatabaseManagerSampleConnectionInspector()
     )
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabaseService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabaseService")
 
     private let bundledFileResolver: () -> URL?
     private let fileManager: FileManager
@@ -82,7 +82,7 @@ internal final class SampleDatabaseService {
 
         do {
             try fileManager.copyItem(at: bundled, to: installed)
-            Self.logger.info("Installed sample database to \(installed.path, privacy: .public)")
+            Self.logger.info("Installed sample database to \(installed.path, privacy: .private(mask: .hash))")
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }
@@ -115,7 +115,7 @@ internal final class SampleDatabaseService {
 
         do {
             try fileManager.copyItem(at: bundled, to: installed)
-            Self.logger.info("Reset sample database at \(installed.path, privacy: .public)")
+            Self.logger.info("Reset sample database at \(installed.path, privacy: .private(mask: .hash))")
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }
@@ -128,19 +128,7 @@ internal final class SampleDatabaseService {
     }
 
     nonisolated internal static func defaultBaseDirectory() -> URL {
-        let fileManager = FileManager.default
-        let appSupport: URL
-        do {
-            appSupport = try fileManager.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-        } catch {
-            appSupport = fileManager.temporaryDirectory
-        }
-        return appSupport
+        AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("Samples", isDirectory: true)
     }

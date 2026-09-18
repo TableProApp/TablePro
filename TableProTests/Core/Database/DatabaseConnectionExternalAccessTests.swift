@@ -17,57 +17,37 @@ struct DatabaseConnectionExternalAccessTests {
         #expect(connection.externalAccess == .readOnly)
     }
 
+    /// Both cases build their JSON by encoding a real connection and editing one key, rather than
+    /// hand-writing a document. The hand-written fixture they replace had drifted three ways at
+    /// once: it named the SSH tunnel's discriminator `kind` when the wire key has always been
+    /// `mode`, gave `sslConfig` only one of its four keys, and omitted `agentSocketPath` entirely.
+    /// None of those shapes was ever written by the app, so the test failed on its own scaffolding
+    /// instead of on the property it exists to check. Encoding first means the fixture cannot
+    /// describe a document the encoder would not produce.
+    private func encodedConnection(_ connection: DatabaseConnection) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(connection)
+        return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func decodeConnection(from object: [String: Any]) throws -> DatabaseConnection {
+        let data = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(DatabaseConnection.self, from: data)
+    }
+
     @Test("Decoding legacy JSON without externalAccess defaults to readOnly")
     func decodeLegacyJSONDefaultsToReadOnly() throws {
-        let json = """
-        {
-            "id": "11111111-2222-3333-4444-555555555555",
-            "name": "Legacy",
-            "host": "localhost",
-            "port": 3306,
-            "database": "test",
-            "username": "root",
-            "type": "MySQL",
-            "sshConfig": { "enabled": false, "host": "", "port": 22, "username": "", "authMethod": "password", "privateKeyPath": "" },
-            "sslConfig": { "mode": "preferred" },
-            "color": "None",
-            "sshTunnelMode": { "kind": "disabled" },
-            "safeModeLevel": "silent",
-            "additionalFields": {},
-            "sortOrder": 0,
-            "localOnly": false
-        }
-        """
-        let data = Data(json.utf8)
-        let connection = try JSONDecoder().decode(DatabaseConnection.self, from: data)
-        #expect(connection.externalAccess == .readOnly)
+        var object = try encodedConnection(DatabaseConnection(name: "Legacy"))
+        object.removeValue(forKey: "externalAccess")
+
+        #expect(try decodeConnection(from: object).externalAccess == .readOnly)
     }
 
     @Test("Decoding JSON with explicit externalAccess preserves value")
     func decodeJSONWithExplicitValue() throws {
-        let json = """
-        {
-            "id": "11111111-2222-3333-4444-555555555555",
-            "name": "Test",
-            "host": "localhost",
-            "port": 3306,
-            "database": "",
-            "username": "",
-            "type": "MySQL",
-            "sshConfig": { "enabled": false, "host": "", "port": 22, "username": "", "authMethod": "password", "privateKeyPath": "" },
-            "sslConfig": { "mode": "preferred" },
-            "color": "None",
-            "sshTunnelMode": { "kind": "disabled" },
-            "safeModeLevel": "silent",
-            "externalAccess": "blocked",
-            "additionalFields": {},
-            "sortOrder": 0,
-            "localOnly": false
-        }
-        """
-        let data = Data(json.utf8)
-        let connection = try JSONDecoder().decode(DatabaseConnection.self, from: data)
-        #expect(connection.externalAccess == .blocked)
+        var object = try encodedConnection(DatabaseConnection(name: "Test"))
+        object["externalAccess"] = ExternalAccessLevel.blocked.rawValue
+
+        #expect(try decodeConnection(from: object).externalAccess == .blocked)
     }
 
     @Test("Encoding round-trips externalAccess")

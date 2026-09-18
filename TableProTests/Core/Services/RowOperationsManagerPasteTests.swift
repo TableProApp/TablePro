@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -11,6 +12,12 @@ private final class PasteMockClipboard: ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload? { gridRowsToRead }
     func writeText(_ text: String) {}
     func writeCsv(_ csv: String) {}
+
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
+    }
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {}
     var hasText: Bool { textToRead != nil }
     var hasGridRows: Bool { gridRowsToRead != nil }
@@ -27,7 +34,8 @@ struct RowOperationsManagerPasteTests {
             tableName: "users",
             columns: Self.columns,
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         return RowOperationsManager(changeManager: changeManager)
     }
@@ -187,5 +195,80 @@ struct RowOperationsManagerPasteTests {
     @Test("detectParser defaults to TSV for single-column text")
     func detectParserDefaultsToTSV() {
         #expect(RowOperationsManager.detectParser(for: "single") is TSVRowParser)
+    }
+}
+
+/// A pasted row arrives whole, so it carries values for columns the server owns. Those never reach
+/// the cell-edit boundary that refuses them, and `SQLStatementGenerator` drops them without a word,
+/// so the grid showed a pasted identity value the row was never saved with.
+@MainActor
+@Suite("RowOperationsManager Paste - server-owned columns")
+struct RowOperationsManagerPasteServerOwnedTests {
+    private static let columns = ["id", "code", "name"]
+
+    private func makeManager() -> RowOperationsManager {
+        let changeManager = DataChangeManager()
+        changeManager.configureForTable(
+            tableName: "t",
+            columns: Self.columns,
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: []
+        )
+        return RowOperationsManager(changeManager: changeManager)
+    }
+
+    private func paste(
+        _ payload: GridRowsClipboardPayload,
+        columnIdentity: [String: IdentityKind] = [:],
+        generatedColumns: Set<String> = []
+    ) -> [PluginCellValue] {
+        let clipboard = PasteMockClipboard()
+        clipboard.gridRowsToRead = payload
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: Self.columns,
+            columnTypes: Array(repeating: .text(rawType: nil), count: Self.columns.count),
+            columnIdentity: columnIdentity,
+            generatedColumns: generatedColumns
+        )
+        let result = makeManager().pasteRowsFromClipboard(
+            columns: Self.columns,
+            primaryKeyColumns: ["id"],
+            tableRows: &rows,
+            clipboard: clipboard
+        )
+        return result.pastedRows.first?.values ?? []
+    }
+
+    private var payload: GridRowsClipboardPayload {
+        GridRowsClipboardPayload(
+            columns: Self.columns,
+            rows: [[.text("7"), .text("42"), .text("Ada")]]
+        )
+    }
+
+    @Test("A pasted identity column that is not the primary key is reset to DEFAULT")
+    func resetsNonKeyIdentity() {
+        let values = paste(payload, columnIdentity: ["code": .always])
+
+        #expect(values[1] == .text("__DEFAULT__"))
+        #expect(values[2] == .text("Ada"))
+    }
+
+    @Test("A pasted generated column is reset to DEFAULT")
+    func resetsGeneratedColumn() {
+        let values = paste(payload, generatedColumns: ["code"])
+
+        #expect(values[1] == .text("__DEFAULT__"))
+        #expect(values[2] == .text("Ada"))
+    }
+
+    @Test("An ordinary column keeps the pasted value")
+    func keepsOrdinaryColumn() {
+        let values = paste(payload)
+
+        #expect(values[1] == .text("42"))
+        #expect(values[2] == .text("Ada"))
     }
 }

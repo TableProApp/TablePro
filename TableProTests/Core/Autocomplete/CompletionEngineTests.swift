@@ -126,6 +126,20 @@ struct CompletionEngineTests {
         }
     }
 
+    /// The seam the quoted prefix died at: every candidate filtered out, so the engine reported no
+    /// completion context at all and the popup closed.
+    @Test(
+        "A quoted table prefix still produces a completion context",
+        arguments: ["SELECT * FROM `cat", "SELECT * FROM `cat`"]
+    )
+    func quotedTablePrefixProducesAContext(text: String) async {
+        await schemaProvider.updateTables([TestFixtures.makeTableInfo(name: "category")])
+        let result = await engine.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(result != nil)
+        #expect(result?.items.contains { $0.label == "category" } == true)
+    }
+
     @Test("WHERE clause returns items")
     func testWhereClause() async {
         let text = "SELECT * FROM users WHERE "
@@ -199,5 +213,56 @@ struct CompletionEngineTests {
         let labels = result?.items.map(\.label) ?? []
         #expect(labels.contains("region"))
         #expect(labels.contains("total"))
+    }
+
+    // MARK: - Keyword case
+
+    @Test("An opening lowercase prefix opens the popup with lowercase keywords")
+    func lowercasePrefixOpensLowercase() async {
+        let result = await engine.getCompletions(text: "sel", cursorPosition: 3, keywordCase: .matchTypedElseUpper)
+        #expect(result?.items.contains { $0.label == "select" && $0.insertText == "select" } == true)
+        #expect(result?.items.contains { $0.label == "SELECT" } == false)
+    }
+
+    @Test("An opening uppercase prefix opens the popup with uppercase keywords")
+    func uppercasePrefixOpensUppercase() async {
+        let result = await engine.getCompletions(text: "SEL", cursorPosition: 3, keywordCase: .matchTypedElseUpper)
+        #expect(result?.items.contains { $0.label == "SELECT" } == true)
+    }
+
+    /// The candidate pool an open popup re-ranks against stays canonical, so a later prefix folds
+    /// from the vocabulary's own spelling rather than from whatever the previous keystroke produced.
+    @Test("The session's candidate pool is not re-cased")
+    func candidatePoolStaysCanonical() async {
+        let result = await engine.getCompletions(text: "sel", cursorPosition: 3, keywordCase: .matchTypedElseUpper)
+        #expect(result?.candidates.contains { $0.label == "SELECT" } == true)
+    }
+
+    /// The per-keystroke path: the adapter hands `rank` the prefix in the case the user typed it,
+    /// so a prefix lowercased on the way in would silently lowercase every later keystroke.
+    @Test("Ranking cases from the prefix it is given")
+    func rankingFollowsTheGivenPrefix() async {
+        let result = await engine.getCompletions(text: "s", cursorPosition: 1, keywordCase: .matchTypedElseUpper)
+        let candidates = result?.candidates ?? []
+        #expect(!candidates.isEmpty)
+
+        let lowered = engine.rank(
+            candidates, prefix: "sel", context: .unanalyzed, keywordCase: .matchTypedElseUpper
+        )
+        #expect(lowered.contains { $0.insertText == "select" })
+
+        let raised = engine.rank(
+            candidates, prefix: "SEL", context: .unanalyzed, keywordCase: .matchTypedElseUpper
+        )
+        #expect(raised.contains { $0.insertText == "SELECT" })
+    }
+
+    @Test("The absolute policies ignore the typed prefix at both entry points")
+    func absolutePolicyIgnoresPrefix() async {
+        let result = await engine.getCompletions(text: "sel", cursorPosition: 3, keywordCase: .upper)
+        #expect(result?.items.contains { $0.insertText == "SELECT" } == true)
+
+        let lowered = await engine.getCompletions(text: "SEL", cursorPosition: 3, keywordCase: .lower)
+        #expect(lowered?.items.contains { $0.insertText == "select" } == true)
     }
 }

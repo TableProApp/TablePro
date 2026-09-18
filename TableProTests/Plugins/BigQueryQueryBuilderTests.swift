@@ -1,10 +1,3 @@
-//
-//  BigQueryQueryBuilderTests.swift
-//  TableProTests
-//
-//  Tests for BigQueryQueryBuilder (compiled via symlink from BigQueryDriverPlugin).
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -42,7 +35,7 @@ struct BigQueryQueryBuilderFilteredTests {
     func filteredReturnsTag() {
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
             table: "users", dataset: "main",
-            filters: [(column: "name", op: "=", value: "Alice")],
+            filters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")],
             logicMode: "AND", sortColumns: [], limit: 100, offset: 0
         )
         #expect(query.hasPrefix(BigQueryQueryBuilder.filterTag))
@@ -53,8 +46,8 @@ struct BigQueryQueryBuilderFilteredTests {
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
             table: "events", dataset: "analytics",
             filters: [
-                (column: "type", op: "=", value: "click"),
-                (column: "count", op: ">", value: "10")
+                PluginQueryFilter(column: "type", op: "=", value: "click"),
+                PluginQueryFilter(column: "count", op: ">", value: "10")
             ],
             logicMode: "OR", sortColumns: [], limit: 200, offset: 0
         )
@@ -98,7 +91,7 @@ struct BigQueryQueryBuilderCombinedTests {
     func combinedReturnsTag() {
         let query = BigQueryQueryBuilder.encodeCombinedQuery(
             table: "users", dataset: "main",
-            filters: [(column: "active", op: "=", value: "true")],
+            filters: [PluginQueryFilter(column: "active", op: "=", value: "true")],
             logicMode: "AND", searchText: "test",
             searchColumns: ["name"], sortColumns: [], limit: 100, offset: 0
         )
@@ -109,7 +102,7 @@ struct BigQueryQueryBuilderCombinedTests {
     func combinedPreservesBoth() {
         let query = BigQueryQueryBuilder.encodeCombinedQuery(
             table: "users", dataset: "main",
-            filters: [(column: "status", op: "!=", value: "deleted")],
+            filters: [PluginQueryFilter(column: "status", op: "!=", value: "deleted")],
             logicMode: "AND", searchText: "alice",
             searchColumns: ["name", "email"], sortColumns: [], limit: 100, offset: 0
         )
@@ -128,7 +121,7 @@ struct BigQueryQueryBuilderIsTaggedTests {
             table: "t", dataset: "d", sortColumns: [], limit: 10, offset: 0
         )
         let filter = BigQueryQueryBuilder.encodeFilteredQuery(
-            table: "t", dataset: "d", filters: [(column: "a", op: "=", value: "b")],
+            table: "t", dataset: "d", filters: [PluginQueryFilter(column: "a", op: "=", value: "b")],
             logicMode: "AND", sortColumns: [], limit: 10, offset: 0
         )
         #expect(BigQueryQueryBuilder.isTaggedQuery(browse))
@@ -149,88 +142,251 @@ struct BigQueryQueryBuilderIsTaggedTests {
 
 @Suite("BigQueryQueryBuilder - SQL Generation")
 struct BigQueryQueryBuilderSQLTests {
+    private func params(
+        table: String = "users",
+        dataset: String = "main",
+        sortColumns: [BigQueryQueryParams.SortColumn]? = nil,
+        filters: [BigQueryFilterSpec]? = nil,
+        logicMode: String? = nil,
+        searchText: String? = nil,
+        searchColumns: [String]? = nil,
+        columns: [String]? = nil
+    ) -> BigQueryQueryParams {
+        BigQueryQueryParams(
+            table: table, dataset: dataset, sortColumns: sortColumns,
+            limit: 100, offset: 0, filters: filters, logicMode: logicMode,
+            searchText: searchText, searchColumns: searchColumns, columns: columns
+        )
+    }
+
     @Test("Browse SQL generates correct SELECT")
     func browseSql() {
-        let params = BigQueryQueryParams(
-            table: "users", dataset: "main", sortColumns: nil,
-            limit: 100, offset: 0, filters: nil, logicMode: nil,
-            searchText: nil, searchColumns: nil
-        )
-        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "proj", columns: ["id", "name"])
-        #expect(sql == "SELECT * FROM `proj.main.users` LIMIT 100 OFFSET 0")
+        let sql = BigQueryQueryBuilder.buildSQL(from: params(columns: ["id", "name"]), projectId: "proj")
+        #expect(sql == "SELECT * FROM `proj`.`main`.`users` LIMIT 100 OFFSET 0")
     }
 
     @Test("Filtered SQL generates WHERE clause")
     func filteredSql() {
-        let params = BigQueryQueryParams(
-            table: "users", dataset: "main", sortColumns: nil,
-            limit: 100, offset: 0,
-            filters: [BigQueryFilterSpec(column: "status", op: "=", value: "active")],
-            logicMode: "AND", searchText: nil, searchColumns: nil
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "status", op: "=", value: "active")], logicMode: "AND"),
+            projectId: "proj"
         )
-        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "proj", columns: ["id", "status"])
-        #expect(sql.contains("WHERE `status` = 'active'"))
+        #expect(sql.contains("WHERE (`status` = 'active')"))
     }
 
-    @Test("Sort columns generate ORDER BY")
+    @Test("Sort columns resolve against the column names carried in the tag")
     func sortSql() {
-        let params = BigQueryQueryParams(
-            table: "events", dataset: "analytics",
-            sortColumns: [.init(columnIndex: 1, ascending: false)],
-            limit: 50, offset: 0, filters: nil, logicMode: nil,
-            searchText: nil, searchColumns: nil
-        )
         let sql = BigQueryQueryBuilder.buildSQL(
-            from: params, projectId: "proj", columns: ["id", "created_at"]
+            from: params(sortColumns: [.init(columnIndex: 1, ascending: false)], columns: ["id", "created_at"]),
+            projectId: "proj"
         )
         #expect(sql.contains("ORDER BY `created_at` DESC"))
     }
 
+    @Test("A tag without column names drops the sort rather than guessing")
+    func sortWithoutColumns() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(sortColumns: [.init(columnIndex: 0, ascending: true)]),
+            projectId: "proj"
+        )
+        #expect(!sql.contains("ORDER BY"))
+    }
+
     @Test("Search generates LIKE clauses with OR")
     func searchSql() {
-        let params = BigQueryQueryParams(
-            table: "users", dataset: "main", sortColumns: nil,
-            limit: 100, offset: 0, filters: nil, logicMode: nil,
-            searchText: "test", searchColumns: ["name", "email"]
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(searchText: "test", searchColumns: ["name", "email"]),
+            projectId: "proj"
         )
-        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "proj", columns: ["id", "name", "email"])
         #expect(sql.contains("CAST(`name` AS STRING) LIKE '%test%'"))
         #expect(sql.contains(" OR "))
     }
 
+    @Test("Search falls back to the tag's column names")
+    func searchUsesTagColumns() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(searchText: "x", columns: ["a", "b"]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("CAST(`a` AS STRING) LIKE '%x%' OR CAST(`b` AS STRING) LIKE '%x%'"))
+    }
+
     @Test("Count SQL omits LIMIT")
     func countSql() {
-        let params = BigQueryQueryParams(
-            table: "users", dataset: "main", sortColumns: nil,
-            limit: 100, offset: 0, filters: nil, logicMode: nil,
-            searchText: nil, searchColumns: nil
-        )
-        let sql = BigQueryQueryBuilder.buildCountSQL(from: params, projectId: "proj", columns: [])
-        #expect(sql == "SELECT COUNT(*) FROM `proj.main.users`")
+        let sql = BigQueryQueryBuilder.buildCountSQL(from: params(), projectId: "proj")
+        #expect(sql == "SELECT COUNT(*) FROM `proj`.`main`.`users`")
         #expect(!sql.contains("LIMIT"))
     }
 
-    @Test("Single quote in filter value is escaped")
+    @Test("A single quote in a filter value is escaped with a backslash")
     func filterEscaping() {
-        let params = BigQueryQueryParams(
-            table: "users", dataset: "main", sortColumns: nil,
-            limit: 10, offset: 0,
-            filters: [BigQueryFilterSpec(column: "name", op: "=", value: "O'Brien")],
-            logicMode: "AND", searchText: nil, searchColumns: nil
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "name", op: "=", value: "O'Brien")]),
+            projectId: "proj"
         )
-        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "proj", columns: ["name"])
-        #expect(sql.contains("O''Brien"))
+        #expect(sql.contains("`name` = 'O\\'Brien'"))
+        #expect(!sql.contains("O''Brien"))
+    }
+
+    @Test("A value that tries to close its literal stays one literal")
+    func filterInjectionStaysOneLiteral() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "name", op: "=", value: "x\\' OR TRUE --")]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("`name` = 'x\\\\\\' OR TRUE --'"))
+    }
+
+    @Test("Newlines and NUL in a value are escaped")
+    func filterControlCharacters() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "note", op: "=", value: "a\nb\u{0}c")]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("'a\\nb\\x00c'"))
+    }
+
+    @Test("CONTAINS escapes LIKE wildcards in the value")
+    func containsEscapesWildcards() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "code", op: "CONTAINS", value: "50%_off")]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("CAST(`code` AS STRING) LIKE '%50\\\\%\\\\_off%'"))
     }
 
     @Test("IN operator escapes individual values")
     func inOperatorEscaping() {
-        let params = BigQueryQueryParams(
-            table: "t", dataset: "d", sortColumns: nil,
-            limit: 10, offset: 0,
-            filters: [BigQueryFilterSpec(column: "status", op: "IN", value: "a, b, c")],
-            logicMode: "AND", searchText: nil, searchColumns: nil
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "status", op: "IN", value: "a, b', c")]),
+            projectId: "proj"
         )
-        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "proj", columns: ["status"])
-        #expect(sql.contains("IN ('a', 'b', 'c')"))
+        #expect(sql.contains("IN ('a', 'b\\'', 'c')"))
+    }
+
+    @Test("OR filters are grouped before the search condition")
+    func orFiltersAreGrouped() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(
+                filters: [
+                    BigQueryFilterSpec(column: "a", op: "=", value: "1", kind: "integer"),
+                    BigQueryFilterSpec(column: "b", op: "=", value: "2", kind: "integer")
+                ],
+                logicMode: "OR",
+                searchText: "z",
+                searchColumns: ["c"]
+            ),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`a` = 1 OR `b` = 2) AND (CAST(`c` AS STRING) LIKE '%z%')"))
+    }
+
+    @Test("BETWEEN uses the separate upper bound")
+    func betweenUsesSecondValue() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [
+                BigQueryFilterSpec(column: "n", op: "BETWEEN", value: "1", kind: "integer", secondValue: "9")
+            ]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("`n` BETWEEN 1 AND 9"))
+    }
+
+    @Test("A raw SQL filter is wrapped in parentheses")
+    func rawFilter() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [
+                BigQueryFilterSpec(column: BigQueryQueryBuilder.rawFilterColumn, op: "=", value: "a > 1 OR b < 2")
+            ]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE ((a > 1 OR b < 2))"))
+    }
+
+    @Test("A backtick in a column name is escaped, not dropped")
+    func identifierEscaping() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "we`ird", op: "IS NULL", value: "")]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("`we\\`ird` IS NULL"))
+    }
+}
+
+@Suite("BigQueryQueryBuilder - Column names in the tag")
+struct BigQueryQueryBuilderTagColumnTests {
+    @Test("Browse tags carry the column names")
+    func browseCarriesColumns() {
+        let query = BigQueryQueryBuilder.encodeBrowseQuery(
+            table: "t", dataset: "d", sortColumns: [(columnIndex: 1, ascending: true)],
+            limit: 10, offset: 0, columns: ["id", "name"]
+        )
+        let params = BigQueryQueryBuilder.decode(query)
+        #expect(params?.columns == ["id", "name"])
+        let sql = params.map { BigQueryQueryBuilder.buildSQL(from: $0, projectId: "p") } ?? ""
+        #expect(sql.contains("ORDER BY `name` ASC"))
+    }
+
+    @Test("Filter tags carry the column names and the upper bound")
+    func filterCarriesColumns() {
+        let query = BigQueryQueryBuilder.encodeFilteredQuery(
+            table: "t", dataset: "d",
+            filters: [PluginQueryFilter(column: "n", op: "BETWEEN", value: "1", secondValue: "5", elementScope: nil)],
+            logicMode: "AND", sortColumns: [], limit: 10, offset: 0, columns: ["n"]
+        )
+        let params = BigQueryQueryBuilder.decode(query)
+        #expect(params?.columns == ["n"])
+        #expect(params?.filters?.first?.secondValue == "5")
+    }
+
+    @Test("A tag written before column names existed still decodes")
+    func legacyTagDecodes() throws {
+        let json = #"{"table":"t","dataset":"d","limit":5,"offset":0}"#
+        let query = BigQueryQueryBuilder.browseTag + Data(json.utf8).base64EncodedString()
+        let params = try #require(BigQueryQueryBuilder.decode(query))
+        #expect(params.columns == nil)
+        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "p")
+        #expect(sql == "SELECT * FROM `p`.`d`.`t` LIMIT 5 OFFSET 0")
+    }
+}
+
+@Suite("BigQueryQueryBuilder - Exact Count")
+struct BigQueryQueryBuilderExactCountTests {
+    @Test("A count without filters has no WHERE clause")
+    func countWithoutFilters() {
+        let sql = BigQueryQueryBuilder.countSQL(
+            projectId: "proj", dataset: "main", table: "users", filters: [], logicMode: "AND"
+        )
+        #expect(sql == "SELECT COUNT(*) FROM `proj`.`main`.`users`")
+    }
+
+    @Test("A quote in a filter value is escaped the GoogleSQL way, never doubled")
+    func countEscapesQuotes() {
+        let sql = BigQueryQueryBuilder.countSQL(
+            projectId: "proj",
+            dataset: "main",
+            table: "users",
+            filters: [PluginQueryFilter(column: "name", op: "=", value: "O'Brien")],
+            logicMode: "AND",
+            columnKinds: ["name": .text]
+        )
+        #expect(sql == "SELECT COUNT(*) FROM `proj`.`main`.`users` WHERE (`name` = 'O\\'Brien')")
+        #expect(!sql.contains("''"))
+    }
+
+    @Test("Column kinds type the literals and the logic mode joins the filters")
+    func countUsesKindsAndLogicMode() {
+        let sql = BigQueryQueryBuilder.countSQL(
+            projectId: "proj",
+            dataset: "main",
+            table: "users",
+            filters: [
+                PluginQueryFilter(column: "code", op: "=", value: "42"),
+                PluginQueryFilter(column: "age", op: ">", value: "30")
+            ],
+            logicMode: "OR",
+            columnKinds: ["code": .text, "age": .integer]
+        )
+        #expect(sql == "SELECT COUNT(*) FROM `proj`.`main`.`users` WHERE (`code` = '42' OR `age` > 30)")
     }
 }

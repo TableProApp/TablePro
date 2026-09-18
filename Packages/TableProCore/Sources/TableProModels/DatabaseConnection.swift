@@ -9,7 +9,11 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var port: Int
     public var username: String
     public var database: String
-    public var colorTag: String?
+    /// The connection's colour, the same enum `ConnectionGroup` and `ConnectionTag` already use.
+    ///
+    /// This was `colorTag: String?` holding free-form hex, which synced on its own CloudKit field
+    /// and meant a colour set on one platform was invisible on the other.
+    public var color: ConnectionColor
     public var isReadOnly: Bool
     public var safeModeLevel: SafeModeLevel
     public var queryTimeoutSeconds: Int?
@@ -24,6 +28,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var groupId: UUID?
     public var tagIds: [UUID]
     public var sortOrder: Int
+    public var isFavorite: Bool
 
     public var tagId: UUID? {
         get { tagIds.first }
@@ -35,10 +40,10 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         name: String = "",
         type: DatabaseType = .mysql,
         host: String = "127.0.0.1",
-        port: Int = 3306,
+        port: Int = 3_306,
         username: String = "",
         database: String = "",
-        colorTag: String? = nil,
+        color: ConnectionColor = .none,
         isReadOnly: Bool = false,
         safeModeLevel: SafeModeLevel = .off,
         queryTimeoutSeconds: Int? = nil,
@@ -49,7 +54,8 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         sslConfiguration: SSLConfiguration? = nil,
         groupId: UUID? = nil,
         tagIds: [UUID] = [],
-        sortOrder: Int = 0
+        sortOrder: Int = 0,
+        isFavorite: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -58,7 +64,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.port = port
         self.username = username
         self.database = database
-        self.colorTag = colorTag
+        self.color = color
         self.isReadOnly = isReadOnly
         self.safeModeLevel = safeModeLevel
         self.queryTimeoutSeconds = queryTimeoutSeconds
@@ -70,13 +76,14 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.groupId = groupId
         self.tagIds = tagIds
         self.sortOrder = sortOrder
+        self.isFavorite = isFavorite
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, type, host, port, username, database, colorTag
+        case id, name, type, host, port, username, database, color, colorTag
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
         case sshEnabled, sshConfiguration, sslEnabled, sslConfiguration
-        case groupId, tagId, tagIds, sortOrder
+        case groupId, tagId, tagIds, sortOrder, isFavorite
     }
 }
 
@@ -90,7 +97,13 @@ extension DatabaseConnection: Codable {
         port = try container.decode(Int.self, forKey: .port)
         username = try container.decode(String.self, forKey: .username)
         database = try container.decode(String.self, forKey: .database)
-        colorTag = try container.decodeIfPresent(String.self, forKey: .colorTag)
+        if let decodedColor = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) {
+            color = decodedColor
+        } else if let legacyTag = try container.decodeIfPresent(String.self, forKey: .colorTag) {
+            color = ConnectionColor(storedValue: legacyTag)
+        } else {
+            color = .none
+        }
         isReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
         if let level = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) {
             safeModeLevel = level
@@ -111,6 +124,7 @@ extension DatabaseConnection: Codable {
             tagIds = decodedTagIds
         }
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -122,7 +136,7 @@ extension DatabaseConnection: Codable {
         try container.encode(port, forKey: .port)
         try container.encode(username, forKey: .username)
         try container.encode(database, forKey: .database)
-        try container.encodeIfPresent(colorTag, forKey: .colorTag)
+        try container.encode(color, forKey: .color)
         try container.encode(isReadOnly, forKey: .isReadOnly)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(queryTimeoutSeconds, forKey: .queryTimeoutSeconds)
@@ -136,5 +150,6 @@ extension DatabaseConnection: Codable {
             try container.encode(tagIds, forKey: .tagIds)
         }
         try container.encode(sortOrder, forKey: .sortOrder)
+        try container.encode(isFavorite, forKey: .isFavorite)
     }
 }

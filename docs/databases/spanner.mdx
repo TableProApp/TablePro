@@ -1,0 +1,143 @@
+---
+title: Google Cloud Spanner
+description: Connect to Cloud Spanner with a service account, ADC, a Google account, or the local emulator
+---
+
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+One connection is one database, reached over Google's REST API: no host, no port, no tunnel. Connect reads the database's dialect, GoogleSQL or PostgreSQL, and quoting, catalog queries and the default schema follow it.
+
+<RegistryPlugin name="Spanner" plugin="Spanner Driver" />
+
+## Quick setup
+
+Click **Create Connection…**, select **Spanner**, pick an auth method, fill in Project ID, Instance ID and Database, then click **Save & Connect**.
+
+## Connection settings
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| **Auth Method** | Yes | Service Account Key, Application Default Credentials, Google Account (OAuth), or Emulator (no credentials) |
+| **Project ID** | Yes | The ID (`my-project-123456`), not the name or number |
+| **Instance ID** | Yes | The instance ID, not its display name |
+| **Database** | Yes | The database ID. A second database needs a second connection |
+| **Service Account Key** | Service account only | A `.json` key file path, or the key JSON itself |
+| **OAuth Client ID**, **OAuth Client Secret** | OAuth only | From Google Cloud Console > APIs & Services > Credentials |
+| **OAuth Refresh Token** | No | OAuth only. Tried before the token saved by sign-in |
+| **REST Endpoint** | No | Advanced tab. Empty means `https://spanner.googleapis.com` |
+
+A custom **REST Endpoint** has to be an `https` address under `googleapis.com`, such as a regional or Private Service Connect endpoint. Credentials are never sent anywhere else. Any Spanner version works; it is a managed service.
+
+## Connection URL
+
+There is no URL scheme for Spanner. Create the connection from the form.
+
+## Authentication
+
+Pick Application Default Credentials on a Mac that already has `gcloud`. Use a service account key for a shared or unattended setup, and a Google account when you have neither.
+
+### Application default credentials
+
+```bash
+gcloud auth application-default login --project=my-project
+```
+
+The driver reads `GOOGLE_APPLICATION_CREDENTIALS` when it is set, otherwise `~/.config/gcloud/application_default_credentials.json`. It accepts the `authorized_user`, `service_account` and `impersonated_service_account` types.
+
+### Service account key
+
+Point **Service Account Key** at a key file from Google Cloud Console (IAM > Service Accounts > Keys), or paste the JSON. The private key alone is not enough; paste the whole file.
+
+`roles/spanner.databaseUser` covers queries, grid edits, the DDL tab and schema changes. `roles/spanner.databaseReader` is enough for a connection that only reads.
+
+### Google account (OAuth 2.0)
+
+<Steps>
+  <Step title="Create a desktop OAuth client">
+    In [Google Cloud Console](https://console.cloud.google.com/), under APIs & Services > Credentials, click Create Credentials > OAuth client ID and pick Desktop app.
+  </Step>
+  <Step title="Copy it into TablePro">
+    Paste the client ID and client secret into the connection form and connect.
+  </Step>
+  <Step title="Sign in">
+    The first connect stops at **Google Sign-In Required**. Click **Sign In** and approve access in the browser; the connection retries when sign-in finishes. The browser step times out after two minutes.
+  </Step>
+</Steps>
+
+The refresh token from that sign-in is kept in the macOS keychain, one per OAuth client, so later connects and reconnects need no browser. A background reconnect never opens one. When Google revokes the token, the next connect asks you to sign in again.
+
+One OAuth client signs in one Google account, shared by every connection that uses it. To use a second account, create a second OAuth client, or paste that account's refresh token into **OAuth Refresh Token**.
+
+### Local emulator
+
+Choose **Emulator (no credentials)** and set **REST Endpoint** to the emulator's REST port, `http://127.0.0.1:9020` by default. The project, instance and database must already exist in the [Spanner emulator](https://cloud.google.com/spanner/docs/emulator). This method only accepts a local address, and sends no credentials.
+
+## Schemas
+
+A GoogleSQL database's default schema has no name. The sidebar and the schema switcher show it as **(default)**, beside any named schemas. Its tables are written without a schema prefix, and a table in a named schema as `sales.Orders`. A PostgreSQL-dialect database starts on `public`.
+
+## Queries and transactions
+
+SELECT results stream, so a large result or a full-table export is not capped at Spanner's 10 MiB response limit.
+
+Each statement commits on its own. `BEGIN` opens a read-write transaction that holds every statement until `COMMIT` or `ROLLBACK`. While one is open, saving grid edits is refused, so a save never commits or abandons it. When Spanner aborts the transaction, later statements fail until you run `ROLLBACK`; then run them again. A single statement outside a transaction is retried automatically when Spanner aborts it.
+
+`CREATE`, `ALTER` and `DROP` go through Spanner's schema-change API, outside any transaction. The editor waits for the change up to the [query timeout](/customization/general-settings#query-timeout); a change still running then keeps running on the server.
+
+## Editing rows
+
+Grid edits, inserts and deletes become `INSERT`, `UPDATE` and `DELETE` keyed on the table's primary key. Values are sent as typed query parameters, so quotes, backslashes and the text `null` are stored as typed. A column left at its default or generated by Spanner is written as `DEFAULT`. Views are read-only.
+
+## EXPLAIN
+
+**Explain** shows Spanner's query plan as a tree. A DML statement is planned in a transaction that is rolled back, so nothing is written. DDL and transaction statements cannot be explained, and `EXPLAIN ANALYZE` is not available because it runs the statement. See [EXPLAIN Visualization](/features/explain-visualization).
+
+## SSL/TLS
+
+Traffic to Google is always HTTPS. There is no SSL pane. The emulator is plain HTTP on your own Mac.
+
+## Limitations
+
+- The Structure tab is read-only. Change a table with `ALTER TABLE` in the editor.
+- `DROP TABLE` fails while the table has secondary indexes or interleaved children. Drop those first.
+- **Truncate Table** runs `DELETE … WHERE TRUE` in one transaction, which Spanner rejects past its mutation limit. Delete a large table in batches from the editor.
+- SQL export writes `BYTES` as `X'…'` and booleans as quoted text, which Spanner will not load. Export data as CSV or JSON.
+- Text filters such as contains and starts with fail on `JSON`, `ARRAY` and `STRUCT` columns. Filter those in the editor with JSON or array functions.
+- Data Compare is not available for Spanner.
+- On a PostgreSQL-dialect database, completions and the AI assistant still quote with backticks. Write `"double quotes"` yourself.
+- The emulator returns no query plans, so **Explain** reports that no plan was returned.
+
+## Troubleshooting
+
+### Application default credentials not found. Run gcloud auth application-default login.
+
+No ADC file was found. Run the command, or set `GOOGLE_APPLICATION_CREDENTIALS` to a key file. Or switch the connection to a service account key.
+
+### Sign in with your Google account to use this connection.
+
+The OAuth connection has no saved sign-in yet. Click **Sign In** in the prompt that follows.
+
+### Google no longer accepts these credentials. Sign in again, or renew the key or the gcloud login.
+
+Google rejected the refresh token or the service account's signed request. For a Google account, sign in again from the prompt. For ADC, run `gcloud auth application-default login` again. For a service account, create a new key.
+
+### The REST endpoint must be an https address under googleapis.com. Choose the Emulator auth method for a local emulator.
+
+**REST Endpoint** names a host that is not Google's. Clear it for production, or pick **Emulator (no credentials)** for a local emulator.
+
+### Spanner aborted the transaction. Roll it back and run it again.
+
+Spanner ended the open transaction, usually over a lock conflict. Run `ROLLBACK`, then the statements again.
+
+### The connection failed while Spanner was committing, so the changes may have been saved. Check the data before running it again.
+
+The commit request left the Mac, but no answer came back. Spanner may or may not have saved the transaction. Query the rows before running the statements again, so nothing is written twice.
+
+### The schema change is still running on the server (…).
+
+The DDL outlived the query timeout. The change continues on Spanner; check it in Google Cloud Console before running it again.
+
+## Related
+
+- [EXPLAIN Visualization](/features/explain-visualization)
+- [Google BigQuery](/databases/bigquery)

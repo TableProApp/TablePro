@@ -20,7 +20,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4053D6",
                 queryLanguageName: "PartiQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -59,7 +58,8 @@ extension PluginMetadataRegistry {
                             "begins_with", "contains", "size", "attribute_type",
                             "attribute_exists", "attribute_not_exists",
                         ],
-                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"]
+                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"],
+                        caseSensitivityStyle: .driverManaged
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -166,7 +166,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4285F4",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: false,
@@ -185,6 +184,7 @@ extension PluginMetadataRegistry {
                     defaultGroupName: "default",
                     tableEntityName: "Tables",
                     containerEntityName: "Dataset",
+                    schemaEntityName: "Dataset",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
@@ -238,8 +238,9 @@ extension PluginMetadataRegistry {
                         ],
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .truefalse,
-                        likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        likeEscapeStyle: .implicit,
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .caseFoldFunction
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -332,6 +333,13 @@ extension PluginMetadataRegistry {
                             visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
                         ),
                         ConnectionField(
+                            id: "bqOAuthRefreshToken",
+                            label: String(localized: "OAuth Refresh Token"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
+                        ),
+                        ConnectionField(
                             id: "bqMaxBytesBilled",
                             label: String(localized: "Max Bytes Billed"),
                             placeholder: "1000000000",
@@ -342,6 +350,194 @@ extension PluginMetadataRegistry {
                     category: .analytical,
                     tagline: String(localized: "Google Cloud serverless data warehouse"),
                     hidesBuiltInPassword: true
+                )
+            )),
+            ("Spanner", PluginMetadataSnapshot(
+                displayName: "Google Cloud Spanner", iconName: "spanner-icon", defaultPort: 0,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
+                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText)
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: [],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#1A73E8",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "(default)",
+                    defaultGroupName: "default",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Schema",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: [
+                        "INFORMATION_SCHEMA", "SPANNER_SYS", "information_schema", "spanner_sys", "pg_catalog"
+                    ],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .hierarchicalSchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue],
+                    implicitSchemaName: "(default)"
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "`",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
+                            "DELETE", "CREATE", "DROP", "ALTER", "TABLE", "VIEW", "SCHEMA", "INDEX",
+                            "AND", "OR", "NOT", "IN", "BETWEEN", "EXISTS", "IS", "NULL", "LIKE",
+                            "GROUP", "BY", "ORDER", "ASC", "DESC", "HAVING", "LIMIT", "OFFSET",
+                            "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "ON",
+                            "UNION", "ALL", "DISTINCT", "AS", "CASE", "WHEN", "THEN", "ELSE", "END",
+                            "WITH", "TRUE", "FALSE", "CAST", "PRIMARY", "KEY", "INTERLEAVE", "PARENT",
+                            "RETURNING", "RETURN"
+                        ],
+                        functions: [
+                            "COUNT", "SUM", "AVG", "MIN", "MAX",
+                            "CONCAT", "LENGTH", "LOWER", "UPPER", "TRIM", "SUBSTR", "REPLACE",
+                            "STARTS_WITH", "ENDS_WITH", "FORMAT",
+                            "CURRENT_DATE", "CURRENT_TIMESTAMP", "DATE_ADD", "DATE_SUB",
+                            "TIMESTAMP_ADD", "TIMESTAMP_SUB", "EXTRACT",
+                            "CAST", "SAFE_CAST", "TO_JSON", "PARSE_JSON",
+                            "ARRAY_LENGTH", "ARRAY_AGG",
+                            "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD",
+                            "ABS", "CEIL", "FLOOR", "ROUND", "MOD", "SQRT", "POW"
+                        ],
+                        dataTypes: [
+                            "STRING", "BYTES", "INT64", "FLOAT32", "FLOAT64", "NUMERIC",
+                            "BOOL", "TIMESTAMP", "DATE", "JSON", "ARRAY", "STRUCT", "UUID"
+                        ],
+                        regexSyntax: .unsupported,
+                        booleanLiteralStyle: .truefalse,
+                        likeEscapeStyle: .implicit,
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .caseFoldFunction
+                    ),
+                    statementCompletions: [
+                        CompletionEntry(label: "SELECT", insertText: "SELECT"),
+                        CompletionEntry(label: "INSERT INTO", insertText: "INSERT INTO"),
+                        CompletionEntry(label: "UPDATE", insertText: "UPDATE"),
+                        CompletionEntry(label: "DELETE FROM", insertText: "DELETE FROM"),
+                        CompletionEntry(label: "CREATE TABLE", insertText: "CREATE TABLE"),
+                        CompletionEntry(label: "CREATE INDEX", insertText: "CREATE INDEX"),
+                        CompletionEntry(label: "DROP TABLE", insertText: "DROP TABLE"),
+                        CompletionEntry(label: "ALTER TABLE", insertText: "ALTER TABLE"),
+                        CompletionEntry(label: "WHERE", insertText: "WHERE"),
+                        CompletionEntry(label: "GROUP BY", insertText: "GROUP BY"),
+                        CompletionEntry(label: "ORDER BY", insertText: "ORDER BY"),
+                        CompletionEntry(label: "LIMIT", insertText: "LIMIT"),
+                        CompletionEntry(label: "JOIN", insertText: "JOIN"),
+                        CompletionEntry(label: "LEFT JOIN", insertText: "LEFT JOIN"),
+                        CompletionEntry(label: "UNION ALL", insertText: "UNION ALL"),
+                        CompletionEntry(label: "WITH", insertText: "WITH"),
+                        CompletionEntry(label: "THEN RETURN", insertText: "THEN RETURN"),
+                        CompletionEntry(label: "INTERLEAVE IN PARENT", insertText: "INTERLEAVE IN PARENT"),
+                        CompletionEntry(label: "PRIMARY KEY", insertText: "PRIMARY KEY")
+                    ],
+                    columnTypesByCategory: [
+                        "Integer": ["INT64"],
+                        "Float": ["FLOAT32", "FLOAT64", "NUMERIC"],
+                        "String": ["STRING", "JSON"],
+                        "Binary": ["BYTES"],
+                        "Boolean": ["BOOL"],
+                        "Date/Time": ["DATE", "TIMESTAMP"],
+                        "Complex": ["ARRAY", "STRUCT"],
+                        "Other": ["UUID"]
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "spAuthMethod",
+                            label: String(localized: "Auth Method"),
+                            defaultValue: "serviceAccount",
+                            fieldType: .dropdown(options: [
+                                .init(value: "serviceAccount", label: "Service Account Key"),
+                                .init(value: "adc", label: "Application Default Credentials"),
+                                .init(value: "oauth", label: "Google Account (OAuth)"),
+                                .init(value: "emulator", label: "Emulator (no credentials)")
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "spServiceAccountJson",
+                            label: String(localized: "Service Account Key"),
+                            placeholder: "File path or paste JSON",
+                            required: true,
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "spAuthMethod", values: ["serviceAccount"])
+                        ),
+                        ConnectionField(
+                            id: "spProjectId",
+                            label: String(localized: "Project ID"),
+                            placeholder: "my-gcp-project",
+                            required: true,
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "spInstanceId",
+                            label: String(localized: "Instance ID"),
+                            placeholder: "my-instance",
+                            required: true,
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "spDatabaseId",
+                            label: String(localized: "Database"),
+                            placeholder: "my-database",
+                            required: true,
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "spOAuthClientId",
+                            label: String(localized: "OAuth Client ID"),
+                            placeholder: "From GCP Console > Credentials",
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "spAuthMethod", values: ["oauth"])
+                        ),
+                        ConnectionField(
+                            id: "spOAuthClientSecret",
+                            label: String(localized: "OAuth Client Secret"),
+                            placeholder: "Client secret from GCP Console",
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "spAuthMethod", values: ["oauth"])
+                        ),
+                        ConnectionField(
+                            id: "spOAuthRefreshToken",
+                            label: String(localized: "OAuth Refresh Token"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "spAuthMethod", values: ["oauth"])
+                        ),
+                        ConnectionField(
+                            id: "spEndpoint",
+                            label: String(localized: "REST Endpoint"),
+                            placeholder: "https://spanner.googleapis.com",
+                            section: .advanced
+                        )
+                    ],
+                    category: .relational,
+                    tagline: String(localized: "Google Cloud globally distributed SQL"),
+                    hidesBuiltInPassword: true,
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Snowflake", PluginMetadataSnapshot(
@@ -357,7 +553,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#29B5E8",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -369,7 +564,8 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    pooledDriversShareOneSession: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "PUBLIC",
@@ -482,7 +678,9 @@ extension PluginMetadataRegistry {
                         regexSyntax: .regexpLike,
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .limit,
+                        requiresBackslashEscaping: true,
+                        caseSensitivityStyle: .ilikeOperator
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),

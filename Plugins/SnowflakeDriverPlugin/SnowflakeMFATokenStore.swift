@@ -12,30 +12,34 @@ import os
 import Security
 
 enum SnowflakeMFATokenStore {
-    private static let lock = NSLock()
-    private static var cache: [String: String] = [:]
+    private struct TokenState {
+        var cache: [String: String] = [:]
+        var rejectedPasscodes: [String: Date] = [:]
+    }
+
+    private static let state = OSAllocatedUnfairLock(initialState: TokenState())
     private static let service = "com.TablePro.SnowflakeDriverPlugin.mfaToken"
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeMFATokenStore")
 
     static func token(account: String, user: String) -> String? {
         let key = cacheKey(account: account, user: user)
-        if let cached = lock.withLock({ cache[key] }) {
+        if let cached = state.withLock({ $0.cache[key] }) {
             return cached
         }
         guard let stored = readKeychain(key: key) else { return nil }
-        lock.withLock { cache[key] = stored }
+        state.withLock { $0.cache[key] = stored }
         return stored
     }
 
     static func store(_ token: String, account: String, user: String) {
         let key = cacheKey(account: account, user: user)
-        lock.withLock { cache[key] = token }
+        state.withLock { $0.cache[key] = token }
         writeKeychain(token, key: key)
     }
 
     static func clear(account: String, user: String) {
         let key = cacheKey(account: account, user: user)
-        _ = lock.withLock { cache.removeValue(forKey: key) }
+        state.withLock { $0.cache[key] = nil }
         deleteKeychain(key: key)
     }
 
@@ -44,22 +48,22 @@ enum SnowflakeMFATokenStore {
     static func markPasscodeRejected(_ passcode: String, account: String, user: String) {
         guard !passcode.isEmpty else { return }
         let key = "\(cacheKey(account: account, user: user)):\(passcode)"
-        lock.withLock {
-            rejectedPasscodes = rejectedPasscodes.filter { Date().timeIntervalSince($0.value) < rejectedPasscodeLifetime }
-            rejectedPasscodes[key] = Date()
+        state.withLock { state in
+            state.rejectedPasscodes = state.rejectedPasscodes.filter {
+                Date().timeIntervalSince($0.value) < rejectedPasscodeLifetime
+            }
+            state.rejectedPasscodes[key] = Date()
         }
     }
 
     static func isPasscodeRejected(_ passcode: String, account: String, user: String) -> Bool {
         guard !passcode.isEmpty else { return false }
         let key = "\(cacheKey(account: account, user: user)):\(passcode)"
-        return lock.withLock {
-            guard let rejectedAt = rejectedPasscodes[key] else { return false }
+        return state.withLock {
+            guard let rejectedAt = $0.rejectedPasscodes[key] else { return false }
             return Date().timeIntervalSince(rejectedAt) < rejectedPasscodeLifetime
         }
     }
-
-    private static var rejectedPasscodes: [String: Date] = [:]
 
     private static func cacheKey(account: String, user: String) -> String {
         "\(SnowflakeAccount.issuerAccountName(forAccount: account)).\(user.uppercased())"

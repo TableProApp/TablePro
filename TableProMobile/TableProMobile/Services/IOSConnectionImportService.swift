@@ -8,6 +8,10 @@ import TableProModels
 enum IOSConnectionImportService {
     private static let logger = Logger(subsystem: "com.TablePro", category: "IOSConnectionImport")
 
+    static let recognizedTypeIds: Set<String> = Set(
+        (DatabaseType.allKnownTypes + [.cockroachdb, .scylladb, .turso]).map(\.rawValue)
+    )
+
     static func analyze(_ envelope: ConnectionExportEnvelope, appState: AppState) -> ConnectionImportPreview {
         let candidates = appState.connections.map { connection in
             ConnectionDuplicateCandidate(
@@ -23,7 +27,7 @@ enum IOSConnectionImportService {
         return ConnectionImportAnalyzer.analyze(
             envelope,
             existingConnections: candidates,
-            registeredTypeIds: Set(DatabaseType.allKnownTypes.map(\.rawValue)),
+            registeredTypeIds: recognizedTypeIds,
             fileExists: { FileManager.default.fileExists(atPath: $0) }
         )
     }
@@ -174,7 +178,7 @@ enum IOSConnectionImportService {
             port: exportable.port,
             username: exportable.username,
             database: exportable.database,
-            colorTag: exportable.color,
+            color: exportable.color.map { ConnectionColor(storedValue: $0) } ?? .none,
             safeModeLevel: safeMode,
             additionalFields: exportable.additionalFields ?? [:],
             sshEnabled: sshEnabled,

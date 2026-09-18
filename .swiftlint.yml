@@ -4,12 +4,15 @@
 # Paths to include during linting
 included:
   - TablePro
+  - Packages
 
-# Paths to exclude during linting
+# Paths to exclude during linting.
+# `.build` has to be globbed: SwiftLint resolves an `excluded:` entry against this file's own
+# directory, so a bare `.build` misses `Packages/*/.build`, and linting a resolved dependency's
+# checkout reports tens of thousands of violations in code nobody here wrote.
 excluded:
   - DerivedData
-  - .build
-  - Packages
+  - "**/.build"
   - Pods
   - Carthage
   - vendor
@@ -178,4 +181,21 @@ colon:
 comma: warning
 
 # No print statements is now disabled - use Logger in the future
-custom_rules: {}
+custom_rules:
+  storage_environment_directory:
+    name: "Storage Environment Directory"
+    regex: 'applicationSupportDirectory'
+    excluded: ".*/AppStorageEnvironment\\.swift"
+    message: "Resolve the directory through AppStorageEnvironment.shared, or a UI test writes to the developer's own store."
+    severity: error
+  storage_environment_defaults:
+    name: "Storage Environment Defaults"
+    regex: 'UserDefaults\.standard'
+    excluded: ".*/(AppStorageEnvironment|GeneralSettings|SoftwareUpdater|WorkspaceRailViewController|SplitViewAutosaveSweep)\\.swift"
+    message: "Resolve preferences through AppStorageEnvironment.shared.defaults. Only a macOS-owned system preference reads the standard domain."
+    severity: error
+  public_error_text_in_log:
+    name: "Error Text In The System Log"
+    regex: '\.localizedDescription\s*,\s*privacy:\s*\.public'
+    message: "A driver or Foundation error's text carries row values, paths and server messages. Publish `error.publicLogShape` and log the description at .private."
+    severity: error

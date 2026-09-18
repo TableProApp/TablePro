@@ -24,10 +24,6 @@ extension MainContentCoordinator {
         filterCoordinator.addFilterForColumn(columnName)
     }
 
-    func setFKFilter(_ filter: TableFilter) {
-        filterCoordinator.setFKFilter(filter)
-    }
-
     func duplicateFilter(_ filter: TableFilter) {
         filterCoordinator.duplicateFilter(filter)
     }
@@ -42,6 +38,18 @@ extension MainContentCoordinator {
 
     func updateFilter(_ filter: TableFilter) {
         filterCoordinator.updateFilter(filter)
+    }
+
+    func moveFilter(_ draggedID: UUID, onto targetID: UUID) {
+        filterCoordinator.moveFilter(draggedID, onto: targetID)
+    }
+
+    func moveFilter(_ filterID: UUID, direction: FilterCoordinator.FilterMoveDirection) {
+        filterCoordinator.moveFilter(filterID, direction: direction)
+    }
+
+    func canMoveFilter(_ filterID: UUID, direction: FilterCoordinator.FilterMoveDirection) -> Bool {
+        filterCoordinator.canMoveFilter(filterID, direction: direction)
     }
 
     func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
@@ -84,8 +92,8 @@ extension MainContentCoordinator {
         filterCoordinator.saveLastFiltersForActiveTable()
     }
 
-    func saveLastFilters(for tableName: String) {
-        filterCoordinator.saveLastFilters(for: tableName)
+    func saveLastFilters(of tab: QueryTab) {
+        filterCoordinator.saveLastFilters(of: tab)
     }
 
     func restoreLastFilters(for tableName: String) {

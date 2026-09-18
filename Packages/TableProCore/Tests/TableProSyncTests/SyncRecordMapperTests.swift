@@ -4,6 +4,7 @@ import Testing
 
 @testable import TableProModels
 @testable import TableProSync
+@testable import TableProSyncTransport
 
 @Suite("SyncRecordMapper safe mode")
 struct SyncRecordMapperTests {
@@ -14,7 +15,7 @@ struct SyncRecordMapperTests {
             name: "Test",
             type: .postgresql,
             host: "db.example.com",
-            port: 5432,
+            port: 5_432,
             username: "admin",
             database: "app",
             isReadOnly: isReadOnly,

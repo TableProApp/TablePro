@@ -14,7 +14,8 @@ struct ConnectionTunnelKindTests {
         ssh: Bool = false,
         cloudflare: Bool = false,
         cloudSQLProxy: Bool = false,
-        socksProxy: Bool = false
+        socksProxy: Bool = false,
+        tunnelCommand: Bool = false
     ) -> DatabaseConnection {
         DatabaseConnection(
             name: "T",
@@ -28,6 +29,9 @@ struct ConnectionTunnelKindTests {
                 : .disabled,
             socksProxyMode: socksProxy
                 ? .inline(SOCKSProxyConfiguration(host: "proxy.example.com"))
+                : .disabled,
+            tunnelCommandMode: tunnelCommand
+                ? .inline(TunnelCommandConfiguration(method: .kubectl, kubernetesResource: "service/pg"))
                 : .disabled
         )
     }
@@ -45,22 +49,25 @@ struct ConnectionTunnelKindTests {
         #expect(connection(cloudflare: true).activeTunnelKind == .cloudflare)
         #expect(connection(cloudSQLProxy: true).activeTunnelKind == .cloudSQLProxy)
         #expect(connection(socksProxy: true).activeTunnelKind == .socksProxy)
+        #expect(connection(tunnelCommand: true).activeTunnelKind == .tunnelCommand)
     }
 
     @Test("every combination of two or more enabled tunnels is a conflict")
     func allCombinations() {
-        for mask in 0..<16 {
+        for mask in 0..<32 {
             let ssh = mask & 1 != 0
             let cloudflare = mask & 2 != 0
             let cloudSQLProxy = mask & 4 != 0
             let socksProxy = mask & 8 != 0
-            let enabledCount = [ssh, cloudflare, cloudSQLProxy, socksProxy].filter { $0 }.count
+            let tunnelCommand = mask & 16 != 0
+            let enabledCount = [ssh, cloudflare, cloudSQLProxy, socksProxy, tunnelCommand].filter { $0 }.count
 
             let connection = connection(
                 ssh: ssh,
                 cloudflare: cloudflare,
                 cloudSQLProxy: cloudSQLProxy,
-                socksProxy: socksProxy
+                socksProxy: socksProxy,
+                tunnelCommand: tunnelCommand
             )
             #expect(connection.enabledTunnelKinds.count == enabledCount)
             if enabledCount == 1 {

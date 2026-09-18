@@ -408,6 +408,57 @@ struct SchemaStatementGeneratorPluginTests {
         #expect(stmts[1].sql.contains("DROP COLUMN"))
     }
 
+    /// A modified index is a drop and a re-add, and the two halves belong on opposite sides of the
+    /// column work: the replacement may cover a column this same save adds. Keeping them contiguous
+    /// put the `CREATE INDEX` before the `ADD COLUMN` and the whole save failed with "no such
+    /// column". Only a modified check constraint was ever split; the index arm was not.
+    @Test("A modified index is re-created after the columns it may cover are added")
+    func modifiedIndexIsSplitAcrossColumnAdds() throws {
+        let mock = MockPluginDriver()
+        mock.addColumnHandler = { table, col in "ALTER TABLE \(table) ADD COLUMN \(col.name) \(col.dataType)" }
+        mock.addIndexHandler = { table, idx in "CREATE INDEX \(idx.name) ON \(table)" }
+        mock.dropIndexHandler = { _, name in "DROP INDEX \(name)" }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [
+            .modifyIndex(
+                old: makeIndex(name: "idx_name", columns: ["name"]),
+                new: makeIndex(name: "idx_name", columns: ["name", "email"])
+            ),
+            .addColumn(makeColumn(name: "email"))
+        ])
+
+        let dropIndex = try #require(stmts.firstIndex { $0.sql.contains("DROP INDEX") })
+        let addColumn = try #require(stmts.firstIndex { $0.sql.contains("ADD COLUMN") })
+        let createIndex = try #require(stmts.firstIndex { $0.sql.contains("CREATE INDEX") })
+        #expect(dropIndex < addColumn)
+        #expect(addColumn < createIndex)
+    }
+
+    /// Same shape, same reason: a replacement key may reference a column this save adds.
+    @Test("A modified foreign key is re-added after the columns it may reference")
+    func modifiedForeignKeyIsSplitAcrossColumnAdds() throws {
+        let mock = MockPluginDriver()
+        mock.addColumnHandler = { table, col in "ALTER TABLE \(table) ADD COLUMN \(col.name) \(col.dataType)" }
+        mock.addForeignKeyHandler = { table, fk in "ALTER TABLE \(table) ADD CONSTRAINT \(fk.name) FOREIGN KEY" }
+        mock.dropForeignKeyHandler = { _, name in "ALTER TABLE users DROP FOREIGN KEY \(name)" }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [
+            .modifyForeignKey(
+                old: makeForeignKey(name: "fk_role", columns: ["role_id"]),
+                new: makeForeignKey(name: "fk_role", columns: ["team_id"])
+            ),
+            .addColumn(makeColumn(name: "team_id"))
+        ])
+
+        let dropKey = try #require(stmts.firstIndex { $0.sql.contains("DROP FOREIGN KEY") })
+        let addColumn = try #require(stmts.firstIndex { $0.sql.contains("ADD COLUMN") })
+        let addKey = try #require(stmts.firstIndex { $0.sql.contains("ADD CONSTRAINT") })
+        #expect(dropKey < addColumn)
+        #expect(addColumn < addKey)
+    }
+
     @Test("All statements end with semicolon")
     func allStatementsEndWithSemicolon() throws {
         let mock = MockPluginDriver()

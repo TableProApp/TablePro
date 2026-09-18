@@ -58,6 +58,7 @@ struct QueryParameterPanelView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Close parameter panel"))
+            .accessibilityLabel(String(localized: "Close parameter panel"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

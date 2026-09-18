@@ -28,8 +28,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaTables(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
 
         let names = Set(service.allLoadedTables(for: connectionId).map(\.name))
         #expect(names == ["orders", "leads", "employees"])
@@ -46,8 +46,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaTables(connectionId: connectionId, schema: "mirror", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "mirror", driver: driver)
 
         let matching = service.allLoadedTables(for: connectionId).filter { $0.id == shared.id }
         #expect(matching.count == 1)
@@ -64,7 +64,7 @@ struct SchemaServiceTests {
         let service = SchemaService()
         let connectionId = UUID()
 
-        service.markLoadFailed(connectionId: connectionId, message: "connect timed out")
+        service.markLoadFailed(connectionId: connectionId, message: "connect timed out", scope: nil)
 
         #expect(service.state(for: connectionId) == .failed("connect timed out"))
     }
@@ -81,9 +81,100 @@ struct SchemaServiceTests {
             connection: TestFixtures.makeConnection()
         )
 
-        service.markLoadFailed(connectionId: connectionId, message: "refresh failed")
+        service.markLoadFailed(connectionId: connectionId, message: "refresh failed", scope: nil)
 
         #expect(service.state(for: connectionId) == .loaded(driver.tablesToReturn))
+    }
+
+    @Test("A failed refresh of the database already loaded keeps its tables")
+    func failureForTheLoadedScopeKeepsTables() async {
+        let connection = TestFixtures.makeConnection()
+        let scope = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: scope)
+
+        service.markLoadFailed(connectionId: connection.id, message: "refresh failed", scope: scope)
+
+        #expect(service.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(service.loadedScope(for: connection.id) == scope)
+    }
+
+    /// MySQL switches database in place, so the tables of the database being left were still loaded
+    /// when the new one failed to load, and the sidebar listed them under the new name with no error.
+    @Test("A failure for a newly selected database replaces the tables of the one being left")
+    func failureForAnotherScopeReplacesTables() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        service.markLoadFailed(connectionId: connection.id, message: "Access denied", scope: billing)
+
+        #expect(service.state(for: connection.id) == .failed("Access denied"))
+        #expect(service.loadedScope(for: connection.id) == nil)
+    }
+
+    @Test("A table fetch that fails for a newly selected database reports the failure")
+    func failedLoadForAnotherScopeReportsFailure() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        driver.fetchTablesError = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Access denied"])
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+
+        #expect(service.state(for: connection.id) == .failed("Access denied"))
+        #expect(service.loadedScope(for: connection.id) == nil)
+    }
+
+    @Test("A table fetch that fails on refresh of the same database keeps its tables")
+    func failedRefreshOfTheSameScopeKeepsTables() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        driver.fetchTablesError = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "timed out"])
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        #expect(service.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(service.loadedScope(for: connection.id) == sales)
+    }
+
+    @Test("Tables and the other object kinds settle a failure by the same rule")
+    func tableFailureRuleMatchesSideObjects() {
+        let tables = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let pairs: [(SchemaState, MetadataLoadState<[TableInfo]>)] = [
+            (.idle, .idle),
+            (.loading, .loading),
+            (.loaded(tables), .loaded(tables)),
+            (.failed("old"), .failed("old"))
+        ]
+        for (schemaState, metadataState) in pairs {
+            for discarding in [false, true] {
+                let settledTables = schemaState.settled(byFailure: "new", discardingValue: discarding)
+                let settledObjects = metadataState.settled(by: .failed("new"), discardingValue: discarding)
+                switch (settledTables, settledObjects) {
+                case (.loaded(let left), .loaded(let right)):
+                    #expect(left == right)
+                case (.failed(let left), .failed(let right)):
+                    #expect(left == right)
+                default:
+                    Issue.record("Rules disagree for \(schemaState), discarding \(discarding)")
+                }
+            }
+        }
     }
 
     @Test("hierarchical load lists schemas")

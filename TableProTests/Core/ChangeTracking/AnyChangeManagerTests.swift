@@ -18,12 +18,12 @@ struct AnyChangeManagerTests {
     @Test("DataChangeManager wrapper: hasChanges forwards correctly")
     func dataManagerHasChangesForwards() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql, generatedColumns: [])
         let wrapper = AnyChangeManager(dataManager)
 
         #expect(wrapper.hasChanges == false)
 
-        dataManager.recordCellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Bob")
+        dataManager.recordCellChange(rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Bob")
 
         #expect(dataManager.hasChanges == true)
         #expect(wrapper.hasChanges == true)
@@ -32,7 +32,7 @@ struct AnyChangeManagerTests {
     @Test("DataChangeManager wrapper: reloadVersion forwards correctly")
     func dataManagerReloadVersionForwards() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql, generatedColumns: [])
         let wrapper = AnyChangeManager(dataManager)
 
         let initialVersion = wrapper.reloadVersion
@@ -44,23 +44,23 @@ struct AnyChangeManagerTests {
     @Test("isRowDeleted delegates correctly for DataChangeManager")
     func isRowDeletedDelegatesCorrectly() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql, generatedColumns: [])
         let wrapper = AnyChangeManager(dataManager)
 
-        #expect(wrapper.isRowDeleted(0) == false)
+        #expect(wrapper.isRowDeleted(.existing(0)) == false)
 
-        dataManager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
+        dataManager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Alice"])
 
-        #expect(wrapper.isRowDeleted(0) == true)
+        #expect(wrapper.isRowDeleted(.existing(0)) == true)
     }
 
     @Test("recordCellChange forwards to DataChangeManager")
     func recordCellChangeForwards() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql, generatedColumns: [])
         let wrapper = AnyChangeManager(dataManager)
 
-        wrapper.recordCellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Bob", originalRow: ["1", "Alice"])
+        wrapper.recordCellChange(rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "Alice", newValue: "Bob", originalRow: ["1", "Alice"])
 
         #expect(dataManager.hasChanges == true)
         #expect(!wrapper.rowChanges.isEmpty)
@@ -69,7 +69,7 @@ struct AnyChangeManagerTests {
     @Test("No retain cycle — wrapper can be deallocated")
     func noRetainCycleOnWrapper() {
         let dataManager = DataChangeManager()
-        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql)
+        dataManager.configureForTable(tableName: "users", columns: ["id", "name"], primaryKeyColumns: ["id"], databaseType: .mysql, generatedColumns: [])
 
         weak var weakWrapper: AnyChangeManager?
 
@@ -89,8 +89,8 @@ struct AnyChangeManagerTests {
         let structureManager = StructureChangeManager()
         let wrapper = AnyChangeManager(structureManager)
 
-        #expect(wrapper.isRowDeleted(0) == false)
-        #expect(wrapper.isRowDeleted(100) == false)
+        #expect(wrapper.isRowDeleted(.existing(0)) == false)
+        #expect(wrapper.isRowDeleted(.existing(100)) == false)
     }
 
     @Test("StructureChangeManager wrapper: hasChanges forwards correctly when false")

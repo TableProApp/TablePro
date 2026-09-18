@@ -5,12 +5,12 @@ import TableProPluginKit
 
 @MainActor
 final class RowOperationsManager {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RowOperationsManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RowOperationsManager")
 
-    private static let maxClipboardRows = 50_000
+    static let maxClipboardRows = 50_000
 
     struct AddNewRowResult {
-        let rowIndex: Int
+        let rowID: RowID
         let values: [PluginCellValue]
         let delta: Delta
     }
@@ -19,10 +19,11 @@ final class RowOperationsManager {
         let nextRowToSelect: Int
         let physicallyRemovedIndices: [Int]
         let delta: Delta
+        var stagedRowCount: Int = 0
     }
 
     struct PastedRowInfo {
-        let rowIndex: Int
+        let rowID: RowID
         let values: [PluginCellValue]
     }
 
@@ -36,222 +37,173 @@ final class RowOperationsManager {
         let delta: Delta
     }
 
-    struct UndoInsertRowResult {
-        let adjustedSelection: Set<Int>
-        let delta: Delta
-    }
-
     private let changeManager: DataChangeManager
 
     init(changeManager: DataChangeManager) {
         self.changeManager = changeManager
     }
 
-    func addNewRow(
-        columns: [String],
-        columnDefaults: [String: String?],
-        tableRows: inout TableRows
-    ) -> AddNewRowResult? {
+    func addNewRow(tableRows: inout TableRows) -> AddNewRowResult? {
         var newRowValues: [PluginCellValue] = []
-        for column in columns {
-            if let defaultValue = columnDefaults[column], defaultValue != nil {
+        for column in tableRows.columns {
+            if tableRows.generatedColumns.contains(column) || tableRows.serverAssignsValue(forColumn: column) {
                 newRowValues.append(.text("__DEFAULT__"))
             } else {
                 newRowValues.append(.null)
             }
         }
-
-        let newRowIndex = tableRows.count
-        let delta = tableRows.appendInsertedRow(values: newRowValues)
-
-        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newRowValues)
-
-        return AddNewRowResult(rowIndex: newRowIndex, values: newRowValues, delta: delta)
+        return appendInsertedRow(values: newRowValues, to: &tableRows)
     }
 
     func duplicateRow(
         sourceRowIndex: Int,
-        columns: [String],
         tableRows: inout TableRows
     ) -> AddNewRowResult? {
         guard sourceRowIndex >= 0, sourceRowIndex < tableRows.count else { return nil }
 
         var newValues = Array(tableRows.rows[sourceRowIndex].values)
 
-        for pkColumn in changeManager.primaryKeyColumns {
-            if let pkIndex = columns.firstIndex(of: pkColumn), pkIndex < newValues.count {
-                newValues[pkIndex] = .text("__DEFAULT__")
+        /// An identity column is not always the primary key, and copying its value verbatim is
+        /// what the server rejects.
+        let resetColumns = changeManager.primaryKeyColumns
+            + Array(tableRows.generatedColumns)
+            + Array(tableRows.columnIdentity.keys)
+        for resetColumn in resetColumns {
+            if let index = tableRows.columns.firstIndex(of: resetColumn), index < newValues.count {
+                newValues[index] = .text("__DEFAULT__")
             }
         }
+        return appendInsertedRow(values: newValues, to: &tableRows)
+    }
 
-        let newRowIndex = tableRows.count
-        let delta = tableRows.appendInsertedRow(values: newValues)
-
-        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newValues)
-
-        return AddNewRowResult(rowIndex: newRowIndex, values: newValues, delta: delta)
+    private func appendInsertedRow(values: [PluginCellValue], to tableRows: inout TableRows) -> AddNewRowResult {
+        let rowID = RowID.inserted(UUID())
+        let delta = tableRows.appendInsertedRow(id: rowID, values: values)
+        changeManager.recordRowInsertion(rowID: rowID, values: values)
+        return AddNewRowResult(rowID: rowID, values: values, delta: delta)
     }
 
     func deleteSelectedRows(
         selectedIndices: Set<Int>,
+        displayIDs: [RowID]? = nil,
         tableRows: inout TableRows
     ) -> DeleteRowsResult {
         guard !selectedIndices.isEmpty else {
             return DeleteRowsResult(nextRowToSelect: -1, physicallyRemovedIndices: [], delta: .none)
         }
 
-        var insertedRowsToDelete: [Int] = []
-        var existingRowsToDelete: [(rowIndex: Int, originalRow: [PluginCellValue])] = []
+        let displayCountBefore = displayIDs?.count ?? tableRows.count
+        var insertedRowsToRemove: [InsertedRowLocation] = []
+        var existingRowsToDelete: [(rowID: RowID, originalRow: [PluginCellValue])] = []
 
-        let minSelectedRow = selectedIndices.min() ?? 0
-        let maxSelectedRow = selectedIndices.max() ?? 0
-
-        for rowIndex in selectedIndices.sorted(by: >) {
-            if changeManager.isRowInserted(rowIndex) {
-                insertedRowsToDelete.append(rowIndex)
-            } else if !changeManager.isRowDeleted(rowIndex) {
-                if rowIndex < tableRows.count {
-                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: Array(tableRows.rows[rowIndex].values)))
-                }
+        for displayIndex in selectedIndices.sorted(by: >) {
+            guard let storageIndex = DisplayRowMapping.rowIndex(
+                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
+            ) else { continue }
+            let row = tableRows.rows[storageIndex]
+            if row.id.isInserted {
+                insertedRowsToRemove.append(InsertedRowLocation(rowID: row.id, storageIndex: storageIndex))
+            } else if !changeManager.isRowDeleted(row.id) {
+                existingRowsToDelete.append((rowID: row.id, originalRow: Array(row.values)))
             }
         }
 
-        let sortedInsertedRows = insertedRowsToDelete.sorted(by: >)
-
         var delta: Delta = .none
-        if !sortedInsertedRows.isEmpty {
-            delta = tableRows.remove(at: IndexSet(sortedInsertedRows))
-            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
+        if !insertedRowsToRemove.isEmpty {
+            delta = tableRows.remove(at: IndexSet(insertedRowsToRemove.map(\.storageIndex)))
+            changeManager.undoBatchRowInsertion(rows: insertedRowsToRemove)
         }
 
         if !existingRowsToDelete.isEmpty {
             changeManager.recordBatchRowDeletion(rows: existingRowsToDelete)
         }
 
-        let totalRows = tableRows.count
-        let rowsDeleted = sortedInsertedRows.count
-        let adjustedMaxRow = maxSelectedRow - rowsDeleted
-        let adjustedMinRow = minSelectedRow - sortedInsertedRows.count(where: { $0 < minSelectedRow })
-
-        let nextRow: Int
-        if adjustedMaxRow + 1 < totalRows {
-            nextRow = min(adjustedMaxRow + 1, totalRows - 1)
-        } else if adjustedMinRow > 0 {
-            nextRow = adjustedMinRow - 1
-        } else if totalRows > 0 {
-            nextRow = 0
-        } else {
-            nextRow = -1
-        }
-
         return DeleteRowsResult(
-            nextRowToSelect: nextRow,
-            physicallyRemovedIndices: sortedInsertedRows,
-            delta: delta
+            nextRowToSelect: Self.nextRowToSelect(
+                afterDeleting: selectedIndices,
+                removedCount: insertedRowsToRemove.count,
+                displayCountAfter: displayCountBefore - insertedRowsToRemove.count
+            ),
+            physicallyRemovedIndices: insertedRowsToRemove.map(\.storageIndex),
+            delta: delta,
+            stagedRowCount: insertedRowsToRemove.count + existingRowsToDelete.count
         )
     }
 
-    func deleteRows(
-        existingRows: [(displayIndex: Int, originalRow: [PluginCellValue])],
-        insertedStorageIndices: [Int],
-        tableRows: inout TableRows
-    ) -> DeleteRowsResult {
-        let sortedInsertedRows = insertedStorageIndices.sorted(by: >)
-
-        var delta: Delta = .none
-        if !sortedInsertedRows.isEmpty {
-            delta = tableRows.remove(at: IndexSet(sortedInsertedRows))
-            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
+    private static func nextRowToSelect(
+        afterDeleting selectedIndices: Set<Int>,
+        removedCount: Int,
+        displayCountAfter: Int
+    ) -> Int {
+        let minSelectedRow = selectedIndices.min() ?? 0
+        let adjustedMaxRow = (selectedIndices.max() ?? 0) - removedCount
+        if adjustedMaxRow + 1 < displayCountAfter {
+            return adjustedMaxRow + 1
         }
-
-        if !existingRows.isEmpty {
-            changeManager.recordBatchRowDeletion(
-                rows: existingRows.map { (rowIndex: $0.displayIndex, originalRow: $0.originalRow) }
-            )
+        if minSelectedRow > 0 {
+            return minSelectedRow - 1
         }
-
-        return DeleteRowsResult(
-            nextRowToSelect: -1,
-            physicallyRemovedIndices: sortedInsertedRows,
-            delta: delta
-        )
+        return displayCountAfter > 0 ? 0 : -1
     }
 
     func applyUndoResult(_ result: UndoResult, tableRows: inout TableRows) -> UndoApplicationResult {
         switch result.action {
-        case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _, _):
-            let delta = tableRows.edit(row: rowIndex, column: columnIndex, value: previousValue)
+        case .cellEdit(let rowID, let columnIndex, _, let previousValue, _, _):
+            guard let storageRow = tableRows.index(of: rowID) else {
+                return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+            }
+            let delta = tableRows.edit(row: storageRow, column: columnIndex, value: previousValue)
             return UndoApplicationResult(adjustedSelection: nil, delta: delta)
 
-        case .rowInsertion(let rowIndex):
+        case .rowInsertion(let rowID):
             if result.needsRowRemoval {
-                guard rowIndex >= 0, rowIndex < tableRows.count else {
+                let delta = tableRows.remove(rowIDs: [rowID])
+                guard delta != .none else {
                     return UndoApplicationResult(adjustedSelection: nil, delta: .none)
                 }
-                let delta = tableRows.remove(at: IndexSet(integer: rowIndex))
                 return UndoApplicationResult(adjustedSelection: Set<Int>(), delta: delta)
-            } else if result.needsRowRestore {
-                let columnCount = tableRows.columns.count
-                let values = result.restoreRow ?? [PluginCellValue](repeating: .null, count: columnCount)
-                let delta = tableRows.insertInsertedRow(at: rowIndex, values: values)
+            }
+            if result.needsRowRestore {
+                let values = result.restoreRow
+                    ?? [PluginCellValue](repeating: .null, count: tableRows.columns.count)
+                let delta = tableRows.appendInsertedRow(id: rowID, values: values)
                 return UndoApplicationResult(adjustedSelection: nil, delta: delta)
             }
             return UndoApplicationResult(adjustedSelection: nil, delta: .none)
 
-        case .rowDeletion:
+        case .rowDeletion, .batchRowDeletion:
             return UndoApplicationResult(adjustedSelection: nil, delta: result.delta)
 
-        case .batchRowDeletion:
-            return UndoApplicationResult(adjustedSelection: nil, delta: result.delta)
-
-        case .batchRowInsertion(let rowIndices, let rowValues):
+        case .batchRowInsertion(let rows, let rowValues):
             if result.needsRowRemoval {
-                let validIndices = IndexSet(rowIndices.filter { $0 >= 0 && $0 < tableRows.count })
-                guard !validIndices.isEmpty else {
-                    return UndoApplicationResult(adjustedSelection: nil, delta: .none)
-                }
-                let delta = tableRows.remove(at: validIndices)
+                let delta = tableRows.remove(rowIDs: Set(rows.map(\.rowID)))
                 return UndoApplicationResult(adjustedSelection: nil, delta: delta)
-            } else if result.needsRowRestore {
-                var insertedIndices = IndexSet()
-                let pairs = zip(rowIndices, rowValues).sorted { $0.0 < $1.0 }
-                for (rowIndex, values) in pairs {
-                    guard rowIndex >= 0, rowIndex <= tableRows.count else { continue }
-                    _ = tableRows.insertInsertedRow(at: rowIndex, values: values)
-                    insertedIndices.insert(rowIndex)
-                }
-                guard !insertedIndices.isEmpty else {
-                    return UndoApplicationResult(adjustedSelection: nil, delta: .none)
-                }
-                return UndoApplicationResult(adjustedSelection: nil, delta: .rowsInserted(insertedIndices))
+            }
+            if result.needsRowRestore {
+                return UndoApplicationResult(
+                    adjustedSelection: nil,
+                    delta: restoreInsertedRows(rows, values: rowValues, into: &tableRows)
+                )
             }
             return UndoApplicationResult(adjustedSelection: nil, delta: .none)
         }
     }
 
-    func undoInsertRow(
-        at rowIndex: Int,
-        tableRows: inout TableRows,
-        selectedIndices: Set<Int>
-    ) -> UndoInsertRowResult {
-        guard rowIndex >= 0 && rowIndex < tableRows.count else {
-            return UndoInsertRowResult(adjustedSelection: selectedIndices, delta: .none)
-        }
-
-        let delta = tableRows.remove(at: IndexSet(integer: rowIndex))
-
-        var adjustedSelection = Set<Int>()
-        for idx in selectedIndices {
-            if idx == rowIndex {
+    private func restoreInsertedRows(
+        _ rows: [InsertedRowLocation],
+        values rowValues: [[PluginCellValue]],
+        into tableRows: inout TableRows
+    ) -> Delta {
+        var insertedIndices = IndexSet()
+        let ascending = zip(rows, rowValues).sorted { $0.0.storageIndex < $1.0.storageIndex }
+        for (location, values) in ascending {
+            let index = min(location.storageIndex, tableRows.count)
+            guard tableRows.insertInsertedRow(at: index, id: location.rowID, values: values) != .none else {
                 continue
-            } else if idx > rowIndex {
-                adjustedSelection.insert(idx - 1)
-            } else {
-                adjustedSelection.insert(idx)
             }
+            insertedIndices.insert(index)
         }
-
-        return UndoInsertRowResult(adjustedSelection: adjustedSelection, delta: delta)
+        return insertedIndices.isEmpty ? .none : .rowsInserted(insertedIndices)
     }
 
     func copySelectedRowsToClipboard(
@@ -409,15 +361,21 @@ final class RowOperationsManager {
         var pastedRowInfo: [PastedRowInfo] = []
         var insertedIndices = IndexSet()
 
+        /// A pasted row arrives whole, so it carries values for columns the server owns too. They
+        /// never reach the cell-edit boundary that refuses them, and the statement generator drops
+        /// them silently, so the grid showed a pasted identity value the row was never saved with.
+        let serverOwned = tableRows.columns.enumerated().filter { _, name in
+            tableRows.generatedColumns.contains(name) || tableRows.columnIdentity[name] != nil
+        }.map(\.offset)
+
         for parsedRow in parsedRows {
-            let rowValues = parsedRow.values
-            let newRowIndex = tableRows.count
-            _ = tableRows.appendInsertedRow(values: rowValues)
-            insertedIndices.insert(newRowIndex)
-
-            changeManager.recordRowInsertion(rowIndex: newRowIndex, values: rowValues)
-
-            pastedRowInfo.append(PastedRowInfo(rowIndex: newRowIndex, values: rowValues))
+            var rowValues = parsedRow.values
+            for index in serverOwned where index < rowValues.count {
+                rowValues[index] = .text("__DEFAULT__")
+            }
+            insertedIndices.insert(tableRows.count)
+            let inserted = appendInsertedRow(values: rowValues, to: &tableRows)
+            pastedRowInfo.append(PastedRowInfo(rowID: inserted.rowID, values: rowValues))
         }
 
         let delta: Delta = insertedIndices.isEmpty ? .none : .rowsInserted(insertedIndices)

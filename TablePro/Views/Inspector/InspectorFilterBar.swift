@@ -63,7 +63,7 @@ extension FilterClause: Equatable {
 }
 
 struct InspectorFilterBar: View {
-    @Bindable var state: InspectorViewState
+    @ObservedObject var state: InspectorViewState
     let onChange: () -> Void
 
     var body: some View {
@@ -113,8 +113,9 @@ struct InspectorFilterBar: View {
                 }
             }
             .labelsHidden()
+            .accessibilityLabel(String(localized: "Filter column"))
             .frame(maxWidth: 180)
-            .onChange(of: clause.column) { _, _ in onChange() }
+            .onChange(of: clause.column) { _ in onChange() }
 
             Picker("", selection: binding.op) {
                 ForEach(CSVFilterOperator.allCases) { op in
@@ -122,14 +123,15 @@ struct InspectorFilterBar: View {
                 }
             }
             .labelsHidden()
+            .accessibilityLabel(String(localized: "Filter operator"))
             .frame(maxWidth: 160)
-            .onChange(of: clause.op) { _, _ in onChange() }
+            .onChange(of: clause.op) { _ in onChange() }
 
             if clause.op.needsValue {
                 TextField(String(localized: "Filter value"), text: binding.value)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 260)
-                    .onChange(of: clause.value) { _, _ in onChange() }
+                    .onChange(of: clause.value) { _ in onChange() }
             } else {
                 Color.clear.frame(maxWidth: 260)
             }
@@ -145,6 +147,7 @@ struct InspectorFilterBar: View {
             }
             .buttonStyle(.plain)
             .help(String(localized: "Remove filter"))
+            .accessibilityLabel(String(localized: "Remove filter"))
         }
     }
 

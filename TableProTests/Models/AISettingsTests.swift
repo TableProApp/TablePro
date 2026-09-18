@@ -56,6 +56,44 @@ struct AISettingsTests {
         #expect(settings.includeQueryResults == AISettings.default.includeQueryResults)
     }
 
+    @Test("Tool call limit defaults to 25 and is enabled")
+    func defaultToolRoundtripLimit() {
+        #expect(AISettings.default.maxToolRoundtrips == 25)
+        #expect(AISettings.default.maxToolRoundtripsEnabled == true)
+        #expect(AISettings.default.effectiveMaxToolRoundtrips == 25)
+    }
+
+    @Test("Settings saved before the tool call limit existed decode to the default")
+    func decodingWithoutToolRoundtripKeysUsesDefault() throws {
+        let data = Data("{}".utf8)
+        let settings = try JSONDecoder().decode(AISettings.self, from: data)
+        #expect(settings.maxToolRoundtrips == AISettings.defaultMaxToolRoundtrips)
+        #expect(settings.maxToolRoundtripsEnabled == true)
+    }
+
+    @Test("Stored tool call limit values are preserved on decode")
+    func storedToolRoundtripValuesAreRespected() throws {
+        let json = #"{"maxToolRoundtrips": 60, "maxToolRoundtripsEnabled": false}"#
+        let settings = try JSONDecoder().decode(AISettings.self, from: Data(json.utf8))
+        #expect(settings.maxToolRoundtrips == 60)
+        #expect(settings.maxToolRoundtripsEnabled == false)
+    }
+
+    @Test("Turning the limit off makes it unlimited")
+    func disabledLimitIsUnlimited() {
+        let settings = AISettings(maxToolRoundtrips: 30, maxToolRoundtripsEnabled: false)
+        #expect(settings.effectiveMaxToolRoundtrips == nil)
+    }
+
+    @Test("Out of range tool call limits clamp to the supported range")
+    func toolRoundtripLimitClamps() {
+        let tooHigh = AISettings(maxToolRoundtrips: 5_000, maxToolRoundtripsEnabled: true)
+        #expect(tooHigh.effectiveMaxToolRoundtrips == AISettings.maxToolRoundtripsRange.upperBound)
+
+        let tooLow = AISettings(maxToolRoundtrips: 0, maxToolRoundtripsEnabled: true)
+        #expect(tooLow.effectiveMaxToolRoundtrips == AISettings.maxToolRoundtripsRange.lowerBound)
+    }
+
     @Test("Stored false values for context flags are preserved on decode")
     func storedFalseFlagsAreRespected() throws {
         let json = #"{"includeSchema": false, "includeCurrentQuery": false, "includeQueryResults": false}"#

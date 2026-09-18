@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProMSSQLCore
+import XCTest
 
 final class MSSQLSchemaQueriesTests: XCTestCase {
     func testEscapeHandlesSingleQuote() {
@@ -16,9 +16,34 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "weird]", table: "x"), "[weird]]].[x]")
     }
 
+    /// Unqualified, both views describe the database the connection is using, so every name got that database's
+    /// numbers. Measured on SQL Server 2022 connected to AppDb: msdb reported 16 MB and 2 tables instead of 145.
+    func testDatabaseMetadataReadsTheNamedDatabasesCatalog() {
+        let sql = MSSQLSchemaQueries.databaseMetadata(database: "msdb")
+
+        XCTAssertTrue(sql.contains("FROM [msdb].sys.database_files"))
+        XCTAssertTrue(sql.contains("FROM [msdb].sys.tables"))
+        XCTAssertFalse(sql.contains(" sys.database_files"))
+        XCTAssertFalse(sql.contains(" sys.tables"))
+    }
+
+    func testDatabaseMetadataEscapesAClosingBracketInTheName() {
+        let sql = MSSQLSchemaQueries.databaseMetadata(database: "we]ird")
+
+        XCTAssertTrue(sql.contains("FROM [we]]ird].sys.database_files"))
+        XCTAssertTrue(sql.contains("FROM [we]]ird].sys.tables"))
+    }
+
+    /// The session runs with ANSI_WARNINGS off, so an int sum over a 2 GB database overflowed to NULL.
+    func testSizesAreSummedAsBigintBytes() {
+        XCTAssertTrue(MSSQLSchemaQueries.databaseMetadata(database: "AppDb").contains("SUM(CAST(size AS bigint)) * 8192"))
+        XCTAssertTrue(MSSQLSchemaQueries.allDatabaseSizes.contains("SUM(CAST(mf.size AS bigint)) * 8192"))
+        XCTAssertTrue(MSSQLSchemaQueries.allDatabaseSizes.contains("LEFT JOIN sys.master_files"))
+    }
+
     func testTablesQueryEscapesSchema() {
         let sql = MSSQLSchemaQueries.tables(schema: "O'Brien")
-        XCTAssertTrue(sql.contains("'O''Brien'"))
+        XCTAssertTrue(sql.contains("N'O''Brien'"))
         XCTAssertTrue(sql.contains("INFORMATION_SCHEMA.TABLES"))
         XCTAssertTrue(sql.contains("'BASE TABLE'"))
         XCTAssertTrue(sql.contains("'VIEW'"))
@@ -28,21 +53,21 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
         XCTAssertTrue(sql.contains("IsIdentity"))
         XCTAssertTrue(sql.contains("PRIMARY KEY"))
-        XCTAssertTrue(sql.contains("'Users'"))
-        XCTAssertTrue(sql.contains("'dbo'"))
+        XCTAssertTrue(sql.contains("N'Users'"))
+        XCTAssertTrue(sql.contains("N'dbo'"))
     }
 
     func testIndexesQueryUsesBracketedIdentifier() {
         let sql = MSSQLSchemaQueries.indexes(schema: "dbo", table: "Users")
-        XCTAssertTrue(sql.contains("OBJECT_ID('[dbo].[Users]')"))
+        XCTAssertTrue(sql.contains("OBJECT_ID(N'[dbo].[Users]')"))
         XCTAssertTrue(sql.contains("sys.indexes"))
     }
 
     func testForeignKeysQueryFiltersByTableAndSchema() {
         let sql = MSSQLSchemaQueries.foreignKeys(schema: "dbo", table: "Orders")
         XCTAssertTrue(sql.contains("sys.foreign_keys"))
-        XCTAssertTrue(sql.contains("'Orders'"))
-        XCTAssertTrue(sql.contains("'dbo'"))
+        XCTAssertTrue(sql.contains("N'Orders'"))
+        XCTAssertTrue(sql.contains("N'dbo'"))
     }
 
     func testForeignKeysQuerySelectsReferencedSchema() {
@@ -174,5 +199,25 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
             sql,
             "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
         )
+    }
+
+    func testCatalogPredicatesSurviveANonAsciiName() {
+        let columns = MSSQLSchemaQueries.columns(schema: "dbo", table: "顧客テーブル")
+        XCTAssertTrue(columns.contains("N'顧客テーブル'"))
+        XCTAssertFalse(columns.contains("= '顧客テーブル'"))
+
+        let indexes = MSSQLSchemaQueries.indexes(schema: "dbo", table: "顧客テーブル")
+        XCTAssertTrue(indexes.contains("OBJECT_ID(N'[dbo].[顧客テーブル]')"))
+
+        let foreignKeys = MSSQLSchemaQueries.foreignKeys(schema: "スキーマ", table: "顧客テーブル")
+        XCTAssertTrue(foreignKeys.contains("N'顧客テーブル'"))
+        XCTAssertTrue(foreignKeys.contains("N'スキーマ'"))
+    }
+
+    func testFixedCatalogConstantsStayUnprefixed() {
+        let tables = MSSQLSchemaQueries.tables(schema: "dbo")
+        XCTAssertTrue(tables.contains("IN ('BASE TABLE', 'VIEW')"))
+        XCTAssertTrue(MSSQLSchemaQueries.columns(schema: "dbo", table: "t").contains("= 'PRIMARY KEY'"))
+        XCTAssertTrue(MSSQLSchemaQueries.schemas.contains("'information_schema'"))
     }
 }

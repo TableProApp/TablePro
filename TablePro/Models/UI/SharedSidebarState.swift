@@ -7,6 +7,7 @@
 //  `WindowSidebarState`.
 //
 
+import Combine
 import Foundation
 
 /// Which sidebar tab is active
@@ -20,57 +21,121 @@ internal enum SidebarLayout: String, CaseIterable, Sendable {
     case tree
 }
 
-@MainActor @Observable
-final class SharedSidebarState {
-    var redisKeyTreeViewModel: RedisKeyTreeViewModel?
+@MainActor
+final class SharedSidebarState: ObservableObject {
+    @Published var redisKeyTreeViewModel: RedisKeyTreeViewModel?
 
-    var searchText: String = ""
-    var favoritesSearchText: String = ""
+    @Published var searchText: String = ""
+    @Published var favoritesSearchText: String = ""
 
-    var recentTables: [RecentTableEntry] = []
+    @Published var recentTables: [RecentTableEntry] = []
 
-    @ObservationIgnored private var pendingRecordTask: Task<Void, Never>?
+    private var pendingRecordTask: Task<Void, Never>?
 
     func recentEntries(inDatabase database: String?) -> [RecentTableEntry] {
         recentTables.filter { $0.database == normalizedDatabase(database) }
     }
 
-    func recordTableOpen(database: String?, schema: String?, name: String, isView: Bool, isPreview: Bool) {
+    /// `objectType` is what the object actually is, where the caller knew it. `isView` stays
+    /// beside it for the callers that know only that much, and is what an older build reads.
+    func recordTableOpen(
+        database: String?,
+        schema: String?,
+        name: String,
+        isView: Bool,
+        objectType: TableInfo.TableType?,
+        isPreview: Bool
+    ) {
         guard isPreview else {
             pendingRecordTask?.cancel()
             pendingRecordTask = nil
-            commitTableOpen(database: database, schema: schema, name: name, isView: isView)
+            commitTableOpen(database: database, schema: schema, name: name, isView: isView, objectType: objectType)
             return
         }
         pendingRecordTask?.cancel()
         pendingRecordTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard let self, !Task.isCancelled else { return }
-            self.commitTableOpen(database: database, schema: schema, name: name, isView: isView)
+            self.commitTableOpen(database: database, schema: schema, name: name, isView: isView, objectType: objectType)
         }
     }
 
-    private func commitTableOpen(database: String?, schema: String?, name: String, isView: Bool) {
+    private func commitTableOpen(
+        database: String?,
+        schema: String?,
+        name: String,
+        isView: Bool,
+        objectType: TableInfo.TableType?
+    ) {
         QuickSwitcherFrecencyStore(connectionId: connectionId).recordAccess(
-            itemId: QuickSwitcherItem.tableItemId(name: name, isView: isView)
+            itemId: QuickSwitcherItem.tableItemId(name: name, schema: schema)
         )
         guard AppSettingsManager.shared.general.showRecentTables else { return }
         recentTables = RecentTablesStore.shared.record(
             connectionId: connectionId, database: normalizedDatabase(database),
-            schema: schema, name: name, isView: isView
+            schema: schema, name: name, isView: isView, objectType: objectType
         )
     }
 
+    /// Removal matches on the entry's id, which is its database, schema and name, so the kind it
+    /// was recorded with is not part of the lookup.
     func removeRecentTable(database: String?, schema: String?, name: String) {
         let entry = RecentTableEntry(
-            database: normalizedDatabase(database), schema: schema, name: name, isView: false, openedAt: Date()
+            database: normalizedDatabase(database), schema: schema, name: name,
+            isView: false, objectType: nil, openedAt: Date()
         )
         recentTables = RecentTablesStore.shared.remove(connectionId: connectionId, entry: entry)
+    }
+
+    /// A renamed table keeps its place in Recent. The store is asked directly rather than the live
+    /// list, because that list is empty while Show Recent Tables is off and the entry is still on
+    /// disk: renaming only what is on screen left a dead entry to reappear under the old name.
+    func renameRecentTable(database: String?, schema: String?, from oldName: String, to newName: String) {
+        let scope = normalizedDatabase(database)
+        let existing = RecentTablesStore.shared.entries(connectionId: connectionId).first {
+            $0.database == scope && $0.schema == schema && $0.name == oldName
+        }
+        guard let existing else { return }
+        publish(RecentTablesStore.shared.rename(connectionId: connectionId, entry: existing, to: newName))
+    }
+
+    /// Every Recent entry in a renamed container follows it, because the entries are keyed by the
+    /// container's name and would otherwise all point at one that has gone.
+    func renameRecentDatabase(from oldName: String, to newName: String) {
+        publish(RecentTablesStore.shared.renameDatabase(
+            connectionId: connectionId, from: oldName, to: newName
+        ))
+    }
+
+    func renameRecentSchema(database: String?, from oldName: String, to newName: String) {
+        publish(RecentTablesStore.shared.renameSchema(
+            connectionId: connectionId, database: normalizedDatabase(database), from: oldName, to: newName
+        ))
+    }
+
+    /// A table opened before the session knew its schema is recorded without one, and clicking that
+    /// entry opens the same name in whichever schema is browsed by then. It takes the schema the tab
+    /// resolved, in place.
+    func resolveRecentSchema(database: String?, name: String, to schema: String) {
+        publish(RecentTablesStore.shared.resolveSchema(
+            connectionId: connectionId, database: normalizedDatabase(database), name: name, to: schema
+        ))
+    }
+
+    private func publish(_ entries: [RecentTableEntry]) {
+        guard AppSettingsManager.shared.general.showRecentTables else { return }
+        recentTables = entries
     }
 
     func clearRecentTables(inDatabase database: String?) {
         recentTables = RecentTablesStore.shared.clear(
             connectionId: connectionId, database: normalizedDatabase(database)
+        )
+    }
+
+    func clearRecentTables(inDatabase database: String?, schema: String) {
+        recentTables = RecentTablesStore.shared.clear(
+            connectionId: connectionId, database: normalizedDatabase(database), schema: schema
         )
     }
 
@@ -85,25 +150,25 @@ final class SharedSidebarState {
         return database
     }
 
-    var selectedSidebarTab: SidebarTab {
+    @Published var selectedSidebarTab: SidebarTab {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 selectedSidebarTab.rawValue,
                 forKey: SidebarPersistenceKey.selectedTab(connectionId: connectionId)
             )
         }
     }
 
-    var sidebarLayout: SidebarLayout {
+    @Published var sidebarLayout: SidebarLayout {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 sidebarLayout.rawValue,
                 forKey: SidebarPersistenceKey.layout(connectionId: connectionId)
             )
         }
     }
 
-    var databaseFilterSelected: Set<String> {
+    @Published var databaseFilterSelected: Set<String> {
         didSet {
             DatabaseTreeFilterStorage.shared.setSelectedDatabases(
                 databaseFilterSelected,
@@ -112,28 +177,37 @@ final class SharedSidebarState {
         }
     }
 
-    var selectedFavorite: FavoriteSelection? {
+    @Published var favoriteDatabaseEnvironmentFilter: FavoriteDatabaseEnvironmentFilter {
+        didSet {
+            AppStorageEnvironment.shared.defaults.set(
+                favoriteDatabaseEnvironmentFilter.rawValue,
+                forKey: SidebarPersistenceKey.favoriteDatabaseEnvironmentFilter(connectionId: connectionId)
+            )
+        }
+    }
+
+    @Published var selectedFavorite: FavoriteSelection? {
         didSet {
             guard oldValue != selectedFavorite else { return }
             let key = SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
             if let rawValue = selectedFavorite?.rawValue {
-                UserDefaults.standard.set(rawValue, forKey: key)
+                AppStorageEnvironment.shared.defaults.set(rawValue, forKey: key)
             } else {
-                UserDefaults.standard.removeObject(forKey: key)
+                AppStorageEnvironment.shared.defaults.removeObject(forKey: key)
             }
         }
     }
 
     static var defaultLayout: SidebarLayout {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: SidebarPersistenceKey.defaultLayout),
+            guard let raw = AppStorageEnvironment.shared.defaults.string(forKey: SidebarPersistenceKey.defaultLayout),
                   let layout = SidebarLayout(rawValue: raw) else {
                 return .flat
             }
             return layout
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
+            AppStorageEnvironment.shared.defaults.set(newValue.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
         }
     }
 
@@ -142,21 +216,25 @@ final class SharedSidebarState {
     private init(connectionId: UUID) {
         self.connectionId = connectionId
         let key = SidebarPersistenceKey.selectedTab(connectionId: connectionId)
-        if let raw = UserDefaults.standard.string(forKey: key),
+        if let raw = AppStorageEnvironment.shared.defaults.string(forKey: key),
            let tab = SidebarTab(rawValue: raw) {
             self.selectedSidebarTab = tab
         } else {
             self.selectedSidebarTab = .tables
         }
         let layoutKey = SidebarPersistenceKey.layout(connectionId: connectionId)
-        if let raw = UserDefaults.standard.string(forKey: layoutKey),
+        if let raw = AppStorageEnvironment.shared.defaults.string(forKey: layoutKey),
            let layout = SidebarLayout(rawValue: raw) {
             self.sidebarLayout = layout
         } else {
             self.sidebarLayout = SharedSidebarState.defaultLayout
         }
         self.databaseFilterSelected = DatabaseTreeFilterStorage.shared.selectedDatabases(connectionId: connectionId)
-        self.selectedFavorite = UserDefaults.standard.string(
+        let environmentFilterKey = SidebarPersistenceKey.favoriteDatabaseEnvironmentFilter(connectionId: connectionId)
+        self.favoriteDatabaseEnvironmentFilter = AppStorageEnvironment.shared.defaults
+            .string(forKey: environmentFilterKey)
+            .flatMap(FavoriteDatabaseEnvironmentFilter.init(rawValue:)) ?? .all
+        self.selectedFavorite = AppStorageEnvironment.shared.defaults.string(
             forKey: SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
         ).flatMap(FavoriteSelection.init(rawValue:))
         if AppSettingsManager.shared.general.showRecentTables {
@@ -170,6 +248,7 @@ final class SharedSidebarState {
         self.selectedSidebarTab = .tables
         self.sidebarLayout = .flat
         self.databaseFilterSelected = []
+        self.favoriteDatabaseEnvironmentFilter = .all
         self.selectedFavorite = nil
     }
 

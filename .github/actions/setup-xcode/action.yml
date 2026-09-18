@@ -1,0 +1,26 @@
+name: Select Xcode
+description: Selects the Xcode version every TablePro build and test job uses.
+
+# The version lives here and nowhere else. It used to be written out in four workflows, eight
+# times counting the pinned action SHA beside it, so bumping Xcode meant finding every copy and
+# a missed one silently built against a different toolchain.
+
+inputs:
+  xcode-version:
+    description: Override the pinned version. Leave unset; it exists for trying a toolchain on one job.
+    required: false
+    default: "26.4.1"
+
+runs:
+  using: composite
+  steps:
+    - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+      with:
+        xcode-version: ${{ inputs.xcode-version }}
+
+    # Proves the pin was actually applied before a twenty minute build starts. build.yml carried
+    # this as a separate step in both of its jobs.
+    - shell: bash
+      run: |
+        echo "Active Xcode: $(xcode-select -p)"
+        xcodebuild -version

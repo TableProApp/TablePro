@@ -18,10 +18,10 @@ struct RecentlyClosedTabStoreTests {
         store.push(tab: QueryTab(query: "SELECT 1"), connection: connection)
 
         let entry = try #require(store.mostRecentEntry)
-        let consumed = try #require(store.consume(id: entry.id))
-        #expect(consumed.tab.query == "SELECT 1")
-        #expect(consumed.connectionId == connection.id)
-        #expect(store.entries.isEmpty)
+        let restorable = try #require(store.restorableEntry(id: entry.id))
+        #expect(restorable.tab.query == "SELECT 1")
+        #expect(restorable.connectionId == connection.id)
+        #expect(store.entries.map(\.id) == [entry.id])
     }
 
     @Test("Closing several tabs keeps every one of them, most recent first")
@@ -36,14 +36,20 @@ struct RecentlyClosedTabStoreTests {
         #expect(store.entries.map(\.tab.query) == ["SELECT 3", "SELECT 2", "SELECT 1"])
     }
 
-    @Test("A consumed entry is not handed out twice")
-    func consumeIsOneShot() throws {
+    @Test("Reading an entry leaves it restorable, and a discarded entry is not handed out again")
+    func discardEndsTheEntry() throws {
         let (store, _) = try makeStore()
         store.push(tab: QueryTab(query: "SELECT 1"), connection: TestFixtures.makeConnection())
 
         let entry = try #require(store.mostRecentEntry)
-        #expect(store.consume(id: entry.id) != nil)
-        #expect(store.consume(id: entry.id) == nil)
+        #expect(store.restorableEntry(id: entry.id) != nil)
+        #expect(store.restorableEntry(id: entry.id) != nil)
+        #expect(store.containsEntry(id: entry.id))
+
+        store.discard(id: entry.id)
+
+        #expect(store.restorableEntry(id: entry.id) == nil)
+        #expect(!store.containsEntry(id: entry.id))
     }
 
     @Test("A blank scratch tab is never stored")
@@ -88,9 +94,46 @@ struct RecentlyClosedTabStoreTests {
         #expect(entry.overflowFileName != nil)
         #expect(entry.tab.query.isEmpty)
 
-        let consumed = try #require(store.consume(id: entry.id))
-        #expect((consumed.tab.query as NSString).length == (oversized as NSString).length)
-        #expect(consumed.tab.query == oversized)
+        let restorable = try #require(store.restorableEntry(id: entry.id))
+        #expect((restorable.tab.query as NSString).length == (oversized as NSString).length)
+        #expect(restorable.tab.query == oversized)
+    }
+
+    @Test("Reading an oversized entry keeps the entry and its overflow file")
+    func readingOversizedEntryKeepsItsOverflow() throws {
+        let (store, directory) = try makeStore()
+        let oversized = String(repeating: "c", count: TabQueryContent.maxPersistableQuerySize + 100)
+        store.push(tab: QueryTab(query: oversized), connection: TestFixtures.makeConnection())
+        let entry = try #require(store.mostRecentEntry)
+        let overflowFile = try overflowURL(for: entry, in: directory)
+
+        let restorable = try #require(store.restorableEntry(id: entry.id))
+
+        #expect((restorable.tab.query as NSString).length == (oversized as NSString).length)
+        #expect(store.entries.map(\.id) == [entry.id])
+        #expect(FileManager.default.fileExists(atPath: overflowFile.path))
+    }
+
+    @Test("Discarding an oversized entry removes the entry and its overflow file")
+    func discardingOversizedEntryRemovesItsOverflow() throws {
+        let (store, directory) = try makeStore()
+        let oversized = String(repeating: "d", count: TabQueryContent.maxPersistableQuerySize + 100)
+        store.push(tab: QueryTab(query: oversized), connection: TestFixtures.makeConnection())
+        let entry = try #require(store.mostRecentEntry)
+        let overflowFile = try overflowURL(for: entry, in: directory)
+
+        store.discard(id: entry.id)
+
+        #expect(store.entries.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: overflowFile.path))
+        #expect(RecentlyClosedTabStore(directory: directory).entries.isEmpty)
+    }
+
+    private func overflowURL(for entry: RecentlyClosedTabEntry, in directory: URL) throws -> URL {
+        let fileName = try #require(entry.overflowFileName)
+        return directory
+            .appendingPathComponent("Overflow", isDirectory: true)
+            .appendingPathComponent(fileName)
     }
 
     @Test("Entries survive a restart of the store")
@@ -111,8 +154,8 @@ struct RecentlyClosedTabStoreTests {
 
         let reloaded = RecentlyClosedTabStore(directory: directory)
         let entry = try #require(reloaded.mostRecentEntry)
-        let consumed = try #require(reloaded.consume(id: entry.id))
-        #expect(consumed.tab.query == oversized)
+        let restorable = try #require(reloaded.restorableEntry(id: entry.id))
+        #expect(restorable.tab.query == oversized)
     }
 
     @Test("Deleting a connection drops its entries")

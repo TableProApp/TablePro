@@ -19,7 +19,13 @@ enum ChatGPTCodex {
     static let userAgent = "codex_cli_rs/0.1.0"
     static let authClaimsNamespace = "https://api.openai.com/auth"
     static let profileClaimsNamespace = "https://api.openai.com/profile"
-    static let curatedModelIDs = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
+    static let curatedModels: [(id: String, name: String)] = [
+        ("gpt-5.6-sol", "GPT-5.6 Sol"),
+        ("gpt-5.6-terra", "GPT-5.6 Terra"),
+        ("gpt-5.5", "GPT-5.5")
+    ]
+
+    static var curatedModelIDs: [String] { curatedModels.map(\.id) }
 }
 
 enum ChatGPTCodexBase64URL {

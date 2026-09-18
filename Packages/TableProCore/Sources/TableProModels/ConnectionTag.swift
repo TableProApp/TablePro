@@ -31,7 +31,7 @@ public struct ConnectionTag: Identifiable, Codable, Hashable, Sendable {
         if let color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) {
             self.color = color
         } else if let hex = try container.decodeIfPresent(String.self, forKey: .colorHex) {
-            self.color = ConnectionTag.colorFromHex(hex)
+            self.color = ConnectionColor(hex: hex)
         } else {
             self.color = .gray
         }
@@ -43,20 +43,6 @@ public struct ConnectionTag: Identifiable, Codable, Hashable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(color, forKey: .color)
         try container.encode(isPreset, forKey: .isPreset)
-    }
-
-    private static func colorFromHex(_ hex: String) -> ConnectionColor {
-        let normalized = hex.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        switch normalized {
-        case "ff0000", "ff3b30", "cc0000": return .red
-        case "ff9500", "ff8c00", "ffa500": return .orange
-        case "ffcc00", "ffff00", "ffd700": return .yellow
-        case "34c759", "28cd41", "00ff00", "008000": return .green
-        case "007aff", "0000ff", "5856d6": return .blue
-        case "af52de", "800080", "9b59b6": return .purple
-        case "ff2d55", "ff69b4", "ffc0cb": return .pink
-        default: return .gray
-        }
     }
 
     public static let presets: [ConnectionTag] = [

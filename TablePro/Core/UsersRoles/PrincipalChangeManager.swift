@@ -1,28 +1,26 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class PrincipalChangeManager {
-    private(set) var principals: [PluginPrincipalInfo] = []
-    private(set) var catalog: PluginPrivilegeCatalog?
+final class PrincipalChangeManager: ObservableObject {
+    @Published private(set) var principals: [PluginPrincipalInfo] = []
+    @Published private(set) var catalog: PluginPrivilegeCatalog?
 
-    private(set) var baselineGrants: [PluginPrincipalRef: [PluginGrantInfo]] = [:]
-    private(set) var grantDeltas: [PluginPrincipalRef: PrincipalGrantDelta] = [:]
+    @Published private(set) var baselineGrants: [PluginPrincipalRef: [PluginGrantInfo]] = [:]
+    @Published private(set) var grantDeltas: [PluginPrincipalRef: PrincipalGrantDelta] = [:]
 
-    private(set) var pendingCreates: [PluginPrincipalDefinition] = []
-    private(set) var pendingDrops: [PluginPrincipalRef: PluginPrincipalDropOptions] = [:]
-    private(set) var pendingPasswords: [PluginPrincipalRef: String] = [:]
-    private(set) var pendingAlters: [PluginPrincipalRef: PluginPrincipalDefinition] = [:]
+    @Published private(set) var pendingCreates: [PluginPrincipalDefinition] = []
+    @Published private(set) var pendingDrops: [PluginPrincipalRef: PluginPrincipalDropOptions] = [:]
+    @Published private(set) var pendingPasswords: [PluginPrincipalRef: String] = [:]
+    @Published private(set) var pendingAlters: [PluginPrincipalRef: PluginPrincipalDefinition] = [:]
 
-    private(set) var changeCount = 0
-    private(set) var grantClosureVersion = 0
+    @Published private(set) var changeCount = 0
+    @Published private(set) var grantClosureVersion = 0
 
     /// `groupsByEvent` is off: with it on, NSUndoManager coalesces every registration made in the
     /// same run-loop event into one group, so undo granularity would depend on how fast the user
     /// clicked. Each mutation opens and closes its own group instead.
-    @ObservationIgnored
     let undoManager: UndoManager = {
         let manager = UndoManager()
         manager.groupsByEvent = false
@@ -30,14 +28,11 @@ final class PrincipalChangeManager {
         return manager
     }()
 
-    @ObservationIgnored
-    private var baselineKeys: [PluginPrincipalRef: Set<PrincipalGrantKey>] = [:]
+    @Published private var baselineKeys: [PluginPrincipalRef: Set<PrincipalGrantKey>] = [:]
 
-    @ObservationIgnored
-    private var closureCache: [PluginPrincipalRef: Set<PluginPrivilegeScope>] = [:]
+    @Published private var closureCache: [PluginPrincipalRef: Set<PluginPrivilegeScope>] = [:]
 
-    @ObservationIgnored
-    var cascades: (PluginPrivilegeScope, PluginPrivilegeScope) -> Bool = { _, _ in false }
+    @Published var cascades: (PluginPrivilegeScope, PluginPrivilegeScope) -> Bool = { _, _ in false }
 
     var hasChanges: Bool { changeCount > 0 }
 
@@ -371,9 +366,10 @@ final class PrincipalChangeManager {
         // the CREATE instead, or it would be counted as a change and then silently dropped.
         if let index = pendingCreates.firstIndex(where: { $0.ref == ref }) {
             let previous = pendingCreates[index]
-            guard previous != definition else { return }
+            let folded = Self.folding(definition, into: previous)
+            guard previous != folded else { return }
 
-            pendingCreates[index] = definition
+            pendingCreates[index] = folded
             recomputeChangeCount()
 
             registerUndo(actionName: String(localized: "Change Attributes")) { manager in
@@ -400,6 +396,26 @@ final class PrincipalChangeManager {
                 manager.unstageAlter(ref)
             }
         }
+    }
+
+    /// The attribute forms carry no password field, so every edit they stage arrives with none. A
+    /// fold that took it wholesale replaced the staged `CREATE USER ... IDENTIFIED BY` with a
+    /// passwordless one, and the only way to give a new account a connection limit is through this
+    /// fold, so the account the user thought they had given a password had none.
+    private static func folding(
+        _ definition: PluginPrincipalDefinition,
+        into staged: PluginPrincipalDefinition
+    ) -> PluginPrincipalDefinition {
+        guard (definition.password ?? "").isEmpty else { return definition }
+        return PluginPrincipalDefinition(
+            ref: definition.ref,
+            password: staged.password,
+            canLogin: definition.canLogin,
+            attributes: definition.attributes,
+            memberOf: definition.memberOf,
+            connectionLimit: definition.connectionLimit,
+            comment: definition.comment
+        )
     }
 
     func unstageAlter(_ ref: PluginPrincipalRef) {

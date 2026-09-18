@@ -42,7 +42,7 @@ extension Sequence where Element == ConnectionField {
 
 extension PluginManager {
     func hidesPassword(for connection: DatabaseConnection) -> Bool {
-        if PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId)?
+        if PluginMetadataRegistry.shared.snapshot(for: connection.type)?
             .connection.hidesBuiltInPassword == true {
             return true
         }

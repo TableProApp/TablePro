@@ -16,6 +16,8 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "BigQuery"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "Google BigQuery"
     static let iconName = "bigquery-icon"
     static let defaultPort = 0
@@ -32,6 +34,7 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let editorLanguage: EditorLanguage = .sql
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
     static let supportsSchemaEditing = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
@@ -42,6 +45,7 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSSL = false
     static let tableEntityName = "Tables"
     static let containerEntityName = "Dataset"
+    static let schemaEntityName = "Dataset"
     static let supportsForeignKeyDisable = false
     static let supportsReadOnlyMode = true
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
@@ -159,8 +163,9 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ],
         regexSyntax: .unsupported,
         booleanLiteralStyle: .truefalse,
-        likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        likeEscapeStyle: .implicit,
+        paginationStyle: .limit,
+        caseSensitivityStyle: .caseFoldFunction
     )
 
     static let explainVariants: [ExplainVariant] = [

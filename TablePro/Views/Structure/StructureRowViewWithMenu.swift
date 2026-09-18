@@ -11,8 +11,8 @@ import AppKit
 /// Row view providing a context menu tailored to the Structure tab. Inherits
 /// selection/emphasis cell invalidation, deleted/inserted-row tint, and the
 /// `RowVisualState` source-of-truth from `DataGridRowView`. The context menu
-/// reads `visualState.isDeleted` directly, so a single `applyVisualState` call
-/// updates both the tint and the menu without a shadow flag to keep in sync.
+/// reads the same live `visualState` the tint is drawn from, so the two cannot
+/// disagree.
 final class StructureRowViewWithMenu: DataGridRowView {
     var structureTab: StructureTab = .columns
     var isStructureEditable: Bool = true
@@ -27,7 +27,24 @@ final class StructureRowViewWithMenu: DataGridRowView {
     var onDelete: ((Set<Int>) -> Void)?
     var onUndoDelete: ((Int) -> Void)?
 
+    /// Three routes reach a row's menu, and all of them end in `contextMenu(target:)`.
+    ///
+    /// `KeyHandlingTableView.rightMouseDown` intercepts a click that lands inside the selection and
+    /// answers from `contextMenu(for:)`; a click outside it falls through to `super`, which reaches
+    /// `menu(for:)`; and the pinned row-number strip asks with the target already resolved, because
+    /// the column under the pointer there is one scrolled out of sight. Overriding the two event
+    /// routes alone left the strip, and before it the select-then-right-click path, showing the data
+    /// grid's row commands, Copy as INSERT and Paste and Set Value and Export Results, over a schema
+    /// row, and none of Copy Name, Copy Definition or the referenced table.
     override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenu(for: event)
+    }
+
+    override func contextMenu(target: MenuTarget) -> NSMenu? {
+        structureMenu(target: target)
+    }
+
+    private func structureMenu(target: MenuTarget) -> NSMenu? {
         guard structureTab != .ddl, structureTab != .parts, structureTab != .triggers else { return nil }
 
         let menu = NSMenu()
@@ -43,12 +60,17 @@ final class StructureRowViewWithMenu: DataGridRowView {
             return menu
         }
 
+        /// The clicked cell, so the Type or the Default is reachable from the pointer and not only
+        /// from `Cmd+C`, which has copied it all along.
+        menu.addItem(makeCopyItem(target: target))
+
+        /// No `Cmd+C` on this one. That key copies the clicked cell, which is what the item above
+        /// does; advertising it here promised a shortcut that has never copied a column's name.
         let copyNameItem = NSMenuItem(
             title: String(localized: "Copy Name"),
             action: #selector(handleCopyName),
-            keyEquivalent: "c"
+            keyEquivalent: ""
         )
-        copyNameItem.keyEquivalentModifierMask = .command
         copyNameItem.target = self
         menu.addItem(copyNameItem)
 
@@ -105,38 +127,64 @@ final class StructureRowViewWithMenu: DataGridRowView {
             menu.addItem(navItem)
         }
 
+        addColumnMoveItems(to: menu)
+
         if isStructureEditable {
             menu.addItem(NSMenuItem.separator())
 
+            /// No key equivalent. This showed `Cmd+D`, which is not the binding `duplicateRow`
+            /// carries, and the real one does not reach here either: `MainContentCommandActions`
+            /// guards it on `dataGridOwnsSelection` and returns for a schema grid. There is no
+            /// keystroke that duplicates a column, so the menu stops claiming one.
             let dupItem = NSMenuItem(
                 title: String(localized: "Duplicate"),
                 action: #selector(handleDuplicate),
-                keyEquivalent: "d"
+                keyEquivalent: ""
             )
-            dupItem.keyEquivalentModifierMask = .command
             dupItem.target = self
             menu.addItem(dupItem)
 
+            /// Read from the binding rather than typed in, because this one genuinely works:
+            /// `KeyHandlingTableView.keyDown` routes it to the delegate's row delete, and it can
+            /// be rebound in Settings, at which point a literal here would start lying.
             let delItem = NSMenuItem(
                 title: String(localized: "Delete"),
                 action: #selector(handleDelete),
-                keyEquivalent: String(
-                    UnicodeScalar(NSBackspaceCharacter).map { Character($0) } ?? "\u{8}"
-                )
+                keyEquivalent: ""
             )
-            delItem.keyEquivalentModifierMask = []
             delItem.target = self
+            MenuItemFactory.apply(
+                shortcut: .delete, keyboard: AppSettingsManager.shared.keyboard, to: delItem
+            )
             menu.addItem(delItem)
         }
 
         return menu
     }
 
-    private func effectiveIndices() -> Set<Int> {
-        if let selected = coordinator?.selectedRowIndices, !selected.isEmpty {
-            return selected
+    /// Built by the delegate rather than here, because this is not the only menu a column row can
+    /// raise. `KeyHandlingTableView.rightMouseDown` intercepts a click that lands inside the
+    /// selection and answers from `DataGridRowView.contextMenu(for:)` instead, so items added only
+    /// in this override are missing from the ordinary select-then-right-click path, which is also
+    /// the path the keyboard and assistive technology take.
+    private func addColumnMoveItems(to menu: NSMenu) {
+        let items = coordinator?.delegate?.dataGridRowStructureMenuItems(forRow: rowIndex) ?? []
+        guard !items.isEmpty else { return }
+        menu.addItem(NSMenuItem.separator())
+        for item in items {
+            menu.addItem(item)
         }
-        return [rowIndex]
+    }
+
+    /// The rows a row command acts on, resolved the way the data grid's own menu resolves them.
+    ///
+    /// A cell range dragged across several rows lives in `selectionController`, and the table view
+    /// keeps only its anchor in `selectedRowIndices`, so reading the latter alone shrank Delete
+    /// from every row the range covered to one. That was invisible while this menu was reachable
+    /// only from a click outside the selection; owning the in-selection route as well is exactly
+    /// the case where a range is what the user has.
+    private func effectiveIndices() -> Set<Int> {
+        coordinator?.currentRowSelection(fallbackRow: rowIndex) ?? [rowIndex]
     }
 
     @objc private func handleCopyName() { onCopyName?(effectiveIndices()) }
@@ -158,7 +206,7 @@ final class StructureMenuTarget: NSObject {
         self.action = action
     }
 
-    @objc func addNewItem() {
+    @objc func runAction() {
         action()
     }
 }

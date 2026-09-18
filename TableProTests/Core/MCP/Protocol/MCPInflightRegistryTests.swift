@@ -4,152 +4,251 @@ import TableProPluginKit
 import XCTest
 
 final class MCPInflightRegistryTests: XCTestCase {
-    func testCancelByRequestIdAndSessionIdCancelsToken() async {
+    private static let aliceTokenId = UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000001") ?? UUID()
+    private static let bobTokenId = UUID(uuidString: "BBBBBBBB-0000-0000-0000-000000000002") ?? UUID()
+
+    private let alice = MCPProtocolTestSupport.makePrincipal(
+        fingerprint: "alice",
+        tokenId: MCPInflightRegistryTests.aliceTokenId
+    )
+    private let bob = MCPProtocolTestSupport.makePrincipal(
+        fingerprint: "bob",
+        tokenId: MCPInflightRegistryTests.bobTokenId
+    )
+
+    func testCancelCancelsTheRegisteredToken() async {
         let registry = MCPInflightRegistry()
         let token = MCPCancellationToken()
-        let sessionId = MCPSessionId("session-1")
-        let requestId = JsonRpcId.number(42)
+        let key = MCPInflightKey(principal: alice, requestId: .number(42))
 
-        await registry.register(requestId: requestId, sessionId: sessionId, token: token)
-        await registry.cancel(requestId: requestId, sessionId: sessionId)
+        await registry.register(key: key, token: token, tokenId: alice.tokenId, method: "tools/call", startedAt: .now)
+        let cancelled = await registry.cancel(key: key, reason: .clientRequested("stop"))
 
-        let cancelled = await token.isCancelled()
         XCTAssertTrue(cancelled)
+        let tokenCancelled = await token.isCancelled
+        let reason = await token.reason
+        XCTAssertTrue(tokenCancelled)
+        XCTAssertEqual(reason, .clientRequested("stop"))
     }
 
-    func testRegisterSameKeyTwiceLatestWins() async {
+    func testTheSameRequestIdFromTwoPrincipalsIsTwoEntries() async {
         let registry = MCPInflightRegistry()
-        let firstToken = MCPCancellationToken()
-        let secondToken = MCPCancellationToken()
-        let sessionId = MCPSessionId("session-2")
-        let requestId = JsonRpcId.string("req-x")
+        let aliceToken = MCPCancellationToken()
+        let bobToken = MCPCancellationToken()
+        let requestId = JsonRpcId.number(1)
+        let aliceKey = MCPInflightKey(principal: alice, requestId: requestId)
+        let bobKey = MCPInflightKey(principal: bob, requestId: requestId)
 
-        await registry.register(requestId: requestId, sessionId: sessionId, token: firstToken)
-        await registry.register(requestId: requestId, sessionId: sessionId, token: secondToken)
+        XCTAssertNotEqual(aliceKey, bobKey)
 
-        await registry.cancel(requestId: requestId, sessionId: sessionId)
+        let aliceRegistered = await registry.register(
+            key: aliceKey,
+            token: aliceToken,
+            tokenId: alice.tokenId,
+            method: "tools/call",
+            startedAt: .now
+        )
+        let bobRegistered = await registry.register(
+            key: bobKey,
+            token: bobToken,
+            tokenId: bob.tokenId,
+            method: "tools/call",
+            startedAt: .now
+        )
+        XCTAssertTrue(aliceRegistered)
+        XCTAssertTrue(bobRegistered)
 
-        let firstCancelled = await firstToken.isCancelled()
-        let secondCancelled = await secondToken.isCancelled()
+        let count = await registry.count()
+        XCTAssertEqual(count, 2)
 
+        await registry.cancel(key: aliceKey, reason: .clientRequested(nil))
+
+        let aliceCancelled = await aliceToken.isCancelled
+        let bobCancelled = await bobToken.isCancelled
+        XCTAssertTrue(aliceCancelled)
+        XCTAssertFalse(bobCancelled)
+
+        let remaining = await registry.contains(key: bobKey)
+        XCTAssertTrue(remaining)
+    }
+
+    func testReusingAnInFlightRequestIdReportsTheDisplacement() async {
+        let registry = MCPInflightRegistry()
+        let first = MCPCancellationToken()
+        let second = MCPCancellationToken()
+        let key = MCPInflightKey(principal: alice, requestId: .string("req-x"))
+
+        let firstRegistered = await registry.register(
+            key: key,
+            token: first,
+            tokenId: alice.tokenId,
+            method: "tools/call",
+            startedAt: .now
+        )
+        let secondRegistered = await registry.register(
+            key: key,
+            token: second,
+            tokenId: alice.tokenId,
+            method: "tools/call",
+            startedAt: .now
+        )
+        XCTAssertTrue(firstRegistered)
+        XCTAssertFalse(secondRegistered)
+
+        await registry.cancel(key: key, reason: .clientRequested(nil))
+
+        let firstCancelled = await first.isCancelled
+        let secondCancelled = await second.isCancelled
         XCTAssertFalse(firstCancelled)
         XCTAssertTrue(secondCancelled)
     }
 
-    func testCancelNonexistentEntryIsNoop() async {
+    func testRemovingWithAStaleTokenLeavesTheEntryAlone() async {
         let registry = MCPInflightRegistry()
-        let sessionId = MCPSessionId("session-3")
-        let requestId = JsonRpcId.number(99)
+        let stale = MCPCancellationToken()
+        let live = MCPCancellationToken()
+        let key = MCPInflightKey(principal: alice, requestId: .number(3))
 
-        await registry.cancel(requestId: requestId, sessionId: sessionId)
+        await registry.register(key: key, token: stale, tokenId: nil, method: "tools/call", startedAt: .now)
+        await registry.register(key: key, token: live, tokenId: nil, method: "tools/call", startedAt: .now)
+        await registry.remove(key: key, token: stale)
+
+        let stillThere = await registry.contains(key: key)
+        XCTAssertTrue(stillThere)
+
+        await registry.remove(key: key, token: live)
+        let gone = await registry.contains(key: key)
+        XCTAssertFalse(gone)
+    }
+
+    func testCancellingAnEntryThatIsNotInFlightIsANoop() async {
+        let registry = MCPInflightRegistry()
+        let key = MCPInflightKey(principal: alice, requestId: .number(7))
+
+        let cancelled = await registry.cancel(key: key, reason: .clientRequested(nil))
+        XCTAssertFalse(cancelled)
+
         let count = await registry.count()
         XCTAssertEqual(count, 0)
     }
 
-    func testRemoveDropsEntryAndSubsequentCancelIsNoop() async {
+    func testCancellingTwiceOnlyReportsTheFirstCancellation() async {
         let registry = MCPInflightRegistry()
-        let token = MCPCancellationToken()
-        let sessionId = MCPSessionId("session-4")
-        let requestId = JsonRpcId.number(7)
+        let key = MCPInflightKey(principal: alice, requestId: .number(9))
+        await registry.register(
+            key: key,
+            token: MCPCancellationToken(),
+            tokenId: nil,
+            method: "tools/call",
+            startedAt: .now
+        )
 
-        await registry.register(requestId: requestId, sessionId: sessionId, token: token)
-        await registry.remove(requestId: requestId, sessionId: sessionId)
-
-        let countAfterRemove = await registry.count()
-        XCTAssertEqual(countAfterRemove, 0)
-
-        await registry.cancel(requestId: requestId, sessionId: sessionId)
-        let cancelled = await token.isCancelled()
-        XCTAssertFalse(cancelled)
+        let first = await registry.cancel(key: key, reason: .clientRequested(nil))
+        let second = await registry.cancel(key: key, reason: .clientRequested(nil))
+        XCTAssertTrue(first)
+        XCTAssertFalse(second)
     }
 
-    func testEntriesAreScopedBySessionId() async {
+    func testRevokingATokenCancelsOnlyThatTokensRequests() async {
         let registry = MCPInflightRegistry()
-        let tokenA = MCPCancellationToken()
-        let tokenB = MCPCancellationToken()
-        let sessionA = MCPSessionId("session-A")
-        let sessionB = MCPSessionId("session-B")
-        let requestId = JsonRpcId.number(1)
+        let aliceToken = MCPCancellationToken()
+        let bobToken = MCPCancellationToken()
+        let aliceKey = MCPInflightKey(principal: alice, requestId: .number(1))
+        let bobKey = MCPInflightKey(principal: bob, requestId: .number(2))
 
-        await registry.register(requestId: requestId, sessionId: sessionA, token: tokenA)
-        await registry.register(requestId: requestId, sessionId: sessionB, token: tokenB)
+        await registry.register(
+            key: aliceKey,
+            token: aliceToken,
+            tokenId: alice.tokenId,
+            method: "tools/call",
+            startedAt: .now
+        )
+        await registry.register(
+            key: bobKey,
+            token: bobToken,
+            tokenId: bob.tokenId,
+            method: "tools/call",
+            startedAt: .now
+        )
 
-        await registry.cancel(requestId: requestId, sessionId: sessionA)
+        let cancelledCount = await registry.cancelAll(
+            matchingTokenId: Self.aliceTokenId,
+            reason: .credentialRevoked
+        )
+        XCTAssertEqual(cancelledCount, 1)
 
-        let cancelledA = await tokenA.isCancelled()
-        let cancelledB = await tokenB.isCancelled()
-
-        XCTAssertTrue(cancelledA)
-        XCTAssertFalse(cancelledB)
+        let aliceCancelled = await aliceToken.isCancelled
+        let bobCancelled = await bobToken.isCancelled
+        let aliceReason = await aliceToken.reason
+        XCTAssertTrue(aliceCancelled)
+        XCTAssertFalse(bobCancelled)
+        XCTAssertEqual(aliceReason, .credentialRevoked)
     }
 
-    func testCancelAllMatchingTokenIdCancelsOnlyMatching() async {
+    func testCancellingByFingerprintCancelsEveryRequestOfThatClient() async {
         let registry = MCPInflightRegistry()
-        let tokenA = MCPCancellationToken()
-        let tokenB = MCPCancellationToken()
-        let tokenC = MCPCancellationToken()
-        let session = MCPSessionId("session-revoked")
-        let revokedTokenId = UUID()
-        let otherTokenId = UUID()
+        let firstToken = MCPCancellationToken()
+        let secondToken = MCPCancellationToken()
+        let otherToken = MCPCancellationToken()
 
         await registry.register(
-            requestId: .number(1),
-            sessionId: session,
-            token: tokenA,
-            tokenId: revokedTokenId
+            key: MCPInflightKey(principal: alice, requestId: .number(1)),
+            token: firstToken,
+            tokenId: alice.tokenId,
+            method: "tools/call",
+            startedAt: .now
         )
         await registry.register(
-            requestId: .number(2),
-            sessionId: session,
-            token: tokenB,
-            tokenId: revokedTokenId
+            key: MCPInflightKey(principal: alice, requestId: .number(2)),
+            token: secondToken,
+            tokenId: alice.tokenId,
+            method: "tools/list",
+            startedAt: .now
         )
         await registry.register(
-            requestId: .number(3),
-            sessionId: session,
-            token: tokenC,
-            tokenId: otherTokenId
+            key: MCPInflightKey(principal: bob, requestId: .number(3)),
+            token: otherToken,
+            tokenId: bob.tokenId,
+            method: "tools/list",
+            startedAt: .now
         )
 
-        let cancelledSessions = await registry.cancelAll(matchingTokenId: revokedTokenId)
-        XCTAssertEqual(cancelledSessions, [session])
+        let cancelled = await registry.cancelAll(
+            matchingFingerprint: alice.tokenFingerprint,
+            reason: .serverShuttingDown
+        )
+        XCTAssertEqual(cancelled, 2)
 
-        let cancelledA = await tokenA.isCancelled()
-        let cancelledB = await tokenB.isCancelled()
-        let cancelledC = await tokenC.isCancelled()
-        XCTAssertTrue(cancelledA)
-        XCTAssertTrue(cancelledB)
-        XCTAssertFalse(cancelledC)
+        let remaining = await registry.count()
+        XCTAssertEqual(remaining, 1)
+
+        let otherCancelled = await otherToken.isCancelled
+        XCTAssertFalse(otherCancelled)
+    }
+
+    func testShutdownCancelsEverythingAndEmptiesTheRegistry() async {
+        let registry = MCPInflightRegistry()
+        for index in 1 ... 3 {
+            await registry.register(
+                key: MCPInflightKey(principal: alice, requestId: .number(Int64(index))),
+                token: MCPCancellationToken(),
+                tokenId: alice.tokenId,
+                method: "tools/call",
+                startedAt: .now
+            )
+        }
+
+        let cancelled = await registry.cancelAll(reason: .serverShuttingDown)
+        XCTAssertEqual(cancelled, 3)
 
         let count = await registry.count()
-        XCTAssertEqual(count, 1)
+        XCTAssertEqual(count, 0)
     }
 
-    func testCountReflectsActiveRegistrations() async {
-        let registry = MCPInflightRegistry()
-        let session = MCPSessionId("session-count")
-
-        await registry.register(
-            requestId: .number(1),
-            sessionId: session,
-            token: MCPCancellationToken()
-        )
-        await registry.register(
-            requestId: .number(2),
-            sessionId: session,
-            token: MCPCancellationToken()
-        )
-        await registry.register(
-            requestId: .number(3),
-            sessionId: session,
-            token: MCPCancellationToken()
-        )
-
-        let count = await registry.count()
-        XCTAssertEqual(count, 3)
-
-        await registry.remove(requestId: .number(2), sessionId: session)
-        let countAfter = await registry.count()
-        XCTAssertEqual(countAfter, 2)
+    func testKeyIsBuiltFromTheClientFingerprint() {
+        let key = MCPInflightKey(principal: alice, requestId: .string("abc"))
+        XCTAssertEqual(key.clientFingerprint, alice.tokenFingerprint)
+        XCTAssertEqual(key.requestId, .string("abc"))
+        XCTAssertEqual(key, MCPInflightKey(clientFingerprint: "alice", requestId: .string("abc")))
     }
 }

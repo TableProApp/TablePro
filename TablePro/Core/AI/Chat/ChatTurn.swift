@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 enum ChatRole: String, Codable, Sendable {
     case user
@@ -22,11 +22,11 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case sqlWalkthrough(SqlWalkthroughBlock)
 }
 
-@MainActor @Observable
-final class ChatContentBlock: Identifiable {
+@MainActor
+final class ChatContentBlock: ObservableObject, Identifiable {
     let id: UUID
-    var kind: ChatContentBlockKind
-    var isStreaming: Bool
+    @Published var kind: ChatContentBlockKind
+    @Published var isStreaming: Bool
 
     init(id: UUID = UUID(), kind: ChatContentBlockKind, isStreaming: Bool = false) {
         self.id = id
@@ -95,14 +95,14 @@ extension ChatContentBlock {
 }
 
 @MainActor
-struct ChatTurn: Identifiable {
+final class ChatTurn: ObservableObject, Identifiable {
     let id: UUID
     let role: ChatRole
-    var blocks: [ChatContentBlock]
+    @Published var blocks: [ChatContentBlock]
     let timestamp: Date
-    var usage: AITokenUsage?
-    var modelId: String?
-    var providerId: String?
+    @Published var usage: AITokenUsage?
+    @Published var modelId: String?
+    @Published var providerId: String?
 
     init(
         id: UUID = UUID(),
@@ -154,7 +154,7 @@ struct ChatTurn: Identifiable {
         )
     }
 
-    mutating func appendStreamingToken(_ chunk: String) {
+    func appendStreamingToken(_ chunk: String) {
         guard !chunk.isEmpty else { return }
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.appendText(chunk)
@@ -163,19 +163,19 @@ struct ChatTurn: Identifiable {
         }
     }
 
-    mutating func finishStreamingTextBlock() {
+    func finishStreamingTextBlock() {
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.finishStreaming()
         }
     }
 
-    mutating func appendBlock(_ block: ChatContentBlock) {
+    func appendBlock(_ block: ChatContentBlock) {
         finishStreamingTextBlock()
         blocks.append(block)
     }
 
     @discardableResult
-    mutating func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
+    func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
         if let existingUUID = idMap[providerBlockID],
            let existingBlock = blocks.first(where: { $0.id == existingUUID }) {
             existingBlock.appendReasoningText(text)
@@ -189,7 +189,7 @@ struct ChatTurn: Identifiable {
         return newUUID
     }
 
-    mutating func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
+    func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
         if idMap[providerBlockID] != nil { return }
         finishStreamingTextBlock()
         let newUUID = UUID()
@@ -197,7 +197,7 @@ struct ChatTurn: Identifiable {
         blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(ReasoningBlock()), isStreaming: true))
     }
 
-    mutating func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
+    func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
         guard let blockUUID = idMap.removeValue(forKey: providerBlockID),
               let block = blocks.first(where: { $0.id == blockUUID }) else { return }
         block.setReasoningOpaque(opaque)

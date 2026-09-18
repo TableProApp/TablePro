@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 public struct SurrealScope: Equatable, Sendable {
     public let namespace: String?
@@ -45,9 +46,10 @@ public enum SurrealQueryBuilder {
         logicMode: String,
         sortColumns: [(column: String, ascending: Bool)],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind] = [:]
     ) -> String {
-        let clause = whereClause(filters: filters, logicMode: logicMode)
+        let clause = whereClause(filters: filters, logicMode: logicMode, columnKinds: columnKinds)
         return compose(
             scope: scope,
             statement: select(table: table, where: clause, sortColumns: sortColumns, limit: limit, offset: offset)
@@ -111,15 +113,19 @@ public enum SurrealQueryBuilder {
 
     public static func whereClause(
         filters: [(column: String, op: String, value: String)],
-        logicMode: String
+        logicMode: String,
+        columnKinds: [String: PluginColumnKind] = [:]
     ) -> String? {
-        let conditions = filters.compactMap(condition)
+        let conditions = filters.compactMap { condition($0, kind: columnKinds[$0.column]) }
         guard !conditions.isEmpty else { return nil }
         let separator = logicMode.lowercased() == "or" ? " OR " : " AND "
         return conditions.joined(separator: separator)
     }
 
-    private static func condition(_ filter: (column: String, op: String, value: String)) -> String? {
+    private static func condition(
+        _ filter: (column: String, op: String, value: String),
+        kind: PluginColumnKind?
+    ) -> String? {
         guard !filter.column.isEmpty else { return nil }
         let column = SurrealQL.quoteIdentifier(filter.column)
         let op = filter.op.uppercased().trimmingCharacters(in: .whitespaces)
@@ -139,22 +145,22 @@ public enum SurrealQueryBuilder {
         case "ENDS WITH":
             return "string::ends_with(<string> \(column), \(SurrealQL.stringLiteral(value)))"
         case "IN":
-            return "\(column) INSIDE \(listLiteral(value))"
+            return "\(column) INSIDE \(listLiteral(value, kind: kind))"
         case "NOT IN":
-            return "\(column) NOTINSIDE \(listLiteral(value))"
+            return "\(column) NOTINSIDE \(listLiteral(value, kind: kind))"
         case "=", "!=", ">", ">=", "<", "<=":
-            return "\(column) \(op) \(literal(value))"
+            return "\(column) \(op) \(literal(value, kind: kind))"
         case "LIKE":
             return "string::contains(<string> \(column), \(SurrealQL.stringLiteral(unwrapWildcards(value))))"
         default:
-            return "\(column) = \(literal(value))"
+            return "\(column) = \(literal(value, kind: kind))"
         }
     }
 
-    private static func listLiteral(_ value: String) -> String {
+    private static func listLiteral(_ value: String, kind: PluginColumnKind?) -> String {
         let items = value
             .split(separator: ",")
-            .map { literal($0.trimmingCharacters(in: .whitespaces)) }
+            .map { literal($0.trimmingCharacters(in: .whitespaces), kind: kind) }
         return "[" + items.joined(separator: ", ") + "]"
     }
 
@@ -167,6 +173,31 @@ public enum SurrealQueryBuilder {
             text.removeLast()
         }
         return text
+    }
+
+    public static func literal(_ value: String, kind: PluginColumnKind?) -> String {
+        guard let kind else { return literal(value) }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+
+        if !PluginSQLLiteral.isKnownTextLike(kind) {
+            let lowered = trimmed.lowercased()
+            if lowered == "null" {
+                return "NULL"
+            }
+            if lowered == "none" {
+                return "NONE"
+            }
+            if lowered == "true" || lowered == "false" {
+                return lowered
+            }
+            if PluginSQLLiteral.isNumericLiteral(trimmed, kind: kind) {
+                return trimmed
+            }
+        }
+        if let record = recordLiteral(trimmed) {
+            return record
+        }
+        return SurrealQL.stringLiteral(value)
     }
 
     public static func literal(_ value: String) -> String {

@@ -18,7 +18,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FEC514",
                 queryLanguageName: "Query DSL", editorLanguage: .javascript,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -54,7 +53,8 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: elasticsearchConnectionFields(),
                     category: .document,
-                    tagline: String(localized: "Search and analytics engine")
+                    tagline: String(localized: "Search and analytics engine"),
+                    hidesBuiltInDatabase: true
                 )
             )),
         ]

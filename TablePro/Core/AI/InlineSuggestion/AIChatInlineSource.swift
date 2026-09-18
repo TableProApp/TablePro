@@ -8,10 +8,20 @@ import os
 
 @MainActor
 final class AIChatInlineSource: InlineSuggestionSource {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AIChatInlineSource")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AIChatInlineSource")
 
-    private weak var schemaProvider: SQLSchemaProvider?
-    var connectionPolicy: AIConnectionPolicy?
+    /// Settable, because the provider is per database scope and the source outlives a scope
+    /// change: latching the instance handed the model the first scope's tables for the rest of
+    /// the tab's life, and left the prompt schema-less once that provider was released.
+    internal weak var schemaProvider: SQLSchemaProvider?
+    internal var connectionPolicy: AIConnectionPolicy?
+
+    /// One id for this source's whole life.
+    ///
+    /// A stateful transport keeps conversation state per session id, so minting one per request
+    /// would leave a Copilot conversation behind for every inline suggestion, locally and on the
+    /// server. Inline suggestions are one long-running conversation, not a new one each keystroke.
+    private let sessionId = UUID()
 
     init(schemaProvider: SQLSchemaProvider?, connectionPolicy: AIConnectionPolicy?) {
         self.schemaProvider = schemaProvider
@@ -42,7 +52,11 @@ final class AIChatInlineSource: InlineSuggestionSource {
         var accumulated = ""
         let stream = resolved.provider.streamChat(
             turns: turns,
-            options: ChatTransportOptions(model: resolved.model, systemPrompt: systemPrompt)
+            options: ChatTransportOptions(
+                model: resolved.model,
+                systemPrompt: systemPrompt,
+                sessionId: sessionId
+            )
         )
 
         for try await event in stream {

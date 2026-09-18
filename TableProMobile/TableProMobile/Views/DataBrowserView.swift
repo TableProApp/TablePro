@@ -11,7 +11,9 @@ struct DataBrowserView: View {
     private var session: ConnectionSession? { coordinator.session }
 
     @State private var viewModel = DataBrowserViewModel()
-    @SceneStorage("dataBrowser.searchText") private var searchText = ""
+    /// Not persisted. This search runs on the server and is applied on submit, so a value restored
+    /// into the field would name a filter the rows on screen were never fetched under.
+    @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var showInsertSheet = false
     @State private var showFilterSheet = false
@@ -26,8 +28,22 @@ struct DataBrowserView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
-    private var isView: Bool { table.type == .view || table.type == .materializedView }
+    private var activeSchema: String? {
+        coordinator.supportsSchemas ? coordinator.activeSchema : nil
+    }
+
+    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    private var allowsRowEditing: Bool { table.type.allowsRowEditing }
     private var isRedis: Bool { connection.type == .redis }
+
+    /// Both entry points ask this. Redis takes no `INSERT`, and the form cannot be filled in before
+    /// the column list has arrived.
+    private var canInsertRow: Bool {
+        allowsRowEditing && !isRedis
+            && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
+    }
+
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
@@ -72,8 +88,18 @@ struct DataBrowserView: View {
             .toolbar(rows.isEmpty && !viewModel.hasActiveSearch && !viewModel.hasActiveFilters && !viewModel.isPageLoading ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }
             .task {
-                viewModel.attach(session: session, table: table, databaseType: connection.type, host: connection.host)
+                viewModel.attach(
+                    session: session, table: table, databaseType: connection.type,
+                    host: connection.host, schema: activeSchema
+                )
                 await viewModel.load(isInitial: true)
+            }
+            .onChange(of: activeSchema) { _, newSchema in
+                viewModel.attach(
+                    session: session, table: table, databaseType: connection.type,
+                    host: connection.host, schema: newSchema
+                )
+                Task { await viewModel.load(isInitial: true) }
             }
             .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
@@ -82,6 +108,7 @@ struct DataBrowserView: View {
                     filters: $viewModel.filters,
                     logicMode: $viewModel.filterLogicMode,
                     columns: columns,
+                    databaseType: connection.type,
                     onApply: { Task { await viewModel.applyFilters() } },
                     onClear: { Task { await viewModel.clearFilters() } }
                 )
@@ -210,7 +237,7 @@ struct DataBrowserView: View {
             } description: {
                 Text("This table is empty.")
             } actions: {
-                if !isView && !connection.safeModeLevel.blocksWrites {
+                if canInsertRow {
                     Button("Insert Row") { showInsertSheet = true }
                         .buttonStyle(.borderedProminent)
                 }
@@ -246,6 +273,7 @@ struct DataBrowserView: View {
                 session: session,
                 columnDetails: viewModel.columnDetails,
                 databaseType: connection.type,
+                schema: viewModel.schema,
                 safeModeLevel: connection.safeModeLevel,
                 foreignKeys: viewModel.foreignKeys,
                 onSaved: { Task { await viewModel.load() } },
@@ -260,7 +288,7 @@ struct DataBrowserView: View {
         .hoverEffect()
         .contextMenu { rowContextMenu(row: row) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !isView && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
+            if allowsRowEditing && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
                 Button {
                     deleteTarget = viewModel.primaryKeyValues(for: row)
                     showDeleteConfirmation = true
@@ -271,7 +299,7 @@ struct DataBrowserView: View {
             }
         }
         .accessibilityAction(named: Text("Delete row")) {
-            guard !isView, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
+            guard allowsRowEditing, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
             deleteTarget = viewModel.primaryKeyValues(for: row)
             showDeleteConfirmation = true
         }
@@ -284,7 +312,8 @@ struct DataBrowserView: View {
                 Button(format.rawValue) {
                     shareText = ClipboardExporter.exportRow(
                         columns: columns, row: row,
-                        format: format, tableName: table.name
+                        format: format, tableName: table.name,
+                        databaseType: connection.type, driver: session?.driver
                     )
                     showShareSheet = true
                 }
@@ -295,7 +324,8 @@ struct DataBrowserView: View {
                 Button(format.rawValue) {
                     let text = ClipboardExporter.exportRow(
                         columns: columns, row: row,
-                        format: format, tableName: table.name
+                        format: format, tableName: table.name,
+                        databaseType: connection.type, driver: session?.driver
                     )
                     ClipboardExporter.copyToClipboard(text)
                 }
@@ -370,7 +400,8 @@ struct DataBrowserView: View {
                         Button {
                             let text = ClipboardExporter.exportRows(
                                 columns: columns, rows: rows,
-                                format: format, tableName: table.name
+                                format: format, tableName: table.name,
+                                databaseType: connection.type, driver: session?.driver
                             )
                             ClipboardExporter.copyToClipboard(text)
                         } label: {
@@ -382,7 +413,7 @@ struct DataBrowserView: View {
                 Image(systemName: "ellipsis.circle")
             }
         }
-        if !isView && !connection.safeModeLevel.blocksWrites {
+        if canInsertRow {
             ToolbarItem(placement: .primaryAction) {
                 Button { showInsertSheet = true } label: {
                     Image(systemName: "plus")
@@ -448,6 +479,7 @@ struct DataBrowserView: View {
             columnDetails: viewModel.columnDetails,
             session: session,
             databaseType: connection.type,
+            schema: viewModel.schema,
             safeModeLevel: connection.safeModeLevel,
             onInserted: { Task { await viewModel.load() } }
         )

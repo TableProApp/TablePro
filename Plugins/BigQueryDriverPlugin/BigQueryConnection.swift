@@ -1,15 +1,7 @@
-//
-//  BigQueryConnection.swift
-//  BigQueryDriverPlugin
-//
-//  HTTP client for Google BigQuery REST API v2.
-//
-
 import Foundation
 import os
+import TableProGoogleCloud
 import TableProPluginKit
-
-// MARK: - API Response Types
 
 internal struct BQTableFieldSchema: Codable, Sendable {
     let name: String
@@ -38,6 +30,19 @@ internal struct BQTableResource: Codable, Sendable {
     let labels: [String: String]?
     let expirationTime: String?
     let friendlyName: String?
+    let tableConstraints: BQTableConstraints?
+
+    var primaryKeyColumns: [String] {
+        tableConstraints?.primaryKey?.columns ?? []
+    }
+
+    struct BQTableConstraints: Codable, Sendable {
+        let primaryKey: BQPrimaryKey?
+    }
+
+    struct BQPrimaryKey: Codable, Sendable {
+        let columns: [String]?
+    }
 
     struct BQTableReference: Codable, Sendable {
         let projectId: String?
@@ -99,20 +104,27 @@ internal struct BQTableListResponse: Codable, Sendable {
 }
 
 internal struct BQJobRequest: Codable, Sendable {
+    let jobReference: BQJobRequestReference?
     let configuration: BQJobConfiguration
+
+    struct BQJobRequestReference: Codable, Sendable {
+        let projectId: String
+        let location: String?
+    }
 
     struct BQJobConfiguration: Codable, Sendable {
         let query: BQQueryConfig?
         let dryRun: Bool?
+        let jobTimeoutMs: String?
     }
 
     struct BQQueryConfig: Codable, Sendable {
         let query: String
         let useLegacySql: Bool
-        let maxResults: Int?
         let defaultDataset: BQDatasetReference?
-        let timeoutMs: Int?
         let maximumBytesBilled: String?
+        let parameterMode: String?
+        let queryParameters: [BigQueryQueryParameter]?
     }
 
     struct BQDatasetReference: Codable, Sendable {
@@ -162,6 +174,18 @@ internal struct BQJobResponse: Codable, Sendable {
     struct BQJobStatistics: Codable, Sendable {
         let totalBytesProcessed: String?
         let query: BQQueryStatistics?
+        let startTime: String?
+        let endTime: String?
+
+        var elapsed: TimeInterval? {
+            guard let start = startTime.flatMap(Double.init),
+                  let end = endTime.flatMap(Double.init),
+                  end >= start
+            else {
+                return nil
+            }
+            return (end - start) / 1_000
+        }
     }
 
     struct BQQueryStatistics: Codable, Sendable {
@@ -169,6 +193,7 @@ internal struct BQJobResponse: Codable, Sendable {
         let totalBytesBilled: String?
         let cacheHit: Bool?
         let numDmlAffectedRows: String?
+        let undeclaredQueryParameters: [BigQueryQueryParameter]?
     }
 }
 
@@ -239,6 +264,7 @@ internal enum BQCellValue: Codable, Sendable {
 internal struct BQJobInfo: Sendable {
     let jobId: String
     let location: String?
+    var serverElapsed: TimeInterval?
 }
 
 internal struct BQExecuteResult: Sendable {
@@ -247,252 +273,243 @@ internal struct BQExecuteResult: Sendable {
     let totalBytesProcessed: String?
     let totalBytesBilled: String?
     let cacheHit: Bool?
+    let serverElapsed: TimeInterval?
 
     init(
         queryResponse: BQQueryResponse,
         dmlAffectedRows: Int,
         totalBytesProcessed: String?,
         totalBytesBilled: String? = nil,
-        cacheHit: Bool? = nil
+        cacheHit: Bool? = nil,
+        serverElapsed: TimeInterval? = nil
     ) {
         self.queryResponse = queryResponse
         self.dmlAffectedRows = dmlAffectedRows
         self.totalBytesProcessed = totalBytesProcessed
         self.totalBytesBilled = totalBytesBilled
         self.cacheHit = cacheHit
+        self.serverElapsed = serverElapsed
     }
 }
 
-private struct BQErrorResponse: Codable {
+internal struct BQErrorResponse: Codable, Sendable {
     let error: BQErrorDetail?
 
-    struct BQErrorDetail: Codable {
+    struct BQErrorDetail: Codable, Sendable {
         let code: Int?
         let message: String?
         let status: String?
+        let errors: [BQJobResponse.BQErrorProto]?
+    }
+
+    static func apiError(status: Int, data: Data) -> BigQueryError {
+        guard let detail = (try? JSONDecoder().decode(BQErrorResponse.self, from: data))?.error else {
+            return .api(status: status, message: "", reason: nil)
+        }
+        return .api(
+            status: detail.code ?? status,
+            message: detail.message ?? "",
+            reason: detail.errors?.first?.reason
+        )
     }
 }
 
-// MARK: - BigQuery Connection
+internal enum BigQueryJobPolling {
+    static let doneState = "DONE"
+    static let deadlineGraceSeconds = 30
+
+    static func backoffNanoseconds(attempt: Int) -> UInt64 {
+        let milliseconds = min(500 * pow(2.0, Double(min(attempt, 4))), 5_000)
+        return UInt64(milliseconds) * 1_000_000
+    }
+
+    static func deadline(queryTimeoutSeconds: Int, from start: Date) -> Date? {
+        guard queryTimeoutSeconds > 0 else { return nil }
+        return start.addingTimeInterval(TimeInterval(queryTimeoutSeconds + deadlineGraceSeconds))
+    }
+
+    static func jobTimeoutMilliseconds(queryTimeoutSeconds: Int) -> String? {
+        guard queryTimeoutSeconds > 0 else { return nil }
+        return String(Int64(queryTimeoutSeconds) * 1_000)
+    }
+
+    static func failure(of job: BQJobResponse) -> BigQueryError? {
+        guard let errorResult = job.status?.errorResult else { return nil }
+        return .jobFailed(message: errorResult.message ?? "", reason: errorResult.reason)
+    }
+}
+
+private final class BigQueryRedirectRefusingDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+}
 
 internal final class BigQueryConnection: @unchecked Sendable {
-    private let config: DriverConnectionConfig
-    private let lock = NSLock()
-    private var _session: URLSession?
-    private var _authProvider: BigQueryAuthProvider?
-    private var _currentTask: URLSessionDataTask?
-    private var _currentJobId: String?
-    private var _currentJobLocation: String?
-    private var _queryTimeoutSeconds: Int = 300
-    private let _queryTimeout = HttpQueryTimeoutBox()
-    private let location: String?
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryConnection")
-    private static let baseUrl = "https://bigquery.googleapis.com/bigquery/v2"
+    private static let host = "bigquery.googleapis.com"
+    private static let basePath = "/bigquery/v2/"
+    private static let pageSize = "10000"
+    private static let listPageSize = "1000"
+    private static let maximumPages = 100
+    private static let rateLimitRetries = 3
+    private static let rateLimitedStatus = 429
+    private static let unauthorizedStatus = 401
+    private static let namedParameterMode = "NAMED"
+    private static let pathSegmentAllowed: CharacterSet = {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        return allowed
+    }()
 
-    var projectId: String {
-        lock.withLock { _authProvider?.projectId ?? "" }
+    let projectId: String
+    private let location: String?
+    private let maximumBytesBilled: String?
+    private let tokenProvider: any GoogleAccessTokenProviding
+    private let requestTimeout = HttpQueryTimeoutBox()
+    private let lock = NSLock()
+    private var session: URLSession?
+    private var queryTimeoutSeconds = HttpQueryTimeout.bootstrapSeconds
+
+    init(credentials: BigQueryCredentials, location: String?, maximumBytesBilled: String?) {
+        self.projectId = credentials.projectId
+        self.tokenProvider = credentials.tokenProvider
+        self.location = location
+        self.maximumBytesBilled = maximumBytesBilled
     }
 
     func setQueryTimeout(_ seconds: Int) {
-        lock.withLock { _queryTimeoutSeconds = max(seconds, 30) }
-        _queryTimeout.set(serverTimeoutSeconds: seconds)
-    }
-
-    init(config: DriverConnectionConfig) {
-        self.config = config
-        let loc = config.additionalFields["bqLocation"]
-        self.location = loc?.isEmpty == true ? nil : loc
+        lock.withLock { queryTimeoutSeconds = seconds }
+        requestTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     func connect() async throws {
-        let authProvider = try createAuthProvider()
-
-        let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
-        sessionConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
-        let urlSession = URLSession(configuration: sessionConfig)
-
-        lock.withLock {
-            _authProvider = authProvider
-            _session = urlSession
-        }
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
+        let urlSession = URLSession(
+            configuration: configuration,
+            delegate: BigQueryRedirectRefusingDelegate(),
+            delegateQueue: nil
+        )
+        lock.withLock { session = urlSession }
 
         do {
             _ = try await executeQuery("SELECT 1")
         } catch {
-            lock.withLock {
-                _session?.invalidateAndCancel()
-                _session = nil
-                _authProvider = nil
-            }
+            disconnect()
             throw error
         }
     }
 
     func disconnect() {
-        lock.withLock {
-            _currentTask?.cancel()
-            _currentTask = nil
-            _currentJobId = nil
-            _currentJobLocation = nil
-            _session?.invalidateAndCancel()
-            _session = nil
-            _authProvider = nil
+        let closing: URLSession? = lock.withLock {
+            let current = session
+            session = nil
+            return current
         }
+        closing?.invalidateAndCancel()
     }
 
     func ping() async throws {
-        let (session, auth) = try getSessionAndAuth()
-        let token = try await auth.accessToken()
-        var components = URLComponents(string: "\(Self.baseUrl)/projects/\(auth.projectId)/datasets")
-        components?.queryItems = [URLQueryItem(name: "maxResults", value: "0")]
-        guard let url = components?.url else {
-            throw BigQueryError.invalidResponse("Invalid URL for ping")
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await performRequestWithRetry(request, session: session)
-        try checkHTTPResponse(response, data: data)
+        let url = try endpoint(
+            ["projects", projectId, "datasets"],
+            query: [URLQueryItem(name: "maxResults", value: "0")]
+        )
+        _ = try await send(URLRequest(url: url))
     }
 
-    func cancelCurrentRequest() {
-        let (task, jobId, jobLocation): (URLSessionDataTask?, String?, String?) = lock.withLock {
-            let t = _currentTask
-            let j = _currentJobId
-            let l = _currentJobLocation
-            _currentTask = nil
-            return (t, j, l)
+    func executeQuery(
+        _ sql: String,
+        defaultDataset: String? = nil,
+        queryParameters: [BigQueryQueryParameter]? = nil
+    ) async throws -> BQExecuteResult {
+        let job = try await runJob(sql, defaultDataset: defaultDataset, queryParameters: queryParameters)
+        guard let jobId = job.jobReference?.jobId else {
+            throw BigQueryError.invalidResponse
         }
+        let jobLocation = job.jobReference?.location
 
-        task?.cancel()
-
-        if let jobId {
-            Task {
-                try? await cancelJob(jobId: jobId, location: jobLocation)
-            }
-        }
-    }
-
-    // MARK: - Query Execution
-
-    func executeQuery(_ sql: String, defaultDataset: String? = nil) async throws -> BQExecuteResult {
-        let (session, auth) = try getSessionAndAuth()
-
-        let maxBytes = config.additionalFields["bqMaxBytesBilled"]
-        let maxBytesBilled = (maxBytes?.isEmpty == false) ? maxBytes : nil
-
-        let queryConfig = BQJobRequest.BQQueryConfig(
-            query: sql,
-            useLegacySql: false,
-            maxResults: 10000,
-            defaultDataset: defaultDataset.map {
-                BQJobRequest.BQDatasetReference(projectId: auth.projectId, datasetId: $0)
-            },
-            timeoutMs: 120_000,
-            maximumBytesBilled: maxBytesBilled
-        )
-
-        let jobRequest = BQJobRequest(
-            configuration: BQJobRequest.BQJobConfiguration(query: queryConfig, dryRun: nil)
-        )
-
-        let token = try await auth.accessToken()
-        var components = URLComponents(string: "\(Self.baseUrl)/projects/\(auth.projectId)/jobs")
-        if let loc = location {
-            components?.queryItems = [URLQueryItem(name: "location", value: loc)]
-        }
-        guard let url = components?.url else {
-            throw BigQueryError.invalidResponse("Invalid URL for executeQuery")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(jobRequest)
-
-        let (data, response) = try await performRequestWithRetry(request, session: session)
-        try checkHTTPResponse(response, data: data)
-
-        let jobResponse = try JSONDecoder().decode(BQJobResponse.self, from: data)
-
-        guard let jobRef = jobResponse.jobReference,
-              let jobId = jobRef.jobId
-        else {
-            throw BigQueryError.invalidResponse("Missing job reference in response")
-        }
-
-        lock.withLock {
-            _currentJobId = jobId
-            _currentJobLocation = jobRef.location
-        }
-
-        let finalJobResponse: BQJobResponse
-        if let state = jobResponse.status?.state, state != "DONE" {
-            finalJobResponse = try await pollJobCompletion(
-                jobId: jobId, location: jobRef.location, auth: auth, session: session
-            )
-        } else if let errorResult = jobResponse.status?.errorResult {
-            let reason = errorResult.reason.map { " [\($0)]" } ?? ""
-            throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
-        } else {
-            finalJobResponse = jobResponse
-        }
-
-        let dmlAffectedRows: Int
-        if let numStr = finalJobResponse.statistics?.query?.numDmlAffectedRows {
-            dmlAffectedRows = Int(numStr) ?? 0
-        } else {
-            dmlAffectedRows = 0
-        }
-        let totalBytesProcessed = finalJobResponse.statistics?.totalBytesProcessed
-            ?? finalJobResponse.statistics?.query?.totalBytesProcessed
-        let totalBytesBilled = finalJobResponse.statistics?.query?.totalBytesBilled
-        let cacheHit = finalJobResponse.statistics?.query?.cacheHit
-
-        let firstPage = try await getQueryResults(
-            jobId: jobId, location: jobRef.location, auth: auth, session: session
-        )
-        let schema = firstPage.schema
-
-        // Paginate to accumulate all rows (cap at 100 pages / ~1M rows)
-        let maxPages = 100
+        let firstPage = try await getQueryResults(jobId: jobId, location: jobLocation)
         var allRows = firstPage.rows ?? []
         var currentPage = firstPage
         var pagesFetched = 1
 
-        while let nextToken = currentPage.pageToken, pagesFetched < maxPages {
-            let nextPage = try await getQueryResults(
-                jobId: jobId, location: jobRef.location, pageToken: nextToken,
-                auth: auth, session: session
-            )
+        while let nextToken = currentPage.pageToken, pagesFetched < Self.maximumPages {
+            try Task.checkCancellation()
+            let nextPage = try await getQueryResults(jobId: jobId, location: jobLocation, pageToken: nextToken)
             allRows.append(contentsOf: nextPage.rows ?? [])
             currentPage = nextPage
             pagesFetched += 1
         }
 
-        let finalResponse = BQQueryResponse(
-            schema: schema,
-            rows: allRows,
-            totalRows: firstPage.totalRows,
-            pageToken: currentPage.pageToken,
-            jobComplete: firstPage.jobComplete,
-            jobReference: firstPage.jobReference,
-            numDmlAffectedRows: nil
-        )
-
-        lock.withLock {
-            _currentJobId = nil
-            _currentJobLocation = nil
-        }
-
+        let statistics = job.statistics
         return BQExecuteResult(
-            queryResponse: finalResponse,
-            dmlAffectedRows: dmlAffectedRows,
-            totalBytesProcessed: totalBytesProcessed,
-            totalBytesBilled: totalBytesBilled,
-            cacheHit: cacheHit
+            queryResponse: BQQueryResponse(
+                schema: firstPage.schema,
+                rows: allRows,
+                totalRows: firstPage.totalRows,
+                pageToken: currentPage.pageToken,
+                jobComplete: firstPage.jobComplete,
+                jobReference: firstPage.jobReference,
+                numDmlAffectedRows: nil
+            ),
+            dmlAffectedRows: statistics?.query?.numDmlAffectedRows.flatMap { Int($0) } ?? 0,
+            totalBytesProcessed: statistics?.totalBytesProcessed ?? statistics?.query?.totalBytesProcessed,
+            totalBytesBilled: statistics?.query?.totalBytesBilled,
+            cacheHit: statistics?.query?.cacheHit,
+            serverElapsed: statistics?.elapsed
         )
+    }
+
+    func executeJobAndWait(
+        _ sql: String,
+        defaultDataset: String? = nil,
+        queryParameters: [BigQueryQueryParameter]? = nil
+    ) async throws -> BQJobInfo {
+        let job = try await runJob(sql, defaultDataset: defaultDataset, queryParameters: queryParameters)
+        guard let jobId = job.jobReference?.jobId else {
+            throw BigQueryError.invalidResponse
+        }
+        return BQJobInfo(
+            jobId: jobId,
+            location: job.jobReference?.location,
+            serverElapsed: job.statistics?.elapsed
+        )
+    }
+
+    func dryRunQuery(_ sql: String, defaultDataset: String? = nil) async throws -> BQExecuteResult {
+        let job = try await dryRun(sql, defaultDataset: defaultDataset, parameterMode: nil)
+        let statistics = job.statistics
+        return BQExecuteResult(
+            queryResponse: BQQueryResponse(
+                schema: nil,
+                rows: nil,
+                totalRows: "0",
+                pageToken: nil,
+                jobComplete: true,
+                jobReference: nil,
+                numDmlAffectedRows: nil
+            ),
+            dmlAffectedRows: 0,
+            totalBytesProcessed: statistics?.totalBytesProcessed ?? statistics?.query?.totalBytesProcessed ?? "0",
+            totalBytesBilled: statistics?.query?.totalBytesBilled ?? "0",
+            cacheHit: statistics?.query?.cacheHit ?? false
+        )
+    }
+
+    func undeclaredParameters(
+        _ sql: String,
+        defaultDataset: String? = nil
+    ) async throws -> [BigQueryQueryParameter] {
+        let job = try await dryRun(sql, defaultDataset: defaultDataset, parameterMode: Self.namedParameterMode)
+        return job.statistics?.query?.undeclaredQueryParameters ?? []
     }
 
     func getQueryResults(
@@ -500,519 +517,300 @@ internal final class BigQueryConnection: @unchecked Sendable {
         location: String?,
         pageToken: String? = nil
     ) async throws -> BQQueryResponse {
-        let (session, auth) = try getSessionAndAuth()
-        return try await getQueryResults(
-            jobId: jobId, location: location, pageToken: pageToken,
-            auth: auth, session: session
-        )
-    }
+        var query = [URLQueryItem(name: "maxResults", value: Self.pageSize)]
+        if let pageToken {
+            query.append(URLQueryItem(name: "pageToken", value: pageToken))
+        }
+        if let location {
+            query.append(URLQueryItem(name: "location", value: location))
+        }
+        let url = try endpoint(["projects", projectId, "queries", jobId], query: query)
 
-    func clearCurrentJob() {
-        lock.withLock {
-            _currentJobId = nil
-            _currentJobLocation = nil
+        var attempt = 0
+        while true {
+            let response: BQQueryResponse = try await decode(send(URLRequest(url: url)))
+            guard response.jobComplete == false else { return response }
+            try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: attempt))
+            attempt += 1
         }
     }
-
-    func executeJobAndWait(_ sql: String, defaultDataset: String? = nil) async throws -> BQJobInfo {
-        let (session, auth) = try getSessionAndAuth()
-
-        let maxBytes = config.additionalFields["bqMaxBytesBilled"]
-        let maxBytesBilled = (maxBytes?.isEmpty == false) ? maxBytes : nil
-
-        let queryConfig = BQJobRequest.BQQueryConfig(
-            query: sql,
-            useLegacySql: false,
-            maxResults: 10000,
-            defaultDataset: defaultDataset.map {
-                BQJobRequest.BQDatasetReference(projectId: auth.projectId, datasetId: $0)
-            },
-            timeoutMs: 120_000,
-            maximumBytesBilled: maxBytesBilled
-        )
-
-        let jobRequest = BQJobRequest(
-            configuration: BQJobRequest.BQJobConfiguration(query: queryConfig, dryRun: nil)
-        )
-
-        let token = try await auth.accessToken()
-        var components = URLComponents(string: "\(Self.baseUrl)/projects/\(auth.projectId)/jobs")
-        if let loc = location {
-            components?.queryItems = [URLQueryItem(name: "location", value: loc)]
-        }
-        guard let url = components?.url else {
-            throw BigQueryError.invalidResponse("Invalid URL for executeJobAndWait")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(jobRequest)
-
-        let (data, response) = try await performRequestWithRetry(request, session: session)
-        try checkHTTPResponse(response, data: data)
-
-        let jobResponse = try JSONDecoder().decode(BQJobResponse.self, from: data)
-
-        guard let jobRef = jobResponse.jobReference,
-              let jobId = jobRef.jobId
-        else {
-            throw BigQueryError.invalidResponse("Missing job reference in response")
-        }
-
-        lock.withLock {
-            _currentJobId = jobId
-            _currentJobLocation = jobRef.location
-        }
-
-        if let state = jobResponse.status?.state, state != "DONE" {
-            let finalJob = try await pollJobCompletion(
-                jobId: jobId, location: jobRef.location, auth: auth, session: session
-            )
-            if let errorResult = finalJob.status?.errorResult {
-                let reason = errorResult.reason.map { " [\($0)]" } ?? ""
-                throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
-            }
-        } else if let errorResult = jobResponse.status?.errorResult {
-            let reason = errorResult.reason.map { " [\($0)]" } ?? ""
-            throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
-        }
-
-        return BQJobInfo(jobId: jobId, location: jobRef.location)
-    }
-
-    // MARK: - Dry Run
-
-    func dryRunQuery(_ sql: String, defaultDataset: String? = nil) async throws -> BQExecuteResult {
-        let (session, auth) = try getSessionAndAuth()
-
-        let maxBytes = config.additionalFields["bqMaxBytesBilled"]
-        let maxBytesBilled = (maxBytes?.isEmpty == false) ? maxBytes : nil
-
-        let queryConfig = BQJobRequest.BQQueryConfig(
-            query: sql,
-            useLegacySql: false,
-            maxResults: nil,
-            defaultDataset: defaultDataset.map {
-                BQJobRequest.BQDatasetReference(projectId: auth.projectId, datasetId: $0)
-            },
-            timeoutMs: nil,
-            maximumBytesBilled: maxBytesBilled
-        )
-
-        let jobRequest = BQJobRequest(
-            configuration: BQJobRequest.BQJobConfiguration(query: queryConfig, dryRun: true)
-        )
-
-        let token = try await auth.accessToken()
-        var components = URLComponents(string: "\(Self.baseUrl)/projects/\(auth.projectId)/jobs")
-        if let loc = location {
-            components?.queryItems = [URLQueryItem(name: "location", value: loc)]
-        }
-        guard let url = components?.url else {
-            throw BigQueryError.invalidResponse("Invalid URL for dryRunQuery")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(jobRequest)
-
-        let (data, response) = try await performRequestWithRetry(request, session: session)
-        try checkHTTPResponse(response, data: data)
-
-        let jobResponse = try JSONDecoder().decode(BQJobResponse.self, from: data)
-
-        let bytesProcessed = jobResponse.statistics?.totalBytesProcessed
-            ?? jobResponse.statistics?.query?.totalBytesProcessed ?? "0"
-        let bytesBilled = jobResponse.statistics?.query?.totalBytesBilled ?? "0"
-        let cacheHit = jobResponse.statistics?.query?.cacheHit ?? false
-
-        let queryResponse = BQQueryResponse(
-            schema: nil, rows: nil, totalRows: "0",
-            pageToken: nil, jobComplete: true, jobReference: nil, numDmlAffectedRows: nil
-        )
-
-        return BQExecuteResult(
-            queryResponse: queryResponse,
-            dmlAffectedRows: 0,
-            totalBytesProcessed: bytesProcessed,
-            totalBytesBilled: bytesBilled,
-            cacheHit: cacheHit
-        )
-    }
-
-    // MARK: - Dataset Operations
 
     func listDatasets() async throws -> [String] {
-        let (session, auth) = try getSessionAndAuth()
-        let token = try await auth.accessToken()
-
-        var allDatasets: [String] = []
+        var datasets: [String] = []
         var pageToken: String?
-
         repeat {
-            var components = URLComponents(string: "\(Self.baseUrl)/projects/\(auth.projectId)/datasets")
-            var queryItems = [URLQueryItem(name: "maxResults", value: "1000")]
-            if let pt = pageToken {
-                queryItems.append(URLQueryItem(name: "pageToken", value: pt))
+            var query = [URLQueryItem(name: "maxResults", value: Self.listPageSize)]
+            if let pageToken {
+                query.append(URLQueryItem(name: "pageToken", value: pageToken))
             }
-            components?.queryItems = queryItems
-
-            guard let url = components?.url else {
-                throw BigQueryError.invalidResponse("Invalid URL for listDatasets")
-            }
-
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await performRequestWithRetry(request, session: session)
-            try checkHTTPResponse(response, data: data)
-
-            let listResponse = try JSONDecoder().decode(BQDatasetListResponse.self, from: data)
-            let names = listResponse.datasets?.map(\.datasetReference.datasetId) ?? []
-            allDatasets.append(contentsOf: names)
-            pageToken = listResponse.nextPageToken
+            let url = try endpoint(["projects", projectId, "datasets"], query: query)
+            let page: BQDatasetListResponse = try await decode(send(URLRequest(url: url)))
+            datasets.append(contentsOf: page.datasets?.map(\.datasetReference.datasetId) ?? [])
+            pageToken = page.nextPageToken
         } while pageToken != nil
-
-        return allDatasets
+        return datasets
     }
 
-    // MARK: - Table Operations
-
     func listTables(datasetId: String) async throws -> [BQTableListResponse.BQTableEntry] {
-        let (session, auth) = try getSessionAndAuth()
-        let token = try await auth.accessToken()
-
-        var allTables: [BQTableListResponse.BQTableEntry] = []
+        var tables: [BQTableListResponse.BQTableEntry] = []
         var pageToken: String?
-
         repeat {
-            var components = URLComponents(
-                string: "\(Self.baseUrl)/projects/\(auth.projectId)/datasets/\(datasetId)/tables"
-            )
-            var queryItems = [URLQueryItem(name: "maxResults", value: "1000")]
-            if let pt = pageToken {
-                queryItems.append(URLQueryItem(name: "pageToken", value: pt))
+            var query = [URLQueryItem(name: "maxResults", value: Self.listPageSize)]
+            if let pageToken {
+                query.append(URLQueryItem(name: "pageToken", value: pageToken))
             }
-            components?.queryItems = queryItems
-
-            guard let url = components?.url else {
-                throw BigQueryError.invalidResponse("Invalid URL for listTables")
-            }
-
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await performRequestWithRetry(request, session: session)
-            try checkHTTPResponse(response, data: data)
-
-            let listResponse = try JSONDecoder().decode(BQTableListResponse.self, from: data)
-            allTables.append(contentsOf: listResponse.tables ?? [])
-            pageToken = listResponse.nextPageToken
+            let url = try endpoint(["projects", projectId, "datasets", datasetId, "tables"], query: query)
+            let page: BQTableListResponse = try await decode(send(URLRequest(url: url)))
+            tables.append(contentsOf: page.tables ?? [])
+            pageToken = page.nextPageToken
         } while pageToken != nil
-
-        return allTables
+        return tables
     }
 
     func getTable(datasetId: String, tableId: String) async throws -> BQTableResource {
-        let (session, auth) = try getSessionAndAuth()
-        let token = try await auth.accessToken()
-
-        let urlString = "\(Self.baseUrl)/projects/\(auth.projectId)/datasets/\(datasetId)/tables/\(tableId)"
-        guard let url = URL(string: urlString) else {
-            throw BigQueryError.invalidResponse("Invalid URL: \(urlString)")
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await performRequestWithRetry(request, session: session)
-        try checkHTTPResponse(response, data: data)
-
-        return try JSONDecoder().decode(BQTableResource.self, from: data)
+        let url = try endpoint(["projects", projectId, "datasets", datasetId, "tables", tableId])
+        return try await decode(send(URLRequest(url: url)))
     }
-
-    // MARK: - Job Operations
 
     func cancelJob(jobId: String, location: String?) async throws {
-        let (session, auth) = try getSessionAndAuth()
-        let token = try await auth.accessToken()
-
-        var components = URLComponents(
-            string: "\(Self.baseUrl)/projects/\(auth.projectId)/jobs/\(jobId)/cancel"
-        )
-        if let loc = location {
-            components?.queryItems = [URLQueryItem(name: "location", value: loc)]
-        }
-
-        guard let url = components?.url else {
-            throw BigQueryError.invalidResponse("Invalid URL for cancelJob")
-        }
-
-        var request = URLRequest(url: url)
+        let query = location.map { [URLQueryItem(name: "location", value: $0)] } ?? []
+        var request = URLRequest(url: try endpoint(["projects", projectId, "jobs", jobId, "cancel"], query: query))
         request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (_, response) = try await performRequestWithRetry(request, session: session)
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            Self.logger.warning("Job cancel returned HTTP \(httpResponse.statusCode)")
-        }
+        _ = try await send(request)
     }
 
-    // MARK: - Private Helpers
-
-    private func createAuthProvider() throws -> BigQueryAuthProvider {
-        let authMethod = config.additionalFields["bqAuthMethod"] ?? "serviceAccount"
-        let overrideProjectId = config.additionalFields["bqProjectId"]
-
-        switch authMethod {
-        case "serviceAccount":
-            let keyValue = config.additionalFields["bqServiceAccountJson"] ?? config.password
-            guard !keyValue.isEmpty else {
-                throw BigQueryError.authFailed("Service account key is required")
-            }
-
-            let jsonData: Data
-            let trimmed = keyValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix("{") {
-                guard let data = trimmed.data(using: .utf8) else {
-                    throw BigQueryError.authFailed("Failed to encode service account JSON")
-                }
-                jsonData = data
-            } else {
-                let path = NSString(string: trimmed).expandingTildeInPath
-                guard let data = FileManager.default.contents(atPath: path) else {
-                    throw BigQueryError.authFailed("Cannot read service account file: \(trimmed)")
-                }
-                jsonData = data
-            }
-
-            return try ServiceAccountAuthProvider(jsonData: jsonData, overrideProjectId: overrideProjectId)
-
-        case "adc":
-            return try ADCAuthProvider(overrideProjectId: overrideProjectId)
-
-        case "oauth":
-            let clientId = config.additionalFields["bqOAuthClientId"] ?? ""
-            let clientSecret = config.additionalFields["bqOAuthClientSecret"] ?? ""
-            let refreshToken = config.additionalFields["bqOAuthRefreshToken"]
-            let projectId = config.additionalFields["bqProjectId"] ?? ""
-
-            guard !clientId.isEmpty else {
-                throw BigQueryError.authFailed("OAuth Client ID is required")
-            }
-            guard !clientSecret.isEmpty else {
-                throw BigQueryError.authFailed("OAuth Client Secret is required")
-            }
-            guard !projectId.isEmpty else {
-                throw BigQueryError.authFailed("Project ID is required")
-            }
-
-            let refreshTokenValue = (refreshToken?.isEmpty == false) ? refreshToken : nil
-            return OAuthBrowserAuthProvider(
-                clientId: clientId, clientSecret: clientSecret,
-                refreshToken: refreshTokenValue, projectId: projectId
+    private func runJob(
+        _ sql: String,
+        defaultDataset: String?,
+        queryParameters: [BigQueryQueryParameter]?
+    ) async throws -> BQJobResponse {
+        let timeoutSeconds = lock.withLock { queryTimeoutSeconds }
+        let hasParameters = queryParameters?.isEmpty == false
+        let request = BQJobRequest(
+            jobReference: jobReference(),
+            configuration: BQJobRequest.BQJobConfiguration(
+                query: queryConfig(
+                    sql,
+                    defaultDataset: defaultDataset,
+                    parameterMode: hasParameters ? Self.namedParameterMode : nil,
+                    queryParameters: hasParameters ? queryParameters : nil
+                ),
+                dryRun: nil,
+                jobTimeoutMs: BigQueryJobPolling.jobTimeoutMilliseconds(queryTimeoutSeconds: timeoutSeconds)
             )
-
-        default:
-            throw BigQueryError.authFailed("Unknown auth method: \(authMethod)")
-        }
-    }
-
-    private func getSessionAndAuth() throws -> (URLSession, BigQueryAuthProvider) {
-        try lock.withLock {
-            guard let session = _session, let auth = _authProvider else {
-                throw BigQueryError.notConnected
-            }
-            return (session, auth)
-        }
-    }
-
-    private func performRequest(
-        _ request: URLRequest,
-        session: URLSession
-    ) async throws -> (Data, URLResponse) {
-        var timedRequest = request
-        timedRequest.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        return try await withCheckedThrowingContinuation { continuation in
-            let task = session.dataTask(with: timedRequest) { [weak self] data, response, error in
-                self?.lock.withLock { self?._currentTask = nil }
-                if let error {
-                    if (error as? URLError)?.code == .cancelled {
-                        continuation.resume(throwing: BigQueryError.requestCancelled)
-                    } else {
-                        continuation.resume(
-                            throwing: BigQueryError.invalidResponse(error.localizedDescription)
-                        )
-                    }
-                    return
-                }
-                guard let data, let response else {
-                    continuation.resume(throwing: BigQueryError.invalidResponse("Empty response"))
-                    return
-                }
-                continuation.resume(returning: (data, response))
-            }
-            lock.withLock { _currentTask = task }
-            task.resume()
-        }
-    }
-
-    private func performRequestWithRetry(
-        _ request: URLRequest,
-        session: URLSession,
-        maxRetries: Int = 3
-    ) async throws -> (Data, URLResponse) {
-        for attempt in 0..<maxRetries {
-            let (data, response) = try await performRequest(request, session: session)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 429 else {
-                return (data, response)
-            }
-            let delay = UInt64(pow(2.0, Double(attempt) + 1)) * 500_000_000
-            Self.logger.info("Rate limited (429), retrying (attempt \(attempt + 1)/\(maxRetries))")
-            try await Task.sleep(nanoseconds: delay)
-        }
-        // Final attempt — no more retries, return whatever the server gives
-        return try await performRequest(request, session: session)
-    }
-
-    private func checkHTTPResponse(_ response: URLResponse, data: Data) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw BigQueryError.invalidResponse("Not an HTTP response")
-        }
-
-        if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
-            return
-        }
-
-        if let errorResponse = try? JSONDecoder().decode(BQErrorResponse.self, from: data),
-           let detail = errorResponse.error
-        {
-            let code = detail.code ?? httpResponse.statusCode
-            let message = detail.message ?? "Unknown error"
-
-            if code == 401 {
-                throw BigQueryError.authFailed(message)
-            }
-            if code == 403 {
-                throw BigQueryError.apiError(code: 403, message: message)
-            }
-            throw BigQueryError.apiError(code: code, message: message)
-        }
-
-        throw BigQueryError.apiError(
-            code: httpResponse.statusCode,
-            message: "HTTP \(httpResponse.statusCode) (response length: \(data.count))"
         )
+        let started = Date()
+        let inserted = try await insertJob(request)
+        guard let jobId = inserted.jobReference?.jobId else {
+            throw BigQueryError.invalidResponse
+        }
+        let jobLocation = inserted.jobReference?.location
+
+        do {
+            let finished = try await waitForCompletion(
+                of: inserted,
+                jobId: jobId,
+                location: jobLocation,
+                deadline: BigQueryJobPolling.deadline(queryTimeoutSeconds: timeoutSeconds, from: started),
+                timeoutSeconds: timeoutSeconds
+            )
+            if let failure = BigQueryJobPolling.failure(of: finished) {
+                throw failure
+            }
+            return finished
+        } catch let error as BigQueryError {
+            if case .cancelled = error {
+                cancelInBackground(jobId: jobId, location: jobLocation)
+            }
+            throw error
+        }
     }
 
-    private func getQueryResults(
+    private func waitForCompletion(
+        of job: BQJobResponse,
         jobId: String,
         location: String?,
-        pageToken: String? = nil,
-        auth: BigQueryAuthProvider,
-        session: URLSession,
-        maxAttempts: Int? = nil
-    ) async throws -> BQQueryResponse {
-        let effectiveMaxAttempts = maxAttempts ?? lock.withLock { _queryTimeoutSeconds } * 2
-        var remainingAttempts = effectiveMaxAttempts
+        deadline: Date?,
+        timeoutSeconds: Int
+    ) async throws -> BQJobResponse {
+        var current = job
+        var attempt = 0
+        while current.status?.state != BigQueryJobPolling.doneState {
+            if let deadline, Date() >= deadline {
+                cancelInBackground(jobId: jobId, location: location)
+                throw BigQueryError.jobTimedOut(seconds: timeoutSeconds)
+            }
+            try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: attempt))
+            attempt += 1
+            current = try await getJob(jobId: jobId, location: location)
+        }
+        return current
+    }
 
-        while true {
-            let token = try await auth.accessToken()
-
-            var components = URLComponents(
-                string: "\(Self.baseUrl)/projects/\(auth.projectId)/queries/\(jobId)"
+    private func dryRun(
+        _ sql: String,
+        defaultDataset: String?,
+        parameterMode: String?
+    ) async throws -> BQJobResponse {
+        let request = BQJobRequest(
+            jobReference: jobReference(),
+            configuration: BQJobRequest.BQJobConfiguration(
+                query: queryConfig(
+                    sql,
+                    defaultDataset: defaultDataset,
+                    parameterMode: parameterMode,
+                    queryParameters: nil
+                ),
+                dryRun: true,
+                jobTimeoutMs: nil
             )
-            var queryItems = [URLQueryItem(name: "maxResults", value: "10000")]
-            if let pt = pageToken {
-                queryItems.append(URLQueryItem(name: "pageToken", value: pt))
+        )
+        let job = try await insertJob(request)
+        if let failure = BigQueryJobPolling.failure(of: job) {
+            throw failure
+        }
+        return job
+    }
+
+    private func insertJob(_ job: BQJobRequest) async throws -> BQJobResponse {
+        var request = URLRequest(url: try endpoint(["projects", projectId, "jobs"]))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(job)
+        return try await decode(send(request))
+    }
+
+    private func getJob(jobId: String, location: String?) async throws -> BQJobResponse {
+        let query = location.map { [URLQueryItem(name: "location", value: $0)] } ?? []
+        let url = try endpoint(["projects", projectId, "jobs", jobId], query: query)
+        return try await decode(send(URLRequest(url: url)))
+    }
+
+    private func jobReference() -> BQJobRequest.BQJobRequestReference? {
+        guard let location else { return nil }
+        return BQJobRequest.BQJobRequestReference(projectId: projectId, location: location)
+    }
+
+    private func queryConfig(
+        _ sql: String,
+        defaultDataset: String?,
+        parameterMode: String?,
+        queryParameters: [BigQueryQueryParameter]?
+    ) -> BQJobRequest.BQQueryConfig {
+        BQJobRequest.BQQueryConfig(
+            query: sql,
+            useLegacySql: false,
+            defaultDataset: defaultDataset.flatMap { dataset in
+                dataset.isEmpty ? nil : BQJobRequest.BQDatasetReference(projectId: projectId, datasetId: dataset)
+            },
+            maximumBytesBilled: maximumBytesBilled,
+            parameterMode: parameterMode,
+            queryParameters: queryParameters
+        )
+    }
+
+    private func cancelInBackground(jobId: String, location: String?) {
+        Task.detached { [self] in
+            do {
+                try await cancelJob(jobId: jobId, location: location)
+            } catch {
+                Self.logger.warning("BigQuery job cancel failed: \(error.localizedDescription, privacy: .public)")
             }
-            if let loc = location {
-                queryItems.append(URLQueryItem(name: "location", value: loc))
+        }
+    }
+
+    private func endpoint(_ segments: [String], query: [URLQueryItem] = []) throws -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = Self.host
+        let encoded = try segments.map { segment -> String in
+            guard let escaped = segment.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentAllowed) else {
+                throw BigQueryError.invalidResponse
             }
-            components?.queryItems = queryItems
+            return escaped
+        }
+        components.percentEncodedPath = Self.basePath + encoded.joined(separator: "/")
+        if !query.isEmpty {
+            components.queryItems = query
+        }
+        guard let url = components.url else {
+            throw BigQueryError.invalidResponse
+        }
+        return url
+    }
 
-            guard let url = components?.url else {
-                throw BigQueryError.invalidResponse("Invalid URL for getQueryResults")
+    private func currentSession() throws -> URLSession {
+        guard let session = lock.withLock({ session }) else {
+            throw BigQueryError.notConnected
+        }
+        return session
+    }
+
+    private func send(_ request: URLRequest) async throws -> Data {
+        var rateLimitAttempt = 0
+        var refreshedToken = false
+        while true {
+            let (data, response) = try await perform(request)
+            let status = response.statusCode
+            if (200..<300).contains(status) {
+                return data
             }
-
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await performRequestWithRetry(request, session: session)
-            try checkHTTPResponse(response, data: data)
-
-            let queryResponse = try JSONDecoder().decode(BQQueryResponse.self, from: data)
-
-            if queryResponse.jobComplete == false {
-                remainingAttempts -= 1
-                if remainingAttempts <= 0 {
-                    throw BigQueryError.timeout("Query results not ready after \(effectiveMaxAttempts) attempts")
-                }
-                let attempt = effectiveMaxAttempts - remainingAttempts
-                let backoffNs = UInt64(min(500 * pow(2.0, Double(min(attempt, 4))), 5000)) * 1_000_000
-                try await Task.sleep(nanoseconds: backoffNs)
+            if status == Self.unauthorizedStatus, !refreshedToken {
+                refreshedToken = true
+                await tokenProvider.invalidateCachedToken()
                 continue
             }
-
-            return queryResponse
+            if status == Self.rateLimitedStatus, rateLimitAttempt < Self.rateLimitRetries {
+                rateLimitAttempt += 1
+                Self.logger.info("BigQuery rate limited, retry \(rateLimitAttempt, privacy: .public)")
+                try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: rateLimitAttempt))
+                continue
+            }
+            throw BQErrorResponse.apiError(status: status, data: data)
         }
     }
 
-    @discardableResult
-    private func pollJobCompletion(
-        jobId: String,
-        location: String?,
-        auth: BigQueryAuthProvider,
-        session: URLSession
-    ) async throws -> BQJobResponse {
-        let maxAttempts = lock.withLock { _queryTimeoutSeconds } * 2 // 500ms per attempt
-        var attempts = 0
-
-        while attempts < maxAttempts {
-            let backoffNs = UInt64(min(500 * pow(2.0, Double(min(attempts, 4))), 5000)) * 1_000_000
-            try await Task.sleep(nanoseconds: backoffNs)
-            attempts += 1
-
-            let token = try await auth.accessToken()
-
-            var components = URLComponents(
-                string: "\(Self.baseUrl)/projects/\(auth.projectId)/jobs/\(jobId)"
-            )
-            if let loc = location {
-                components?.queryItems = [URLQueryItem(name: "location", value: loc)]
+    private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let session = try currentSession()
+        let token = try await accessToken()
+        var authorized = request
+        authorized.timeoutInterval = requestTimeout.requestTimeoutInterval
+        authorized.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await session.data(for: authorized)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw BigQueryError.invalidResponse
             }
-
-            guard let url = components?.url else {
-                throw BigQueryError.invalidResponse("Invalid URL for pollJobCompletion")
-            }
-
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await performRequestWithRetry(request, session: session)
-            try checkHTTPResponse(response, data: data)
-
-            let jobResponse = try JSONDecoder().decode(BQJobResponse.self, from: data)
-
-            guard let state = jobResponse.status?.state else {
-                throw BigQueryError.invalidResponse("Missing job state")
-            }
-
-            if state == "DONE" {
-                if let errorResult = jobResponse.status?.errorResult {
-                    let reason = errorResult.reason.map { " [\($0)]" } ?? ""
-                    throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
-                }
-                return jobResponse
-            }
+            return (data, httpResponse)
+        } catch let error as BigQueryError {
+            throw error
+        } catch {
+            throw BigQueryError.wrap(error)
         }
+    }
 
-        // Try to cancel the timed-out job
-        let timeoutSeconds = lock.withLock { _queryTimeoutSeconds }
-        try? await cancelJob(jobId: jobId, location: location)
-        throw BigQueryError.timeout("Job did not complete within \(timeoutSeconds) seconds")
+    private func accessToken() async throws -> String {
+        do {
+            return try await tokenProvider.accessToken()
+        } catch {
+            throw BigQueryError.wrap(error)
+        }
+    }
+
+    private func sleep(nanoseconds: UInt64) async throws {
+        do {
+            try await Task.sleep(nanoseconds: nanoseconds)
+        } catch {
+            throw BigQueryError.cancelled
+        }
+    }
+
+    private func decode<T: Decodable>(_ data: Data) throws -> T {
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            Self.logger.error("BigQuery response did not decode as \(String(describing: T.self), privacy: .public)")
+            throw BigQueryError.invalidResponse
+        }
     }
 }

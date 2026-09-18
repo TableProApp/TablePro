@@ -5,21 +5,27 @@
 
 import AppKit
 import Foundation
-import os
-
-private let discardLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator+Discard")
+import TableProPluginKit
 
 extension RowEditingCoordinator {
     // MARK: - Sidebar Transaction
 
+    /// Edits made in the row inspector belong to the selected tab, so they run on that
+    /// tab's database. The scope is read before the authorization prompt, which awaits a
+    /// sheet and Touch ID and gives the selection time to move somewhere else.
     func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
+        guard let scope = parent.selectedTabScope else {
+            throw DatabaseError.notConnected
+        }
+
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
+        let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
                 connectionId: parent.connectionId,
                 databaseType: parent.connection.type,
                 sql: sqlPreview,
-                kind: OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type)),
+                kind: kind,
                 caller: .userInterface,
                 capabilities: .interactiveUser,
                 operationDescription: String(localized: "Save Sidebar Changes")
@@ -29,60 +35,66 @@ extension RowEditingCoordinator {
             throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-            throw DatabaseError.notConnected
-        }
-
-        let useTransaction = driver.supportsTransactions
-
-        if useTransaction {
-            try await driver.beginTransaction()
-        }
-
-        do {
-            for stmt in statements {
-                if stmt.parameters.isEmpty {
-                    _ = try await driver.execute(query: stmt.sql)
-                } else {
-                    _ = try await driver.executeParameterized(query: stmt.sql, parameters: stmt.parameters)
-                }
-            }
-            if useTransaction {
-                try await driver.commitTransaction()
-            }
-        } catch {
-            if useTransaction {
-                do {
-                    try await driver.rollbackTransaction()
-                } catch {
-                    discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            throw error
+        let mode: PluginTransactionAccessMode = kind.declaresWrite ? .readWrite : .serverDefault
+        _ = try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: DatabaseManager.shared.executionRoute(for: scope),
+            cancellation: .protectedWrite
+        ) { driver in
+            _ = try await DataWriteExecutor.run(statements: statements, mode: mode, on: driver)
         }
     }
 
     // MARK: - Discard
 
     func handleDiscard(
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>
+        pendingTruncates: inout Set<DatabaseTreeTableRef>,
+        pendingDeletes: inout Set<DatabaseTreeTableRef>
     ) {
-        let originalValues = parent.changeManager.getOriginalValues()
+        restoreRowBufferToOriginals()
+
+        if let tab = parent.tabManager.selectedTab {
+            parent.saveLastFilters(of: tab)
+        }
+
+        pendingTruncates.removeAll()
+        pendingDeletes.removeAll()
+        parent.changeManager.clearChangesAndUndoHistory()
+
+        if let (_, index) = parent.tabManager.selectedTabAndIndex {
+            parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
+        }
+
+        Task { [parent] in await parent.refreshTables() }
+    }
+
+    /// Puts the loaded rows back the way the server last reported them.
+    ///
+    /// An edit is written straight into the tab's `TableRows` as well as being recorded, so
+    /// clearing the change records alone leaves the edited values on screen with nothing tracking
+    /// them, and the next edit captures an unsaved value as its baseline. A discard that re-queries
+    /// replaces the buffer wholesale and needs none of this; one that does not has to undo it here.
+    func restoreRowBufferToOriginals() {
         var deltas: [Delta] = []
-        if let (tab, _) = parent.tabManager.selectedTabAndIndex {
+        if let (tab, _) = parent.tabManager.selectedTabAndIndex,
+           let tableRows = parent.tabSessionRegistry.existingTableRows(for: tab.id) {
             let tabId = tab.id
-            let insertedIDs = collectInsertedRowIDs(
-                tabId: tabId,
-                indices: parent.changeManager.insertedRowIndices
-            )
-            let edits = originalValues.map { (row: $0.0, column: $0.1, value: $0.2) }
+            let insertedIDs = parent.changeManager.insertedRowIDs
+            var restoredCells: [(rowID: RowID, columnIndex: Int)] = []
+            let edits = parent.changeManager.getOriginalValues().compactMap { original in
+                tableRows.index(of: original.rowID).map { storageRow -> (row: Int, column: Int, value: PluginCellValue) in
+                    restoredCells.append((rowID: original.rowID, columnIndex: original.columnIndex))
+                    return (row: storageRow, column: original.columnIndex, value: original.value)
+                }
+            }
             if !edits.isEmpty {
                 let editDelta = parent.mutateActiveTableRows(for: tabId) { rows in
                     rows.editMany(edits)
                 }
+                /// `editMany` names the rows it changed by their position in storage, and the grid
+                /// reads a delta's rows as display positions.
                 if editDelta != .none {
-                    deltas.append(editDelta)
+                    deltas.append(restoredCellsDelta(restoredCells, in: tableRows))
                 }
             }
             if !insertedIDs.isEmpty {
@@ -98,32 +110,25 @@ extension RowEditingCoordinator {
         for delta in deltas {
             parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
         }
-
-        if let tableName = parent.tabManager.selectedTab?.tableContext.tableName {
-            parent.saveLastFilters(for: tableName)
-        }
-
-        pendingTruncates.removeAll()
-        pendingDeletes.removeAll()
-        parent.changeManager.clearChangesAndUndoHistory()
-
-        if let (_, index) = parent.tabManager.selectedTabAndIndex {
-            parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
-        }
-
-        Task { [parent] in await parent.refreshTables() }
+        /// The row inspector reads its fields from the buffer this just rewrote, and nothing else
+        /// in `InspectorTrigger` moves on a discard.
+        parent.gridDisplayRevision &+= 1
     }
 
-    private func collectInsertedRowIDs(tabId: UUID, indices: Set<Int>) -> Set<RowID> {
-        guard !indices.isEmpty else { return [] }
-        guard let tableRows = parent.tabSessionRegistry.existingTableRows(for: tabId) else { return [] }
-        var ids = Set<RowID>()
-        for index in indices where index >= 0 && index < tableRows.rows.count {
-            let id = tableRows.rows[index].id
-            if id.isInserted {
-                ids.insert(id)
-            }
+    private func restoredCellsDelta(
+        _ cells: [(rowID: RowID, columnIndex: Int)],
+        in tableRows: TableRows
+    ) -> Delta {
+        let displayIDs = parent.activeGridDisplayIDs
+        var positions: Set<CellPosition> = []
+        for cell in cells {
+            guard let displayRow = DisplayRowMapping.displayIndex(
+                forRowID: cell.rowID,
+                displayIDs: displayIDs,
+                in: tableRows
+            ) else { continue }
+            positions.insert(CellPosition(row: displayRow, column: cell.columnIndex))
         }
-        return ids
+        return positions.isEmpty ? .none : .cellsChanged(positions)
     }
 }

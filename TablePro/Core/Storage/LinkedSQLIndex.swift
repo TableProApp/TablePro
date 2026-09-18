@@ -11,9 +11,23 @@ internal actor LinkedSQLIndex {
     static let shared = LinkedSQLIndex()
     private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedSQLIndex")
 
-    private var db: OpaquePointer?
+    private struct DatabaseHandle: @unchecked Sendable {
+        var pointer: OpaquePointer?
+    }
+
+    private var dbHandle = DatabaseHandle()
+
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
+    private var isPrepared = false
+
+    private var db: OpaquePointer? {
+        if !isPrepared {
+            isPrepared = true
+            setupDatabase()
+        }
+        return dbHandle.pointer
+    }
 
     init(
         databaseURL: URL = LinkedSQLIndex.defaultDatabaseURL(),
@@ -21,22 +35,18 @@ internal actor LinkedSQLIndex {
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
-        setupDatabase()
     }
 
     static func defaultDatabaseURL() -> URL {
         let fileManager = FileManager.default
-        let appSupport = fileManager.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first ?? fileManager.temporaryDirectory
-        let dir = appSupport.appendingPathComponent("TablePro")
+        let dir = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("linked_sql_index.db")
     }
 
     deinit {
-        if let db = db {
-            sqlite3_close_v2(db)
+        if let pointer = dbHandle.pointer {
+            sqlite3_close_v2(pointer)
         }
         if removeDatabaseOnDeinit {
             let path = databaseURL.path(percentEncoded: false)
@@ -52,7 +62,7 @@ internal actor LinkedSQLIndex {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let dbPath = databaseURL.path(percentEncoded: false)
-        if sqlite3_open(dbPath, &db) != SQLITE_OK {
+        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
             Self.logger.error("Error opening linked SQL index database")
             return
         }

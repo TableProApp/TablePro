@@ -11,6 +11,11 @@ struct ConnectionFieldRow: View {
     @Binding var value: String
 
     var body: some View {
+        control
+            .accessibilityIdentifier("connection-field-\(field.id)")
+    }
+
+    @ViewBuilder private var control: some View {
         if field.dynamicOptions == .awsProfiles {
             LabeledContent(field.label) {
                 AWSProfileField(placeholder: field.placeholder, value: $value)

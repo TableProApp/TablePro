@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("Editable Column Definition")
@@ -207,5 +207,189 @@ struct ColumnDefinitionTests {
         #expect(convertedBack.defaultValue == originalInfo.defaultValue)
         #expect(convertedBack.extra == originalInfo.extra)
         #expect(convertedBack.comment == originalInfo.comment)
+        #expect(editable.onUpdate == "CURRENT_TIMESTAMP")
+    }
+
+    // MARK: - On Update
+
+    @Test("Server-reported on-update timestamp survives a rebuild from the working column")
+    func onUpdateSurvivesRebuild() {
+        let original = ColumnInfo(
+            name: "updated_at",
+            dataType: "timestamp",
+            isNullable: false,
+            isPrimaryKey: false,
+            defaultValue: "CURRENT_TIMESTAMP",
+            extra: "on update CURRENT_TIMESTAMP",
+            charset: nil,
+            collation: nil,
+            comment: nil
+        )
+
+        var editable = EditableColumnDefinition.from(original)
+        editable.comment = "touched"
+        let rebuilt = EditableColumnDefinition.from(editable.toColumnInfo())
+
+        #expect(rebuilt.onUpdate == "CURRENT_TIMESTAMP")
+        #expect(editable.toPlugin().onUpdate == "CURRENT_TIMESTAMP")
+    }
+
+    @Test(
+        "On-update is parsed out of every EXTRA spelling the server uses",
+        arguments: [
+            (extra: String?.none, expected: String?.none),
+            (extra: "", expected: nil),
+            (extra: "auto_increment", expected: nil),
+            (extra: "DEFAULT_GENERATED", expected: nil),
+            (extra: "on update CURRENT_TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (extra: "ON UPDATE CURRENT_TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (extra: "on update CURRENT_TIMESTAMP(6)", expected: "CURRENT_TIMESTAMP"),
+            (extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)", expected: "CURRENT_TIMESTAMP")
+        ]
+    )
+    func onUpdateParsing(extra: String?, expected: String?) {
+        let columnInfo = ColumnInfo(
+            name: "updated_at",
+            dataType: "timestamp",
+            isNullable: false,
+            isPrimaryKey: false,
+            defaultValue: nil,
+            extra: extra,
+            charset: nil,
+            collation: nil,
+            comment: nil
+        )
+
+        #expect(EditableColumnDefinition.from(columnInfo).onUpdate == expected)
+    }
+
+    @Test("A placeholder column carries no on-update attribute")
+    func placeholderHasNoOnUpdate() {
+        #expect(EditableColumnDefinition.placeholder().onUpdate == nil)
+    }
+
+    // MARK: - ddlSpelling
+
+    private func spatialColumn() -> EditableColumnDefinition {
+        EditableColumnDefinition(
+            id: UUID(),
+            name: "shape",
+            dataType: "geometry",
+            isNullable: true,
+            defaultValue: "st_geomfromtext('POINT(0 0)'::text, 4326)",
+            autoIncrement: false,
+            unsigned: false,
+            comment: nil,
+            collation: nil,
+            onUpdate: nil,
+            charset: nil,
+            extra: nil,
+            generationExpression: "st_x(shape)",
+            generationKind: .stored,
+            isPrimaryKey: false,
+            ddlSpelling: "public.geometry(Point,4326)",
+            ddlDefault: "public.st_geomfromtext('POINT(0 0)'::text, 4326)",
+            ddlGenerationExpression: "public.st_x(shape)"
+        )
+    }
+
+    @Test("The server's spellings survive construction")
+    func ddlSpellingSurvivesInit() {
+        let column = spatialColumn()
+        #expect(column.ddlSpelling == "public.geometry(Point,4326)")
+        #expect(column.ddlDefault == "public.st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(column.ddlGenerationExpression == "public.st_x(shape)")
+    }
+
+    @Test("Changing a field sets aside only the spelling that described its old value")
+    func changingFieldClearsItsOwnSpelling() {
+        var retyped = spatialColumn()
+        retyped.dataType = "geography"
+        #expect(retyped.ddlSpelling == nil)
+        #expect(retyped.ddlDefault != nil)
+        #expect(retyped.ddlGenerationExpression != nil)
+
+        var redefaulted = spatialColumn()
+        redefaulted.defaultValue = nil
+        #expect(redefaulted.ddlDefault == nil)
+        #expect(redefaulted.ddlSpelling != nil)
+
+        var regenerated = spatialColumn()
+        regenerated.generationExpression = "st_y(shape)"
+        #expect(regenerated.ddlGenerationExpression == nil)
+        #expect(regenerated.ddlSpelling != nil)
+    }
+
+    @Test("Changing a field and changing it back restores its spelling and the loaded column")
+    func editingAwayAndBackRestoresSpellingAndEquality() {
+        let loaded = spatialColumn()
+        var edited = loaded
+        edited.dataType = "text"
+        edited.defaultValue = nil
+        edited.generationExpression = "st_y(shape)"
+        #expect(edited != loaded)
+        edited.dataType = "geometry"
+        edited.defaultValue = "st_geomfromtext('POINT(0 0)'::text, 4326)"
+        edited.generationExpression = "st_x(shape)"
+        #expect(edited == loaded)
+        #expect(edited.ddlSpelling == "public.geometry(Point,4326)")
+        #expect(edited.ddlDefault == "public.st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(edited.ddlGenerationExpression == "public.st_x(shape)")
+    }
+
+    @Test("A spelling for a field with no value is not kept")
+    func spellingWithoutValueIsDropped() {
+        let column = EditableColumnDefinition(
+            id: UUID(), name: "id", dataType: "integer", isNullable: false, defaultValue: nil,
+            autoIncrement: false, unsigned: false, comment: nil, collation: nil, onUpdate: nil,
+            charset: nil, extra: nil, isPrimaryKey: true, ddlSpelling: "integer", ddlDefault: "0"
+        )
+        #expect(column.ddlDefault == nil)
+        #expect(column.ddlSpelling == "integer")
+    }
+
+    @Test("Assigning a field its current value keeps its spelling")
+    func reassigningSameValueKeepsSpellings() {
+        var column = spatialColumn()
+        column.dataType = "geometry"
+        column.defaultValue = "st_geomfromtext('POINT(0 0)'::text, 4326)"
+        column.generationExpression = "st_x(shape)"
+        #expect(column.ddlSpelling == "public.geometry(Point,4326)")
+        #expect(column.ddlDefault == "public.st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(column.ddlGenerationExpression == "public.st_x(shape)")
+    }
+
+    @Test("The spelling travels from the column read to the DDL writer")
+    func ddlSpellingCarriesThroughConversions() {
+        let columnInfo = ColumnInfo(
+            name: "status",
+            dataType: "ENUM",
+            isNullable: true,
+            isPrimaryKey: false,
+            defaultValue: "'new'::status",
+            ddlSpelling: "public.status",
+            ddlDefault: "'new'::public.status",
+            ddlGenerationExpression: nil
+        )
+        let editable = EditableColumnDefinition.from(columnInfo)
+        let plugin = editable.toPlugin()
+        #expect(plugin.ddlSpelling == "public.status")
+        #expect(plugin.ddlDefault == "'new'::public.status")
+        let roundTripped = editable.toColumnInfo()
+        #expect(roundTripped.ddlSpelling == "public.status")
+        #expect(roundTripped.ddlDefault == "'new'::public.status")
+        #expect(editable.withNewIdentity().ddlDefault == "'new'::public.status")
+    }
+
+    @Test("A column decoded from the clipboard carries no spelling from the connection it was copied on")
+    func decodingDropsDDLSpelling() throws {
+        let data = try JSONEncoder().encode([spatialColumn()])
+        let decoded = try JSONDecoder().decode([EditableColumnDefinition].self, from: data)
+        #expect(decoded.first?.dataType == "geometry")
+        #expect(decoded.first?.defaultValue == "st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(decoded.first?.ddlSpelling == nil)
+        #expect(decoded.first?.ddlDefault == nil)
+        #expect(decoded.first?.ddlGenerationExpression == nil)
     }
 }

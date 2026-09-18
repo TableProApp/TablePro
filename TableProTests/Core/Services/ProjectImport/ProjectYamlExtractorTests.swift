@@ -170,6 +170,237 @@ struct DockerComposeExtractorTests {
         #expect(candidate?.parsedURL.port == 3307)
     }
 
+    @Test("TiDB and Databend images map to their own types and ports")
+    func testTiDBAndDatabendImages() {
+        let tidb = extract("""
+        services:
+          tidb:
+            image: pingcap/tidb:latest
+            ports:
+              - "4001:4000"
+        """).first
+        #expect(tidb?.parsedURL.type == .tidb)
+        #expect(tidb?.parsedURL.port == 4_001)
+
+        let databend = extract("""
+        services:
+          warehouse:
+            image: datafuselabs/databend:latest
+            ports:
+              - "3308:3307"
+        """).first
+        #expect(databend?.parsedURL.type == .databend)
+        #expect(databend?.parsedURL.port == 3_308)
+    }
+
+    @Test("TiDB connects as root with no password, whatever MYSQL_ variables the service sets")
+    func testTiDBCredentials() {
+        let tidb = extract("""
+        services:
+          tidb:
+            image: registry.example.com/pingcap/tidb:v8.5.1
+            environment:
+              MYSQL_ROOT_PASSWORD: ignored
+              MYSQL_USER: ignored
+            ports:
+              - "4000:4000"
+        """).first
+        #expect(tidb?.parsedURL.type == .tidb)
+        #expect(tidb?.parsedURL.username == "root")
+        #expect(tidb?.parsedURL.password.isEmpty == true)
+    }
+
+    @Test("TiDB's tools are not TiDB servers")
+    func testTiDBToolImagesAreIgnored() {
+        for image in ["pingcap/tidb-lightning", "pingcap/tidb-dashboard", "pingcap/tidb-operator", "pingcap/tidb-binlog"] {
+            let candidate = extract("""
+            services:
+              tool:
+                image: \(image):latest
+                ports:
+                  - "4000:4000"
+            """).first
+            #expect(candidate?.parsedURL.type != .tidb, "\(image)")
+        }
+    }
+
+    @Test("A split deployment's databend-query node is a Databend server; the meta node is not")
+    func testDatabendQueryImage() {
+        let query = extract("""
+        services:
+          query:
+            image: datafuselabs/databend-query:v1.2.881
+            ports:
+              - "3307:3307"
+        """).first
+        #expect(query?.parsedURL.type == .databend)
+        let meta = extract("""
+        services:
+          meta:
+            image: datafuselabs/databend-meta:v1.2.881
+            ports:
+              - "3307:3307"
+        """).first
+        #expect(meta?.parsedURL.type != .databend)
+    }
+
+    @Test("Databend reads its own user variables and opens the default database")
+    func testDatabendCredentials() {
+        let databend = extract("""
+        services:
+          warehouse:
+            image: databendlabs/databend
+            environment:
+              QUERY_DEFAULT_USER: analyst
+              QUERY_DEFAULT_PASSWORD: secret
+            ports:
+              - "3307:3307"
+        """).first
+        #expect(databend?.parsedURL.type == .databend)
+        #expect(databend?.parsedURL.username == "analyst")
+        #expect(databend?.parsedURL.password == "secret")
+        #expect(databend?.parsedURL.database == "default")
+    }
+
+    @Test("An OceanBase observer with no tenant settings imports as root of the image's test tenant")
+    func testOceanBaseDefaultTenant() {
+        let oceanbase = extract("""
+        services:
+          ob:
+            image: oceanbase/oceanbase-ce:latest
+            environment:
+              OB_TENANT_NAME: ""
+            ports:
+              - "2881:2881"
+        """).first
+        #expect(oceanbase?.parsedURL.type == .oceanbase)
+        #expect(oceanbase?.parsedURL.port == 2_881)
+        #expect(oceanbase?.parsedURL.username == "root@test")
+        #expect(oceanbase?.parsedURL.password.isEmpty == true)
+        #expect(oceanbase?.parsedURL.database.isEmpty == true)
+    }
+
+    @Test("Tenant variables name the tenant, its password and its database, and the observer takes no cluster")
+    func testOceanBaseTenantVariables() {
+        let oceanbase = extract("""
+        services:
+          ob:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_TENANT_NAME: app
+              OB_TENANT_PASSWORD: tenantpw
+              OB_SYS_PASSWORD: syspw
+              OB_DATABASE: shop
+              OB_CLUSTER_NAME: obcluster
+            ports:
+              - "2881:2881"
+        """).first
+        #expect(oceanbase?.parsedURL.username == "root@app")
+        #expect(oceanbase?.parsedURL.password == "tenantpw")
+        #expect(oceanbase?.parsedURL.database == "shop")
+    }
+
+    @Test("A sys password alone means the sys tenant, except in SLIM mode, which never applies it")
+    func testOceanBaseSysPassword() {
+        let candidates = extract("""
+        services:
+          current:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_SYS_PASSWORD: syspw
+          legacy:
+            image: oceanbase/oceanbase-ce:4.0.0.0
+            environment:
+              - OB_ROOT_PASSWORD=rootpw
+          slim:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              MODE: slim
+              OB_SYS_PASSWORD: syspw
+        """)
+        let current = candidates.first { $0.sourceKey == "services.current" }
+        #expect(current?.parsedURL.username == "root@sys")
+        #expect(current?.parsedURL.password == "syspw")
+        let legacy = candidates.first { $0.sourceKey == "services.legacy" }
+        #expect(legacy?.parsedURL.username == "root@sys")
+        #expect(legacy?.parsedURL.password == "rootpw")
+        let slim = candidates.first { $0.sourceKey == "services.slim" }
+        #expect(slim?.parsedURL.username == "root@test")
+        #expect(slim?.parsedURL.password.isEmpty == true)
+    }
+
+    @Test("OBProxy imports on 2883 as the tenant of the observer its RS_LIST names, qualified by its cluster")
+    func testOceanBaseProxy() {
+        let candidates = extract("""
+        services:
+          proxy:
+            image: oceanbase/obproxy-ce:4.3.5.0-3
+            environment:
+              APP_NAME: tablepro
+              OB_CLUSTER: obcluster
+              RS_LIST: "observer:2881"
+            ports:
+              - "2883:2883"
+          observer:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_TENANT_NAME: app
+              OB_TENANT_PASSWORD: tenantpw
+          other:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_TENANT_NAME: other
+        """)
+        let proxy = candidates.first { $0.sourceKey == "services.proxy" }
+        #expect(proxy?.parsedURL.type == .oceanbase)
+        #expect(proxy?.parsedURL.port == 2_883)
+        #expect(proxy?.parsedURL.username == "root@app#obcluster")
+        #expect(proxy?.parsedURL.password == "tenantpw")
+    }
+
+    @Test("A proxy borrows the only observer's tenant, and with none keeps the default tenant")
+    func testOceanBaseProxyWithoutNamedObserver() {
+        let single = extract("""
+        services:
+          proxy:
+            image: oceanbase/obproxy-ce:latest
+            environment:
+              OB_CLUSTER: demo
+              RS_LIST: "172.20.0.5:2881"
+          ob:
+            image: oceanbase/oceanbase-ce:latest
+            environment:
+              OB_TENANT_NAME: app
+        """).first { $0.sourceKey == "services.proxy" }
+        #expect(single?.parsedURL.username == "root@app#demo")
+
+        let alone = extract("""
+        services:
+          proxy:
+            image: oceanbase/obproxy-ce:latest
+            ports:
+              - "2883:2883"
+        """).first
+        #expect(alone?.parsedURL.username == "root@test")
+        #expect(alone?.parsedURL.password.isEmpty == true)
+    }
+
+    @Test("OceanBase images that do not serve SQL are not imported")
+    func testOceanBaseNonDatabaseImages() {
+        let candidates = extract("""
+        services:
+          ocp:
+            image: oceanbase/ocp-ce:latest
+            ports:
+              - "8080:8080"
+          agent:
+            image: oceanbase/obagent:latest
+          miniob:
+            image: oceanbase/miniob:latest
+        """)
+        #expect(candidates.isEmpty)
+    }
+
     @Test("Interpolation uses the adjacent dotenv file")
     func testInterpolationFromDotenv() {
         let contents = """

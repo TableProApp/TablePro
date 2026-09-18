@@ -5,11 +5,9 @@
 
 import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-internal final class ConnectionDataCache {
+internal final class ConnectionDataCache: ObservableObject {
     private static let instances = NSMapTable<NSUUID, ConnectionDataCache>(
         keyOptions: .strongMemory,
         valueOptions: .weakMemory
@@ -25,14 +23,14 @@ internal final class ConnectionDataCache {
 
     let connectionId: UUID
 
-    private(set) var folders: [SQLFavoriteFolder] = []
-    private(set) var favorites: [SQLFavorite] = []
-    private(set) var linkedFolders: [LinkedSQLFolder] = []
-    private(set) var linkedFilesByFolderId: [UUID: [LinkedSQLFavorite]] = [:]
-    private(set) var isInitialLoadComplete: Bool = false
+    @Published private(set) var folders: [SQLFavoriteFolder] = []
+    @Published private(set) var favorites: [SQLFavorite] = []
+    @Published private(set) var linkedFolders: [LinkedSQLFolder] = []
+    @Published private(set) var linkedFilesByFolderId: [UUID: [LinkedSQLFavorite]] = [:]
+    @Published private(set) var isInitialLoadComplete: Bool = false
 
-    @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
-    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
+    private var refreshTask: Task<Void, Never>?
 
     private init(connectionId: UUID) {
         self.connectionId = connectionId
@@ -80,11 +78,10 @@ internal final class ConnectionDataCache {
         async let favoritesResult = SQLFavoriteManager.shared.fetchFavorites(connectionId: connectionId)
 
         let allLinkedFolders = LinkedSQLFolderStorage.shared.loadFolders()
-            .filter { $0.isEnabled }
             .filter { $0.connectionId == nil || $0.connectionId == connectionId }
 
         var loadedLinkedFiles: [UUID: [LinkedSQLFavorite]] = [:]
-        for folder in allLinkedFolders {
+        for folder in allLinkedFolders where folder.isEnabled {
             if Task.isCancelled { return }
             loadedLinkedFiles[folder.id] = await LinkedSQLIndex.shared.fetchAll(
                 folderId: folder.id,

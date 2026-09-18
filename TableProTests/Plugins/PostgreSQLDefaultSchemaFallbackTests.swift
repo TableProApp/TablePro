@@ -16,7 +16,7 @@ struct PostgreSQLDefaultSchemaFallbackTests {
 
     @Test("resolves the first existing search path entry, omitting missing schemas")
     func firstSearchPathSchemaQuery() {
-        #expect(PostgreSQLSchemaQueries.firstSearchPathSchema == "SELECT current_schemas(false)[1]")
+        #expect(PostgreSQLSchemaQueries.firstSearchPathSchema == "SELECT (current_schemas(false))[1]")
     }
 
     @Test("falls back to the effective search path before the alphabetical schema list")

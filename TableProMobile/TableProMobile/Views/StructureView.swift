@@ -14,6 +14,14 @@ struct StructureView: View {
         case columns = "Columns"
         case indexes = "Indexes"
         case foreignKeys = "Foreign Keys"
+
+        var displayName: LocalizedStringResource {
+            switch self {
+            case .columns: LocalizedStringResource("Columns")
+            case .indexes: LocalizedStringResource("Indexes")
+            case .foreignKeys: LocalizedStringResource("Foreign Keys")
+            }
+        }
     }
 
     @State private var selectedTab: Tab = .columns
@@ -46,7 +54,7 @@ struct StructureView: View {
         .safeAreaInset(edge: .top) {
             Picker("Section", selection: $selectedTab) {
                 ForEach(Tab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Text(tab.displayName).tag(tab)
                 }
             }
             .pickerStyle(.segmented)

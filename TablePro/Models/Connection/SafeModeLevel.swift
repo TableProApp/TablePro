@@ -28,6 +28,18 @@ internal extension SafeModeLevel {
         }
     }
 
+    /// Ordered weakest to strongest by what each level actually prevents, not by declaration order.
+    var strictness: Int {
+        switch self {
+        case .silent: return 0
+        case .alert: return 1
+        case .alertFull: return 2
+        case .safeMode: return 3
+        case .safeModeFull: return 4
+        case .readOnly: return 5
+        }
+    }
+
     var blocksAllWrites: Bool {
         self == .readOnly
     }

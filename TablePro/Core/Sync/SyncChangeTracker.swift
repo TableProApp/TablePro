@@ -8,9 +8,10 @@
 import Combine
 import Foundation
 import os
+import TableProSyncTransport
 
 /// Tracks dirty entities and deletions for sync
-final class SyncChangeTracker {
+final class SyncChangeTracker: Sendable {
     static let shared = SyncChangeTracker()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncChangeTracker")
 
@@ -24,7 +25,7 @@ final class SyncChangeTracker {
         set { suppressionLock.withLock { $0 = newValue } }
     }
 
-    init(metadataStorage: SyncMetadataStorage = .shared) {
+    init(metadataStorage: SyncMetadataStorage = .appDefault) {
         self.metadataStorage = metadataStorage
     }
 
@@ -32,16 +33,20 @@ final class SyncChangeTracker {
 
     func markDirty(_ type: SyncRecordType, id: String) {
         guard !isSuppressed, type.syncScope == .synced else { return }
-        metadataStorage.addDirty(type: type, id: id)
+        metadataStorage.markDirty(id, type: type)
         Self.logger.info("Marked dirty: \(type.rawValue)/\(id)")
         postChangeNotification()
     }
 
+    /// One read-modify-write and one notification for the whole batch.
+    ///
+    /// The single-record overload posts a notification per call, and the observer cancels the
+    /// in-flight sync and awaits it before scheduling the next, so a few hundred of them in a row
+    /// build a chain of tasks each waiting on its predecessor. Always prefer this when the caller
+    /// already holds the whole set.
     func markDirty(_ type: SyncRecordType, ids: [String]) {
         guard !isSuppressed, !ids.isEmpty, type.syncScope == .synced else { return }
-        for id in ids {
-            metadataStorage.addDirty(type: type, id: id)
-        }
+        metadataStorage.markDirty(ids, type: type)
         Self.logger.trace("Marked dirty: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
     }
@@ -50,9 +55,17 @@ final class SyncChangeTracker {
 
     func markDeleted(_ type: SyncRecordType, id: String) {
         guard !isSuppressed else { return }
-        metadataStorage.removeDirty(type: type, id: id)
-        metadataStorage.addTombstone(type: type, id: id)
+        metadataStorage.removeDirty(id, type: type)
+        metadataStorage.addTombstone(id, type: type)
         Self.logger.trace("Marked deleted: \(type.rawValue)/\(id)")
+        postChangeNotification()
+    }
+
+    func markDeleted(_ type: SyncRecordType, ids: [String]) {
+        guard !isSuppressed, !ids.isEmpty else { return }
+        metadataStorage.removeDirty(ids, type: type)
+        metadataStorage.addTombstones(ids, type: type)
+        Self.logger.trace("Marked deleted: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
     }
 
@@ -65,7 +78,7 @@ final class SyncChangeTracker {
     // MARK: - Clear
 
     func clearDirty(_ type: SyncRecordType, id: String) {
-        metadataStorage.removeDirty(type: type, id: id)
+        metadataStorage.removeDirty(id, type: type)
     }
 
     func clearAllDirty(_ type: SyncRecordType) {

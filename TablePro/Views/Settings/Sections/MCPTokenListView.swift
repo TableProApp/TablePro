@@ -137,7 +137,7 @@ private struct MCPTokenRow: View {
                 }
 
                 HStack(spacing: 8) {
-                    Text(token.prefix + "...")
+                    Text(token.prefix + "…")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
 

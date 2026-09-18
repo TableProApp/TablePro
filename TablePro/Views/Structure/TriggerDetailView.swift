@@ -5,13 +5,13 @@
 //  Read-only master-detail view of a table's triggers.
 //
 
+import Combine
 import SwiftUI
 
-@Observable
-final class TriggerInspectorState {
-    var searchText = ""
-    var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
-    var selectedID: TriggerInfo.ID?
+final class TriggerInspectorState: ObservableObject {
+    @Published var searchText = ""
+    @Published var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
+    @Published var selectedID: TriggerInfo.ID?
 
     func displayed(_ triggers: [TriggerInfo]) -> [TriggerInfo] {
         let filtered = searchText.isEmpty
@@ -43,12 +43,13 @@ private struct TriggerEditorSheetItem: Identifiable {
 
 struct TriggerDetailView: View {
     let triggers: [TriggerInfo]
+    let scope: DatabaseScope
     let connection: DatabaseConnection
     let tableName: String
     let isLoading: Bool
     let onOpenInEditor: (TriggerInfo) -> Void
 
-    @State private var state = TriggerInspectorState()
+    @StateObject private var state = TriggerInspectorState()
     @State private var editorSheet: TriggerEditorSheetItem?
     @State private var pendingDelete: TriggerInfo?
     @State private var actionError: String?
@@ -97,7 +98,7 @@ struct TriggerDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { state.ensureSelection(triggers) }
-        .onChange(of: triggers) { _, newTriggers in state.ensureSelection(newTriggers) }
+        .onChange(of: triggers) { newTriggers in state.ensureSelection(newTriggers) }
         .sheet(item: $editorSheet, content: makeEditorSheet(for:))
         .confirmationDialog(
             String(format: String(localized: "Drop trigger “%@”?"), pendingDelete?.name ?? ""),
@@ -116,12 +117,13 @@ struct TriggerDetailView: View {
         ) {
             Button(String(localized: "OK"), role: .cancel) { actionError = nil }
         } message: {
-            Text(actionError ?? "")
+            Text(verbatim: RevealedText(actionError ?? "").plainText)
         }
     }
 
     private func makeEditorSheet(for item: TriggerEditorSheetItem) -> some View {
         TriggerEditorView(
+            scope: scope,
             connection: connection,
             tableName: tableName,
             mode: item.mode,
@@ -130,17 +132,30 @@ struct TriggerDetailView: View {
         )
     }
 
+    /// Read through the tab's own scope rather than the session driver, which follows the sidebar:
+    /// an engine that qualifies its template with the connection's current database pre-fills a
+    /// statement that creates the trigger on a same-named table in whatever database that is.
     private func newTrigger() {
-        let driver = DatabaseManager.shared.driver(for: connection.id)
-        let template = driver?.createTriggerTemplate(table: tableName)
-            ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
-        editorSheet = TriggerEditorSheetItem(mode: .create, sql: template)
+        let scope = scope
+        let tableName = tableName
+        Task {
+            let generated = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                driver.createTriggerTemplate(table: tableName)
+            }
+            let template = (generated ?? nil)
+                ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
+            editorSheet = TriggerEditorSheetItem(mode: .create, sql: template)
+        }
     }
 
     private func editTrigger(_ trigger: TriggerInfo) {
         Task {
-            let driver = DatabaseManager.shared.driver(for: connection.id)
-            let fetched = try? await driver?.fetchTriggerDefinition(name: trigger.name, table: tableName)
+            let scope = scope
+            let tableName = tableName
+            let name = trigger.name
+            let fetched = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.fetchTriggerDefinition(name: name, table: tableName)
+            }
             let sql = (fetched ?? nil) ?? trigger.statement
             editorSheet = TriggerEditorSheetItem(
                 mode: .edit(originalName: trigger.name, originalDefinition: trigger.statement),
@@ -152,7 +167,12 @@ struct TriggerDetailView: View {
     private func performDelete(_ trigger: TriggerInfo) {
         Task {
             do {
-                try await TriggerEditing.drop(connection: connection, tableName: tableName, name: trigger.name)
+                try await TriggerEditing.drop(
+                    scope: scope,
+                    connection: connection,
+                    tableName: tableName,
+                    name: trigger.name
+                )
             } catch {
                 actionError = error.localizedDescription
             }
@@ -162,7 +182,7 @@ struct TriggerDetailView: View {
 
 private struct TriggerActionBar: View {
     let triggers: [TriggerInfo]
-    let state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
     let canEdit: Bool
     let onNew: () -> Void
     let onEdit: (TriggerInfo) -> Void
@@ -196,7 +216,7 @@ private struct TriggerActionBar: View {
 
 private struct TriggerListPane: View {
     let triggers: [TriggerInfo]
-    @Bindable var state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
 
     private var showEnabled: Bool { triggers.contains { $0.enabled != nil } }
 
@@ -249,65 +269,25 @@ private struct TriggerListPane: View {
 
 private struct TriggerDetailPane: View {
     let triggers: [TriggerInfo]
-    let state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
     let databaseType: DatabaseType
     let onOpenInEditor: (TriggerInfo) -> Void
 
-    @AppStorage("structureCodeFontSize") private var fontSize: Double = 13
-
     var body: some View {
         if let trigger = state.selectedTrigger(triggers) {
-            VStack(spacing: 0) {
-                toolbar(for: trigger)
-                Divider()
-                DDLTextView(ddl: trigger.statement, fontSize: $fontSize, databaseType: databaseType)
-            }
+            ObjectSourceView(
+                source: trigger.definition ?? trigger.statement,
+                databaseType: databaseType,
+                exportFileName: exportFileName(for: trigger),
+                attributes: trigger.attributes,
+                onOpenInEditor: { onOpenInEditor(trigger) }
+            )
         } else {
             Color(nsColor: .textBackgroundColor)
         }
     }
 
-    private func toolbar(for trigger: TriggerInfo) -> some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 4) {
-                Button {
-                    fontSize = max(10, fontSize - 1)
-                } label: {
-                    Image(systemName: "textformat.size.smaller")
-                        .frame(width: 24, height: 24)
-                }
-                .accessibilityLabel(String(localized: "Decrease font size"))
-                Text("\(Int(fontSize))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24)
-                Button {
-                    fontSize = min(24, fontSize + 1)
-                } label: {
-                    Image(systemName: "textformat.size.larger")
-                        .frame(width: 24, height: 24)
-                }
-                .accessibilityLabel(String(localized: "Increase font size"))
-            }
-            .buttonStyle(.borderless)
-
-            Spacer()
-
-            Button {
-                onOpenInEditor(trigger)
-            } label: {
-                Label("Open in Editor", systemImage: "square.and.pencil")
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                ClipboardService.shared.writeText(trigger.statement)
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+    private func exportFileName(for trigger: TriggerInfo) -> String {
+        DatabaseObjectRef(trigger: trigger, database: "").suggestedFileName
     }
 }

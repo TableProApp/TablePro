@@ -693,7 +693,7 @@ struct MultiRowEditStateTests {
         func updateFieldFiresCallbackForNewEdit() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -709,7 +709,7 @@ struct MultiRowEditStateTests {
             sut.updateField(at: 1, value: "Bob")
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -724,7 +724,7 @@ struct MultiRowEditStateTests {
         func updateFieldDoesNotFireCallbackWhenSettingToOriginalNoPriorEdit() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -739,7 +739,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToNull(at: 0)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -756,7 +756,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToDefault(at: 0)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -771,7 +771,7 @@ struct MultiRowEditStateTests {
         func setFieldToNullFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -785,7 +785,7 @@ struct MultiRowEditStateTests {
         func setFieldToDefaultFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -799,7 +799,7 @@ struct MultiRowEditStateTests {
         func setFieldToFunctionFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -813,7 +813,7 @@ struct MultiRowEditStateTests {
         func setFieldToEmptyFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -830,7 +830,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToNull(at: 1)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -1005,6 +1005,87 @@ struct MultiRowEditStateTests {
                 #expect(field.isPendingDefault == false)
                 #expect(field.pendingValue == nil)
             }
+        }
+    }
+
+    @MainActor @Suite("Schema fields")
+    struct SchemaFields {
+        private func schemaFields() -> [InspectorRowField] {
+            [
+                InspectorRowField(name: "Name", value: "email", editor: .schemaText),
+                InspectorRowField(name: "Type", value: "VARCHAR(255)", editor: .typePicker),
+                InspectorRowField(name: "Nullable", value: "YES", editor: .enumPicker(values: ["YES", "NO"]),
+                                  isModified: true)
+            ]
+        }
+
+        @Test("Schema fields keep their editor, values, and committed-edit marker")
+        func configureCarriesFieldDescription() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 2)
+
+            #expect(sut.fields.map(\.columnName) == ["Name", "Type", "Nullable"])
+            #expect(sut.fields.map(\.originalValue) == ["email", "VARCHAR(255)", "YES"])
+            #expect(sut.fields[1].editor == .typePicker)
+            #expect(sut.fields.allSatisfy { $0.isSchemaField })
+            #expect(sut.fields[2].hasCommittedEdit)
+            #expect(sut.fields[0].hasCommittedEdit == false)
+            #expect(sut.selectedRowIndices == [2])
+        }
+
+        @Test("A committed schema edit is not a pending sidebar edit")
+        func schemaFieldsAreNotPendingEdits() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 0)
+
+            #expect(sut.hasEdits == false)
+            #expect(sut.getEditedFields().isEmpty)
+        }
+
+        @Test("Reconfiguring the same row keeps field identity so editors keep focus")
+        func sameRowKeepsFieldIdentity() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 1)
+            let ids = sut.fields.map(\.id)
+
+            sut.configure(schemaFields: schemaFields(), displayRow: 1)
+            #expect(sut.fields.map(\.id) == ids)
+        }
+
+        @Test("Selecting another row gives fresh editors")
+        func differentRowResetsFieldIdentity() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 1)
+            let ids = sut.fields.map(\.id)
+
+            sut.configure(schemaFields: schemaFields(), displayRow: 2)
+            #expect(sut.fields.map(\.id) != ids)
+        }
+
+        @Test("Editing a schema field reports the new value to the owning grid")
+        func editReportsNewValue() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 0)
+
+            var committed: [(Int, String?)] = []
+            sut.onFieldChanged = { index, value, _ in committed.append((index, value.asText)) }
+            sut.updateField(at: 0, value: "user_email")
+
+            #expect(committed.count == 1)
+            #expect(committed.first?.0 == 0)
+            #expect(committed.first?.1 == "user_email")
+        }
+
+        @Test("Retyping the existing value reports nothing")
+        func unchangedValueReportsNothing() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 0)
+
+            var committed = 0
+            sut.onFieldChanged = { _, _, _ in committed += 1 }
+            sut.updateField(at: 0, value: "email")
+
+            #expect(committed == 0)
         }
     }
 }

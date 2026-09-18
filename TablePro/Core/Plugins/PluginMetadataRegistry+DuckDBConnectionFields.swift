@@ -60,6 +60,26 @@ extension PluginMetadataRegistry {
                 defaultValue: "remotedb",
                 section: .authentication,
                 visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+            ),
+            /// Named for what it does to the file rather than to TablePro, to keep it apart from
+            /// Safe Mode's own Read-Only level: that one is a policy this app applies to itself
+            /// and can be changed while connected, this one is how the file is opened and is
+            /// fixed for the life of the connection.
+            ConnectionField(
+                id: "duckdbReadOnly",
+                label: String(localized: "Open the File Read-Only"),
+                defaultValue: "false",
+                fieldType: .toggle,
+                section: .advanced,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
+            ),
+            ConnectionField(
+                id: "duckdbIdleReleaseMinutes",
+                label: String(localized: "Release the File Lock After (minutes, 0 to keep it)"),
+                defaultValue: "0",
+                fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
+                section: .advanced,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
             )
         ]
     }

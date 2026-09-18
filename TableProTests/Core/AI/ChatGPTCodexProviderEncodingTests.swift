@@ -66,6 +66,7 @@ struct ChatGPTCodexProviderEncodingTests {
     func curatedModels() async throws {
         let provider = ChatGPTCodexProvider(model: "")
         let models = try await provider.fetchAvailableModels()
-        #expect(models == ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
+        #expect(models.map(\.id) == ChatGPTCodex.curatedModelIDs)
+        #expect(models.map(\.id) == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"])
     }
 }

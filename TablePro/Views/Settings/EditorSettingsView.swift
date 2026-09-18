@@ -13,15 +13,24 @@ struct EditorSettingsView: View {
             Section("SQL Editor") {
                 Toggle("Show line numbers", isOn: $settings.showLineNumbers)
                 Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
+                Toggle("Highlight current statement", isOn: $settings.highlightCurrentStatement)
                 Toggle("Word wrap", isOn: $settings.wordWrap)
+                Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
+                Toggle("Run button beside each statement", isOn: $settings.showStatementRunControls)
+                Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
                     Text("4 spaces").tag(4)
                     Text("8 spaces").tag(8)
                 }
-                Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
+                Picker("Keyword case:", selection: $settings.keywordCase) {
+                    ForEach(SQLKeywordCase.allCases, id: \.self) { keywordCase in
+                        Text(keywordCase.displayName).tag(keywordCase)
+                    }
+                }
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
+                    .accessibilityIdentifier("vim-mode-toggle")
             }
         }
         .formStyle(.grouped)

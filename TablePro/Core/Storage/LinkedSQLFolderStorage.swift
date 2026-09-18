@@ -10,7 +10,7 @@ internal final class LinkedSQLFolderStorage: @unchecked Sendable {
 
     private let store: CodableListPreferenceStore<LinkedSQLFolder>
 
-    init(defaults: KeyValueStore = UserDefaults.standard) {
+    init(defaults: KeyValueStore = AppStorageEnvironment.shared.defaults) {
         store = CodableListPreferenceStore(key: PreferenceKeys.linkedSQLFolders, store: defaults)
     }
 
