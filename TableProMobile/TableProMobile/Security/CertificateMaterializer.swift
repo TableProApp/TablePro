@@ -42,11 +42,6 @@ nonisolated final class CertificateMaterializer: @unchecked Sendable {
         try? fileManager.removeItem(at: directory)
     }
 
-    func sweep() {
-        guard let root = try? rootDirectory(), fileManager.fileExists(atPath: root.path) else { return }
-        try? fileManager.removeItem(at: root)
-    }
-
     private func write(_ pem: String, role: CertificateRole, for connectionId: UUID) throws -> String {
         let directory = directory(for: connectionId)
         try fileManager.createDirectory(

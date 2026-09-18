@@ -256,17 +256,17 @@ final class QueryRunUITests: UITestCase {
         typeQuery("COMMIT; SELECT * FROM run_all_kept_probe;", in: app)
         openRunMenu(in: app).menuItems["Run All Statements"].click()
 
+        /// The failed batch leaves its banner up and "Result 3 of 3" in the chooser until this one
+        /// lands, so only two results with no banner over them say the commit and the read both ran.
         let chooser = window.descendants(matching: .any)
             .matching(identifier: "result-set-menu")
             .firstMatch
         XCTAssertTrue(
-            waitForPredicate(timeout: 30) { chooser.title.contains("2") || banner.exists },
-            "The commit and the read must both run: got \(chooser.title) \(bannerText(banner))"
-        )
-        XCTAssertFalse(
-            banner.exists,
+            waitForPredicate(timeout: 30) {
+                !banner.exists && chooser.exists && chooser.title.contains("2")
+            },
             "The transaction must still be open to commit, and its table must have survived the failure: "
-                + "got \(bannerText(banner))"
+                + "got \(chooser.exists ? chooser.title : "") \(bannerText(banner))"
         )
     }
 

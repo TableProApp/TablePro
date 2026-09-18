@@ -2,13 +2,11 @@ import Foundation
 import TableProModels
 
 struct TagPersistence {
+    let directory: URL
+
     private var fileURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let appDir = dir.appendingPathComponent("TableProMobile", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
-        return appDir.appendingPathComponent("tags.json")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("tags.json")
     }
 
     func save(_ tags: [ConnectionTag]) throws {

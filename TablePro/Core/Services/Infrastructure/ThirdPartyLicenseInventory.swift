@@ -27,13 +27,13 @@ struct ThirdPartyLicenseInventory {
 
     /// Components with a confirmed licence, which is what the acknowledgements list renders.
     var attributed: [ThirdPartyComponent] {
-        components.filter { !$0.isUnverified }
+        components.filter { $0.ships(on: .macos) && !$0.isUnverified }
     }
 
     /// Components whose licence could not be confirmed from a primary source. Surfaced rather
     /// than dropped, so an unresolved obligation stays visible instead of looking discharged.
     var unresolved: [ThirdPartyComponent] {
-        components.filter(\.isUnverified)
+        components.filter { $0.ships(on: .macos) && $0.isUnverified }
     }
 
     init(rootURL: URL) throws {

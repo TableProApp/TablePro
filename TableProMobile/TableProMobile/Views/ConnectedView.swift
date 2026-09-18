@@ -5,6 +5,7 @@ import TableProModels
 struct ConnectedView: View {
     @Environment(AppState.self) private var appState
     @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
+    @Environment(ScenePresenter.self) private var presenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     let connection: DatabaseConnection
@@ -50,7 +51,13 @@ struct ConnectedView: View {
         .task(id: coordinatorStore.revision) {
             let resolved = coordinatorStore.coordinator(for: connection, appState: appState)
             coordinator = resolved
-            if case .connected = resolved.phase { return }
+            if let table = presenter.takeTable(for: connection.id) {
+                resolved.pendingTableName = table
+            }
+            if case .connected = resolved.phase {
+                resolved.navigateToPendingTable()
+                return
+            }
             await resolved.connect()
             guard !Task.isCancelled else { return }
             if case .connected = resolved.phase {
@@ -59,6 +66,11 @@ struct ConnectedView: View {
             } else if case .error = resolved.phase {
                 hapticError.toggle()
             }
+        }
+        .onChange(of: presenter.pendingTable) { _, _ in
+            guard let coordinator, let table = presenter.takeTable(for: connection.id) else { return }
+            coordinator.pendingTableName = table
+            coordinator.navigateToPendingTable()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -97,8 +109,10 @@ struct ConnectedView: View {
     private var connectingView: some View {
         VStack(spacing: 16) {
             ProgressView {
-                Text(String(format: String(localized: "Connecting to %@..."),
-                             connection.name.isEmpty ? connection.host : connection.name))
+                Text(String(
+                    format: String(localized: "Connecting to %@..."),
+                    connection.name.isEmpty ? connection.host : connection.name
+                ))
             }
             Button(String(localized: "Cancel"), role: .cancel) {
                 coordinator?.cancelConnect()
@@ -195,7 +209,7 @@ struct ConnectedView: View {
         } message: {
             Text(coordinator.failureAlertMessage ?? "")
         }
-        .userActivity("com.TablePro.viewConnection") { activity in
+        .userActivity(SceneIntent.viewConnectionActivity, isActive: !connection.isSample) { activity in
             activity.title = connection.name.isEmpty ? connection.host : connection.name
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
@@ -218,7 +232,7 @@ struct ConnectedView: View {
 
     @ToolbarContentBuilder
     private func connectionToolbar(_ coordinator: ConnectionCoordinator) -> some ToolbarContent {
-        if coordinator.selectedTab == .info {
+        if coordinator.selectedTab == .info, !connection.isSample {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     coordinator.showingEditSheet = true

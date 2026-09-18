@@ -57,12 +57,6 @@ final class ConnectionLibraryPreferences {
         commitRecents(updated)
     }
 
-    func clearRecent() {
-        var updated = recents
-        updated.removeAll()
-        commitRecents(updated)
-    }
-
     func isGroupExpanded(_ groupId: UUID) -> Bool {
         !collapsedGroupIds.contains(groupId)
     }

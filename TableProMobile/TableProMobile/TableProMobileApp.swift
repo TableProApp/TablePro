@@ -1,5 +1,4 @@
 import BackgroundTasks
-import CoreSpotlight
 import os
 import SwiftUI
 import TableProAnalytics
@@ -11,6 +10,7 @@ struct TableProMobileApp: App {
     static let backgroundSyncIdentifier = "com.TablePro.sync"
     private static let backgroundLogger = Logger(subsystem: "com.TablePro", category: "BackgroundSync")
 
+    @UIApplicationDelegateAdaptor(TableProAppDelegate.self) private var appDelegate
     @State private var appState = AppState()
     @State private var lockState = AppLockState()
     @State private var syncTask: Task<Void, Never>?
@@ -18,54 +18,19 @@ struct TableProMobileApp: App {
     @State private var heartbeatTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        ConnectionListTips.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                SceneRootView(connectionManager: appState.connectionManager)
-                    .environment(appState)
-                    .blur(radius: lockState.isLocked ? 20 : 0)
-                    .allowsHitTesting(!lockState.isLocked)
-
-                if lockState.isLocked {
-                    LockScreenView()
-                        .environment(lockState)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.default, value: lockState.isLocked)
-            .hostKeyPrompt()
-            .entraSignInPrompt()
-            .onOpenURL { url in
-                if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
-                    appState.pendingImportURL = url
-                    return
-                }
-                guard url.scheme == "tablepro",
-                      url.host(percentEncoded: false) == "connect",
-                      let uuidString = url.pathComponents.dropFirst().first,
-                      let uuid = UUID(uuidString: uuidString) else { return }
-                appState.pendingConnectionId = uuid
-            }
-            .onContinueUserActivity(CSSearchableItemActionType) { activity in
-                guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
-                      let uuid = UUID(uuidString: identifier) else { return }
-                appState.pendingConnectionId = uuid
-            }
-            .onContinueUserActivity("com.TablePro.viewConnection") { activity in
-                guard let connectionId = activity.userInfo?["connectionId"] as? String,
-                      let uuid = UUID(uuidString: connectionId) else { return }
-                appState.pendingConnectionId = uuid
-            }
-            .onContinueUserActivity("com.TablePro.viewTable") { activity in
-                guard let connectionId = activity.userInfo?["connectionId"] as? String,
-                      let uuid = UUID(uuidString: connectionId) else { return }
-                appState.pendingConnectionId = uuid
-                appState.pendingTableName = activity.userInfo?["tableName"] as? String
-            }
+            SceneRootView(connectionManager: appState.connectionManager)
+                .environment(appState)
+                .environment(lockState)
+                .hostKeyPrompt()
+                .entraSignInPrompt()
         }
         .onChange(of: scenePhase) { _, phase in
-            // Skip lifecycle side-effects under tests so unit tests do not
-            // boot CloudKit sync, analytics, or biometric checks.
             guard !TestRuntime.isActive else { return }
             lockState.handleScenePhase(phase)
             switch phase {
@@ -74,27 +39,19 @@ struct TableProMobileApp: App {
                 appState.backgroundRelease.cancelPreparation()
                 MemoryPressureMonitor.shared.start()
                 appState.retryLoadIfFailed()
-                if AppPreferences.isCloudSyncEnabled && appState.loadStatus == .ready {
+                if appState.onboarding.isCloudSyncEnabled && appState.loadStatus == .ready {
                     syncTask?.cancel()
                     syncTask = Task {
                         await appState.syncCoordinator.sync()
                     }
                 }
-                if heartbeatTask == nil {
-                    let provider = IOSAnalyticsProvider.shared
-                    provider.attach(appState: appState)
-                    let service = AnalyticsHeartbeatService(provider: provider)
-                    heartbeatService = service
-                    heartbeatTask = service.startPeriodicHeartbeat()
-                }
+                startHeartbeatIfConsented()
             case .inactive:
                 appState.backgroundRelease.prepareForSuspension()
             case .background:
                 syncTask?.cancel()
                 syncTask = nil
-                heartbeatTask?.cancel()
-                heartbeatTask = nil
-                heartbeatService = nil
+                stopHeartbeat()
                 Task {
                     let released = await appState.backgroundRelease.releaseForSuspension()
                     for connectionId in released {
@@ -106,9 +63,32 @@ struct TableProMobileApp: App {
                 break
             }
         }
+        .onChange(of: appState.onboarding.usageDataChoice) { _, choice in
+            guard !TestRuntime.isActive else { return }
+            guard choice == true else {
+                stopHeartbeat()
+                return
+            }
+            startHeartbeatIfConsented()
+        }
         .backgroundTask(.appRefresh(Self.backgroundSyncIdentifier)) {
             await runBackgroundSync()
         }
+    }
+
+    private func startHeartbeatIfConsented() {
+        guard heartbeatTask == nil, appState.onboarding.isUsageDataEnabled else { return }
+        let provider = IOSAnalyticsProvider.shared
+        provider.attach(appState: appState)
+        let service = AnalyticsHeartbeatService(provider: provider)
+        heartbeatService = service
+        heartbeatTask = service.startPeriodicHeartbeat()
+    }
+
+    private func stopHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        heartbeatService = nil
     }
 
     private func scheduleBackgroundSync() {

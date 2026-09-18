@@ -26,6 +26,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
 
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
         switch connection.type {
+        case .sqlite where connection.isSample:
+            return SQLiteDriver(path: try SampleDatabaseInstaller.live.installIfNeeded().path)
         case .sqlite:
             return SQLiteDriver(path: connection.database)
         case .duckdb:

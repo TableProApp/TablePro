@@ -6,6 +6,11 @@
 #
 # spdx: UNVERIFIED means the project publishes no license we could read. Those entries
 # carry no license text and render as unresolved rather than being given a guess.
+#
+# platforms lists where a component ships: macos, ios or both. Absent means [macos].
+# The iOS app reads TableProMobile/TableProMobile/Acknowledgements/Acknowledgements.json, the
+# projection of every ios entry. Run scripts/generate-ios-acknowledgements.py after editing an
+# ios entry; ThirdPartyLicenseInventoryTests fails while that file is stale.
 - id: bigint
   name: BigInt
   version: 5.7.0
@@ -17,10 +22,29 @@
   textFile: texts/bigint.txt
   source: spm:bigint
   patched: false
+  platforms: [macos, ios]
   notes: Tag is `v5.7.0`; Package.resolved records the bare "5.7.0". The holder's name carries Hungarian
     diacritics (Karoly Lorentey, with o-acute and o-double-acute) in the original file; reproduce it from
     texts/bigint.LICENSE.txt rather than from this YAML, which is ASCII-folded. Transitive via oracle-nio.
     Zero `$s6BigInt` symbols in the app dylib.
+- id: chinook
+  name: Chinook Database
+  version: vendored at ac32dbc3d, 2025-10-04
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2008-2024 Luis Rocha
+  homepageURL: https://github.com/lerocha/chinook-database
+  licenseTextURL: https://github.com/lerocha/chinook-database/blob/ac32dbc3d5b383633c3fd687934f9c719773f00d/LICENSE.md
+  textFile: texts/chinook.txt
+  source: manual
+  patched: false
+  platforms: [macos, ios]
+  notes: 'The sample database, shipped as TablePro/Resources/SampleDatabases/Chinook.sqlite in both apps.
+    Byte-identical (SHA-256 7651ba37...) to ChinookDatabase/DataSources/Chinook_Sqlite.sqlite at upstream
+    commit ac32dbc3d5b3, the last commit to touch that file. No release asset matches it: v1.4.5, the newest
+    tag, predates the regenerated invoice dates. GitHub''s detector reports "other" / NOASSERTION because
+    LICENSE.md opens with a "Chinook Database" title and a rule of dashes; the body is the verbatim MIT
+    grant and warranty, and it has been unchanged since 2024-01-24 (800ed2d792).'
 - id: codeeditsourceeditor
   name: CodeEditSourceEditor
   version: vendored at 1fa4d3c3f, 2026-03; see Packages/TableProEditor/ORIGIN.md
@@ -82,13 +106,16 @@
   textFile: texts/duckdb.txt
   source: sh:DUCKDB_VERSION
   patched: false
+  platforms: [macos, ios]
   notes: 'Built from the v1.5.2 git tag with CMake (build-duckdb.sh:25), linking core_functions, json,
     parquet, icu and autocomplete statically (scripts/duckdb-macos-extensions.cmake). The build compiles
     the whole tree including third_party/, which holds 30 vendored projects (brotli, catch, concurrentqueue,
     fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog, imdb, jaro_winkler, jemalloc, libpg_query,
     lz4, mbedtls, miniz, parquet, pcg, pdqsort, re2, ska_sort, skiplist, snappy, snowball, tdigest, thrift,
     utf8proc, vergesort, yyjson, zstd), each under its own licence. Those sub-licences are NOT enumerated
-    here: UNVERIFIED. scripts/build-duckdb-ios.sh pins the same tag for the iOS xcframework.'
+    here: UNVERIFIED. scripts/build-duckdb-ios.sh pins the same tag for the iOS xcframework. scripts/duckdb-ios-extensions.cmake
+    also names the out-of-tree httpfs and quack extensions; the xcframework in Libs/ios carries no symbol
+    from either today. Both are MIT under this same Stichting DuckDB Foundation notice, byte for byte.'
 - id: freetds
   name: FreeTDS
   version: 1.4.22
@@ -106,6 +133,7 @@
   textFile: texts/freetds.txt
   source: sh:FREETDS_VERSION
   patched: true
+  platforms: [macos, ios]
   notes: 'COPYING_LIB.txt at v1.4.22 is the GNU *Library* General Public License Version 2, June 1991
     (LGPL-2.0), not 2.1. Every source file built into libsybdb.a grants "either version 2 of the License,
     or (at your option) any later version", so LGPL-2.0-or-later is the id. The repo also ships COPYING.txt
@@ -139,6 +167,7 @@
   textFile: texts/hiredis.txt
   source: sh:HIREDIS_VERSION
   patched: false
+  platforms: [macos, ios]
   notes: 'COPYING at the tag names only the first two holders plus "All rights reserved."; the remaining
     five lines are per-file headers on sources compiled into the two archives: ssl.c (Redis Labs, 2019),
     sds.c (Sanfilippo 2006-2015, Oran Agra, Redis Labs, Inc) and alloc.c (Michael Grunder). All are the
@@ -166,6 +195,7 @@
   textFile: texts/libssh2.txt
   source: sh:LIBSSH2_VERSION
   patched: true
+  platforms: [macos, ios]
   notes: Linked by the main app target (SSH tunnels), not by a plugin. The tarball is fetched from the
     GitHub release for libssh2-1.11.1 and pinned by SHA-256 (build-libssh2.sh:38). The script writes only
     libssh2_arm64.a, libssh2_x86_64.a and libssh2_universal.a. The flat Libs/libssh2.a that project.yml
@@ -210,6 +240,7 @@
   textFile: texts/mariadb-connector-c.txt
   source: sh:MARIADB_VERSION
   patched: false
+  platforms: [macos, ios]
   notes: 'NOT the MariaDB server''s GPL-2.0. The connector ships COPYING.LIB = GNU Lesser General Public
     License Version 2.1, February 1999, and that is the only licence file in the repo root at v3.4.4.
     Nuance worth recording: the per-file grant in libmariadb/mariadb_lib.c says "GNU Library General Public
@@ -254,6 +285,7 @@
   textFile: texts/openssl.txt
   source: sh:OPENSSL_VERSION
   patched: false
+  platforms: [macos, ios]
   notes: OpenSSL 3.x is Apache-2.0 only; the old OpenSSL/SSLeay dual licence ended at 1.1.1. LICENSE.txt
     at the tag is the bare Apache-2.0 text with no copyright block, so the two holder lines above are
     quoted from the Copyright section of README.md at the same tag (https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.3/README.md,
@@ -275,6 +307,7 @@
   textFile: texts/oracle-nio.txt
   source: spm:oracle-nio
   patched: false
+  platforms: [macos, ios]
   notes: 'NO state.version in any of the three Package.resolved files, only a revision. All three pin
     the SAME revision, so there is no version disagreement here. TableProApp/oracle-nio is a fork of lovetodream/oracle-nio
     (GitHub reports fork: true, parent: lovetodream/oracle-nio); at the pinned revision it is 21 ahead
@@ -303,6 +336,7 @@
   textFile: texts/postgresql-libpq.txt
   source: sh:PG_VERSION
   patched: false
+  platforms: [macos, ios]
   notes: Source tarball comes from ftp.postgresql.org (build-libpq.sh:71), SHA-256 pinned at build-libpq.sh:40;
     the GitHub tag REL_17_4 is the same release and is used here only as a stable URL for the COPYRIGHT
     file. The COPYRIGHT text is the whole licence; SPDX calls it "PostgreSQL" (a BSD/MIT-style permissive
@@ -364,6 +398,7 @@
   textFile: texts/swift-asn1.txt
   source: spm:swift-asn1
   patched: false
+  platforms: [macos, ios]
   notes: 'VERSION SET, deliberately divergent: the app pins 1.5.1, TableProOracle and TableProMobile pin
     1.7.1. LICENSE.txt is byte-identical (11359 bytes) at both tags and is PLAIN Apache-2.0 with no Runtime
     Library Exception. NOTICE.txt present at both tags and unchanged; its attribution must be reproduced
@@ -380,6 +415,7 @@
   textFile: texts/swift-async-algorithms.txt
   source: spm:swift-async-algorithms
   patched: false
+  platforms: [macos, ios]
   notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
     file). No NOTICE.txt. Transitive via swift-service-lifecycle.'
 - id: swift-atomics
@@ -393,6 +429,7 @@
   textFile: texts/swift-atomics.txt
   source: spm:swift-atomics
   patched: false
+  platforms: [macos, ios]
   notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
     file). No NOTICE.txt. Copyright from a source header.'
 - id: swift-collections
@@ -406,6 +443,7 @@
   textFile: texts/swift-collections.txt
   source: spm:swift-collections
   patched: false
+  platforms: [macos, ios]
   notes: 'LICENSE.txt is 11751 bytes: the Apache 2.0 body PLUS an appended "## Runtime Library Exception
     to the Apache 2.0 License: ##" section (verified by reading the file, not by trusting GitHub, whose
     detector reports plain "Apache-2.0" for both variants). The exception waives the attribution otherwise
@@ -425,6 +463,7 @@
   textFile: texts/swift-crypto.txt
   source: spm:swift-crypto
   patched: false
+  platforms: [macos, ios]
   notes: 'VERSION SET, deliberately divergent: the app pins 4.2.0, TableProOracle and TableProMobile pin
     4.5.1. LICENSE.txt is byte-identical (11358 bytes) at both tags and is PLAIN Apache-2.0 with no Runtime
     Library Exception. NOTICE.txt present at both tags; its attribution must be reproduced under section
@@ -445,6 +484,7 @@
   textFile: texts/swift-distributed-tracing.txt
   source: spm:swift-distributed-tracing
   patched: false
+  platforms: [macos, ios]
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
     the root tree). Copyright from a source header. Transitive via oracle-nio.
 - id: swift-log
@@ -458,6 +498,7 @@
   textFile: texts/swift-log.txt
   source: spm:swift-log
   patched: false
+  platforms: [macos, ios]
   notes: 'PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present; its attribution
     must be reproduced under section 4(d). Not in TablePro.app: zero `$s7Logging` mangled-prefix symbols.
     (A naive `strings` grep for the bare word "Logging" hits 28 times in the app dylib, but those are
@@ -473,6 +514,7 @@
   textFile: texts/swift-nio-transport-services.txt
   source: spm:swift-nio-transport-services
   patched: false
+  platforms: [macos, ios]
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
     the root tree), unlike its swift-nio siblings, so nothing to carry under 4(d). Copyright line taken
     from a source header, since the LICENSE names no holder.
@@ -487,6 +529,7 @@
   textFile: texts/swift-service-context.txt
   source: spm:swift-service-context
   patched: false
+  platforms: [macos, ios]
   notes: 'PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present and must be
     carried under section 4(d). Reproduce it verbatim and do NOT "correct" it: the upstream NOTICE.txt
     has a copy-paste bug, pointing at https://github.com/apple/swift-asn1 as the project web site instead
@@ -502,6 +545,7 @@
   textFile: texts/swift-service-lifecycle.txt
   source: spm:swift-service-lifecycle
   patched: false
+  platforms: [macos, ios]
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present and must be
     carried under section 4(d). Owned by the swift-server org, not apple. Transitive via oracle-nio.
 - id: swift-syntax
@@ -543,6 +587,7 @@
   textFile: texts/swift-nio.txt
   source: spm:swift-nio
   patched: false
+  platforms: [macos, ios]
   notes: 'PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt is the LONGEST in the
     tree and section 4(d) requires all of it be carried: Netty (Apache-2.0), NodeJS llhttp (MIT), "cpp_magic.h"
     from uSHET (MIT), "sha1.c"/"sha1.h" from FreeBSD (BSD-3, "Copyright (C) 1995, 1996, 1997, and 1998
@@ -560,6 +605,7 @@
   textFile: texts/swift-nio-ssl.txt
   source: spm:swift-nio-ssl
   patched: false
+  platforms: [macos, ios]
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt must be reproduced under
     section 4(d) and carries onward attributions for Netty (Apache-2.0), Tony Stone's process_test_files.rb
     (Apache-2.0), grpc-swift (Apache-2.0) and BoringSSL (combination ISC and OpenSSL licence). The vendored

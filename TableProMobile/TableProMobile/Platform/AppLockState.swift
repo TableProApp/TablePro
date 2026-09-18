@@ -10,7 +10,7 @@ final class AppLockState {
         case oneMinute = 60
         case fiveMinutes = 300
         case fifteenMinutes = 900
-        case oneHour = 3600
+        case oneHour = 3_600
 
         var id: Int { rawValue }
 
@@ -27,6 +27,7 @@ final class AppLockState {
 
     private(set) var isLocked: Bool
     private var lastBackgroundedAt: Date?
+    private var unlockTask: Task<Bool, Never>?
     private let auth: BiometricAuthService
 
     static let lockEnabledKey = "com.TablePro.settings.lockEnabled"
@@ -38,6 +39,10 @@ final class AppLockState {
         let auth = BiometricAuthService()
         self.auth = auth
         self.isLocked = Self.shouldLockOnColdLaunch(auth: auth)
+    }
+
+    var biometry: BiometricAuthService.Availability {
+        auth.availability
     }
 
     static var isLockEnabled: Bool {
@@ -86,17 +91,19 @@ final class AppLockState {
     }
 
     func unlock() async -> Bool {
+        guard isLocked else { return true }
+        if let unlockTask {
+            return await unlockTask.value
+        }
         let reason = String(localized: "Unlock TablePro to access your database connections.")
-        let success = await auth.authenticate(reason: reason)
+        let task = Task { await auth.authenticate(reason: reason) }
+        unlockTask = task
+        let success = await task.value
+        unlockTask = nil
         if success {
             isLocked = false
             lastBackgroundedAt = nil
         }
         return success
-    }
-
-    func lockNow() {
-        guard Self.isLockEnabled, auth.availability != .unavailable else { return }
-        isLocked = true
     }
 }

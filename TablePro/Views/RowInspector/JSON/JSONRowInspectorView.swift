@@ -96,13 +96,13 @@ struct JSONRowInspectorView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 20)
                 .contentShape(Rectangle())
+                .accessibilityLabel(String(localized: "JSON view options"))
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .help(String(localized: "JSON view options"))
-        .accessibilityLabel(String(localized: "JSON view options"))
     }
 
     // MARK: - Tree

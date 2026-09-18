@@ -29,22 +29,36 @@ final class AppState {
         return .loading
     }
 
-    var pendingConnectionId: UUID?
-    var pendingTableName: String?
-    var pendingImportURL: URL?
+    private(set) var sampleResetRevision = 0
+    let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
-    let syncCoordinator = IOSSyncCoordinator()
-    let libraryPreferences = ConnectionLibraryPreferences()
+    let syncCoordinator: IOSSyncCoordinator
+
+    @ObservationIgnored private var automaticPresentationOwner: UUID?
+    let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: KeychainSecureStore
 
-    private let storage = ConnectionPersistence()
-    private let groupStorage = GroupPersistence()
-    private let tagStorage = TagPersistence()
+    private let sampleInstaller: SampleDatabaseInstaller
+    private let storage: ConnectionPersistence
+    private let groupStorage: GroupPersistence
+    private let tagStorage: TagPersistence
 
-    init() {
+    init(
+        libraryDirectory: URL = LibraryStorage.defaultDirectory,
+        defaults: UserDefaults = .standard,
+        syncCoordinator injectedSyncCoordinator: IOSSyncCoordinator? = nil,
+        sampleInstaller: SampleDatabaseInstaller = .live
+    ) {
+        self.sampleInstaller = sampleInstaller
+        onboarding = OnboardingPreferences(defaults: defaults)
+        libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
+        syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
+        storage = ConnectionPersistence(directory: libraryDirectory)
+        groupStorage = GroupPersistence(directory: libraryDirectory)
+        tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory = IOSDriverFactory()
         let secureStore = KeychainSecureStore()
         self.secureStore = secureStore
@@ -61,10 +75,11 @@ final class AppState {
 
         guard !TestRuntime.isActive else { return }
 
-        secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
-        Task {
-            updateWidgetData()
-            updateSpotlightIndex()
+        if loadStatus == .ready {
+            secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
+            Task {
+                publishLibrary()
+            }
         }
 
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
@@ -95,10 +110,34 @@ final class AppState {
 
     // MARK: - Load / Retry
 
+    var isLibraryWritable: Bool {
+        loadStatus == .ready
+    }
+
     func retryLoadIfFailed() {
         guard loadStatus == .failed else { return }
         Self.logger.info("Retrying persistence load after previous failure")
         loadPersistedData()
+        guard loadStatus == .ready else { return }
+        publishLibrary()
+    }
+
+    private func refuseWriteIfNotReady() -> Bool {
+        guard isLibraryWritable else {
+            Self.logger.error("Refusing a library write while the stored library is not loaded")
+            return true
+        }
+        return false
+    }
+
+    private func publishLibrary() {
+        guard loadStatus == .ready else { return }
+        updateWidgetData()
+        updateSpotlightIndex()
+    }
+
+    private func syncsConnection(_ id: UUID) -> Bool {
+        connections.first { $0.id == id }?.participatesInSync ?? true
     }
 
     private func loadPersistedData() {
@@ -170,21 +209,19 @@ final class AppState {
 
     // MARK: - Connections
 
-    func addConnection(_ connection: DatabaseConnection) {
+    @discardableResult
+    func addConnection(_ connection: DatabaseConnection) -> Bool {
         apply(ConnectionLibraryEditing.adding(connection, to: connections, validGroupIds: validGroupIds))
     }
 
-    func updateConnection(_ connection: DatabaseConnection) {
+    @discardableResult
+    func updateConnection(_ connection: DatabaseConnection) -> Bool {
         guard let change = ConnectionLibraryEditing.updating(
             connection,
             in: connections,
             validGroupIds: validGroupIds
-        ) else { return }
-        apply(change)
-    }
-
-    var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "com.TablePro.hasCompletedOnboarding") {
-        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "com.TablePro.hasCompletedOnboarding") }
+        ) else { return false }
+        return apply(change)
     }
 
     func reorderConnections(_ orderedIds: [UUID]) {
@@ -207,7 +244,7 @@ final class AppState {
 
     func setFavorite(_ ids: Set<UUID>, isFavorite: Bool) {
         let previousOrder = libraryPreferences.favoritesOrder
-        apply(ConnectionLibraryEditing.settingFavorite(ids, to: isFavorite, in: connections))
+        guard apply(ConnectionLibraryEditing.settingFavorite(ids, to: isFavorite, in: connections)) else { return }
         guard isFavorite else {
             libraryPreferences.setFavoritesOrder(LibraryOrdering.favoritesOrder(previousOrder, removing: ids))
             return
@@ -221,8 +258,8 @@ final class AppState {
         libraryPreferences.setFavoritesOrder(orderedIds)
     }
 
-    @discardableResult
-    func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
+    func duplicateConnection(_ connection: DatabaseConnection) {
+        guard !refuseWriteIfNotReady() else { return }
         let result = ConnectionLibraryEditing.duplicating(
             connection,
             named: String(format: String(localized: "%@ Copy"), connection.name),
@@ -231,14 +268,10 @@ final class AppState {
         )
         ConnectionSecrets(secureStore: secureStore).copy(from: connection.id, to: result.copy.id)
         apply(result.change)
-        return result.copy
-    }
-
-    func removeConnection(_ connection: DatabaseConnection) {
-        removeConnections([connection.id])
     }
 
     func removeConnections(_ ids: Set<UUID>) {
+        guard !refuseWriteIfNotReady() else { return }
         let removed = connections.filter { ids.contains($0.id) }
         guard !removed.isEmpty else { return }
         let secrets = ConnectionSecrets(secureStore: secureStore)
@@ -247,23 +280,25 @@ final class AppState {
             clearPerConnectionPreferences(for: connection.id)
         }
         persist(connections: connections.filter { !ids.contains($0.id) })
-        updateWidgetData()
-        updateSpotlightIndex()
-        for connection in removed {
+        publishLibrary()
+        for connection in removed where connection.participatesInSync {
             syncCoordinator.markDeleted(connection.id)
         }
         syncCoordinator.scheduleSyncAfterChange()
     }
 
-    private func apply(_ change: ConnectionLibraryChange) {
-        guard !change.changedConnectionIds.isEmpty else { return }
+    @discardableResult
+    private func apply(_ change: ConnectionLibraryChange) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard !change.changedConnectionIds.isEmpty else { return false }
         persist(connections: change.connections)
-        updateWidgetData()
-        updateSpotlightIndex()
-        for id in change.changedConnectionIds {
+        publishLibrary()
+        let syncedIds = Set(change.connections.filter(\.participatesInSync).map(\.id))
+        for id in change.changedConnectionIds where syncedIds.contains(id) {
             syncCoordinator.markDirty(id)
         }
         syncCoordinator.scheduleSyncAfterChange()
+        return true
     }
 
     private func clearPerConnectionPreferences(for id: UUID) {
@@ -278,6 +313,7 @@ final class AppState {
 
     @discardableResult
     func addGroup(_ group: ConnectionGroup) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
         guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return false }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
@@ -287,6 +323,7 @@ final class AppState {
 
     @discardableResult
     func updateGroup(_ group: ConnectionGroup) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
         guard let updated = ConnectionLibraryEditing.updatingGroup(group, in: groups) else { return false }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
@@ -295,6 +332,7 @@ final class AppState {
     }
 
     func reorderGroups(_ orderedIds: [UUID]) {
+        guard !refuseWriteIfNotReady() else { return }
         let result = ConnectionLibraryEditing.reorderingGroups(orderedIds, in: groups)
         guard !result.changed.isEmpty else { return }
         persist(groups: result.groups)
@@ -305,13 +343,14 @@ final class AppState {
     }
 
     func deleteGroup(_ groupId: UUID) {
+        guard !refuseWriteIfNotReady() else { return }
         let change = ConnectionLibraryEditing.deletingGroup(groupId, groups: groups, connections: connections)
         guard !change.removedGroupIds.isEmpty else { return }
         persist(groups: change.groups)
         persist(connections: change.connections)
-        updateWidgetData()
+        publishLibrary()
 
-        for id in change.changedConnectionIds {
+        for id in change.changedConnectionIds where syncsConnection(id) {
             syncCoordinator.markDirty(id)
         }
         for id in change.removedGroupIds {
@@ -323,6 +362,7 @@ final class AppState {
     // MARK: - Tags
 
     func addTag(_ tag: ConnectionTag) {
+        guard !refuseWriteIfNotReady() else { return }
         var updated = tags
         updated.append(tag)
         persist(tags: updated)
@@ -331,6 +371,7 @@ final class AppState {
     }
 
     func updateTag(_ tag: ConnectionTag) {
+        guard !refuseWriteIfNotReady() else { return }
         var updated = tags
         guard let index = updated.firstIndex(where: { $0.id == tag.id }) else { return }
         updated[index] = tag
@@ -340,6 +381,7 @@ final class AppState {
     }
 
     func deleteTag(_ tagId: UUID) {
+        guard !refuseWriteIfNotReady() else { return }
         guard let tag = tags.first(where: { $0.id == tagId }), !tag.isPreset else { return }
 
         var updatedTags = tags
@@ -349,13 +391,94 @@ final class AppState {
         var updatedConnections = connections
         for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
             updatedConnections[index].tagIds.removeAll { $0 == tagId }
-            syncCoordinator.markDirty(updatedConnections[index].id)
+            if updatedConnections[index].participatesInSync {
+                syncCoordinator.markDirty(updatedConnections[index].id)
+            }
         }
         persist(connections: updatedConnections)
-        updateWidgetData()
+        publishLibrary()
 
         syncCoordinator.markDeletedTag(tagId)
         syncCoordinator.scheduleSyncAfterChange()
+    }
+
+    // MARK: - First Run
+
+    var currentAppVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    func claimLaunchPresentation(for sceneId: UUID) -> LaunchPresentation {
+        guard !TestRuntime.isActive else { return .none }
+        guard automaticPresentationOwner == nil || automaticPresentationOwner == sceneId else { return .none }
+        let version = currentAppVersion
+        let presentation = FirstRunPlan(
+            hasSeenWelcome: onboarding.hasSeenWelcome,
+            syncChoice: onboarding.syncChoice,
+            usageDataChoice: onboarding.usageDataChoice,
+            lastSeenVersion: onboarding.lastSeenVersion,
+            currentVersion: version,
+            hasHighlightsForCurrentVersion: FeatureHighlights.release(version) != nil
+        ).presentation
+        onboarding.recordLaunch(version: version)
+        guard presentation != .none else { return .none }
+        automaticPresentationOwner = sceneId
+        return presentation
+    }
+
+    func releaseLaunchPresentation(for sceneId: UUID) {
+        guard automaticPresentationOwner == sceneId else { return }
+        automaticPresentationOwner = nil
+    }
+
+    func finishFirstRun(pages: [FirstRunPage]) {
+        if pages.contains(.welcome) {
+            onboarding.markWelcomeSeen()
+        }
+        if pages.contains(.iCloud), onboarding.syncChoice == nil {
+            setCloudSyncEnabled(false)
+        }
+        if pages.contains(.usageData), onboarding.usageDataChoice == nil {
+            setUsageDataEnabled(false)
+        }
+    }
+
+    func setCloudSyncEnabled(_ enabled: Bool) {
+        onboarding.setSyncChoice(enabled)
+        syncCoordinator.setEnabled(enabled)
+    }
+
+    func setUsageDataEnabled(_ enabled: Bool) {
+        onboarding.setUsageDataChoice(enabled)
+    }
+
+    // MARK: - Sample Database
+
+    func openSampleDatabase() throws -> UUID {
+        try sampleInstaller.installIfNeeded()
+        if let existing = connections.first(where: \.isSample) {
+            return existing.id
+        }
+        let sample = DatabaseConnection(
+            name: SampleDatabaseInstaller.connectionName,
+            type: .sqlite,
+            host: "",
+            port: 0,
+            database: SampleDatabaseInstaller.fileName,
+            color: .green,
+            isSample: true
+        )
+        guard addConnection(sample) else { throw SampleDatabaseError.libraryUnavailable }
+        return sample.id
+    }
+
+    func resetSampleDatabase() async throws {
+        let sampleIds = connections.filter(\.isSample).map(\.id)
+        for id in sampleIds {
+            await connectionManager.disconnect(id)
+        }
+        try sampleInstaller.reset()
+        sampleResetRevision += 1
     }
 
     // MARK: - Spotlight
@@ -411,14 +534,20 @@ final class AppState {
 
 // MARK: - Persistence
 
+nonisolated enum LibraryStorage {
+    static var defaultDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appendingPathComponent("TableProMobile", isDirectory: true)
+    }
+}
+
 private struct ConnectionPersistence {
+    let directory: URL
+
     private var fileURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let appDir = dir.appendingPathComponent("TableProMobile", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
-        return appDir.appendingPathComponent("connections.json")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("connections.json")
     }
 
     func save(_ connections: [DatabaseConnection]) throws {

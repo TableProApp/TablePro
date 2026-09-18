@@ -13,6 +13,7 @@ private final class LibraryStateBox {
     var tags: [ConnectionTag] = []
     var duringPull: () -> Void = {}
     var duringPush: () -> Void = {}
+    var syncEnabled = true
 
     func runDuringPull() {
         duringPull()
@@ -28,6 +29,7 @@ private actor FakeSyncTransport: IOSSyncTransport {
     private let remoteRecords: [CKRecord]
     private let box: LibraryStateBox
     private(set) var pushedRecords: [CKRecord] = []
+    private(set) var pullCount = 0
 
     init(remoteRecords: [CKRecord], box: LibraryStateBox) {
         self.remoteRecords = remoteRecords
@@ -41,6 +43,7 @@ private actor FakeSyncTransport: IOSSyncTransport {
     func ensureZoneExists() async throws {}
 
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
+        pullCount += 1
         await box.runDuringPull()
         return PullResult(changedRecords: remoteRecords, deletedRecordIDs: [], newToken: nil)
     }
@@ -73,7 +76,8 @@ struct IOSSyncCoordinatorTests {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
             recordCache: SyncRecordCache(directory: cacheDirectory, defaults: nil),
-            makeTransport: { transport }
+            makeTransport: { transport },
+            isEnabled: { box.syncEnabled }
         )
         coordinator.getCurrentState = { (box.connections, box.groups, box.tags) }
         coordinator.onConnectionsChanged = { box.connections = $0 }
@@ -153,5 +157,107 @@ struct IOSSyncCoordinatorTests {
 
         let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection)
         #expect(pushed.first?.isFavorite == true)
+    }
+
+    @Test("Sync is off: changes wait, and nothing is pulled or pushed")
+    func disabledSyncOnlyQueues() async {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Local", type: .mysql)
+        box.connections = [local]
+        box.syncEnabled = false
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        coordinator.markDirty(local.id)
+        coordinator.markDeleted(UUID())
+        await coordinator.sync()
+
+        #expect(await transport.pullCount == 0)
+        #expect(await transport.pushedRecords.isEmpty)
+        #expect(metadata.dirtyIds(for: .connection).contains(local.id.uuidString))
+        #expect(metadata.tombstones(for: .connection).count == 1)
+        #expect(coordinator.status == .disabled(.userDisabled))
+    }
+
+    @Test("A sample connection is never pushed, even when marked")
+    func sampleIsNeverPushed() async {
+        let box = LibraryStateBox()
+        let sample = DatabaseConnection(name: "Sample", type: .sqlite, database: "Chinook.sqlite", isSample: true)
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [sample, local]
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(sample.id)
+        coordinator.markDirty(local.id)
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection).map(\.id)
+        #expect(pushed == [local.id])
+    }
+
+    @Test("A second sync waits for the one already running instead of returning early")
+    func concurrentSyncJoins() async {
+        let box = LibraryStateBox()
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        async let first: Void = coordinator.sync()
+        async let second: Void = coordinator.sync()
+        _ = await (first, second)
+
+        #expect(await transport.pullCount == 1)
+        #expect(coordinator.status == .idle)
+        #expect(coordinator.lastSyncDate != nil)
+    }
+
+    @Test("Turning sync on sends what changed while it was off, except the sample")
+    func enablingSendsQueuedChanges() async throws {
+        let box = LibraryStateBox()
+        let sample = DatabaseConnection(name: "Sample", type: .sqlite, database: "Chinook.sqlite", isSample: true)
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [sample, local]
+        box.syncEnabled = false
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(sample.id)
+        coordinator.markDirty(local.id)
+
+        box.syncEnabled = true
+        coordinator.setEnabled(true)
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection).map(\.id)
+        #expect(pushed == [local.id])
+    }
+
+    @Test("Turning sync off forgets the last sync, so turning it on again shows the first pull")
+    func disablingResetsFirstSync() async {
+        let box = LibraryStateBox()
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        await coordinator.sync()
+        #expect(coordinator.hasCompletedFirstSync)
+
+        box.syncEnabled = false
+        coordinator.setEnabled(false)
+
+        #expect(coordinator.hasCompletedFirstSync == false)
+    }
+
+    @Test("Turning sync off wins over a sync that was already running")
+    func disablingWinsOverRunningSync() async {
+        let box = LibraryStateBox()
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.duringPull = {
+            box.syncEnabled = false
+            coordinator.setEnabled(false)
+        }
+
+        await coordinator.sync()
+
+        #expect(coordinator.status == .disabled(.userDisabled))
+        #expect(coordinator.lastSyncDate == nil)
     }
 }

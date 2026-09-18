@@ -1,0 +1,275 @@
+[
+  {
+    "id": "bigint",
+    "name": "BigInt",
+    "version": "5.7.0",
+    "spdx": "MIT",
+    "copyrights": [
+      "Copyright (c) 2016-2017 Karoly Lorentey"
+    ],
+    "homepageURL": "https://github.com/attaswift/BigInt",
+    "textFile": "texts/bigint.txt"
+  },
+  {
+    "id": "chinook",
+    "name": "Chinook Database",
+    "version": "vendored at ac32dbc3d, 2025-10-04",
+    "spdx": "MIT",
+    "copyrights": [
+      "Copyright (c) 2008-2024 Luis Rocha"
+    ],
+    "homepageURL": "https://github.com/lerocha/chinook-database",
+    "textFile": "texts/chinook.txt"
+  },
+  {
+    "id": "duckdb",
+    "name": "DuckDB",
+    "version": "v1.5.2",
+    "spdx": "MIT",
+    "copyrights": [
+      "Copyright 2018-2025 Stichting DuckDB Foundation"
+    ],
+    "homepageURL": "https://duckdb.org",
+    "textFile": "texts/duckdb.txt"
+  },
+  {
+    "id": "freetds",
+    "name": "FreeTDS",
+    "version": "1.4.22",
+    "spdx": "LGPL-2.0-or-later",
+    "copyrights": [
+      "FreeTDS - Library of routines accessing Sybase and Microsoft databases",
+      "Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005  Brian Bruns",
+      "Copyright (C) 2006-2015  Frediano Ziglio",
+      "Copyright (C) 2005-2015  Ziglio Frediano",
+      "Copyright (C) 2012  Frediano Ziglio",
+      "Copyright (c) 1987, 1993, 1994",
+      "The Regents of the University of California.  All rights reserved."
+    ],
+    "homepageURL": "https://www.freetds.org",
+    "textFile": "texts/freetds.txt"
+  },
+  {
+    "id": "hiredis",
+    "name": "hiredis",
+    "version": "1.2.0",
+    "spdx": "BSD-3-Clause",
+    "copyrights": [
+      "Copyright (c) 2009-2011, Salvatore Sanfilippo <antirez at gmail dot com>",
+      "Copyright (c) 2010-2011, Pieter Noordhuis <pcnoordhuis at gmail dot com>",
+      "All rights reserved.",
+      "Copyright (c) 2019, Redis Labs",
+      "Copyright (c) 2006-2015, Salvatore Sanfilippo <antirez at gmail dot com>",
+      "Copyright (c) 2015, Oran Agra",
+      "Copyright (c) 2015, Redis Labs, Inc",
+      "Copyright (c) 2020, Michael Grunder <michael dot grunder at gmail dot com>"
+    ],
+    "homepageURL": "https://github.com/redis/hiredis",
+    "textFile": "texts/hiredis.txt"
+  },
+  {
+    "id": "libssh2",
+    "name": "libssh2",
+    "version": "1.11.1",
+    "spdx": "BSD-3-Clause",
+    "copyrights": [
+      "Copyright (C) 2004-2007 Sara Golemon <sarag@libssh2.org>",
+      "Copyright (C) 2005,2006 Mikhail Gusarov <dottedmag@dottedmag.net>",
+      "Copyright (C) 2006-2007 The Written Word, Inc.",
+      "Copyright (C) 2007 Eli Fant <elifantu@mail.ru>",
+      "Copyright (C) 2009-2023 Daniel Stenberg",
+      "Copyright (C) 2008, 2009 Simon Josefsson",
+      "Copyright (C) 2000 Markus Friedl",
+      "Copyright (C) 2015 Microsoft Corp.",
+      "All rights reserved."
+    ],
+    "homepageURL": "https://libssh2.org",
+    "textFile": "texts/libssh2.txt"
+  },
+  {
+    "id": "mariadb-connector-c",
+    "name": "MariaDB Connector/C",
+    "version": "3.4.4",
+    "spdx": "LGPL-2.1-or-later",
+    "copyrights": [
+      "Copyright (C) 2000, 2012 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,",
+      "Monty Program AB",
+      "2013, 2022 MariaDB Corporation AB",
+      "This product includes PHP software, freely available from <http://www.php.net/software/>"
+    ],
+    "homepageURL": "https://mariadb.com/kb/en/mariadb-connector-c/",
+    "textFile": "texts/mariadb-connector-c.txt"
+  },
+  {
+    "id": "openssl",
+    "name": "OpenSSL",
+    "version": "3.4.3",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright (c) 1998-2025 The OpenSSL Project Authors",
+      "Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson",
+      "All rights reserved."
+    ],
+    "homepageURL": "https://www.openssl.org",
+    "textFile": "texts/openssl.txt"
+  },
+  {
+    "id": "oracle-nio",
+    "name": "OracleNIO",
+    "version": "rev:f09d088889e252655ea1833eed821cd2be0de03a",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright (c) 2023 Timo Zacherl"
+    ],
+    "homepageURL": "https://github.com/TableProApp/oracle-nio",
+    "textFile": "texts/oracle-nio.txt"
+  },
+  {
+    "id": "postgresql-libpq",
+    "name": "PostgreSQL (libpq client library)",
+    "version": "17.4",
+    "spdx": "PostgreSQL",
+    "copyrights": [
+      "PostgreSQL Database Management System",
+      "(formerly known as Postgres, then as Postgres95)",
+      "Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group",
+      "Portions Copyright (c) 1994, The Regents of the University of California"
+    ],
+    "homepageURL": "https://www.postgresql.org",
+    "textFile": "texts/postgresql-libpq.txt"
+  },
+  {
+    "id": "swift-asn1",
+    "name": "swift-asn1",
+    "version": "1.5.1, 1.7.1",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2022 The SwiftASN1 Project",
+      "Copyright (c) 2019-2020 Apple Inc. and the SwiftASN1 project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-asn1",
+    "textFile": "texts/swift-asn1.txt"
+  },
+  {
+    "id": "swift-async-algorithms",
+    "name": "swift-async-algorithms",
+    "version": "1.1.5",
+    "spdx": "Apache-2.0 WITH Swift-exception",
+    "copyrights": [
+      "Copyright (c) 2022 Apple Inc. and the Swift project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-async-algorithms",
+    "textFile": "texts/swift-async-algorithms.txt"
+  },
+  {
+    "id": "swift-atomics",
+    "name": "swift-atomics",
+    "version": "1.3.1",
+    "spdx": "Apache-2.0 WITH Swift-exception",
+    "copyrights": [
+      "Copyright (c) 2020 - 2025 Apple Inc. and the Swift project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-atomics",
+    "textFile": "texts/swift-atomics.txt"
+  },
+  {
+    "id": "swift-collections",
+    "name": "swift-collections",
+    "version": "1.6.0",
+    "spdx": "Apache-2.0 WITH Swift-exception",
+    "copyrights": [
+      "Copyright (c) 2021 - 2026 Apple Inc. and the Swift project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-collections",
+    "textFile": "texts/swift-collections.txt"
+  },
+  {
+    "id": "swift-crypto",
+    "name": "swift-crypto",
+    "version": "4.2.0, 4.5.1",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2019 The SwiftCrypto Project",
+      "Copyright (c) 2019-2020 Apple Inc. and the SwiftCrypto project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-crypto",
+    "textFile": "texts/swift-crypto.txt"
+  },
+  {
+    "id": "swift-distributed-tracing",
+    "name": "swift-distributed-tracing",
+    "version": "1.4.1",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright (c) 2020-2023 Apple Inc. and the Swift Distributed Tracing project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-distributed-tracing",
+    "textFile": "texts/swift-distributed-tracing.txt"
+  },
+  {
+    "id": "swift-log",
+    "name": "swift-log",
+    "version": "1.15.0",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2018, 2019 The SwiftLog Project"
+    ],
+    "homepageURL": "https://github.com/apple/swift-log",
+    "textFile": "texts/swift-log.txt"
+  },
+  {
+    "id": "swift-nio-transport-services",
+    "name": "swift-nio-transport-services",
+    "version": "1.28.0",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright (c) 2017-2021 Apple Inc. and the SwiftNIO project authors"
+    ],
+    "homepageURL": "https://github.com/apple/swift-nio-transport-services",
+    "textFile": "texts/swift-nio-transport-services.txt"
+  },
+  {
+    "id": "swift-service-context",
+    "name": "swift-service-context",
+    "version": "1.3.0",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2024 The Swift Service Context Project"
+    ],
+    "homepageURL": "https://github.com/apple/swift-service-context",
+    "textFile": "texts/swift-service-context.txt"
+  },
+  {
+    "id": "swift-service-lifecycle",
+    "name": "swift-service-lifecycle",
+    "version": "2.11.0",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2019-2023 The ServiceLifecycle Project"
+    ],
+    "homepageURL": "https://github.com/swift-server/swift-service-lifecycle",
+    "textFile": "texts/swift-service-lifecycle.txt"
+  },
+  {
+    "id": "swift-nio",
+    "name": "SwiftNIO",
+    "version": "2.101.3",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2017, 2018 The SwiftNIO Project"
+    ],
+    "homepageURL": "https://github.com/apple/swift-nio",
+    "textFile": "texts/swift-nio.txt"
+  },
+  {
+    "id": "swift-nio-ssl",
+    "name": "SwiftNIOSSL",
+    "version": "2.37.2",
+    "spdx": "Apache-2.0",
+    "copyrights": [
+      "Copyright 2017, 2018 The SwiftNIO Project"
+    ],
+    "homepageURL": "https://github.com/apple/swift-nio-ssl",
+    "textFile": "texts/swift-nio-ssl.txt"
+  }
+]

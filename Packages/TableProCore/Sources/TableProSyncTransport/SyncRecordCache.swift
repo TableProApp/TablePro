@@ -74,12 +74,6 @@ public final class SyncRecordCache {
         }
     }
 
-    public func removeAll() {
-        migration.withLock { $0 = true }
-        legacyDefaults?.removeObject(forKey: legacyStorageKey)
-        try? FileManager.default.removeItem(at: directory)
-    }
-
     // MARK: - Migration
 
     /// Moves a cache written by an older build out of `UserDefaults` on first use, then clears the

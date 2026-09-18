@@ -76,7 +76,7 @@ struct DataBrowserView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
         return searchableContent
-            .userActivity("com.TablePro.viewTable") { activity in
+            .userActivity(SceneIntent.viewTableActivity, isActive: !connection.isSample) { activity in
                 activity.title = table.name
                 activity.isEligibleForHandoff = true
                 activity.userInfo = [

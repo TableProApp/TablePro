@@ -82,11 +82,6 @@ final class RowDetailViewModel {
 
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
 
-    var currentRowCells: [Cell] {
-        guard currentIndex >= 0, currentIndex < rows.count else { return [] }
-        return rows[currentIndex].cells
-    }
-
     var currentRow: [String?] {
         row(at: currentIndex)
     }

@@ -63,7 +63,7 @@ final class IOSAnalyticsProvider: AnalyticsEnvironmentProvider {
     }
 
     var isAnalyticsEnabled: Bool {
-        defaults.object(forKey: "com.TablePro.settings.shareAnalytics") as? Bool ?? true
+        defaults.bool(forKey: AppPreferences.usageDataKey)
     }
 
     var hasLicense: Bool { false }
