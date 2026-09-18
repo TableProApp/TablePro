@@ -16,6 +16,7 @@ public enum SyncAccountChange: Equatable, Sendable {
     case firstSeen
     case unchanged
     case switched
+    case previousAccountUnknown
 }
 
 public final class SyncMetadataStorage: @unchecked Sendable {
@@ -153,20 +154,26 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     public func adoptAccount(_ accountId: String) -> SyncAccountChange {
         guard let recorded = lastAccountId else {
             lastAccountId = accountId
-            return .firstSeen
+            guard hasStoredToken else { return .firstSeen }
+            forgetServerPosition()
+            return .previousAccountUnknown
         }
         guard recorded != accountId else { return .unchanged }
-        forgetServerState()
+        forgetServerPosition()
+        for type in SyncRecordType.allCases {
+            clearTombstones(type: type)
+        }
         lastAccountId = accountId
         return .switched
     }
 
-    private func forgetServerState() {
+    private var hasStoredToken: Bool {
+        userDefaults.object(forKey: key("serverChangeToken")) != nil
+    }
+
+    private func forgetServerPosition() {
         saveToken(nil)
         userDefaults.removeObject(forKey: key("lastSyncDate"))
-        for type in SyncRecordType.allCases {
-            clearTombstones(type: type)
-        }
     }
 
     // MARK: - Reset

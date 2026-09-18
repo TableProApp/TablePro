@@ -396,6 +396,44 @@ struct IOSSyncCoordinatorTests {
         #expect(metadata.lastAccountId == "account-a")
     }
 
+    @Test("A device that synced on a build that never recorded its account starts over once and keeps its queue")
+    func unrecordedAccountStartsOverOnce() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let deleted = UUID()
+        let cachedID = SyncRecordMapper.recordID(type: .connection, id: local.id.uuidString, in: zoneID)
+        let cache = SyncRecordCache(directory: cacheDirectory, defaults: nil)
+        let staleRecord = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        staleRecord["staleAccountMarker"] = "account-a" as CKRecordValue
+        cache.store([staleRecord])
+        metadata.lastSyncDate = Date()
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-b")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        coordinator.markDeleted(deleted)
+        var cachedDuringPull: CKRecord? = staleRecord
+        box.duringPull = { cachedDuringPull = cache.record(for: cachedID) }
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords
+        #expect(cachedDuringPull == nil)
+        #expect(pushed.compactMap(SyncRecordMapper.toConnection).map(\.id) == [local.id])
+        #expect(pushed.allSatisfy { $0["staleAccountMarker"] == nil })
+        #expect(await transport.pushedDeletions.map(\.recordName).contains { $0.contains(deleted.uuidString) })
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == nil)
+        #expect(metadata.lastAccountId == "account-b")
+
+        var cachedDuringSecondPull: CKRecord?
+        box.duringPull = { cachedDuringSecondPull = cache.record(for: cachedID) }
+        coordinator.markDirty(local.id)
+        await coordinator.sync()
+
+        #expect(cachedDuringSecondPull != nil)
+    }
+
     @Test("An edit made during the first pull for a new account is pushed to that account")
     func editAfterSwitchIsPushed() async throws {
         let box = LibraryStateBox()

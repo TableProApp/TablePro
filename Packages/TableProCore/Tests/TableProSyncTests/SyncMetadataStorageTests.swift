@@ -90,20 +90,40 @@ struct SyncMetadataStorageTests {
         #expect(storage.lastAccountId == "account")
     }
 
-    @Test("The first account seen is recorded and nothing queued is dropped")
+    @Test("The first account seen on a device that never synced is recorded and nothing queued is dropped")
     func firstAccountIsRecorded() {
         let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.markDirty("a", type: .connection)
         storage.addTombstone("b", type: .connection)
-        defaults.set(Data([1, 2, 3]), forKey: "com.TablePro.sync.serverChangeToken")
 
         #expect(storage.adoptAccount("account-a") == .firstSeen)
 
         #expect(storage.lastAccountId == "account-a")
         #expect(storage.dirtyIds(for: .connection) == ["a"])
         #expect(storage.tombstones(for: .connection).map(\.id) == ["b"])
-        #expect(defaults.data(forKey: "com.TablePro.sync.serverChangeToken") == Data([1, 2, 3]))
+    }
+
+    @Test("An account recorded for the first time over an earlier sync starts sync over once and keeps what is queued")
+    func unrecordedEarlierSyncStartsOverOnce() {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        storage.markDirty("a", type: .connection)
+        storage.addTombstone("b", type: .connection)
+        storage.lastSyncDate = Date()
+        defaults.set(Data([1, 2, 3]), forKey: "com.TablePro.sync.serverChangeToken")
+
+        #expect(storage.adoptAccount("account-a") == .previousAccountUnknown)
+
+        #expect(storage.lastAccountId == "account-a")
+        #expect(defaults.data(forKey: "com.TablePro.sync.serverChangeToken") == nil)
+        #expect(storage.lastSyncDate == nil)
+        #expect(storage.dirtyIds(for: .connection) == ["a"])
+        #expect(storage.tombstones(for: .connection).map(\.id) == ["b"])
+
+        defaults.set(Data([4, 5, 6]), forKey: "com.TablePro.sync.serverChangeToken")
+        #expect(storage.adoptAccount("account-a") == .unchanged)
+        #expect(defaults.data(forKey: "com.TablePro.sync.serverChangeToken") == Data([4, 5, 6]))
     }
 
     @Test("The same account changes nothing")

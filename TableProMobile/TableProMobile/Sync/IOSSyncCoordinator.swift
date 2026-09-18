@@ -184,10 +184,16 @@ final class IOSSyncCoordinator {
     }
 
     private func adoptAccount(_ accountId: String) {
-        guard metadata.adoptAccount(accountId) == .switched else { return }
+        switch metadata.adoptAccount(accountId) {
+        case .firstSeen, .unchanged:
+            return
+        case .switched:
+            Self.logger.notice("The iCloud account changed, so sync starts over and pending edits go to the new account")
+        case .previousAccountUnknown:
+            Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
+        }
         recordCache.removeAll()
         lastSyncDate = nil
-        Self.logger.notice("The iCloud account changed, so sync starts over and pending edits go to the new account")
     }
 
     @discardableResult
