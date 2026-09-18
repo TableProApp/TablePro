@@ -312,19 +312,10 @@ public actor CloudKitSyncEngine {
     }
 
     private func isTransientError(_ error: CKError) -> Bool {
-        switch error.code {
-        case .networkUnavailable, .networkFailure, .serviceUnavailable,
-             .requestRateLimited, .zoneBusy:
-            return true
-        default:
-            return false
-        }
+        SyncRetryPolicy.isTransient(error.code)
     }
 
     private func retryDelay(for error: CKError, attempt: Int) -> Double {
-        if let suggestedDelay = error.retryAfterSeconds {
-            return suggestedDelay
-        }
-        return Double(1 << attempt)
+        SyncRetryPolicy.delay(retryAfterSeconds: error.retryAfterSeconds, attempt: attempt)
     }
 }
