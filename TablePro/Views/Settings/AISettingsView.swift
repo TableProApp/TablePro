@@ -172,6 +172,7 @@ struct AISettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.caption.bold())
                         .foregroundStyle(Color.accentColor)
+                        .accessibilityLabel(String(localized: "Active"))
                 }
             }
             .frame(width: 14)

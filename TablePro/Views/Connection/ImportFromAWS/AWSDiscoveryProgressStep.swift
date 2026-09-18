@@ -54,15 +54,18 @@ struct AWSDiscoveryProgressStep: View {
         case .pending:
             Image(systemName: "circle.dotted")
                 .foregroundStyle(.secondary)
+               .accessibilityLabel(String(localized: "Not started"))
         case .loading:
             ProgressView()
                 .controlSize(.small)
         case .loaded:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
+               .accessibilityLabel(String(localized: "Done"))
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+               .accessibilityLabel(String(localized: "Failed"))
         }
     }
 

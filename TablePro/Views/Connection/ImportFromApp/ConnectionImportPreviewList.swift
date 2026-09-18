@@ -100,14 +100,17 @@ struct ConnectionImportPreviewList: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.callout)
                 .foregroundStyle(.green)
+               .accessibilityLabel(String(localized: "Ready"))
         case .warnings:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.yellow)
+               .accessibilityLabel(String(localized: "Warning"))
         case .unsupportedType:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.orange)
+               .accessibilityLabel(String(localized: "Unsupported"))
         case .duplicate:
             EmptyView()
         }

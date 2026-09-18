@@ -87,9 +87,11 @@ struct PluginRejectedBannerModifier: ViewModifier {
             case .stagedPendingActivation:
                 Image(systemName: "clock.arrow.circlepath")
                     .foregroundStyle(.orange)
+                    .accessibilityLabel(String(localized: "Restart to activate"))
             case .completed:
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
+                    .accessibilityLabel(String(localized: "Installed"))
             case .failed:
                 updateButton(registryPlugin: registryPlugin)
             }
