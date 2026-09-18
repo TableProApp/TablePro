@@ -4,7 +4,9 @@ import TableProDatabase
 import TableProModels
 
 nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
-    private let dbPath: String
+    private let source: LocalDatabaseFileSource
+    private let openMode: LocalDatabaseOpenMode
+    private let fileAccess = LocalDatabaseFileAccess()
     private let actor = SQLiteActor()
 
     var supportsSchemas: Bool { false }
@@ -12,25 +14,31 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: sqlite3_libversion()) }
 
-    init(path: String) {
-        self.dbPath = path
+    init(source: LocalDatabaseFileSource, openMode: LocalDatabaseOpenMode = .existingOnly) {
+        self.source = source
+        self.openMode = openMode
     }
 
     // MARK: - Connection
 
     func connect() async throws {
-        let expanded = (dbPath as NSString).expandingTildeInPath
-
-        if !FileManager.default.fileExists(atPath: expanded) {
-            let dir = (expanded as NSString).deletingLastPathComponent
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = try fileAccess.begin(source, openMode: openMode)
+        do {
+            try await actor.open(path: path, flags: openFlags)
+        } catch {
+            fileAccess.end()
+            throw error
         }
-
-        try await actor.open(path: expanded)
     }
 
     func disconnect() async throws {
         await actor.close()
+        fileAccess.end()
+    }
+
+    private var openFlags: Int32 {
+        guard openMode == .createNew || source == .inMemory else { return SQLITE_OPEN_READWRITE }
+        return SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
     }
 
     func ping() async throws -> Bool {
@@ -126,7 +134,7 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
             """)
 
         return raw.rows.compactMap { row in
-            guard row.count > 0, let name = row[0] else { return nil }
+            guard !row.isEmpty, let name = row[0] else { return nil }
             let kind: TableInfo.TableKind = (row.count > 1 ? row[1] : nil)?.lowercased() == "view" ? .view : .table
             return TableInfo(name: name, type: kind, rowCount: nil, dataSize: nil, comment: nil)
         }
@@ -260,14 +268,14 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
 private actor SQLiteActor {
     private var db: OpaquePointer?
 
-    func open(path: String) throws {
-        if sqlite3_open(path, &db) != SQLITE_OK {
+    func open(path: String, flags: Int32) throws {
+        if sqlite3_open_v2(path, &db, flags, nil) != SQLITE_OK {
             let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown error"
             if let db { sqlite3_close(db) }
             self.db = nil
             throw SQLiteError.connectionFailed(msg)
         }
-        sqlite3_busy_timeout(db, 5000)
+        sqlite3_busy_timeout(db, 5_000)
     }
 
     func close() {

@@ -71,7 +71,7 @@ Favorites come first, then **Recent** with the five connections opened last, the
 
 ## What syncs over
 
-The same CloudKit container as the Mac. iCloud Sync is off on both until you turn it on: here during first launch or under **Settings > iCloud**. While it is off nothing leaves the device, and edits made in the meantime go up when you turn it back on. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
+The same CloudKit container as the Mac. iCloud Sync is off on both until you turn it on: here during first launch or under **Settings > iCloud**. While it is off nothing leaves the device, and edits made in the meantime go up when you turn it back on, provided the device is still signed in to the same Apple Account. Sign in to a different Apple Account and sync starts over for that account: its connections come down, edits not yet sent go up to it, deletions not yet sent are dropped, and the other connections already on the device stay and go up the next time you edit them. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
 
 Three things a connection depends on are per device and never sync:
 
@@ -79,13 +79,15 @@ Three things a connection depends on are per device and never sync:
 | --- | --- | --- |
 | CA and client certificates | The SSL section reads **Not set** | Import them here. One PKCS#12 file covers the client certificate and its key |
 | An SSH private key | It arrived as a path on the Mac, so the tunnel cannot find it | Pick the key on this device, or paste it into **Private Key** |
-| SQLite and DuckDB file paths | The path points at the Mac's disk | Pick the file again here |
+| SQLite and DuckDB files | Opening one says the file isn't available on this device | Edit the connection and pick the file here |
 
 Passwords are a separate opt-in, off by default, at **Settings > iCloud > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. Pull down on the connection list to sync now; a background refresh runs about every 30 minutes.
 
 <Warning>
 Picking a SQLite file copies it into the app, and edits go to that copy, so the original never changes and the two drift apart. DuckDB writes back to the file you picked.
 </Warning>
+
+A database created with **Create New Database**, or copied in by picking it, stays with its connection through an app update and a restore from backup. A file that is gone is reported as unavailable, and so is a file connection synced from another iPhone or iPad; the connection never opens an empty database, or a file of the same name on this device, in its place.
 
 ## What works
 

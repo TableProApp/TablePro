@@ -3,15 +3,15 @@ import TableProModels
 
 struct TagFormSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var name: String
     @State private var color: ConnectionColor
+    @State private var failure: LibraryWriteFailure?
     private let existingTag: ConnectionTag?
-    var onSave: (ConnectionTag) -> Void
 
-    init(editing tag: ConnectionTag? = nil, onSave: @escaping (ConnectionTag) -> Void) {
+    init(editing tag: ConnectionTag? = nil) {
         self.existingTag = tag
-        self.onSave = onSave
         _name = State(initialValue: tag?.name ?? "")
         _color = State(initialValue: tag?.color ?? .gray)
     }
@@ -35,16 +35,18 @@ struct TagFormSheet: View {
                     CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton(title: "Save") {
-                        var tag = existingTag ?? ConnectionTag()
-                        tag.name = name
-                        tag.color = color
-                        onSave(tag)
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    ConfirmButton(title: "Save", action: save)
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .libraryWriteFailureAlert(failure, onDismiss: { failure = nil }, closeForm: { dismiss() })
         }
+    }
+
+    private func save() {
+        let outcome = TagFormEdits(name: name, color: color).save(editing: existingTag, in: appState)
+        failure = LibraryWriteFailure(outcome, kind: .tag)
+        guard failure == nil else { return }
+        dismiss()
     }
 }

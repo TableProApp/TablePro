@@ -12,6 +12,12 @@ public struct Tombstone: Codable, Sendable {
     }
 }
 
+public enum SyncAccountChange: Equatable, Sendable {
+    case firstSeen
+    case unchanged
+    case switched
+}
+
 public final class SyncMetadataStorage: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncMetadataStorage")
 
@@ -141,6 +147,26 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     public var lastAccountId: String? {
         get { userDefaults.string(forKey: key("lastAccountId")) }
         set { userDefaults.set(newValue, forKey: key("lastAccountId")) }
+    }
+
+    @discardableResult
+    public func adoptAccount(_ accountId: String) -> SyncAccountChange {
+        guard let recorded = lastAccountId else {
+            lastAccountId = accountId
+            return .firstSeen
+        }
+        guard recorded != accountId else { return .unchanged }
+        forgetServerState()
+        lastAccountId = accountId
+        return .switched
+    }
+
+    private func forgetServerState() {
+        saveToken(nil)
+        userDefaults.removeObject(forKey: key("lastSyncDate"))
+        for type in SyncRecordType.allCases {
+            clearTombstones(type: type)
+        }
     }
 
     // MARK: - Reset

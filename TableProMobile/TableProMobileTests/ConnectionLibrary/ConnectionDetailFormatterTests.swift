@@ -20,7 +20,7 @@ struct ConnectionDetailFormatterTests {
     @Test("A file database shows its file name, and an in-memory one says so")
     func fileDatabases() {
         let sqlite = DatabaseConnection(type: .sqlite, database: "/var/mobile/Documents/app.sqlite")
-        let memory = DatabaseConnection(type: .duckdb, database: ConnectionDetailFormatter.inMemoryDatabasePath)
+        let memory = DatabaseConnection(type: .duckdb, database: LocalDatabaseLocation.inMemoryPath)
 
         #expect(ConnectionDetailFormatter.detail(for: sqlite) == "app.sqlite")
         #expect(ConnectionDetailFormatter.detail(for: memory) == String(localized: "In Memory"))

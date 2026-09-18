@@ -107,6 +107,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection names cut off at large text sizes on iPhone and iPad.
 - `Cmd+W` closing the whole connection instead of the current tab until something in the window was clicked.
 - **Reset Sample Database** leaving the old Chinook copy's journal files beside the fresh one.
+- iPhone and iPad edits undoing changes synced while the form was open, and dropping SSH jump hosts set on the Mac.
+- Edits on iPhone and iPad closing as if saved after the connection, group or tag changed or was deleted on another device.
+- iCloud sync failing on iPhone and iPad after signing in to a different Apple Account.
+- SQLite and DuckDB connections on iPhone and iPad losing their file after a restore, or opening an empty database.
 
 ### Security
 

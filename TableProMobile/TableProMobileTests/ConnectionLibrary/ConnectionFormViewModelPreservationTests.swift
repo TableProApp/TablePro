@@ -50,9 +50,9 @@ struct ConnectionFormViewModelPreservationTests {
         let other = UUID()
         let picked = UUID()
 
-        #expect(ConnectionFormViewModel.tagIds(selecting: picked, over: [shown, other]) == [picked, other])
-        #expect(ConnectionFormViewModel.tagIds(selecting: nil, over: [shown, other]) == [other])
-        #expect(ConnectionFormViewModel.tagIds(selecting: other, over: [shown, other]) == [other])
-        #expect(ConnectionFormViewModel.tagIds(selecting: shown, over: []) == [shown])
+        #expect(ConnectionFormEdits.tagIds(selecting: picked, over: [shown, other]) == [picked, other])
+        #expect(ConnectionFormEdits.tagIds(selecting: nil, over: [shown, other]) == [other])
+        #expect(ConnectionFormEdits.tagIds(selecting: other, over: [shown, other]) == [other])
+        #expect(ConnectionFormEdits.tagIds(selecting: shown, over: []) == [shown])
     }
 }

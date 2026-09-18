@@ -79,14 +79,10 @@ struct TagManagementView: View {
                 }
             }
             .sheet(isPresented: $showingAddTag) {
-                TagFormSheet { tag in
-                    appState.addTag(tag)
-                }
+                TagFormSheet()
             }
             .sheet(item: $editingTag) { tag in
-                TagFormSheet(editing: tag) { updated in
-                    appState.updateTag(updated)
-                }
+                TagFormSheet(editing: tag)
             }
         }
     }

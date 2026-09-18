@@ -13,6 +13,7 @@ private final class LibraryStateBox {
     var tags: [ConnectionTag] = []
     var duringPull: () -> Void = {}
     var duringPush: () -> Void = {}
+    var duringAccountCheck: () -> Void = {}
     var syncEnabled = true
 
     func runDuringPull() {
@@ -22,22 +23,44 @@ private final class LibraryStateBox {
     func runDuringPush() {
         duringPush()
     }
+
+    func runDuringAccountCheck() {
+        duringAccountCheck()
+    }
 }
 
 private actor FakeSyncTransport: IOSSyncTransport {
     let currentZoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
     private let remoteRecords: [CKRecord]
     private let box: LibraryStateBox
+    private let accountId: String?
+    private let recordsTheServerNeverHad: Set<String>
     private(set) var pushedRecords: [CKRecord] = []
+    private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private(set) var accountLookups = 0
 
-    init(remoteRecords: [CKRecord], box: LibraryStateBox) {
+    init(
+        remoteRecords: [CKRecord],
+        box: LibraryStateBox,
+        accountId: String? = "account-a",
+        recordsTheServerNeverHad: Set<String> = []
+    ) {
         self.remoteRecords = remoteRecords
         self.box = box
+        self.accountId = accountId
+        self.recordsTheServerNeverHad = recordsTheServerNeverHad
     }
 
     func accountStatus() async throws -> CKAccountStatus {
         .available
+    }
+
+    func currentAccountId() async throws -> String {
+        accountLookups += 1
+        await box.runDuringAccountCheck()
+        guard let accountId else { throw CKError(.notAuthenticated) }
+        return accountId
     }
 
     func ensureZoneExists() async throws {}
@@ -50,10 +73,18 @@ private actor FakeSyncTransport: IOSSyncTransport {
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         pushedRecords.append(contentsOf: records)
+        pushedDeletions.append(contentsOf: deletions)
         await box.runDuringPush()
+        let missing = deletions.filter { recordsTheServerNeverHad.contains($0.recordName) }
         return PushOutcome(
             savedRecords: Dictionary(uniqueKeysWithValues: records.map { ($0.recordID, $0) }),
-            deletedRecordIDs: Set(deletions)
+            deletedRecordIDs: Set(deletions).subtracting(missing),
+            failures: Dictionary(uniqueKeysWithValues: missing.map { recordID in
+                (
+                    recordID,
+                    SyncItemFailure(code: .unknownItem, serverRecord: nil, clientRecord: nil, message: "Record not found")
+                )
+            })
         )
     }
 }
@@ -72,12 +103,15 @@ struct IOSSyncCoordinatorTests {
             .appendingPathComponent("ios-sync-cache-\(UUID().uuidString)", isDirectory: true)
     }
 
+    private var tokenKey: String { "com.TablePro.sync.serverChangeToken" }
+
     private func makeCoordinator(box: LibraryStateBox, transport: FakeSyncTransport) -> IOSSyncCoordinator {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
             recordCache: SyncRecordCache(directory: cacheDirectory, defaults: nil),
             makeTransport: { transport },
-            isEnabled: { box.syncEnabled }
+            isEnabled: { box.syncEnabled },
+            notificationCenter: NotificationCenter()
         )
         coordinator.getCurrentState = { (box.connections, box.groups, box.tags) }
         coordinator.onConnectionsChanged = { box.connections = $0 }
@@ -173,6 +207,7 @@ struct IOSSyncCoordinatorTests {
         await coordinator.sync()
 
         #expect(await transport.pullCount == 0)
+        #expect(await transport.accountLookups == 0)
         #expect(await transport.pushedRecords.isEmpty)
         #expect(metadata.dirtyIds(for: .connection).contains(local.id.uuidString))
         #expect(metadata.tombstones(for: .connection).count == 1)
@@ -259,5 +294,211 @@ struct IOSSyncCoordinatorTests {
 
         #expect(coordinator.status == .disabled(.userDisabled))
         #expect(coordinator.lastSyncDate == nil)
+    }
+
+    // MARK: - iCloud account
+
+    @Test("Signing in to a different Apple Account starts sync over and still sends the edits waiting to go up")
+    func accountSwitchResetsSyncState() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let cachedID = SyncRecordMapper.recordID(type: .connection, id: local.id.uuidString, in: zoneID)
+        let cache = SyncRecordCache(directory: cacheDirectory, defaults: nil)
+        let staleRecord = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        staleRecord["staleAccountMarker"] = "account-a" as CKRecordValue
+        cache.store([staleRecord])
+        metadata.lastAccountId = "account-a"
+        metadata.lastSyncDate = Date()
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-b")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        coordinator.markDeleted(UUID())
+        var lastSyncDateDuringPull: Date? = Date()
+        var cachedDuringPull: CKRecord?
+        box.duringPull = {
+            lastSyncDateDuringPull = coordinator.lastSyncDate
+            cachedDuringPull = cache.record(for: cachedID)
+        }
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords
+        #expect(pushed.compactMap(SyncRecordMapper.toConnection).map(\.id) == [local.id])
+        #expect(pushed.allSatisfy { $0["staleAccountMarker"] == nil })
+        #expect(await transport.pushedDeletions.isEmpty)
+        #expect(cachedDuringPull == nil)
+        #expect(metadata.dirtyIds(for: .connection).isEmpty)
+        #expect(metadata.tombstones(for: .connection).isEmpty)
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == nil)
+        #expect(lastSyncDateDuringPull == nil)
+        #expect(metadata.lastAccountId == "account-b")
+        #expect(box.connections.contains { $0.id == local.id })
+        #expect(coordinator.status == .idle)
+    }
+
+    @Test("A connection added while the new account is being looked up reaches that account")
+    func editDuringAccountLookupIsPushed() async throws {
+        let box = LibraryStateBox()
+        metadata.lastAccountId = "account-a"
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-b")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        let added = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.duringAccountCheck = {
+            box.connections.append(added)
+            coordinator.markDirty(added.id)
+        }
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection)
+        #expect(pushed.map(\.id) == [added.id])
+        #expect(metadata.dirtyIds(for: .connection).isEmpty)
+        #expect(metadata.lastAccountId == "account-b")
+    }
+
+    @Test("The same account keeps its queued edits, deletions and change token")
+    func sameAccountKeepsState() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let deleted = UUID()
+        metadata.lastAccountId = "account-a"
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-a")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        coordinator.markDeleted(deleted)
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection).map(\.id)
+        #expect(pushed == [local.id])
+        #expect(await transport.pushedDeletions.map(\.recordName).contains { $0.contains(deleted.uuidString) })
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == Data([1, 2, 3]))
+        #expect(metadata.lastAccountId == "account-a")
+    }
+
+    @Test("With no account recorded yet, queued changes go up and the account is recorded")
+    func firstSeenAccountPushesQueue() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-a")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection).map(\.id)
+        #expect(pushed == [local.id])
+        #expect(metadata.lastAccountId == "account-a")
+    }
+
+    @Test("An edit made during the first pull for a new account is pushed to that account")
+    func editAfterSwitchIsPushed() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Old", type: .mysql)
+        box.connections = [local]
+        metadata.lastAccountId = "account-a"
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-b")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        box.duringPull = {
+            box.connections[0].name = "Renamed"
+            coordinator.markDirty(local.id)
+        }
+
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection)
+        #expect(pushed.map(\.id) == [local.id])
+        #expect(pushed.first?.name == "Renamed")
+    }
+
+    @Test("After an account change made while sync was off, edits go up to the new account and deletions do not")
+    func accountChangedWhileOffSendsEditsOnly() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Local", type: .mysql)
+        box.connections = [local]
+        box.syncEnabled = false
+        metadata.lastAccountId = "account-a"
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-b")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        coordinator.markDeleted(UUID())
+
+        box.syncEnabled = true
+        coordinator.setEnabled(true)
+        await coordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection)
+        #expect(pushed.map(\.id) == [local.id])
+        #expect(await transport.pushedDeletions.isEmpty)
+        #expect(box.connections == [local])
+    }
+
+    @Test("Turning sync off during the account check keeps the recorded account and the queue")
+    func disablingDuringAccountCheckKeepsState() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Local", type: .mysql)
+        box.connections = [local]
+        metadata.lastAccountId = "account-a"
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: "account-b")
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        box.duringAccountCheck = {
+            box.syncEnabled = false
+            coordinator.setEnabled(false)
+        }
+
+        await coordinator.sync()
+
+        #expect(metadata.lastAccountId == "account-a")
+        #expect(metadata.dirtyIds(for: .connection).contains(local.id.uuidString))
+        #expect(await transport.pullCount == 0)
+        #expect(coordinator.status == .disabled(.userDisabled))
+    }
+
+    @Test("An account that cannot be looked up is never pulled, and nothing recorded is dropped")
+    func failedAccountLookupNeverPulls() async throws {
+        let box = LibraryStateBox()
+        metadata.lastAccountId = "account-a"
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        let transport = FakeSyncTransport(remoteRecords: [], box: box, accountId: nil)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        await coordinator.sync()
+
+        #expect(await transport.pullCount == 0)
+        #expect(coordinator.status == .error(.accountUnavailable))
+        #expect(metadata.lastAccountId == "account-a")
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == Data([1, 2, 3]))
+    }
+
+    @Test("Deleting a connection the new account never had clears its deletion instead of retrying it")
+    func deletionTheServerNeverHadIsCleared() async throws {
+        let box = LibraryStateBox()
+        let kept = DatabaseConnection(name: "Kept", type: .mysql)
+        box.connections = [kept]
+        metadata.lastAccountId = "account-a"
+        let recordName = SyncRecordMapper.recordID(type: .connection, id: kept.id.uuidString, in: zoneID).recordName
+        let transport = FakeSyncTransport(
+            remoteRecords: [],
+            box: box,
+            accountId: "account-b",
+            recordsTheServerNeverHad: [recordName]
+        )
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        await coordinator.sync()
+
+        box.connections = []
+        coordinator.markDeleted(kept.id)
+        await coordinator.sync()
+
+        #expect(await transport.pushedDeletions.map(\.recordName) == [recordName])
+        #expect(metadata.tombstones(for: .connection).isEmpty)
+        #expect(coordinator.status == .idle)
     }
 }

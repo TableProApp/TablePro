@@ -2,8 +2,6 @@ import Foundation
 import TableProModels
 
 nonisolated enum ConnectionDetailFormatter {
-    static let inMemoryDatabasePath = ":memory:"
-
     static func detail(for connection: DatabaseConnection) -> String {
         switch connection.type {
         case .sqlite, .duckdb:
@@ -14,7 +12,7 @@ nonisolated enum ConnectionDetailFormatter {
     }
 
     private static func fileDetail(_ path: String) -> String {
-        guard path != inMemoryDatabasePath else { return String(localized: "In Memory") }
+        guard path != LocalDatabaseLocation.inMemoryPath else { return String(localized: "In Memory") }
         let name = (path as NSString).lastPathComponent
         return name.isEmpty ? path : name
     }

@@ -1,15 +1,53 @@
-import XCTest
 import TableProDatabase
-import TableProModels
 @testable import TableProMobile
+import TableProModels
+import XCTest
 
 final class DuckDBDriverTests: XCTestCase {
     private var driver: DuckDBDriver?
 
     override func setUp() async throws {
-        let driver = DuckDBDriver(path: DuckDBDriver.inMemoryPath, bookmark: nil)
+        let driver = DuckDBDriver(source: .inMemory)
         try await driver.connect()
         self.driver = driver
+    }
+
+    func testMissingFileIsAnErrorAndCreatesNothing() async throws {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-missing-\(UUID().uuidString).duckdb")
+        let fileDriver = DuckDBDriver(source: .file(missing))
+
+        do {
+            try await fileDriver.connect()
+            XCTFail("Opening a missing DuckDB file must fail")
+        } catch {
+            XCTAssertEqual(
+                error as? LocalDatabaseFileError,
+                .unavailable(fileName: missing.lastPathComponent, reason: .missing)
+            )
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
+    }
+
+    func testCreatedDatabaseReopensWithItsTable() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-create-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("cube.duckdb")
+
+        let creator = DuckDBDriver(source: .file(file), openMode: .createNew)
+        try await creator.connect()
+        _ = try await creator.execute(query: "CREATE TABLE facts (id INTEGER, label VARCHAR)")
+        _ = try await creator.execute(query: "INSERT INTO facts VALUES (1, 'kept')")
+        try await creator.disconnect()
+
+        let reopened = DuckDBDriver(source: .file(file))
+        try await reopened.connect()
+        let result = try await reopened.execute(query: "SELECT label FROM facts")
+        try await reopened.disconnect()
+
+        XCTAssertEqual(result.rows.first?.first ?? nil, "kept")
     }
 
     override func tearDown() async throws {

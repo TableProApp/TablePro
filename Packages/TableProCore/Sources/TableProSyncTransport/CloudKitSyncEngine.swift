@@ -58,7 +58,7 @@ public actor CloudKitSyncEngine {
         return try await container.accountStatus()
     }
 
-    public func currentAccountId() async throws -> String? {
+    public func currentAccountId() async throws -> String {
         guard let container else { throw SyncError.accountUnavailable }
         return try await container.userRecordID().recordName
     }

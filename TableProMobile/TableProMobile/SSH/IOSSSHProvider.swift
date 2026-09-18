@@ -5,9 +5,11 @@ import TableProModels
 final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
     private let tunnelStore = TunnelStore()
     private let secureStore: SecureStore
+    private let container: AppContainerPaths
 
-    init(secureStore: SecureStore) {
+    init(secureStore: SecureStore, container: AppContainerPaths = .live) {
         self.secureStore = secureStore
+        self.container = container
     }
 
     func createTunnel(
@@ -27,6 +29,7 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
             resolvedConfig.privateKeyData = try? secureStore.retrieve(
                 forKey: "com.TablePro.sshkeydata.\(connectionId.uuidString)")
         }
+        resolvedConfig.privateKeyPath = resolvedConfig.privateKeyPath.map(container.localPath(forStoredPath:))
 
         let tunnel = try await SSHTunnelFactory.create(
             config: resolvedConfig,

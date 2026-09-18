@@ -5,7 +5,6 @@ import TableProModels
 struct ConnectionInfoView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
-    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
 
     private var connection: DatabaseConnection { coordinator.connection }
 
@@ -46,16 +45,6 @@ struct ConnectionInfoView: View {
             }
 
             statsSection
-        }
-        .sheet(isPresented: Binding(
-            get: { coordinator.showingEditSheet },
-            set: { coordinator.showingEditSheet = $0 }
-        )) {
-            ConnectionFormView(editing: connection) { updated in
-                appState.updateConnection(updated)
-                coordinatorStore.invalidate(updated.id)
-                coordinator.showingEditSheet = false
-            }
         }
     }
 
@@ -120,13 +109,18 @@ struct ConnectionInfoView: View {
         }
     }
 
+    private var databaseFileURL: URL? {
+        guard !connection.isSample else { return nil }
+        return appState.localDatabaseFiles.location(forStoredPath: connection.database).fileURL
+    }
+
     @ViewBuilder
     private var sqliteFileSection: some View {
         Section("File") {
-            let url = URL(fileURLWithPath: connection.database)
-            LabeledContent("Name", value: url.lastPathComponent)
+            let fileURL = databaseFileURL
+            LabeledContent("Name", value: fileURL?.lastPathComponent ?? connection.database)
             LabeledContent("Path") {
-                Text(connection.database)
+                Text(fileURL?.path ?? connection.database)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)

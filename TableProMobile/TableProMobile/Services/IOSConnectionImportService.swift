@@ -93,7 +93,10 @@ enum IOSConnectionImportService {
                     id: existingId, from: item.connection, name: item.connection.name, sortOrder: existingSortOrder,
                     tagIdsByName: tagIdsByName, groupIdsByName: groupIdsByName
                 )
-                appState.updateConnection(connection)
+                guard appState.mutateConnection(existingId, { $0 = connection }).isSaved else {
+                    logger.error("Import could not replace a connection that is no longer in the library")
+                    continue
+                }
                 connectionIdMap[index] = existingId
                 importedCount += 1
             }

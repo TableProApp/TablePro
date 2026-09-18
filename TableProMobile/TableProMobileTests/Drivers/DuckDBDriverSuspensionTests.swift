@@ -1,15 +1,15 @@
-import XCTest
 @testable import TableProMobile
+import XCTest
 
 final class DuckDBDriverSuspensionTests: XCTestCase {
     func testInMemoryDatabaseHoldsNoSuspensionBlockingResource() {
-        let driver = DuckDBDriver(path: DuckDBDriver.inMemoryPath, bookmark: nil)
+        let driver = DuckDBDriver(source: .inMemory)
 
         XCTAssertFalse(driver.holdsSuspensionBlockingResource)
     }
 
     func testFileBackedDatabaseHoldsSuspensionBlockingResource() {
-        let driver = DuckDBDriver(path: "/tmp/analytics.duckdb", bookmark: nil)
+        let driver = DuckDBDriver(source: .file(URL(fileURLWithPath: "/tmp/analytics.duckdb")))
 
         XCTAssertTrue(driver.holdsSuspensionBlockingResource)
     }

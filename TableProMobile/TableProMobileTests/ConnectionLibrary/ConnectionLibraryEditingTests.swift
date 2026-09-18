@@ -35,20 +35,79 @@ struct ConnectionLibraryEditingTests {
         let member = DatabaseConnection(name: "Member", type: .mysql, groupId: groupId, sortOrder: 3)
         let editing = DatabaseConnection(name: "Editing", type: .mysql, sortOrder: 1)
 
-        var renamed = editing
-        renamed.name = "Renamed"
-        let inPlace = try #require(ConnectionLibraryEditing.updating(
-            renamed, in: [member, editing], validGroupIds: [groupId]
-        ))
+        let inPlace = try #require(ConnectionLibraryEditing.mutatingConnection(
+            editing.id, in: [member, editing], validGroupIds: [groupId]
+        ) { $0.name = "Renamed" })
 
-        var regrouped = editing
-        regrouped.groupId = groupId
-        let moved = try #require(ConnectionLibraryEditing.updating(
-            regrouped, in: [member, editing], validGroupIds: [groupId]
-        ))
+        let moved = try #require(ConnectionLibraryEditing.mutatingConnection(
+            editing.id, in: [member, editing], validGroupIds: [groupId]
+        ) { $0.groupId = groupId })
 
         #expect(inPlace.connections.first { $0.id == editing.id }?.sortOrder == 1)
+        #expect(inPlace.changedConnectionIds == [editing.id])
         #expect(moved.connections.first { $0.id == editing.id }?.sortOrder == 4)
+    }
+
+    @Test("Editing a connection that is no longer stored changes nothing")
+    func mutatingMissingConnection() {
+        let stored = DatabaseConnection(name: "Stored", type: .mysql)
+
+        let change = ConnectionLibraryEditing.mutatingConnection(UUID(), in: [stored], validGroupIds: []) {
+            $0.name = "Resurrected"
+        }
+
+        #expect(change == nil)
+    }
+
+    @Test("An edit that leaves the record as it was reports no changed connection")
+    func mutatingWithoutChange() throws {
+        let stored = DatabaseConnection(name: "Stored", type: .mysql, sortOrder: 3)
+
+        let change = try #require(ConnectionLibraryEditing.mutatingConnection(
+            stored.id, in: [stored], validGroupIds: []
+        ) { $0.name = "Stored" })
+
+        #expect(change.changedConnectionIds.isEmpty)
+        #expect(change.connections == [stored])
+    }
+
+    @Test("A group edit keeps its place unless its parent changes")
+    func groupEditKeepsSortOrder() throws {
+        let parent = ConnectionGroup(name: "Parent", sortOrder: 0)
+        let sibling = ConnectionGroup(name: "Sibling", sortOrder: 0, parentId: parent.id)
+        let editing = ConnectionGroup(name: "Editing", sortOrder: 5)
+        let groups = [parent, sibling, editing]
+
+        let renamed = try #require(ConnectionLibraryEditing.mutatingGroup(editing.id, in: groups) {
+            $0.name = "Renamed"
+        })
+        let moved = try #require(ConnectionLibraryEditing.mutatingGroup(editing.id, in: groups) {
+            $0.parentId = parent.id
+        })
+
+        #expect(renamed.changed)
+        #expect(renamed.groups.first { $0.id == editing.id }?.sortOrder == 5)
+        #expect(moved.groups.first { $0.id == editing.id }?.sortOrder == 1)
+        #expect(ConnectionLibraryEditing.mutatingGroup(UUID(), in: groups) { $0.name = "Gone" } == nil)
+    }
+
+    @Test("A tag edit touches that one tag")
+    func mutatingTagTouchesOneTag() throws {
+        let edited = ConnectionTag(name: "staging", color: .blue)
+        let other = ConnectionTag(name: "prod", color: .red)
+
+        let result = try #require(ConnectionLibraryEditing.mutatingTag(edited.id, in: [edited, other]) {
+            $0.name = "stage"
+        })
+        let untouched = try #require(ConnectionLibraryEditing.mutatingTag(edited.id, in: [edited, other]) {
+            $0.color = .blue
+        })
+
+        #expect(result.changed)
+        #expect(result.tags.map(\.name) == ["stage", "prod"])
+        #expect(result.tags.last == other)
+        #expect(!untouched.changed)
+        #expect(ConnectionLibraryEditing.mutatingTag(UUID(), in: [edited]) { $0.name = "Gone" } == nil)
     }
 
     @Test("Moving before a sibling renumbers that group in the new order")
@@ -155,8 +214,6 @@ struct ConnectionLibraryEditingTests {
         let added = try #require(ConnectionLibraryEditing.addingGroup(ConnectionGroup(name: "Sibling", parentId: one.id), to: groups))
         #expect(added.last?.sortOrder == 1)
 
-        var cyclic = one
-        cyclic.parentId = two.id
-        #expect(ConnectionLibraryEditing.updatingGroup(cyclic, in: groups) == nil)
+        #expect(ConnectionLibraryEditing.mutatingGroup(one.id, in: groups) { $0.parentId = two.id } == nil)
     }
 }

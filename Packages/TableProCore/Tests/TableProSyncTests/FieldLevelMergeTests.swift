@@ -173,6 +173,39 @@ struct SyncRecordCacheTests {
         #expect(defaults.object(forKey: "recordCache") == nil, "The oversized key must be released")
     }
 
+    @Test("Removing everything forgets every record, and storing works again afterwards")
+    func removeAllForgetsEveryRecord() throws {
+        let cache = try makeCache()
+        let first = makeRecord("Connection_A")
+        let second = makeRecord("Connection_B")
+        cache.store([first, second])
+
+        cache.removeAll()
+
+        #expect(cache.record(for: first.recordID) == nil)
+        #expect(cache.record(for: second.recordID) == nil)
+        cache.store([first])
+        #expect(cache.record(for: first.recordID)?["name"] as? String == "Production")
+    }
+
+    @Test("Removing everything drops a legacy UserDefaults cache, and a later read never brings it back")
+    func removeAllDropsLegacyCache() throws {
+        let suite = "com.TablePro.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let record = makeRecord("Connection_Legacy")
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: record, requiringSecureCoding: true)
+        defaults.set(["Connection_Legacy": archived], forKey: "recordCache")
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        let cache = SyncRecordCache(directory: directory, defaults: defaults, storageKey: "recordCache")
+
+        cache.removeAll()
+
+        #expect(defaults.object(forKey: "recordCache") == nil)
+        #expect(cache.record(for: record.recordID) == nil)
+    }
+
     @Test("An unknown record is absent")
     func unknownRecordIsAbsent() throws {
         let cache = try makeCache()

@@ -46,24 +46,31 @@ nonisolated enum ConnectionLibraryEditing {
         return ConnectionLibraryChange(connections: connections + [placed], changedConnectionIds: [placed.id])
     }
 
-    static func updating(
-        _ connection: DatabaseConnection,
+    static func mutatingConnection(
+        _ id: UUID,
         in connections: [DatabaseConnection],
-        validGroupIds: Set<UUID>
+        validGroupIds: Set<UUID>,
+        _ mutate: (inout DatabaseConnection) -> Void
     ) -> ConnectionLibraryChange? {
-        guard let index = connections.firstIndex(where: { $0.id == connection.id }) else { return nil }
-        var updated = connection
-        let targetGroup = effectiveGroupId(of: connection, validGroupIds: validGroupIds)
-        if effectiveGroupId(of: connections[index], validGroupIds: validGroupIds) != targetGroup {
+        guard let index = connections.firstIndex(where: { $0.id == id }) else { return nil }
+        let stored = connections[index]
+        var updated = stored
+        mutate(&updated)
+        updated.id = id
+        let targetGroup = effectiveGroupId(of: updated, validGroupIds: validGroupIds)
+        if effectiveGroupId(of: stored, validGroupIds: validGroupIds) != targetGroup {
             updated.sortOrder = nextSortOrder(
-                in: connections.filter { $0.id != connection.id },
+                in: connections.filter { $0.id != id },
                 groupId: targetGroup,
                 validGroupIds: validGroupIds
             )
         }
+        guard updated != stored else {
+            return ConnectionLibraryChange(connections: connections, changedConnectionIds: [])
+        }
         var result = connections
         result[index] = updated
-        return ConnectionLibraryChange(connections: result, changedConnectionIds: [updated.id])
+        return ConnectionLibraryChange(connections: result, changedConnectionIds: [id])
     }
 
     static func moving(
@@ -185,19 +192,42 @@ nonisolated enum ConnectionLibraryEditing {
         return groups + [placed]
     }
 
-    static func updatingGroup(_ group: ConnectionGroup, in groups: [ConnectionGroup]) -> [ConnectionGroup]? {
-        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return nil }
-        var updated = group
-        if group.parentId != groups[index].parentId {
-            let graph = LibraryGroupGraph(groups: groups)
-            guard graph.canPlace(group.id, under: group.parentId) else { return nil }
+    static func mutatingGroup(
+        _ id: UUID,
+        in groups: [ConnectionGroup],
+        _ mutate: (inout ConnectionGroup) -> Void
+    ) -> (groups: [ConnectionGroup], changed: Bool)? {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return nil }
+        let stored = groups[index]
+        var updated = stored
+        mutate(&updated)
+        updated.id = id
+        if updated.parentId != stored.parentId {
+            guard LibraryGroupGraph(groups: groups).canPlace(id, under: updated.parentId) else { return nil }
             updated.sortOrder = LibraryOrdering.nextSortOrder(
-                after: groups.filter { $0.parentId == group.parentId && $0.id != group.id }.map(\.sortOrder)
+                after: groups.filter { $0.parentId == updated.parentId && $0.id != id }.map(\.sortOrder)
             )
         }
+        guard updated != stored else { return (groups, false) }
         var result = groups
         result[index] = updated
-        return result
+        return (result, true)
+    }
+
+    static func mutatingTag(
+        _ id: UUID,
+        in tags: [ConnectionTag],
+        _ mutate: (inout ConnectionTag) -> Void
+    ) -> (tags: [ConnectionTag], changed: Bool)? {
+        guard let index = tags.firstIndex(where: { $0.id == id }) else { return nil }
+        let stored = tags[index]
+        var updated = stored
+        mutate(&updated)
+        updated.id = id
+        guard updated != stored else { return (tags, false) }
+        var result = tags
+        result[index] = updated
+        return (result, true)
     }
 
     static func reorderingGroups(_ orderedIds: [UUID], in groups: [ConnectionGroup]) -> (groups: [ConnectionGroup], changed: [UUID]) {

@@ -9,16 +9,11 @@ struct GroupFormSheet: View {
     @State private var name: String
     @State private var color: ConnectionColor
     @State private var parentId: UUID?
+    @State private var failure: LibraryWriteFailure?
     private let existingGroup: ConnectionGroup?
-    var onSave: (ConnectionGroup) -> Void
 
-    init(
-        editing group: ConnectionGroup? = nil,
-        parentId: UUID? = nil,
-        onSave: @escaping (ConnectionGroup) -> Void
-    ) {
+    init(editing group: ConnectionGroup? = nil, parentId: UUID? = nil) {
         self.existingGroup = group
-        self.onSave = onSave
         _name = State(initialValue: group?.name ?? "")
         _color = State(initialValue: group?.color ?? .none)
         _parentId = State(initialValue: group?.parentId ?? parentId)
@@ -63,17 +58,19 @@ struct GroupFormSheet: View {
                     CancelButton { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton(title: "Save") {
-                        var group = existingGroup ?? ConnectionGroup()
-                        group.name = name.trimmingCharacters(in: .whitespaces)
-                        group.color = color
-                        group.parentId = parentId
-                        onSave(group)
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    ConfirmButton(title: "Save", action: save)
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .libraryWriteFailureAlert(failure, onDismiss: { failure = nil }, closeForm: { dismiss() })
         }
+    }
+
+    private func save() {
+        let outcome = GroupFormEdits(name: name, color: color, parentId: parentId)
+            .save(editing: existingGroup, in: appState)
+        failure = LibraryWriteFailure(outcome, kind: .group)
+        guard failure == nil else { return }
+        dismiss()
     }
 }

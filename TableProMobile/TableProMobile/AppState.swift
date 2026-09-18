@@ -40,6 +40,7 @@ final class AppState {
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: KeychainSecureStore
+    let localDatabaseFiles: LocalDatabaseFileLocator
 
     private let sampleInstaller: SampleDatabaseInstaller
     private let storage: ConnectionPersistence
@@ -50,19 +51,23 @@ final class AppState {
         libraryDirectory: URL = LibraryStorage.defaultDirectory,
         defaults: UserDefaults = .standard,
         syncCoordinator injectedSyncCoordinator: IOSSyncCoordinator? = nil,
-        sampleInstaller: SampleDatabaseInstaller = .live
+        sampleInstaller: SampleDatabaseInstaller = .live,
+        localDatabaseFiles: LocalDatabaseFileLocator = .live,
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore()
     ) {
         self.sampleInstaller = sampleInstaller
+        self.localDatabaseFiles = localDatabaseFiles
+        localDatabaseFiles.container.recordCurrentContainer()
         onboarding = OnboardingPreferences(defaults: defaults)
         libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
         storage = ConnectionPersistence(directory: libraryDirectory)
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
-        let driverFactory = IOSDriverFactory()
+        let driverFactory = IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
         let secureStore = KeychainSecureStore()
         self.secureStore = secureStore
-        let sshProvider = IOSSSHProvider(secureStore: secureStore)
+        let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
         let connectionManager = ConnectionManager(
             driverFactory: driverFactory,
@@ -215,13 +220,15 @@ final class AppState {
     }
 
     @discardableResult
-    func updateConnection(_ connection: DatabaseConnection) -> Bool {
-        guard let change = ConnectionLibraryEditing.updating(
-            connection,
+    func mutateConnection(_ id: UUID, _ mutate: (inout DatabaseConnection) -> Void) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard let change = ConnectionLibraryEditing.mutatingConnection(
+            id,
             in: connections,
-            validGroupIds: validGroupIds
-        ) else { return false }
-        return apply(change)
+            validGroupIds: validGroupIds,
+            mutate
+        ) else { return .missing }
+        return apply(change) ? .applied : .unchanged
     }
 
     func reorderConnections(_ orderedIds: [UUID]) {
@@ -312,23 +319,27 @@ final class AppState {
     // MARK: - Groups
 
     @discardableResult
-    func addGroup(_ group: ConnectionGroup) -> Bool {
-        guard !refuseWriteIfNotReady() else { return false }
-        guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return false }
+    func addGroup(_ group: ConnectionGroup) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return .invalidPlacement }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
         syncCoordinator.scheduleSyncAfterChange()
-        return true
+        return .applied
     }
 
     @discardableResult
-    func updateGroup(_ group: ConnectionGroup) -> Bool {
-        guard !refuseWriteIfNotReady() else { return false }
-        guard let updated = ConnectionLibraryEditing.updatingGroup(group, in: groups) else { return false }
-        persist(groups: updated)
-        syncCoordinator.markDirtyGroup(group.id)
+    func mutateGroup(_ id: UUID, _ mutate: (inout ConnectionGroup) -> Void) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard groups.contains(where: { $0.id == id }) else { return .missing }
+        guard let result = ConnectionLibraryEditing.mutatingGroup(id, in: groups, mutate) else {
+            return .invalidPlacement
+        }
+        guard result.changed else { return .unchanged }
+        persist(groups: result.groups)
+        syncCoordinator.markDirtyGroup(id)
         syncCoordinator.scheduleSyncAfterChange()
-        return true
+        return .applied
     }
 
     func reorderGroups(_ orderedIds: [UUID]) {
@@ -361,23 +372,26 @@ final class AppState {
 
     // MARK: - Tags
 
-    func addTag(_ tag: ConnectionTag) {
-        guard !refuseWriteIfNotReady() else { return }
+    @discardableResult
+    func addTag(_ tag: ConnectionTag) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
         var updated = tags
         updated.append(tag)
         persist(tags: updated)
         syncCoordinator.markDirtyTag(tag.id)
         syncCoordinator.scheduleSyncAfterChange()
+        return .applied
     }
 
-    func updateTag(_ tag: ConnectionTag) {
-        guard !refuseWriteIfNotReady() else { return }
-        var updated = tags
-        guard let index = updated.firstIndex(where: { $0.id == tag.id }) else { return }
-        updated[index] = tag
-        persist(tags: updated)
-        syncCoordinator.markDirtyTag(tag.id)
+    @discardableResult
+    func mutateTag(_ id: UUID, _ mutate: (inout ConnectionTag) -> Void) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard let result = ConnectionLibraryEditing.mutatingTag(id, in: tags, mutate) else { return .missing }
+        guard result.changed else { return .unchanged }
+        persist(tags: result.tags)
+        syncCoordinator.markDirtyTag(id)
         syncCoordinator.scheduleSyncAfterChange()
+        return .applied
     }
 
     func deleteTag(_ tagId: UUID) {

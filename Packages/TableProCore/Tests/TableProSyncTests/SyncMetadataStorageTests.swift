@@ -90,6 +90,59 @@ struct SyncMetadataStorageTests {
         #expect(storage.lastAccountId == "account")
     }
 
+    @Test("The first account seen is recorded and nothing queued is dropped")
+    func firstAccountIsRecorded() {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        storage.markDirty("a", type: .connection)
+        storage.addTombstone("b", type: .connection)
+        defaults.set(Data([1, 2, 3]), forKey: "com.TablePro.sync.serverChangeToken")
+
+        #expect(storage.adoptAccount("account-a") == .firstSeen)
+
+        #expect(storage.lastAccountId == "account-a")
+        #expect(storage.dirtyIds(for: .connection) == ["a"])
+        #expect(storage.tombstones(for: .connection).map(\.id) == ["b"])
+        #expect(defaults.data(forKey: "com.TablePro.sync.serverChangeToken") == Data([1, 2, 3]))
+    }
+
+    @Test("The same account changes nothing")
+    func sameAccountChangesNothing() {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        storage.lastAccountId = "account-a"
+        storage.markDirty("a", type: .connection)
+        storage.lastSyncDate = Date()
+        defaults.set(Data([1, 2, 3]), forKey: "com.TablePro.sync.serverChangeToken")
+
+        #expect(storage.adoptAccount("account-a") == .unchanged)
+
+        #expect(storage.dirtyIds(for: .connection) == ["a"])
+        #expect(storage.lastSyncDate != nil)
+        #expect(defaults.data(forKey: "com.TablePro.sync.serverChangeToken") == Data([1, 2, 3]))
+    }
+
+    @Test("A different account clears the old account's token and deletions, and keeps edits waiting to go up")
+    func differentAccountStartsOver() {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        storage.lastAccountId = "account-a"
+        storage.markDirty("a", type: .connection)
+        storage.markDirty("c", type: .tag)
+        storage.addTombstone("b", type: .group)
+        storage.lastSyncDate = Date()
+        defaults.set(Data([1, 2, 3]), forKey: "com.TablePro.sync.serverChangeToken")
+
+        #expect(storage.adoptAccount("account-b") == .switched)
+
+        #expect(storage.lastAccountId == "account-b")
+        #expect(storage.dirtyIds(for: .connection) == ["a"])
+        #expect(storage.dirtyIds(for: .tag) == ["c"])
+        #expect(storage.tombstones(for: .group).isEmpty)
+        #expect(storage.lastSyncDate == nil)
+        #expect(defaults.data(forKey: "com.TablePro.sync.serverChangeToken") == nil)
+    }
+
     @Test("An absent token reads as nil")
     func absentTokenReadsAsNil() {
         #expect(makeStorage().loadToken() == nil)

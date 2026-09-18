@@ -19,6 +19,13 @@ struct ConnectedView: View {
         connection.name.isEmpty ? connection.host : connection.name
     }
 
+    private var connectionEditorPresented: Binding<Bool> {
+        Binding(
+            get: { presenter.isEditingConnection(connection.id) },
+            set: { if !$0 { presenter.dismissConnectionEditor() } }
+        )
+    }
+
     var body: some View {
         Group {
             if let coordinator {
@@ -47,6 +54,12 @@ struct ConnectedView: View {
             Button("OK", role: .cancel) { dismiss() }
         } message: {
             Text("This connection no longer exists. It may have been removed from another device.")
+        }
+        .sheet(isPresented: connectionEditorPresented) {
+            ConnectionFormView(editing: connection) { savedId in
+                coordinatorStore.invalidate(savedId)
+                presenter.dismissConnectionEditor()
+            }
         }
         .task(id: coordinatorStore.revision) {
             let resolved = coordinatorStore.coordinator(for: connection, appState: appState)
@@ -235,7 +248,7 @@ struct ConnectedView: View {
         if coordinator.selectedTab == .info, !connection.isSample {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    coordinator.showingEditSheet = true
+                    presenter.presentConnectionEditor(for: connection.id)
                 } label: {
                     Image(systemName: "pencil")
                         .accessibilityLabel(Text("Edit Connection"))

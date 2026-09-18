@@ -1,4 +1,5 @@
 import CloudKit
+import Combine
 import Foundation
 import Observation
 import os
@@ -30,6 +31,7 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var needsResync = false
     @ObservationIgnored private var statusGeneration = 0
     @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
+    @ObservationIgnored private var accountChangeObservation: AnyCancellable?
 
     @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
     @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Void)?
@@ -49,7 +51,8 @@ final class IOSSyncCoordinator {
             defaults: .standard
         ),
         makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() },
-        isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled }
+        isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled },
+        notificationCenter: NotificationCenter = .default
     ) {
         self.metadata = metadata
         self.recordCache = recordCache
@@ -57,6 +60,12 @@ final class IOSSyncCoordinator {
         self.isEnabled = isEnabled
         self.status = isEnabled() ? .idle : .disabled(.userDisabled)
         self.lastSyncDate = metadata.lastSyncDate
+        accountChangeObservation = notificationCenter.publisher(for: .CKAccountChanged)
+            .sink { @Sendable [weak self] _ in
+                Task { @MainActor in
+                    self?.scheduleSyncAfterChange()
+                }
+            }
     }
 
     private func currentTransport() -> any IOSSyncTransport {
@@ -135,6 +144,10 @@ final class IOSSyncCoordinator {
                 return
             }
 
+            let accountId = try await transport.currentAccountId()
+            guard generation == statusGeneration else { return }
+            adoptAccount(accountId)
+
             try await transport.ensureZoneExists()
             let remoteChanges = try await pull(using: transport)
             guard generation == statusGeneration else { return }
@@ -168,6 +181,13 @@ final class IOSSyncCoordinator {
         } catch {
             settle(.error(SyncError.from(error)), from: generation)
         }
+    }
+
+    private func adoptAccount(_ accountId: String) {
+        guard metadata.adoptAccount(accountId) == .switched else { return }
+        recordCache.removeAll()
+        lastSyncDate = nil
+        Self.logger.notice("The iCloud account changed, so sync starts over and pending edits go to the new account")
     }
 
     @discardableResult
@@ -313,7 +333,8 @@ final class IOSSyncCoordinator {
 
         guard !allRecords.isEmpty || !allDeletions.isEmpty else { return }
 
-        let outcome = try await transport.push(records: allRecords, deletions: allDeletions)
+        var outcome = try await transport.push(records: allRecords, deletions: allDeletions)
+        outcome.acceptMissingDeletions(of: allDeletions)
 
         recordCache.store(Array(outcome.savedRecords.values))
         recordCache.remove(Array(outcome.deletedRecordIDs))

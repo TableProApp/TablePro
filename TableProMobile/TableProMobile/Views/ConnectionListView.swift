@@ -157,7 +157,7 @@ struct ConnectionListView: View {
                     deliverPendingIntent()
                 }
         }
-        .fullScreenCover(item: openConnection, onDismiss: presentImportAfterCoverDismissal) { connection in
+        .fullScreenCover(item: openConnection, onDismiss: connectionCoverDidDismiss) { connection in
             ConnectedView(connection: connection)
                 .id(connection.id)
         }
@@ -653,26 +653,20 @@ struct ConnectionListView: View {
         case .whatsNew(let version):
             WhatsNewSheet(version: version)
         case .addConnection:
-            ConnectionFormView { connection in
-                appState.addConnection(connection)
+            ConnectionFormView { _ in
                 presenter.sheet = nil
             }
         case .editConnection(let connection):
-            ConnectionFormView(editing: connection) { updated in
-                appState.updateConnection(updated)
-                coordinatorStore.invalidate(updated.id)
+            ConnectionFormView(editing: connection) { savedId in
+                coordinatorStore.invalidate(savedId)
                 presenter.sheet = nil
             }
         case .moveConnections(let ids):
             MoveToGroupSheet(connectionIds: ids)
         case .newGroup(let parentId):
-            GroupFormSheet(parentId: parentId) { group in
-                appState.addGroup(group)
-            }
+            GroupFormSheet(parentId: parentId)
         case .editGroup(let group):
-            GroupFormSheet(editing: group) { updated in
-                appState.updateGroup(updated)
-            }
+            GroupFormSheet(editing: group)
         case .tags:
             TagManagementView()
         case .settings:
@@ -843,6 +837,11 @@ struct ConnectionListView: View {
             importAfterCoverDismissal = url
             selectedConnectionIdString = nil
         }
+    }
+
+    private func connectionCoverDidDismiss() {
+        presenter.dismissConnectionEditor()
+        presentImportAfterCoverDismissal()
     }
 
     private func presentImportAfterCoverDismissal() {

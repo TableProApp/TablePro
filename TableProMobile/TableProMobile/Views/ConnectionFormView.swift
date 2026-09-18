@@ -18,7 +18,7 @@ struct ConnectionFormView: View {
     @State private var pasteTarget: CertificateRole?
     @State private var showPKCS12Password = false
 
-    var onSave: (DatabaseConnection) -> Void
+    var onSaved: (UUID) -> Void
 
     enum ActiveFilePicker: Identifiable, Hashable {
         case sqliteDatabase
@@ -29,9 +29,9 @@ struct ConnectionFormView: View {
         var id: Int { hashValue }
     }
 
-    init(editing connection: DatabaseConnection? = nil, onSave: @escaping (DatabaseConnection) -> Void) {
+    init(editing connection: DatabaseConnection? = nil, onSaved: @escaping (UUID) -> Void) {
         _viewModel = State(wrappedValue: ConnectionFormViewModel(editing: connection))
-        self.onSave = onSave
+        self.onSaved = onSaved
     }
 
     private var showFilePicker: Binding<Bool> {
@@ -57,6 +57,13 @@ struct ConnectionFormView: View {
         Binding(
             get: { viewModel.credentialError != nil },
             set: { if !$0 { viewModel.dismissCredentialError() } }
+        )
+    }
+
+    private var showFileError: Binding<Bool> {
+        Binding(
+            get: { viewModel.fileError != nil },
+            set: { if !$0 { viewModel.dismissFileError() } }
         )
     }
 
@@ -124,7 +131,7 @@ struct ConnectionFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: handleSave)
-                        .disabled(!viewModel.canSave)
+                        .disabled(!viewModel.canSave || viewModel.isSaving)
                 }
             }
             .fileImporter(
@@ -172,6 +179,16 @@ struct ConnectionFormView: View {
             } message: {
                 Text(viewModel.credentialError ?? String(localized: "Failed to save credentials."))
             }
+            .alert("Database File", isPresented: showFileError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.fileError ?? "")
+            }
+            .libraryWriteFailureAlert(
+                viewModel.saveFailure,
+                onDismiss: viewModel.dismissSaveFailure,
+                closeForm: { dismiss() }
+            )
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
         }
@@ -524,8 +541,12 @@ struct ConnectionFormView: View {
     }
 
     private func handleSave() {
-        guard let connection = viewModel.save(appState: appState, secureStore: appState.secureStore) else { return }
-        onSave(connection)
+        Task {
+            guard let savedId = await viewModel.save(appState: appState, secureStore: appState.secureStore) else {
+                return
+            }
+            onSaved(savedId)
+        }
     }
 
     // MARK: - Helpers

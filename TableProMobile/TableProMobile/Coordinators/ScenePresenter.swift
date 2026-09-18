@@ -49,6 +49,7 @@ final class ScenePresenter {
     let sceneId = UUID()
 
     var sheet: SceneSheet?
+    private(set) var editingConnectionId: UUID?
     private(set) var pendingIntent: SceneIntent?
     private(set) var pendingTable: PendingTableRequest?
     private(set) var holdsConnectionRestore = false
@@ -90,6 +91,18 @@ final class ScenePresenter {
             presentedLaunchSheet = true
         }
         sheet = newSheet
+    }
+
+    func presentConnectionEditor(for connectionId: UUID) {
+        editingConnectionId = connectionId
+    }
+
+    func dismissConnectionEditor() {
+        editingConnectionId = nil
+    }
+
+    func isEditingConnection(_ connectionId: UUID) -> Bool {
+        editingConnectionId == connectionId
     }
 
     func receive(_ intent: SceneIntent) {

@@ -1,17 +1,70 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 
 nonisolated final class IOSDriverFactory: DriverFactory {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "IOSDriverFactory")
+
     private let bookmarkStore: FileBookmarkStore
     private let materializer: CertificateMaterializer
+    private let localFiles: LocalDatabaseFileLocator
 
     init(
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
-        materializer: CertificateMaterializer = CertificateMaterializer()
+        materializer: CertificateMaterializer = CertificateMaterializer(),
+        localFiles: LocalDatabaseFileLocator = .live
     ) {
         self.bookmarkStore = bookmarkStore
         self.materializer = materializer
+        self.localFiles = localFiles
+    }
+
+    private func sqliteSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
+        try localFiles.existingSource(for: localFiles.location(forStoredPath: connection.database))
+    }
+
+    private func duckDBSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
+        let location = localFiles.location(forStoredPath: connection.database)
+        switch location {
+        case .inMemory, .appFile:
+            return try localFiles.existingSource(for: location)
+        case .externalFile, .notOnThisDevice:
+            guard let bookmark = bookmarkStore.bookmark(for: connection.id) else {
+                return try localFiles.existingSource(for: location)
+            }
+            return .securityScoped(try resolve(bookmark, storedPath: connection.database, for: connection.id))
+        }
+    }
+
+    private func resolve(_ bookmark: Data, storedPath: String, for connectionId: UUID) throws -> URL {
+        var isStale = false
+        let url: URL
+        do {
+            url = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+        } catch {
+            Self.logger.error("A DuckDB file bookmark no longer resolves: \(error.localizedDescription, privacy: .private)")
+            throw LocalDatabaseFileError.unavailable(
+                fileName: (storedPath as NSString).lastPathComponent,
+                reason: .accessLost
+            )
+        }
+        if isStale {
+            refreshBookmark(of: url, for: connectionId)
+        }
+        return url
+    }
+
+    private func refreshBookmark(of url: URL, for connectionId: UUID) {
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
+        do {
+            bookmarkStore.save(try url.bookmarkData(), for: connectionId)
+        } catch {
+            Self.logger.error("Refreshing a stale DuckDB file bookmark failed: \(error.localizedDescription, privacy: .private)")
+        }
     }
 
     private func ssl(for connection: DatabaseConnection) throws -> DriverSSLConfiguration {
@@ -27,14 +80,11 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
-            return SQLiteDriver(path: try SampleDatabaseInstaller.live.installIfNeeded().path)
+            return SQLiteDriver(source: .file(try SampleDatabaseInstaller.live.installIfNeeded()))
         case .sqlite:
-            return SQLiteDriver(path: connection.database)
+            return SQLiteDriver(source: try sqliteSource(for: connection))
         case .duckdb:
-            let bookmark = connection.database == DuckDBDriver.inMemoryPath
-                ? nil
-                : bookmarkStore.bookmark(for: connection.id)
-            return DuckDBDriver(path: connection.database, bookmark: bookmark)
+            return DuckDBDriver(source: try duckDBSource(for: connection))
         case .mysql, .mariadb, .tidb, .oceanbase:
             return MySQLDriver(
                 host: connection.host,
