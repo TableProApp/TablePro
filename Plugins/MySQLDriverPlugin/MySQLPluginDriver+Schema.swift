@@ -99,7 +99,8 @@ internal extension MySQLPluginDriver {
     /// database that statement did. Reading the session's instead grafts one table's generation
     /// expressions onto another's columns wherever the two databases share a column name.
     private func fetchGenerationExpressions(table: String, schema: String?) async throws -> [String: String] {
-        guard MySQLServerVersion.hasGenerationExpression(banner: _serverVersion, flavor: flavor) else {
+        let identity = serverIdentity
+        guard MySQLServerVersion.hasGenerationExpression(banner: identity.banner, flavor: identity.flavor) else {
             return [:]
         }
         let query = """
@@ -124,14 +125,18 @@ internal extension MySQLPluginDriver {
     /// directly. Neither exposes the columns a check touches, so `columns` stays empty rather than
     /// being guessed from the expression.
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        let flavor = self.flavor
-        guard !flavor.isDatabend else {
-            return try await databendCheckConstraints(table: table, schema: schema)
-        }
-        guard MySQLServerVersion.hasCheckConstraints(banner: _serverVersion, flavor: flavor) else {
+        let identity = serverIdentity
+        let flavor = identity.flavor
+        switch MySQLCheckConstraints.source(banner: identity.banner, flavor: flavor) {
+        case .unavailable:
             return []
+        case .databendCatalog:
+            return try await databendCheckConstraints(table: table, schema: schema)
+        case .createTableStatement:
+            return try await createTableCheckConstraints(table: table, schema: schema)
+        case .informationSchema:
+            break
         }
-        guard !flavor.isTiDB else { return try await tidbCheckConstraints(table: table, schema: schema) }
         let database = effectiveSchemaLiteral(schema)
         let safeTable = mysqlEscapeStringLiteral(table)
         let query: String
@@ -178,8 +183,9 @@ internal extension MySQLPluginDriver {
     ) async throws -> [String: [PluginColumnInfo]] {
         let escapedDb = effectiveSchemaLiteral(schema)
         let tableFilter = table.map { " AND TABLE_NAME = '\(mysqlEscapeStringLiteral($0))'" } ?? ""
+        let identity = serverIdentity
         let hasGenerationExpression = MySQLServerVersion.hasGenerationExpression(
-            banner: _serverVersion, flavor: flavor
+            banner: identity.banner, flavor: identity.flavor
         )
         let generationProjection = hasGenerationExpression ? "GENERATION_EXPRESSION" : "NULL"
         let query = """

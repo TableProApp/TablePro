@@ -32,4 +32,17 @@ struct MySQLSocketTimeoutTests {
     func largeValueClamps() {
         #expect(mysqlSocketTimeoutSeconds(forQueryTimeout: Int.max) == UInt32.max)
     }
+
+    @Test("An infinite socket timeout can never be what a failure waited for")
+    func infiniteTimeoutNeverOutlasted() {
+        #expect(!mysqlWaitCouldOutlastSocketTimeout(.seconds(0), socketTimeoutSeconds: 0))
+        #expect(!mysqlWaitCouldOutlastSocketTimeout(.seconds(3_600), socketTimeoutSeconds: 0))
+    }
+
+    @Test("A wait reaches the socket timeout exactly on it, and not a millisecond before")
+    func boundary() {
+        #expect(mysqlWaitCouldOutlastSocketTimeout(.seconds(90), socketTimeoutSeconds: 90))
+        #expect(mysqlWaitCouldOutlastSocketTimeout(.seconds(91), socketTimeoutSeconds: 90))
+        #expect(!mysqlWaitCouldOutlastSocketTimeout(.milliseconds(89_999), socketTimeoutSeconds: 90))
+    }
 }

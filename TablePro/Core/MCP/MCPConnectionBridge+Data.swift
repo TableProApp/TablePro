@@ -211,24 +211,15 @@ extension MCPConnectionBridge {
         scope: DatabaseScope,
         table: String,
         columns: [String],
-        rows: [[JsonValue]],
-        cancellation: MCPCancellationToken?
+        rows: [[JsonValue]]
     ) async throws -> JsonValue {
         let databaseType = try await ensureConnected(scope.connectionId)
         let style = await MainActor.run {
             PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle
                 ?? ParameterStyle.questionMark
         }
-        let connectionId = scope.connectionId
-
-        if let cancellation {
-            await cancellation.onCancel { _ in
-                await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
-                }
-            }
-        }
-
+        /// No cancel handler: the insert runs under a `.protectedWrite` lease, which nothing may
+        /// abort, so a request here could only ever have reached another owner's read.
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
         let schema = scope.schema
         let inserted = try await DatabaseManager.shared.withScopedDriver(

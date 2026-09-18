@@ -149,6 +149,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
 
+    /// Why the connected server has no check constraints to list or edit, or nil when it has.
+    var checkConstraintRefusal: String? { get }
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
@@ -325,6 +328,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Rollback the current transaction
     func rollbackTransaction() async throws
 
+    /// What the session is holding, so nothing the app owns opens, commits or rolls back a
+    /// transaction over one the user already has open on the same session.
+    func sessionTransactionState() async -> PluginSessionTransactionState
+
     /// Access to the underlying plugin driver for query building dispatch
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { get }
 
@@ -404,6 +411,8 @@ extension DatabaseDriver {
         try await beginTransaction()
     }
 
+    func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+
     func quoteIdentifier(_ name: String) -> String {
         SQLEscaping.quoteIdentifier(name)
     }
@@ -469,6 +478,7 @@ extension DatabaseDriver {
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
+    var checkConstraintRefusal: String? { nil }
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")

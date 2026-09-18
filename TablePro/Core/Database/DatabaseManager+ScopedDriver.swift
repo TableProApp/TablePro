@@ -140,6 +140,10 @@ extension DatabaseManager {
 
     /// Registers the driver a tracked lease runs on for the length of its body, whichever route it
     /// took, so Stop reaches the handle the work is actually on.
+    ///
+    /// The cancellation check sits after the registration rather than before it, which is what
+    /// closes the window a cancel issued for this owner a moment earlier would otherwise fall
+    /// through: it reached an empty map, and the lease then ran the statement anyway.
     private func trackedLease<T: Sendable>(
         for connectionId: UUID,
         cancellation: DriverCancellationPolicy,
@@ -148,65 +152,116 @@ extension DatabaseManager {
         guard cancellation.isTracked else { return body }
         let token = UUID()
         let entry = RunningDriver(driver: nil, policy: cancellation)
+        let isCancellable = cancellation != .protectedWrite
         return { driver in
             await MainActor.run {
                 DatabaseManager.shared.runningDrivers[connectionId, default: [:]][token] =
                     entry.adopting(driver)
             }
             do {
+                if isCancellable { try Task.checkCancellation() }
                 let value = try await body(driver)
-                await MainActor.run { DatabaseManager.shared.releaseRunningDriver(token, for: connectionId) }
+                await DatabaseManager.settleRunningDriver(token, for: connectionId)
                 return value
             } catch {
-                await MainActor.run { DatabaseManager.shared.releaseRunningDriver(token, for: connectionId) }
+                await DatabaseManager.settleRunningDriver(token, for: connectionId)
                 throw error
             }
         }
     }
 
-    internal func releaseRunningDriver(_ token: UUID, for connectionId: UUID) {
-        runningDrivers[connectionId]?.removeValue(forKey: token)
+    /// Releases the lease and waits out any background cancel already sent for its handle, still
+    /// inside the session gate's turn or the pooled lease. A cancel that outlives its own lease
+    /// lands on whatever the connection runs next, which on MariaDB is a `KILL QUERY` arriving at
+    /// the following statement and on PostgreSQL a `PQcancel` at the following backend command.
+    private static func settleRunningDriver(_ token: UUID, for connectionId: UUID) async {
+        let pending = await MainActor.run {
+            DatabaseManager.shared.releaseRunningDriver(token, for: connectionId)
+        }
+        await pending?.value
+    }
+
+    /// Registers a driver as running work no cancel may reach, for the length of one commit or
+    /// rollback the app has to see through.
+    ///
+    /// Synchronous, and so is the Stop that reads it, which is the whole point: the registration,
+    /// the Stop check and the claim's mark happen in one stretch of main-actor work, so a Stop can
+    /// only land wholly before it or wholly after it. The driver is the handle the statement is
+    /// actually on, which is not always the session driver now that a cross-database tab runs on a
+    /// pooled connection.
+    internal func beginProtectedWrite(on driver: DatabaseDriver, for connectionId: UUID) -> UUID {
+        let token = UUID()
+        runningDrivers[connectionId, default: [:]][token] = RunningDriver(driver: driver, policy: .protectedWrite)
+        return token
+    }
+
+    internal func endProtectedWrite(_ token: UUID, for connectionId: UUID) {
+        releaseRunningDriver(token, for: connectionId)
+    }
+
+    @discardableResult
+    internal func releaseRunningDriver(_ token: UUID, for connectionId: UUID) -> Task<Void, Never>? {
+        let released = runningDrivers[connectionId]?.removeValue(forKey: token)
         if runningDrivers[connectionId]?.isEmpty == true {
             runningDrivers.removeValue(forKey: connectionId)
         }
+        return released?.pendingCancel
     }
 
     /// Stop has to reach the handle the query is actually running on, which is no longer
     /// always the session driver now that a cross-database tab runs on a pooled connection.
     ///
-    /// A `.protectedWrite` lease is never reachable: a commit, a rollback or a DDL statement that is
-    /// half applied is data loss, and both Stop and a superseding navigation would otherwise abort
-    /// one. The empty-map fallback is deliberately only taken for an explicit user Stop, because it
-    /// cancels whatever the session driver happens to be running without knowing what that is.
-    /// Stop stays synchronous because the user is waiting on it. A navigation supersede does not:
-    /// a PostgreSQL cancel opens a second connection to deliver the request, which through an SSH
-    /// tunnel costs 70-160ms, and paying that on the main thread turns fast browsing into a stutter.
-    /// Correctness never depended on the cancel landing first, because the tab's execution claim
-    /// already discards whatever the superseded query returns; the cancel is only there to stop the
-    /// server doing work nobody wants.
-    func cancelRunningQuery(for connectionId: UUID, reach: DriverCancellationReach = .userStop) throws {
-        let targets = cancellationTargets(for: connectionId, reach: reach)
+    /// It reaches that owner's leases and nothing else. There is no session-driver fallback: an
+    /// owner with nothing registered has nothing running, and aborting whatever the shared driver
+    /// happened to be doing is how one tab's Run stopped another tab's batch. A `.protectedWrite`
+    /// lease is never reachable either, because a commit, a rollback or a DDL statement that is half
+    /// applied is data loss.
+    func cancelRunningQuery(
+        owner: DriverLeaseOwner,
+        on connectionId: UUID,
+        delivery: DriverCancellationDelivery
+    ) throws {
+        let targets = cancellationTargets(for: connectionId, owner: owner)
         guard !targets.isEmpty else { return }
-        guard reach == .userStop else {
-            DispatchQueue.global(qos: .utility).async {
-                for driver in targets { try? driver.cancelQuery() }
-            }
+        guard delivery == .background else {
+            for target in targets { try target.driver.cancelQuery() }
             return
         }
-        for driver in targets {
-            try driver.cancelQuery()
+        for target in targets {
+            runningDrivers[connectionId]?[target.token]?.pendingCancel = Self.backgroundCancel(target.driver)
         }
     }
 
+    /// Off the main thread because a PostgreSQL cancel opens a second connection to deliver the
+    /// request, which through an SSH tunnel costs 70-160ms per click of fast browsing (#2061). The
+    /// Task is handed back to the lease, which awaits it before releasing the handle.
+    private static func backgroundCancel(_ driver: DatabaseDriver) -> Task<Void, Never> {
+        Task {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
+                    try? driver.cancelQuery()
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    /// A driver held by a protected write is dropped from the targets even when a cancellable lease
+    /// names the same handle, which is the ordinary shape of a batch: its statements run under one
+    /// `.cancellableRead` lease and its commit registers the same driver again as a
+    /// `.protectedWrite`. Without the identity check the cancel would reach the commit through the
+    /// lease that is still open around it.
     private func cancellationTargets(
         for connectionId: UUID,
-        reach: DriverCancellationReach
-    ) -> [DatabaseDriver] {
+        owner: DriverLeaseOwner
+    ) -> [(token: UUID, driver: DatabaseDriver)] {
         let running = runningDrivers[connectionId] ?? [:]
-        let cancellable = running.values.filter { $0.policy == .cancellableRead }.compactMap(\.driver)
-        guard cancellable.isEmpty else { return cancellable }
-        guard running.isEmpty, reach == .userStop else { return [] }
-        return [driver(for: connectionId)].compactMap { $0 }
+        let protected = running.values.filter { $0.policy == .protectedWrite }.compactMap(\.driver)
+        return running.compactMap { token, entry in
+            guard entry.policy == .cancellableRead(owner), let driver = entry.driver else { return nil }
+            guard !protected.contains(where: { $0 === driver }) else { return nil }
+            return (token, driver)
+        }
     }
 
     /// Pooling assumes a second connection to the same definition reaches the same database.

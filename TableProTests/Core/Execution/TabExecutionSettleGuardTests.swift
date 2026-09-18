@@ -71,6 +71,23 @@ struct TabExecutionSettleGuardTests {
         )
     }
 
+    /// Stop is the one ending that has to spare a claim whose `COMMIT` is already on the wire, and
+    /// `stop(_:)` is the only call that does. `invalidateAll(reason: .cancelledByUser)` ends every
+    /// claim regardless, so a Stop path written that way drops the results of a batch the server
+    /// has already committed, and it ends the claims of every other tab besides.
+    @Test("No Stop path ends every execution through invalidateAll")
+    func stopGoesThroughTheTabsOwnStop() throws {
+        let offenders = try Self.sourceLines(containing: "invalidateAll(reason: .cancelledByUser)")
+            .filter { $0.file != "TabExecutionRegistry.swift" }
+        #expect(
+            offenders.isEmpty,
+            """
+            The user's Stop reports `tabExecution.stop(tabId)`, which acts on one tab and keeps a \
+            claim whose commit is already on the wire: \(offenders.map(\.description).sorted())
+            """
+        )
+    }
+
     private struct CallSite {
         let file: String
         let line: Int

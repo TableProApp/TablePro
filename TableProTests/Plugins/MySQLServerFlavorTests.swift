@@ -28,6 +28,18 @@ struct MySQLServerFlavorTests {
         #expect(MySQLServerFlavor.fromBanner(nil) == .mysql)
     }
 
+    /// Measured with the app's own libmariadb against MySQL 5.5.62 and 8.4.11, MariaDB 5.5.64 and
+    /// 11.4.13 and TiDB v8.5.1. Databend and OceanBase are unmeasured, and an engine that may never
+    /// set the flag must not be read as reporting no transaction.
+    @Test("Only the flavours measured to carry the session status flags report them")
+    func statusFlagReportingIsPerFlavor() {
+        #expect(MySQLServerFlavor.mysql.reportsSessionStatusFlags)
+        #expect(MySQLServerFlavor.mariadb.reportsSessionStatusFlags)
+        #expect(MySQLServerFlavor.tidb(version: nil).reportsSessionStatusFlags)
+        #expect(MySQLServerFlavor.databend.reportsSessionStatusFlags == false)
+        #expect(MySQLServerFlavor.oceanbase(version: nil).reportsSessionStatusFlags == false)
+    }
+
     @Test("TiDB's release information carries the real version when the banner was overridden")
     func tidbReleaseInformation() {
         let info = "Release Version: v7.5.1\nEdition: Community\nGit Commit Hash: 7d16cc79"
@@ -267,14 +279,16 @@ struct MySQLServerFlavorTests {
     @Test("CHECK constraints are read on TiDB from 7.2, whatever the 8.0.11 banner says")
     func tidbCheckConstraints() {
         let banner = "8.0.11-TiDB-v7.5.1"
-        #expect(MySQLServerVersion.hasCheckConstraints(
+        #expect(MySQLCheckConstraints.source(
             banner: banner, flavor: .tidb(version: MySQLEngineVersion(major: 7, minor: 5, patch: 1))
-        ))
-        #expect(!MySQLServerVersion.hasCheckConstraints(
+        ) == .createTableStatement)
+        #expect(MySQLCheckConstraints.source(
             banner: banner, flavor: .tidb(version: MySQLEngineVersion(major: 7, minor: 1, patch: 5))
-        ))
-        #expect(!MySQLServerVersion.hasCheckConstraints(banner: banner, flavor: .tidb(version: nil)))
-        #expect(!MySQLServerVersion.hasCheckConstraints(banner: Self.databendBanner, flavor: .databend))
+        ) == .unavailable)
+        #expect(MySQLCheckConstraints.source(banner: banner, flavor: .tidb(version: nil)) == .unavailable)
+        #expect(MySQLCheckConstraints.source(
+            banner: Self.databendBanner, flavor: .databend
+        ) == .databendCatalog)
     }
 
     @Test("Databend's 8.0.90 banner does not unlock MySQL catalog columns it lacks")
@@ -291,7 +305,8 @@ struct MySQLServerFlavorTests {
     ])
     func oceanbaseCatalogGates(version: MySQLEngineVersion?, readsCheckConstraints: Bool) {
         let flavor = MySQLServerFlavor.oceanbase(version: version)
-        #expect(MySQLServerVersion.hasCheckConstraints(banner: "5.7.25", flavor: flavor) == readsCheckConstraints)
+        let source = MySQLCheckConstraints.source(banner: "5.7.25", flavor: flavor)
+        #expect((source == .informationSchema) == readsCheckConstraints)
         #expect(MySQLServerVersion.hasGenerationExpression(banner: "5.7.25", flavor: flavor))
         #expect(!MySQLServerVersion.quotesColumnDefault(banner: "5.7.25", flavor: flavor))
     }

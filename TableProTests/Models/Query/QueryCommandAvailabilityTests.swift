@@ -106,10 +106,40 @@ struct QueryCommandAvailabilityTests {
         #expect(Self.make(hasQueryText: false, hasResults: true).canClearResults)
     }
 
+    /// A batch whose `COMMIT` is on the wire is running and cannot be stopped by anything. The HIG
+    /// asks not to offer a cancel that cannot act, so Stop dims and says why.
+    @Test("A batch that is committing offers no Stop, and the hint says why")
+    func committingBatchOffersNoStop() {
+        let commands = Self.make(isExecuting: true, isStoppable: false)
+
+        #expect(commands.canStop == false)
+        #expect(commands.canRun == false)
+        #expect(commands.stopHint.contains("The batch is committing and cannot be stopped."))
+    }
+
+    @Test("An ordinary running query offers Stop with no reason attached")
+    func runningQueryOffersStop() {
+        let commands = Self.make(isExecuting: true)
+
+        #expect(commands.canStop)
+        #expect(commands.stopHint.contains("committing") == false)
+    }
+
+    /// Nothing is running, so there is nothing to explain and nothing to dim: the hint must not
+    /// carry the committing reason around an idle bar.
+    @Test("An idle bar carries no stop reason")
+    func idleBarCarriesNoStopReason() {
+        let commands = Self.make(isExecuting: false, isStoppable: false)
+
+        #expect(commands.canStop == false)
+        #expect(commands.stopHint.contains("committing") == false)
+    }
+
     private static func make(
         isConnected: Bool = true,
         hasQueryText: Bool = true,
         isExecuting: Bool = false,
+        isStoppable: Bool = true,
         hasResults: Bool = true,
         explainVariants: [ExplainVariant] = [ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")]
     ) -> QueryCommandAvailability {
@@ -117,6 +147,7 @@ struct QueryCommandAvailabilityTests {
             isConnected: isConnected,
             hasQueryText: hasQueryText,
             isExecuting: isExecuting,
+            isStoppable: isStoppable,
             hasResults: hasResults,
             explainVariants: explainVariants,
             shortcutHint: { label, _ in label }

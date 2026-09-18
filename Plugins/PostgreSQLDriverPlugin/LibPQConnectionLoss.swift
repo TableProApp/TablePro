@@ -16,6 +16,26 @@ enum LibPQTransactionState: Sendable, Equatable {
     var mayHoldTransaction: Bool {
         self != .idle
     }
+
+    /// What the app is told about the session, so nothing it owns opens, commits or rolls back a
+    /// transaction over one the user already has.
+    ///
+    /// `PQTRANS_INERROR` is its own answer rather than another open transaction: measured on
+    /// PostgreSQL 17.11, a `COMMIT` in that state answers with the command tag `ROLLBACK` and no
+    /// error, so telling the user to commit loses the work it was meant to keep. `PQTRANS_ACTIVE`
+    /// is a statement still in flight, which says nothing about the transaction around it.
+    var sessionTransactionState: PluginSessionTransactionState {
+        switch self {
+        case .idle:
+            return .idle
+        case .inTransaction:
+            return .inTransaction
+        case .inError:
+            return .abortedTransaction
+        case .active, .unknown:
+            return .unknown
+        }
+    }
 }
 
 enum LibPQServerMessage {

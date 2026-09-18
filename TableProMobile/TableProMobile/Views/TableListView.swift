@@ -151,11 +151,12 @@ struct TableListView: View {
             Button(String(localized: "Truncate"), role: .destructive) {
                 if let table = tableToTruncate {
                     Task {
+                        guard let driver = session?.driver else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
                                 table: table.name, schema: activeSchema, for: connection.type
                             )
-                            _ = try await session?.driver.execute(query: "TRUNCATE TABLE \(quoted)")
+                            try await driver.executeWrite(["TRUNCATE TABLE \(quoted)"])
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
@@ -177,11 +178,12 @@ struct TableListView: View {
             Button(String(localized: "Drop"), role: .destructive) {
                 if let table = tableToDrop {
                     Task {
+                        guard let driver = session?.driver else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
                                 table: table.name, schema: activeSchema, for: connection.type
                             )
-                            _ = try await session?.driver.execute(query: "DROP TABLE \(quoted)")
+                            try await driver.executeWrite(["DROP TABLE \(quoted)"])
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription

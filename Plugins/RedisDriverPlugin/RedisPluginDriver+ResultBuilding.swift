@@ -255,9 +255,13 @@ extension RedisPluginDriver {
         }
     }
 
+    /// An error element is marked the way `redis-cli` marks one, because `EXEC` answers with the
+    /// failures of the block inline among its values: an unmarked `WRONGTYPE Operation against a
+    /// key holding the wrong kind of value` in a result row reads as a stored string.
     func redisReplyToString(_ reply: RedisReply) -> String {
         switch reply {
-        case .string(let s), .status(let s), .error(let s): return s
+        case .string(let s), .status(let s): return s
+        case .error(let message): return "(error) \(message)"
         case .integer(let i): return String(i)
         case .data(let d): return String(data: d, encoding: .utf8) ?? d.base64EncodedString()
         case .array(let items): return "[\(items.map { redisReplyToString($0) }.joined(separator: ", "))]"

@@ -75,7 +75,7 @@ extension MainContentCoordinator {
     }
 
     private func reloadTableTab(at tabIndex: Int) {
-        cancelCurrentQuery()
+        stopExecution(for: tabManager.tabs[tabIndex].id)
         /// A refresh asks for the table as it is now, so the exact count the user requested earlier
         /// describes a table that may have moved on. Retiring it here is what lets the automatic
         /// count re-derive a total, which it otherwise refuses to do rather than downgrade an exact

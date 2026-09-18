@@ -76,7 +76,19 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var sortState = SortState()
     @Published internal var sortDescriptor: StructureSortDescriptor?
     @Published internal var columnLayouts: [StructureTab: ColumnLayoutState] = [:]
-    @Published internal var serverSupport = StructureServerSupport.unrestricted
+
+    /// A tab the server withdraws cannot stay selected, or the editor shows a grid for something
+    /// the server has none of and no segment matches the selection.
+    @Published internal var serverSupport = StructureServerSupport.unrestricted {
+        didSet {
+            guard !availableTabs.contains(selectedTab) else { return }
+            selectedTab = .columns
+        }
+    }
+
+    internal var availableTabs: [StructureTab] {
+        StructureTabAvailability.tabs(for: connection.type, serverSupport: serverSupport)
+    }
 
     /// What the bottom bar offers while this tab is showing its structure.
     ///
@@ -109,7 +121,8 @@ internal final class StructureEditingSession: ObservableObject {
         databaseName: String,
         schemaName: String?,
         tableName: String,
-        objectKind: TableInfo.TableType = .table
+        objectKind: TableInfo.TableType = .table,
+        serverSupport: StructureServerSupport = .unrestricted
     ) {
         self.identity = identity
         self.connection = connection
@@ -117,6 +130,7 @@ internal final class StructureEditingSession: ObservableObject {
         self.schemaName = schemaName
         self.tableName = tableName
         self.objectKind = objectKind
+        self.serverSupport = serverSupport
         gridDelegate = StructureGridDelegate(
             structureChangeManager: changeManager,
             selectedTab: .columns,

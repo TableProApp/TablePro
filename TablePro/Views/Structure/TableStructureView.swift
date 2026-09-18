@@ -302,20 +302,7 @@ struct TableStructureView: View {
     }
 
     private var availableTabs: [StructureTab] {
-        var tabs = StructureTab.allCases
-        if !connection.type.supportsForeignKeys {
-            tabs = tabs.filter { $0 != .foreignKeys }
-        }
-        if connection.type != .clickhouse {
-            tabs = tabs.filter { $0 != .parts }
-        }
-        if !connection.type.supportsTriggers {
-            tabs = tabs.filter { $0 != .triggers }
-        }
-        if !connection.type.supportsCheckConstraints {
-            tabs = tabs.filter { $0 != .checkConstraints }
-        }
-        return tabs
+        session.availableTabs
     }
 
     private var toolbar: some View {

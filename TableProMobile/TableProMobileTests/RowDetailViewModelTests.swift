@@ -1,13 +1,13 @@
 import Foundation
-import Testing
 import TableProDatabase
-import TableProModels
 @testable import TableProMobile
+import TableProModels
+import TableProPluginKit
+import Testing
 
 @MainActor
 @Suite("RowDetailViewModel")
 struct RowDetailViewModelTests {
-
     private func makeColumns() -> [ColumnInfo] {
         [
             ColumnInfo(name: "id", typeName: "INT", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
@@ -122,6 +122,70 @@ struct RowDetailViewModelTests {
         let query = driver.executedQueries[0].uppercased()
         #expect(query.hasPrefix("UPDATE"))
         #expect(query.contains("WHERE"))
+    }
+
+    @Test("saveChanges on an idle session opens a read-write transaction and commits it")
+    func saveWrapsIdleSession() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedTransactionState = .idle
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns()
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let success = await vm.saveChanges()
+        #expect(success == true)
+        #expect(driver.beganTransactionModes == [.readWrite])
+        #expect(driver.didCommitTransaction)
+        #expect(driver.executedQueries.count == 1)
+    }
+
+    @Test("a failed save rolls the transaction back and reports the error")
+    func failedSaveRollsBack() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedTransactionState = .idle
+        driver.scriptedExecuteResults = [.failure(MockDatabaseDriver.MockError.scripted)]
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns()
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let success = await vm.saveChanges()
+        #expect(success == false)
+        #expect(driver.didRollbackTransaction)
+        #expect(!driver.didCommitTransaction)
+        #expect(vm.operationError != nil)
+    }
+
+    @Test("saveChanges joins a transaction the session already holds")
+    func saveJoinsOpenTransaction() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedTransactionState = .explicitTransaction
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeColumns()
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let success = await vm.saveChanges()
+        #expect(success == true)
+        #expect(!driver.didBeginTransaction)
+        #expect(!driver.didCommitTransaction)
+        #expect(driver.executedQueries.count == 1)
     }
 
     @Test("saveChanges under confirmWrites defers execution and requests confirmation")

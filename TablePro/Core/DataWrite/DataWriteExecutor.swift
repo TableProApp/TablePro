@@ -39,15 +39,25 @@ struct DataWriteRun: Sendable {
     let sideStatements: [String]
 }
 
-/// Some of the batch is on the server and cannot be taken back.
+/// Some of the batch reached the server and the app cannot take it back.
 ///
 /// Distinct from `DataWriteError` on purpose: that one is an `Equatable` enum whose cases are
 /// compared in tests, and results do not belong in it. Modelled on `PrincipalApplyError`, which
 /// reports the same shape for principals.
 struct DataWritePartialCommitError: LocalizedError {
+    /// What became of the statements that ran, which decides what the user is told to do next.
+    enum Disposition: Equatable {
+        /// Committed as they ran, either by an engine without transactions or because the rollback
+        /// itself failed. Running the save again would write them a second time.
+        case written
+        /// Pending inside a transaction the user already had open, which the app must not end.
+        case pendingInSessionTransaction
+    }
+
     let committed: [DataWriteStepResult]
     let totalStatements: Int
     let engine: String
+    let disposition: Disposition
     let underlying: any Error
 
     var errorDescription: String? {
@@ -55,16 +65,33 @@ struct DataWritePartialCommitError: LocalizedError {
     }
 
     var partialCommitMessage: String {
-        String(
-            format: String(
-                localized: "%1$lld of %2$lld statements were already written, and %3$@ cannot roll them back."
-            ),
-            committed.count, totalStatements, engine
-        )
+        switch disposition {
+        case .written:
+            return String(
+                format: String(
+                    localized: "%1$lld of %2$lld statements were already written, and %3$@ cannot roll them back."
+                ),
+                committed.count, totalStatements, engine
+            )
+        case .pendingInSessionTransaction:
+            return String(
+                format: String(
+                    localized: "%1$lld of %2$lld statements ran inside the transaction already open on this connection."
+                ),
+                committed.count, totalStatements
+            )
+        }
     }
 
     var recoverySuggestion: String? {
-        String(localized: "Refresh the table to see what was written. Saving again would write those rows a second time.")
+        switch disposition {
+        case .written:
+            return String(
+                localized: "Refresh the table to see what was written. Saving again would write those rows a second time."
+            )
+        case .pendingInSessionTransaction:
+            return String(localized: "Roll the transaction back to discard them, or commit it to keep them.")
+        }
     }
 }
 
@@ -97,7 +124,12 @@ enum DataWriteExecutor {
             }
         }
 
-        let useTransaction = driver.supportsTransactions
+        /// Asked inside the same lease that runs the statements, so nothing can open a transaction
+        /// between the answer and the first write.
+        let owner = WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState()
+        )
         var results: [DataWriteStepResult] = []
 
         func drainEpilogue() async {
@@ -114,7 +146,7 @@ enum DataWriteExecutor {
         }
 
         do {
-            if useTransaction {
+            if owner.opensTransaction {
                 try await driver.beginTransaction(mode: mode)
             }
 
@@ -133,7 +165,7 @@ enum DataWriteExecutor {
                 try verify(
                     step,
                     rowsAffected: result.rowsAffected,
-                    canRollBack: useTransaction,
+                    owner: owner,
                     countsAreMeaningful: DataWriteRowCounts.areMeaningful(for: plan.databaseType)
                 )
                 results.append(
@@ -145,12 +177,12 @@ enum DataWriteExecutor {
                 )
             }
 
-            if useTransaction {
+            if owner.opensTransaction {
                 try await driver.commitTransaction()
             }
         } catch {
-            var rollbackSucceeded = useTransaction
-            if useTransaction {
+            var rollbackSucceeded = owner.canRollBack
+            if owner.opensTransaction {
                 do {
                     try await driver.rollbackTransaction()
                 } catch {
@@ -162,12 +194,15 @@ enum DataWriteExecutor {
 
             /// Without a transaction the statements that already ran are on the server for good,
             /// and so they are when the rollback itself failed. Reporting that as a plain failure
-            /// tells the user to try again, and trying again writes them a second time.
+            /// tells the user to try again, and trying again writes them a second time. A run that
+            /// joined the user's own transaction is the third case: the statements are pending in
+            /// it, and only the user can commit or roll it back.
             if !rollbackSucceeded, !results.isEmpty {
                 throw DataWritePartialCommitError(
                     committed: results,
                     totalStatements: steps.count,
                     engine: plan.databaseType.rawValue,
+                    disposition: owner == .session ? .pendingInSessionTransaction : .written,
                     underlying: error
                 )
             }
@@ -201,7 +236,7 @@ enum DataWriteExecutor {
     private static func verify(
         _ step: DataWriteStep,
         rowsAffected: Int,
-        canRollBack: Bool,
+        owner: WriteTransactionOwner,
         countsAreMeaningful: Bool
     ) throws {
         guard let expected = step.expectedRowCount else { return }
@@ -211,11 +246,7 @@ enum DataWriteExecutor {
             logger.error(
                 "Statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected at most \(expected, privacy: .public)"
             )
-            throw canRollBack
-                ? DataWriteError.tooManyRowsAffected(table: table, expected: expected, actual: rowsAffected)
-                : DataWriteError.tooManyRowsAffectedUnrecoverable(
-                    table: table, expected: expected, actual: rowsAffected
-                )
+            throw tooManyRowsError(owner: owner, table: table, expected: expected, actual: rowsAffected)
         }
 
         guard step.matchesRowsWithoutKey, countsAreMeaningful, rowsAffected < expected else { return }
@@ -223,5 +254,23 @@ enum DataWriteExecutor {
             "Keyless statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
         )
         throw DataWriteError.rowsNoLongerMatch(table: table, expected: expected, actual: rowsAffected)
+    }
+
+    /// Three different things to tell the user, one per owner: the app took the statement back, the
+    /// engine cannot, or it is pending in a transaction only the user can end.
+    private static func tooManyRowsError(
+        owner: WriteTransactionOwner,
+        table: String,
+        expected: Int,
+        actual: Int
+    ) -> DataWriteError {
+        switch owner {
+        case .app:
+            return .tooManyRowsAffected(table: table, expected: expected, actual: actual)
+        case .session:
+            return .tooManyRowsAffectedInSessionTransaction(table: table, expected: expected, actual: actual)
+        case .none:
+            return .tooManyRowsAffectedUnrecoverable(table: table, expected: expected, actual: actual)
+        }
     }
 }

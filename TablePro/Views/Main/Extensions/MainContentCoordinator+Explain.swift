@@ -131,8 +131,7 @@ extension MainContentCoordinator {
             return
         }
 
-        supersedeExecution(for: tab.id)
-        let claim = tabExecution.claim(tab.id)
+        let (claim, lease) = beginTabExecution(for: tab.id)
         let tabId = tab.id
         let conn = connection
 
@@ -144,7 +143,7 @@ extension MainContentCoordinator {
                 let fetchResult = try await services.databaseManager.withScopedDriver(
                     scope: scope,
                     route: services.databaseManager.executionRoute(for: scope),
-                    cancellation: .cancellableRead
+                    cancellation: .cancellableRead(lease)
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver, sql: request.sql, parameters: nil, rowCap: nil
@@ -160,7 +159,7 @@ extension MainContentCoordinator {
                     // that cleared the spinner or nilled the task handle would be reporting on a
                     // query that is still running, so the gate comes before all of them.
                     guard tabExecution.settle(claim) else { return }
-                    retireQueryTask(for: claim)
+                    retireQueryTask(.claim(claim))
                     guard !Task.isCancelled else {
                         reportEndedExecutions([
                             EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
@@ -238,7 +237,7 @@ extension MainContentCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard tabExecution.settle(claim) else { return }
-                    retireQueryTask(for: claim)
+                    retireQueryTask(.claim(claim))
 
                     // A cancelled EXPLAIN is not a failure the user needs told about, and it does
                     // not belong in history either.
@@ -285,6 +284,6 @@ extension MainContentCoordinator {
                 }
             }
         }
-        installQueryTask(explainTask, for: claim)
+        installQueryTask(explainTask, owner: .claim(claim), lease: lease)
     }
 }

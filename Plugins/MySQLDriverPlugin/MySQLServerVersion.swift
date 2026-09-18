@@ -27,22 +27,46 @@ enum MySQLServerVersion {
         return version.patch >= target.2
     }
 
-    /// MySQL parsed and ignored CHECK before 8.0.16; MariaDB enforces it from 10.2.1.
-    /// `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` appears with that support on both.
-    static func hasCheckConstraints(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+    /// True only when the banner parses and names a version below `target`. An unreadable banner is
+    /// not an old server, so a gate that picks legacy syntax asks this rather than `!isAtLeast`.
+    static func isKnownBelow(_ target: (Int, Int, Int), banner: String?) -> Bool {
+        guard let banner, components(from: banner) != nil else { return false }
+        return !isAtLeast(target, banner: banner)
+    }
+
+    /// Whether the server has a statement timeout at all. MySQL gained `max_execution_time` in
+    /// 5.7.8 and MariaDB `max_statement_time` in 10.1.1; measured, everything below answers
+    /// `ERROR 1193 Unknown system variable` to both spellings.
+    ///
+    /// This is the floor the tests and `scripts/check-mysql-query-timeout.sh` assert, not the
+    /// runtime gate: `applyQueryTimeout` runs the statement and reads the server's own answer,
+    /// which is right for a fork, a proxy or a release no image exists for.
+    static func hasStatementTimeout(banner: String?, flavor: MySQLServerFlavor) -> Bool {
         switch flavor {
         case .mysql:
-            return isAtLeast((8, 0, 16), banner: banner)
+            return isAtLeast((5, 7, 8), banner: banner)
         case .mariadb:
-            return isAtLeast((10, 2, 1), banner: banner)
-        case .tidb(let version):
-            guard let version else { return false }
-            return version >= MySQLEngineVersion(major: 7, minor: 2, patch: 0)
-        case .oceanbase(let version):
-            guard let version else { return false }
-            return version >= MySQLEngineVersion(major: 4, minor: 0, patch: 0)
-        case .databend:
-            return false
+            return isAtLeast((10, 1, 1), banner: banner)
+        case .tidb, .oceanbase, .databend:
+            return true
+        }
+    }
+
+    /// Which account grammar this server takes. `CREATE USER ... WITH MAX_USER_CONNECTIONS`,
+    /// `ALTER USER ... WITH MAX_USER_CONNECTIONS` and `ALTER USER ... IDENTIFIED BY` all arrived in
+    /// MySQL 5.7.6 and MariaDB 10.2.0; measured, MySQL 5.5.62 and 5.6.51 and MariaDB 5.5.64,
+    /// 10.0.38 and 10.1.48 answer `ERROR 1064` to all three.
+    ///
+    /// TiDB and OceanBase ignore the banner, which lies about them: OceanBase handshakes as 5.7.25,
+    /// or 5.6.25 through OBProxy.
+    static func accountSyntax(banner: String?, flavor: MySQLServerFlavor) -> MySQLAccountSyntax {
+        switch flavor {
+        case .mysql:
+            return isKnownBelow((5, 7, 6), banner: banner) ? .grantUsage : .alterUser
+        case .mariadb:
+            return isKnownBelow((10, 2, 0), banner: banner) ? .grantUsage : .alterUser
+        case .tidb, .oceanbase, .databend:
+            return .alterUser
         }
     }
 

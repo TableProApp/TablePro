@@ -35,7 +35,7 @@ extension MainContentCoordinator {
         tracer.anomaly(
             .blockedByInFlightExecution,
             token: token,
-            detail: "site=\(site) hasInFlightQuery=\(currentQueryTask != nil)"
+            detail: "site=\(site) hasInFlightQuery=\(queryTasks.hasTask(for: tabId))"
         )
         guard !tracer.hasStartedExecution(token) else { return }
         tracer.finish(token: token, outcome: .blocked)

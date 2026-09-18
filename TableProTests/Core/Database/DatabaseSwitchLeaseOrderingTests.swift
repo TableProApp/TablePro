@@ -166,7 +166,7 @@ struct DatabaseSwitchLeaseOrderingTests {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: orders,
                 route: .sessionDriver,
-                cancellation: .cancellableRead
+                cancellation: .cancellableRead(DriverLeaseOwner())
             ) { driver in
                 driver.connection.database
             }
@@ -222,7 +222,7 @@ struct DatabaseSwitchLeaseOrderingTests {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: app,
                 route: .sessionDriver,
-                cancellation: .cancellableRead
+                cancellation: .cancellableRead(DriverLeaseOwner())
             ) { driver in
                 driver.connection.database
             }
@@ -321,7 +321,7 @@ struct DatabaseSwitchLeaseOrderingTests {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: app,
                 route: .sessionDriver,
-                cancellation: .cancellableRead
+                cancellation: .cancellableRead(DriverLeaseOwner())
             ) { _ in
                 await MainActor.run { ran.didRun = true }
             }
@@ -358,7 +358,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         let holder = await holdDriver(connection.id, until: release)
 
         let read = Task { @MainActor in
-            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead) { driver in
+            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead(DriverLeaseOwner())) { driver in
                 driver === pooled
             }
         }
@@ -387,7 +387,7 @@ struct DatabaseSwitchLeaseOrderingTests {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: app,
                 route: DatabaseManager.shared.executionRoute(for: app),
-                cancellation: .cancellableRead
+                cancellation: .cancellableRead(DriverLeaseOwner())
             ) { _ in
                 await MainActor.run { ran.didRun = true }
             }
@@ -419,7 +419,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         let running = LeaseRecord()
         let finish = Latch()
         let read = Task { @MainActor in
-            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead) { driver in
+            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead(DriverLeaseOwner())) { driver in
                 await MainActor.run { running.didRun = true }
                 await finish.wait()
                 return driver === pooled
@@ -459,7 +459,7 @@ struct DatabaseSwitchLeaseOrderingTests {
 
         let ran = LeaseRecord()
         let read = Task { @MainActor in
-            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead) { _ in
+            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead(DriverLeaseOwner())) { _ in
                 await MainActor.run { ran.didRun = true }
             }
         }
@@ -496,7 +496,7 @@ struct DatabaseSwitchLeaseOrderingTests {
 
         let ran = LeaseRecord()
         let read = Task { @MainActor in
-            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead) { _ in
+            try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead(DriverLeaseOwner())) { _ in
                 await MainActor.run { ran.didRun = true }
             }
         }

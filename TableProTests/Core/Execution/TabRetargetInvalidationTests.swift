@@ -117,7 +117,6 @@ struct TabRetargetInvalidationTests {
         #expect(registry.isSameContent(capturedB, for: tabB) == false)
         #expect(registry.isAnyExecuting == false)
     }
-
 }
 
 @Suite("DriverCancellationPolicy")
@@ -125,7 +124,7 @@ struct DriverCancellationPolicyTests {
     @Test("Only untracked leases stay invisible to cancellation")
     func trackingReflectsPolicy() {
         #expect(DriverCancellationPolicy.untracked.isTracked == false)
-        #expect(DriverCancellationPolicy.cancellableRead.isTracked)
+        #expect(DriverCancellationPolicy.cancellableRead(DriverLeaseOwner()).isTracked)
         #expect(DriverCancellationPolicy.protectedWrite.isTracked)
     }
 
@@ -135,6 +134,16 @@ struct DriverCancellationPolicyTests {
     func protectedWriteIsTrackedButNotCancellable() {
         let policy = DriverCancellationPolicy.protectedWrite
         #expect(policy.isTracked)
-        #expect(policy != .cancellableRead)
+        #expect(policy != .cancellableRead(DriverLeaseOwner()))
+    }
+
+    /// The owner is the whole point: two tabs leasing the same connection are two policies, so a
+    /// cancel naming one cannot match the other.
+    @Test("Two leases on one connection are never the same policy")
+    func leasesDoNotMatchEachOther() {
+        let mine = DriverLeaseOwner()
+        let theirs = DriverLeaseOwner()
+        #expect(DriverCancellationPolicy.cancellableRead(mine) == .cancellableRead(mine))
+        #expect(DriverCancellationPolicy.cancellableRead(mine) != .cancellableRead(theirs))
     }
 }

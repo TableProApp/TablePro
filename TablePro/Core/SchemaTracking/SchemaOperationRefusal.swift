@@ -20,10 +20,13 @@ internal enum SchemaOperationRefusal {
         case .addIndex(let index), .modifyIndex(_, let index):
             return driver.schemaOperationRefusal(.addIndex(index.toPlugin()))
         case .modifyCheckConstraint(let old, let new):
+            if let refusal = driver.checkConstraintRefusal { return refusal }
             guard old.expression == new.expression, old.name != new.name else { return nil }
             return driver.schemaOperationRefusal(.renameCheckConstraint(from: old.name, to: new.name))
+        case .addCheckConstraint, .deleteCheckConstraint:
+            return driver.checkConstraintRefusal
         case .modifyColumn, .deleteColumn, .deleteIndex, .addForeignKey, .modifyForeignKey,
-             .deleteForeignKey, .modifyPrimaryKey, .addCheckConstraint, .deleteCheckConstraint:
+             .deleteForeignKey, .modifyPrimaryKey:
             return nil
         }
     }

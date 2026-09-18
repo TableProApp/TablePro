@@ -343,7 +343,11 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
-        _ = try await actor.execute("BEGIN")
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        _ = try await actor.execute(postgresBeginTransactionStatement(mode: mode))
     }
 
     func commitTransaction() async throws {
@@ -352,6 +356,23 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func rollbackTransaction() async throws {
         _ = try await actor.execute("ROLLBACK")
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        await actor.transactionState()
+    }
+}
+
+nonisolated enum PostgreSQLSessionTransaction {
+    static func state(from status: PGTransactionStatusType) -> DriverTransactionState {
+        switch status {
+        case PQTRANS_IDLE:
+            return .idle
+        case PQTRANS_INTRANS, PQTRANS_INERROR, PQTRANS_ACTIVE:
+            return .explicitTransaction
+        default:
+            return .unknown
+        }
     }
 }
 
@@ -461,6 +482,11 @@ private actor PostgreSQLActor {
     func serverVersionNumber() -> Int32 {
         guard let conn else { return 0 }
         return PQserverVersion(conn)
+    }
+
+    func transactionState() -> DriverTransactionState {
+        guard let conn else { return .unknown }
+        return PostgreSQLSessionTransaction.state(from: PQtransactionStatus(conn))
     }
 
     func serverVersion() -> String? {

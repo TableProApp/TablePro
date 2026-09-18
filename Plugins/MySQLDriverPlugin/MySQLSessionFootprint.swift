@@ -106,6 +106,32 @@ struct MySQLSessionFootprint: Equatable {
         hasOpenTransaction = isOpen
     }
 
+    /// A statement the server refused held nothing, and `LOCK TABLES` releases what the session
+    /// held before it acquires anything. Measured on MySQL 8.4 with `lock_wait_timeout = 1`: after
+    /// `LOCK TABLES t WRITE` a second session's `INSERT` failed with error 1205, and after a
+    /// following `LOCK TABLES nonexistent WRITE` (error 1146) the same `INSERT` went through.
+    ///
+    /// Only the lock flag is taken back. The rest of the footprint stays set, because a statement
+    /// that failed can still have created a temporary table, opened a transaction or moved a
+    /// session setting on its way to failing.
+    mutating func observeFailure(of sql: String) {
+        for statement in SQLStatementSplitting.statements(in: sql) {
+            let head = Self.collapsedHead(of: Self.executableBody(of: statement).uppercased())
+            guard head.hasPrefix("LOCK TABLE") else { continue }
+            hasLockedTables = false
+        }
+    }
+
+    /// What the session holds, for a caller deciding whether it may open a transaction of its own.
+    ///
+    /// The open transaction is the server's own answer, from `observeServerTransaction`. The lock
+    /// is not, and it is never read as a transaction: a `START TRANSACTION` would release it, so
+    /// the batch must not send one, but there is nothing open for the user to commit.
+    func transactionState(isInTransaction: Bool) -> PluginSessionTransactionState {
+        if isInTransaction { return .inTransaction }
+        return hasLockedTables ? .holdsSessionLocks : .idle
+    }
+
     private mutating func observeTransaction(_ statement: String) {
         switch SQLTransactionTracking.effect(of: statement) {
         case .opens: hasOpenTransaction = true
@@ -151,6 +177,13 @@ struct MySQLSessionFootprint: Equatable {
             hasLockedTables = true
         }
         if head.hasPrefix("UNLOCK TABLES") {
+            hasLockedTables = false
+        }
+        /// Beginning a transaction releases every table a `LOCK TABLES` held. Measured on MySQL
+        /// 8.4 with `lock_wait_timeout = 1`: a second session's `INSERT` failed with error 1205
+        /// while the lock was held, and went through after the holder ran `BEGIN`. A `COMMIT` does
+        /// not release it, which is why only the opening spellings are listed.
+        if Self.releasesTableLocks(head) {
             hasLockedTables = false
         }
         /// Set, not cleared, for the same reason a dropped temporary table is: a `HANDLER ... CLOSE`
@@ -222,6 +255,16 @@ struct MySQLSessionFootprint: Equatable {
 
     private static let headLength = 64
 
+    /// The two spellings that begin a transaction, read exactly rather than through
+    /// `SQLTransactionTracking`, whose `.opens` also matches `START REPLICA` and `START SLAVE`.
+    /// Those hold no transaction and release no lock, and a flag cleared by one of them would leave
+    /// the session holding a lock nothing knows about.
+    private static func releasesTableLocks(_ head: String) -> Bool {
+        if head.hasPrefix("START TRANSACTION") { return true }
+        guard head.hasPrefix("BEGIN") else { return false }
+        return head == "BEGIN" || head.hasPrefix("BEGIN WORK")
+    }
+
     /// A `FLUSH` names its tables before the clause that matters, and a list of them runs past
     /// the head, so this one reads the whole statement. No `FLUSH` is long enough for that to
     /// cost anything.
@@ -237,6 +280,10 @@ struct MySQLSessionFootprint: Equatable {
     private mutating func observeSet(_ normalized: String) {
         let body = normalized.dropFirst("SET ".count).trimmingCharacters(in: .whitespaces)
         guard !body.hasPrefix("@@GLOBAL."), !body.hasPrefix("GLOBAL ") else { return }
+        /// `SET PASSWORD` writes the grant tables, not the session, so it survives a reconnect. It
+        /// read as a session setting, which held the connection with the wrong reason and turned
+        /// off replay until the next reconnect.
+        guard !Self.assignsAccountPassword(body) else { return }
         /// `@@` is a system variable under another spelling, not a user variable: reporting
         /// `SET @@SESSION.sql_mode` as "session variables set" blocks the release for the right
         /// reason and tells the user the wrong one.
@@ -245,5 +292,14 @@ struct MySQLSessionFootprint: Equatable {
         } else {
             hasSessionSettings = true
         }
+    }
+
+    /// `SET PASSWORD` and `SET PASSWORD FOR ...`, and not `SET password_history = 3`, which is an
+    /// ordinary session setting whose name starts the same way.
+    private static func assignsAccountPassword(_ body: String) -> Bool {
+        guard body.hasPrefix("PASSWORD") else { return false }
+        let rest = body.dropFirst("PASSWORD".count)
+        guard let next = rest.first else { return false }
+        return next.isWhitespace || next == "="
     }
 }

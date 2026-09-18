@@ -219,6 +219,14 @@ final class LibPQDriverCore: @unchecked Sendable {
         _ = try await execute(query: "SET statement_timeout = \(ms)")
     }
 
+    /// A connection that has gone away answers `.unknown` rather than `.idle`: a caller that reads
+    /// "nothing open" opens a transaction of its own, and this is the one answer that must never be
+    /// a guess.
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let pqConn = libpqConnection else { return .unknown }
+        return await pqConn.transactionState().sessionTransactionState
+    }
+
     private func connection() throws -> LibPQPluginConnection {
         guard let pqConn = libpqConnection else {
             throw LibPQPluginError.notConnected
@@ -306,6 +314,10 @@ extension LibPQBackedDriver {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         try await core.applyQueryTimeout(seconds)
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        await core.sessionTransactionState()
     }
 
     func switchSchema(to schema: String) async throws {

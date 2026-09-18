@@ -33,6 +33,11 @@ protocol SQLiteExecutionBackend: Actor {
     nonisolated func abortConnect()
 
     func applyBusyTimeout(_ milliseconds: Int32) async
+
+    /// What the session has open, so nothing the app owns opens a transaction over the user's.
+    /// A backend that cannot ask keeps the `.unknown` default.
+    func sessionTransactionState() async -> PluginSessionTransactionState
+
     func executeQuery(_ query: String) async throws -> SQLiteRawResult
     func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> SQLiteRawResult
     func streamQuery(
@@ -50,6 +55,8 @@ protocol SQLiteCanceller: Sendable {
 
 extension SQLiteExecutionBackend {
     nonisolated func abortConnect() {}
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
 }
 
 struct SQLiteRawResult: Sendable {
@@ -224,6 +231,15 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     func applyBusyTimeout(_ milliseconds: Int32) {
         busyState.setTimeout(milliseconds: milliseconds)
+    }
+
+    /// `sqlite3_get_autocommit` is SQLite's own answer and costs no statement. Measured against
+    /// SQLite 3.54.0: it reports 0 from a `BEGIN` until the matching `COMMIT` or `ROLLBACK`, and
+    /// from a bare `SAVEPOINT`, which opens a transaction too. SQLite has no aborted state, since
+    /// a failed statement leaves the transaction usable.
+    func sessionTransactionState() -> PluginSessionTransactionState {
+        guard let db else { return .unknown }
+        return sqlite3_get_autocommit(db) == 0 ? .inTransaction : .idle
     }
 
     private func installBusyHandler() {

@@ -280,7 +280,10 @@ final class MainContentCommandActions: ObservableObject {
     /// existing proves nothing: it is kept alive across a lost session so a reconnect can restore
     /// the user's tabs.
     var isConnected: Bool { coordinator?.splitViewController?.isConnected ?? false }
-    var isQueryExecuting: Bool { coordinator?.tabExecution.isAnyExecuting ?? false }
+    var isQueryExecuting: Bool { coordinator?.isSelectedTabBusy ?? false }
+    /// Separate from `isQueryExecuting` because `Cmd+.` has to dim while a batch commits, which is
+    /// running work nothing can interrupt.
+    var isQueryStoppable: Bool { coordinator?.isSelectedTabStoppable ?? false }
 
     var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }
 

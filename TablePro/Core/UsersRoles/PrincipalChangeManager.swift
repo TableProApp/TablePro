@@ -366,9 +366,10 @@ final class PrincipalChangeManager: ObservableObject {
         // the CREATE instead, or it would be counted as a change and then silently dropped.
         if let index = pendingCreates.firstIndex(where: { $0.ref == ref }) {
             let previous = pendingCreates[index]
-            guard previous != definition else { return }
+            let folded = Self.folding(definition, into: previous)
+            guard previous != folded else { return }
 
-            pendingCreates[index] = definition
+            pendingCreates[index] = folded
             recomputeChangeCount()
 
             registerUndo(actionName: String(localized: "Change Attributes")) { manager in
@@ -395,6 +396,26 @@ final class PrincipalChangeManager: ObservableObject {
                 manager.unstageAlter(ref)
             }
         }
+    }
+
+    /// The attribute forms carry no password field, so every edit they stage arrives with none. A
+    /// fold that took it wholesale replaced the staged `CREATE USER ... IDENTIFIED BY` with a
+    /// passwordless one, and the only way to give a new account a connection limit is through this
+    /// fold, so the account the user thought they had given a password had none.
+    private static func folding(
+        _ definition: PluginPrincipalDefinition,
+        into staged: PluginPrincipalDefinition
+    ) -> PluginPrincipalDefinition {
+        guard (definition.password ?? "").isEmpty else { return definition }
+        return PluginPrincipalDefinition(
+            ref: definition.ref,
+            password: staged.password,
+            canLogin: definition.canLogin,
+            attributes: definition.attributes,
+            memberOf: definition.memberOf,
+            connectionLimit: definition.connectionLimit,
+            comment: definition.comment
+        )
     }
 
     func unstageAlter(_ ref: PluginPrincipalRef) {

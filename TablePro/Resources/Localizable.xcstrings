@@ -28788,6 +28788,9 @@
     "Check constraint must have a name and an expression" : {
 
     },
+    "Check constraints need %@ or later." : {
+
+    },
     "Check for Updates…" : {
       "localizations" : {
         "ko" : {
@@ -119409,6 +119412,9 @@
         }
       }
     },
+    "Query stopped after running past the %d second query timeout" : {
+
+    },
     "Query timed out after %d seconds" : {
       "localizations" : {
         "ko" : {
@@ -156664,6 +156670,9 @@
         }
       }
     },
+    "The %d statements before it stay applied." : {
+
+    },
     "The Access application policy must use a Service Auth rule, or Cloudflare still prompts for browser sign-in." : {
       "localizations" : {
         "ko" : {
@@ -157492,6 +157501,12 @@
           }
         }
       }
+    },
+    "The connection was lost while committing, so this may not be saved." : {
+
+    },
+    "The connection was lost while committing: %@" : {
+
     },
     "The connection was closed." : {
       "localizations" : {
@@ -160955,6 +160970,15 @@
           }
         }
       }
+    },
+    "The batch is committing and cannot be stopped." : {
+
+    },
+    "The statement before it stays applied." : {
+
+    },
+    "The statements may or may not be saved. Check the table before running them again." : {
+
     },
     "The statement that was sent, with its prefix" : {
       "localizations" : {

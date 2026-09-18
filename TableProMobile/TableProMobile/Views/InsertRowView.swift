@@ -285,7 +285,7 @@ struct InsertRowView: View {
         defer { isSaving = false }
 
         do {
-            _ = try await session.driver.execute(query: sql)
+            try await session.driver.executeWrite([sql])
             hapticSuccess.toggle()
             onInserted?()
             dismiss()

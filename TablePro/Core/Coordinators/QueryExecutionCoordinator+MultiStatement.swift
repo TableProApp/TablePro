@@ -85,12 +85,16 @@ extension QueryExecutionCoordinator {
         )
     }
 
+    /// `unresolvedOutcome` is what a statement whose commit went unanswered carries. The statement
+    /// itself succeeded, so its rows and its timing are real, but whether the server kept it is not
+    /// something anything here can find out, and a plain success badge would say it did.
     func recordStatementHistory(
         sql: String,
         result: QueryResult,
         connection: DatabaseConnection,
         databaseName: String,
-        parameterValues: [QueryParameter]? = nil
+        parameterValues: [QueryParameter]? = nil,
+        unresolvedOutcome: String? = nil
     ) {
         let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
         recordHistory(
@@ -102,34 +106,29 @@ extension QueryExecutionCoordinator {
                 source: .editor,
                 executionTime: result.executionTime,
                 rowCount: result.rows.count,
-                wasSuccessful: true,
+                wasSuccessful: unresolvedOutcome == nil,
+                errorMessage: unresolvedOutcome,
                 timing: result.resolvedTiming
             )
         )
     }
 
-    func applyMultiStatementResults(
+    /// The settle gate, the task retirement, the history and the outcome notification belong to the
+    /// caller: a stopped run has already settled its claim and reports a cancellation rather than a
+    /// success, and still shows the results of the statements its plan could not take back.
+    ///
+    /// `sessionNotice` is the one thing a successful run may still have to say: a batch that joined
+    /// a transaction the user already had open committed nothing, and nothing else in the window
+    /// reports an open transaction.
+    func presentMultiStatementResults(
         tabId: UUID,
-        claim: TabExecutionClaim,
         timing: PluginQueryTiming,
         totalRowsAffected: Int,
-        newResultSets: [ResultSet]
+        newResultSets: [ResultSet],
+        sessionNotice: String?
     ) {
         let cumulativeTime = timing.total
-        guard parent.tabExecution.settle(claim) else { return }
-        parent.retireQueryTask(for: claim)
-        parent.toolbarState.recordQueryTiming(timing, for: claim.tabId)
-
-        /// Once for the batch, never once per statement, and below the settle gate rather than at
-        /// the call site: a superseded batch has its results dropped here, and a notification
-        /// raised outside this guard would announce a result the user will never be shown.
-        reportOperation(
-            kind: .queryBatch,
-            claim: claim,
-            outcome: .succeeded(
-                OperationSummary(rowsAffected: totalRowsAffected, statementCount: newResultSets.count)
-            )
-        )
+        parent.toolbarState.recordQueryTiming(timing, for: tabId)
 
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return
@@ -157,6 +156,7 @@ extension QueryExecutionCoordinator {
             tab.execution.rowsAffected = totalRowsAffected
             tab.execution.lastExecutedAt = Date()
             tab.execution.errorMessage = nil
+            tab.execution.statusMessage = sessionNotice
 
             tab.display.replaceUnpinnedResults(with: newResultSets)
             if tab.display.isResultsCollapsed {

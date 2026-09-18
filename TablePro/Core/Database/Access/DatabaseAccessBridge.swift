@@ -194,12 +194,19 @@ internal actor DatabaseAccessBridge {
             statement = LeadingRowsStatement(sql: normalizedQuery, rowCap: nil)
         }
         let connectionId = scope.connectionId
-        let policy: DriverCancellationPolicy = classification.tier == .safe ? .cancellableRead : .protectedWrite
+        /// One owner per statement, so a cancel or a timeout reaches this statement's lease and not
+        /// whatever a query tab or another client has running on the same connection.
+        let owner = DriverLeaseOwner()
+        let policy: DriverCancellationPolicy = classification.tier == .safe
+            ? .cancellableRead(owner)
+            : .protectedWrite
 
         if let cancellation {
             await cancellation.onCancelRequested {
                 await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
+                    try? DatabaseManager.shared.cancelRunningQuery(
+                        owner: owner, on: connectionId, delivery: .immediate
+                    )
                 }
             }
         }
@@ -219,6 +226,7 @@ internal actor DatabaseAccessBridge {
                 scope: scope,
                 route: route,
                 policy: policy,
+                owner: owner,
                 statement: statement,
                 shouldCap: shouldCap,
                 maxRows: maxRows,
@@ -240,6 +248,7 @@ internal actor DatabaseAccessBridge {
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         policy: DriverCancellationPolicy,
+        owner: DriverLeaseOwner,
         statement: LeadingRowsStatement,
         shouldCap: Bool,
         maxRows: Int,
@@ -267,7 +276,9 @@ internal actor DatabaseAccessBridge {
             group.addTask {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
                 await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
+                    try? DatabaseManager.shared.cancelRunningQuery(
+                        owner: owner, on: connectionId, delivery: .immediate
+                    )
                 }
                 throw DatabaseAccessError.timeout(
                     String(

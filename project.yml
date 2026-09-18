@@ -420,6 +420,7 @@ targets:
       - Plugins/DuckDBDriverPlugin/DuckDBLockConflict.swift
       - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBTransactionProbe.swift
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
       - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
@@ -455,6 +456,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
@@ -492,6 +494,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
+      - Plugins/MySQLDriverPlugin/MySQLKillLatch.swift
       - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
       - Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
@@ -501,12 +504,16 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
       - Plugins/MySQLDriverPlugin/MySQLSystemDatabases.swift
       - Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
+      - Plugins/MySQLDriverPlugin/MySQLAccountStatements.swift
       - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
+      - Plugins/MySQLDriverPlugin/MySQLQueryTimeout.swift
+      - Plugins/MySQLDriverPlugin/MySQLStatementWatch.swift
+      - Plugins/MySQLDriverPlugin/MySQLStatementDeadlineRunner.swift
       - Plugins/MySQLDriverPlugin/DatabendCatalog.swift
       - Plugins/MySQLDriverPlugin/DatabendLiteral.swift
       - Plugins/MySQLDriverPlugin/DatabendResultShape.swift
-      - Plugins/MySQLDriverPlugin/TiDBCheckConstraints.swift
+      - Plugins/MySQLDriverPlugin/MySQLCheckConstraints.swift
       - Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
       - Plugins/MySQLDriverPlugin/MySQLIndexGrouping.swift
       - Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
@@ -599,6 +606,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
       - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
       - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
+      - Plugins/RedisDriverPlugin/RedisCommandChannel.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
       - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
       - Plugins/RedisDriverPlugin/RedisConnectProbe.swift
@@ -608,10 +616,12 @@ targets:
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
       - Plugins/RedisDriverPlugin/RedisMultiShardPlanner.swift
       - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
+      - Plugins/RedisDriverPlugin/RedisQueuedDatabase.swift
       - Plugins/RedisDriverPlugin/RedisReply.swift
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
+      - Plugins/RedisDriverPlugin/RedisTransactionOutcome.swift
       - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
       - Plugins/SQLExportPlugin/SQLExportCompressor.swift
       - Plugins/SQLExportPlugin/SQLExportDDLRewriter.swift

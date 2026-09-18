@@ -288,6 +288,45 @@ actor DuckDBConnectionActor {
         }
     }
 
+    /// What the session has open, for a caller deciding whether it may open a transaction of its
+    /// own on it.
+    ///
+    /// A released handle answers `.idle`: a release only happens over a session holding nothing, and
+    /// reopening to ask would undo it. The probe itself never reopens for the same reason, and it
+    /// runs outside `noteActivity`, so asking the question does not reset the idle clock the
+    /// question is about.
+    func sessionTransactionState() -> PluginSessionTransactionState {
+        guard !isReleased else { return .idle }
+        guard connection != nil else { return .unknown }
+        if let decided = DuckDBTransactionProbe.state(
+            catalogType: probeReading(DuckDBTransactionProbe.catalogTypeQuery),
+            tracksOpenTransaction: hasOpenTransaction
+        ) {
+            return decided
+        }
+        return DuckDBTransactionProbe.state(
+            first: probeReading(DuckDBTransactionProbe.transactionIdQuery),
+            second: probeReading(DuckDBTransactionProbe.transactionIdQuery)
+        )
+    }
+
+    /// Runs one probe statement through `duckdb_query`, which is the only path that hands back the
+    /// error *type*: a refusal because the transaction is aborted is the answer rather than a
+    /// failure, and the message text is not a contract.
+    private func probeReading(_ sql: String) -> DuckDBTransactionProbe.Reading {
+        guard let conn = connection else { return .unreadable }
+        var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
+        guard duckdb_query(conn, sql, &result) != DuckDBError else {
+            return duckdb_result_error_type(&result) == DUCKDB_ERROR_TRANSACTION ? .abortedTransaction : .unreadable
+        }
+        guard duckdb_row_count(&result) > 0, let cell = duckdb_value_varchar(&result, 0, 0) else {
+            return .unreadable
+        }
+        defer { duckdb_free(cell) }
+        return .value(String(cString: cell))
+    }
+
     /// Nil when nothing stands in the way of a release.
     private func heldSessionState() -> DuckDBReleaseOutcome? {
         if hasOpenTransaction { return .holdsOpenTransaction }

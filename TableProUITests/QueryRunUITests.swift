@@ -118,6 +118,158 @@ final class QueryRunUITests: UITestCase {
         )
     }
 
+    /// SQLite applies `PRAGMA foreign_keys` only outside a transaction, and applies it silently:
+    /// inside one it changes nothing, raises nothing, and reads back `0` after the commit. So the
+    /// proof that the script ran without a wrap is the constraint the fourth statement then breaks.
+    func testRunAllAppliesAForeignKeyPragmaInTheSameScript() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery(
+            "PRAGMA foreign_keys = ON; "
+                + "CREATE TABLE run_all_fk_parent (id INTEGER PRIMARY KEY); "
+                + "CREATE TABLE run_all_fk_child (parent INTEGER REFERENCES run_all_fk_parent(id)); "
+                + "INSERT INTO run_all_fk_child VALUES (42);",
+            in: app
+        )
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let banner = app.windows.firstMatch.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { bannerText(banner).contains("Statement 4/4 failed") },
+            "The pragma must reach the session, so the insert breaks the constraint: got \(bannerText(banner))"
+        )
+        XCTAssertTrue(
+            bannerText(banner).contains("FOREIGN KEY constraint failed"),
+            "The server's own reason must survive into the banner: got \(bannerText(banner))"
+        )
+    }
+
+    /// `VACUUM` inside a transaction answers "cannot VACUUM from within a transaction", so a script
+    /// holding one must run without the app's wrap and report all three results.
+    func testRunAllRunsVacuumOutsideATransaction() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery("CREATE TABLE run_all_vacuum_probe (id INTEGER); VACUUM; SELECT 1 AS answer;", in: app)
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let window = app.windows.firstMatch
+        let chooser = window.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
+        let banner = window.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { chooser.exists || banner.exists },
+            "Running the script must end in results or an error"
+        )
+        XCTAssertFalse(
+            banner.exists,
+            "VACUUM must not be wrapped in a transaction: got \(bannerText(banner))"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { chooser.title.contains("3") },
+            "All three statements must run and report a result: got \(chooser.title)"
+        )
+    }
+
+    /// A batch runs on the connection's shared session, so a `BEGIN` the user ran a moment earlier
+    /// is still in force. The app must send no transaction of its own over it: SQLite refuses the
+    /// nested `BEGIN` outright, and the engines that accept one commit or discard the user's work.
+    func testRunAllJoinsTheTransactionTheUserOpened() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery("BEGIN;", in: app)
+        app.typeKey(.return, modifierFlags: .command)
+        XCTAssertTrue(
+            window.staticTexts["Query executed successfully"].waitToExist(timeout: 30),
+            "The user's own BEGIN must run before the batch does"
+        )
+
+        typeQuery(
+            "CREATE TABLE run_all_session_probe (id INTEGER); INSERT INTO run_all_session_probe VALUES (1);",
+            in: app
+        )
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let chooser = window.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
+        let banner = window.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { chooser.exists || banner.exists },
+            "Running the batch must end in results or an error"
+        )
+        XCTAssertFalse(
+            banner.exists,
+            "The batch must join the open transaction rather than open one: got \(bannerText(banner))"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { chooser.title.contains("2") },
+            "Both statements must run inside the user's transaction: got \(chooser.title)"
+        )
+
+        typeQuery("ROLLBACK; SELECT * FROM run_all_session_probe;", in: app)
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) {
+                bannerText(banner).contains("no such table: run_all_session_probe")
+            },
+            "Nothing the batch ran may be committed: the user's rollback must take it: got \(bannerText(banner))"
+        )
+    }
+
+    /// A failure inside the user's transaction leaves it open, and says so. Rolling it back here
+    /// would discard whatever they had already done inside it, which is not the batch's to take.
+    func testRunAllLeavesTheUserTransactionOpenAfterAFailure() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery("BEGIN;", in: app)
+        app.typeKey(.return, modifierFlags: .command)
+        XCTAssertTrue(
+            window.staticTexts["Query executed successfully"].waitToExist(timeout: 30),
+            "The user's own BEGIN must run before the batch does"
+        )
+
+        typeQuery(
+            "CREATE TABLE run_all_kept_probe (id INTEGER); "
+                + "INSERT INTO run_all_kept_probe VALUES (1); "
+                + "SELECT * FROM run_all_missing;",
+            in: app
+        )
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let banner = window.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { bannerText(banner).contains("Statement 3/3 failed") },
+            "The batch must stop at the statement that failed: got \(bannerText(banner))"
+        )
+        XCTAssertTrue(
+            bannerText(banner).contains("still open"),
+            "The banner must say the user's transaction is still theirs to end: got \(bannerText(banner))"
+        )
+
+        typeQuery("COMMIT; SELECT * FROM run_all_kept_probe;", in: app)
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let chooser = window.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { chooser.title.contains("2") || banner.exists },
+            "The commit and the read must both run: got \(chooser.title) \(bannerText(banner))"
+        )
+        XCTAssertFalse(
+            banner.exists,
+            "The transaction must still be open to commit, and its table must have survived the failure: "
+                + "got \(bannerText(banner))"
+        )
+    }
+
     private func bannerText(_ banner: XCUIElement) -> String {
         guard banner.exists else { return "" }
         return (banner.value as? String) ?? banner.label

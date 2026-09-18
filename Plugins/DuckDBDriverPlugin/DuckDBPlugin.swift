@@ -216,6 +216,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var parameterStyle: ParameterStyle { .dollar }
 
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        await connectionActor.sessionTransactionState()
+    }
+
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries,

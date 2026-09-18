@@ -31,7 +31,9 @@ extension TableStructureView {
         await loadColumns()
         await loadTabDataIfNeeded(.indexes)
         await loadTabDataIfNeeded(.foreignKeys)
-        await loadTabDataIfNeeded(.checkConstraints)
+        if session.availableTabs.contains(.checkConstraints) {
+            await loadTabDataIfNeeded(.checkConstraints)
+        }
         loadSchemaForEditing()
         session.hasLoaded = true
         isInitialLoading = false

@@ -116,13 +116,12 @@ extension MainContentCoordinator {
     /// the restored tab the id it had before, which is enough for the orphan to be mistaken for the
     /// reopened tab's own load and for that load to be refused as a duplicate.
     ///
-    /// The window's query handle is only retired when it belongs to this tab: one handle serves
-    /// every tab, so cancelling it blindly would take another tab's query down.
+    /// The query handle is this tab's own, so it goes down with the tab. No ownership check is
+    /// needed any more: a handle keyed by tab cannot belong to another one.
     internal func releaseExecution(of tab: QueryTab) {
         reportEndedExecutions(tabExecution.invalidate(tab.id, reason: .abandoned).map { [$0] } ?? [])
         cancelTableLoad(for: tab.id)
         cancelRowCountTask(for: tab.id)
-        guard currentQueryTaskOwner?.tabId == tab.id else { return }
-        cancelInFlightQueryTask(reach: .supersededNavigation)
+        cancelQueryTask(for: tab.id, delivery: .background)
     }
 }

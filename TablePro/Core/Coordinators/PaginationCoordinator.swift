@@ -150,19 +150,11 @@ final class PaginationCoordinator: ObservableObject {
 
     // MARK: - Cancel Current Query
 
+    /// Stop and `Cmd+.` act on the tab the user is looking at. A window-wide stop is what let one
+    /// tab's Stop roll back the batch another tab was running.
     func cancelCurrentQuery() {
-        parent.cancelInFlightQueryTask()
-        parent.cancelAllRowCountTasks()
-        parent.releaseAllExactCounts()
-        parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
-        for idx in parent.tabManager.tabs.indices where parent.tabManager.tabs[idx].pagination.isBusy {
-            parent.tabManager.mutate(at: idx) { tab in
-                tab.pagination.isLoadingMore = false
-                tab.pagination.isCountingExact = false
-                tab.pagination.isCountPending = false
-                tab.pagination.isLoading = false
-            }
-        }
+        guard let tabId = parent.tabManager.selectedTabId else { return }
+        parent.stopExecution(for: tabId)
     }
 
     // MARK: - Exact Row Count
@@ -303,6 +295,8 @@ final class PaginationCoordinator: ObservableObject {
         /// would discard its own rows. It registers as unclaimed work instead, which is what keeps
         /// the titlebar reporting it, and releases that on every exit including cancellation.
         let workToken = parent.tabExecution.beginUnclaimedWork(for: tabId)
+        let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
+        let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
 
         let startedAt = ContinuousClock.Instant.now
@@ -313,7 +307,11 @@ final class PaginationCoordinator: ObservableObject {
             do {
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
-                let result = try await parent.withExecutionDriver(scope: scope, isTableTab: isTableTab) { driver in
+                let result = try await parent.withExecutionDriver(
+                    scope: scope,
+                    isTableTab: isTableTab,
+                    lease: lease
+                ) { driver in
                     try await driver.executeUserQuery(
                         query: baseQuery,
                         rowCap: nil,
@@ -344,11 +342,11 @@ final class PaginationCoordinator: ObservableObject {
                         .contains { $0.id == tabId && $0.display.activeResultSetId == resultSetId }
                     guard parent.tabExecution.isSameContent(contentEpoch, for: tabId), stillSameResult else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
-                        parent.retireQueryTask(for: nil)
+                        parent.retireQueryTask(owner)
                         return
                     }
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-                        parent.retireQueryTask(for: nil)
+                        parent.retireQueryTask(owner)
                         return
                     }
 
@@ -362,7 +360,7 @@ final class PaginationCoordinator: ObservableObject {
                         tab.display.activeResultSet?.isTruncated = false
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
-                    parent.retireQueryTask(for: nil)
+                    parent.retireQueryTask(owner)
                     parent.toolbarState.recordQueryTiming(result.resolvedTiming, for: tabId)
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
@@ -385,7 +383,7 @@ final class PaginationCoordinator: ObservableObject {
                         guard !isStale, !isCancelled else { return }
                         tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
                     }
-                    parent.retireQueryTask(for: nil)
+                    parent.retireQueryTask(owner)
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
                     guard !isStale, !isCancelled else { return }
                     parent.reportOperation(
@@ -398,6 +396,6 @@ final class PaginationCoordinator: ObservableObject {
                 }
             }
         }
-        parent.installQueryTask(fetchAllTask, for: nil)
+        parent.installQueryTask(fetchAllTask, owner: owner, lease: lease)
     }
 }

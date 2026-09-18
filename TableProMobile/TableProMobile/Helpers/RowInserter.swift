@@ -68,30 +68,6 @@ nonisolated enum RowInserter {
         )
         guard !statements.isEmpty else { throw IntentDataError.noInsertableValues(table) }
 
-        if driver.supportsTransactions, statements.count > 1 {
-            return try await executeInTransaction(driver: driver, statements: statements)
-        }
-        return try await executeAll(driver: driver, statements: statements)
-    }
-
-    private static func executeInTransaction(driver: any DatabaseDriver, statements: [String]) async throws -> Int {
-        try await driver.beginTransaction()
-        do {
-            let affected = try await executeAll(driver: driver, statements: statements)
-            try await driver.commitTransaction()
-            return affected
-        } catch {
-            try? await driver.rollbackTransaction()
-            throw error
-        }
-    }
-
-    private static func executeAll(driver: any DatabaseDriver, statements: [String]) async throws -> Int {
-        var affected = 0
-        for statement in statements {
-            let result = try await driver.execute(query: statement)
-            affected += max(result.rowsAffected, 0)
-        }
-        return affected
+        return try await driver.executeWrite(statements)
     }
 }

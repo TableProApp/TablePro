@@ -103,13 +103,11 @@ struct CancelledExecutionOwnershipTests {
         let live = coordinator.tabExecution.claim(tabId)
         let handle = neverEndingTask()
         defer { handle.cancel() }
-        coordinator.currentQueryTask = handle
-        coordinator.currentQueryTaskOwner = live
+        coordinator.installQueryTask(handle, owner: .claim(live), lease: DriverLeaseOwner())
 
         coordinator.resetExecutionState(claim: superseded, executionTime: 12)
 
-        #expect(coordinator.currentQueryTask != nil)
-        #expect(coordinator.currentQueryTaskOwner == live)
+        #expect(coordinator.queryTasks.hasTask(for: tabId))
         #expect(coordinator.toolbarState.queryTimings.isEmpty)
     }
 
@@ -130,8 +128,8 @@ struct CancelledExecutionOwnershipTests {
         #expect(coordinator.tabExecution.isAnyExecuting == false)
     }
 
-    /// One query handle serves every tab in the window, so closing a tab may only take the handle
-    /// down when the handle is that tab's.
+    /// Each tab owns its own handle, so closing one takes its handle down and leaves every other
+    /// tab's where it is.
     @Test("Closing a tab leaves another tab's query handle alone")
     func closingATabLeavesAnotherTabsHandleAlone() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -141,16 +139,21 @@ struct CancelledExecutionOwnershipTests {
             Issue.record("expected the closing tab to exist")
             return
         }
-        _ = coordinator.tabExecution.claim(closing)
+        let closingClaim = coordinator.tabExecution.claim(closing)
         let otherClaim = coordinator.tabExecution.claim(other)
-        let handle = neverEndingTask()
-        defer { handle.cancel() }
-        coordinator.currentQueryTask = handle
-        coordinator.currentQueryTaskOwner = otherClaim
+        let closingHandle = neverEndingTask()
+        let otherHandle = neverEndingTask()
+        defer {
+            closingHandle.cancel()
+            otherHandle.cancel()
+        }
+        coordinator.installQueryTask(closingHandle, owner: .claim(closingClaim), lease: DriverLeaseOwner())
+        coordinator.installQueryTask(otherHandle, owner: .claim(otherClaim), lease: DriverLeaseOwner())
 
         coordinator.releaseExecution(of: closingTab)
 
-        #expect(coordinator.currentQueryTask != nil)
+        #expect(coordinator.queryTasks.hasTask(for: closing) == false)
+        #expect(coordinator.queryTasks.hasTask(for: other))
         #expect(coordinator.tabExecution.isCurrent(otherClaim))
     }
 

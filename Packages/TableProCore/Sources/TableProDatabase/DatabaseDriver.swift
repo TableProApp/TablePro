@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProPluginKit
 
 public protocol DatabaseDriver: AnyObject, Sendable {
     func connect() async throws
@@ -25,8 +26,10 @@ public protocol DatabaseDriver: AnyObject, Sendable {
 
     var supportsTransactions: Bool { get }
     func beginTransaction() async throws
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws
     func commitTransaction() async throws
     func rollbackTransaction() async throws
+    func sessionTransactionState() async -> DriverTransactionState
 
     var serverVersion: String? { get }
 
@@ -35,6 +38,12 @@ public protocol DatabaseDriver: AnyObject, Sendable {
 
 public extension DatabaseDriver {
     var holdsSuspensionBlockingResource: Bool { false }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        try await beginTransaction()
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState { .unknown }
 
     func escapeStringLiteral(_ value: String) -> String {
         SQLEscaping.ansiStringLiteral(value)

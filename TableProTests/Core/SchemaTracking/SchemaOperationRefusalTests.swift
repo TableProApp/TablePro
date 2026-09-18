@@ -35,6 +35,9 @@ private final class RefusingDDLDriver: PluginDatabaseDriver, @unchecked Sendable
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { refuse(operation) }
 
+    var checkRefusal: String?
+    var checkConstraintRefusal: String? { checkRefusal }
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         "CREATE TABLE \(definition.tableName) (...)"
     }
@@ -234,5 +237,32 @@ struct SchemaOperationRefusalTests {
         } catch {
             #expect(error.localizedDescription == Self.generatedReason)
         }
+    }
+
+    /// The server in front of the user, not the engine: MySQL before 8.0.16 answers `Query OK` to
+    /// an `ADD CONSTRAINT ... CHECK` and throws the clause away.
+    @Test("A server with no check constraints refuses every check change at save time")
+    func serverWithoutChecksRefusesCheckChanges() {
+        let driver = legacyDriver()
+        driver.checkRefusal = "Check constraints need MySQL 8.0.16 or later."
+        let added = constraint("c", "x > 0")
+        #expect(refusal(of: .addCheckConstraint(added), driver: driver) == driver.checkRefusal)
+        #expect(refusal(of: .deleteCheckConstraint(added), driver: driver) == driver.checkRefusal)
+        let renamed = constraint("d", "x > 0")
+        #expect(refusal(of: .modifyCheckConstraint(old: added, new: renamed), driver: driver) == driver.checkRefusal)
+        let rewritten = constraint("c", "x > 1")
+        #expect(refusal(of: .modifyCheckConstraint(old: added, new: rewritten), driver: driver) == driver.checkRefusal)
+        #expect(refusal(of: .addColumn(column("qty", generated: false)), driver: driver) == nil)
+    }
+
+    @Test("A server that keeps check constraints refuses none of them")
+    func serverWithChecksRefusesNothing() {
+        let driver = legacyDriver()
+        let added = constraint("c", "x > 0")
+        #expect(refusal(of: .addCheckConstraint(added), driver: driver) == nil)
+        #expect(refusal(of: .deleteCheckConstraint(added), driver: driver) == nil)
+        #expect(refusal(
+            of: .modifyCheckConstraint(old: added, new: constraint("c", "x > 1")), driver: driver
+        ) == nil)
     }
 }

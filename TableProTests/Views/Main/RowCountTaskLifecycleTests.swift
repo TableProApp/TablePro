@@ -88,21 +88,27 @@ struct RowCountTaskLifecycleTests {
         #expect(coordinator.rowCountTasks.isEmpty)
     }
 
-    @Test("Stop cancels every tab's row count")
-    func stopCancelsEveryRowCount() {
+    /// A deliberate spec change: Stop is per tab now, so it ends the selected tab's count and leaves
+    /// every other tab's running. A window-wide Stop is what let one tab's Stop roll back the batch
+    /// another tab had running, and the row count follows the same rule.
+    @Test("Stop cancels the selected tab's row count only")
+    func stopCancelsTheSelectedTabsRowCount() {
         let (coordinator, tabManager) = Self.makeCoordinator()
         let tabA = Self.addTableTab(to: tabManager, tableName: "orders")
         let tabB = Self.addTableTab(to: tabManager, tableName: "customers")
         let countA = Self.neverEndingTask()
         let countB = Self.neverEndingTask()
+        defer { countA.cancel() }
         coordinator.setRowCountTask(countA, token: UUID(), for: tabA)
         coordinator.setRowCountTask(countB, token: UUID(), for: tabB)
+        tabManager.selectedTabId = tabB
 
         coordinator.cancelCurrentQuery()
 
-        #expect(countA.isCancelled)
+        #expect(countA.isCancelled == false)
         #expect(countB.isCancelled)
-        #expect(coordinator.rowCountTasks.isEmpty)
+        #expect(coordinator.rowCountTasks[tabA] != nil)
+        #expect(coordinator.rowCountTasks[tabB] == nil)
     }
 
     /// A task that finished on its own drops its handle without cancelling a successor that may

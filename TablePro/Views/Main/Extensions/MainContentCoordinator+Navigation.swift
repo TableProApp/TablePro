@@ -321,7 +321,7 @@ extension MainContentCoordinator {
                 token: started,
                 detail: """
                     path=reuseActiveTab from=\(previousTableName ?? "none") \
-                    wasExecuting=\(wasExecuting) hasInFlightQuery=\(currentQueryTask != nil)
+                    wasExecuting=\(wasExecuting) hasInFlightQuery=\(queryTasks.hasTask(for: tabId))
                     """
             )
         }

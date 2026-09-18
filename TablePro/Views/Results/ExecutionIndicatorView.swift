@@ -15,6 +15,10 @@ struct ExecutionIndicatorView: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     let isExecuting: Bool
     let lastTiming: PluginQueryTiming?
+    /// Defaulted so a preview and a caller with nothing to protect read the same as before. A batch
+    /// whose commit is on the wire passes false: the spinner stays and the button dims, rather than
+    /// offering a cancel that cannot reach the server.
+    var canStop = true
     var onCancel: (() -> Void)?
 
     /// Held back rather than the spinner inside it, so a query too fast to report leaves the
@@ -63,9 +67,10 @@ struct ExecutionIndicatorView: View {
                 }
                 .buttonStyle(.plain)
                 .controlSize(.small)
+                .disabled(!canStop)
                 .accessibilityIdentifier("execution-stop")
                 .accessibilityLabel(String(localized: "Cancel Query"))
-                .help(cancelHint)
+                .help(canStop ? cancelHint : String(localized: "The batch is committing and cannot be stopped."))
             } else if let timing = lastTiming {
                 durationReadout(timing)
             }

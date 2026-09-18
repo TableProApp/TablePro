@@ -55,6 +55,21 @@ internal func mysqlMayReplay(_ query: String, on footprint: MySQLSessionFootprin
     footprint.isClean && mysqlStatementIsSafeToReplay(query)
 }
 
+/// The codes libmariadb reports when the connection under a statement is gone.
+internal let mysqlConnectionLossCodes: Set<UInt32> = [2_006, 2_013, 2_055]
+
+/// Whether a lost connection may be retaken and the statement run again on the session that
+/// replaces it.
+///
+/// `ma_net_safe_read` reports the client's own read timeout with `CR_SERVER_LOST` (2013), the same
+/// code and the same text as a server-side drop, so a statement that waited out the socket timeout
+/// is indistinguishable from one the server hung up on. It is not gone: measured on MySQL 5.5.62
+/// with a one second query timeout, the server was still running two copies of the statement after
+/// the driver reported the connection lost. Replaying adds a third.
+internal func mysqlConnectionLossMayReplay(code: UInt32, outlastedSocketTimeout: Bool) -> Bool {
+    !outlastedSocketTimeout && mysqlConnectionLossCodes.contains(code)
+}
+
 internal func mysqlStatementIsSafeToReplay(_ query: String) -> Bool {
     guard mysqlStatementIsReadOnly(query) else { return false }
     let collapsed = query

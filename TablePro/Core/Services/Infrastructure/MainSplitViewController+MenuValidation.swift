@@ -40,6 +40,9 @@ struct MenuValidationContext: Equatable {
     var isCurrentTabSchemaResolved = false
     var canRestorePreviousValues = false
     var isQueryExecuting = false
+    /// Whether Stop still has something to act on. A batch whose `COMMIT` is on the wire is
+    /// executing and unstoppable at the same time, and `Cmd+.` must dim rather than fire into it.
+    var isQueryStoppable = false
     var hasQueryText = false
     var canClearQuery = false
     var canClearResults = false
@@ -214,7 +217,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(runStatementAndAdvance(_:)):
             return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
         case #selector(cancelQuery(_:)):
-            return context.isQueryExecuting
+            return context.isQueryExecuting && context.isQueryStoppable
         case #selector(clearQuery(_:)):
             return context.canClearQuery
         case #selector(clearResults(_:)):
@@ -415,6 +418,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
             isQueryExecuting: actions.isQueryExecuting,
+            isQueryStoppable: actions.isQueryStoppable,
             hasQueryText: actions.hasQueryText,
             canClearQuery: actions.canClearQuery,
             canClearResults: actions.canClearResults,

@@ -85,10 +85,12 @@ extension MySQLPluginDriver {
         return flavor.killTarget(connectionIdentifier: identifier)
     }
 
-    func tidbCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+    /// The read for a server that enforces check constraints without cataloguing them: TiDB from
+    /// 7.2, and MariaDB 10.2.1 to 10.2.21 and 10.3.0 to 10.3.9.
+    func createTableCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
         let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
         guard let createTable = result.rows.first?[safe: 1]?.asText else { return [] }
-        return TiDBCheckConstraints.parse(createTable: createTable)
+        return MySQLCheckConstraints.parse(createTable: createTable)
     }
 
     private func probeSucceeds(_ statement: String, on connection: MariaDBPluginConnection) async -> Bool {

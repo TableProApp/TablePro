@@ -173,6 +173,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func commitTransaction() async throws
     func rollbackTransaction() async throws
 
+    /// What the session is holding, so a caller does not open, commit or roll back a transaction
+    /// over one the user already has open. A driver that cannot ask keeps the `.unknown` default.
+    func sessionTransactionState() async -> PluginSessionTransactionState
+
     func cancelQuery() throws
     func applyQueryTimeout(_ seconds: Int) async throws
 
@@ -340,6 +344,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String?
+
+    /// Why the connected server has no check constraints to list or edit, or nil when it has.
+    ///
+    /// The engine's capability flags describe its newest release; this describes the server in
+    /// front of the user. MySQL before 8.0.16 and MariaDB before 10.2.1 accept
+    /// `ADD CONSTRAINT ... CHECK` and discard the clause, so a driver that can tell says so here
+    /// and the Constraints tab is not offered. A driver that cannot tell, or one connected to a
+    /// server whose version it has not read, returns nil.
+    var checkConstraintRefusal: String? { get }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
@@ -624,6 +637,8 @@ public extension PluginDatabaseDriver {
         _ = try await execute(query: "ROLLBACK")
     }
 
+    func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+
     func cancelQuery() throws {}
 
     func applyQueryTimeout(_ seconds: Int) async throws {}
@@ -891,6 +906,7 @@ public extension PluginDatabaseDriver {
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
+    var checkConstraintRefusal: String? { nil }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 

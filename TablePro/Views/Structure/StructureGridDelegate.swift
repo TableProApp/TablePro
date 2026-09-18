@@ -248,7 +248,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 }
             }
         case .checkConstraints:
-            guard editGate.allows(.addCheckConstraint) else { return }
+            guard editGate.allows(.dropCheckConstraint) else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingCheckConstraints.count else { continue }

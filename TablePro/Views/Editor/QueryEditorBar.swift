@@ -143,6 +143,7 @@ struct QueryEditorBar: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .labelStyle(.titleAndIcon)
+                .disabled(!commands.canStop)
                 .help(commands.stopHint)
                 .accessibilityIdentifier("query-stop")
         } else {

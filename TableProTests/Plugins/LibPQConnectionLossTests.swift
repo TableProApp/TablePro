@@ -29,6 +29,18 @@ struct LibPQConnectionLossTests {
         #expect(LibPQTransactionState.inError.mayHoldTransaction)
     }
 
+    /// `PQTRANS_INERROR` is its own answer rather than another open transaction: a `COMMIT` there
+    /// answers with the command tag `ROLLBACK` and no error, so the user has to be told to roll
+    /// back rather than offered the choice.
+    @Test("The ReadyForQuery status is reported to the app as what the session has open")
+    func statusMapsToTheSessionState() {
+        #expect(LibPQTransactionState.idle.sessionTransactionState == .idle)
+        #expect(LibPQTransactionState.inTransaction.sessionTransactionState == .inTransaction)
+        #expect(LibPQTransactionState.inError.sessionTransactionState == .abortedTransaction)
+        #expect(LibPQTransactionState.active.sessionTransactionState == .unknown)
+        #expect(LibPQTransactionState.unknown.sessionTransactionState == .unknown)
+    }
+
     @Test("A statement never sent is reported as not run, behind the server's own message")
     func notSentIsNotRun() {
         let error = Self.error(.beforeSending(transactionMayBeOpen: false))

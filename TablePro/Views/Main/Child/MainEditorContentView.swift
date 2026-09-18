@@ -498,7 +498,7 @@ struct MainEditorContentView: View {
                         onRun: { coordinator.runQuery(viewport: .firstRow) },
                         onRunAllStatements: { coordinator.runAllStatements() },
                         onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
-                        onStop: { coordinator.cancelCurrentQuery() },
+                        onStop: { coordinator.stopExecution(for: tab.id) },
                         onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onFormat: { EditorEventRouter.shared.performFormatSQLForKeyWindow() },
                         onSaveAsFavoriteCommand: { coordinator.saveCurrentQueryAsFavorite() },
@@ -697,7 +697,8 @@ struct MainEditorContentView: View {
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
                             tableName: tableName,
-                            objectKind: tab.tableContext.resolvedObjectKind()
+                            objectKind: tab.tableContext.resolvedObjectKind(),
+                            serverSupport: StructureServerSupport.forConnection(connection.id)
                         )
                     }
             }
@@ -1117,7 +1118,7 @@ struct MainEditorContentView: View {
                 tabId: tab.id,
                 execution: coordinator.tabExecution,
                 lastTiming: coordinator.toolbarState.queryTiming(forTab: tab.id),
-                onCancel: { coordinator.cancelCurrentQuery() }
+                onCancel: { coordinator.stopExecution(for: tab.id) }
             ),
             isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
@@ -1183,6 +1184,7 @@ struct MainEditorContentView: View {
             isConnected: MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState),
             hasQueryText: tab.hasQueryText,
             isExecuting: coordinator.tabExecution.isExecuting(tab.id),
+            isStoppable: coordinator.tabExecution.isStoppable(tab.id),
             hasResults: coordinator.canClearActiveQueryResults,
             explainVariants: coordinator.connection.type.explainVariants,
             shortcutHint: { label, action in

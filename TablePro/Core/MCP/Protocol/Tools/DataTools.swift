@@ -378,8 +378,7 @@ public struct InsertRowsTool: MCPToolImplementation {
                 scope: scope,
                 table: table,
                 columns: columns,
-                rows: rows,
-                cancellation: context.cancellation
+                rows: rows
             )
             return .structured(payload)
         } catch {

@@ -57,6 +57,17 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         return MySQLServerFlavor.oceanbase(version: nil).queryTimeoutStatements(seconds: 0)
     }
 
+    static func serverFlavor(for databaseType: DatabaseType, banner: String?) -> MySQLServerFlavor {
+        switch databaseType {
+        case .tidb:
+            return .tidb(version: banner.flatMap(MySQLServerFlavor.tidbVersion(fromBanner:)))
+        case .oceanbase:
+            return .oceanbase(version: banner.flatMap(MySQLServerFlavor.oceanbaseVersion(fromServerVersion:)))
+        default:
+            return MySQLServerFlavor.fromBanner(banner)
+        }
+    }
+
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(
@@ -277,7 +288,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     func fetchSchemas() async throws -> [String] { [] }
 
     func beginTransaction() async throws {
-        _ = try await actor.execute("START TRANSACTION")
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        let flavor = Self.serverFlavor(for: databaseType, banner: serverVersion)
+        _ = try await actor.execute(flavor.beginTransactionStatement(mode: mode))
     }
 
     func commitTransaction() async throws {
@@ -286,6 +302,18 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func rollbackTransaction() async throws {
         _ = try await actor.execute("ROLLBACK")
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        await actor.transactionState()
+    }
+}
+
+nonisolated enum MySQLSessionTransaction {
+    static func state(infoResult: my_bool, serverStatus: UInt32) -> DriverTransactionState {
+        guard infoResult == 0 else { return .unknown }
+        guard serverStatus & UInt32(SERVER_STATUS_IN_TRANS) != 0 else { return .idle }
+        return serverStatus & UInt32(SERVER_STATUS_AUTOCOMMIT) != 0 ? .explicitTransaction : .implicitTransaction
     }
 }
 
@@ -422,6 +450,13 @@ private actor MySQLActor {
     func serverVersion() -> String? {
         guard let mysql else { return nil }
         return String(cString: mysql_get_server_info(mysql))
+    }
+
+    func transactionState() -> DriverTransactionState {
+        guard let mysql else { return .unknown }
+        var serverStatus: UInt32 = 0
+        let infoResult = mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus)
+        return MySQLSessionTransaction.state(infoResult: infoResult, serverStatus: serverStatus)
     }
 
     func execute(_ query: String) throws -> RawMySQLResult {

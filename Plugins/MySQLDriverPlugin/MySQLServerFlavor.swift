@@ -113,6 +113,22 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         }
     }
 
+    /// Whether the server's replies carry the session status flags `SERVER_STATUS_IN_TRANS` is read
+    /// from, so a caller can be told what the session has open.
+    ///
+    /// Measured with the app's own libmariadb 3.4.4 against MySQL 5.5.62 and 8.4.11, MariaDB 5.5.64
+    /// and 11.4.13 and TiDB v8.5.1: all five report the flag, including the transaction that
+    /// `SET autocommit = 0` plus a write opens. Databend and OceanBase are unmeasured, so they
+    /// report nothing rather than reporting "no transaction" from a flag that may never be set.
+    var reportsSessionStatusFlags: Bool {
+        switch self {
+        case .mysql, .mariadb, .tidb:
+            return true
+        case .databend, .oceanbase:
+            return false
+        }
+    }
+
     var listsSequencesAsTables: Bool { !isTiDB }
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }

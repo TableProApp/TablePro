@@ -204,4 +204,57 @@ struct StructureEditingSessionTests {
         MetadataConnectionPool.shared.injectEntry(adapter, scope: scope)
         return driver
     }
+
+    /// A tab the server withdraws cannot stay selected, or the editor shows a grid for something
+    /// the server has none of and no segment matches the selection.
+    @Test("A session on Constraints moves to Columns when the server withdraws the tab")
+    func withdrawnTabMovesSelection() {
+        let connection = DatabaseConnection(name: "MySQL", type: .mysql)
+        let session = Self.makeSession(connection: connection)
+        session.selectedTab = .checkConstraints
+        #expect(session.availableTabs.contains(.checkConstraints))
+
+        session.serverSupport = StructureServerSupport(
+            unsupportedColumnFields: [],
+            unsupportedIndexTypes: [],
+            checkConstraintRefusal: "Check constraints need MySQL 8.0.16 or later."
+        )
+
+        #expect(!session.availableTabs.contains(.checkConstraints))
+        #expect(session.selectedTab == .columns)
+    }
+
+    @Test("A server change that withdraws nothing leaves the selection alone")
+    func unchangedSupportKeepsSelection() {
+        let connection = DatabaseConnection(name: "MySQL", type: .mysql)
+        let session = Self.makeSession(connection: connection)
+        session.selectedTab = .indexes
+
+        session.serverSupport = StructureServerSupport(
+            unsupportedColumnFields: [.generated],
+            unsupportedIndexTypes: ["BRIN"]
+        )
+
+        #expect(session.selectedTab == .indexes)
+        #expect(session.availableTabs.contains(.checkConstraints))
+    }
+
+    @Test("A session built for a server with no check constraints never offers the tab")
+    func sessionSeededWithServerSupport() {
+        let connection = DatabaseConnection(name: "MySQL", type: .mysql)
+        let session = StructureEditingSession(
+            identity: "testdb.users",
+            connection: connection,
+            databaseName: "testdb",
+            schemaName: nil,
+            tableName: "users",
+            serverSupport: StructureServerSupport(
+                unsupportedColumnFields: [],
+                unsupportedIndexTypes: [],
+                checkConstraintRefusal: "Check constraints need MySQL 8.0.16 or later."
+            )
+        )
+        #expect(!session.availableTabs.contains(.checkConstraints))
+        #expect(session.selectedTab == .columns)
+    }
 }

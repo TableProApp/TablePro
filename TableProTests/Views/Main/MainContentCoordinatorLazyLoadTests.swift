@@ -153,7 +153,7 @@ struct MainContentCoordinatorLazyLoadTests {
     }
 
     /// The task slot stops answering once the load hands off to an execution: `executeQueryInternal`
-    /// supersedes, and `supersedeExecution` nils the slot held by the task it is running inside.
+    /// supersedes, and `supersedeExecution` clears the slot held by the task it is running inside.
     /// Every later trigger for the same navigation then found an empty slot and started a second
     /// identical query, and the pair collided (#2342). The registry owns the other half.
     @Test("Returns early when the tab already has an execution in flight")
@@ -163,7 +163,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let claim = coordinator.tabExecution.claim(tabId)
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         defer { inFlight.cancel() }
-        coordinator.currentQueryTask = inFlight
+        coordinator.installQueryTask(inFlight, owner: .claim(claim), lease: DriverLeaseOwner())
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
@@ -178,10 +178,12 @@ struct MainContentCoordinatorLazyLoadTests {
     func skipsWhenUnclaimedWorkIsRunning() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
-        _ = coordinator.tabExecution.beginUnclaimedWork(for: tabId)
+        let token = coordinator.tabExecution.beginUnclaimedWork(for: tabId)
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         defer { inFlight.cancel() }
-        coordinator.currentQueryTask = inFlight
+        coordinator.installQueryTask(
+            inFlight, owner: .unclaimedWork(tabId: tabId, token: token), lease: DriverLeaseOwner()
+        )
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
@@ -283,7 +285,7 @@ struct MainContentCoordinatorLazyLoadTests {
             return
         }
         _ = coordinator.tabExecution.claim(tabId)
-        coordinator.currentQueryTask = nil
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
@@ -331,7 +333,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
-        #expect(coordinator.currentQueryTask == nil)
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
         #expect(coordinator.tabExecution.isAnyExecuting)
 
         coordinator.lazyLoadCurrentTabIfNeeded()

@@ -332,13 +332,12 @@ final class MainContentCoordinator: ObservableObject {
     /// change. It is a value type, so every claim, settle and invalidate is a write to this
     /// property and invalidates its readers.
     @Published internal var tabExecution = TabExecutionRegistry()
-    internal var currentQueryTask: Task<Void, Never>?
 
-    /// Which claim installed `currentQueryTask`. The handle is one per window while claims are one
-    /// per tab, so owning your own tab is not the same as owning the query the window is running:
-    /// superseding tab B cancels tab A's task, and A's completion would otherwise nil out B's
-    /// handle and leave B's query with no spinner and no way to stop it.
-    internal var currentQueryTaskOwner: TabExecutionClaim?
+    /// One in-flight query task per tab, beside the claim registry that owns each tab's result.
+    /// Cancellation is keyed by tab for the same reason ownership is: the window hosts several tabs
+    /// on one connection, and a handle shared between them made every start path a Stop for whoever
+    /// held it.
+    internal var queryTasks = TabQueryTasks()
     internal var rowCountTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
     /// Which user-requested exact count currently owns each tab's counting indicator.
@@ -927,8 +926,7 @@ final class MainContentCoordinator: ObservableObject {
         schemaSwitchCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
-        currentQueryTask?.cancel()
-        currentQueryTask = nil
+        cancelAllQueryTasks()
         /// A cancelled task is not a finished one. `Task.cancel()` is cooperative, so the driver
         /// call may still be running and will throw on the way out; without this the resulting
         /// error reaches the ordinary failure path and reports a query that "failed" when what
@@ -1288,8 +1286,7 @@ final class MainContentCoordinator: ObservableObject {
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex else { return }
 
-        supersedeExecution(for: selectedTab.id)
-        let claim = tabExecution.claim(selectedTab.id)
+        let (claim, lease) = beginTabExecution(for: selectedTab.id)
 
         tabManager.mutate(at: index) { tab in
             tab.execution.executionTime = nil
@@ -1343,7 +1340,7 @@ final class MainContentCoordinator: ObservableObject {
                         guard let self else { return }
                         traceConnectUnavailable(traceToken)
                         guard tabExecution.settle(claim) else { return }
-                        retireQueryTask(for: claim)
+                        retireQueryTask(.claim(claim))
                         pendingLoadTrigger = trigger
                     }
                     return
@@ -1361,7 +1358,8 @@ final class MainContentCoordinator: ObservableObject {
             do {
                 let fetchResult = try await withExecutionDriver(
                     scope: scope,
-                    isTableTab: isTableTab
+                    isTableTab: isTableTab,
+                    lease: lease
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
@@ -1398,7 +1396,7 @@ final class MainContentCoordinator: ObservableObject {
                         traceStaleResultDropped(traceToken)
                         return
                     }
-                    retireQueryTask(for: claim)
+                    retireQueryTask(.claim(claim))
                     guard !Task.isCancelled else {
                         traceStaleResultDropped(traceToken)
                         return
@@ -1473,71 +1471,7 @@ final class MainContentCoordinator: ObservableObject {
                 )
             }
         }
-        installQueryTask(queryTask, for: claim)
-    }
-
-    /// A nil claim means work that runs against a tab without claiming it, which is Fetch All. It
-    /// still owns the handle for as long as it runs; it just cannot be retired by any claim.
-    internal func installQueryTask(_ task: Task<Void, Never>, for claim: TabExecutionClaim?) {
-        currentQueryTask = task
-        currentQueryTaskOwner = claim
-    }
-
-    /// Retires the window's Stop handle, but only for the execution that installed it. A completion
-    /// that owns its own tab can still be a stranger to the query the window is running, and taking
-    /// that one's handle down would leave a live query with nothing to cancel it.
-    ///
-    /// It no longer reports anything: what the titlebar shows is derived from `tabExecution`, so a
-    /// completion that cannot retire the handle can no longer leave the window claiming to be busy.
-    internal func retireQueryTask(for claim: TabExecutionClaim?) {
-        guard currentQueryTaskOwner == claim else { return }
-        currentQueryTask = nil
-        currentQueryTaskOwner = nil
-    }
-
-    internal func cancelInFlightQueryTask(reach: DriverCancellationReach = .userStop) {
-        guard currentQueryTask != nil else { return }
-        currentQueryTask?.cancel()
-        do {
-            try services.databaseManager.cancelRunningQuery(for: connectionId, reach: reach)
-        } catch {
-            Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
-        }
-        currentQueryTask = nil
-        currentQueryTaskOwner = nil
-    }
-
-    /// Ends whatever the tab was doing so a new navigation owns it outright. Invalidating before the
-    /// new claim is minted is what makes "the user navigated away and no successor ever ran" still
-    /// discard the old result, which a counter that only moved on a successful start could not do.
-    ///
-    /// Removing the entry is also what puts the titlebar back to idle, because the indicator reads
-    /// the registry. A retarget need not be followed by a successor, and nothing else would have
-    /// lowered a stored flag.
-    internal func supersedeExecution(for tabId: UUID) {
-        reportEndedExecutions(tabExecution.invalidate(tabId, reason: .supersededNavigation).map { [$0] } ?? [])
-        cancelTableLoad(for: tabId)
-        cancelRowCountTask(for: tabId)
-        cancelInFlightQueryTask(reach: .supersededNavigation)
-    }
-
-    /// Reset execution state when a query is cancelled, releasing the tab only if this claim still
-    /// owns it. Settling is that gate and it comes first, exactly as `finishFailedQuery` does for
-    /// the other way an execution ends early.
-    ///
-    /// This used to invalidate by tab id, which releases whatever the tab is running now rather
-    /// than what this claim started. A cancelled execution unwinding after its successor had
-    /// claimed the tab therefore deleted the successor's entry, and the successor's own `settle`
-    /// then refused to apply the rows it had just fetched (#2342).
-    @MainActor
-    internal func resetExecutionState(claim: TabExecutionClaim, executionTime: TimeInterval) {
-        guard tabExecution.settle(claim) else { return }
-        reportEndedExecutions([
-            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
-        ])
-        guard currentQueryTaskOwner == claim else { return }
-        retireQueryTask(for: claim)
-        toolbarState.recordQueryTiming(PluginQueryTiming(total: executionTime), for: claim.tabId)
+        installQueryTask(queryTask, owner: .claim(claim), lease: lease)
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {

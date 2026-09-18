@@ -12,7 +12,7 @@ import TableProPluginKit
 final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mariadbConnection: MariaDBPluginConnection?
-    internal var _serverVersion: String?
+    private var _serverVersion: String?
     private var _activeDatabase: String
 
     /// The database a metadata read is scoped to. MySQL has no schema level, so this is what a
@@ -68,10 +68,18 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
     var currentSchema: String? { nil }
-    var serverVersion: String? { _serverVersion }
+    var serverVersion: String? { sessionLock.withLock { _serverVersion } }
+
+    /// The banner and the flavor together, taken under one lock. `connect()` writes both in the
+    /// same block, so reading them separately can pair a new banner with the old flavor: a
+    /// `10.1.48-MariaDB` banner under `.mysql` clears an 8.0.16 floor, because 10 is above 8.
+    internal var serverIdentity: (banner: String?, flavor: MySQLServerFlavor) {
+        sessionLock.withLock { (_serverVersion, _flavor) }
+    }
 
     internal var catalogQuotesDefaults: Bool {
-        MySQLServerVersion.quotesColumnDefault(banner: _serverVersion, flavor: flavor)
+        let identity = serverIdentity
+        return MySQLServerVersion.quotesColumnDefault(banner: identity.banner, flavor: identity.flavor)
     }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
@@ -143,8 +151,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         conn.adopt(flavor: resolvedFlavor, killTarget: await killTarget(for: resolvedFlavor, on: conn))
         mariadbConnection = conn
-        _serverVersion = conn.serverVersion()
+        let banner = conn.serverVersion()
         sessionLock.withLock {
+            _serverVersion = banner
             _flavor = resolvedFlavor
             isReleased = false
             isDisconnected = false
@@ -158,9 +167,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         Task { await timer.stop() }
         mariadbConnection?.disconnect()
         mariadbConnection = nil
-        _serverVersion = nil
         let initialFlavor = Self.initialFlavor(for: config)
         let inFlight = sessionLock.withLock { () -> Task<Void, Error>? in
+            _serverVersion = nil
             _flavor = initialFlavor
             isReleased = false
             isDisconnected = true
@@ -208,6 +217,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: flavor.beginTransactionStatement(mode: mode))
     }
 
+    /// No round trip: the transaction is the flag the server put in the reply to the last statement,
+    /// and the table lock is what the footprint saw go past. The connection's flags are read before
+    /// the lock is taken, which is the order `endOperation` writes them in.
+    ///
+    /// A released connection answers `.idle` rather than `.unknown`, because a release only happens
+    /// over a footprint that is holding nothing at all. A flavour whose replies may not carry the
+    /// status flags answers `.unknown`, which leaves the caller deciding as if it had not asked.
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard flavor.reportsSessionStatusFlags else { return .unknown }
+        let state = sessionLock.withLock { (released: isReleased, disconnected: isDisconnected) }
+        guard !state.disconnected else { return .unknown }
+        guard !state.released else { return .idle }
+        guard let conn = mariadbConnection else { return .unknown }
+        let isInTransaction = conn.isInTransaction
+        return sessionLock.withLock { footprint.transactionState(isInTransaction: isInTransaction) }
+    }
+
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -223,7 +249,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         defer { endOperation(on: conn) }
         noteActivity(query)
         let startTime = Date()
-        let result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
+        let result: MariaDBPluginQueryResult
+        do {
+            result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
+        } catch {
+            noteFailure(query)
+            throw error
+        }
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
@@ -250,7 +282,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         noteActivity(query)
 
         let startTime = Date()
-        let result = try await conn.executeParameterizedQuery(query, parameters: parameters)
+        let result: MariaDBPluginQueryResult
+        do {
+            result = try await conn.executeParameterizedQuery(query, parameters: parameters)
+        } catch {
+            noteFailure(query)
+            throw error
+        }
 
         return PluginQueryResult(
             columns: result.columns,
@@ -322,8 +360,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isTruncated: result.isTruncated,
                 columnMeta: result.columnMeta
             )
-        } catch let error as MariaDBPluginError
-            where !isRetry && isConnectionLostError(error) && mayReplay(query) {
+        } catch let error as MariaDBPluginError where !isRetry
+            && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
+            && mayReplay(query) {
             try await reconnect()
             return try await executeWithReconnect(
                 query: query,
@@ -331,11 +370,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 rowCap: rowCap,
                 countsAsActivity: countsAsActivity
             )
+        } catch {
+            if countsAsActivity {
+                noteFailure(query)
+            }
+            throw error
         }
-    }
-
-    private func isConnectionLostError(_ error: MariaDBPluginError) -> Bool {
-        [2_006, 2_013, 2_055].contains(Int(error.code))
     }
 
     // MARK: - Idle connection release
@@ -345,6 +385,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             footprint.observe(sql)
             lastActivity = ContinuousClock.now
         }
+    }
+
+    /// The footprint reads the statement before it runs, so a statement the server refused has to
+    /// be taken back. Only what a failure provably did not leave behind is cleared, which today is
+    /// the table lock: a `LOCK TABLES` that errors holds nothing, and releases what the session held
+    /// before it.
+    private func noteFailure(_ sql: String) {
+        sessionLock.withLock { footprint.observeFailure(of: sql) }
     }
 
     private func mayReplay(_ query: String) -> Bool {
@@ -937,11 +985,21 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// timeout on every connect: the footprint would be dirty before the user ran anything and no
     /// connection would ever be released. It is the driver's own setting and the reconnect puts it
     /// back, so it is not the session's to lose.
+    ///
+    /// Which enforcement the session gets is the server's own answer rather than a reading of its
+    /// banner: the `SET SESSION` runs, and only `ERROR 1193 Unknown system variable` switches the
+    /// session to a client-side deadline. MySQL gained `max_execution_time` in 5.7.8 and MariaDB
+    /// `max_statement_time` in 10.1.1, but a proxy or a fork misreports its version in both
+    /// directions, and ProxySQL defaults its banner to 5.5.30 in front of a modern server.
     func applyQueryTimeout(_ seconds: Int) async throws {
         sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
-        for statement in flavor.queryTimeoutStatements(seconds: seconds) {
+        let sessionFlavor = flavor
+        for statement in sessionFlavor.queryTimeoutStatements(seconds: seconds) {
             do {
                 _ = try await executeWithReconnect(query: statement, isRetry: false, countsAsActivity: false)
+            } catch let error as MariaDBPluginError where mysqlRejectsStatementTimeout(code: error.code) {
+                adoptClientDeadline(seconds: seconds, flavor: sessionFlavor)
+                return
             } catch {
                 Self.logger.warning(
                     "Failed to set query timeout with \(statement, privacy: .public): \(error.localizedDescription)"
@@ -949,6 +1007,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return
             }
         }
+        mariadbConnection?.adopt(statementDeadline: nil)
+    }
+
+    private func adoptClientDeadline(seconds: Int, flavor: MySQLServerFlavor) {
+        mariadbConnection?.adopt(statementDeadline: mysqlClientDeadline(seconds: seconds, flavor: flavor))
+        Self.logger.info(
+            "Server has no statement timeout; a statement past \(seconds, privacy: .public)s is stopped with KILL QUERY"
+        )
     }
 
     // MARK: - EXPLAIN
@@ -1046,6 +1112,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        let identity = serverIdentity
+        guard MySQLCheckConstraints.supportsEditing(banner: identity.banner, flavor: identity.flavor) else {
+            return nil
+        }
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
         return "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT "
@@ -1053,8 +1123,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
-        guard !constraintName.isEmpty else { return nil }
-        return "ALTER TABLE \(quoteIdentifier(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+        let identity = serverIdentity
+        guard MySQLCheckConstraints.supportsEditing(banner: identity.banner, flavor: identity.flavor),
+              !constraintName.isEmpty
+        else { return nil }
+        return MySQLCheckConstraints.dropStatement(
+            quotedTable: quoteIdentifier(table),
+            quotedName: quoteIdentifier(constraintName),
+            banner: identity.banner,
+            flavor: identity.flavor
+        )
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {

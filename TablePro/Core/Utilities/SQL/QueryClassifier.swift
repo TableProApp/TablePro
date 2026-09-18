@@ -116,11 +116,6 @@ enum QueryClassifier {
         return remaining.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
 
-    static func conditionalCommentBody(of sql: Substring) -> Substring? {
-        guard let opener = conditionalCommentOpeners.first(where: { sql.hasPrefix($0) }) else { return nil }
-        return sql.dropFirst(opener.count).drop { $0.isNumber }
-    }
-
     static func strippingLeadingComments(_ sql: String) -> String {
         var remaining = sql[...]
         while true {

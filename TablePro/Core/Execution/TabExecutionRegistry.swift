@@ -59,6 +59,10 @@ internal struct TabExecutionRegistry {
     private struct Entry {
         let epoch: Int
         let startedAt: ContinuousClock.Instant
+        /// Whether the work this claim owns has passed its point of no return. Set while a batch's
+        /// `COMMIT` is on the wire, and read by `stop` and `isStoppable` alone: a tab close, a
+        /// retarget, a supersede and a lost session all end the claim regardless.
+        var isUninterruptible = false
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -128,6 +132,46 @@ internal struct TabExecutionRegistry {
         return ended
     }
 
+    /// Marks the claim as past the point where Stop can still take its work back, and answers
+    /// whether it still owned the tab.
+    ///
+    /// The answer and the mark are one call for the same reason `settle` is: asking them separately
+    /// is order-dependent, and a Stop between the two questions would be seen by neither. Both this
+    /// and `stopAll` run on the main actor, so a Stop lands wholly before this call or wholly after
+    /// it. It is deliberately not `@discardableResult`: a caller that marks without reading the
+    /// answer commits over a tab it no longer owns.
+    internal mutating func enterUninterruptiblePhase(_ claim: TabExecutionClaim) -> Bool {
+        guard isCurrent(claim) else { return false }
+        entries[claim.tabId]?.isUninterruptible = true
+        return true
+    }
+
+    /// Puts the claim back within reach of Stop, for a batch that has more statements to run after
+    /// a commit its script wrote itself.
+    internal mutating func leaveUninterruptiblePhase(_ claim: TabExecutionClaim) {
+        guard isCurrent(claim) else { return }
+        entries[claim.tabId]?.isUninterruptible = false
+    }
+
+    /// What the user's Stop does, as against `invalidate(_:reason:)`, which every other end of an
+    /// execution still uses.
+    ///
+    /// Keyed by tab, because Stop acts on the tab the user is looking at. A claim in its
+    /// uninterruptible phase is kept, with its content epoch untouched, so the commit that is
+    /// already on the wire still settles and still applies its results. Everything else ends exactly
+    /// as it did: `invalidate` and `invalidateAll` ignore the mark, so closing the tab, a retarget or
+    /// a lost session release it whatever it is doing.
+    internal mutating func stop(_ tabId: UUID) -> [EndedExecution] {
+        unclaimedWork.removeValue(forKey: tabId)
+        guard entries[tabId]?.isUninterruptible != true else { return [] }
+        let ended = entries.removeValue(forKey: tabId).map {
+            [EndedExecution(tabId: tabId, startedAt: $0.startedAt, reason: .cancelledByUser)]
+        } ?? []
+        lastEpoch += 1
+        contentEpochs[tabId] = lastEpoch
+        return ended
+    }
+
     /// Work that runs against a tab without owning its result.
     ///
     /// Fetch All is why this exists. `claim` mints a new content epoch, which is the very value the
@@ -192,5 +236,15 @@ internal struct TabExecutionRegistry {
     /// titlebar report a query that had already ended, recoverable only by pressing Stop (#2342).
     internal var isAnyExecuting: Bool {
         !entries.isEmpty || !unclaimedWork.isEmpty
+    }
+
+    /// Whether Stop still has something to act on here. The HIG asks not to offer a cancel that
+    /// cannot act, and a batch whose `COMMIT` is on the wire cannot be taken back by anything: a
+    /// kill on a commit already waiting on the server is honoured on one engine and ignored on the
+    /// next, and closing the tab or disconnecting does not reach it either.
+    internal func isStoppable(_ tabId: UUID) -> Bool {
+        if unclaimedWork[tabId] != nil { return true }
+        guard let entry = entries[tabId] else { return false }
+        return !entry.isUninterruptible
     }
 }

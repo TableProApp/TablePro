@@ -171,4 +171,23 @@ struct MySQLReplaySafetyTests {
         #expect(!mysqlMayReplay("UPDATE users SET name = 'a'", on: MySQLSessionFootprint()))
         #expect(!mysqlMayReplay("SELECT GET_LOCK('job', 10)", on: MySQLSessionFootprint()))
     }
+
+    /// libmariadb reports its own read timeout as `2013 Lost connection to server during query`,
+    /// which is what a server-side drop reports too. Measured on MySQL 5.5.62, the server was still
+    /// running two copies of the statement after the driver reported the connection lost, so the
+    /// replay would have added a third.
+    @Test("A connection lost under the socket timeout is retaken, and one lost by it is not")
+    func connectionLossReplay() {
+        for code in [UInt32(2_006), 2_013, 2_055] {
+            #expect(mysqlConnectionLossMayReplay(code: code, outlastedSocketTimeout: false), "\(code)")
+            #expect(!mysqlConnectionLossMayReplay(code: code, outlastedSocketTimeout: true), "\(code)")
+        }
+    }
+
+    @Test("A failure that is not a lost connection is never a reconnect")
+    func otherCodesAreNotConnectionLoss() {
+        for code in [UInt32(1_317), 2_026, 3_024] {
+            #expect(!mysqlConnectionLossMayReplay(code: code, outlastedSocketTimeout: false), "\(code)")
+        }
+    }
 }

@@ -127,6 +127,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
 
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        await backend.sessionTransactionState()
+    }
+
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries,

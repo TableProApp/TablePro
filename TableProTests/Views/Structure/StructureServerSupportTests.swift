@@ -16,9 +16,11 @@ private final class StructureSupportStubDriver: PluginDatabaseDriver, @unchecked
 
     var hiddenFields: Set<StructureColumnField> = []
     var hiddenIndexTypes: Set<String> = []
+    var checkRefusal: String?
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { hiddenFields }
     var unsupportedIndexTypes: Set<String> { hiddenIndexTypes }
+    var checkConstraintRefusal: String? { checkRefusal }
 
     func connect() async throws {}
     func disconnect() {}
@@ -173,6 +175,23 @@ struct StructureServerSupportTests {
         let support = StructureServerSupport(driver: adapter)
         #expect(support.unsupportedColumnFields == [.generated, .generationExpression])
         #expect(support.unsupportedIndexTypes == ["BRIN"])
+    }
+
+    @Test("A server with no check constraints withdraws the Constraints tab and nothing else")
+    func checkConstraintRefusalHidesOneTab() {
+        let driver = StructureSupportStubDriver()
+        driver.checkRefusal = "Check constraints need MySQL 8.0.16 or later."
+        let adapter = PluginDriverAdapter(
+            connection: DatabaseConnection(name: "Test", type: .mysql),
+            pluginDriver: driver
+        )
+        let support = StructureServerSupport(driver: adapter)
+        #expect(support.checkConstraintRefusal == "Check constraints need MySQL 8.0.16 or later.")
+        #expect(!support.offers(.checkConstraints))
+        for tab in StructureTab.allCases where tab != .checkConstraints {
+            #expect(support.offers(tab), "\(tab)")
+        }
+        #expect(StructureServerSupport.unrestricted.offers(.checkConstraints))
     }
 
     @Test("A driver built before the hook existed restricts nothing")

@@ -32,19 +32,20 @@ extension MainContentCoordinator {
     func withExecutionDriver<T: Sendable>(
         scope: DatabaseScope,
         isTableTab: Bool,
+        lease: DriverLeaseOwner,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         guard isTableTab else {
             return try await services.databaseManager.withScopedDriver(
                 scope: scope,
                 route: services.databaseManager.executionRoute(for: scope),
-                cancellation: .cancellableRead,
+                cancellation: .cancellableRead(lease),
                 body
             )
         }
         return try await services.databaseManager.withTableReadDriver(
             scope: scope,
-            cancellation: .cancellableRead,
+            cancellation: .cancellableRead(lease),
             body
         )
     }
@@ -70,7 +71,7 @@ extension MainContentCoordinator {
             tab.pagination.isLoadingMore = false
             tab.pagination.isLoading = false
         }
-        retireQueryTask(for: claim)
+        retireQueryTask(.claim(claim))
         traceExecutionFailed(traceToken, error: error)
         if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
             reportEndedExecutions([

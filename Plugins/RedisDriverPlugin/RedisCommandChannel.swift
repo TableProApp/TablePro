@@ -64,20 +64,24 @@ extension RedisCommandChannel {
 
     func verifyStillPrimary() async throws {}
 
-    /// Runs a command and turns a server error reply into a thrown error.
+    /// Runs a command and turns anything that is not its own answer into a thrown error.
     ///
     /// hiredis hands `-READONLY`, `-WRONGTYPE`, `-NOPERM` and the rest back as ordinary replies,
-    /// so a caller that ignores the reply reports success for a command the server refused. Every
-    /// command site goes through here rather than reading the reply straight.
+    /// so a caller that ignores the reply reports success for a command the server refused. A
+    /// `+QUEUED` is the second such reply: it acknowledges an open `MULTI` block rather than
+    /// answering, and reading a value out of it gave the sidebar a key count of zero and the grid
+    /// "QUEUED" as a stored value. Every command site goes through here rather than reading the
+    /// reply straight.
     @discardableResult
     func run(_ args: [String]) async throws -> RedisReply {
-        try await executeCommand(args).throwIfError(args.first ?? "")
+        let name = args.first ?? ""
+        return try await executeCommand(args).throwIfError(name).throwIfQueued(name)
     }
 
     @discardableResult
     func run(_ args: [Data]) async throws -> RedisReply {
         let name = args.first.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        return try await executeCommand(args).throwIfError(name)
+        return try await executeCommand(args).throwIfError(name).throwIfQueued(name)
     }
 
     /// The single-node walk. A cluster channel replaces this with one that visits every master.
@@ -87,7 +91,7 @@ extension RedisCommandChannel {
         args += ["COUNT", String(count)]
         if let type { args += ["TYPE", type] }
 
-        let reply = try await executeCommand(args).throwIfError()
+        let reply = try await executeCommand(args).throwIfError().throwIfQueued("SCAN")
         let page = RedisScanReply.parse(reply)
         return RedisKeyspacePage(cursor: page.cursor, keys: page.keys, isIncomplete: false)
     }

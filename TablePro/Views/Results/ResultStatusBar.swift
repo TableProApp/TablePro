@@ -206,6 +206,7 @@ struct ResultStatusBar: View {
             ExecutionIndicatorView(
                 isExecuting: execution.isExecuting,
                 lastTiming: execution.lastTiming,
+                canStop: execution.canStop,
                 onCancel: execution.onCancel
             )
         }

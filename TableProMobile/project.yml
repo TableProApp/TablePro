@@ -72,6 +72,8 @@ targets:
       # libpq COPY handling the iOS PostgreSQL driver shares with the macOS plugin.
       - ../Plugins/PostgreSQLDriverPlugin/LibPQPendingResultDrain.swift
       - ../Plugins/PostgreSQLDriverPlugin/LibPQCopyState.swift
+      # The read-write BEGIN both platforms open a write transaction with.
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
     configFiles:
       Debug: ../Configs/Version-iOS.xcconfig
       Release: ../Configs/Version-iOS.xcconfig

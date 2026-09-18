@@ -39,7 +39,7 @@ struct ProtectedWritePingSuppressionTests {
         let connectionId = UUID()
         defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connectionId) }
 
-        seed(.cancellableRead, for: connectionId)
+        seed(.cancellableRead(DriverLeaseOwner()), for: connectionId)
 
         #expect(!DatabaseManager.shared.holdsProtectedWrite(connectionId))
     }
@@ -56,7 +56,7 @@ struct ProtectedWritePingSuppressionTests {
         let connection = TestFixtures.makeConnection(type: .postgresql)
 
         DatabaseManager.shared.runningDrivers[connectionId] = [
-            UUID(): RunningDriver(driver: MockDatabaseDriver(connection: connection), policy: .cancellableRead),
+            UUID(): RunningDriver(driver: MockDatabaseDriver(connection: connection), policy: .cancellableRead(DriverLeaseOwner())),
             UUID(): RunningDriver(driver: MockDatabaseDriver(connection: connection), policy: .protectedWrite),
         ]
 

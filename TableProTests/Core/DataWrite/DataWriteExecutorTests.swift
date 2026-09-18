@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 /// One test double for every case in this file: it records the order of everything it was asked to
@@ -19,6 +19,8 @@ private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// One-based index of the statement that should throw, counting only the ones the plan runs.
     let failOnStatement: Int?
     let rollbackFails: Bool
+    /// What the session answers when the executor asks what it is already holding.
+    let sessionState: PluginSessionTransactionState
 
     /// Every call in the order it arrived: statement text, plus "BEGIN", "COMMIT" and "ROLLBACK".
     private(set) var trace: [String] = []
@@ -32,12 +34,14 @@ private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
         affectedRows: Int,
         transactional: Bool = true,
         failOnStatement: Int? = nil,
-        rollbackFails: Bool = false
+        rollbackFails: Bool = false,
+        sessionState: PluginSessionTransactionState = .idle
     ) {
         self.affectedRows = affectedRows
         self.transactional = transactional
         self.failOnStatement = failOnStatement
         self.rollbackFails = rollbackFails
+        self.sessionState = sessionState
     }
 
     var supportsSchemas: Bool { false }
@@ -57,6 +61,8 @@ private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
             columns: [], columnTypeNames: [], rows: [], rowsAffected: affectedRows, executionTime: 0
         )
     }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { sessionState }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws { trace.append("BEGIN") }
     func commitTransaction() async throws { trace.append("COMMIT") }
@@ -293,5 +299,91 @@ struct DataWriteExecutorTests {
 
         #expect(results.first?.wasVerified == false)
         #expect(counting.didCommit)
+    }
+
+    @Test(
+        "A save joins a transaction the session already holds instead of committing it",
+        arguments: [PluginSessionTransactionState.inTransaction, .abortedTransaction, .holdsSessionLocks]
+    )
+    func saveJoinsTheSessionTransaction(state: PluginSessionTransactionState) async throws {
+        let counting = CountingDriver(affectedRows: 1, sessionState: state)
+        let results = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting)).results
+
+        #expect(results.first?.rowsAffected == 1)
+        #expect(counting.trace == ["UPDATE \"t\" SET \"b\" = 0"])
+    }
+
+    @Test("A session that reports nothing open is still wrapped, and so is one that cannot say")
+    func saveWrapsWhenNothingIsOpen() async throws {
+        for state in [PluginSessionTransactionState.idle, .unknown] {
+            let counting = CountingDriver(affectedRows: 1, sessionState: state)
+            _ = try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+            #expect(counting.trace.first == "BEGIN")
+            #expect(counting.didCommit)
+        }
+    }
+
+    @Test("A failure inside the user's transaction reports the statements as pending, not written")
+    func failureInsideTheSessionTransactionIsPending() async throws {
+        let counting = CountingDriver(affectedRows: 1, failOnStatement: 2, sessionState: .inTransaction)
+
+        do {
+            _ = try await DataWriteExecutor.run(
+                plan(expectedRowCount: 1, statementCount: 3), on: driver(counting)
+            )
+            Issue.record("expected the run to throw")
+        } catch let error as DataWritePartialCommitError {
+            #expect(error.disposition == .pendingInSessionTransaction)
+            #expect(error.committed.count == 1)
+            #expect(counting.didRollBack == false)
+            #expect(error.partialCommitMessage.contains("already open on this connection"))
+        }
+    }
+
+    @Test("Too many rows inside the user's transaction blames neither a rollback nor the engine")
+    func tooManyRowsInsideTheSessionTransaction() async throws {
+        let counting = CountingDriver(affectedRows: 2, sessionState: .inTransaction)
+        await #expect(
+            throws: DataWriteError.tooManyRowsAffectedInSessionTransaction(table: "t", expected: 1, actual: 2)
+        ) {
+            try await DataWriteExecutor.run(plan(expectedRowCount: 1), on: driver(counting))
+        }
+        #expect(counting.didRollBack == false)
+    }
+}
+
+@Suite("Data write transaction ownership")
+struct WriteTransactionOwnerTests {
+    @Test("An engine without transactions is nobody's to wrap")
+    func withoutTransactionsNobodyOwnsOne() {
+        for state in [
+            PluginSessionTransactionState.idle, .inTransaction, .abortedTransaction, .holdsSessionLocks, .unknown,
+        ] {
+            let owner = WriteTransactionOwner.resolve(supportsTransactions: false, sessionState: state)
+            #expect(owner == WriteTransactionOwner.none)
+            #expect(owner.opensTransaction == false)
+            #expect(owner.canRollBack == false)
+        }
+    }
+
+    @Test(
+        "A session holding a transaction or a lock owns it",
+        arguments: [PluginSessionTransactionState.inTransaction, .abortedTransaction, .holdsSessionLocks]
+    )
+    func sessionOwnsWhatItHolds(state: PluginSessionTransactionState) {
+        let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: state)
+        #expect(owner == .session)
+        #expect(owner.opensTransaction == false)
+        #expect(owner.canRollBack == false)
+    }
+
+    @Test("The app owns the transaction when nothing is open, and when the driver cannot say")
+    func appOwnsTheRest() {
+        for state in [PluginSessionTransactionState.idle, .unknown] {
+            let owner = WriteTransactionOwner.resolve(supportsTransactions: true, sessionState: state)
+            #expect(owner == .app)
+            #expect(owner.opensTransaction)
+            #expect(owner.canRollBack)
+        }
     }
 }

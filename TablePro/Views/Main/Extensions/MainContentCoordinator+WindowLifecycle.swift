@@ -189,7 +189,7 @@ extension MainContentCoordinator {
         clearAbandonedExecutingFlagIfNeeded(for: tab)
 
         /// The task slot above stops answering the moment the load hands off to an execution:
-        /// `executeQueryInternal` supersedes, and `supersedeExecution` nils the very slot held by
+        /// `executeQueryInternal` supersedes, and `supersedeExecution` clears the very slot held by
         /// the task it is running inside. Every later trigger for the same navigation then found an
         /// empty slot and scheduled a second identical load, whose predecessor took the successor's
         /// claim down with it on the way out (#2342). The registry owns the other half of the same
@@ -219,7 +219,7 @@ extension MainContentCoordinator {
                 }
             }
             await self.openTableTabQuery(tabId: tabId, trigger: trigger)
-            if let queryTask = self.currentQueryTask {
+            if let queryTask = self.queryTasks.task(for: tabId) {
                 await queryTask.value
             }
         }
@@ -255,7 +255,7 @@ extension MainContentCoordinator {
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
-        guard tabExecution.isExecuting(tab.id), currentQueryTask == nil else { return }
+        guard tabExecution.isExecuting(tab.id), !queryTasks.hasTask(for: tab.id) else { return }
         TableLoadTracer.shared.anomaly(
             .preparationAbandoned,
             tabId: tab.id,

@@ -192,7 +192,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             if let type { args += ["TYPE", type] }
 
             let connection = try await connection(to: node.address)
-            let reply = try await connection.executeCommand(args).throwIfError()
+            let reply = try await connection.executeCommand(args).throwIfError().throwIfQueued("SCAN")
             let page = RedisScanReply.parse(reply)
             let next = RedisClusterCursor.advance(
                 after: node.id,

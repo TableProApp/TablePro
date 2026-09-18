@@ -34,17 +34,21 @@ struct QueryCommandAvailability {
     let formatHint: String
     let favoriteHint: String
 
+    /// `isStoppable` is separate from `isExecuting` because a batch whose `COMMIT` is on the wire is
+    /// still running and can no longer be stopped by anything: the HIG asks not to offer a cancel
+    /// that cannot act.
     init(
         isConnected: Bool,
         hasQueryText: Bool,
         isExecuting: Bool,
+        isStoppable: Bool,
         hasResults: Bool,
         explainVariants: [ExplainVariant],
         shortcutHint: (String, ShortcutAction) -> String
     ) {
         self.explainVariants = explainVariants
         canRun = isConnected && hasQueryText && !isExecuting
-        canStop = isExecuting
+        canStop = isExecuting && isStoppable
         canExplain = isConnected && hasQueryText && !isExecuting && !explainVariants.isEmpty
         /// Formatting rewrites text the reader already has, so it does not wait for a server.
         canFormat = hasQueryText
@@ -57,7 +61,12 @@ struct QueryCommandAvailability {
             base: shortcutHint(String(localized: "Run"), .executeQuery),
             reason: Self.blockedReason(isConnected: isConnected, hasQueryText: hasQueryText, isExecuting: isExecuting)
         )
-        stopHint = shortcutHint(String(localized: "Stop"), .cancelQuery)
+        stopHint = Self.hint(
+            base: shortcutHint(String(localized: "Stop"), .cancelQuery),
+            reason: isExecuting && !isStoppable
+                ? String(localized: "The batch is committing and cannot be stopped.")
+                : nil
+        )
         explainHint = Self.hint(
             base: shortcutHint(String(localized: "Explain"), .explainQuery),
             reason: explainVariants.isEmpty

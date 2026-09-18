@@ -223,7 +223,7 @@ final class RowDetailViewModel {
         defer { isSaving = false }
 
         do {
-            _ = try await session.driver.execute(query: sql)
+            try await session.driver.executeWrite([sql])
             guard currentIndex >= 0, currentIndex < rows.count else { return false }
             let newCells = editedValues.map { value -> Cell in
                 value.map { Cell.text($0) } ?? .null

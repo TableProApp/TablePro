@@ -413,7 +413,18 @@ struct MainMenuValidationTests {
         var context = MenuValidationContext()
         #expect(!enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
         context.isQueryExecuting = true
+        context.isQueryStoppable = true
         #expect(enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
+    }
+
+    /// A batch whose `COMMIT` is on the wire is executing and unstoppable at the same time, and
+    /// `Cmd+.` has to dim rather than fire into work nothing can interrupt.
+    @Test("Cancel Query dims while a batch is committing")
+    func cancelDimsWhileCommitting() {
+        var context = MenuValidationContext()
+        context.isQueryExecuting = true
+        context.isQueryStoppable = false
+        #expect(!enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
     }
 
     @Test("Filter bar needs an active table result grid")
