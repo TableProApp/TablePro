@@ -10,20 +10,12 @@ final class ConnectionCoordinatorStore {
 
     private var coordinators: [UUID: ConnectionCoordinator] = [:]
     private var removedRecords: [UUID: DatabaseConnection] = [:]
+    private var isHoldingRebuilds = false
     private var heldRebuilds: [UUID: Bool] = [:]
-    private var awaitsEditorRelease = false
-    private let editorHolds: EditorHoldRegistry
-    private let dropSession: (UUID) -> Void
+    private let connectionManager: ConnectionManager
 
-    init(editorHolds: EditorHoldRegistry, dropSession: @escaping (UUID) -> Void) {
-        self.editorHolds = editorHolds
-        self.dropSession = dropSession
-    }
-
-    convenience init(connectionManager: ConnectionManager, editorHolds: EditorHoldRegistry) {
-        self.init(editorHolds: editorHolds) { id in
-            Task { await connectionManager.disconnect(id) }
-        }
+    init(connectionManager: ConnectionManager) {
+        self.connectionManager = connectionManager
     }
 
     func generation(for id: UUID) -> Int {
@@ -47,24 +39,16 @@ final class ConnectionCoordinatorStore {
     }
 
     func invalidate(_ id: UUID, droppingSession: Bool = true) {
-        guard editorHolds.isHolding else {
-            rebuild(id, droppingSession: droppingSession)
+        guard !isHoldingRebuilds else {
+            heldRebuilds[id] = heldRebuilds[id, default: false] || droppingSession
             return
         }
-        heldRebuilds[id] = heldRebuilds[id, default: false] || droppingSession
-        awaitEditorRelease()
+        rebuild(id, droppingSession: droppingSession)
     }
 
-    private func awaitEditorRelease() {
-        guard !awaitsEditorRelease else { return }
-        awaitsEditorRelease = true
-        editorHolds.performWhenReleased { [weak self] in
-            self?.runHeldRebuilds()
-        }
-    }
-
-    private func runHeldRebuilds() {
-        awaitsEditorRelease = false
+    func holdRebuilds(_ isHolding: Bool) {
+        isHoldingRebuilds = isHolding
+        guard !isHolding else { return }
         let released = heldRebuilds
         heldRebuilds.removeAll()
         for (id, droppingSession) in released {
@@ -90,7 +74,7 @@ final class ConnectionCoordinatorStore {
         coordinators.removeValue(forKey: id)?.retire()
         generations[id, default: 0] += 1
         guard droppingSession else { return }
-        dropSession(id)
+        disconnect(id)
     }
 
     private func remove(_ id: UUID) {
@@ -99,7 +83,12 @@ final class ConnectionCoordinatorStore {
             removedRecords[id] = retired.connection
             retired.retire()
         }
-        dropSession(id)
+        disconnect(id)
+    }
+
+    private func disconnect(_ id: UUID) {
+        let manager = connectionManager
+        Task { await manager.disconnect(id) }
     }
 }
 

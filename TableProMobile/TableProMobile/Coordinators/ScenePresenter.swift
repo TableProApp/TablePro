@@ -53,17 +53,13 @@ final class ScenePresenter {
     private(set) var pendingIntent: SceneIntent?
     private(set) var pendingTable: PendingTableRequest?
     private(set) var holdsConnectionRestore = false
+    private(set) var editorHolds: Set<UUID> = []
 
-    var isHeldByEditor: Bool { editorHolds.isHolding(scene: sceneId) }
+    var isHeldByEditor: Bool { !editorHolds.isEmpty }
 
-    @ObservationIgnored private let editorHolds: EditorHoldRegistry
     @ObservationIgnored private var hasBegunLaunch = false
     @ObservationIgnored private var presentedLaunchSheet = false
     @ObservationIgnored private var presentedFirstRunPages: [FirstRunPage] = []
-
-    init(editorHolds: EditorHoldRegistry = EditorHoldRegistry()) {
-        self.editorHolds = editorHolds
-    }
 
     func beginLaunch(with appState: AppState) {
         guard !hasBegunLaunch else { return }
@@ -117,7 +113,12 @@ final class ScenePresenter {
     }
 
     func setEditorHold(_ token: UUID, isHolding: Bool) {
-        editorHolds.setHold(token, in: sceneId, isHolding: isHolding)
+        guard editorHolds.contains(token) != isHolding else { return }
+        if isHolding {
+            editorHolds.insert(token)
+        } else {
+            editorHolds.remove(token)
+        }
     }
 
     func takeDeliverableIntent(isLocked: Bool, isLibraryWritable: Bool) -> SceneIntent? {

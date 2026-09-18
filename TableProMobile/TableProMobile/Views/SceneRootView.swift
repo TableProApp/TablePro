@@ -9,13 +9,12 @@ struct SceneRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var sceneDelegate: TableProSceneDelegate
     @State private var coordinatorStore: ConnectionCoordinatorStore
-    @State private var presenter: ScenePresenter
+    @State private var presenter = ScenePresenter()
 
-    init(connectionManager: ConnectionManager, editorHolds: EditorHoldRegistry) {
+    init(connectionManager: ConnectionManager) {
         _coordinatorStore = State(
-            initialValue: ConnectionCoordinatorStore(connectionManager: connectionManager, editorHolds: editorHolds)
+            initialValue: ConnectionCoordinatorStore(connectionManager: connectionManager)
         )
-        _presenter = State(initialValue: ScenePresenter(editorHolds: editorHolds))
     }
 
     var body: some View {
@@ -24,6 +23,9 @@ struct SceneRootView: View {
             .environment(presenter)
             .onChange(of: appState.connections) { previous, current in
                 coordinatorStore.reconcile(from: previous, to: current)
+            }
+            .onChange(of: presenter.isHeldByEditor, initial: true) { _, isHeld in
+                coordinatorStore.holdRebuilds(isHeld)
             }
             .onChange(of: appState.sampleResetRevision) { _, _ in
                 for sample in appState.connections where sample.isSample {

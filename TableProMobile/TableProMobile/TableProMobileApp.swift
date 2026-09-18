@@ -24,7 +24,7 @@ struct TableProMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            SceneRootView(connectionManager: appState.connectionManager, editorHolds: appState.editorHolds)
+            SceneRootView(connectionManager: appState.connectionManager)
                 .environment(appState)
                 .environment(lockState)
                 .hostKeyPrompt()

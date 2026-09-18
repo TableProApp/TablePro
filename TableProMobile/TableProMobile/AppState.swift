@@ -32,7 +32,6 @@ final class AppState {
     let connectionManager: ConnectionManager
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
-    let editorHolds = EditorHoldRegistry()
     let syncCoordinator: IOSSyncCoordinator
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
