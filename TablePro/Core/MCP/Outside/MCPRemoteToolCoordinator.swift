@@ -70,7 +70,7 @@ internal final class MCPRemoteToolCoordinator {
             Self.logger.error(
                 """
                 MCP server \(configuration.id, privacy: .public) did not list its tools: \
-                \(error.localizedDescription, privacy: .public)
+                \(error.publicLogShape, privacy: .public)
                 """
             )
             await detachAll(serverId: configuration.id)

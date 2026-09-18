@@ -108,7 +108,7 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
                 return grouped
             }
         } catch {
-            Self.logger.warning("Export catalog read failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Export catalog read failed: \(error.publicLogShape, privacy: .public)")
             return [:]
         }
     }
@@ -290,7 +290,7 @@ struct ExportTreeBuilder {
             return try await reader.fetchTables(schema: isCurrentDatabase ? nil : database)
         } catch {
             Self.logger.warning(
-                "Export tree read no tables for \(database, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Export tree read no tables for \(database, privacy: .public): \(error.publicLogShape, privacy: .public)"
             )
             return []
         }
