@@ -97,9 +97,6 @@ enum IOSConnectionImportService {
                     logger.error("Import could not replace a connection that is no longer in the library")
                     continue
                 }
-                if !expectsPastedPrivateKey(connection) {
-                    deleteSecret(.sshPrivateKey, of: existingId, from: appState.secureStore)
-                }
                 connectionIdMap[index] = existingId
                 importedCount += 1
             }
@@ -143,19 +140,6 @@ enum IOSConnectionImportService {
         } catch {
             logger.error("Restoring an imported secret failed: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    private static func deleteSecret(_ kind: ConnectionSecretKind, of connectionId: UUID, from secureStore: any SecureStore) {
-        do {
-            try secureStore.delete(forKey: kind.account(for: connectionId))
-        } catch {
-            logger.error("Clearing a replaced connection's secret failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    private static func expectsPastedPrivateKey(_ connection: DatabaseConnection) -> Bool {
-        guard connection.sshEnabled, let ssh = connection.sshConfiguration else { return false }
-        return ssh.authMethod == .privateKey && (ssh.privateKeyPath ?? "").isEmpty
     }
 
     // MARK: - Building

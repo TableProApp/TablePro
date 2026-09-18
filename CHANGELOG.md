@@ -117,7 +117,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open connection on iPhone and iPad jumping back to the table list after a rename, reorder or synced change.
 - Deleted connections still showing in Spotlight, Siri, Shortcuts and Handoff on iPhone and iPad.
 - No confirmation before deleting a tag on iPhone and iPad.
-- A connection replaced by an import on iPhone and iPad still signing in with its old pasted SSH key.
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 
 ### Security
@@ -129,7 +128,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Require Face ID** turned off on iPhone and iPad without authenticating.
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
-- SSH private keys of deleted connections kept in the iPhone and iPad Keychain with Sync Passwords off.
 
 ## [0.75.0] - 2026-09-18
 

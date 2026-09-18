@@ -15,19 +15,27 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
         }
     }
 
+    var isSweptWhenOrphaned: Bool {
+        switch self {
+        case .password, .sshPassword, .keyPassphrase: true
+        case .sshPrivateKey: false
+        }
+    }
+
     func account(for connectionId: UUID) -> String {
         prefix + connectionId.uuidString
     }
 
-    static func connectionId(inAccount account: String) -> UUID? {
-        guard let kind = allCases.first(where: { account.hasPrefix($0.prefix) }) else { return nil }
+    static func sweptConnectionId(inAccount account: String) -> UUID? {
+        let swept = allCases.filter(\.isSweptWhenOrphaned)
+        guard let kind = swept.first(where: { account.hasPrefix($0.prefix) }) else { return nil }
         return UUID(uuidString: String(account.dropFirst(kind.prefix.count)))
     }
 
     static func orphanedAccounts(_ accounts: [String], keeping validConnectionIds: Set<UUID>) -> [String] {
         guard !validConnectionIds.isEmpty else { return [] }
         return accounts.filter { account in
-            guard let connectionId = connectionId(inAccount: account) else { return false }
+            guard let connectionId = sweptConnectionId(inAccount: account) else { return false }
             return !validConnectionIds.contains(connectionId)
         }
     }

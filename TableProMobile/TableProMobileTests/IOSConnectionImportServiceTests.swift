@@ -136,10 +136,11 @@ struct IOSConnectionImportReplaceTests {
         ).importedCount
     }
 
-    @Test("Replacing with a key file, a password or no tunnel clears the pasted key the old connection used")
-    func replaceClearsUnusedPastedKey() throws {
+    @Test("Replacing a connection keeps its pasted key, whatever tunnel the import brings")
+    func replaceKeepsPastedKey() throws {
         #expect(appState.addConnection(existing))
         let incoming: [ExportableSSHConfig?] = [
+            tunnel(authMethod: "privateKey"),
             tunnel(authMethod: "privateKey", keyPath: "~/.ssh/id_ed25519"),
             tunnel(authMethod: "password"),
             nil
@@ -150,17 +151,7 @@ struct IOSConnectionImportReplaceTests {
 
             #expect(replaceExisting(with: ssh) == 1)
 
-            #expect(try store.retrieve(forKey: keyAccount) == nil, "\(ssh?.authMethod ?? "no tunnel")")
+            #expect(try store.retrieve(forKey: keyAccount) == "PASTED KEY", "\(ssh?.authMethod ?? "no tunnel")")
         }
-    }
-
-    @Test("Replacing with a private key and no key file keeps the pasted key for it")
-    func replaceKeepsPastedKeyItStillNeeds() throws {
-        #expect(appState.addConnection(existing))
-        store.seed(keyAccount, "PASTED KEY")
-
-        #expect(replaceExisting(with: tunnel(authMethod: "privateKey")) == 1)
-
-        #expect(try store.retrieve(forKey: keyAccount) == "PASTED KEY")
     }
 }

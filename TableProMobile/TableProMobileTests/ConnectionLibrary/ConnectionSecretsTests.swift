@@ -73,8 +73,8 @@ struct ConnectionSecretsTests {
         #expect(ConnectionSecretKind.sshPrivateKey.account(for: id) == "com.TablePro.sshkeydata.\(id.uuidString)")
     }
 
-    @Test("The orphan sweep takes every secret of a connection that is gone, pasted keys included, and nothing else")
-    func sweepTakesOrphanedSecretsOnly() {
+    @Test("The orphan sweep takes the passwords of a connection that is gone and nothing else")
+    func sweepTakesOrphanedPasswordsOnly() {
         let kept = UUID()
         let removed = UUID()
         let owned = ConnectionSecretKind.allCases.flatMap { [$0.account(for: kept), $0.account(for: removed)] }
@@ -82,13 +82,23 @@ struct ConnectionSecretsTests {
 
         let orphaned = ConnectionSecretKind.orphanedAccounts(owned + foreign, keeping: [kept])
 
-        #expect(Set(orphaned) == Set(ConnectionSecretKind.allCases.map { $0.account(for: removed) }))
-        #expect(orphaned.contains("com.TablePro.sshkeydata.\(removed.uuidString)"))
+        #expect(Set(orphaned) == [
+            ConnectionSecretKind.password.account(for: removed),
+            ConnectionSecretKind.sshPassword.account(for: removed),
+            ConnectionSecretKind.keyPassphrase.account(for: removed)
+        ])
+    }
+
+    @Test("The orphan sweep never takes a pasted private key, which may be the only copy")
+    func sweepSparesPastedKeys() {
+        let account = ConnectionSecretKind.sshPrivateKey.account(for: UUID())
+
+        #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
     }
 
     @Test("The orphan sweep takes nothing before the connections have loaded")
     func sweepWaitsForTheLibrary() {
-        let account = ConnectionSecretKind.sshPrivateKey.account(for: UUID())
+        let account = ConnectionSecretKind.password.account(for: UUID())
 
         #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: []).isEmpty)
     }

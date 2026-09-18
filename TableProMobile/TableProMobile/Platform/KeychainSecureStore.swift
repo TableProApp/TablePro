@@ -118,15 +118,15 @@ nonisolated final class KeychainSecureStore: SecureStore {
         }
     }
 
-    /// Remove secrets left under ids no saved connection uses, such as a test connection an older
-    /// build stored and was killed before deleting, or a connection deleted on another device.
+    /// Remove passwords left under ids no saved connection uses, such as a test connection an older
+    /// build stored and was killed before deleting.
     ///
-    /// Two limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
+    /// Three limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
     /// simply not heard of yet. An empty valid set means the connections have not loaded, which is
-    /// every launch before the first sync merge, and sweeping then would delete all of them. And
-    /// only device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
-    /// deleting one here removes it from the Mac that wrote it too, and a synchronizable pasted
-    /// private key may be the only copy of a key for a connection sync has not delivered yet.
+    /// every launch before the first sync merge, and sweeping then would delete all of them. Only
+    /// device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
+    /// deleting one here removes it from the Mac that wrote it too. And a pasted private key is
+    /// never swept, because a connection sync has not delivered yet may hold its only copy.
     static func cleanOrphanedCredentials(validConnectionIds: Set<UUID>) {
         guard !validConnectionIds.isEmpty else { return }
 
