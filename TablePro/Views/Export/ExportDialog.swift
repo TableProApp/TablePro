@@ -323,12 +323,12 @@ struct ExportDialog: View {
             }
         } label: {
             Image(systemName: "bookmark")
+                .accessibilityLabel(String(localized: "Saved selections"))
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
         .help(String(localized: "Saved selections"))
-        .accessibilityLabel(String(localized: "Saved selections"))
         .popover(isPresented: $isNamingProfile, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Name this selection")

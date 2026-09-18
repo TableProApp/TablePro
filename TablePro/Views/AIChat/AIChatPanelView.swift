@@ -405,11 +405,11 @@ struct AIChatPanelView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(String(localized: "Choose AI provider and model"))
             }
             .menuStyle(.button)
             .buttonStyle(.borderless)
             .help(String(localized: "Choose AI provider and model"))
-            .accessibilityLabel(String(localized: "Choose AI provider and model"))
         }
     }
 
