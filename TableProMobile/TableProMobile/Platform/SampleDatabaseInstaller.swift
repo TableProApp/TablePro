@@ -45,6 +45,7 @@ nonisolated struct SampleDatabaseInstaller: Sendable {
     func installIfNeeded() throws -> URL {
         let installed = installedURL
         guard !FileManager.default.fileExists(atPath: installed.path) else { return installed }
+        try removeSidecars(of: installed)
         try copyBundledFile(to: installed)
         Self.logger.info("Installed the sample database")
         return installed
@@ -53,17 +54,26 @@ nonisolated struct SampleDatabaseInstaller: Sendable {
     @discardableResult
     func reset() throws -> URL {
         let installed = installedURL
-        for url in [installed] + Self.sidecarSuffixes.map({ URL(fileURLWithPath: installed.path + $0) }) {
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            do {
-                try FileManager.default.removeItem(at: url)
-            } catch {
-                throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
-            }
-        }
+        try removeItemIfPresent(at: installed)
+        try removeSidecars(of: installed)
         try copyBundledFile(to: installed)
         Self.logger.info("Reset the sample database")
         return installed
+    }
+
+    private func removeSidecars(of database: URL) throws {
+        for suffix in Self.sidecarSuffixes {
+            try removeItemIfPresent(at: URL(fileURLWithPath: database.path + suffix))
+        }
+    }
+
+    private func removeItemIfPresent(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
+        }
     }
 
     private func copyBundledFile(to destination: URL) throws {

@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Sample database installer")
 struct SampleDatabaseInstallerTests {
+    private static let sqliteSidecarSuffixes = ["-journal", "-wal", "-shm"]
+
     private let directory: URL
     private let bundled: URL
 
@@ -38,14 +40,30 @@ struct SampleDatabaseInstallerTests {
         let installer = SampleDatabaseInstaller(bundledURL: bundled, directory: directory)
         let installed = try installer.installIfNeeded()
         try Data("edited".utf8).write(to: installed)
-        for suffix in SampleDatabaseInstaller.sidecarSuffixes {
+        for suffix in Self.sqliteSidecarSuffixes {
             try Data("stale".utf8).write(to: URL(fileURLWithPath: installed.path + suffix))
         }
 
         try installer.reset()
 
         #expect(try String(contentsOf: installed, encoding: .utf8) == "original")
-        for suffix in SampleDatabaseInstaller.sidecarSuffixes {
+        for suffix in Self.sqliteSidecarSuffixes {
+            #expect(!FileManager.default.fileExists(atPath: installed.path + suffix))
+        }
+    }
+
+    @Test("Installing over journal files a failed reset left behind removes them first")
+    func installRemovesOrphanedSidecars() throws {
+        let installer = SampleDatabaseInstaller(bundledURL: bundled, directory: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for suffix in Self.sqliteSidecarSuffixes {
+            try Data("stale".utf8).write(to: URL(fileURLWithPath: installer.installedURL.path + suffix))
+        }
+
+        let installed = try installer.installIfNeeded()
+
+        #expect(try String(contentsOf: installed, encoding: .utf8) == "original")
+        for suffix in Self.sqliteSidecarSuffixes {
             #expect(!FileManager.default.fileExists(atPath: installed.path + suffix))
         }
     }
