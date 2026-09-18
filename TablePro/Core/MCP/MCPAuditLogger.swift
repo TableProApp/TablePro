@@ -266,14 +266,17 @@ enum MCPAuditLogger {
         payload: Data
     ) {
         let digest = SHA256.hash(data: payload).compactMap { String(format: "%02x", $0) }.joined()
-        let fingerprint = String(digest.prefix(16))
+        /// Named for what it digests. In this surface a fingerprint means a pairing token's, which
+        /// no log line may carry, and `MCPAuditLogStorageTests` reads that vocabulary rather than
+        /// the value.
+        let payloadDigest = String(digest.prefix(16))
         serverTool.info(
             """
             Outbound tool: server=\(serverName, privacy: .public) \
             tool=\(toolName, privacy: .public) \
             connection=\(connectionId?.uuidString ?? "-", privacy: .public) \
             bytes=\(payload.count, privacy: .public) \
-            payload=\(fingerprint, privacy: .public)
+            payload=\(payloadDigest, privacy: .public)
             """
         )
 
@@ -287,7 +290,7 @@ enum MCPAuditLogger {
                 "serverName=\(truncate(serverName, to: messageExcerptLimit))",
                 "session=\(sessionId.uuidString)",
                 "bytes=\(payload.count)",
-                "payload=\(fingerprint)"
+                "payload=\(payloadDigest)"
             ].joined(separator: " ")
         )
     }

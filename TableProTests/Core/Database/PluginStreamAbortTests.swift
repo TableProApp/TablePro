@@ -10,7 +10,6 @@ import Testing
 
 @Suite("Row stream abort reaches a producer that polls it")
 struct PluginStreamAbortTests {
-
     @Test("Terminating the stream sets the flag, and a serial-queue producer stops early")
     func serialQueueProducerStopsEarly() async throws {
         let queue = DispatchQueue(label: "test.stream.abort.serial")
@@ -111,7 +110,11 @@ struct PluginStreamAbortTests {
             if seen >= 2 { break }
         }
 
-        try await Task.sleep(for: .seconds(0.6))
+        /// Waited for rather than slept through. The producer paces itself at 20ms a row, so a
+        /// fixed wait asserts the runner's load as much as the stream's behaviour: CI saw 19 of 20.
+        for _ in 0 ..< 100 where counter.value < 20 {
+            try await Task.sleep(for: .milliseconds(50))
+        }
         #expect(counter.value == 20)
         _ = stream
     }
