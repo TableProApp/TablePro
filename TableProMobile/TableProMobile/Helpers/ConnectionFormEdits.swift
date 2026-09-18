@@ -40,8 +40,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
 
     func applied(to base: DatabaseConnection, changedSince opening: ConnectionFormEdits?) -> DatabaseConnection {
         func changed<Value: Equatable>(_ field: KeyPath<ConnectionFormEdits, Value>) -> Bool {
-            guard let opening else { return true }
-            return opening[keyPath: field] != self[keyPath: field]
+            Self.differs(field, from: opening, to: self)
         }
 
         var connection = base
@@ -58,9 +57,18 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
             connection.isReadOnly = safeModeLevel.blocksWrites
         }
         if changed(\.sslMode) { applySSLMode(to: &connection) }
-        if changed(\.sshTunnel) { applySSHTunnel(to: &connection) }
-        if changed(\.oracle) { applyOracleOptions(to: &connection) }
+        if changed(\.sshTunnel) { applySSHTunnel(to: &connection, changedSince: opening?.sshTunnel) }
+        if changed(\.oracle) { applyOracleOptions(to: &connection, changedSince: opening?.oracle) }
         return connection
+    }
+
+    private static func differs<Root, Value: Equatable>(
+        _ field: KeyPath<Root, Value>,
+        from opening: Root?,
+        to current: Root
+    ) -> Bool {
+        guard let opening else { return true }
+        return opening[keyPath: field] != current[keyPath: field]
     }
 
     private func applySSLMode(to connection: inout DatabaseConnection) {
@@ -74,32 +82,46 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         connection.sslEnabled = sslMode != .disable
     }
 
-    private func applySSHTunnel(to connection: inout DatabaseConnection) {
+    private func applySSHTunnel(to connection: inout DatabaseConnection, changedSince opening: SSHTunnel?) {
         guard let sshTunnel else {
             connection.sshEnabled = false
             connection.sshConfiguration = nil
             return
         }
-        var configuration = connection.sshConfiguration ?? SSHConfiguration()
-        configuration.host = sshTunnel.host
-        configuration.port = sshTunnel.port
-        configuration.username = sshTunnel.username
-        configuration.authMethod = sshTunnel.authMethod
-        configuration.privateKeyPath = sshTunnel.privateKeyPath
-        if configuration.macEnabled != nil {
-            configuration.macEnabled = true
+        func changed<Value: Equatable>(_ field: KeyPath<SSHTunnel, Value>) -> Bool {
+            Self.differs(field, from: opening, to: sshTunnel)
         }
-        connection.sshEnabled = true
+
+        var configuration = connection.sshConfiguration ?? SSHConfiguration()
+        if changed(\.host) { configuration.host = sshTunnel.host }
+        if changed(\.port) { configuration.port = sshTunnel.port }
+        if changed(\.username) { configuration.username = sshTunnel.username }
+        if changed(\.authMethod) { configuration.authMethod = sshTunnel.authMethod }
+        if changed(\.privateKeyPath) { configuration.privateKeyPath = sshTunnel.privateKeyPath }
+        if opening == nil {
+            connection.sshEnabled = true
+            if configuration.macEnabled != nil {
+                configuration.macEnabled = true
+            }
+        }
         connection.sshConfiguration = configuration
     }
 
-    private func applyOracleOptions(to connection: inout DatabaseConnection) {
+    private func applyOracleOptions(to connection: inout DatabaseConnection, changedSince opening: OracleOptions?) {
         guard let oracle else { return }
+        func changed<Value: Equatable>(_ field: KeyPath<OracleOptions, Value>) -> Bool {
+            Self.differs(field, from: opening, to: oracle)
+        }
+
         typealias Key = OracleConnectionOptions.AdditionalFieldKey
-        connection.additionalFields[Key.connectionType] = oracle.identifierMode.rawValue
-        connection.additionalFields[Key.serviceName] = oracle.serviceName
-        connection.additionalFields[Key.sid] = oracle.sid
-        connection.additionalFields[Key.role] = oracle.role.rawValue
-        connection.additionalFields[Key.networkEncryption] = oracle.networkEncryption.rawValue
+        if changed(\.identifierMode) {
+            connection.additionalFields[Key.connectionType] = oracle.identifierMode.rawValue
+        }
+        if changed(\.serviceName) { connection.additionalFields[Key.serviceName] = oracle.serviceName }
+        if changed(\.sid) { connection.additionalFields[Key.sid] = oracle.sid }
+        if changed(\.role) { connection.additionalFields[Key.role] = oracle.role.rawValue }
+        if changed(\.networkEncryption) {
+            connection.additionalFields[Key.networkEncryption] = oracle.networkEncryption.rawValue
+        }
     }
 }

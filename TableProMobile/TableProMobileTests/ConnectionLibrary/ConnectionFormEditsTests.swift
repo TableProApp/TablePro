@@ -109,7 +109,44 @@ struct ConnectionFormEditsTests {
         #expect(saved.sshConfiguration?.macAgentSocketPath == "/tmp/agent.sock")
     }
 
-    @Test("Turning SSH on over a tunnel the Mac had switched off switches it on there too")
+    @Test("An SSH port edit keeps an SSH host that synced in while the form was open")
+    func sshPortEditKeepsSyncedHost() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(host: "bastion-old.example.com", port: 22, username: "deploy")
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.sshConfiguration?.host = "bastion-new.example.com"
+        current.sshConfiguration?.authMethod = .privateKey
+
+        viewModel.sshPort = "2222"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.sshConfiguration?.host == "bastion-new.example.com")
+        #expect(saved.sshConfiguration?.authMethod == .privateKey)
+        #expect(saved.sshConfiguration?.port == 2_222)
+        #expect(saved.sshConfiguration?.username == "deploy")
+        #expect(saved.sshEnabled)
+    }
+
+    @Test("An SSH edit keeps a tunnel another device turned off")
+    func sshEditKeepsSyncedTunnelOff() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.sshEnabled = false
+
+        viewModel.sshUsername = "ops"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.sshEnabled == false)
+        #expect(saved.sshConfiguration?.username == "ops")
+        #expect(saved.sshConfiguration?.host == "bastion.example.com")
+    }
+
+        @Test("Turning SSH on over a tunnel the Mac had switched off switches it on there too")
     func sshOnFlipsMacEnabled() {
         var ssh = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
         ssh.macEnabled = false
@@ -176,7 +213,30 @@ struct ConnectionFormEditsTests {
         #expect(saved.additionalFields["custom"] == "kept")
     }
 
-    @Test("A Safe Mode change writes the legacy read-only flag with it")
+    @Test("An Oracle service name edit keeps a SID and role that synced in while the form was open")
+    func oracleServiceNameEditKeepsSyncedFields() {
+        typealias Key = OracleConnectionOptions.AdditionalFieldKey
+        let snapshot = DatabaseConnection(
+            name: "Oracle",
+            type: .oracle,
+            host: "db.example.com",
+            port: 1_521,
+            additionalFields: [Key.serviceName: "ORCL", Key.sid: "OLDSID"]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.additionalFields[Key.sid] = "NEWSID"
+        current.additionalFields[Key.role] = OracleConnectionOptions.Role.sysdba.rawValue
+
+        viewModel.oracleServiceName = "ORCLPDB1"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.additionalFields[Key.serviceName] == "ORCLPDB1")
+        #expect(saved.additionalFields[Key.sid] == "NEWSID")
+        #expect(saved.additionalFields[Key.role] == OracleConnectionOptions.Role.sysdba.rawValue)
+    }
+
+        @Test("A Safe Mode change writes the legacy read-only flag with it")
     func safeModeWritesReadOnly() {
         let snapshot = storedConnection()
         let viewModel = ConnectionFormViewModel(editing: snapshot)
