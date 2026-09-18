@@ -105,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS edit mode left on after deleting every connection.
 - Two rename fields when renaming a favorite on iPhone and iPad.
 - Connection names cut off at large text sizes on iPhone and iPad.
+- `Cmd+W` closing the whole connection instead of the current tab until something in the window was clicked.
 
 ### Security
 

@@ -21,6 +21,16 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
         super.performClose(sender)
     }
 
+    /// The window's first focus belongs to the tab it shows. AppKit reads `initialFirstResponder`
+    /// once, as the window is first placed on screen, so it is named as soon as the content that
+    /// owns the answer is installed.
+    override var contentViewController: NSViewController? {
+        didSet {
+            initialFirstResponder = (contentViewController as? MainSplitViewController)?
+                .initialFirstResponderContainer
+        }
+    }
+
     /// Hiding the toolbar is what drops the content pane's top safe area, so the titlebar has to be
     /// reconsidered every time the user sends this from View > Show Toolbar.
     override func toggleToolbarShown(_ sender: Any?) {

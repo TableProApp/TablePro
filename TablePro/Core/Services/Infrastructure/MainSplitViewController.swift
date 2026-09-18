@@ -85,7 +85,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     private var navigationSidebar: NavigationSidebarViewController!
     /// Stable containers, one per split item. The pane they show is the selected workspace's own,
     /// so switching connection is a view swap and every other connection's tree stays built.
-    private var detailPaneHost: WorkspacePaneHost!
+    internal private(set) var detailPaneHost: WorkspacePaneHost!
     private var inspectorPaneHost: WorkspacePaneHost!
 
     /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
