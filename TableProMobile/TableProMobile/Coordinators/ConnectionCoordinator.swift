@@ -28,6 +28,7 @@ final class ConnectionCoordinator {
         }
     }
     var pendingQuery: String?
+    var pendingTableName: String?
     var tablesPath = NavigationPath()
     var showingEditSheet = false
 
@@ -84,8 +85,6 @@ final class ConnectionCoordinator {
     /// The attempt allowed to write `session` and `phase`. Cancelling mints a new one.
     private var attemptToken = UUID()
     private var connectTask: Task<Void, Never>?
-
-    var isConnecting: Bool { connectTask != nil }
 
     /// Returning early without touching `phase` is what left the connecting screen up for good.
     func connect() async {
@@ -338,9 +337,9 @@ final class ConnectionCoordinator {
     }
 
     func navigateToPendingTable() {
-        guard let tableName = appState.pendingTableName,
+        guard let tableName = pendingTableName,
               let table = tables.first(where: { $0.name == tableName }) else { return }
-        appState.pendingTableName = nil
+        pendingTableName = nil
         selectedTab = .tables
         Task { @MainActor in
             tablesPath.append(table)

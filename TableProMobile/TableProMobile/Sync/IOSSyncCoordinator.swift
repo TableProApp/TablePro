@@ -17,15 +17,18 @@ final class IOSSyncCoordinator {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
 
-    var status: SyncStatus = .idle
+    private(set) var status: SyncStatus
     var lastSyncDate: Date?
 
     @ObservationIgnored private let metadata: SyncMetadataStorage
     @ObservationIgnored private let recordCache: SyncRecordCache
     @ObservationIgnored private let makeTransport: () -> any IOSSyncTransport
+    @ObservationIgnored private let isEnabled: () -> Bool
     @ObservationIgnored private var transport: (any IOSSyncTransport)?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var runningSync: Task<Void, Never>?
     @ObservationIgnored private var needsResync = false
+    @ObservationIgnored private var statusGeneration = 0
     @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
 
     @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
@@ -33,10 +36,6 @@ final class IOSSyncCoordinator {
     @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Void)?
     @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
 
-    /// Where the record cache lives, resolved by the app because the package cannot see it.
-    ///
-    /// The path is the one the package used to pick for itself, so a cache written by an earlier build is
-    /// still found rather than silently abandoned and re-fetched.
     private static var recordCacheDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
@@ -49,11 +48,15 @@ final class IOSSyncCoordinator {
             directory: IOSSyncCoordinator.recordCacheDirectory,
             defaults: .standard
         ),
-        makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() }
+        makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() },
+        isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled }
     ) {
         self.metadata = metadata
         self.recordCache = recordCache
         self.makeTransport = makeTransport
+        self.isEnabled = isEnabled
+        self.status = isEnabled() ? .idle : .disabled(.userDisabled)
+        self.lastSyncDate = metadata.lastSyncDate
     }
 
     private func currentTransport() -> any IOSSyncTransport {
@@ -63,65 +66,123 @@ final class IOSSyncCoordinator {
         return created
     }
 
-    // MARK: - Sync
+    var hasCompletedFirstSync: Bool {
+        lastSyncDate != nil
+    }
 
-    func sync(isRetry: Bool = false) async {
-        guard isRetry || status != .syncing else {
+    func accountStatus() async -> CKAccountStatus {
+        do {
+            return try await currentTransport().accountStatus()
+        } catch {
+            Self.logger.warning("iCloud account status unavailable: \(error.localizedDescription, privacy: .public)")
+            return .couldNotDetermine
+        }
+    }
+
+    // MARK: - Enable / Disable
+
+    func setEnabled(_ enabled: Bool) {
+        guard enabled else {
+            debounceTask?.cancel()
+            debounceTask = nil
+            needsResync = false
+            metadata.lastSyncDate = nil
+            lastSyncDate = nil
+            decide(.disabled(.userDisabled))
+            return
+        }
+        decide(.idle)
+        guard runningSync == nil else {
             needsResync = true
             return
         }
-        guard getCurrentState?() != nil else { return }
-        status = .syncing
-        defer { drainResyncIfNeeded() }
+        Task { await sync() }
+    }
 
+    // MARK: - Sync
+
+    func sync() async {
+        guard isEnabled() else {
+            if status != .disabled(.userDisabled) {
+                decide(.disabled(.userDisabled))
+            }
+            return
+        }
+        if let runningSync {
+            await runningSync.value
+            return
+        }
+        let run = Task { await performSync() }
+        runningSync = run
+        await run.value
+    }
+
+    private func performSync() async {
+        defer {
+            runningSync = nil
+            drainResyncIfNeeded()
+        }
+        guard getCurrentState?() != nil else { return }
+        let generation = decide(.syncing)
+        await attempt(generation: generation, isRetry: false)
+    }
+
+    private func attempt(generation: Int, isRetry: Bool) async {
         do {
             let transport = currentTransport()
             guard try await transport.accountStatus() == .available else {
-                status = .error(.accountUnavailable)
+                settle(.error(.accountUnavailable), from: generation)
                 return
             }
 
             try await transport.ensureZoneExists()
             let remoteChanges = try await pull(using: transport)
+            guard generation == statusGeneration else { return }
             let connCount = remoteChanges.changedConnections.count
             let groupCount = remoteChanges.changedGroups.count
             let tagCount = remoteChanges.changedTags.count
             Self.logger.info("Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags")
 
             guard applyRemoteChanges(remoteChanges) else {
-                status = .idle
+                settle(.idle, from: generation)
                 return
             }
 
+            guard generation == statusGeneration else { return }
             try await push(using: transport)
 
+            guard generation == statusGeneration else { return }
             if let newToken = remoteChanges.newToken {
                 metadata.saveToken(newToken)
             }
-
             metadata.lastSyncDate = Date()
             lastSyncDate = metadata.lastSyncDate
-            status = .idle
+            settle(.idle, from: generation)
         } catch let error as SyncError where error == .tokenExpired {
             guard !isRetry else {
-                status = .error(.tokenExpired)
+                settle(.error(.tokenExpired), from: generation)
                 return
             }
             metadata.saveToken(nil)
-            await sync(isRetry: true)
+            await attempt(generation: generation, isRetry: true)
         } catch {
-            status = .error(SyncError.from(error))
+            settle(.error(SyncError.from(error)), from: generation)
         }
     }
 
-    // MARK: - Token Reset
+    @discardableResult
+    private func decide(_ outcome: SyncStatus) -> Int {
+        statusGeneration += 1
+        status = outcome
+        return statusGeneration
+    }
 
-    func resetSyncToken() async {
-        debounceTask?.cancel()
-        metadata.saveToken(nil)
-        recordCache.removeAll()
-        Self.logger.info("Sync token cleared; forcing full pull from iCloud")
-        await sync()
+    private func settle(_ outcome: SyncStatus, from generation: Int) {
+        guard generation == statusGeneration else {
+            Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        status = outcome
     }
 
     // MARK: - Dirty / Tombstone Tracking
@@ -131,7 +192,7 @@ final class IOSSyncCoordinator {
     }
 
     func markDeleted(_ connectionId: UUID) {
-        metadata.addTombstone(connectionId.uuidString, type: .connection)
+        addTombstone(connectionId.uuidString, type: .connection)
     }
 
     func markDirtyGroup(_ groupId: UUID) {
@@ -139,7 +200,7 @@ final class IOSSyncCoordinator {
     }
 
     func markDeletedGroup(_ groupId: UUID) {
-        metadata.addTombstone(groupId.uuidString, type: .group)
+        addTombstone(groupId.uuidString, type: .group)
     }
 
     func markDirtyTag(_ tagId: UUID) {
@@ -147,12 +208,16 @@ final class IOSSyncCoordinator {
     }
 
     func markDeletedTag(_ tagId: UUID) {
-        metadata.addTombstone(tagId.uuidString, type: .tag)
+        addTombstone(tagId.uuidString, type: .tag)
     }
 
     private func markDirty(_ id: String, type: SyncRecordType) {
         editGenerations[EditKey(type: type, id: id), default: 0] += 1
         metadata.markDirty(id, type: type)
+    }
+
+    private func addTombstone(_ id: String, type: SyncRecordType) {
+        metadata.addTombstone(id, type: type)
     }
 
     private func drainResyncIfNeeded() {
@@ -166,9 +231,17 @@ final class IOSSyncCoordinator {
 
     func scheduleSyncAfterChange() {
         debounceTask?.cancel()
+        guard isEnabled() else {
+            debounceTask = nil
+            return
+        }
         debounceTask = Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { return }
+            guard runningSync == nil else {
+                needsResync = true
+                return
+            }
             await sync()
         }
     }
@@ -193,7 +266,8 @@ final class IOSSyncCoordinator {
         var allDeletions: [CKRecord.ID] = []
 
         let dirtyConnIDs = metadata.dirtyIds(for: .connection)
-        for connection in state.connections where dirtyConnIDs.contains(connection.id.uuidString) {
+        for connection in state.connections
+            where connection.participatesInSync && dirtyConnIDs.contains(connection.id.uuidString) {
             let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
             if let existing = recordCache.record(for: recordID) {
                 SyncRecordMapper.updateRecord(existing, with: connection)

@@ -29,6 +29,11 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var tagIds: [UUID]
     public var sortOrder: Int
     public var isFavorite: Bool
+    public var isSample: Bool
+
+    public var participatesInSync: Bool {
+        !isSample
+    }
 
     public var tagId: UUID? {
         get { tagIds.first }
@@ -55,7 +60,8 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         groupId: UUID? = nil,
         tagIds: [UUID] = [],
         sortOrder: Int = 0,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        isSample: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -77,13 +83,14 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.tagIds = tagIds
         self.sortOrder = sortOrder
         self.isFavorite = isFavorite
+        self.isSample = isSample
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, type, host, port, username, database, color, colorTag
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
         case sshEnabled, sshConfiguration, sslEnabled, sslConfiguration
-        case groupId, tagId, tagIds, sortOrder, isFavorite
+        case groupId, tagId, tagIds, sortOrder, isFavorite, isSample
     }
 }
 
@@ -125,6 +132,7 @@ extension DatabaseConnection: Codable {
         }
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -151,5 +159,8 @@ extension DatabaseConnection: Codable {
         }
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encode(isFavorite, forKey: .isFavorite)
+        if isSample {
+            try container.encode(isSample, forKey: .isSample)
+        }
     }
 }

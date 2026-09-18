@@ -58,6 +58,7 @@
       }
     },
     "%1$@ (ORA-%2$ld)." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -84,6 +85,9 @@
           }
         }
       }
+    },
+    "%1$@ via %2$@" : {
+
     },
     "%@" : {
       "localizations" : {
@@ -146,6 +150,9 @@
           }
         }
       }
+    },
+    "%@ Copy" : {
+
     },
     "%@ connections do not support adding rows from Shortcuts." : {
       "localizations" : {
@@ -341,6 +348,7 @@
       }
     },
     "%@, %@, %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -375,6 +383,7 @@
       }
     },
     "%@, %@, %@, tag %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -443,6 +452,7 @@
       }
     },
     "%@, port %lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -797,6 +807,7 @@
       }
     },
     "A fast, lightweight database client for your iPhone and iPad." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -824,7 +835,14 @@
         }
       }
     },
+    "A hashed identifier for this device" : {
+
+    },
+    "A running query shows its time and row count in a Live Activity." : {
+
+    },
     "A sync conflict was detected and needs to be resolved." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -907,6 +925,12 @@
           }
         }
       }
+    },
+    "Accepted" : {
+
+    },
+    "Acknowledgements" : {
+
     },
     "Active DB" : {
       "localizations" : {
@@ -1110,6 +1134,9 @@
         }
       }
     },
+    "Add Tag" : {
+
+    },
     "Add a connection in TablePro" : {
       "localizations" : {
         "ko" : {
@@ -1138,7 +1165,11 @@
         }
       }
     },
+    "Add a connection to your database, or explore TablePro with the sample database." : {
+
+    },
     "Add a database connection to get started." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -1305,6 +1336,9 @@
           }
         }
       }
+    },
+    "Add to Favorites" : {
+
     },
     "Added %lld rows to %@." : {
       "localizations" : {
@@ -1481,6 +1515,7 @@
       }
     },
     "All" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -1622,6 +1657,7 @@
       }
     },
     "An unknown sync error occurred: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -1873,6 +1909,9 @@
         }
       }
     },
+    "Authenticate to stop locking TablePro." : {
+
+    },
     "Authentication Failed" : {
       "localizations" : {
         "ko" : {
@@ -1985,7 +2024,11 @@
         }
       }
     },
+    "Browse and Edit Data" : {
+
+    },
     "Build" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2042,6 +2085,7 @@
       }
     },
     "CA certificate not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2433,6 +2477,12 @@
         }
       }
     },
+    "Checking iCloud" : {
+
+    },
+    "Chinook (Sample)" : {
+
+    },
     "Choose File" : {
       "localizations" : {
         "ko" : {
@@ -2462,6 +2512,7 @@
       }
     },
     "Choose a connection from the sidebar." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2742,6 +2793,7 @@
       }
     },
     "Client certificate not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2770,6 +2822,7 @@
       }
     },
     "Client key not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2881,6 +2934,9 @@
         }
       }
     },
+    "Computed by the database" : {
+
+    },
     "Configuration Error" : {
       "localizations" : {
         "ko" : {
@@ -2910,6 +2966,7 @@
       }
     },
     "Confirm Writes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2992,6 +3049,9 @@
           }
         }
       }
+    },
+    "Connect Securely" : {
+
     },
     "Connect Using" : {
       "localizations" : {
@@ -3133,6 +3193,9 @@
         }
       }
     },
+    "Connection Cancelled" : {
+
+    },
     "Connection Deleted" : {
       "localizations" : {
         "ko" : {
@@ -3189,7 +3252,11 @@
         }
       }
     },
+    "Connection failed while waiting on the socket." : {
+
+    },
     "Connection failed: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -3273,6 +3340,9 @@
         }
       }
     },
+    "Connection timed out." : {
+
+    },
     "Connections" : {
       "localizations" : {
         "ko" : {
@@ -3301,6 +3371,12 @@
         }
       }
     },
+    "Connections Unavailable" : {
+
+    },
+    "Connections from your other devices appear here." : {
+
+    },
     "Connections in this group will be moved to ungrouped." : {
       "localizations" : {
         "ko" : {
@@ -3328,6 +3404,12 @@
           }
         }
       }
+    },
+    "Connections you add here or in TablePro on your Mac appear on all your devices." : {
+
+    },
+    "Connections, groups, and tags from TablePro on your Mac appear here over iCloud." : {
+
     },
     "Continue" : {
       "localizations" : {
@@ -3582,6 +3664,7 @@
       }
     },
     "Could not complete Oracle native network encryption with this server. It may require an encryption or checksum algorithm the driver does not support." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -3637,6 +3720,9 @@
         }
       }
     },
+    "Could not install the sample database: %@" : {
+
+    },
     "Could not read the columns of %@." : {
       "localizations" : {
         "ko" : {
@@ -3664,6 +3750,9 @@
           }
         }
       }
+    },
+    "Could not start a connection." : {
+
     },
     "Create" : {
       "localizations" : {
@@ -3694,6 +3783,7 @@
       }
     },
     "Create Group" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -3778,6 +3868,7 @@
       }
     },
     "Create a group to organize your connections." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -3832,6 +3923,9 @@
           }
         }
       }
+    },
+    "DEFAULT" : {
+
     },
     "Database" : {
       "localizations" : {
@@ -4058,6 +4152,7 @@
       }
     },
     "Decryption failed: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -4253,6 +4348,9 @@
         }
       }
     },
+    "Delete %d Connections" : {
+
+    },
     "Delete Connection" : {
       "localizations" : {
         "ko" : {
@@ -4338,6 +4436,7 @@
       }
     },
     "Delete group" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -4504,6 +4603,9 @@
           }
         }
       }
+    },
+    "Don't Share" : {
+
     },
     "Done" : {
       "localizations" : {
@@ -4729,6 +4831,9 @@
         }
       }
     },
+    "Empty String" : {
+
+    },
     "Enabled" : {
       "localizations" : {
         "ko" : {
@@ -4756,6 +4861,9 @@
           }
         }
       }
+    },
+    "Encoding" : {
+
     },
     "Enter a name for the new SQLite database." : {
       "extractionState" : "stale",
@@ -5011,6 +5119,9 @@
         }
       }
     },
+    "Every change you made to the sample database is replaced with the original data." : {
+
+    },
     "Execute" : {
       "localizations" : {
         "ko" : {
@@ -5123,6 +5234,9 @@
         }
       }
     },
+    "Explore a music store database without connecting to a server." : {
+
+    },
     "Export" : {
       "localizations" : {
         "ko" : {
@@ -5208,6 +5322,7 @@
       }
     },
     "Failed to encode connection data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5236,6 +5351,7 @@
       }
     },
     "Failed to encode sync data: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5264,6 +5380,7 @@
       }
     },
     "Failed to establish connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5321,6 +5438,7 @@
       }
     },
     "Failed to parse connection file: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5349,6 +5467,7 @@
       }
     },
     "Failed to read file: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5489,6 +5608,7 @@
       }
     },
     "Failed to write file: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5515,6 +5635,12 @@
           }
         }
       }
+    },
+    "Favorite" : {
+
+    },
+    "Favorites" : {
+
     },
     "File" : {
       "localizations" : {
@@ -5543,6 +5669,12 @@
           }
         }
       }
+    },
+    "Fill in Password, and Username too if the server uses Redis 6 ACL users." : {
+
+    },
+    "Fill in at least one column. This database cannot insert a row made only of defaults." : {
+
     },
     "Filter" : {
       "localizations" : {
@@ -5713,6 +5845,7 @@
       }
     },
     "Get Started" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5937,6 +6070,7 @@
       }
     },
     "Group by Folder" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5992,7 +6126,11 @@
         }
       }
     },
+    "Help decide what to improve next by sending one small report a day." : {
+
+    },
     "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6019,6 +6157,9 @@
           }
         }
       }
+    },
+    "Hide Query in Live Activities" : {
+
     },
     "Hide query in Live Activities" : {
       "extractionState" : "manual",
@@ -6077,6 +6218,9 @@
         }
       }
     },
+    "Homepage" : {
+
+    },
     "Host" : {
       "localizations" : {
         "ko" : {
@@ -6106,6 +6250,7 @@
       }
     },
     "If items appear on another device but not here, refresh forces a full re-download from iCloud. This may take a moment on slow networks." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6302,6 +6447,7 @@
       }
     },
     "Import connections from your Mac" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6328,6 +6474,9 @@
           }
         }
       }
+    },
+    "In Memory" : {
+
     },
     "In-Memory Database" : {
       "localizations" : {
@@ -6386,6 +6535,7 @@
       }
     },
     "Incorrect passphrase" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6581,7 +6731,20 @@
         }
       }
     },
+    "Interrupted" : {
+
+    },
+    "Interrupted before the query finished." : {
+
+    },
+    "It never contains a hostname, username, password, query, or any data from your databases. You can change this in Settings." : {
+
+    },
+    "Its subgroups are deleted too. Their connections move to Ungrouped." : {
+
+    },
     "Jump host key not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6609,7 +6772,14 @@
         }
       }
     },
+    "Keep Connections at the Top" : {
+
+    },
+    "Keep your connections, groups, and tags the same on your iPhone, iPad, and Mac." : {
+
+    },
     "Kerberos authentication failed: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6665,6 +6835,9 @@
         }
       }
     },
+    "Last Connected" : {
+
+    },
     "Last Sync" : {
       "localizations" : {
         "ko" : {
@@ -6692,6 +6865,9 @@
           }
         }
       }
+    },
+    "License" : {
+
     },
     "Load Failed" : {
       "localizations" : {
@@ -6893,6 +7069,7 @@
       }
     },
     "Local Network access is required. Open Settings > Privacy & Security > Local Network and turn TablePro on." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7033,6 +7210,7 @@
       }
     },
     "Manage Groups" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7087,6 +7265,15 @@
           }
         }
       }
+    },
+    "Manual" : {
+
+    },
+    "Many Databases, One App" : {
+
+    },
+    "Match All Tags" : {
+
     },
     "Match Case" : {
       "localizations" : {
@@ -7200,6 +7387,24 @@
         }
       }
     },
+    "More Actions" : {
+
+    },
+    "Move" : {
+
+    },
+    "Move %d Connections" : {
+
+    },
+    "Move Connection" : {
+
+    },
+    "Move to Group" : {
+
+    },
+    "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB, and more." : {
+
+    },
     "NULL" : {
       "localizations" : {
         "ko" : {
@@ -7256,7 +7461,11 @@
         }
       }
     },
+    "Network Encryption" : {
+
+    },
     "Network is unavailable. Changes will sync when connectivity is restored." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7424,6 +7633,9 @@
         }
       }
     },
+    "New Subgroup" : {
+
+    },
     "New Tag" : {
       "localizations" : {
         "ko" : {
@@ -7537,6 +7749,7 @@
       }
     },
     "No Groups" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7620,7 +7833,11 @@
         }
       }
     },
+    "No License Information" : {
+
+    },
     "No Matching Connections" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7652,8 +7869,8 @@
       "localizations" : {
         "ko" : {
           "stringUnit" : {
-            "value" : "Microsoft Entra ID 액세스 토큰이 제공되지 않았습니다.",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 액세스 토큰이 제공되지 않았습니다."
           }
         },
         "vi" : {
@@ -7817,6 +8034,7 @@
       }
     },
     "No connections match the selected filter." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -8012,7 +8230,11 @@
         }
       }
     },
+    "Not Now" : {
+
+    },
     "Not connected to SQL Server" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -8041,6 +8263,7 @@
       }
     },
     "Not connected to database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -8264,6 +8487,12 @@
         }
       }
     },
+    "One report a day: hashed device ID, versions, language, database types, first-use dates. Never hostnames, credentials, queries, or data." : {
+
+    },
+    "Open" : {
+
+    },
     "Open Connection" : {
       "localizations" : {
         "ko" : {
@@ -8320,6 +8549,9 @@
         }
       }
     },
+    "Open Sample Database" : {
+
+    },
     "Open Settings > Privacy & Security > Local Network and turn TablePro on, then try again." : {
       "localizations" : {
         "ko" : {
@@ -8347,6 +8579,12 @@
           }
         }
       }
+    },
+    "Open a connection or add rows from Shortcuts, Siri, and the Home Screen." : {
+
+    },
+    "Open a table, filter its rows, and change values in place." : {
+
     },
     "Opens a database connection in TablePro" : {
       "localizations" : {
@@ -8572,6 +8810,9 @@
         }
       }
     },
+    "PING failed: %@" : {
+
+    },
     "Page number" : {
       "localizations" : {
         "ko" : {
@@ -8599,6 +8840,9 @@
           }
         }
       }
+    },
+    "Parent Group" : {
+
     },
     "Passphrase" : {
       "localizations" : {
@@ -8740,7 +8984,14 @@
         }
       }
     },
+    "Passwords stay in your Keychain. Connect through an SSH tunnel or over SSL." : {
+
+    },
+    "Passwords stay on this device unless you turn on Sync Passwords in Settings. You can change this at any time in Settings." : {
+
+    },
     "Passwords sync through iCloud Keychain, which is end-to-end encrypted. Only affects new saves. Re-save a password to update its sync." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -8767,6 +9018,9 @@
           }
         }
       }
+    },
+    "Passwords sync through iCloud Keychain, which is end-to-end encrypted. Turning it on affects new saves only, so re-save a password to sync it." : {
+
     },
     "Paste" : {
       "localizations" : {
@@ -9049,6 +9303,9 @@
         }
       }
     },
+    "Privacy Policy" : {
+
+    },
     "Private Key" : {
       "localizations" : {
         "ko" : {
@@ -9161,6 +9418,9 @@
         }
       }
     },
+    "Queries on the Lock Screen" : {
+
+    },
     "Query" : {
       "localizations" : {
         "ko" : {
@@ -9247,6 +9507,7 @@
       }
     },
     "Query execution failed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9275,6 +9536,7 @@
       }
     },
     "Query failed: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9331,6 +9593,7 @@
       }
     },
     "Query was cancelled" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9415,6 +9678,7 @@
       }
     },
     "Read-Only" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9441,6 +9705,9 @@
           }
         }
       }
+    },
+    "Recent" : {
+
     },
     "Reconnecting..." : {
       "localizations" : {
@@ -9554,7 +9821,11 @@
         }
       }
     },
+    "Redis connection failed" : {
+
+    },
     "Refresh from iCloud" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9583,6 +9854,7 @@
       }
     },
     "Refresh from iCloud?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9609,6 +9881,9 @@
           }
         }
       }
+    },
+    "Rejected" : {
+
     },
     "Reload" : {
       "localizations" : {
@@ -9666,6 +9941,12 @@
         }
       }
     },
+    "Remove from Favorites" : {
+
+    },
+    "Remove from Recent" : {
+
+    },
     "Replace" : {
       "localizations" : {
         "ko" : {
@@ -9693,6 +9974,9 @@
           }
         }
       }
+    },
+    "Requested" : {
+
     },
     "Require Face ID" : {
       "localizations" : {
@@ -9805,6 +10089,15 @@
           }
         }
       }
+    },
+    "Reset" : {
+
+    },
+    "Reset Database" : {
+
+    },
+    "Reset Sample Database?" : {
+
     },
     "Results Cleared" : {
       "localizations" : {
@@ -10142,6 +10435,12 @@
           }
         }
       }
+    },
+    "Run queries and find the ones you ran before in History." : {
+
+    },
+    "Running" : {
+
     },
     "Running query" : {
       "extractionState" : "manual",
@@ -10509,6 +10808,7 @@
       }
     },
     "SSH private key not found: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -10620,6 +10920,12 @@
         }
       }
     },
+    "Sample Database" : {
+
+    },
+    "Sample Database Unavailable" : {
+
+    },
     "Save" : {
       "localizations" : {
         "ko" : {
@@ -10676,6 +10982,9 @@
         }
       }
     },
+    "Saved credentials for these connections will be permanently removed." : {
+
+    },
     "Schema" : {
       "localizations" : {
         "ko" : {
@@ -10731,6 +11040,9 @@
           }
         }
       }
+    },
+    "Search Connections" : {
+
     },
     "Search all columns" : {
       "localizations" : {
@@ -10901,6 +11213,7 @@
       }
     },
     "Select a Connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11013,6 +11326,7 @@
       }
     },
     "Set up a new database connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11152,7 +11466,14 @@
         }
       }
     },
+    "Share Usage Data" : {
+
+    },
+    "Share Usage Data?" : {
+
+    },
     "Share anonymous usage data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11179,6 +11500,9 @@
           }
         }
       }
+    },
+    "Shortcuts and Widgets" : {
+
     },
     "Showing the first %d rows. Add LIMIT to fetch more." : {
       "localizations" : {
@@ -11264,7 +11588,11 @@
         }
       }
     },
+    "Sign in to iCloud in the Settings app to sync your connections." : {
+
+    },
     "Skip" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11460,6 +11788,9 @@
         }
       }
     },
+    "Stopped" : {
+
+    },
     "Stopped at %d rows to stay within memory limits. Add LIMIT to fetch fewer." : {
       "localizations" : {
         "ko" : {
@@ -11488,6 +11819,9 @@
         }
       }
     },
+    "Stopped before the query finished." : {
+
+    },
     "Stopped. Showing %d rows." : {
       "localizations" : {
         "ko" : {
@@ -11515,6 +11849,9 @@
           }
         }
       }
+    },
+    "Swipe right on a connection to add it to Favorites." : {
+
     },
     "Switching..." : {
       "extractionState" : "stale",
@@ -11546,6 +11883,7 @@
       }
     },
     "Sync" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11574,6 +11912,7 @@
       }
     },
     "Sync Now" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11630,6 +11969,7 @@
       }
     },
     "Sync from iCloud" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11658,6 +11998,7 @@
       }
     },
     "Sync token expired. A full sync will be performed." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11714,6 +12055,7 @@
       }
     },
     "Sync zone not found. A full sync will be performed." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11742,6 +12084,7 @@
       }
     },
     "Syncing from iCloud..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11797,7 +12140,11 @@
         }
       }
     },
+    "Syncs with Your Mac" : {
+
+    },
     "TLS handshake failed: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11938,6 +12285,18 @@
         }
       }
     },
+    "TablePro Is Locked" : {
+
+    },
+    "TablePro cannot receive the output of COPY TO STDOUT, so it was discarded. Run a SELECT instead." : {
+
+    },
+    "TablePro cannot run a replication COPY." : {
+
+    },
+    "TablePro cannot send data to COPY FROM STDIN, so no rows were sent. Insert the rows with INSERT instead." : {
+
+    },
     "TablePro could not read that file." : {
       "localizations" : {
         "ko" : {
@@ -11965,6 +12324,9 @@
           }
         }
       }
+    },
+    "TablePro could not read your saved connections. Nothing on this device has been changed." : {
+
     },
     "TablePro doesn't support “%@” connections" : {
       "extractionState" : "manual",
@@ -12030,6 +12392,7 @@
       }
     },
     "TablePro is Locked" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12058,6 +12421,7 @@
       }
     },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12168,6 +12532,9 @@
           }
         }
       }
+    },
+    "Tap Retry to try again." : {
+
     },
     "Test Connection" : {
       "localizations" : {
@@ -12481,8 +12848,8 @@
       "localizations" : {
         "ko" : {
           "stringUnit" : {
-            "value" : "Microsoft Entra ID 액세스 토큰이 드라이버에서 거부되었습니다.",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 액세스 토큰이 드라이버에서 거부되었습니다."
           }
         },
         "vi" : {
@@ -12506,6 +12873,7 @@
       }
     },
     "The Oracle listener refused the connection (ORA-%ld)." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12534,6 +12902,7 @@
       }
     },
     "The Oracle listener refused the connection." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12562,6 +12931,7 @@
       }
     },
     "The Oracle server closed the connection during the login handshake." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12588,6 +12958,9 @@
           }
         }
       }
+    },
+    "The Password field is empty. Fill it in, or clear Username to sign in as the default user." : {
+
     },
     "The SSH server may be unreachable or running a different protocol." : {
       "localizations" : {
@@ -12644,6 +13017,9 @@
           }
         }
       }
+    },
+    "The app and iOS versions, and your language" : {
+
     },
     "The certificate could not be saved to this device's keychain." : {
       "localizations" : {
@@ -12757,6 +13133,9 @@
         }
       }
     },
+    "The connection attempt was cancelled." : {
+
+    },
     "The data could not be read: %@" : {
       "localizations" : {
         "ko" : {
@@ -12842,6 +13221,7 @@
       }
     },
     "The encrypted file is corrupt or incomplete" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12931,7 +13311,14 @@
         }
       }
     },
+    "The license text is missing from this build." : {
+
+    },
+    "The list of open source libraries is missing from this build." : {
+
+    },
     "The listener does not know the requested SID" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12960,6 +13347,7 @@
       }
     },
     "The listener does not know the requested service name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13044,6 +13432,7 @@
       }
     },
     "The listener has no handler available for the requested service" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13072,6 +13461,7 @@
       }
     },
     "The listener is blocking new connections to the requested service" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13128,6 +13518,7 @@
       }
     },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13183,6 +13574,12 @@
         }
       }
     },
+    "The report contains:" : {
+
+    },
+    "The sample database is missing from the app." : {
+
+    },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
         "ko" : {
@@ -13212,6 +13609,7 @@
       }
     },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13380,6 +13778,7 @@
       }
     },
     "This Oracle server is older than release 11.1, which the database driver does not support." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13408,6 +13807,7 @@
       }
     },
     "This account uses a password verifier the database driver does not support." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13490,6 +13890,9 @@
           }
         }
       }
+    },
+    "This column is generated, so it is never written." : {
+
     },
     "This connection has a client certificate but no private key. Import both." : {
       "localizations" : {
@@ -13604,6 +14007,7 @@
       }
     },
     "This connection's CA certificate is not readable on this device (%@). Certificate files do not sync between devices, so add the certificate here or lower the SSL mode to Required." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13632,6 +14036,7 @@
       }
     },
     "This connection's client certificate is not readable on this device (%@). Certificate files do not sync between devices, so add the certificate here before connecting." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13660,6 +14065,7 @@
       }
     },
     "This connection's client key is not readable on this device (%@). Key files do not sync between devices, so add the key here before connecting." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13772,6 +14178,7 @@
       }
     },
     "This file is encrypted and requires a passphrase" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13800,6 +14207,7 @@
       }
     },
     "This file is not a valid TablePro export" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13828,6 +14236,7 @@
       }
     },
     "This file requires a newer version of TablePro (format version %d)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13938,6 +14347,9 @@
           }
         }
       }
+    },
+    "This server requires authentication." : {
+
     },
     "This table has no foreign key relationships." : {
       "localizations" : {
@@ -14108,6 +14520,7 @@
       }
     },
     "Timed out completing Kerberos authentication. The Kerberos KDC (domain controller) may be unreachable, the server's SPN may be missing, or this device's clock may be off. Check your network to the domain, or use SQL Server Authentication." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14135,7 +14548,11 @@
         }
       }
     },
+    "Timed out connecting to the MySQL server." : {
+
+    },
     "Timed out connecting to the server. Check the host, port, and that the server is reachable and accepting connections." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14164,6 +14581,7 @@
       }
     },
     "Timed out during the Oracle login handshake. The server accepted the network connection but did not finish logging in." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14218,6 +14636,9 @@
           }
         }
       }
+    },
+    "Touch and hold a connection to rename, duplicate, or move it to a group." : {
+
     },
     "Truncate" : {
       "localizations" : {
@@ -14359,6 +14780,9 @@
         }
       }
     },
+    "Turn On iCloud Sync" : {
+
+    },
     "Type" : {
       "localizations" : {
         "ko" : {
@@ -14386,6 +14810,15 @@
           }
         }
       }
+    },
+    "Type a tag's name in the search field to show only the connections that carry it." : {
+
+    },
+    "UTF-8 via Latin 1" : {
+
+    },
+    "Unfavorite" : {
+
     },
     "Ungrouped" : {
       "localizations" : {
@@ -14472,6 +14905,9 @@
         }
       }
     },
+    "Unknown error" : {
+
+    },
     "Unlock" : {
       "localizations" : {
         "ko" : {
@@ -14529,6 +14965,7 @@
       }
     },
     "Unsupported encryption version %d" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14555,6 +14992,9 @@
           }
         }
       }
+    },
+    "Use Default" : {
+
     },
     "Use Passcode" : {
       "localizations" : {
@@ -14640,6 +15080,9 @@
         }
       }
     },
+    "Use iCloud" : {
+
+    },
     "Username" : {
       "localizations" : {
         "ko" : {
@@ -14696,6 +15139,9 @@
         }
       }
     },
+    "VALUE" : {
+
+    },
     "Value" : {
       "localizations" : {
         "ko" : {
@@ -14723,6 +15169,9 @@
           }
         }
       }
+    },
+    "Value for %@" : {
+
     },
     "Verify CA" : {
       "localizations" : {
@@ -14808,6 +15257,9 @@
         }
       }
     },
+    "Version %@" : {
+
+    },
     "View" : {
       "localizations" : {
         "ko" : {
@@ -14837,7 +15289,6 @@
       }
     },
     "Views" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14893,7 +15344,14 @@
         }
       }
     },
+    "What's New" : {
+
+    },
+    "What's New in TablePro" : {
+
+    },
     "When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14922,6 +15380,7 @@
       }
     },
     "When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted. Passwords stay on this device unless you turn on Sync Passwords." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14948,6 +15407,9 @@
           }
         }
       }
+    },
+    "When off, nothing is sent to iCloud and nothing already there is deleted. Changes you make meanwhile sync once you turn it back on." : {
+
     },
     "When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview." : {
       "extractionState" : "manual",
@@ -14977,6 +15439,12 @@
           }
         }
       }
+    },
+    "When you first connected and first ran a query" : {
+
+    },
+    "Which database types you connect to, and how many connections are open" : {
+
     },
     "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app." : {
       "localizations" : {
@@ -15062,6 +15530,9 @@
         }
       }
     },
+    "Write and Run SQL" : {
+
+    },
     "Yellow" : {
       "localizations" : {
         "ko" : {
@@ -15089,6 +15560,9 @@
           }
         }
       }
+    },
+    "Your connections could not be loaded, so nothing can be added right now." : {
+
     },
     "auto-increment" : {
       "localizations" : {
@@ -15314,6 +15788,9 @@
         }
       }
     },
+    "iCloud" : {
+
+    },
     "iCloud Sync" : {
       "localizations" : {
         "ko" : {
@@ -15342,7 +15819,11 @@
         }
       }
     },
+    "iCloud Unavailable" : {
+
+    },
     "iCloud account is not available. Sign in to iCloud in System Settings." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -15371,6 +15852,7 @@
       }
     },
     "iCloud rejected %d change(s). They stay on this device and will retry: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -15405,6 +15887,7 @@
       }
     },
     "iCloud server error: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -15433,6 +15916,7 @@
       }
     },
     "iCloud storage is full. Free up space in iCloud and try again." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -15515,6 +15999,9 @@
           }
         }
       }
+    },
+    "in %@" : {
+
     },
     "insert" : {
       "localizations" : {
@@ -15935,6 +16422,9 @@
           }
         }
       }
+    },
+    "tags %@" : {
+
     },
     "≤" : {
       "localizations" : {

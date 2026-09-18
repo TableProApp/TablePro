@@ -56,10 +56,6 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         self.currentSchema = options.schema
     }
 
-    private var escapedSchema: String {
-        (currentSchema ?? "dbo").replacingOccurrences(of: "'", with: "''")
-    }
-
     // MARK: - Connection
 
     func connect() async throws {

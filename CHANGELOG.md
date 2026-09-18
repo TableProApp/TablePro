@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Open in Agent Mode** on a connection in the welcome window.
 - **Outside MCP Servers** in Settings > Integrations, letting a session call tools on an MCP server you run.
 - Per-connection allowlist for an outside MCP server, with its token in the Keychain and neither synced.
+- Welcome sheet on iPhone and iPad, asking once about iCloud sync and usage data.
+- Sample database on iPhone and iPad, opened from the empty connection list or the **More** menu.
+- What's New on iPhone and iPad after an update, and under **Settings > About**.
+- Tips in the iOS connection list for swiping to favorite, touch and hold, and tag search.
+- Acknowledgements and a privacy policy link under **Settings > About** on iPhone and iPad.
+- Privacy manifest for the iOS app.
 
 ### Changed
 
@@ -22,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every plugin bundle compiled under the same concurrency settings as the app that loads it.
 - Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
 - Assistant conversations belong to one connection, and outlive the window that opened them.
+- iCloud sync and usage data on iPhone and iPad stay off until you turn them on.
+- Group rows in the iOS connection list take swipe actions and show even when no connection is saved.
+
+### Removed
+
+- **Refresh from iCloud**, **Sync Now** and the toolbar sync button on iPhone and iPad.
+- **Manage Groups**, the **Clear** button on **Recent**, and the **More** menu's tag filter on iPhone and iPad.
 
 ### Fixed
 
@@ -82,12 +95,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rows saved, added or deleted on iPhone and iPad refused by a MySQL, MariaDB, PostgreSQL or Redshift server that starts sessions read-only.
 - Copying objects into a connection that already has a transaction open committing it.
 - Replace-copy into a remote libSQL target failing at `BEGIN`.
+- iOS edits uploaded to iCloud after iCloud Sync was turned off.
+- iOS connections overwritten by the next edit after the saved library failed to load.
+- A `.tablepro` file or link closing a half-filled form on iPhone and iPad.
+- Links to a table opening only its connection on iPhone and iPad.
+- Face ID symbol on the unlock button of Touch ID and Optic ID devices.
+- Empty icon tiles for Snowflake, Beancount, SurrealDB and Kafka connections on iPhone and iPad.
+- iOS edit mode left on after deleting every connection.
+- Two rename fields when renaming a favorite on iPhone and iPad.
+- Connection names cut off at large text sizes on iPhone and iPad.
 
 ### Security
 
 - Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
 - The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
+- An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock.
+- **Require Face ID** turned off on iPhone and iPad without authenticating.
 
 ## [0.75.0] - 2026-09-18
 

@@ -44,6 +44,10 @@ enum IOSConnectionImportService {
         resolutions: [UUID: ImportResolution],
         appState: AppState
     ) -> ImportResult {
+        guard appState.isLibraryWritable else {
+            logger.error("Import refused: the stored library is not loaded")
+            return ImportResult(importedCount: 0, connectionIdMap: [:], newConnectionIdMap: [:])
+        }
         createMissingGroupsAndTags(from: preview.envelope, appState: appState)
 
         let tagIdsByName = lookup(appState.tags.map { ($0.name, $0.id) })
@@ -78,7 +82,7 @@ enum IOSConnectionImportService {
                     tagIdsByName: tagIdsByName, groupIdsByName: groupIdsByName
                 )
                 sortOrder += 1
-                appState.addConnection(connection)
+                guard appState.addConnection(connection) else { continue }
                 connectionIdMap[index] = id
                 newConnectionIdMap[index] = id
                 importedCount += 1

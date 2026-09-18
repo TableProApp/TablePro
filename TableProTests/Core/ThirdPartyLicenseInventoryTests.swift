@@ -35,8 +35,8 @@ struct ThirdPartyLicenseInventoryTests {
     }
 
     /// Every `NAME_VERSION="value"` literal the build scripts pin, which is what the shipped
-    /// static libraries are actually built from.
-    private static func shellVersionPins() throws -> [String: String] {
+    /// static libraries are actually built from, plus the default of a `"${1:-value}"` pin.
+    private static func shellVersionPins() throws -> [String: Set<String>] {
         let scripts = repositoryRoot.appendingPathComponent("scripts")
         /// `scripts/lib` as well as the build scripts. A pin shared by several builds lives in the
         /// library rather than in any one script, and naming a single file here meant the test
@@ -44,23 +44,34 @@ struct ThirdPartyLicenseInventoryTests {
         let buildScripts = try FileManager.default.contentsOfDirectory(atPath: scripts.path)
             .filter { $0.hasPrefix("build-") && $0.hasSuffix(".sh") }
             .map { scripts.appendingPathComponent($0) }
-        let libraryDirectory = scripts.appendingPathComponent("lib")
-        let libraryScripts = ((try? FileManager.default.contentsOfDirectory(atPath: libraryDirectory.path)) ?? [])
-            .filter { $0.hasSuffix(".sh") }
-            .map { libraryDirectory.appendingPathComponent($0) }
+        let libraryScripts = shellScripts(in: scripts.appendingPathComponent("lib"))
+        let iosScripts = shellScripts(in: scripts.appendingPathComponent("ios"))
 
-        let pattern = try NSRegularExpression(pattern: #"^([A-Z0-9_]+_VERSION)="(v?[0-9][^"$]*)""#, options: [.anchorsMatchLines])
-        var pins: [String: String] = [:]
-        for path in buildScripts + libraryScripts {
+        let pattern = try NSRegularExpression(
+            pattern: #"^([A-Z0-9_]+_VERSION)="(?:\$\{[^:}]+:-)*(v?[0-9][^"$}]*)\}*""#,
+            options: [.anchorsMatchLines]
+        )
+        var pins: [String: Set<String>] = [:]
+        for path in buildScripts + libraryScripts + iosScripts {
             guard let source = try? String(contentsOf: path, encoding: .utf8) else { continue }
             let range = NSRange(source.startIndex ..< source.endIndex, in: source)
             for match in pattern.matches(in: source, range: range) {
                 guard let key = Range(match.range(at: 1), in: source),
                       let value = Range(match.range(at: 2), in: source) else { continue }
-                pins[String(source[key])] = String(source[value])
+                pins[String(source[key]), default: []].insert(String(source[value]))
             }
         }
         return pins
+    }
+
+    private static func shellScripts(in directory: URL) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+            .filter { $0.hasSuffix(".sh") }
+            .map { directory.appendingPathComponent($0) }
+    }
+
+    private static var iosAcknowledgementsURL: URL {
+        repositoryRoot.appendingPathComponent("TableProMobile/TableProMobile/Acknowledgements/Acknowledgements.json")
     }
 
     private static func swiftPackagePins() throws -> [String: Set<String>] {
@@ -149,10 +160,13 @@ struct ThirdPartyLicenseInventoryTests {
             let pinned = pins[variable]
             #expect(pinned != nil, "\(component.id) points at \(variable), which no build script defines")
             guard let pinned else { continue }
+            let pinnedVersions = Set(pinned.map(\.normalizedVersion))
+            let recorded = Set(component.version.components(separatedBy: ", ").map(\.normalizedVersion))
             #expect(
-                pinned.normalizedVersion == component.version.normalizedVersion,
+                recorded == pinnedVersions,
                 """
-                \(component.id) is recorded as \(component.version) but \(variable) pins \(pinned).
+                \(component.id) is recorded as \(component.version) but \(variable) pins \
+                \(pinned.sorted().joined(separator: ", ")) across the macOS and iOS build scripts.
                 Re-read the upstream license at the new version before updating this entry:
                 a bump can change the license, as OpenSSL did at 3.0 and Redis at 7.4.
                 """
@@ -224,6 +238,93 @@ struct ThirdPartyLicenseInventoryTests {
                 "\(id) is marked patched but scripts/patches/\(id) does not exist"
             )
         }
+    }
+
+    @Test("The iOS acknowledgements are the projection of the inventory's iOS entries")
+    func iosAcknowledgementsMatchInventory() throws {
+        let inventory = try loadInventory()
+        let expected = inventory.components
+            .filter { $0.ships(on: .ios) }
+            .map(IOSAcknowledgement.init(component:))
+            .sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
+
+        let data = try Data(contentsOf: Self.iosAcknowledgementsURL)
+        let committed = try JSONDecoder().decode([IOSAcknowledgement].self, from: data)
+
+        #expect(
+            committed == expected,
+            """
+            TableProMobile/TableProMobile/Acknowledgements/Acknowledgements.json is out of date with licenses.yml.
+            Run scripts/generate-ios-acknowledgements.py and commit the result.
+            """
+        )
+    }
+
+    @Test("A component with no platforms ships on macOS only")
+    func platformsDefaultToMacOS() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ThirdPartyLicenseInventoryTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let yaml = """
+            - id: mac-only
+              name: Mac Only
+              version: 1.0.0
+              spdx: MIT
+              copyrights: []
+              homepageURL: https://example.com/mac
+              licenseTextURL: https://example.com/mac/LICENSE
+              textFile: texts/mac.txt
+              source: manual
+              patched: false
+            - id: ios-only
+              name: iOS Only
+              version: 1.0.0
+              spdx: MIT
+              copyrights: []
+              homepageURL: https://example.com/ios
+              licenseTextURL: https://example.com/ios/LICENSE
+              textFile: texts/ios.txt
+              source: manual
+              patched: false
+              platforms: [ios]
+            """
+        try yaml.write(
+            to: root.appendingPathComponent(ThirdPartyLicenseInventory.inventoryFileName),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let inventory = try ThirdPartyLicenseInventory(rootURL: root)
+        let macOnly = try #require(inventory.components.first { $0.id == "mac-only" })
+
+        #expect(macOnly.platforms == [.macos])
+        #expect(inventory.attributed.map(\.id) == ["mac-only"])
+    }
+}
+
+private struct IOSAcknowledgement: Codable, Equatable {
+    let id: String
+    let name: String
+    let version: String
+    let spdx: String
+    let copyrights: [String]
+    let homepageURL: String
+    let textFile: String?
+}
+
+private extension IOSAcknowledgement {
+    init(component: ThirdPartyComponent) {
+        self.init(
+            id: component.id,
+            name: component.name,
+            version: component.version,
+            spdx: component.spdx,
+            copyrights: component.copyrights,
+            homepageURL: component.homepageURL,
+            textFile: component.textFile
+        )
     }
 }
 

@@ -44,6 +44,8 @@ An `X-Signature` header carries an HMAC-SHA256 of the body. It proves the payloa
 
 **Share anonymous usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
 
+On iPhone and iPad the heartbeat is off until you choose **Share Usage Data**, and its `platform` is `ios`. See [iPhone and iPad](/ios#privacy).
+
 ## AI providers
 
 Nothing reaches a model until you add a provider, and a fresh install has none: with none configured, every AI path returns before it builds a request. **Enable AI Features** in **Settings > AI** is on out of the box, but it gates an empty tab.

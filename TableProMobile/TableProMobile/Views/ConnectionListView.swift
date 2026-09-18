@@ -1,8 +1,10 @@
+import CloudKit
 import SwiftUI
 import TableProConnectionLibrary
 import TableProImport
 import TableProModels
 import TableProSyncTransport
+import TipKit
 import UniformTypeIdentifiers
 
 nonisolated struct ConnectionTagToken: Identifiable, Hashable, Sendable {
@@ -10,51 +12,28 @@ nonisolated struct ConnectionTagToken: Identifiable, Hashable, Sendable {
     let name: String
 }
 
-private enum ConnectionListSheet: Identifiable {
-    case addConnection
-    case editConnection(DatabaseConnection)
-    case moveConnections([UUID])
-    case newGroup(parentId: UUID?)
-    case editGroup(ConnectionGroup)
-    case groups
-    case tags
-    case settings
-    case importFile(URL)
-    case export
-
-    var id: String {
-        switch self {
-        case .addConnection: "addConnection"
-        case .editConnection(let connection): "editConnection-\(connection.id.uuidString)"
-        case .moveConnections(let ids): "moveConnections-\(ids.map(\.uuidString).joined(separator: ","))"
-        case .newGroup(let parentId): "newGroup-\(parentId?.uuidString ?? "root")"
-        case .editGroup(let group): "editGroup-\(group.id.uuidString)"
-        case .groups: "groups"
-        case .tags: "tags"
-        case .settings: "settings"
-        case .importFile(let url): "importFile-\(url.absoluteString)"
-        case .export: "export"
-        }
-    }
-}
-
 struct ConnectionListView: View {
     @Environment(AppState.self) private var appState
+    @Environment(AppLockState.self) private var lockState
     @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
+    @Environment(ScenePresenter.self) private var presenter
     @SceneStorage("lastConnectionId") private var selectedConnectionIdString: String?
-    @AppStorage(AppPreferences.cloudSyncEnabledKey) private var cloudSyncEnabled = true
 
     @State private var searchText = ""
     @State private var searchTokens: [ConnectionTagToken] = []
     @State private var matchesAllTags = false
     @State private var editMode: EditMode = .inactive
     @State private var selection: Set<LibraryRowID> = []
-    @State private var renamingConnectionId: UUID?
-    @State private var activeSheet: ConnectionListSheet?
+    @State private var renamingRow: LibraryRowID?
     @State private var connectionsPendingDeletion: Set<UUID> = []
     @State private var groupPendingDeletion: ConnectionGroup?
+    @State private var isConfirmingSampleReset = false
     @State private var showingFileImporter = false
+    @State private var importAfterCoverDismissal: URL?
     @State private var importResultCount: Int?
+    @State private var actionErrorMessage: String?
+    @State private var iCloudAccountAvailable = false
+    @State private var tips = ConnectionListTips.makeGroup()
 
     private var selectedConnectionUUID: UUID? {
         selectedConnectionIdString.flatMap { UUID(uuidString: $0) }
@@ -63,19 +42,33 @@ struct ConnectionListView: View {
     private var openConnection: Binding<DatabaseConnection?> {
         Binding(
             get: {
-                guard let id = selectedConnectionUUID else { return nil }
+                guard !presenter.holdsConnectionRestore, let id = selectedConnectionUUID else { return nil }
                 return appState.connections.first { $0.id == id }
             },
             set: { selectedConnectionIdString = $0?.id.uuidString }
         )
     }
 
-    private var isSyncing: Bool {
-        appState.syncCoordinator.status == .syncing
+    private var isSyncEnabled: Bool {
+        appState.onboarding.isCloudSyncEnabled
     }
 
     private var isEditing: Bool {
         editMode == .active
+    }
+
+    private var hasLibraryItems: Bool {
+        !appState.connections.isEmpty || !appState.groups.isEmpty
+    }
+
+    private var listState: ConnectionListState {
+        ConnectionListState.resolve(
+            loadStatus: appState.loadStatus,
+            hasLibraryItems: hasLibraryItems,
+            isSyncEnabled: isSyncEnabled,
+            syncStatus: appState.syncCoordinator.status,
+            hasCompletedFirstSync: appState.syncCoordinator.hasCompletedFirstSync
+        )
     }
 
     private var query: LibraryQuery {
@@ -115,32 +108,60 @@ struct ConnectionListView: View {
         }
     }
 
+    private var tipInputs: [Int] {
+        [
+            appState.onboarding.hasSeenWelcome && presenter.sheet == nil ? 1 : 0,
+            appState.connections.count,
+            appState.connections.contains(where: \.isFavorite) ? 1 : 0,
+            appState.connections.contains { !$0.tagIds.isEmpty } ? 1 : 0
+        ]
+    }
+
     var body: some View {
+        @Bindable var presenter = presenter
         NavigationStack {
             content
                 .navigationTitle("Connections")
                 .toolbar { toolbarContent }
-                .onChange(of: appState.pendingConnectionId) { _, newId in
-                    navigateToPendingConnection(newId)
-                }
                 .onChange(of: editMode) { _, mode in
                     guard mode == .inactive else { return }
+                    selection = []
+                }
+                .onChange(of: hasLibraryItems) { _, hasItems in
+                    guard !hasItems else { return }
+                    editMode = .inactive
                     selection = []
                 }
                 .onChange(of: appState.tags) { _, tags in
                     let known = Set(tags.map(\.id))
                     searchTokens.removeAll { !known.contains($0.id) }
                 }
-                .onAppear {
-                    navigateToPendingConnection(appState.pendingConnectionId)
-                    presentPendingImport()
+                .onChange(of: searchTokens) { _, tokens in
+                    guard !tokens.isEmpty else { return }
+                    ConnectionListTips.tagFilterUsed()
+                }
+                .task(id: tipInputs) {
+                    ConnectionListTips.libraryChanged(
+                        isListReady: tipInputs[0] == 1,
+                        connectionCount: tipInputs[1],
+                        hasFavorites: tipInputs[2] == 1,
+                        hasTaggedConnections: tipInputs[3] == 1
+                    )
+                }
+                .task(id: isSyncEnabled) {
+                    guard !isSyncEnabled else { return }
+                    iCloudAccountAvailable = await appState.syncCoordinator.accountStatus() == .available
+                }
+                .task {
+                    presenter.beginLaunch(with: appState)
+                    deliverPendingIntent()
                 }
         }
-        .fullScreenCover(item: openConnection) { connection in
+        .fullScreenCover(item: openConnection, onDismiss: presentImportAfterCoverDismissal) { connection in
             ConnectedView(connection: connection)
                 .id(connection.id)
         }
-        .sheet(item: $activeSheet) { sheet in
+        .sheet(item: $presenter.sheet, onDismiss: sheetDidDismiss) { sheet in
             sheetContent(sheet)
         }
         .fileImporter(
@@ -149,13 +170,30 @@ struct ConnectionListView: View {
             allowsMultipleSelection: false
         ) { result in
             guard case .success(let urls) = result, let url = urls.first else { return }
-            activeSheet = .importFile(url)
+            presenter.present(.importFile(url))
         }
-        .onChange(of: appState.pendingImportURL) { _, _ in
-            presentPendingImport()
+        .onChange(of: presenter.pendingIntent) { _, _ in
+            deliverPendingIntent()
+        }
+        .onChange(of: presenter.holdsConnectionRestore) { _, _ in
+            deliverPendingIntent()
+        }
+        .onChange(of: lockState.isLocked) { _, _ in
+            deliverPendingIntent()
+        }
+        .onChange(of: appState.loadStatus) { _, _ in
+            deliverPendingIntent()
         }
         .alert(importResultMessage, isPresented: importResultPresented) {
             Button(String(localized: "OK")) { importResultCount = nil }
+        }
+        .alert(
+            String(localized: "Sample Database Unavailable"),
+            isPresented: actionErrorPresented
+        ) {
+            Button(String(localized: "OK")) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
         }
     }
 
@@ -163,32 +201,44 @@ struct ConnectionListView: View {
 
     @ViewBuilder
     private var content: some View {
-        if appState.connections.isEmpty && !isSyncing {
-            ContentUnavailableView {
-                Label("No Connections", systemImage: "server.rack")
-            } description: {
-                Text("Add a database connection to get started.")
-            } actions: {
-                Button("Add Connection") {
-                    activeSheet = .addConnection
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        } else if appState.connections.isEmpty {
-            ProgressView("Syncing from iCloud...")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            libraryList
+        switch listState {
+        case .content(let syncProblem):
+            libraryList(syncProblem: syncProblem)
+        default:
+            ConnectionListStatusView(state: listState, actions: emptyActions)
         }
     }
 
-    private var libraryList: some View {
+    private var emptyActions: ConnectionListEmptyActions {
+        ConnectionListEmptyActions(
+            addConnection: { presenter.present(.addConnection) },
+            openSample: openSampleDatabase,
+            turnOnICloud: !isSyncEnabled && iCloudAccountAvailable ? { appState.setCloudSyncEnabled(true) } : nil,
+            importConnections: { showingFileImporter = true },
+            retrySync: { Task { await appState.syncCoordinator.sync() } },
+            retryLoad: { appState.retryLoadIfFailed() }
+        )
+    }
+
+    private func libraryList(syncProblem: SyncError?) -> some View {
         let outline = outline
         let connectionsById = Dictionary(appState.connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let groupsById = Dictionary(appState.groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let canReorder = appState.libraryPreferences.sortMode == .manual && !outline.isQueryActive
 
         return List(selection: $selection) {
+            if let syncProblem {
+                Section {
+                    ConnectionListSyncProblemRow(error: syncProblem) {
+                        Task { await appState.syncCoordinator.sync() }
+                    }
+                }
+            }
+            if !outline.isQueryActive, !isEditing, let tip = tips.currentTip {
+                Section {
+                    TipView(tip)
+                }
+            }
             ForEach(outline.sections, id: \.kind) { section in
                 Section {
                     switch section.kind {
@@ -233,10 +283,9 @@ struct ConnectionListView: View {
         ) { token in
             Label(token.name, systemImage: "tag")
         }
-        .refreshable {
-            guard cloudSyncEnabled else { return }
+        .modifier(SyncRefreshModifier(isEnabled: isSyncEnabled) {
             await appState.syncCoordinator.sync()
-        }
+        })
         .confirmationDialog(deletionTitle, isPresented: deletionPresented, titleVisibility: .visible) {
             Button(String(localized: "Delete"), role: .destructive) {
                 confirmConnectionDeletion()
@@ -266,6 +315,17 @@ struct ConnectionListView: View {
                 Text("Connections in this group will be moved to ungrouped.")
             }
         }
+        .confirmationDialog(
+            String(localized: "Reset Sample Database?"),
+            isPresented: $isConfirmingSampleReset,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Reset"), role: .destructive) {
+                resetSampleDatabase()
+            }
+        } message: {
+            Text("Every change you made to the sample database is replaced with the original data.")
+        }
     }
 
     @ViewBuilder
@@ -274,15 +334,7 @@ struct ConnectionListView: View {
         case .favorites:
             Text("Favorites")
         case .recent:
-            HStack {
-                Text("Recent")
-                Spacer()
-                Button("Clear") {
-                    appState.libraryPreferences.clearRecent()
-                }
-                .font(.subheadline)
-                .textCase(nil)
-            }
+            Text("Recent")
         default:
             Text("Connections")
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -298,6 +350,7 @@ struct ConnectionListView: View {
     @ViewBuilder
     private func connectionRow(_ connection: DatabaseConnection?, section: LibrarySectionKind) -> some View {
         if let connection {
+            let rowId = LibraryRowID.connection(connection.id, section: section)
             ConnectionListRow(
                 model: ConnectionListRowModel(
                     connection: connection,
@@ -305,22 +358,24 @@ struct ConnectionListView: View {
                     tags: appState.tags,
                     groups: appState.groups
                 ),
-                isRenaming: renamingConnectionId == connection.id,
-                onOpen: { selectedConnectionIdString = connection.id.uuidString },
-                onCommitRename: { commitRename(connection.id, name: $0) },
-                onCancelRename: { renamingConnectionId = nil }
+                isRenaming: renamingRow == rowId,
+                onOpen: { open(connection.id) },
+                onCommitRename: { commitRename(rowId, connectionId: connection.id, name: $0) },
+                onCancelRename: { renamingRow = nil }
             )
-            .tag(LibraryRowID.connection(connection.id, section: section))
+            .tag(rowId)
             .draggable(connection.id.uuidString)
             .swipeActions(edge: .leading) {
                 favoriteButton(for: connection)
                     .tint(.yellow)
-                Button {
-                    activeSheet = .editConnection(connection)
-                } label: {
-                    Label("Edit", systemImage: "pencil")
+                if !connection.isSample {
+                    Button {
+                        presenter.present(.editConnection(connection))
+                    } label: {
+                        Label("Edit", systemImage: "slider.horizontal.3")
+                    }
+                    .tint(.blue)
                 }
-                .tint(.blue)
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 trailingSwipeAction(for: connection, section: section)
@@ -329,7 +384,8 @@ struct ConnectionListView: View {
                 connectionMenu(for: connection, section: section)
             }
             .renameAction {
-                renamingConnectionId = connection.id
+                ConnectionListTips.connectionMenuUsed()
+                renamingRow = rowId
             }
         }
     }
@@ -342,15 +398,31 @@ struct ConnectionListView: View {
                 .dropDestination(for: String.self) { items, _ in
                     moveDropped(items, toGroup: group.id)
                 }
+                .swipeActions(edge: .leading) {
+                    Button {
+                        presenter.present(.editGroup(group))
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .tint(.blue)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        groupPendingDeletion = group
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .tint(.red)
+                }
                 .contextMenu {
                     Button {
-                        activeSheet = .editGroup(group)
+                        presenter.present(.editGroup(group))
                     } label: {
                         Label("Edit Group", systemImage: "pencil")
                     }
                     if LibraryGroupGraph(groups: appState.groups).canCreateSubgroup(under: group.id) {
                         Button {
-                            activeSheet = .newGroup(parentId: group.id)
+                            presenter.present(.newGroup(parentId: group.id))
                         } label: {
                             Label("New Subgroup", systemImage: "folder.badge.plus")
                         }
@@ -362,6 +434,9 @@ struct ConnectionListView: View {
                         Label("Delete Group", systemImage: "trash")
                     }
                 }
+                .accessibilityAction(named: Text("Delete Group")) {
+                    groupPendingDeletion = group
+                }
         }
     }
 
@@ -369,6 +444,9 @@ struct ConnectionListView: View {
     private func favoriteButton(for connection: DatabaseConnection) -> some View {
         Button {
             appState.setFavorite([connection.id], isFavorite: !connection.isFavorite)
+            if !connection.isFavorite {
+                ConnectionListTips.favoriteSet()
+            }
         } label: {
             if connection.isFavorite {
                 Label("Remove from Favorites", systemImage: "star.slash")
@@ -401,25 +479,32 @@ struct ConnectionListView: View {
     @ViewBuilder
     private func connectionMenu(for connection: DatabaseConnection, section: LibrarySectionKind) -> some View {
         Button {
-            selectedConnectionIdString = connection.id.uuidString
+            open(connection.id)
         } label: {
             Label("Open", systemImage: "arrow.right.circle")
         }
-        Button {
-            activeSheet = .editConnection(connection)
-        } label: {
-            Label("Edit", systemImage: "pencil")
+        if !connection.isSample {
+            Button {
+                ConnectionListTips.connectionMenuUsed()
+                presenter.present(.editConnection(connection))
+            } label: {
+                Label("Edit", systemImage: "slider.horizontal.3")
+            }
         }
         RenameButton()
-        Button {
-            appState.duplicateConnection(connection)
-        } label: {
-            Label("Duplicate", systemImage: "doc.on.doc")
+        if !connection.isSample {
+            Button {
+                ConnectionListTips.connectionMenuUsed()
+                appState.duplicateConnection(connection)
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
         }
         Divider()
         favoriteButton(for: connection)
         Button {
-            activeSheet = .moveConnections([connection.id])
+            ConnectionListTips.connectionMenuUsed()
+            presenter.present(.moveConnections([connection.id]))
         } label: {
             Label("Move to Group", systemImage: "folder")
         }
@@ -428,6 +513,13 @@ struct ConnectionListView: View {
                 appState.libraryPreferences.removeFromRecent([connection.id])
             } label: {
                 Label("Remove from Recent", systemImage: "clock.badge.xmark")
+            }
+        }
+        if connection.isSample {
+            Button {
+                isConfirmingSampleReset = true
+            } label: {
+                Label("Reset Database", systemImage: "arrow.counterclockwise")
             }
         }
         Divider()
@@ -442,9 +534,16 @@ struct ConnectionListView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                presenter.present(.settings)
+            } label: {
+                Label("Settings", systemImage: "gear")
+            }
+        }
         ToolbarItemGroup(placement: .topBarTrailing) {
             moreMenu
-            if !appState.connections.isEmpty {
+            if hasLibraryItems {
                 Button(isEditing ? String(localized: "Done") : String(localized: "Edit")) {
                     withAnimation {
                         editMode = isEditing ? .inactive : .active
@@ -452,43 +551,18 @@ struct ConnectionListView: View {
                 }
             }
             Button {
-                activeSheet = .addConnection
+                presenter.present(.addConnection)
             } label: {
-                Image(systemName: "plus")
+                Label("Add Connection", systemImage: "plus")
             }
             .keyboardShortcut("n", modifiers: .command)
-            .accessibilityLabel(Text("Add Connection"))
-        }
-        ToolbarItemGroup(placement: .topBarLeading) {
-            Button {
-                Task {
-                    await appState.syncCoordinator.sync()
-                }
-            } label: {
-                if isSyncing {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: cloudSyncEnabled
-                        ? "arrow.triangle.2.circlepath.icloud"
-                        : "icloud.slash")
-                }
-            }
-            .disabled(isSyncing || !cloudSyncEnabled)
-            .accessibilityLabel(Text("Sync with iCloud"))
-
-            Button {
-                activeSheet = .settings
-            } label: {
-                Image(systemName: "gear")
-            }
-            .accessibilityLabel(Text("Settings"))
+            .disabled(!appState.isLibraryWritable)
         }
         if isEditing {
             ToolbarItemGroup(placement: .bottomBar) {
                 let ids = selectedConnectionIds
                 Button("Move") {
-                    activeSheet = .moveConnections(ids)
+                    presenter.present(.moveConnections(ids))
                 }
                 .disabled(ids.isEmpty)
                 Spacer()
@@ -529,71 +603,65 @@ struct ConnectionListView: View {
             }
             .pickerStyle(.menu)
 
-            if !appState.tags.isEmpty {
-                Section("Filter by Tag") {
-                    ForEach(appState.tags) { tag in
-                        Toggle(isOn: tokenBinding(for: tag)) {
-                            Text(verbatim: tag.name)
-                        }
-                    }
-                    if searchTokens.count > 1 {
-                        Toggle("Match All Tags", isOn: $matchesAllTags)
-                    }
-                }
+            if searchTokens.count > 1 {
+                Toggle("Match All Tags", isOn: $matchesAllTags)
             }
 
             Section {
                 Button {
-                    activeSheet = .newGroup(parentId: nil)
+                    presenter.present(.newGroup(parentId: nil))
                 } label: {
                     Label("New Group", systemImage: "folder.badge.plus")
                 }
                 Button {
-                    activeSheet = .groups
-                } label: {
-                    Label("Manage Groups", systemImage: "folder")
-                }
-                Button {
-                    activeSheet = .tags
+                    presenter.present(.tags)
                 } label: {
                     Label("Manage Tags", systemImage: "tag")
                 }
             }
+            .disabled(!appState.isLibraryWritable)
 
             Section {
+                Button(action: openSampleDatabase) {
+                    Label("Open Sample Database", systemImage: "music.note.list")
+                }
                 Button {
                     showingFileImporter = true
                 } label: {
                     Label("Import Connections", systemImage: "square.and.arrow.down")
                 }
+                .disabled(!appState.isLibraryWritable)
                 Button {
-                    activeSheet = .export
+                    presenter.present(.export)
                 } label: {
                     Label("Export Connections", systemImage: "square.and.arrow.up")
                 }
-                .disabled(appState.connections.isEmpty)
+                .disabled(!appState.connections.contains(where: \.participatesInSync))
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Label("More", systemImage: "ellipsis.circle")
         }
-        .accessibilityLabel(Text("More"))
     }
 
     // MARK: - Sheets
 
     @ViewBuilder
-    private func sheetContent(_ sheet: ConnectionListSheet) -> some View {
+    private func sheetContent(_ sheet: SceneSheet) -> some View {
         switch sheet {
+        case .firstRun(let pages):
+            FirstRunSheet(pages: pages)
+        case .whatsNew(let version):
+            WhatsNewSheet(version: version)
         case .addConnection:
             ConnectionFormView { connection in
                 appState.addConnection(connection)
-                activeSheet = nil
+                presenter.sheet = nil
             }
         case .editConnection(let connection):
             ConnectionFormView(editing: connection) { updated in
                 appState.updateConnection(updated)
                 coordinatorStore.invalidate(updated.id)
-                activeSheet = nil
+                presenter.sheet = nil
             }
         case .moveConnections(let ids):
             MoveToGroupSheet(connectionIds: ids)
@@ -605,17 +673,15 @@ struct ConnectionListView: View {
             GroupFormSheet(editing: group) { updated in
                 appState.updateGroup(updated)
             }
-        case .groups:
-            GroupManagementView()
         case .tags:
             TagManagementView()
         case .settings:
             NavigationStack {
                 SettingsView()
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
+                        ToolbarItem(placement: .topBarTrailing) {
                             CloseButton {
-                                activeSheet = nil
+                                presenter.sheet = nil
                             }
                         }
                     }
@@ -626,7 +692,7 @@ struct ConnectionListView: View {
             }
             .environment(appState)
         case .export:
-            MobileConnectionExportSheet(connections: appState.connections)
+            MobileConnectionExportSheet(connections: appState.connections.filter(\.participatesInSync))
                 .environment(appState)
         }
     }
@@ -637,17 +703,6 @@ struct ConnectionListView: View {
         Binding(
             get: { appState.libraryPreferences.sortMode },
             set: { appState.libraryPreferences.setSortMode($0) }
-        )
-    }
-
-    private func tokenBinding(for tag: ConnectionTag) -> Binding<Bool> {
-        Binding(
-            get: { searchTokens.contains { $0.id == tag.id } },
-            set: { isOn in
-                searchTokens.removeAll { $0.id == tag.id }
-                guard isOn else { return }
-                searchTokens.append(ConnectionTagToken(id: tag.id, name: tag.name))
-            }
         )
     }
 
@@ -688,6 +743,13 @@ struct ConnectionListView: View {
         )
     }
 
+    private var actionErrorPresented: Binding<Bool> {
+        Binding(
+            get: { actionErrorMessage != nil },
+            set: { if !$0 { actionErrorMessage = nil } }
+        )
+    }
+
     private var importResultMessage: String {
         let count = importResultCount ?? 0
         return count == 1
@@ -696,6 +758,31 @@ struct ConnectionListView: View {
     }
 
     // MARK: - Actions
+
+    private func open(_ connectionId: UUID) {
+        ConnectionListTips.connectionOpened()
+        selectedConnectionIdString = connectionId.uuidString
+    }
+
+    private func openSampleDatabase() {
+        do {
+            let sampleId = try appState.openSampleDatabase()
+            presenter.requestTable(SampleDatabaseInstaller.startingTable, in: sampleId)
+            open(sampleId)
+        } catch {
+            actionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func resetSampleDatabase() {
+        Task {
+            do {
+                try await appState.resetSampleDatabase()
+            } catch {
+                actionErrorMessage = error.localizedDescription
+            }
+        }
+    }
 
     private func reorderFavorites(_ ids: [UUID]) -> (IndexSet, Int) -> Void {
         { source, destination in
@@ -714,10 +801,10 @@ struct ConnectionListView: View {
         return true
     }
 
-    private func commitRename(_ id: UUID, name: String) {
-        guard renamingConnectionId == id else { return }
-        renamingConnectionId = nil
-        appState.renameConnection(id, to: name)
+    private func commitRename(_ rowId: LibraryRowID, connectionId: UUID, name: String) {
+        guard renamingRow == rowId else { return }
+        renamingRow = nil
+        appState.renameConnection(connectionId, to: name)
     }
 
     private func confirmConnectionDeletion() {
@@ -733,16 +820,47 @@ struct ConnectionListView: View {
         connectionsPendingDeletion = []
     }
 
-    private func presentPendingImport() {
-        guard let url = appState.pendingImportURL else { return }
-        appState.pendingImportURL = nil
-        activeSheet = .importFile(url)
+    private func sheetDidDismiss() {
+        presenter.sheetDidDismiss(appState: appState)
+        deliverPendingIntent()
     }
 
-    private func navigateToPendingConnection(_ id: UUID?) {
-        guard let id,
-              appState.connections.contains(where: { $0.id == id }) else { return }
-        selectedConnectionIdString = id.uuidString
-        appState.pendingConnectionId = nil
+    private func deliverPendingIntent() {
+        guard let intent = presenter.takeDeliverableIntent(
+            isLocked: lockState.isLocked,
+            isLibraryWritable: appState.isLibraryWritable
+        ) else { return }
+        switch intent {
+        case .openConnection(let connectionId, let table):
+            guard appState.connections.contains(where: { $0.id == connectionId }) else { return }
+            presenter.requestTable(table, in: connectionId)
+            open(connectionId)
+        case .importConnections(let url):
+            guard selectedConnectionUUID != nil else {
+                presenter.present(.importFile(url))
+                return
+            }
+            importAfterCoverDismissal = url
+            selectedConnectionIdString = nil
+        }
+    }
+
+    private func presentImportAfterCoverDismissal() {
+        guard let url = importAfterCoverDismissal else { return }
+        importAfterCoverDismissal = nil
+        presenter.present(.importFile(url))
+    }
+}
+
+private struct SyncRefreshModifier: ViewModifier {
+    let isEnabled: Bool
+    let refresh: @Sendable () async -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.refreshable(action: refresh)
+        } else {
+            content
+        }
     }
 }

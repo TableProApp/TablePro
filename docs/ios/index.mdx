@@ -5,9 +5,25 @@ description: Browse tables, run queries, and edit rows on ten database engines f
 
 You need iOS 18 or later. Builds ship on their own schedule, so a feature in a Mac release note may not be on your phone yet. Your version and build are under **Settings > About**. Connections saved on a Mac come over iCloud; the rest of your Mac setup stays on the Mac.
 
-<Frame caption="The connection list on iPhone">
-  <img className="block dark:hidden" src="/images/ios-connection-list.png" alt="TablePro connection list on iPhone" />
-  <img className="hidden dark:block" src="/images/ios-connection-list-dark.png" alt="TablePro connection list on iPhone" />
+<Frame caption="The connection list and Settings on iPhone">
+  <img className="block dark:hidden" src="/images/ios-connection-list.png" alt="Connections grouped under Favorites and a Production folder, next to Settings with Security, iCloud and New Connections sections" />
+  <img className="hidden dark:block" src="/images/ios-connection-list-dark.png" alt="Connections grouped under Favorites and a Production folder, next to Settings with Security, iCloud and New Connections sections" />
+</Frame>
+
+## First launch
+
+A welcome sheet lists what the app does. **Continue** leads to at most two questions, each asked once:
+
+| Question | Shown when | If you swipe the sheet away |
+| --- | --- | --- |
+| **Sync with iCloud** | The device is signed in to iCloud | Sync stays off |
+| **Share Usage Data?** | Always | Nothing is sent |
+
+Both answers can change later, under **Settings > iCloud** and **Settings > Privacy**. After an update, a **What's New** sheet lists what changed, once per version.
+
+<Frame caption="Swipe the sheet down to skip both questions">
+  <img className="block dark:hidden" src="/images/ios-first-run.png" alt="Welcome to TablePro sheet with four feature rows, beside the Share Usage Data page listing what the daily report contains" />
+  <img className="hidden dark:block" src="/images/ios-first-run-dark.png" alt="Welcome to TablePro sheet with four feature rows, beside the Share Usage Data page listing what the daily report contains" />
 </Frame>
 
 ## Supported databases
@@ -34,7 +50,7 @@ MongoDB, ClickHouse, Cassandra, BigQuery, Spanner, Snowflake and the rest have n
 
 ## The connection list
 
-Favorites come first, then **Recent** with the five connections opened last, then your groups, nested the way the Mac nests them. The **More** menu holds **Sort By** (**Manual**, **Name**, **Database Type**, **Last Connected**), **Filter by Tag**, group and tag management, and import and export. Typing a tag's name in the search field offers it as a filter.
+Favorites come first, then **Recent** with the five connections opened last, then your groups, nested the way the Mac nests them. The **More** menu holds **Sort By** (**Manual**, **Name**, **Database Type**, **Last Connected**), **New Group**, **Manage Tags**, **Open Sample Database**, and import and export. Type a tag's name in the search field to filter by it; with two tags or more chosen, **Match All Tags** appears in the **More** menu.
 
 | To | Do this |
 | --- | --- |
@@ -44,12 +60,18 @@ Favorites come first, then **Recent** with the five connections opened last, the
 | Reorder | Tap **Edit** and drag the handles, with **Sort By** on **Manual** |
 | Change several at once | Tap **Edit**, select the rows, and tap **Move**, **Favorite** or **Delete** |
 | Delete | Swipe left, or touch and hold and choose **Delete** |
+| Edit or delete a group | Swipe right on the group to edit it, swipe left to delete it |
+| Sync now | Pull down on the list, with iCloud Sync on |
 
 **Duplicate** copies the saved password, SSH secrets, client certificates and file access along with the settings. Recent and the sort order stay on the device.
 
+## The sample database
+
+**Open Sample Database** sits on the empty list and in the **More** menu. It opens Chinook, a SQLite database of a music store, at its **Track** table, with no server to set up. The sample stays on this device: it never syncs, exports or hands off to another device. To throw away your edits, touch and hold **Chinook (Sample)** and choose **Reset Database**.
+
 ## What syncs over
 
-The same CloudKit container as the Mac, with iCloud Sync on by default here and off by default there. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
+The same CloudKit container as the Mac. iCloud Sync is off on both until you turn it on: here during first launch or under **Settings > iCloud**. While it is off nothing leaves the device, and edits made in the meantime go up when you turn it back on. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
 
 Three things a connection depends on are per device and never sync:
 
@@ -59,7 +81,7 @@ Three things a connection depends on are per device and never sync:
 | An SSH private key | It arrived as a path on the Mac, so the tunnel cannot find it | Pick the key on this device, or paste it into **Private Key** |
 | SQLite and DuckDB file paths | The path points at the Mac's disk | Pick the file again here |
 
-Passwords are a separate opt-in, off by default, at **Settings > Sync > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. **Sync Now** sits in the same section, and a background refresh runs about every 30 minutes.
+Passwords are a separate opt-in, off by default, at **Settings > iCloud > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. Pull down on the connection list to sync now; a background refresh runs about every 30 minutes.
 
 <Warning>
 Picking a SQLite file copies it into the app, and edits go to that copy, so the original never changes and the two drift apart. DuckDB writes back to the file you picked.
@@ -85,7 +107,7 @@ A save, insert, delete, truncate or drop runs inside a read-write transaction. M
 
 The editor highlights SQL, runs a statement, and stops one mid-flight. **Stop** ends the result stream at once; on MySQL and Redis the statement keeps running on the server until it finishes. Results copy or export as JSON, CSV, or SQL `INSERT`.
 
-A running query appears in a Live Activity on the lock screen and Dynamic Island, with the elapsed time and the row count so far. **Settings > Privacy** replaces the SQL text there with "Running query". The card clears when the query ends. Quitting the app mid-query leaves it behind, marked interrupted, until the next launch clears it.
+A running query appears in a Live Activity on the lock screen and Dynamic Island, with the elapsed time and the row count so far. **Settings > Live Activities > Hide Query** replaces the SQL text there with "Running query". The card clears when the query ends. Quitting the app mid-query leaves it behind, marked interrupted, until the next launch clears it.
 
 ## What is missing
 
@@ -95,11 +117,17 @@ A running query appears in a Live Activity on the lock screen and Dynamic Island
 
 ## Security
 
-Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold launch always asks; after that **Auto-Lock** relocks immediately or after 1, 5, 15, or 60 minutes idle, starting at 5.
+Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold launch always asks; after that **Auto-Lock** relocks immediately or after 1, 5, 15, or 60 minutes idle, starting at 5. The lock covers open sheets and connections, and the app switcher shows a locked card instead of your data. Turning the lock off asks you to authenticate first.
 
 Each connection carries its own [safe mode](/features/safe-mode) level, synced from the Mac and settable here. iOS has three: **Off**, **Confirm Writes**, and **Read-Only**, which refuses writes outright. **Settings > New Connections** sets the level a new connection starts at.
 
 SSH tunnels authenticate with a password or a private key, and an unknown host key prompts with its fingerprint first.
+
+## Privacy
+
+**Share Usage Data** under **Settings > Privacy** sends one small report a day: a hashed device identifier, the app and iOS versions, your language, the database types you use, and when you first connected and first ran a query. It is off unless you chose **Share Usage Data** on first launch, and it never carries a hostname, username, password, query, or row.
+
+**Settings > About** holds the version, **What's New**, the privacy policy, and **Acknowledgements** for the open source libraries the app ships.
 
 ## Shortcuts and widgets
 
