@@ -68,6 +68,13 @@ struct ConnectionFormView: View {
         )
     }
 
+    private var showSSHKeyFileError: Binding<Bool> {
+        Binding(
+            get: { viewModel.sshKeyFileError != nil },
+            set: { if !$0 { viewModel.dismissSSHKeyFileError() } }
+        )
+    }
+
     var body: some View {
         @Bindable var viewModel = viewModel
         return NavigationStack {
@@ -186,6 +193,11 @@ struct ConnectionFormView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(viewModel.fileError ?? "")
+            }
+            .alert("Private Key", isPresented: showSSHKeyFileError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.sshKeyFileError ?? "")
             }
             .libraryWriteFailureAlert(
                 viewModel.saveFailure,

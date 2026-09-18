@@ -118,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deleted connections still showing in Spotlight, Siri, Shortcuts and Handoff on iPhone and iPad.
 - No confirmation before deleting a tag on iPhone and iPad.
 - A connection replaced by an import on iPhone and iPad still signing in with its old pasted SSH key.
+- Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 
 ### Security
 

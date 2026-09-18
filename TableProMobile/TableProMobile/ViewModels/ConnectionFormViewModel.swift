@@ -90,6 +90,7 @@ final class ConnectionFormViewModel {
     }
     private(set) var pendingFile: PendingDatabaseFile?
     private(set) var fileError: String?
+    private(set) var sshKeyFileError: String?
 
     // Async state
     private(set) var isTesting = false
@@ -362,20 +363,38 @@ final class ConnectionFormViewModel {
     }
 
     func handleSSHKeyFilePicker(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
+        let url: URL
+        switch result {
+        case .success(let urls):
+            guard let first = urls.first else { return }
+            url = first
+        case .failure(let error):
+            sshKeyFileError = error.localizedDescription
+            return
+        }
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
 
         if let content = try? String(contentsOf: url, encoding: .utf8) {
             sshKeyContent = content
             sshKeyInputMode = .paste
-        } else {
-            guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-            let dest = docsDir.appendingPathComponent("ssh_" + url.lastPathComponent)
-            try? FileManager.default.removeItem(at: dest)
-            try? FileManager.default.copyItem(at: url, to: dest)
-            sshKeyPath = dest.path
+            return
         }
+        guard !localFiles.isInDocuments(url) else {
+            sshKeyPath = url.path
+            return
+        }
+        do {
+            sshKeyPath = try localFiles.importCopy(of: url).path
+        } catch {
+            sshKeyFileError = error.localizedDescription
+        }
+    }
+
+    func dismissSSHKeyFileError() {
+        sshKeyFileError = nil
     }
 
     func clearSelectedFile() {

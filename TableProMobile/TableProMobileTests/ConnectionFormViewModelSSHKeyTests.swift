@@ -201,6 +201,76 @@ struct ConnectionFormViewModelSSHKeyTests {
         }
     }
 
+    @Test("A picked key file that is not text is copied beside another connection's key of the same name")
+    func pickedKeyFileNeverOverwritesAnother() throws {
+        let fixture = try AppStateFixture()
+        let firstKey = Data([0xFF, 0xFE, 0x00, 0x81, 0x01])
+        let secondKey = Data([0xFF, 0xFE, 0x00, 0x81, 0x02])
+        let firstPick = try pickedFile(named: "id_key", in: "Laptop", contents: firstKey, fixture: fixture)
+        let secondPick = try pickedFile(named: "id_key", in: "Server", contents: secondKey, fixture: fixture)
+        let first = fixture.makeFormViewModel()
+        let second = fixture.makeFormViewModel()
+
+        first.handleSSHKeyFilePicker(.success([firstPick]))
+        second.handleSSHKeyFilePicker(.success([secondPick]))
+
+        #expect(first.sshKeyFileError == nil)
+        #expect(second.sshKeyFileError == nil)
+        #expect(first.sshKeyPath != second.sshKeyPath)
+        #expect(fixture.localFiles.isInDocuments(URL(fileURLWithPath: first.sshKeyPath)))
+        #expect(fixture.localFiles.isInDocuments(URL(fileURLWithPath: second.sshKeyPath)))
+        #expect(try Data(contentsOf: URL(fileURLWithPath: first.sshKeyPath)) == firstKey)
+        #expect(try Data(contentsOf: URL(fileURLWithPath: second.sshKeyPath)) == secondKey)
+    }
+
+    private func pickedFile(named name: String, in folder: String, contents: Data, fixture: AppStateFixture) throws -> URL {
+        let directory = fixture.root.appendingPathComponent(folder, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(name)
+        try contents.write(to: url)
+        return url
+    }
+
+    @Test("A key file that cannot be copied records no path and says why")
+    func failedKeyCopyRecordsNoPath() throws {
+        let fixture = try AppStateFixture()
+        let form = fixture.makeFormViewModel()
+        let missing = fixture.root.appendingPathComponent("Picked/gone_key")
+
+        form.handleSSHKeyFilePicker(.success([missing]))
+
+        #expect(form.sshKeyPath.isEmpty)
+        #expect(form.sshKeyFileError != nil)
+    }
+
+    @Test("A key file picked from the app's own documents is used where it is")
+    func documentsKeyFileIsUsedInPlace() throws {
+        let fixture = try AppStateFixture()
+        let form = fixture.makeFormViewModel()
+        let inDocuments = fixture.documentsFile("deploy_key")
+        try Data([0xFF, 0xFE, 0x01]).write(to: inDocuments)
+
+        form.handleSSHKeyFilePicker(.success([inDocuments]))
+
+        #expect(form.sshKeyPath == inDocuments.path)
+        #expect(form.sshKeyFileError == nil)
+    }
+
+    @Test("A picked text key becomes a pasted key and no file is copied")
+    func pickedTextKeyIsPasted() throws {
+        let fixture = try AppStateFixture()
+        let form = fixture.makeFormViewModel()
+        let picked = fixture.root.appendingPathComponent("id_ed25519")
+        try Data(pastedKey.utf8).write(to: picked)
+
+        form.handleSSHKeyFilePicker(.success([picked]))
+
+        #expect(form.sshKeyContent == pastedKey)
+        #expect(form.sshKeyInputMode == .paste)
+        #expect(form.sshKeyPath.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.documentsDirectory.path).isEmpty)
+    }
+
     @Test("Test Connection hands the tunnel the form's secrets under the throwaway id only")
     func testSecretsCarryFormValues() {
         let form = ConnectionFormViewModel()
