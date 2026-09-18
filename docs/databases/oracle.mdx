@@ -96,6 +96,8 @@ Scripts written for SQL*Plus or SQL Developer run unchanged: a line holding only
 
 A `CREATE` whose unit does not compile fails with Oracle's own errors, one per line with its position, instead of reporting success. The unit stays in the schema as INVALID until a version that compiles replaces it.
 
+`DBMS_OUTPUT.PUT_LINE` lines show with the result of the statement that printed them. See [Server output](/features/query-results#server-output).
+
 In a trigger body, `:NEW` and `:OLD` are left as written. In an anonymous block, `:name` is a [query parameter](/features/query-parameters) filled from the panel.
 
 An anonymous block, or a query whose `WITH` clause declares a function, runs code on the server. One that drops or truncates, including through `EXECUTE IMMEDIATE '…'`, raises the [dangerous query warning](/features/safe-mode) before it runs, and a Read-Only connection refuses it like any write. [MCP clients](/external-api/mcp-tools) and the AI assistant cannot send either.
@@ -132,8 +134,7 @@ The Oracle driver is compiled into TablePro Mobile, with no plugin to install. B
 
 - No OS auth, wallets, Kerberos, or LDAP. Create a database user with a password and connect as that.
 - BFILE columns show the locator, never the file. There is no path to the contents from the app.
-- SQL*Plus commands such as `SET SERVEROUTPUT ON`, `SHOW ERRORS` and `EXEC` are not SQL and fail when sent. Delete them, and write `EXEC p` as `BEGIN p; END;`.
-- `DBMS_OUTPUT` lines are not shown. Return the value from a query instead, or write it to a table.
+- SQL*Plus commands such as `SET SERVEROUTPUT ON`, `SHOW ERRORS` and `EXEC` are not SQL and fail when sent. Delete them, and write `EXEC p` as `BEGIN p; END;`. Output needs no `SET SERVEROUTPUT ON`.
 - No Users & Roles pane. Manage accounts with `CREATE USER` and `GRANT` in the editor.
 
 ## Troubleshooting

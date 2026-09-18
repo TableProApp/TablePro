@@ -704,12 +704,23 @@ struct TabDisplayState: Equatable {
     mutating func replaceUnpinnedResults(with newResults: [ResultSet]) {
         resultSets = resultSets.filter { $0.isPinned } + newResults
         activeResultSetId = newResults.last?.id ?? resultSets.last?.id
+        leaveOutputModeWithoutOutput()
     }
 
     @MainActor
     mutating func removeUnpinnedResults() {
         resultSets = resultSets.filter { $0.isPinned }
         activeResultSetId = resultSets.last?.id
+        leaveOutputModeWithoutOutput()
+    }
+
+    /// Output mode shows what the active result printed, so it cannot outlive a result that printed nothing. The
+    /// rows of a new result are installed, and their modes reconciled, before the result itself replaces the old
+    /// one, which is too early to see the new result's output.
+    @MainActor
+    private mutating func leaveOutputModeWithoutOutput() {
+        guard resultsViewMode == .output, activeResultSet?.serverOutput.isEmpty != false else { return }
+        resultsViewMode = .data
     }
 
     @MainActor

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Read-side of the panel toggles. Each one reads the same state its `toggle` writes,
 /// so the menu title describes what the command will actually do.
@@ -44,7 +45,8 @@ extension MainContentCommandActions {
             tabType: tab.tabType,
             hasTableName: tab.tableContext.tableName != nil,
             hasColumns: !(tableRows?.columns.isEmpty ?? true),
-            hasSpatialColumn: !tab.display.spatialColumns.isEmpty
+            hasSpatialColumn: !tab.display.spatialColumns.isEmpty,
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
         )
     }
 

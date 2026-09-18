@@ -70,4 +70,16 @@ When the cap trims a result the status bar reads **Showing N rows** and offers *
 
 INSERT, UPDATE, DELETE and DDL show a success view with the affected row count and the execution time.
 
+## Server output
+
+Lines a statement prints on the server show with that statement's result. On Oracle that is `DBMS_OUTPUT.PUT_LINE`, and the output is on from the moment you connect: no `SET SERVEROUTPUT ON`.
+
+- A block or procedure call that returns no rows shows its lines under the success message.
+- A query that returned rows and also printed gains an **Output** mode beside **Data**.
+- A statement that fails lists the first 20 lines it printed before the error, inside the error banner.
+
+The lines are read after every statement run from the editor, so each result holds only what its own statement printed. At most 10,000 lines are kept per statement; past that the result reads "The output was cut short." and the rest is discarded. Lines a trigger prints while a grid edit is saved are not read then, and show with the next statement you run from the editor.
+
+## Failed statements
+
 A failed statement shows a red banner above the results with the database's own error message and a **Fix with AI** button. See [AI Assistant](/features/ai-assistant). A control character or zero-width space in the message shows as its short name in angle brackets, such as `<BS>`; see [Invisible characters](/features/sql-editor#invisible-characters).

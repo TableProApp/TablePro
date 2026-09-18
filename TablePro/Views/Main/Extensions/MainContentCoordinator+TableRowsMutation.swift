@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     @discardableResult
@@ -75,7 +76,8 @@ extension MainContentCoordinator {
             tabType: tab.tabType,
             hasTableName: tab.tableContext.tableName != nil,
             hasColumns: !tableRows.columns.isEmpty,
-            hasSpatialColumn: !spatialColumns.isEmpty
+            hasSpatialColumn: !spatialColumns.isEmpty,
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
         )
         let reconciled = ResultsModeAvailability.reconcile(
             tab.display.resultsViewMode,

@@ -182103,6 +182103,30 @@
     },
     "Could not read %@ from the workbook." : {
 
+    },
+    "%1$@ %2$@ was created with compilation errors:" : {
+
+    },
+    "Line %1$lld, column %2$lld: %3$@" : {
+
+    },
+    "Output before the error:" : {
+
+    },
+    "The output was cut short." : {
+
+    },
+    "Copy Output" : {
+
+    },
+    "Server output" : {
+
+    },
+    "^[%lld line](inflect: true)" : {
+
+    },
+    "Only the first %lld lines are shown." : {
+
     }
   },
   "version" : "1.1"

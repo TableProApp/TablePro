@@ -824,12 +824,15 @@ struct MainEditorContentView: View {
             dataGridView(tab: tab)
         case let .noRows(executionTime):
             emptyResultView(executionTime: executionTime)
-        case let .statementSucceeded(rowsAffected, executionTime, statusMessage):
+        case let .statementSucceeded(rowsAffected, executionTime, statusMessage, serverOutput):
             ResultSuccessView(
                 rowsAffected: rowsAffected,
                 executionTime: executionTime,
-                statusMessage: statusMessage
+                statusMessage: statusMessage,
+                serverOutput: serverOutput
             )
+        case let .serverOutput(output):
+            ServerOutputView(output: output)
         case let .unavailable(mode):
             unavailableModeView(mode)
         }
@@ -862,6 +865,7 @@ struct MainEditorContentView: View {
         inputs.activeResultRowsAffected = activeResultSet?.rowsAffected ?? 0
         inputs.activeResultExecutionTime = activeResultSet?.executionTime
         inputs.activeResultStatusMessage = activeResultSet?.statusMessage
+        inputs.activeResultServerOutput = activeResultSet?.serverOutput ?? .none
         inputs.activeResultErrorMessage = activeResultSet?.errorMessage
         inputs.loadedColumnCount = rows.columns.count
         inputs.loadedRowCount = rows.rows.count
@@ -1069,7 +1073,8 @@ struct MainEditorContentView: View {
             isFetching: isExecuting,
             hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
-            paginationCapability: coordinator.paginationCapability
+            paginationCapability: coordinator.paginationCapability,
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
         )
         return ResultStatusBar(
             model: ResultStatusModel(

@@ -31,14 +31,17 @@ struct GridSelectionOwnerTests {
     }
 
     /// Row editing follows the owner, so this is also the list of modes whose row commands stay
-    /// live. JSON shows the same rows the data grid owns and keeps them; Chart has no rows to edit.
+    /// live. JSON shows the same rows the data grid owns and keeps them; Chart and Output have no
+    /// rows to edit.
     @Test("Only a mode with an owning grid can edit rows")
     func rowEditingFollowsTheOwningGrid() {
         let owners = ResultsViewMode.allCases.map {
             GridSelectionOwner.resolve(tabType: .table, resultsViewMode: $0)
         }
 
-        #expect(owners == [.dataGrid, .schemaGrid, .dataGrid, GridSelectionOwner.none, .dataGrid])
+        #expect(owners == [
+            .dataGrid, .schemaGrid, .dataGrid, GridSelectionOwner.none, .dataGrid, GridSelectionOwner.none,
+        ])
     }
 
     /// Map writes into the shared channel itself: clicking a shape selects that row. The indices

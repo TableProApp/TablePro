@@ -16,18 +16,22 @@ enum ResultsModeAvailability {
     /// them is numeric, which is the cheaper shape. Map does not follow it, because a geometry
     /// column is rare: a Map segment on every result in the app would be permanent chrome for a
     /// pane that almost never has anything to draw.
+    ///
+    /// Output follows Map's rule for the same reason, and only a query tab offers it: a statement with no columns
+    /// shows its output under the success message instead, where no switcher is needed.
     static func modes(
         tabType: TabType?,
         hasTableName: Bool,
         hasColumns: Bool,
-        hasSpatialColumn: Bool = false
+        hasSpatialColumn: Bool = false,
+        hasServerOutput: Bool = false
     ) -> [ResultsViewMode] {
         guard let tabType else { return [] }
         if tabType == .table, hasTableName {
             return [.data, .structure, .json, .chart] + (hasSpatialColumn ? [.map] : [])
         }
         guard hasColumns else { return [] }
-        return [.data, .json, .chart] + (hasSpatialColumn ? [.map] : [])
+        return [.data, .json, .chart] + (hasSpatialColumn ? [.map] : []) + (hasServerOutput ? [.output] : [])
     }
 
     /// The mode a tab should be on, given what it can currently offer.
@@ -57,6 +61,8 @@ extension ResultsViewMode {
             return String(localized: "Chart")
         case .map:
             return String(localized: "Map")
+        case .output:
+            return String(localized: "Output")
         }
     }
 }

@@ -186,7 +186,8 @@ extension QueryExecutionCoordinator {
         historySQL: String? = nil,
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
-        viewport: GridReloadIntent = .firstRow
+        viewport: GridReloadIntent = .firstRow,
+        serverOutput: PluginServerOutput = .none
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -269,6 +270,7 @@ extension QueryExecutionCoordinator {
             rs.statusMessage = tab.execution.statusMessage
             rs.isTruncated = isTruncated
             rs.baseQuery = sql
+            rs.serverOutput = serverOutput
 
             tab.display.replaceUnpinnedResults(with: [rs])
 
@@ -783,9 +785,11 @@ extension QueryExecutionCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        serverOutput: PluginServerOutput = .none
     ) {
-        let message = DatabaseWriteRejectionDiagnosis.formatted(error)
+        let diagnosis = DatabaseWriteRejectionDiagnosis.formatted(error)
+        let message = ServerOutputCapture.failureMessage(diagnosis, output: serverOutput)
         helpersLogger.error(
             "Query failed on tab \(tabId, privacy: .public): \(error.publicLogShape, privacy: .public)"
         )
@@ -807,7 +811,7 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.clearQueryTiming(forTab: tabId)
-            parent.announceQueryError(message)
+            parent.announceQueryError(diagnosis)
         }
 
         recordHistory(

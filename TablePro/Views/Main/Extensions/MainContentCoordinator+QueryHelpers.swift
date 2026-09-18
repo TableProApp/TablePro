@@ -58,7 +58,8 @@ extension MainContentCoordinator {
         claim: TabExecutionClaim,
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
-        traceToken: TableLoadTraceToken?
+        traceToken: TableLoadTraceToken?,
+        serverOutput: PluginServerOutput = .none
     ) {
         guard tabExecution.settle(claim) else {
             traceStaleResultDropped(traceToken)
@@ -83,7 +84,7 @@ extension MainContentCoordinator {
             pendingLoadTrigger = trigger
             return
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput)
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
@@ -132,7 +133,8 @@ extension MainContentCoordinator {
         queryParameterValues: [QueryParameter]? = nil,
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
-        viewport: GridReloadIntent = .firstRow
+        viewport: GridReloadIntent = .firstRow,
+        serverOutput: PluginServerOutput = .none
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -152,7 +154,8 @@ extension MainContentCoordinator {
             queryParameterValues: queryParameterValues,
             anchor: anchor,
             timing: timing,
-            viewport: viewport
+            viewport: viewport,
+            serverOutput: serverOutput
         )
     }
 
@@ -209,13 +212,15 @@ extension MainContentCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        serverOutput: PluginServerOutput = .none
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
-            connection: conn
+            connection: conn,
+            serverOutput: serverOutput
         )
     }
 }

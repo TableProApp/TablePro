@@ -426,6 +426,28 @@ struct ResultsModeAvailabilityTests {
         #expect(modes == [.data, .structure, .json, .chart])
     }
 
+    @Test("Output is offered only for a query result that printed something")
+    func outputFollowsTheServerOutput() {
+        #expect(ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: true,
+            hasServerOutput: true
+        ) == [.data, .json, .chart, .output])
+        #expect(ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: false,
+            hasServerOutput: true
+        ).isEmpty)
+        #expect(ResultsModeAvailability.modes(
+            tabType: .table,
+            hasTableName: true,
+            hasColumns: true,
+            hasServerOutput: true
+        ) == [.data, .structure, .json, .chart])
+    }
+
     @Test("A query result has no structure to show")
     func queryTabHasNoStructure() {
         let modes = ResultsModeAvailability.modes(tabType: .query, hasTableName: false, hasColumns: true)
@@ -496,5 +518,4 @@ struct ResultsModeAvailabilityTests {
         }
         #expect(ResultsViewMode.json.displayName == "JSON")
     }
-
 }

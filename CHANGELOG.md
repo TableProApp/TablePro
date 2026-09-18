@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tips in the iOS connection list for swiping to favorite, touch and hold, and tag search.
 - Acknowledgements and a privacy policy link under **Settings > About** on iPhone and iPad.
 - Privacy manifest for the iOS app.
+- Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
 
 ### Changed
 

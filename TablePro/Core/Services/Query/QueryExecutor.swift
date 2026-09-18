@@ -17,6 +17,9 @@ struct QueryFetchResult {
     /// What the elapsed time was spent on, when the driver could tell.
     var timing: PluginQueryTiming?
 
+    /// What the statement printed on the server, read on its own session.
+    var serverOutput: PluginServerOutput = .none
+
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
     }
@@ -84,6 +87,23 @@ final class QueryExecutor {
     /// The driver is supplied by the caller, which resolved it from the tab's scope.
     /// Looking it up here would tie every query to whichever database the connection
     /// happens to be on.
+    /// Runs a statement and, when `failureOutput` is given, reads what it printed on the server; see
+    /// ``ServerOutputCapture``. A table tab's own reads pass nil, because nothing they run prints.
+    func executeQuery(
+        driver: DatabaseDriver,
+        sql: String,
+        parameters: [Any?]? = nil,
+        rowCap: Int?,
+        capturingOutputInto failureOutput: ServerOutputBox?
+    ) async throws -> QueryFetchResult {
+        guard let failureOutput else {
+            return try await executeQuery(driver: driver, sql: sql, parameters: parameters, rowCap: rowCap)
+        }
+        return try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
+            try await executeQuery(driver: driver, sql: sql, parameters: parameters, rowCap: rowCap)
+        }
+    }
+
     func executeQuery(
         driver: DatabaseDriver,
         sql: String,
