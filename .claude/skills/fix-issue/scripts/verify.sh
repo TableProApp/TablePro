@@ -518,8 +518,9 @@ case "$STEP" in
 
     docs)
         # The three checks that actually read docs/. None runs anywhere else in this script, and
-        # CI runs all three in the "Validate docs" job, so a local run is the only way to see a
-        # failure before the push.
+        # CI runs them in the "Validate docs" job, so a local run is the only way to see a failure
+        # before the push. check-links.py was missing here, so a link to a heading that does not
+        # exist reached main on a green local run (#2988).
         log="$(new_log docs)"
         : > "$log"
         code=0
@@ -538,7 +539,7 @@ case "$STEP" in
         if [ "$STATUS" != "INCONCLUSIVE" ]; then
             if [ $code -eq 0 ]; then
                 STATUS=PASS
-                note "docs/: house style, source claims and every link agree"
+                note "docs/: house style, source claims and links all agree"
             else
                 STATUS=FAIL
                 # The scripts print one line per check, most of them "ok". Show the failing check

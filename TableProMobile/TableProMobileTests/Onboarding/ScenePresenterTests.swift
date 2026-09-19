@@ -98,9 +98,7 @@ struct ScenePresenterTests {
         #expect(presenter.isHeldByEditor)
 
         hold = nil
-        while presenter.isHeldByEditor {
-            await Task.yield()
-        }
+        await ObservedCondition.wait { !presenter.isHeldByEditor }
         #expect(presenter.isHeldByEditor == false)
     }
 }

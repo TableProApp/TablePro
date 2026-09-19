@@ -1,7 +1,6 @@
 import CloudKit
 import Foundation
 import os
-import Security
 
 public struct PullResult: Sendable {
     public let changedRecords: [CKRecord]
@@ -28,12 +27,7 @@ public actor CloudKitSyncEngine {
     private static let maxRetries = 3
 
     public static func hasICloudEntitlement() -> Bool {
-        #if os(macOS)
-        guard let task = SecTaskCreateFromSelf(nil) else { return false }
-        return SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-services" as CFString, nil) != nil
-        #else
-        return true
-        #endif
+        CloudKitEntitlement.isGrantedToCurrentProcess()
     }
 
     public init(containerIdentifier: String = defaultContainerID) {

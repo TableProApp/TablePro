@@ -2,8 +2,10 @@ import AppKit
 import XCTest
 
 /// Issue #2316. Following a reference used to be one-way: the view you came from was gone, with no
-/// control anywhere that brought it back. Back is driven here through the menu bar rather than the
-/// toolbar button, because that is the path the key equivalent takes too.
+/// control anywhere that brought it back. Back and Forward are driven here through the View menu's
+/// own items rather than the toolbar buttons: the item has to validate as enabled, and then its key
+/// equivalent goes through `NSMenu.performKeyEquivalent`, which validates it again and sends its
+/// action.
 final class NavigationHistoryUITests: UITestCase {
     func testBackReturnsToTheTableTheTabWasRetargetedAwayFrom() throws {
         let app = try launchWithSampleDatabase()
@@ -21,7 +23,7 @@ final class NavigationHistoryUITests: UITestCase {
             "Clicking a second table must retarget the preview tab. Title: \(title(of: window))"
         )
 
-        try clickViewMenuItem("Back", in: app)
+        try performViewMenuItem("Back", keyEquivalent: "[", in: app)
 
         XCTAssertTrue(
             waitForPredicate(timeout: 20) { title(of: window).contains("Album") },
@@ -50,10 +52,10 @@ final class NavigationHistoryUITests: UITestCase {
         click(row("Artist", in: window))
         _ = waitForPredicate(timeout: 20) { title(of: window).contains("Artist") }
 
-        try clickViewMenuItem("Back", in: app)
+        try performViewMenuItem("Back", keyEquivalent: "[", in: app)
         XCTAssertTrue(waitForPredicate(timeout: 20) { title(of: window).contains("Album") })
 
-        try clickViewMenuItem("Forward", in: app)
+        try performViewMenuItem("Forward", keyEquivalent: "]", in: app)
 
         XCTAssertTrue(
             waitForPredicate(timeout: 20) { title(of: window).contains("Artist") },
@@ -104,12 +106,26 @@ final class NavigationHistoryUITests: UITestCase {
         return item
     }
 
-    private func clickViewMenuItem(_ name: String, in app: XCUIApplication) throws {
+    /// Waits for the item to validate as enabled in the open menu, closes the menu, and sends the
+    /// item's key equivalent rather than clicking it.
+    ///
+    /// The View menu is 878pt tall, and on the runner's 1024x768 screen it gets 671pt, so AppKit
+    /// makes it scroll. Forward sits under the bottom scroll zone: XCUITest hovers it, the hover
+    /// scrolls the menu, and the click lands where Forward used to be, on the disabled Show
+    /// Previous Connection, or at no point at all once the menu has scrolled to its end. Nothing
+    /// fails there, the menu stays open and Forward is never sent (runs 35345089994, 35363502950
+    /// and 35375539350). A key equivalent carries no geometry.
+    private func performViewMenuItem(
+        _ name: String,
+        keyEquivalent: String,
+        in app: XCUIApplication
+    ) throws {
         let item = try viewMenuItem(name, in: app)
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { item.isEnabled },
             "View > \(name) must be enabled once the tab has a history"
         )
-        item.click()
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(keyEquivalent, modifierFlags: [.command, .control])
     }
 }
