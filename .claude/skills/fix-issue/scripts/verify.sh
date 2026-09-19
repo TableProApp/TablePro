@@ -161,13 +161,18 @@ report_errors() {
 # ---------------------------------------------------------------------------- environment
 
 setup_toolchain() {
-    if [ ! -x "${DEVELOPER_DIR:-/nonexistent}/usr/bin/xcodebuild" ]; then
-        if [ -d /Applications/Xcode-beta.app/Contents/Developer ]; then
-            export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-        elif [ -d /Applications/Xcode.app/Contents/Developer ]; then
-            export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+    [ -x "${DEVELOPER_DIR:-/nonexistent}/usr/bin/xcodebuild" ] && return 0
+    # The Xcode that xcode-select names wins when it is a full Xcode. Command Line Tools has no
+    # xcodebuild and no sourcekitd, so fall back to whichever Xcode is installed.
+    local candidate
+    for candidate in "$(xcode-select -p 2> /dev/null)" \
+        /Applications/Xcode.app/Contents/Developer \
+        /Applications/Xcode-beta.app/Contents/Developer; do
+        if [ -x "$candidate/usr/bin/xcodebuild" ]; then
+            export DEVELOPER_DIR="$candidate"
+            return 0
         fi
-    fi
+    done
 }
 
 wait_for_free_toolchain() {
