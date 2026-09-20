@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProCoreTypes
 import TableProMSSQLCore
 import TableProPluginKit
 

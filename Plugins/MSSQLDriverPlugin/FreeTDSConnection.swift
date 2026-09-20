@@ -13,6 +13,7 @@ import CFreeTDS
 import Darwin
 import Foundation
 import os
+import TableProCoreTypes
 import TableProMSSQLCore
 
 nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")

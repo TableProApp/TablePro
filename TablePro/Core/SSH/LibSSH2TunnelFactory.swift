@@ -8,6 +8,8 @@ import os
 
 import CLibSSH2
 
+import TableProSSHTransport
+
 /// Credentials needed for SSH tunnel creation
 internal struct SSHTunnelCredentials: Sendable {
     let sshPassword: String?
@@ -800,10 +802,10 @@ internal enum LibSSH2TunnelFactory {
             return
         }
 
-        let error = outcome.tunnelError(
+        let error = outcome.forwardFailure(
             destination: destination,
             deadlineSeconds: Int(Self.forwardProbeDeadlineSeconds)
-        ) ?? SSHTunnelError.channelOpenFailed
+        )?.tunnelError ?? SSHTunnelError.channelOpenFailed
         logger.error("Forward probe to \(destination.logDescription) failed: \(error.localizedDescription)")
         throw error
     }

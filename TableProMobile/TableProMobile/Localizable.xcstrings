@@ -5562,6 +5562,34 @@
         }
       }
     },
+    "Driver Unavailable" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "드라이버를 사용할 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Driver không khả dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驱动不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驅動程式無法使用"
+          }
+        }
+      }
+    },
     "Drop" : {
       "localizations" : {
         "ko" : {
@@ -12095,6 +12123,34 @@
         }
       }
     },
+    "Reconnect and try again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 연결한 후 다시 시도하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối lại và thử lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请重新连接后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請重新連線後再試一次。"
+          }
+        }
+      }
+    },
     "Reconnecting..." : {
       "localizations" : {
         "ko" : {
@@ -13415,6 +13471,34 @@
         }
       }
     },
+    "SSH Unavailable" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH를 사용할 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH không khả dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 無法使用"
+          }
+        }
+      }
+    },
     "SSH Username" : {
       "localizations" : {
         "ko" : {
@@ -14624,6 +14708,34 @@
         }
       }
     },
+    "Still Closing" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 닫는 중"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vẫn đang đóng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在關閉"
+          }
+        }
+      }
+    },
     "Stop" : {
       "localizations" : {
         "ko" : {
@@ -15702,6 +15814,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標籤"
+          }
+        }
+      }
+    },
+    "Tap Retry in a moment." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잠시 후 ‘재시도’를 탭하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấn Thử lại sau giây lát."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稍后轻点“重试”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稍後點按「重試」。"
           }
         }
       }
@@ -16843,6 +16983,34 @@
         }
       }
     },
+    "The previous session has not finished closing." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이전 세션이 아직 닫히지 않았습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên trước chưa đóng xong."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一个会话尚未关闭完毕。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一個工作階段尚未關閉完畢。"
+          }
+        }
+      }
+    },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17239,6 +17407,34 @@
         }
       }
     },
+    "This build has no driver for that database type." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 빌드에는 해당 데이터베이스 유형용 드라이버가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bản dựng này không có driver cho loại cơ sở dữ liệu đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本没有该数据库类型的驱动。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本沒有該資料庫類型的驅動程式。"
+          }
+        }
+      }
+    },
     "This certificate file needs a password. Certificate files exported without one cannot be read on iOS." : {
       "localizations" : {
         "ko" : {
@@ -17319,6 +17515,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此欄位是產生欄位，因此永遠不會寫入。"
+          }
+        }
+      }
+    },
+    "This connection goes through an SSH jump host, which TablePro on iPhone and iPad cannot dial. Open it in TablePro on the Mac." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결은 SSH 점프 호스트를 거치며, iPhone과 iPad의 TablePro는 점프 호스트로 연결할 수 없습니다. Mac용 TablePro에서 여십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối này đi qua một SSH jump host, mà TablePro trên iPhone và iPad không kết nối tới được. Hãy mở kết nối này trong TablePro trên máy Mac."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接经过 SSH 跳板主机，iPhone 和 iPad 上的 TablePro 无法连接。请在 Mac 上的 TablePro 中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線經過 SSH 跳板主機，iPhone 與 iPad 上的 TablePro 無法連線。請在 Mac 版 TablePro 中開啟。"
           }
         }
       }
@@ -18392,6 +18616,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟 iCloud 同步"
+          }
+        }
+      }
+    },
+    "Turn off the SSH tunnel for this connection." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결의 SSH 터널을 끄십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tắt đường hầm SSH cho kết nối này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请关闭此连接的SSH隧道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請關閉此連線的 SSH 隧道。"
           }
         }
       }

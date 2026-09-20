@@ -1,13 +1,13 @@
 //
 //  RelayPollStateTests.swift
-//  TableProTests
+//  TableProSSHTransportTests
 //
 //  Tests for relayFDState, the poll revents classifier that decides whether a
 //  relay fd is idle, readable, draining before teardown, or fatally errored.
 //
 
 import Foundation
-@testable import TablePro
+@testable import TableProSSHTransport
 import Testing
 
 @Suite("RelayPollState")

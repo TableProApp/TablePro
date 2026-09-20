@@ -15,6 +15,9 @@ struct ChatComposerTextView: NSViewRepresentable {
     let maxLines: Int
     let isCommittingMention: Bool
     let acceptsImages: Bool
+    let paintsHighlight: Bool
+    let highlightEnabled: Bool
+    let onToggleHighlight: () -> Void
     let onTextChange: (String, Int) -> Void
     let onSubmit: () -> Void
     let onCommitMention: () -> Bool
@@ -29,10 +32,13 @@ struct ChatComposerTextView: NSViewRepresentable {
         textView.placeholder = placeholder
         textView.acceptsImagePaste = acceptsImages
         textView.onPasteImageData = onPasteImageData
+        textView.highlightEnabled = highlightEnabled
+        textView.onToggleHighlight = onToggleHighlight
 
         let scrollView = ChatComposerScrollView.make(documentView: textView)
         scrollView.minLines = minLines
         scrollView.maxLines = maxLines
+        scrollView.focusRingType = ComposerHighlightPreference.focusRingType(paintsHighlight: paintsHighlight)
 
         textView.onFocusChange = { [weak coordinator = context.coordinator] focused in
             coordinator?.handleFocusChange(focused)
@@ -58,6 +64,14 @@ struct ChatComposerTextView: NSViewRepresentable {
         context.coordinator.refresh(from: self)
         scrollView.minLines = minLines
         scrollView.maxLines = maxLines
+        textView.highlightEnabled = highlightEnabled
+        textView.onToggleHighlight = onToggleHighlight
+
+        let ringType = ComposerHighlightPreference.focusRingType(paintsHighlight: paintsHighlight)
+        if scrollView.focusRingType != ringType {
+            scrollView.focusRingType = ringType
+            scrollView.noteFocusRingMaskChanged()
+        }
 
         // Replacing the string outright while an input method has marked text cancels the
         // composition. Routing through shouldChangeText/didChangeText also keeps the undo
@@ -73,11 +87,7 @@ struct ChatComposerTextView: NSViewRepresentable {
             textView.setSelectedRange(NSRange(location: clampedLocation, length: 0))
         }
 
-        if textView.placeholder != placeholder {
-            textView.placeholder = placeholder
-            textView.setAccessibilityPlaceholderValue(placeholder)
-            textView.needsDisplay = true
-        }
+        textView.placeholder = placeholder
 
         if isFocused, textView.window?.firstResponder !== textView {
             DispatchQueue.main.async {
@@ -186,12 +196,26 @@ struct ChatComposerTextView: NSViewRepresentable {
 }
 
 final class ChatComposerNSTextView: NSTextView {
-    var placeholder: String = ""
+    /// The placeholder is painted in `draw(_:)`, which the accessibility tree never sees, so the
+    /// only thing that names this field to VoiceOver is the value set here. Keeping the two
+    /// together means no assignment path can leave the field nameless: guarding the call at one
+    /// caller is what left it unset since #2097, because `makeNSView` had already stored the same
+    /// string and the caller's comparison was never true again.
+    var placeholder: String = "" {
+        didSet {
+            guard oldValue != placeholder else { return }
+            setAccessibilityPlaceholderValue(placeholder)
+            needsDisplay = true
+        }
+    }
+
     var placeholderColor: NSColor = .placeholderTextColor
     var onFocusChange: ((Bool) -> Void)?
     var onSizeChange: (() -> Void)?
     var acceptsImagePaste: Bool = false
     var onPasteImageData: ((Data, String) -> Void)?
+    var highlightEnabled: Bool = true
+    var onToggleHighlight: (() -> Void)?
 
     static func make() -> ChatComposerNSTextView {
         let textView = ChatComposerNSTextView()
@@ -219,6 +243,35 @@ final class ChatComposerNSTextView: NSTextView {
         let resigned = super.resignFirstResponder()
         if resigned { onFocusChange?(false) }
         return resigned
+    }
+
+    /// Measured on macOS 27: unparenting the pane moves the window's first responder away without
+    /// ever sending `resignFirstResponder` here, so focus has to be re-read from the window rather
+    /// than waited for. Switching the trailing pane away and back otherwise left the composer
+    /// believing it still held focus, and the highlight painted over a field that did not.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onFocusChange?(window?.firstResponder === self)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        if !menu.items.isEmpty {
+            menu.addItem(.separator())
+        }
+        let item = NSMenuItem(
+            title: String(localized: "Highlight When Focused"),
+            action: #selector(toggleComposerHighlight(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.state = highlightEnabled ? .on : .off
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func toggleComposerHighlight(_ sender: Any?) {
+        onToggleHighlight?()
     }
 
     override func didChangeText() {
@@ -311,6 +364,31 @@ final class ChatComposerScrollView: NSScrollView {
         )
         textView.textContainer?.widthTracksTextView = true
         return scrollView
+    }
+
+    /// The composer's rounded surface is drawn by SwiftUI, so AppKit has to be told the shape to
+    /// wrap; left to itself it rings the square bounds. This is the shape `ShortcutRecorderNSView`
+    /// uses for the same job, and the radius is the one the SwiftUI background reads.
+    ///
+    /// The document view carries the focus, but the ring belongs on the scroll view: measured on
+    /// macOS 27, `focusRingType` on the text view never produces a `drawFocusRingMask` call, while
+    /// on the scroll view it does, `.noBorder` included.
+    override func drawFocusRingMask() {
+        NSBezierPath(
+            roundedRect: bounds,
+            xRadius: ChatComposerMetrics.cornerRadius,
+            yRadius: ChatComposerMetrics.cornerRadius
+        ).fill()
+    }
+
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    /// The mask is derived from `bounds`, and the composer grows from one line to five as the user
+    /// types, so the cached ring has to be invalidated with the size that produced it.
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { noteFocusRingMaskChanged() }
     }
 
     override var intrinsicContentSize: NSSize {

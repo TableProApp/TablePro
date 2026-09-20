@@ -36,10 +36,26 @@ struct ForeignKeyLookupQueryTests {
         dialect: SQLDialectDescriptor? = nil,
         stringLiteralPrefix: String = ""
     ) -> String? {
+        rows(
+            key: key,
+            labels: [label].compactMap { $0 },
+            term: term,
+            dialect: dialect,
+            stringLiteralPrefix: stringLiteralPrefix
+        )
+    }
+
+    private func rows(
+        key: ForeignKeyLookupColumn? = nil,
+        labels: [ForeignKeyLookupColumn],
+        term: String,
+        dialect: SQLDialectDescriptor? = nil,
+        stringLiteralPrefix: String = ""
+    ) -> String? {
         ForeignKeyLookupQuery.rows(
             quotedTable: "\"Artist\"",
             key: key ?? self.key,
-            label: label,
+            labels: labels,
             searchTerm: term,
             dialect: dialect ?? self.dialect(),
             stringLiteralPrefix: stringLiteralPrefix,
@@ -182,6 +198,66 @@ struct ForeignKeyLookupQueryTests {
         let enumLabel = ForeignKeyLookupColumn(name: "status", type: .enumType(rawType: "status_t", values: nil))
         #expect(rows(label: enumLabel, term: "rock") == nil)
         #expect(rows(label: enumLabel, term: "42")?.contains("\"status\" LIKE") == false)
+    }
+
+    // MARK: - Several label columns
+
+    private let secondLabel = ForeignKeyLookupColumn(name: "Country", type: .text(rawType: "VARCHAR(64)"))
+
+    @Test("Every chosen label column is selected, in the order it was given")
+    func everyLabelIsSelected() {
+        #expect(
+            rows(labels: [label, secondLabel], term: "") ==
+                "SELECT \"ArtistId\", \"Name\", \"Country\" FROM \"Artist\" "
+                + "WHERE \"ArtistId\" IS NOT NULL ORDER BY \"ArtistId\" LIMIT 50"
+        )
+    }
+
+    @Test("A label named twice is selected once")
+    func duplicateLabelIsSelectedOnce() {
+        #expect(rows(labels: [label, label], term: "") == rows(labels: [label], term: ""))
+    }
+
+    @Test("The key is never selected again, whichever label repeats it")
+    func keyAmongTheLabelsIsSelectedOnce() {
+        #expect(
+            rows(labels: [key, label], term: "") ==
+                "SELECT \"ArtistId\", \"Name\" FROM \"Artist\" "
+                + "WHERE \"ArtistId\" IS NOT NULL ORDER BY \"ArtistId\" LIMIT 50"
+        )
+    }
+
+    /// The reporter's shape: a parent row is only told apart by two columns at once, so a term
+    /// living in either one has to reach it.
+    @Test("A term is matched against every chosen label column")
+    func termSearchesEveryLabel() {
+        #expect(
+            rows(labels: [label, secondLabel], term: "rock") ==
+                "SELECT \"ArtistId\", \"Name\", \"Country\" FROM \"Artist\" "
+                + "WHERE \"ArtistId\" IS NOT NULL "
+                + "AND (\"Name\" LIKE '%rock%' ESCAPE '!' OR \"Country\" LIKE '%rock%' ESCAPE '!') "
+                + "ORDER BY \"ArtistId\" LIMIT 50"
+        )
+    }
+
+    /// A column the engine cannot pattern-match costs itself a predicate, never the query: the
+    /// columns chosen beside it still search.
+    @Test("A label that takes no LIKE is shown while the others still search")
+    func unsearchableLabelDoesNotDisarmTheOthers() {
+        let dateLabel = ForeignKeyLookupColumn(name: "ReleasedOn", type: .date(rawType: "DATE"))
+        #expect(
+            rows(labels: [dateLabel, label], term: "rock") ==
+                "SELECT \"ArtistId\", \"ReleasedOn\", \"Name\" FROM \"Artist\" "
+                + "WHERE \"ArtistId\" IS NOT NULL AND \"Name\" LIKE '%rock%' ESCAPE '!' "
+                + "ORDER BY \"ArtistId\" LIMIT 50"
+        )
+    }
+
+    @Test("A term no chosen column can carry still produces no query")
+    func unsearchableTermAcrossSeveralLabels() {
+        let dateLabel = ForeignKeyLookupColumn(name: "ReleasedOn", type: .date(rawType: "DATE"))
+        let enumLabel = ForeignKeyLookupColumn(name: "status", type: .enumType(rawType: "status_t", values: nil))
+        #expect(rows(labels: [dateLabel, enumLabel], term: "rock") == nil)
     }
 
     @Test("A PostgreSQL dialect searches with ILIKE")

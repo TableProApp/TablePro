@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy manifest for the iOS app.
 - Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
 - Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
+- **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995)
+- Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
 
 ### Changed
 
@@ -40,6 +42,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
+- etcd connections carrying a username refusing a server that has authentication disabled.
+- Raw JSON shown instead of etcd's own message when a username or password is wrong.
+- etcd connections reported as unreachable every 30 seconds for a user without the root role.
+- An etcd `watch` returning no events instead of an error when the session is not authenticated.
+- `The request timed out` from an etcd `watch --timeout` above 60 seconds.
+- Stop in an etcd tab cancelling an unrelated request and leaving the running one alone.
+- Crash from an etcd `watch --timeout` with a negative or out-of-range value.
+- Colored highlight on the AI chat input painting over a window that is not key.
+- Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
+- AI chat input focus crossfade playing against Reduce Motion.
+- AI chat input announced with no name by VoiceOver.
 - Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
 - Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
@@ -50,10 +64,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
 - Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
 - Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
+- Memory held for every connection an SSH tunnel served, and its listening socket closed while it was still accepting.
+- SSH tunnel stalling part-way through a result when two connections share one session, on iPhone and iPad.
+- Slow SSH tunnel throughput while a channel has bytes queued behind it.
+- Cancel ignored during an SSH connect on iPhone and iPad.
+- Sockets to the SSH server left open after a failed SSH connect on iPhone and iPad.
+- No more than a dozen SSH tunnels connecting at a time on iPhone and iPad.
+- SSH tunnels on iPhone and iPad spinning on a closed connection instead of ending.
+- Up to 150 seconds before an SSH forward that cannot open gives up, on iPhone and iPad.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.
+- The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all.
+- Foreign key picker reporting no matching rows for a term none of its columns could be searched for.
 - No spoken sort direction on Query Plan columns.
 - No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Composite foreign key columns listed out of order on MariaDB.
@@ -133,6 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 - Table page range shown in English in every language on iPhone and iPad.
 - Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
+- Every later connect to a connection on iPhone and iPad hanging for good once its SSH tunnel dropped.
+- Connection errors on iPhone and iPad given a title and advice picked from words in the message.
 - Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped.
 - Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported.
 - Oracle triggers synced into another schema created back in the source schema.

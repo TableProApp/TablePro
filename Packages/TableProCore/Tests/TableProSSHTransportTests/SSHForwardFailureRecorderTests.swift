@@ -1,6 +1,6 @@
 //
 //  SSHForwardFailureRecorderTests.swift
-//  TableProTests
+//  TableProSSHTransportTests
 //
 //  Tests the seam that carries a forwarding failure out to the connect path. The tunnel
 //  computed the reason and then dropped it, so the database driver reported a greeting-read
@@ -8,7 +8,7 @@
 //
 
 import Foundation
-@testable import TablePro
+@testable import TableProSSHTransport
 import Testing
 
 @Suite("SSHForwardFailureRecorder")
@@ -22,9 +22,9 @@ struct SSHForwardFailureRecorderTests {
     }
 
     @Test("An opened channel is not recorded as a failure")
-    func openedIsNotRecorded() {
+    func openedIsNotRecorded() throws {
         let recorder = SSHForwardFailureRecorder()
-        let channel = OpaquePointer(bitPattern: 0xBEEF)!
+        let channel = try #require(OpaquePointer(bitPattern: 0xBEEF))
 
         recorder.record(.opened(channel), destination: Self.tcp, deadlineSeconds: 6)
 
@@ -50,12 +50,7 @@ struct SSHForwardFailureRecorderTests {
             deadlineSeconds: 6
         )
 
-        #expect(
-            recorder.consume() == .forwardRefused(
-                destination: "db.internal:3306",
-                detail: "channel open failure"
-            )
-        )
+        #expect(recorder.consume() == .refused(destination: Self.tcp, detail: "channel open failure"))
     }
 
     @Test("A refused socket forward keeps the socket-specific reason")
@@ -68,12 +63,7 @@ struct SSHForwardFailureRecorderTests {
             deadlineSeconds: 6
         )
 
-        #expect(
-            recorder.consume() == .socketForwardingRefused(
-                path: "/var/run/mysqld/mysqld.sock",
-                detail: "channel open failure"
-            )
-        )
+        #expect(recorder.consume() == .refused(destination: Self.socket, detail: "channel open failure"))
     }
 
     @Test("A timed-out open is recorded with the budget that expired")
@@ -82,7 +72,7 @@ struct SSHForwardFailureRecorderTests {
 
         recorder.record(.timedOut, destination: Self.tcp, deadlineSeconds: 6)
 
-        #expect(recorder.consume() == .forwardTimedOut(destination: "db.internal:3306", seconds: 6))
+        #expect(recorder.consume() == .timedOut(destination: Self.tcp, seconds: 6))
     }
 
     @Test("Consuming clears the reason so it cannot be blamed for a later failure")
@@ -95,14 +85,14 @@ struct SSHForwardFailureRecorderTests {
     }
 
     @Test("A later successful open does not clear a reason nobody has read yet")
-    func successDoesNotClearPendingFailure() {
+    func successDoesNotClearPendingFailure() throws {
         let recorder = SSHForwardFailureRecorder()
-        let channel = OpaquePointer(bitPattern: 0xBEEF)!
+        let channel = try #require(OpaquePointer(bitPattern: 0xBEEF))
 
         recorder.record(.timedOut, destination: Self.tcp, deadlineSeconds: 6)
         recorder.record(.opened(channel), destination: Self.tcp, deadlineSeconds: 6)
 
-        #expect(recorder.consume() == .forwardTimedOut(destination: "db.internal:3306", seconds: 6))
+        #expect(recorder.consume() == .timedOut(destination: Self.tcp, seconds: 6))
     }
 
     @Test("The most recent failure replaces an older one")
@@ -116,11 +106,6 @@ struct SSHForwardFailureRecorderTests {
             deadlineSeconds: 6
         )
 
-        #expect(
-            recorder.consume() == .forwardRefused(
-                destination: "db.internal:3306",
-                detail: "channel open failure"
-            )
-        )
+        #expect(recorder.consume() == .refused(destination: Self.tcp, detail: "channel open failure"))
     }
 }

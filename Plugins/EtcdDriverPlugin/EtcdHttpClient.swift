@@ -15,6 +15,7 @@ internal enum EtcdError: Error, LocalizedError {
     case connectionFailed(String)
     case serverError(String)
     case authFailed(String)
+    case fault(EtcdServerFault)
     case requestCancelled
 
     var errorDescription: String? {
@@ -27,9 +28,16 @@ internal enum EtcdError: Error, LocalizedError {
             return String(format: String(localized: "Server error: %@"), detail)
         case .authFailed(let detail):
             return String(format: String(localized: "Authentication failed: %@"), detail)
+        case .fault(let fault):
+            return fault.localizedDescription
         case .requestCancelled:
             return String(localized: "Request was cancelled")
         }
+    }
+
+    var serverFault: EtcdServerFault? {
+        guard case .fault(let fault) = self else { return nil }
+        return fault
     }
 }
 
@@ -298,10 +306,8 @@ internal struct EtcdCompactionRequest: Encodable {
 
 // MARK: - Generic Error Response
 
-private struct EtcdErrorResponse: Decodable {
-    let error: String?
-    let message: String?
-    let code: Int?
+internal struct EtcdVersionResponse: Decodable {
+    let etcdserver: String?
 }
 
 // MARK: - HTTP Client
@@ -311,9 +317,9 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private let lock = NSLock()
     private var session: URLSession?
     private var sessionGeneration: UInt64 = 0
-    private var currentTask: URLSessionDataTask?
+    private var activeQueryTasks: [ObjectIdentifier: URLSessionDataTask] = [:]
     private var authToken: String?
-    private var _isAuthenticating = false
+    private var authTask: Task<Void, Error>?
     private var apiPrefix = "v3"
     private let queryTimeout = HttpQueryTimeoutBox()
 
@@ -381,114 +387,126 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         do {
             try await detectApiPrefix()
-        } catch let etcdError as EtcdError {
-            lock.withLock {
-                session?.invalidateAndCancel()
-                session = nil
+            if hasCredentials {
+                try await refreshToken(replacing: nil)
             }
-            Self.logger.error("Connection test failed: \(etcdError.localizedDescription)")
+            try await healthCheck()
+        } catch let etcdError as EtcdError {
+            invalidateSession()
+            Self.logger.error("Connection failed: \(etcdError.localizedDescription)")
             throw etcdError
         } catch {
-            lock.withLock {
-                session?.invalidateAndCancel()
-                session = nil
-            }
-            Self.logger.error("Connection test failed: \(error.localizedDescription)")
+            invalidateSession()
+            Self.logger.error("Connection failed: \(error.localizedDescription)")
             throw EtcdError.connectionFailed(error.localizedDescription)
-        }
-
-        if !config.username.isEmpty {
-            do {
-                try await authenticate()
-            } catch {
-                lock.withLock {
-                    session?.invalidateAndCancel()
-                    session = nil
-                }
-                throw error
-            }
         }
 
         Self.logger.debug("Connected to etcd at \(self.config.host):\(self.config.port)")
     }
 
+    private var hasCredentials: Bool {
+        !config.username.isEmpty
+    }
+
+    private func invalidateSession() {
+        lock.withLock {
+            authTask?.cancel()
+            authTask = nil
+            authToken = nil
+            session?.invalidateAndCancel()
+            session = nil
+        }
+    }
+
     func disconnect() {
+        let pending = takeActiveQueryTasks()
         lock.lock()
         sessionGeneration &+= 1
-        currentTask?.cancel()
-        currentTask = nil
+        authTask?.cancel()
+        authTask = nil
         session?.invalidateAndCancel()
         session = nil
         authToken = nil
-        _isAuthenticating = false
         apiPrefix = "v3"
         lock.unlock()
+        for task in pending {
+            task.cancel()
+        }
     }
 
     func ping() async throws {
-        let _: EtcdStatusResponse = try await post(path: apiPath("maintenance/status"), body: EmptyBody())
+        try await healthCheck()
     }
 
-    /// Probes etcd gateway prefixes in order and selects the first that responds
-    /// with a non-404 status. Covers all etcd versions:
-    ///   3.5+  → /v3/  only
-    ///   3.4   → /v3/  + /v3beta/
-    ///   3.3   → /v3beta/ + /v3alpha/
-    ///   3.2-  → /v3alpha/ only
-    private func detectApiPrefix() async throws {
-        let candidates = ["v3", "v3beta", "v3alpha"]
+    func healthCheck() async throws {
+        do {
+            let request = EtcdRangeRequest(
+                key: Self.base64Encode(Self.healthProbeKey),
+                limit: 1,
+                keysOnly: true
+            )
+            _ = try await send(
+                path: apiPath("kv/range"),
+                body: request,
+                cancellable: false
+            )
+        } catch let EtcdError.fault(fault) where fault.provesLiveSession {
+            return
+        }
+    }
 
+    private func detectApiPrefix() async throws {
+        var sawForeignResponse = false
+
+        for candidate in EtcdGatewayRoute.candidatePrefixes {
+            switch try await probeGatewayRoute(prefix: candidate) {
+            case .routed:
+                lock.withLock { apiPrefix = candidate }
+                Self.logger.debug("Detected etcd API prefix: \(candidate)")
+                return
+            case .notRouted:
+                continue
+            case .notEtcd:
+                sawForeignResponse = true
+            }
+        }
+
+        guard !sawForeignResponse else {
+            throw EtcdError.connectionFailed(String(localized: """
+            The server answered but is not an etcd v3 JSON gateway.
+            """))
+        }
+        throw EtcdError.connectionFailed(String(format: String(localized: """
+        No etcd v3 API found at %@. Point the connection at the client port, 2379 by default, \
+        and not the peer port on 2380.
+        """), "\(config.host):\(config.port)"))
+    }
+
+    private func probeGatewayRoute(prefix: String) async throws -> EtcdGatewayRoute {
         let session = try lock.withLock { () -> URLSession in
             guard let currentSession = self.session else { throw EtcdError.notConnected }
             return currentSession
         }
 
-        for candidate in candidates {
-            guard let url = URL(string: "\(baseUrl)/\(candidate)/maintenance/status") else {
-                continue
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(EmptyBody())
-
-            let response: URLResponse
-            do {
-                (_, response) = try await session.data(for: request)
-            } catch {
-                // Network-level failure — server is unreachable regardless of prefix
-                throw error
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw EtcdError.serverError("Invalid response type")
-            }
-
-            switch httpResponse.statusCode {
-            case 404:
-                continue
-            case 200:
-                lock.withLock { apiPrefix = candidate }
-                Self.logger.debug("Detected etcd API prefix: \(candidate)")
-                return
-            case 401 where !config.username.isEmpty:
-                // Auth required but credentials are configured — prefix is valid,
-                // authenticate() will run after detection
-                lock.withLock { apiPrefix = candidate }
-                Self.logger.debug("Detected etcd API prefix: \(candidate) (auth required)")
-                return
-            case 401:
-                throw EtcdError.authFailed("Authentication required")
-            default:
-                Self.logger.warning("Prefix probe \(candidate) returned HTTP \(httpResponse.statusCode)")
-                throw EtcdError.serverError("Unexpected HTTP \(httpResponse.statusCode) from \(candidate)/maintenance/status")
-            }
+        let probe = EtcdRangeRequest(
+            key: Self.base64Encode(Self.healthProbeKey),
+            limit: 1,
+            keysOnly: true
+        )
+        guard let url = URL(string: "\(baseUrl)/\(prefix)/kv/range") else {
+            return .notRouted
         }
 
-        throw EtcdError.serverError(
-            "No supported etcd API found (tried: \(candidates.joined(separator: ", ")))"
-        )
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(probe)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw EtcdError.serverError(String(localized: "Invalid response type"))
+        }
+        return EtcdGatewayRoute.classify(httpStatus: httpResponse.statusCode, body: data)
     }
 
     // MARK: - KV Operations
@@ -536,81 +554,126 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         try await post(path: apiPath("maintenance/status"), body: EmptyBody())
     }
 
+    func serverVersion() async -> String? {
+        if let status = try? await endpointStatus(), let version = status.version {
+            return version
+        }
+        return await gatewayVersion()
+    }
+
+    private func gatewayVersion() async -> String? {
+        guard let session = lock.withLock({ self.session }) else { return nil }
+        guard let url = URL(string: "\(baseUrl)/version") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        guard let (data, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let payload = try? JSONDecoder().decode(EtcdVersionResponse.self, from: data) else {
+            return nil
+        }
+        return payload.etcdserver
+    }
+
     // MARK: - Watch
 
     func watch(key: String, prefix: Bool, timeout: TimeInterval) async throws -> [EtcdWatchEvent] {
-        let (token, generation) = try lock.withLock { () -> (String?, UInt64) in
+        try await watch(key: key, prefix: prefix, timeout: timeout, isRetry: false)
+    }
+
+    private func watch(
+        key: String,
+        prefix: Bool,
+        timeout: TimeInterval,
+        isRetry: Bool
+    ) async throws -> [EtcdWatchEvent] {
+        let token = try lock.withLock { () -> String? in
             guard session != nil else { throw EtcdError.notConnected }
-            return (authToken, sessionGeneration)
+            return authToken
         }
 
-        let b64Key = Self.base64Encode(key)
-        var createReq = EtcdWatchCreateRequest(key: b64Key)
+        var createRequest = EtcdWatchCreateRequest(key: Self.base64Encode(key))
         if prefix {
-            createReq.rangeEnd = Self.base64Encode(Self.prefixRangeEnd(for: key))
+            createRequest.rangeEnd = Self.base64Encode(Self.prefixRangeEnd(for: key))
         }
-        let watchReq = EtcdWatchRequest(createRequest: createReq)
+        let window = Self.watchWindow(timeout)
+        let watchRequest = try buildRequest(
+            path: apiPath("watch"),
+            body: EtcdWatchRequest(createRequest: createRequest),
+            token: token,
+            timeout: window + Self.watchTransportGrace
+        )
 
-        let watchPath = apiPath("watch")
-        guard let url = URL(string: "\(baseUrl)/\(watchPath)") else {
-            throw EtcdError.serverError("Invalid URL: \(baseUrl)/\(watchPath)")
+        let outcome = try await streamWatch(request: watchRequest, timeout: window)
+
+        if let status = outcome.httpStatus, status >= 400 {
+            let fault = EtcdServerFault.decode(httpStatus: status, body: outcome.data)
+            let recovery = EtcdRequestRecovery.action(
+                for: fault,
+                hasCredentials: hasCredentials,
+                isRetry: isRetry
+            )
+            guard recovery == .reauthenticateAndRetry else { throw EtcdError.fault(fault) }
+            try await refreshToken(replacing: token)
+            return try await watch(key: key, prefix: prefix, timeout: timeout, isRetry: true)
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token {
-            request.setValue(token, forHTTPHeaderField: "Authorization")
-        }
-        request.httpBody = try JSONEncoder().encode(watchReq)
-        let watchRequest = request
+        return Self.parseWatchEvents(from: outcome.data)
+    }
 
-        return try await withThrowingTaskGroup(of: [EtcdWatchEvent].self) { group in
-            let collectedData = DataCollector()
+    private func streamWatch(
+        request: URLRequest,
+        timeout: TimeInterval
+    ) async throws -> (data: Data, httpStatus: Int?) {
+        try await withThrowingTaskGroup(of: (data: Data, httpStatus: Int?)?.self) { group in
+            let handle = TaskHandle()
+            let generation = try lock.withLock { () -> UInt64 in
+                guard session != nil else { throw EtcdError.notConnected }
+                return sessionGeneration
+            }
 
             group.addTask {
-                let data: Data = try await withCheckedThrowingContinuation { continuation in
-                    let result: (session: URLSession, task: URLSessionDataTask)? = self.lock.withLock {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(data: Data, httpStatus: Int?)?, Error>) in
+                    let task: URLSessionDataTask? = self.lock.withLock {
                         guard self.sessionGeneration == generation, let currentSession = self.session else {
                             return nil
                         }
-                        let dataTask = currentSession.dataTask(with: watchRequest) { data, _, error in
+                        return currentSession.dataTask(with: request) { data, response, error in
+                            self.releaseActiveQueryTask(handle.task)
+                            let status = (response as? HTTPURLResponse)?.statusCode
                             if let error {
-                                // URLError.cancelled is expected when we cancel after timeout
                                 if (error as? URLError)?.code == .cancelled {
-                                    continuation.resume(returning: data ?? Data())
+                                    continuation.resume(returning: (data ?? Data(), status))
                                 } else {
                                     continuation.resume(throwing: error)
                                 }
                                 return
                             }
-                            continuation.resume(returning: data ?? Data())
+                            continuation.resume(returning: (data ?? Data(), status))
                         }
-                        self.currentTask = dataTask
-                        return (currentSession, dataTask)
                     }
-                    guard let result else {
+                    guard let task else {
                         continuation.resume(throwing: EtcdError.notConnected)
                         return
                     }
-                    collectedData.setTask(result.task)
-                    result.task.resume()
+                    self.registerActiveQueryTask(task)
+                    handle.adopt(task)
+                    task.resume()
                 }
-                return Self.parseWatchEvents(from: data)
             }
 
             group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                collectedData.cancelTask()
-                return []
+                try await Task.sleep(nanoseconds: Self.nanoseconds(from: timeout))
+                handle.cancel()
+                return nil
             }
 
-            var allEvents: [EtcdWatchEvent] = []
-            for try await events in group {
-                allEvents.append(contentsOf: events)
+            defer { group.cancelAll() }
+            for try await outcome in group where outcome != nil {
+                return outcome ?? (Data(), nil)
             }
-            group.cancelAll()
-            return allEvents
+            return (Data(), nil)
         }
     }
 
@@ -674,50 +737,110 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     // MARK: - Cancellation
 
     func cancelCurrentRequest() {
-        lock.lock()
-        currentTask?.cancel()
-        currentTask = nil
-        lock.unlock()
+        for task in takeActiveQueryTasks() {
+            task.cancel()
+        }
     }
 
     // MARK: - Internal Transport
 
     private func post<Req: Encodable, Res: Decodable>(path: String, body: Req) async throws -> Res {
-        let data = try await performRequest(path: path, body: body)
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(Res.self, from: data)
-        } catch {
-            let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
-            Self.logger.error("Failed to decode response for \(path): \(bodyStr)")
-            throw EtcdError.serverError("Failed to decode response: \(error.localizedDescription)")
-        }
+        let data = try await send(path: path, body: body)
+        return try decode(data, from: path)
     }
 
     private func postVoid<Req: Encodable>(path: String, body: Req) async throws {
-        _ = try await performRequest(path: path, body: body)
+        _ = try await send(path: path, body: body)
     }
 
-    private func performRequest<Req: Encodable>(path: String, body: Req, allowReauth: Bool = true) async throws -> Data {
-        let (token, generation) = try lock.withLock { () -> (String?, UInt64) in
+    private func decode<Res: Decodable>(_ data: Data, from path: String) throws -> Res {
+        do {
+            return try JSONDecoder().decode(Res.self, from: data)
+        } catch {
+            let bodyText = String(data: data, encoding: .utf8) ?? "<unreadable>"
+            Self.logger.error("Failed to decode response for \(path): \(bodyText)")
+            throw EtcdError.serverError(
+                String(format: String(localized: "Failed to decode response: %@"), error.localizedDescription)
+            )
+        }
+    }
+
+    private func send<Req: Encodable>(
+        path: String,
+        body: Req,
+        authorized: Bool = true,
+        cancellable: Bool = true,
+        isRetry: Bool = false
+    ) async throws -> Data {
+        let token = try lock.withLock { () -> String? in
             guard session != nil else { throw EtcdError.notConnected }
-            return (authToken, sessionGeneration)
+            return authToken
         }
 
+        let request = try buildRequest(
+            path: path,
+            body: body,
+            token: authorized ? token : nil,
+            timeout: queryTimeout.requestTimeoutInterval
+        )
+        let (data, response) = try await perform(request: request, cancellable: cancellable)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw EtcdError.serverError(String(localized: "Invalid response type"))
+        }
+        guard httpResponse.statusCode >= 400 else { return data }
+
+        let fault = EtcdServerFault.decode(httpStatus: httpResponse.statusCode, body: data)
+        let recovery = EtcdRequestRecovery.action(
+            for: fault,
+            hasCredentials: authorized && hasCredentials,
+            isRetry: isRetry
+        )
+        guard recovery == .reauthenticateAndRetry else { throw EtcdError.fault(fault) }
+
+        try await refreshToken(replacing: token)
+        return try await send(
+            path: path,
+            body: body,
+            authorized: authorized,
+            cancellable: cancellable,
+            isRetry: true
+        )
+    }
+
+    private func buildRequest<Req: Encodable>(
+        path: String,
+        body: Req,
+        token: String?,
+        timeout: TimeInterval
+    ) throws -> URLRequest {
         guard let url = URL(string: "\(baseUrl)/\(path)") else {
-            throw EtcdError.serverError("Invalid URL: \(baseUrl)/\(path)")
+            throw EtcdError.serverError(
+                String(format: String(localized: "Invalid URL: %@"), "\(baseUrl)/\(path)")
+            )
         }
-
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = queryTimeout.requestTimeoutInterval
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             request.setValue(token, forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try JSONEncoder().encode(body)
+        return request
+    }
 
-        let (data, response) = try await withTaskCancellationHandler {
+    private func perform(
+        request: URLRequest,
+        cancellable: Bool
+    ) async throws -> (Data, URLResponse) {
+        let generation = try lock.withLock { () -> UInt64 in
+            guard session != nil else { throw EtcdError.notConnected }
+            return sessionGeneration
+        }
+        let handle = TaskHandle()
+
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
                 self.lock.lock()
                 guard self.sessionGeneration == generation, let currentSession = self.session else {
@@ -726,128 +849,97 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                     return
                 }
                 let task = currentSession.dataTask(with: request) { data, response, error in
+                    if cancellable {
+                        self.releaseActiveQueryTask(handle.task)
+                    }
                     if let error {
                         continuation.resume(throwing: error)
                         return
                     }
                     guard let data, let response else {
-                        continuation.resume(throwing: EtcdError.serverError("Empty response from server"))
+                        continuation.resume(
+                            throwing: EtcdError.serverError(String(localized: "Empty response from server"))
+                        )
                         return
                     }
                     continuation.resume(returning: (data, response))
                 }
-                self.currentTask = task
+                if cancellable {
+                    self.activeQueryTasks[ObjectIdentifier(task)] = task
+                }
                 self.lock.unlock()
 
+                handle.adopt(task)
                 task.resume()
             }
         } onCancel: {
-            self.lock.lock()
-            self.currentTask?.cancel()
-            self.currentTask = nil
-            self.lock.unlock()
+            handle.cancel()
         }
+    }
 
-        lock.withLock { currentTask = nil }
+    private func registerActiveQueryTask(_ task: URLSessionDataTask) {
+        lock.withLock { activeQueryTasks[ObjectIdentifier(task)] = task }
+    }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw EtcdError.serverError("Invalid response type")
+    private func releaseActiveQueryTask(_ task: URLSessionDataTask?) {
+        guard let task else { return }
+        lock.withLock { activeQueryTasks.removeValue(forKey: ObjectIdentifier(task)) }
+    }
+
+    private func takeActiveQueryTasks() -> [URLSessionDataTask] {
+        lock.withLock { () -> [URLSessionDataTask] in
+            let pending = Array(activeQueryTasks.values)
+            activeQueryTasks.removeAll()
+            return pending
         }
-
-        if httpResponse.statusCode == 401 {
-            // Attempt token refresh if not already authenticating and credentials are available
-            let alreadyAuthenticating = lock.withLock { _isAuthenticating }
-
-            if allowReauth, !alreadyAuthenticating, !config.username.isEmpty {
-                try await authenticate()
-                return try await performRequest(path: path, body: body, allowReauth: false)
-            }
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unauthorized"
-            throw EtcdError.authFailed(errorBody)
-        }
-
-        if httpResponse.statusCode >= 400 {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            if let errorResp = try? JSONDecoder().decode(EtcdErrorResponse.self, from: data),
-               let message = errorResp.error ?? errorResp.message {
-                throw EtcdError.serverError(message)
-            }
-            throw EtcdError.serverError(errorBody.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        return data
     }
 
     // MARK: - Authentication
 
+    private func refreshToken(replacing staleToken: String?) async throws {
+        enum Pending {
+            case alreadyRefreshed
+            case task(Task<Void, Error>)
+        }
+
+        let pending: Pending = try lock.withLock { () -> Pending in
+            guard session != nil else { throw EtcdError.notConnected }
+            if let authToken, authToken != staleToken { return .alreadyRefreshed }
+            if let authTask { return .task(authTask) }
+            let task = Task {
+                defer { self.lock.withLock { self.authTask = nil } }
+                try await self.authenticate()
+            }
+            authTask = task
+            return .task(task)
+        }
+
+        guard case .task(let task) = pending else { return }
+        try await task.value
+    }
+
     private func authenticate() async throws {
-        let startedAuthenticating = try lock.withLock { () -> Bool in
-            guard session != nil else { throw EtcdError.notConnected }
-            guard !_isAuthenticating else { return false }
-            _isAuthenticating = true
-            return true
-        }
-        guard startedAuthenticating else { return }
-
-        defer {
-            lock.withLock { _isAuthenticating = false }
-        }
-
-        let authReq = EtcdAuthRequest(name: config.username, password: config.password)
-        let authPath = apiPath("auth/authenticate")
-        guard let url = URL(string: "\(baseUrl)/\(authPath)") else {
-            throw EtcdError.serverError("Invalid auth URL")
+        let credentials = EtcdAuthRequest(name: config.username, password: config.password)
+        let data: Data
+        do {
+            data = try await send(
+                path: apiPath("auth/authenticate"),
+                body: credentials,
+                authorized: false,
+                cancellable: false
+            )
+        } catch let EtcdError.fault(fault) where fault.kind == .authNotEnabled {
+            lock.withLock { authToken = nil }
+            Self.logger.info("etcd reports authentication is not enabled; continuing without a token")
+            return
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(authReq)
-
-        let generation = try lock.withLock { () -> UInt64 in
-            guard session != nil else { throw EtcdError.notConnected }
-            return sessionGeneration
-        }
-
-        let (data, response) = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-            self.lock.lock()
-            guard self.sessionGeneration == generation, let currentSession = self.session else {
-                self.lock.unlock()
-                continuation.resume(throwing: EtcdError.notConnected)
-                return
-            }
-            let task = currentSession.dataTask(with: request) { data, response, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let data, let response else {
-                    continuation.resume(throwing: EtcdError.authFailed("Empty response"))
-                    return
-                }
-                continuation.resume(returning: (data, response))
-            }
-            self.lock.unlock()
-            task.resume()
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw EtcdError.authFailed("Invalid response type")
-        }
-
-        if httpResponse.statusCode >= 400 {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Authentication failed"
-            throw EtcdError.authFailed(errorBody)
-        }
-
-        let authResp = try JSONDecoder().decode(EtcdAuthResponse.self, from: data)
-        guard let token = authResp.token, !token.isEmpty else {
-            throw EtcdError.authFailed("No token in response")
+        let response: EtcdAuthResponse = try decode(data, from: "auth/authenticate")
+        guard let token = response.token, !token.isEmpty else {
+            throw EtcdError.authFailed(String(localized: "No token in response"))
         }
 
         lock.withLock { authToken = token }
-
         Self.logger.debug("Authenticated with etcd successfully")
     }
 
@@ -908,23 +1000,46 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     private struct EmptyBody: Encodable {}
 
-    // MARK: - Data Collector for Watch
+    // MARK: - Request Handle
 
-    private final class DataCollector: @unchecked Sendable {
+    private static let healthProbeKey = "health"
+    private static let watchTransportGrace = TimeInterval(HttpQueryTimeout.defaultGraceSeconds)
+    private static let maximumWatchWindow =
+        TimeInterval(HttpQueryTimeout.resourceCeilingSeconds) - watchTransportGrace
+
+    private static func watchWindow(_ seconds: TimeInterval) -> TimeInterval {
+        guard seconds.isFinite else { return maximumWatchWindow }
+        return min(max(seconds, 0), maximumWatchWindow)
+    }
+
+    private static func nanoseconds(from seconds: TimeInterval) -> UInt64 {
+        UInt64(watchWindow(seconds) * 1_000_000_000)
+    }
+
+    private final class TaskHandle: @unchecked Sendable {
         private let lock = NSLock()
-        private var _task: URLSessionDataTask?
+        private var storedTask: URLSessionDataTask?
+        private var cancelRequested = false
 
-        func setTask(_ task: URLSessionDataTask) {
-            lock.lock()
-            _task = task
-            lock.unlock()
+        var task: URLSessionDataTask? {
+            lock.withLock { storedTask }
         }
 
-        func cancelTask() {
-            lock.lock()
-            let task = _task
-            lock.unlock()
-            task?.cancel()
+        func adopt(_ task: URLSessionDataTask) {
+            let alreadyCancelled = lock.withLock { () -> Bool in
+                storedTask = task
+                return cancelRequested
+            }
+            guard alreadyCancelled else { return }
+            task.cancel()
+        }
+
+        func cancel() {
+            let pending = lock.withLock { () -> URLSessionDataTask? in
+                cancelRequested = true
+                return storedTask
+            }
+            pending?.cancel()
         }
     }
 

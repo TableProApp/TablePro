@@ -2,25 +2,42 @@ import CLibSSH2
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 
-enum SSHTunnelFactory {
+nonisolated enum SSHTunnelFactory {
     private static let initialized: Bool = {
         libssh2_init(0)
         return true
     }()
 
-    static func create(
+    /// Builds an authenticated, forwarding tunnel, or releases everything it built.
+    ///
+    /// The `defer` guards the whole function body rather than a `do`/`catch` region, so a step
+    /// appended later cannot escape it: eight throwing steps ran unguarded before, and five failed
+    /// handshakes leaked ten descriptors, each an established TCP socket to the SSH server. The
+    /// flag is the repo's own hand-over idiom, the `adopted`/`defer` pair both PostgreSQL connect
+    /// paths use.
+    ///
+    /// `Stages` is a protocol so the guarantee is testable with no SSH server in reach: a spy that
+    /// throws at any step asserts exactly one `discard()`.
+    static func create<Stages: SSHTunnelStages>(
         config: SSHConfiguration,
         remoteHost: String,
         remotePort: Int,
         credentials: SSHTunnelCredentials,
-        prompter: (any ConnectionPrompter)?
-    ) async throws -> SSHTunnel {
+        prompter: (any ConnectionPrompter)?,
+        hostKeyStore: HostKeyStore = .shared,
+        makeStages: @Sendable () -> Stages = { LibSSH2TunnelStages() }
+    ) async throws -> Stages.Tunnel {
         _ = initialized
+
+        guard config.jumpHosts.isEmpty else { throw SSHTunnelError.jumpHostsUnsupported }
 
         try await LocalNetworkPermission.shared.ensureAccess(for: config.host)
 
-        let tunnel = SSHTunnel()
+        let stages = makeStages()
+        var handedOver = false
+        defer { if !handedOver { stages.discard() } }
 
         try await tunnel.connect(host: config.host, port: config.resolvedPort)
         try await tunnel.handshake()
@@ -39,23 +56,37 @@ enum SSHTunnelFactory {
             throw error
         }
 
+        try await authenticate(stages, config: config, credentials: credentials)
+
+        let tunnel = try await stages.beginForwarding(
+            destination: .tcp(host: remoteHost, port: remotePort)
+        )
+        handedOver = true
+        return tunnel
+    }
+
+    private static func authenticate<Stages: SSHTunnelStages>(
+        _ stages: Stages,
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials
+    ) async throws {
         switch config.authMethod {
         case .password:
             guard let password = credentials.password else {
                 throw SSHTunnelError.authenticationFailed("No SSH password provided")
             }
-            try await tunnel.authenticatePassword(username: config.username, password: password)
+            try await stages.authenticatePassword(username: config.username, password: password)
 
         case .privateKey:
             switch credentials.privateKeySource(keyPath: config.privateKeyPath) {
             case .inMemory(let keyContent):
-                try await tunnel.authenticatePublicKeyFromMemory(
+                try await stages.authenticatePublicKeyFromMemory(
                     username: config.username,
                     keyContent: keyContent,
                     passphrase: credentials.keyPassphrase
                 )
             case .file(let keyPath):
-                try await tunnel.authenticatePublicKey(
+                try await stages.authenticatePublicKey(
                     username: config.username,
                     keyPath: keyPath,
                     passphrase: credentials.keyPassphrase
@@ -65,17 +96,12 @@ enum SSHTunnelFactory {
             }
 
         case .none:
-            try await tunnel.authenticateNone(username: config.username)
+            try await stages.authenticateNone(username: config.username)
 
         default:
             throw SSHTunnelError.authenticationFailed(
                 "Auth method \(config.authMethod.rawValue) not supported on iOS"
             )
         }
-
-        try await tunnel.startForwarding(remoteHost: remoteHost, remotePort: remotePort)
-        await tunnel.startKeepAlive()
-
-        return tunnel
     }
 }
