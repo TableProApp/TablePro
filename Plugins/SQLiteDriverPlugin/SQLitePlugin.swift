@@ -472,11 +472,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !pragmaRowsByTable.isEmpty else { return [:] }
 
         let createStatements = try await createTableStatements()
+        /// One query for every parent the whole database references, rather than one per table.
+        /// Omitting it made a shorthand `REFERENCES parent` resolve to the child's own column name.
+        let primaryKeysByTable = try await primaryKeys(
+            ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRowsByTable)
+        )
         return pragmaRowsByTable.reduce(into: [:]) { foreignKeys, entry in
             foreignKeys[entry.key] = SQLiteForeignKeyGrouping.infos(
                 table: entry.key,
                 pragmaRows: entry.value,
-                createTableSQL: createStatements[entry.key]
+                createTableSQL: createStatements[entry.key],
+                primaryKeysByTable: primaryKeysByTable
             )
         }
     }
@@ -531,7 +537,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             pragmaRows: pragmaRows,
             createTableSQL: createTableSQL,
             primaryKeysByTable: try await primaryKeys(
-                ofTablesReferencedIn: pragmaRows.compactMap { $0[safe: 2]?.asText }
+                ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRows)
             )
         )
     }
