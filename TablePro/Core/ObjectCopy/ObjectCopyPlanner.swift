@@ -17,6 +17,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 internal struct ObjectCopyPlanner {
@@ -494,7 +495,9 @@ internal struct ObjectCopyPlanner {
                     )) ?? []
                     for sequence in found
                     where claimedSequences.insert(sequence.name.lowercased()).inserted {
-                        sequences += SQLStatementScanner.allStatements(in: sequence.ddl)
+                        sequences += SQLStatementScanner.allStatements(
+                            in: sequence.ddl, grammar: driver.connection.type.lexicalGrammar
+                        )
                     }
                 }
                 parts[input.id] = SourceParts(

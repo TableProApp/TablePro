@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Connecting, switching container and running one statement, for a caller that is not a person
 /// clicking in the app.
@@ -175,14 +176,11 @@ internal actor DatabaseAccessBridge {
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> StatementOutcome {
-        guard !Self.statementText(query, dialect: .generic).isEmpty else {
+        guard !Self.statementText(query, grammar: .ansi).isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         let databaseType = try await ensureConnected(scope.connectionId)
-        let normalizedQuery = Self.statementText(
-            query,
-            dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
-        )
+        let normalizedQuery = Self.statementText(query, grammar: databaseType.lexicalGrammar)
         guard !normalizedQuery.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
@@ -305,11 +303,10 @@ internal actor DatabaseAccessBridge {
     /// The text an external client's statement reaches the driver as.
     ///
     /// Trailing separators come off and a terminator that belongs to the statement stays, as the editor decides it:
-    /// a PL/SQL unit sent without the `;` after its `END` fails, or is stored INVALID, on Oracle. The emptiness of a
-    /// statement does not depend on the dialect for anything but an Oracle `/` line, so a caller may check it with
-    /// `.generic` before it knows the engine and again once it does.
-    internal static func statementText(_ query: String, dialect: SqlDialect) -> String {
-        SQLStatementScanner.executableText(of: query, dialect: dialect)
+    /// a PL/SQL unit sent without the `;` after its `END` fails, or is stored INVALID, on Oracle. A caller may check
+    /// emptiness with `.ansi` before it knows the engine and again once it does.
+    internal static func statementText(_ query: String, grammar: SQLLexicalGrammar) -> String {
+        SQLStatementScanner.executableText(of: query, grammar: grammar)
     }
 }
 

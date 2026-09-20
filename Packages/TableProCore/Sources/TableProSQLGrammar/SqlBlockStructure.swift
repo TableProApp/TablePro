@@ -1,10 +1,4 @@
-//
-//  SqlBlockStructure.swift
-//  TablePro
-//
-
 import Foundation
-import TableProPluginKit
 
 /// The word level rules for the blocks a semicolon does not end.
 ///
@@ -14,12 +8,12 @@ import TableProPluginKit
 /// to run a fragment. ``SQLStatementScanner`` and ``SQLFoldScanner`` both read the vocabulary from here for that
 /// reason, including the `END IF` disambiguation that is easy to get subtly different twice.
 ///
-/// What they do not share is how much they will let a block swallow: see `allowsBlock` on ``effect(of:endingAt:in:length:allowsBlock:)``.
+/// What they do not share is how much they will let a block swallow: see `allowsBlock` on ``effect(of:endingAt:in:length:allowsBlock:grammar:)``.
 ///
 /// This sits beside ``SqlLexer`` rather than inside it because these rules are about words, not characters.
-enum SqlBlockStructure {
+public enum SqlBlockStructure {
     /// What a keyword does to the block nesting around it.
-    enum Effect: Equatable {
+    public enum Effect: Equatable, Sendable {
         case opensBlock
         /// Closes a block and swallows the keyword that follows up to `resumeAt`, which is how `END CASE` reads: the
         /// `CASE` names what is closing rather than opening another.
@@ -28,7 +22,7 @@ enum SqlBlockStructure {
     }
 
     /// What an `END` means, given the word after it.
-    enum EndFollower: Equatable {
+    public enum EndFollower: Equatable, Sendable {
         /// `END IF`, `END LOOP` and their kin close a construct that never opened a block, and the word is theirs.
         case closesControlFlow
         /// `END CASE` closes the `CASE` that opened a block, and the word is theirs.
@@ -65,16 +59,16 @@ enum SqlBlockStructure {
     private static let routineDefinitionOpeners: Set<String> = ["CREATE", "ALTER", "REPLACE", "DECLARE"]
 
     /// Whether a statement opening with `keyword` can carry a `BEGIN ... END` body.
-    static func opensRoutineDefinition(_ keyword: String) -> Bool {
+    public static func opensRoutineDefinition(_ keyword: String) -> Bool {
         routineDefinitionOpeners.contains(keyword)
     }
 
-    static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
+    public static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
         guard let keyword else { return true }
         return transactionFollowers.contains(keyword)
     }
 
-    static func endingFollowedBy(_ keyword: String) -> EndFollower {
+    public static func endingFollowedBy(_ keyword: String) -> EndFollower {
         if keyword == "CASE" { return .closesCaseStatement }
         return controlFlowFollowers.contains(keyword) ? .closesControlFlow : .closesBlock
     }
@@ -83,41 +77,43 @@ enum SqlBlockStructure {
     ///
     /// Returns an empty string when `offset` does not start an identifier, along with the next offset, so a caller can
     /// advance one character and carry on without a second bounds check.
-    static func readKeyword(_ text: NSString, at offset: Int, length: Int) -> (text: String, end: Int) {
-        readKeyword(text, at: offset, length: length, dialect: .generic)
+    public static func readKeyword(_ text: NSString, at offset: Int, length: Int) -> (text: String, end: Int) {
+        readKeyword(text, at: offset, length: length, grammar: [])
     }
 
-    /// The keyword at `offset` as `dialect` spells identifiers.
+    /// The keyword at `offset` as `grammar` spells identifiers.
     ///
     /// Oracle continues an identifier with `$` and `#`, so `V$SESSION` is one word, and starts a conditional
     /// compilation directive with `$`, so `$END` is one word that ``PLSQLUnitTracker`` can tell apart from `END`.
-    static func readKeyword(
+    public static func readKeyword(
         _ text: NSString,
         at offset: Int,
         length: Int,
-        dialect: SqlDialect
+        grammar: SQLLexicalGrammar
     ) -> (text: String, end: Int) {
-        guard offset < length, startsWord(text, at: offset, length: length, dialect: dialect) else {
+        guard offset < length, startsWord(text, at: offset, length: length, grammar: grammar) else {
             return ("", offset + 1)
         }
         var cursor = offset + 1
-        while cursor < length, continuesWord(text.character(at: cursor), dialect: dialect) {
+        while cursor < length, continuesWord(text.character(at: cursor), grammar: grammar) {
             cursor += 1
         }
         let word = text.substring(with: NSRange(location: offset, length: cursor - offset))
         return (word.uppercased(), cursor)
     }
 
-    static func startsWord(_ text: NSString, at offset: Int, length: Int, dialect: SqlDialect) -> Bool {
+    public static func startsWord(_ text: NSString, at offset: Int, length: Int, grammar: SQLLexicalGrammar) -> Bool {
         let character = text.character(at: offset)
         if SqlDollarQuote.isIdentifierStart(character) { return true }
-        guard dialect == .oracle, character == SqlDollarQuote.dollar, offset + 1 < length else { return false }
+        guard grammar.contains(.dollarAndHashInIdentifiers), character == SqlDollarQuote.dollar, offset + 1 < length
+        else { return false }
         return SqlDollarQuote.isIdentifierStart(text.character(at: offset + 1))
     }
 
-    static func continuesWord(_ character: UInt16, dialect: SqlDialect) -> Bool {
+    public static func continuesWord(_ character: UInt16, grammar: SQLLexicalGrammar) -> Bool {
         if SqlDollarQuote.isIdentifierPart(character) { return true }
-        return dialect == .oracle && (character == SqlDollarQuote.dollar || character == SqlLexer.hash)
+        return grammar.contains(.dollarAndHashInIdentifiers)
+            && (character == SqlDollarQuote.dollar || character == SqlLexer.hash)
     }
 
     /// What `keyword`, which ends at `wordEnd`, does to the block nesting.
@@ -125,22 +121,23 @@ enum SqlBlockStructure {
     /// - Parameter allowsBlock: whether a block may open here at all. Folding passes `true`, because an anonymous
     ///   `BEGIN ... END` is foldable and folding executes nothing. Splitting passes ``opensRoutineDefinition(_:)`` for
     ///   the statement's first keyword, for the reason given on `routineDefinitionOpeners`.
-    static func effect(
+    public static func effect(
         of keyword: String,
         endingAt wordEnd: Int,
         in text: NSString,
         length: Int,
-        allowsBlock: Bool
+        allowsBlock: Bool,
+        grammar: SQLLexicalGrammar
     ) -> Effect {
         guard allowsBlock else { return .none }
 
         switch keyword {
         case "BEGIN":
-            return startsTransaction(after: wordEnd, in: text, length: length) ? .none : .opensBlock
+            return startsTransaction(after: wordEnd, in: text, length: length, grammar: grammar) ? .none : .opensBlock
         case "CASE":
             return .opensBlock
         case "END":
-            return endEffect(after: wordEnd, in: text, length: length)
+            return endEffect(after: wordEnd, in: text, length: length, grammar: grammar)
         default:
             return .none
         }
@@ -148,15 +145,25 @@ enum SqlBlockStructure {
 
     // MARK: - Private
 
-    private static func startsTransaction(after offset: Int, in text: NSString, length: Int) -> Bool {
-        let cursor = skipTrivia(from: offset, in: text, length: length)
+    private static func startsTransaction(
+        after offset: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> Bool {
+        let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return true }
         guard text.character(at: cursor) != SqlLexer.semicolon else { return true }
         return beginStartsTransaction(followedBy: readKeyword(text, at: cursor, length: length).text)
     }
 
-    private static func endEffect(after offset: Int, in text: NSString, length: Int) -> Effect {
-        let cursor = skipTrivia(from: offset, in: text, length: length)
+    private static func endEffect(
+        after offset: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> Effect {
+        let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return .closesBlock(resumeAt: offset) }
         let follower = readKeyword(text, at: cursor, length: length)
         switch endingFollowedBy(follower.text) {
@@ -169,22 +176,17 @@ enum SqlBlockStructure {
         }
     }
 
-    private static func skipTrivia(from offset: Int, in text: NSString, length: Int) -> Int {
+    private static func skipTrivia(from offset: Int, in text: NSString, length: Int, grammar: SQLLexicalGrammar) -> Int {
         var cursor = offset
         while cursor < length {
             if SqlLexer.isWhitespace(text.character(at: cursor)) {
                 cursor += 1
                 continue
             }
-            if SqlLexer.startsLineComment(text, at: cursor, length: length) {
-                cursor = SqlLexer.endOfLine(text, from: cursor, length: length)
-                continue
+            guard let span = SQLNonCodeSpan.span(at: cursor, in: text, grammar: grammar), span.kind.isComment else {
+                break
             }
-            if SqlLexer.startsBlockComment(text, at: cursor, length: length) {
-                cursor = SqlLexer.skipBlockComment(text, from: cursor, length: length).next
-                continue
-            }
-            break
+            cursor = max(span.end, cursor + 1)
         }
         return cursor
     }

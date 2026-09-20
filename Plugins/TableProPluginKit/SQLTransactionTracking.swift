@@ -49,9 +49,19 @@ public enum SQLTransactionTracking {
         "ABORT", "ABORT TRANSACTION",
     ]
 
+    /// The effect of `sql` split the way the engine lexes it, so a `COMMIT` inside a dollar-quoted
+    /// body is not read as one.
+    public static func effect(of sql: String, lexicalFeatures: SQLLexicalFeatures) -> Effect {
+        effect(ofStatements: SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures))
+    }
+
     public static func effect(of sql: String) -> Effect {
+        effect(ofStatements: SQLStatementSplitting.statements(in: sql))
+    }
+
+    private static func effect(ofStatements statements: [String]) -> Effect {
         var effect = Effect.unchanged
-        for statement in SQLStatementSplitting.statements(in: sql) {
+        for statement in statements {
             if closes(statement) {
                 effect = .closes
             } else if opens(statement) {

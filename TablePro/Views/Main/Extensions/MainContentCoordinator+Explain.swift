@@ -10,6 +10,7 @@
 import Foundation
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
     func runExplain(variant: ExplainVariant? = nil) {
@@ -79,14 +80,14 @@ extension MainContentCoordinator {
                 in: fullQuery,
                 cursorPosition: cursorPositions.first?.range.location ?? 0,
                 model: statementModel,
-                dialect: sqlDialect
+                grammar: lexicalGrammar
             )
             sql = statement.sql
             sourceOffset = statement.offset
         }
 
         return QueryStatementScanner
-            .executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
+            .executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
             .first?
             .offset(by: sourceOffset)
     }

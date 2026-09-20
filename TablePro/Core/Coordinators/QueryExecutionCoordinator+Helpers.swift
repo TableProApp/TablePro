@@ -7,6 +7,7 @@ import AppKit
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let helpersLogger = Logger(subsystem: "com.TablePro", category: "QueryExecutionCoordinator")
 
@@ -22,7 +23,7 @@ extension QueryExecutionCoordinator {
         guard !SQLLimitDetector.hasExplicitRowLimit(
             sql,
             autoLimitStyle: PluginManager.shared.autoLimitStyle(for: parent.connection.type),
-            lexicalDialect: parent.sqlDialect
+            grammar: parent.lexicalGrammar
         ) else {
             return nil
         }

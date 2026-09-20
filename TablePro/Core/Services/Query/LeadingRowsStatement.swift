@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// A read sent to an engine that returns only its leading rows, with the LIMIT stated.
 ///
@@ -21,10 +22,10 @@ struct LeadingRowsStatement: Equatable {
         rowCap: Int?,
         maximumRows: Int,
         autoLimitStyle: AutoLimitStyle,
-        lexicalDialect: SqlDialect
+        grammar: SQLLexicalGrammar
     ) -> LeadingRowsStatement {
         let unchanged = LeadingRowsStatement(sql: sql, rowCap: rowCap)
-        guard !SQLLimitDetector.hasExplicitRowLimit(sql, autoLimitStyle: autoLimitStyle, lexicalDialect: lexicalDialect)
+        guard !SQLLimitDetector.hasExplicitRowLimit(sql, autoLimitStyle: autoLimitStyle, grammar: grammar)
         else { return unchanged }
 
         let cap = rowCap.map { min($0, maximumRows) }
@@ -64,7 +65,7 @@ extension LeadingRowsStatement {
             rowCap: rowCap,
             maximumRows: maximumRows,
             autoLimitStyle: PluginManager.shared.autoLimitStyle(for: databaseType),
-            lexicalDialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
+            grammar: databaseType.lexicalGrammar
         )
     }
 }

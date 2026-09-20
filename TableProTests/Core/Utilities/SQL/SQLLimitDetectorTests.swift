@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
@@ -14,9 +15,9 @@ struct SQLLimitDetectorTests {
     private func hasLimit(
         _ sql: String,
         style: AutoLimitStyle = .limit,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar = TestGrammar.standard
     ) -> Bool {
-        SQLLimitDetector.hasExplicitRowLimit(sql, autoLimitStyle: style, lexicalDialect: dialect)
+        SQLLimitDetector.hasExplicitRowLimit(sql, autoLimitStyle: style, grammar: grammar)
     }
 
     @Test("A bare SELECT has no explicit row limit")
@@ -72,7 +73,7 @@ struct SQLLimitDetectorTests {
     func ignoresComments() {
         #expect(!hasLimit("SELECT * FROM t -- fetch it all"))
         #expect(!hasLimit("SELECT * FROM t /* LIMIT 9 */"))
-        #expect(!hasLimit("SELECT * FROM t # see LIMIT docs", dialect: .mysql))
+        #expect(!hasLimit("SELECT * FROM t # see LIMIT docs", grammar: TestGrammar.mysql))
     }
 
     @Test("Ignores LIMIT-like text inside string literals")
@@ -82,13 +83,13 @@ struct SQLLimitDetectorTests {
 
     @Test("Ignores LIMIT inside dollar-quoted bodies for PostgreSQL")
     func ignoresDollarQuotedBodies() {
-        #expect(!hasLimit("SELECT $tag$LIMIT 5$tag$ FROM t", dialect: .postgres))
+        #expect(!hasLimit("SELECT $tag$LIMIT 5$tag$ FROM t", grammar: TestGrammar.postgres))
     }
 
     @Test("Does not mistake identifiers containing limit for a LIMIT clause")
     func identifiersContainingLimit() {
         #expect(!hasLimit("SELECT limit_used FROM quotas"))
-        #expect(!hasLimit("SELECT `limit` FROM quotas"))
+        #expect(!hasLimit("SELECT `limit` FROM quotas", grammar: TestGrammar.mysql))
     }
 
     @Test("Detects a LIMIT after a trailing semicolon is stripped")
@@ -100,7 +101,7 @@ struct SQLLimitDetectorTests {
     @Test("firstRowLimitClauseOffset points at the top-level LIMIT, OFFSET or FETCH")
     func clauseOffsetFindsTopLevelClause() throws {
         let sql = "SELECT * FROM orders LIMIT 100"
-        let offset = try #require(SQLLimitDetector.firstRowLimitClauseOffset(sql, lexicalDialect: .postgres))
+        let offset = try #require(SQLLimitDetector.firstRowLimitClauseOffset(sql, grammar: TestGrammar.postgres))
         #expect(offset == 21)
         let clause = (sql as NSString).substring(from: offset)
         #expect(clause == "LIMIT 100")
@@ -109,7 +110,7 @@ struct SQLLimitDetectorTests {
     @Test("firstRowLimitClauseOffset finds a bare OFFSET with no LIMIT")
     func clauseOffsetFindsBareOffset() {
         let offset = SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT * FROM orders OFFSET 20", lexicalDialect: .postgres
+            "SELECT * FROM orders OFFSET 20", grammar: TestGrammar.postgres
         )
         #expect(offset == 21)
     }
@@ -117,50 +118,50 @@ struct SQLLimitDetectorTests {
     @Test("firstRowLimitClauseOffset finds an ANSI FETCH clause")
     func clauseOffsetFindsFetch() {
         let sql = "SELECT * FROM orders OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY"
-        let offset = SQLLimitDetector.firstRowLimitClauseOffset(sql, lexicalDialect: .postgres)
+        let offset = SQLLimitDetector.firstRowLimitClauseOffset(sql, grammar: TestGrammar.postgres)
         #expect(offset == 21)
     }
 
     @Test("firstRowLimitClauseOffset ignores a LIMIT inside a subquery or a string")
     func clauseOffsetIgnoresNested() {
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT * FROM (SELECT * FROM t LIMIT 5) s", lexicalDialect: .postgres
+            "SELECT * FROM (SELECT * FROM t LIMIT 5) s", grammar: TestGrammar.postgres
         ) == nil)
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT * FROM t WHERE note = 'no LIMIT here'", lexicalDialect: .postgres
+            "SELECT * FROM t WHERE note = 'no LIMIT here'", grammar: TestGrammar.postgres
         ) == nil)
     }
 
     @Test("firstRowLimitClauseOffset ignores TOP, which is not a trailing clause")
     func clauseOffsetIgnoresTop() {
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT TOP 10 * FROM t", lexicalDialect: .generic
+            "SELECT TOP 10 * FROM t", grammar: TestGrammar.standard
         ) == nil)
     }
 
     @Test("firstRowLimitClauseOffset ignores OFFSET and FETCH used as column names")
     func clauseOffsetIgnoresIdentifiers() {
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT offset, name FROM events", lexicalDialect: .mysql
+            "SELECT offset, name FROM events", grammar: TestGrammar.mysql
         ) == nil)
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT fetch FROM t", lexicalDialect: .mysql
+            "SELECT fetch FROM t", grammar: TestGrammar.mysql
         ) == nil)
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT offset FROM t ORDER BY offset", lexicalDialect: .mysql
+            "SELECT offset FROM t ORDER BY offset", grammar: TestGrammar.mysql
         ) == nil)
     }
 
     @Test("firstRowLimitClauseOffset accepts a placeholder row count")
     func clauseOffsetAcceptsPlaceholders() {
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT * FROM t LIMIT ?", lexicalDialect: .mysql
+            "SELECT * FROM t LIMIT ?", grammar: TestGrammar.mysql
         ) != nil)
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT * FROM t LIMIT $1", lexicalDialect: .postgres
+            "SELECT * FROM t LIMIT $1", grammar: TestGrammar.postgres
         ) != nil)
         #expect(SQLLimitDetector.firstRowLimitClauseOffset(
-            "SELECT * FROM t LIMIT ALL", lexicalDialect: .postgres
+            "SELECT * FROM t LIMIT ALL", grammar: TestGrammar.postgres
         ) != nil)
     }
 }

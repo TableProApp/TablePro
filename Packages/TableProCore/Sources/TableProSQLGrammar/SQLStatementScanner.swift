@@ -1,20 +1,14 @@
-//
-//  SQLStatementScanner.swift
-//  TablePro
-//
-
 import Foundation
-import TableProPluginKit
 
-enum SQLStatementScanner {
-    struct LocatedStatement {
-        let sql: String
-        let offset: Int
-        let hasContent: Bool
-        let terminator: SQLStatementTerminator
-        let acceptsBindParameters: Bool
+public enum SQLStatementScanner {
+    public struct LocatedStatement: Sendable {
+        public let sql: String
+        public let offset: Int
+        public let hasContent: Bool
+        public let terminator: SQLStatementTerminator
+        public let acceptsBindParameters: Bool
 
-        init(
+        public init(
             sql: String,
             offset: Int,
             hasContent: Bool = true,
@@ -29,7 +23,7 @@ enum SQLStatementScanner {
         }
 
         /// The statement's whole span in the document, in UTF-16 units.
-        var range: NSRange {
+        public var range: NSRange {
             NSRange(location: offset, length: (sql as NSString).length)
         }
 
@@ -38,7 +32,7 @@ enum SQLStatementScanner {
         /// `offset` is the index just past the previous semicolon, so in a script written one statement per line it
         /// lands on the newline that ended the previous line. A decoration or a gutter anchor placed from ``range``
         /// therefore starts a line early, and uses this instead.
-        var contentRange: NSRange {
+        public var contentRange: NSRange {
             let content = StatementBlank.contentRange(of: sql)
             return NSRange(location: offset + content.location, length: content.length)
         }
@@ -53,21 +47,21 @@ enum SQLStatementScanner {
     /// The range is relative to the text the scan was given. A run started from a selection or from a single
     /// statement scans a fragment, so those callers shift the range onto the tab's whole query with ``offset(by:)``
     /// before it travels any further. Everything downstream may then assume tab coordinates.
-    struct ExecutableStatement {
-        let sql: String
-        let range: NSRange
+    public struct ExecutableStatement: Sendable {
+        public let sql: String
+        public let range: NSRange
 
         /// False for a definition, whose `:name` is never a bind parameter; see
         /// ``SQLStatementBoundaryTracking/acceptsBindParameters``.
-        let acceptsBindParameters: Bool
+        public let acceptsBindParameters: Bool
 
-        init(sql: String, range: NSRange, acceptsBindParameters: Bool = true) {
+        public init(sql: String, range: NSRange, acceptsBindParameters: Bool = true) {
             self.sql = sql
             self.range = range
             self.acceptsBindParameters = acceptsBindParameters
         }
 
-        func offset(by delta: Int) -> ExecutableStatement {
+        public func offset(by delta: Int) -> ExecutableStatement {
             guard delta != 0 else { return self }
             return ExecutableStatement(
                 sql: sql,
@@ -79,12 +73,12 @@ enum SQLStatementScanner {
 
     /// Every statement in the document, with its span, in document order.
     ///
-    /// Unlike ``allStatements(in:dialect:)`` this keeps the empty and comment-only segments, flagged by
+    /// Unlike ``allStatements(in:grammar:)`` this keeps the empty and comment-only segments, flagged by
     /// ``LocatedStatement/hasContent``, because a caller drawing per-statement decorations has to be able to tell a
     /// segment that carries nothing from one that was never scanned.
-    static func locatedStatements(in sql: String, dialect: SqlDialect = .generic) -> [LocatedStatement] {
+    public static func locatedStatements(in sql: String, grammar: SQLLexicalGrammar) -> [LocatedStatement] {
         var results: [LocatedStatement] = []
-        scan(sql: sql, cursorPosition: nil, dialect: dialect) { statement in
+        scan(sql: sql, cursorPosition: nil, grammar: grammar) { statement in
             results.append(statement)
             return true
         }
@@ -97,8 +91,8 @@ enum SQLStatementScanner {
     /// caret-statement band and the navigation commands. A segment that carries nothing, meaning a comment or trailing
     /// whitespace, is not somewhere a caret should be sent and not something worth offering to run, so it is dropped
     /// here rather than at each call site where the three could drift apart.
-    static func navigableStatements(in sql: String, dialect: SqlDialect = .generic) -> [LocatedStatement] {
-        locatedStatements(in: sql, dialect: dialect)
+    public static func navigableStatements(in sql: String, grammar: SQLLexicalGrammar) -> [LocatedStatement] {
+        locatedStatements(in: sql, grammar: grammar)
             .filter { $0.hasContent && $0.contentRange.length > 0 }
     }
 
@@ -109,13 +103,13 @@ enum SQLStatementScanner {
     ///
     /// A caret sitting in the trivia between two statements belongs to neither, so this answers with the next
     /// statement that starts after it.
-    static func statementStart(
+    public static func statementStart(
         after offset: Int,
         in sql: String,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> Int? {
         var found: Int?
-        scan(sql: sql, cursorPosition: nil, dialect: dialect) { statement in
+        scan(sql: sql, cursorPosition: nil, grammar: grammar) { statement in
             guard statement.hasContent, statement.contentRange.length > 0 else { return true }
             guard statement.contentRange.location > offset else { return true }
             found = statement.contentRange.location
@@ -128,15 +122,15 @@ enum SQLStatementScanner {
     ///
     /// Selection wants the far edge of the text, not the start of the next statement, or the last statement's own body
     /// could never be selected: past its start there is no next statement to reach for.
-    static func statementSelectionEnd(
+    public static func statementSelectionEnd(
         after offset: Int,
         in sql: String,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> Int? {
-        if let next = statementStart(after: offset, in: sql, dialect: dialect) {
+        if let next = statementStart(after: offset, in: sql, grammar: grammar) {
             return next
         }
-        let end = navigableStatements(in: sql, dialect: dialect).last?.contentRange.upperBound
+        let end = navigableStatements(in: sql, grammar: grammar).last?.contentRange.upperBound
         return end.flatMap { $0 > offset ? $0 : nil }
     }
 
@@ -144,13 +138,13 @@ enum SQLStatementScanner {
     ///
     /// A caret already past the start of its own statement goes to that statement's start first, which is how a
     /// reader steps back through a script without overshooting the statement they were reading.
-    static func statementStart(
+    public static func statementStart(
         before offset: Int,
         in sql: String,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> Int? {
         var found: Int?
-        scan(sql: sql, cursorPosition: nil, dialect: dialect) { statement in
+        scan(sql: sql, cursorPosition: nil, grammar: grammar) { statement in
             guard statement.hasContent, statement.contentRange.length > 0 else { return true }
             guard statement.contentRange.location < offset else { return false }
             found = statement.contentRange.location
@@ -160,18 +154,18 @@ enum SQLStatementScanner {
     }
 
     /// Returns statements as the driver receives them, for driver execution.
-    static func allStatements(in sql: String, dialect: SqlDialect = .generic) -> [String] {
-        executableStatements(in: sql, dialect: dialect).map(\.sql)
+    public static func allStatements(in sql: String, grammar: SQLLexicalGrammar) -> [String] {
+        executableStatements(in: sql, grammar: grammar).map(\.sql)
     }
 
-    /// The same statements ``allStatements(in:dialect:)`` returns, each with its span in the document.
+    /// The same statements ``allStatements(in:grammar:)`` returns, each with its span in the document.
     ///
     /// One enumeration produces both, because the alternative is two filters that have to agree and that nothing
-    /// checks. ``navigableStatements(in:dialect:)`` is deliberately not that second filter: it keeps the terminating
+    /// checks. ``navigableStatements(in:grammar:)`` is deliberately not that second filter: it keeps the terminating
     /// semicolon, while execution strips one, so pointing execution at it would change which text reaches the driver.
-    static func executableStatements(in sql: String, dialect: SqlDialect = .generic) -> [ExecutableStatement] {
+    public static func executableStatements(in sql: String, grammar: SQLLexicalGrammar) -> [ExecutableStatement] {
         var results: [ExecutableStatement] = []
-        scan(sql: sql, cursorPosition: nil, dialect: dialect) { located in
+        scan(sql: sql, cursorPosition: nil, grammar: grammar) { located in
             guard located.hasContent, let statement = executableStatement(from: located) else { return true }
             results.append(statement)
             return true
@@ -182,9 +176,9 @@ enum SQLStatementScanner {
     /// `text` as a driver receives it when it is sent whole: trimmed, and ending where its last statement's executable
     /// form ends, so a trailing separator comes off and a terminator that belongs to the statement stays. Empty when
     /// nothing but separators, comments or blanks is left.
-    static func executableText(of text: String, dialect: SqlDialect) -> String {
+    public static func executableText(of text: String, grammar: SQLLexicalGrammar) -> String {
         let trimmed = StatementBlank.trimming(text)
-        guard let last = executableStatements(in: trimmed, dialect: dialect).last else { return "" }
+        guard let last = executableStatements(in: trimmed, grammar: grammar).last else { return "" }
         let end = last.range.location + last.range.length
         return StatementBlank.trimming((trimmed as NSString).substring(to: end))
     }
@@ -193,7 +187,7 @@ enum SQLStatementScanner {
     ///
     /// A `;` that belongs to the statement stays, but only when there is something before it: a unit reduced to its
     /// terminator is as empty as any other.
-    static func executableStatement(from located: LocatedStatement) -> ExecutableStatement? {
+    public static func executableStatement(from located: LocatedStatement) -> ExecutableStatement? {
         let rawSQL = located.sql
         var content = StatementBlank.trimming(rawSQL[...])
         if content.last == ";" {
@@ -214,9 +208,9 @@ enum SQLStatementScanner {
     }
 
     /// Returns statements preserving trailing semicolons, for display/history/favorites.
-    static func allStatementsPreservingSemicolons(in sql: String) -> [String] {
+    public static func allStatementsPreservingSemicolons(in sql: String, grammar: SQLLexicalGrammar) -> [String] {
         var results: [String] = []
-        scan(sql: sql, cursorPosition: nil) { statement in
+        scan(sql: sql, cursorPosition: nil, grammar: grammar) { statement in
             guard statement.hasContent else { return true }
             let trimmed = StatementBlank.trimming(statement.sql)
             let withoutSemicolon = trimmed.hasSuffix(";")
@@ -230,14 +224,14 @@ enum SQLStatementScanner {
         return results
     }
 
-    static func statementAtCursor(in sql: String, cursorPosition: Int, dialect: SqlDialect = .generic) -> String {
-        let located = locatedStatementAtCursor(in: sql, cursorPosition: cursorPosition, dialect: dialect)
+    public static func statementAtCursor(in sql: String, cursorPosition: Int, grammar: SQLLexicalGrammar) -> String {
+        let located = locatedStatementAtCursor(in: sql, cursorPosition: cursorPosition, grammar: grammar)
         return executableStatement(from: located)?.sql ?? ""
     }
 
-    static func locatedStatementAtCursor(in sql: String, cursorPosition: Int, dialect: SqlDialect = .generic) -> LocatedStatement {
+    public static func locatedStatementAtCursor(in sql: String, cursorPosition: Int, grammar: SQLLexicalGrammar) -> LocatedStatement {
         var result = LocatedStatement(sql: "", offset: 0, hasContent: false)
-        scan(sql: sql, cursorPosition: cursorPosition, dialect: dialect) { statement in
+        scan(sql: sql, cursorPosition: cursorPosition, grammar: grammar) { statement in
             result = statement
             return false
         }
@@ -255,7 +249,7 @@ enum SQLStatementScanner {
     private static func scan(
         sql: String,
         cursorPosition: Int?,
-        dialect: SqlDialect = .generic,
+        grammar: SQLLexicalGrammar,
         onStatement: (LocatedStatement) -> Bool
     ) {
         let nsQuery = sql as NSString
@@ -264,12 +258,9 @@ enum SQLStatementScanner {
 
         let safePosition = cursorPosition.map { min(max(0, $0), length) }
 
-        var tracker = SQLStatementBoundaries.makeTracker(for: dialect)
-        var nonCode = NonCodeSpan(backslashEscapes: dialect != .oracle)
+        var tracker = SQLStatementBoundaries.makeTracker(for: grammar)
         var currentStart = 0
         var hasStatementContent = false
-        let dollarQuotesEnabled = dialect.supportsDollarQuotes
-        let hashCommentsEnabled = dialect.supportsHashLineComments
         var i = 0
 
         var lastStatementWithContent: LocatedStatement?
@@ -304,64 +295,29 @@ enum SQLStatementScanner {
         while i < length {
             let ch = nsQuery.character(at: i)
 
-            if nonCode.isOpen {
-                i = nonCode.advance(from: i, in: nsQuery, length: length)
-                continue
-            }
-
-            if SqlLexer.startsLineComment(nsQuery, at: i, length: length) {
-                nonCode.state = .lineComment
-                i += 2
-                continue
-            }
-
-            if hashCommentsEnabled && ch == SqlLexer.hash {
-                nonCode.state = .lineComment
-                i += 1
-                continue
-            }
-
-            if SqlLexer.startsBlockComment(nsQuery, at: i, length: length) {
-                if SqlLexer.startsConditionalComment(nsQuery, at: i, length: length) {
+            if let span = SQLNonCodeSpan.span(at: i, in: nsQuery, grammar: grammar) {
+                switch span.kind {
+                case .lineComment, .blockComment:
+                    break
+                case .executableComment:
                     hasStatementContent = true
-                }
-                nonCode.state = .blockComment
-                i += 2
-                continue
-            }
-
-            if SqlLexer.isQuote(ch) {
-                nonCode.state = .string(quote: ch)
-                hasStatementContent = true
-                tracker.observeOpaqueToken()
-                i += 1
-                continue
-            }
-
-            if dollarQuotesEnabled, ch == SqlDollarQuote.dollar,
-               case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: i, in: nsQuery, bufLen: length) {
-                nonCode.state = .dollarQuote(tag: tag)
-                hasStatementContent = true
-                tracker.observeOpaqueToken()
-                i += openerLength
-                continue
-            }
-
-            if SqlBlockStructure.startsWord(nsQuery, at: i, length: length, dialect: dialect) {
-                hasStatementContent = true
-                if dialect.supportsAlternativeQuoting,
-                   let literal = SqlLexer.skipAlternativeQuotedString(nsQuery, at: i, length: length) {
+                case .quoted, .parameter:
+                    hasStatementContent = true
                     tracker.observeOpaqueToken()
-                    i = literal.next
-                    continue
                 }
+                i = max(span.end, i + 1)
+                continue
+            }
+
+            if SqlBlockStructure.startsWord(nsQuery, at: i, length: length, grammar: grammar) {
+                hasStatementContent = true
                 if tracker.needsWords {
-                    let word = SqlBlockStructure.readKeyword(nsQuery, at: i, length: length, dialect: dialect)
+                    let word = SqlBlockStructure.readKeyword(nsQuery, at: i, length: length, grammar: grammar)
                     tracker.observeWord(word.text)
                     i = word.end
                 } else {
                     i += 1
-                    while i < length, SqlBlockStructure.continuesWord(nsQuery.character(at: i), dialect: dialect) {
+                    while i < length, SqlBlockStructure.continuesWord(nsQuery.character(at: i), grammar: grammar) {
                         i += 1
                     }
                 }
@@ -381,7 +337,7 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if dialect.endsStatementsAtSlashLines, ch == SqlLexer.slash, isSlashLine(nsQuery, at: i, length: length) {
+            if grammar.contains(.slashLineTerminators), ch == SqlLexer.slash, isSlashLine(nsQuery, at: i, length: length) {
                 if hasStatementContent {
                     guard finishSegment(at: i, hasContent: true) else { return }
                 }
@@ -414,65 +370,9 @@ enum SQLStatementScanner {
         }
     }
 
-    /// The literal or comment the scan is inside, where nothing is a token and no `;` ends anything.
-    private struct NonCodeSpan {
-        enum State: Equatable {
-            case code
-            case lineComment
-            case blockComment
-            case string(quote: UInt16)
-            case dollarQuote(tag: String)
-        }
-
-        var state = State.code
-
-        /// Whether a backslash keeps a string open. Every dialect but Oracle is scanned as if it did, which only ever
-        /// merges two statements; Oracle never escapes with one.
-        let backslashEscapes: Bool
-
-        var isOpen: Bool {
-            state != .code
-        }
-
-        /// Steps past one unit of the open span, closing it where it ends, and returns the next offset.
-        mutating func advance(from i: Int, in text: NSString, length: Int) -> Int {
-            let ch = text.character(at: i)
-            switch state {
-            case .code:
-                return i + 1
-            case .lineComment:
-                if ch == SqlLexer.newline { state = .code }
-                return i + 1
-            case .blockComment:
-                guard ch == SqlLexer.star, i + 1 < length, text.character(at: i + 1) == SqlLexer.slash else {
-                    return i + 1
-                }
-                state = .code
-                return i + 2
-            case let .dollarQuote(tag):
-                guard ch == SqlDollarQuote.dollar,
-                      SqlDollarQuote.matchesClose(at: i, tag: tag, in: text, bufLen: length) else {
-                    return i + 1
-                }
-                state = .code
-                return i + (tag as NSString).length + 2
-            case let .string(quote):
-                if backslashEscapes, ch == SqlLexer.backslash, i + 1 < length {
-                    return i + 2
-                }
-                guard ch == quote else { return i + 1 }
-                if i + 1 < length, text.character(at: i + 1) == quote {
-                    return i + 2
-                }
-                state = .code
-                return i + 1
-            }
-        }
-    }
-
     /// Whether the `/` at `offset` stands alone on its line, which is what makes it SQL*Plus's terminator rather than
     /// a division.
-    static func isSlashLine(_ text: NSString, at offset: Int, length: Int) -> Bool {
+    public static func isSlashLine(_ text: NSString, at offset: Int, length: Int) -> Bool {
         var before = offset - 1
         while before >= 0, isLineBlank(text.character(at: before)) {
             before -= 1

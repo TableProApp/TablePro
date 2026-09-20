@@ -1,13 +1,7 @@
-//
-//  SQLStatementBoundaryTracking.swift
-//  TablePro
-//
-
 import Foundation
-import TableProPluginKit
 
 /// What the `;` that ends a statement is to that statement.
-enum SQLStatementTerminator: Equatable, Sendable {
+public enum SQLStatementTerminator: Equatable, Sendable {
     /// It separates the statement from the next one, and the driver never sees it.
     case separator
 
@@ -26,7 +20,7 @@ enum SQLStatementTerminator: Equatable, Sendable {
 ///
 /// Words arrive uppercased. Comments and whitespace never arrive; a string literal, a quoted identifier or a
 /// dollar-quoted body arrives as ``observeOpaqueToken()``.
-protocol SQLStatementBoundaryTracking {
+public protocol SQLStatementBoundaryTracking {
     /// Whether words still bear on where this statement ends. A reader that has to assemble words itself can stop
     /// doing so once this is false, which keeps a plain `INSERT` dump free of the cost.
     var needsWords: Bool { get }
@@ -47,14 +41,10 @@ protocol SQLStatementBoundaryTracking {
     mutating func reset()
 }
 
-enum SQLStatementBoundaries {
-    /// The one place a dialect is matched to its grammar, so no reader can pick a different one.
-    static func makeTracker(for dialect: SqlDialect) -> any SQLStatementBoundaryTracking {
-        switch dialect {
-        case .oracle:
-            return PLSQLUnitTracker()
-        default:
-            return SQLRoutineBodyTracker()
-        }
+public enum SQLStatementBoundaries {
+    /// The one place a grammar is matched to its statement boundaries, so no reader can pick a different one.
+    public static func makeTracker(for grammar: SQLLexicalGrammar) -> any SQLStatementBoundaryTracking {
+        guard grammar.contains(.plsqlBlocks) else { return SQLRoutineBodyTracker() }
+        return PLSQLUnitTracker()
     }
 }

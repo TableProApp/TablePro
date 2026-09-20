@@ -278,7 +278,7 @@ actor DuckDBConnectionActor {
     /// genuinely open, and the next release would close the handle and roll it back.
     private func noteActivity(_ query: String) {
         lastActivity = ContinuousClock.now
-        switch SQLTransactionTracking.effect(of: query) {
+        switch SQLTransactionTracking.effect(of: query, lexicalFeatures: DuckDBLexicalFeatures.features) {
         case .opens: hasOpenTransaction = true
         case .closes: hasOpenTransaction = false
         case .unchanged: break

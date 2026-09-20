@@ -6,14 +6,13 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("SQL SET assignments")
 struct SQLSetAssignmentsTests {
-    private static let mysql = SQLLexicalRules(dialect: .mysql)
-
     private static func assignments(_ sql: String, readsList: Bool = true) -> [SQLSetAssignment] {
-        var cursor = SQLTokenCursor(sql, rules: mysql)
+        var cursor = SQLTokenCursor(sql, grammar: TestGrammar.mysql)
         #expect(cursor.next()?.word == "SET")
         return SQLSetAssignments.assignments(from: &cursor, readsList: readsList)
     }

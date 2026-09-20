@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import TableProPluginKit
 import Testing
 
 @Suite("MySQL Statement Classification")
@@ -115,7 +116,7 @@ struct MySQLReplaySafetyTests {
     private func footprint(after statements: String...) -> MySQLSessionFootprint {
         var footprint = MySQLSessionFootprint()
         for statement in statements {
-            footprint.observe(statement)
+            footprint.observe(statement, lexicalFeatures: MySQLLexicalFeatures.mySQL)
         }
         return footprint
     }

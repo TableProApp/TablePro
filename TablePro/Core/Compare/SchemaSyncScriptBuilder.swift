@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 internal struct SchemaSyncScriptBuilder {
     private let targetDriver: any PluginDatabaseDriver

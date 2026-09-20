@@ -4,11 +4,45 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("SQL statement splitting")
 struct SQLStatementSplittingTests {
+    @Test("The engine's own features keep a dollar-quoted body, a nested comment and a bracket whole")
+    func featuresKeepEngineLiteralsWhole() {
+        #expect(SQLStatementSplitting.statements(in: "SELECT $$a;b$$; SELECT 2", lexicalFeatures: .taggedDollarQuotes)
+            == ["SELECT $$a;b$$", "SELECT 2"])
+        #expect(SQLStatementSplitting.statements(in: "SELECT $$a;b$$", lexicalFeatures: .untaggedDollarQuotes)
+            == ["SELECT $$a;b$$"])
+        #expect(SQLStatementSplitting.statements(in: "SELECT $t$a;b$t$", lexicalFeatures: .untaggedDollarQuotes)
+            .count == 2)
+        #expect(SQLStatementSplitting.statements(in: "SELECT 1 /* /* */ ; */", lexicalFeatures: .nestedBlockComments)
+            == ["SELECT 1 /* /* */ ; */"])
+        #expect(SQLStatementSplitting.statements(in: "SELECT [a;b]", lexicalFeatures: .bracketQuotedIdentifiers)
+            == ["SELECT [a;b]"])
+    }
+
+    @Test("A backslash keeps a string open only where the features say so")
+    func featuresDecideTheBackslash() {
+        #expect(SQLStatementSplitting.statements(in: "SELECT 'a\\'; SELECT 2", lexicalFeatures: []).count == 2)
+        #expect(SQLStatementSplitting.statements(
+            in: "SELECT 'a\\'; SELECT 2'",
+            lexicalFeatures: .backslashEscapesInSingleQuotes
+        ).count == 1)
+    }
+
+    @Test("Leading comments are read by the engine's own comment rules")
+    func featuresStripTheEnginesComments() {
+        #expect(SQLStatementSplitting.stripLeadingComments("# a\nSELECT 1", lexicalFeatures: .hashLineComments)
+            == "SELECT 1")
+        #expect(SQLStatementSplitting.stripLeadingComments("# a\nSELECT 1", lexicalFeatures: []) == "# a\nSELECT 1")
+        #expect(SQLStatementSplitting.stripLeadingComments(
+            "/*!40101 SET x = 1 */",
+            lexicalFeatures: .executableComments
+        ) == "/*!40101 SET x = 1 */")
+    }
+
     @Test("A batch splits on the semicolons that are separators")
     func splitsOnSeparators() {
         #expect(SQLStatementSplitting.statements(in: "SELECT 1; SELECT 2;") == ["SELECT 1", "SELECT 2"])

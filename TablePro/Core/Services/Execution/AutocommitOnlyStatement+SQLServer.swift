@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal extension AutocommitOnlyStatement {
     /// From the T-SQL transaction locking and row versioning guide, which lists the statements an
@@ -11,8 +12,8 @@ internal extension AutocommitOnlyStatement {
     /// catalog and index statements, `BACKUP`, `RESTORE` and `RECONFIGURE`. Unmeasured: there is no
     /// SQL Server here. The statements that begin `CREATE DATABASE` without being one, such as
     /// `CREATE DATABASE SCOPED CREDENTIAL`, keep the wrap.
-    static func matchesSQLServer(_ statement: NSString, rules: SQLLexicalRules) -> Bool {
-        var cursor = SQLTokenCursor(statement, rules: rules)
+    static func matchesSQLServer(_ statement: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        var cursor = SQLTokenCursor(statement, grammar: grammar)
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "RECONFIGURE":

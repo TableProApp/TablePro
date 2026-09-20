@@ -1,16 +1,11 @@
-//
-//  StatementBlank.swift
-//  TablePro
-//
-
 import Foundation
 
-internal enum StatementBlank {
+public enum StatementBlank {
     private static let interlinearAnnotations: ClosedRange<UInt32> = 0xFFF9...0xFFFB
     private static let asciiDelete: UInt32 = 0x7F
     private static let asciiSpace: UInt32 = 0x20
 
-    static func isBlank(_ scalar: Unicode.Scalar) -> Bool {
+    public static func isBlank(_ scalar: Unicode.Scalar) -> Bool {
         guard !scalar.isASCII else { return scalar.value <= asciiSpace || scalar.value == asciiDelete }
         let properties = scalar.properties
         guard !properties.isAlphabetic else { return false }
@@ -20,34 +15,34 @@ internal enum StatementBlank {
             || interlinearAnnotations.contains(scalar.value)
     }
 
-    static func isBlank(_ character: Character) -> Bool {
+    public static func isBlank(_ character: Character) -> Bool {
         character.unicodeScalars.allSatisfy { isBlank($0) }
     }
 
-    static func hasContent(_ text: String) -> Bool {
+    public static func hasContent(_ text: String) -> Bool {
         text.contains { !isBlank($0) }
     }
 
-    static func blankLength(in text: NSString, at offset: Int) -> Int {
+    public static func blankLength(in text: NSString, at offset: Int) -> Int {
         guard let scalar = scalar(in: text, at: offset), isBlank(scalar) else { return 0 }
         return scalar.utf16.count
     }
 
-    static func trimming(_ text: String) -> String {
+    public static func trimming(_ text: String) -> String {
         String(trimming(text[...]))
     }
 
-    static func trimming(_ text: Substring) -> Substring {
+    public static func trimming(_ text: Substring) -> Substring {
         let leading = trimmingLeading(text)
         guard let last = leading.lastIndex(where: { !isBlank($0) }) else { return leading[leading.endIndex...] }
         return leading[...last]
     }
 
-    static func trimmingLeading(_ text: Substring) -> Substring {
+    public static func trimmingLeading(_ text: Substring) -> Substring {
         text.drop { isBlank($0) }
     }
 
-    static func contentRange(of text: String) -> NSRange {
+    public static func contentRange(of text: String) -> NSRange {
         let content = trimming(text[...])
         return NSRange(content.startIndex..<content.endIndex, in: text)
     }

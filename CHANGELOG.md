@@ -45,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
 - `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
 - 1 row affected reported for every Oracle PL/SQL block.
+- Crash when an Oracle query timed out or was cancelled while its rows were loading.
+- Empty results with no error after about 300 failed Oracle statements on one connection.
+- Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
 - Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
 - Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
@@ -149,6 +152,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 - Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
+- Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
+- Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
+- Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.
+- Statements hidden in a dollar-quoted string skipped Safe Mode on DuckDB, Snowflake and Cassandra, or PostgreSQL with a non-ASCII tag.
+- Statements hidden behind an engine's own literal or comment forms, such as `E'\''`, `'''` or `--1`, skipped Safe Mode.
+- Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
+- Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 
 ## [0.75.0] - 2026-09-18
 

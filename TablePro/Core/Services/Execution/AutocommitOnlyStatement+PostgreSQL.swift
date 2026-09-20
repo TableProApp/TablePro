@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal extension AutocommitOnlyStatement {
     /// PostgreSQL 17.11, each statement run after `BEGIN`. Redshift and CockroachDB take the
@@ -14,9 +15,9 @@ internal extension AutocommitOnlyStatement {
     static func matchesPostgresFamily(
         _ statement: NSString,
         family: TransactionEngineFamily,
-        rules: SQLLexicalRules
+        grammar: SQLLexicalGrammar
     ) -> Bool {
-        var cursor = SQLTokenCursor(statement, rules: rules)
+        var cursor = SQLTokenCursor(statement, grammar: grammar)
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "VACUUM":

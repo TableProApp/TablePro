@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("SQL transaction tracking")
 struct SQLTransactionTrackingTests {
@@ -95,5 +95,21 @@ struct SQLTransactionTrackingTests {
         for sql in ["COMMIT TRANSACTION", "COMMIT WORK", "ROLLBACK WORK", "END TRANSACTION", "abort transaction"] {
             #expect(SQLTransactionTracking.effect(of: sql) == .closes, "\(sql)")
         }
+    }
+
+    /// Measured on DuckDB 1.5.4: a `ROLLBACK` after `BEGIN; SELECT $$;COMMIT;$$ AS s;` succeeds, so the transaction
+    /// was still open. The engine-blind splitter cut the body at its `;` and read the `COMMIT` inside it as a close.
+    @Test("A COMMIT inside a dollar-quoted body does not close the transaction")
+    func commitInsideADollarBodyDoesNotClose() {
+        let sql = "BEGIN; SELECT $$;COMMIT;$$ AS s;"
+        let duckDB: SQLLexicalFeatures = [.taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix]
+        #expect(SQLTransactionTracking.effect(of: sql, lexicalFeatures: duckDB) == .opens)
+        #expect(SQLTransactionTracking.effect(of: sql) == .closes)
+    }
+
+    @Test("A COMMIT inside a nested comment does not close the transaction")
+    func commitInsideANestedCommentDoesNotClose() {
+        let sql = "BEGIN; SELECT 1 /* /* */ ; COMMIT; */;"
+        #expect(SQLTransactionTracking.effect(of: sql, lexicalFeatures: .nestedBlockComments) == .opens)
     }
 }

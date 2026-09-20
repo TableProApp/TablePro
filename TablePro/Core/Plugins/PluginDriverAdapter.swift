@@ -29,6 +29,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     var serverVersion: String? { pluginDriver.serverVersion }
+    var sessionLexicalState: PluginSessionLexicalState? { pluginDriver.sessionLexicalState }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
     func pluginGenerateStatements(

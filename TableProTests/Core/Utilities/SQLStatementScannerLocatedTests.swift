@@ -7,9 +7,10 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
 @Suite("SQL Statement Scanner — locatedStatementAtCursor")
 struct SQLStatementScannerLocatedTests {
@@ -116,7 +117,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Backtick-quoted identifiers containing semicolons do not split")
     func backtickWithSemicolon() {
         let sql = "SELECT `col;name`; SELECT 2"
-        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 5)
+        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 5, grammar: TestGrammar.mysql)
         #expect(first.sql == "SELECT `col;name`;")
         #expect(first.offset == 0)
     }
@@ -135,7 +136,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Cursor beyond end of string is clamped")
     func cursorBeyondEnd() {
         let sql = "SELECT 1; SELECT 2"
-        let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 9999)
+        let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 9_999)
         #expect(located.offset == 9)
         #expect(located.sql == " SELECT 2")
     }
@@ -168,7 +169,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Escaped quote inside string does not break parsing")
     func escapedQuoteInString() {
         let sql = "SELECT 'it\\'s here'; SELECT 2"
-        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 0)
+        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 0, grammar: TestGrammar.mysql)
         #expect(first.sql == "SELECT 'it\\'s here';")
         #expect(first.offset == 0)
     }
