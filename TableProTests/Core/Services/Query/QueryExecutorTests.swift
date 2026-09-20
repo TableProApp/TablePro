@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
@@ -76,11 +77,13 @@ struct QueryExecutorTests {
         #expect(QuerySqlParser.extractTableName(
             from: "SELECT * FROM public.users u WHERE u.id = 1",
             dialect: .postgres,
+            readings: SQLLexicalReadings.single(TestGrammar.postgres),
             browseSchema: "public"
         ) == "users")
         #expect(QuerySqlParser.extractTableName(
             from: "SELECT * FROM \"public\".\"users\"",
             dialect: .postgres,
+            readings: SQLLexicalReadings.single(TestGrammar.postgres),
             browseSchema: "public"
         ) == "users")
     }
@@ -90,6 +93,7 @@ struct QueryExecutorTests {
         #expect(QuerySqlParser.extractTableName(
             from: "SELECT * FROM analytics.users u WHERE u.id = 1",
             dialect: .postgres,
+            readings: SQLLexicalReadings.single(TestGrammar.postgres),
             browseSchema: "public"
         ) == nil)
     }
@@ -98,7 +102,8 @@ struct QueryExecutorTests {
     func qualifiedSourceWithoutSessionSchema() {
         #expect(QuerySqlParser.extractTableName(
             from: "SELECT * FROM public.users u WHERE u.id = 1",
-            dialect: .postgres
+            dialect: .postgres,
+            readings: SQLLexicalReadings.single(TestGrammar.postgres)
         ) == nil)
     }
 
@@ -107,6 +112,7 @@ struct QueryExecutorTests {
         #expect(QuerySqlParser.extractTableName(
             from: "SELECT * FROM PUBLIC.users u",
             dialect: .postgres,
+            readings: SQLLexicalReadings.single(TestGrammar.postgres),
             browseSchema: "public"
         ) == "users")
     }
@@ -116,6 +122,7 @@ struct QueryExecutorTests {
         #expect(QuerySqlParser.extractTableName(
             from: "SELECT * FROM users u WHERE u.id = 1",
             dialect: .postgres,
+            readings: SQLLexicalReadings.single(TestGrammar.postgres),
             browseSchema: "analytics"
         ) == "users")
     }
@@ -179,7 +186,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "\"total\" ASC",
             to: "SELECT * FROM orders LIMIT 100",
-            lexicalDialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(sorted == "SELECT * FROM orders ORDER BY \"total\" ASC LIMIT 100")
     }
@@ -189,7 +196,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "\"total\" DESC",
             to: "SELECT * FROM orders ORDER BY id LIMIT 100",
-            lexicalDialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(sorted == "SELECT * FROM orders ORDER BY \"total\" DESC LIMIT 100")
     }
@@ -199,7 +206,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "\"id\" ASC",
             to: "SELECT * FROM orders LIMIT 10 OFFSET 20",
-            lexicalDialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(sorted == "SELECT * FROM orders ORDER BY \"id\" ASC LIMIT 10 OFFSET 20")
     }
@@ -209,7 +216,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "\"id\" ASC",
             to: "SELECT * FROM orders",
-            lexicalDialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(sorted == "SELECT * FROM orders ORDER BY \"id\" ASC")
     }
@@ -219,7 +226,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "\"id\" ASC",
             to: "SELECT * FROM (SELECT * FROM t LIMIT 5) s",
-            lexicalDialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(sorted == "SELECT * FROM (SELECT * FROM t LIMIT 5) s ORDER BY \"id\" ASC")
     }
@@ -229,7 +236,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "",
             to: "SELECT * FROM orders ORDER BY id LIMIT 100",
-            lexicalDialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(sorted == "SELECT * FROM orders LIMIT 100")
     }
@@ -239,7 +246,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "",
             to: "SELECT * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY",
-            lexicalDialect: .generic
+            grammar: TestGrammar.standard
         )
         #expect(sorted == "SELECT * FROM t")
     }
@@ -249,7 +256,7 @@ struct QueryExecutorTests {
         let sorted = QuerySqlParser.applyingOrderBy(
             "`name` ASC",
             to: "SELECT offset, name FROM events",
-            lexicalDialect: .mysql
+            grammar: TestGrammar.mysql
         )
         #expect(sorted == "SELECT offset, name FROM events ORDER BY `name` ASC")
     }

@@ -4,15 +4,16 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
 @Suite("SQL Fold Scanner")
 struct SQLFoldScannerTests {
 
-    private func regions(_ sql: String, dialect: SqlDialect = .generic) -> [SQLFoldRegion] {
-        SQLFoldScanner.scan(sql as NSString, dialect: dialect).regions
+    private func regions(_ sql: String, grammar: SQLLexicalGrammar = TestGrammar.standard) -> [SQLFoldRegion] {
+        SQLFoldScanner.scan(sql as NSString, grammar: grammar).regions
     }
 
     // MARK: - Nothing to fold
@@ -219,7 +220,7 @@ struct SQLFoldScannerTests {
                `c`
         FROM t;
         """
-        #expect(regions(sql).allSatisfy { $0.kind != .parenGroup })
+        #expect(regions(sql, grammar: TestGrammar.mysql).allSatisfy { $0.kind != .parenGroup })
     }
 
     // MARK: - Dialects
@@ -233,7 +234,7 @@ struct SQLFoldScannerTests {
             END;
         $$ LANGUAGE plpgsql;
         """
-        let found = regions(sql, dialect: .postgres)
+        let found = regions(sql, grammar: TestGrammar.postgres)
         #expect(found.contains { $0.kind == .quotedBody })
         #expect(found.allSatisfy { $0.kind != .keywordBlock })
         #expect(found.allSatisfy { $0.kind != .parenGroup })
@@ -246,8 +247,8 @@ struct SQLFoldScannerTests {
         # ( comment
         , 2;
         """
-        #expect(regions(sql, dialect: .mysql).allSatisfy { $0.kind != .parenGroup })
-        #expect(regions(sql, dialect: .postgres).contains { $0.kind == .parenGroup })
+        #expect(regions(sql, grammar: TestGrammar.mysql).allSatisfy { $0.kind != .parenGroup })
+        #expect(regions(sql, grammar: TestGrammar.postgres).contains { $0.kind == .parenGroup })
     }
 
     @Test("A backslash escape inside a MySQL string does not end it")
@@ -257,7 +258,7 @@ struct SQLFoldScannerTests {
             ('a\\' ( b'),
             ('c');
         """
-        #expect(regions(sql, dialect: .mysql).allSatisfy { $0.kind != .parenGroup })
+        #expect(regions(sql, grammar: TestGrammar.mysql).allSatisfy { $0.kind != .parenGroup })
     }
 
     // MARK: - Malformed input
@@ -284,7 +285,7 @@ struct SQLFoldScannerTests {
 
     @Test("An unterminated dollar quote does not hang or crash")
     func unterminatedDollarQuote() {
-        _ = regions("SELECT $$abc\ndef", dialect: .postgres)
+        _ = regions("SELECT $$abc\ndef", grammar: TestGrammar.postgres)
     }
 
     // MARK: - Oracle PL/SQL units
@@ -292,8 +293,8 @@ struct SQLFoldScannerTests {
     /// A fold never reaches past the unit the run control beside it would send, and never stops inside one.
     @Test("Every Oracle statement fold lies inside the unit the scanner sends", arguments: PLSQLScriptCorpus.cases)
     func oracleFoldsAgreeWithStatements(example: PLSQLScriptCase) {
-        let statements = SQLStatementScanner.navigableStatements(in: example.script, dialect: .oracle)
-        for region in regions(example.script, dialect: .oracle) where region.kind == .statement {
+        let statements = SQLStatementScanner.navigableStatements(in: example.script, grammar: TestGrammar.oracle)
+        for region in regions(example.script, grammar: TestGrammar.oracle) where region.kind == .statement {
             let contained = statements.contains { statement in
                 region.range.lowerBound >= statement.contentRange.location
                     && region.range.upperBound <= statement.contentRange.location + statement.contentRange.length
@@ -305,7 +306,7 @@ struct SQLFoldScannerTests {
     @Test("A declaration section does not end an Oracle statement fold")
     func oracleDeclarationSectionStaysInsideTheFold() throws {
         let sql = "DECLARE\n  v NUMBER;\nBEGIN\n  v := 1;\nEND;\nSELECT 1 FROM dual;"
-        let statement = try #require(regions(sql, dialect: .oracle).first { $0.kind == .statement })
+        let statement = try #require(regions(sql, grammar: TestGrammar.oracle).first { $0.kind == .statement })
         #expect(statement.startLine == 0)
         #expect(statement.endLine == 4)
     }
@@ -313,7 +314,7 @@ struct SQLFoldScannerTests {
     @Test("END CASE closes the CASE fold and opens nothing")
     func endCaseClosesItsFold() {
         let sql = "BEGIN\n  CASE x\n    WHEN 1 THEN NULL;\n  END CASE;\n  y := 2;\nEND;"
-        let blocks = regions(sql, dialect: .oracle).filter { $0.kind == .keywordBlock }
+        let blocks = regions(sql, grammar: TestGrammar.oracle).filter { $0.kind == .keywordBlock }
         #expect(blocks.map(\.endLine).sorted() == [3, 5])
     }
 }
@@ -321,8 +322,8 @@ struct SQLFoldScannerTests {
 @Suite("SQL fold event ordering")
 struct SQLFoldEventOrderingTests {
 
-    private func structure(_ sql: String, dialect: SqlDialect = .generic) -> SQLFoldStructure {
-        SQLFoldScanner.scan(sql as NSString, dialect: dialect)
+    private func structure(_ sql: String, grammar: SQLLexicalGrammar = TestGrammar.standard) -> SQLFoldStructure {
+        SQLFoldScanner.scan(sql as NSString, grammar: grammar)
     }
 
     @Test("A parent opening on the same line as its child is reported before the child")

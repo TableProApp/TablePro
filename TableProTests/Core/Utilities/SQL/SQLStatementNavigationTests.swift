@@ -7,9 +7,10 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
 @Suite("SQL statement navigation")
 struct SQLStatementNavigationTests {
@@ -152,7 +153,7 @@ struct SQLStatementNavigationTests {
     @Test("A BEGIN ... END body is stepped over as one statement")
     func routineBodyIsOneStop() throws {
         let sql = "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\nSELECT 3;"
-        let destination = try #require(SQLStatementScanner.statementStart(after: 0, in: sql, dialect: .mysql))
+        let destination = try #require(SQLStatementScanner.statementStart(after: 0, in: sql, grammar: TestGrammar.mysql))
         #expect((sql as NSString).substring(from: destination).hasPrefix("SELECT 3"))
     }
 

@@ -5,26 +5,19 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
 
 @Suite("Confusable SQL characters")
 struct SQLConfusableCharacterScannerTests {
-    private func scan(_ text: String, _ dialect: SqlDialect) -> [ConfusableSQLCharacterMatch] {
-        scan(text, SQLLexicalRules(dialect: dialect))
+    private func scan(_ text: String, _ grammar: SQLLexicalGrammar) -> [ConfusableSQLCharacterMatch] {
+        SQLConfusableCharacterScanner.scan(text as NSString, grammar: grammar)
     }
 
-    private func scan(_ text: String, _ rules: SQLLexicalRules) -> [ConfusableSQLCharacterMatch] {
-        SQLConfusableCharacterScanner.scan(text as NSString, rules: rules)
-    }
-
-    private func ranges(_ text: String, _ dialect: SqlDialect) -> [NSRange] {
-        scan(text, dialect).map(\.range)
-    }
-
-    private func ranges(_ text: String, _ rules: SQLLexicalRules) -> [NSRange] {
-        scan(text, rules).map(\.range)
+    private func ranges(_ text: String, _ grammar: SQLLexicalGrammar) -> [NSRange] {
+        scan(text, grammar).map(\.range)
     }
 
     private func range(of needle: String, in text: String, fromEnd: Bool = false) -> NSRange {
@@ -33,10 +26,12 @@ struct SQLConfusableCharacterScannerTests {
 
     // MARK: - Flagged outside literals
 
-    @Test("A full-width semicolon is flagged wherever it ends a statement", arguments: SqlDialect.allCases)
-    func fullWidthSemicolon(dialect: SqlDialect) {
+    @Test("A full-width semicolon is flagged wherever it ends a statement", arguments: [
+        TestGrammar.postgres, TestGrammar.mysql, TestGrammar.sqlite, TestGrammar.oracle, TestGrammar.standard
+    ])
+    func fullWidthSemicolon(grammar: SQLLexicalGrammar) {
         let text = "SELECT 1\u{FF1B}\nSELECT 2\u{FF1B}"
-        let matches = scan(text, dialect)
+        let matches = scan(text, grammar)
         #expect(matches.map(\.range) == [
             NSRange(location: 8, length: 1),
             NSRange(location: 18, length: 1)
@@ -44,20 +39,24 @@ struct SQLConfusableCharacterScannerTests {
         #expect(matches.allSatisfy { $0.character == .fullWidthPunctuation("\u{FF1B}") })
     }
 
-    @Test("Full-width commas and parentheses are flagged", arguments: SqlDialect.allCases)
-    func fullWidthCommaAndParentheses(dialect: SqlDialect) {
+    @Test("Full-width commas and parentheses are flagged", arguments: [
+        TestGrammar.postgres, TestGrammar.mysql, TestGrammar.sqlite, TestGrammar.oracle, TestGrammar.standard
+    ])
+    func fullWidthCommaAndParentheses(grammar: SQLLexicalGrammar) {
         let text = "SELECT COUNT\u{FF08}*\u{FF09}\u{FF0C} id FROM t"
-        #expect(ranges(text, dialect) == [
+        #expect(ranges(text, grammar) == [
             NSRange(location: 12, length: 1),
             NSRange(location: 14, length: 1),
             NSRange(location: 15, length: 1)
         ])
     }
 
-    @Test("Curly quotes around a value are flagged", arguments: SqlDialect.allCases)
-    func curlyQuotes(dialect: SqlDialect) {
+    @Test("Curly quotes around a value are flagged", arguments: [
+        TestGrammar.postgres, TestGrammar.mysql, TestGrammar.sqlite, TestGrammar.oracle, TestGrammar.standard
+    ])
+    func curlyQuotes(grammar: SQLLexicalGrammar) {
         let text = "SELECT * FROM t WHERE name = \u{2018}Bob\u{2019} OR note = \u{201C}x\u{201D}"
-        let matches = scan(text, dialect)
+        let matches = scan(text, grammar)
         #expect(matches.map(\.character) == [
             .curlyQuote("\u{2018}"), .curlyQuote("\u{2019}"), .curlyQuote("\u{201C}"), .curlyQuote("\u{201D}")
         ])
@@ -70,7 +69,7 @@ struct SQLConfusableCharacterScannerTests {
     func nonASCIISpaces(value: UInt32) throws {
         let space = try #require(Unicode.Scalar(value))
         let text = "SELECT *\(Character(space))FROM t"
-        let matches = scan(text, .mysql)
+        let matches = scan(text, TestGrammar.mysql)
         #expect(matches == [
             ConfusableSQLCharacterMatch(character: .nonASCIISpace(space), range: NSRange(location: 8, length: 1))
         ])
@@ -79,7 +78,7 @@ struct SQLConfusableCharacterScannerTests {
     @Test("A run of the same character is one warning")
     func runsMerge() {
         let text = "SELECT *\u{3000}\u{3000}\u{3000}FROM t\u{FF1B}\u{FF1B}"
-        #expect(ranges(text, .postgres) == [
+        #expect(ranges(text, TestGrammar.postgres) == [
             NSRange(location: 8, length: 3),
             NSRange(location: 17, length: 2)
         ])
@@ -87,7 +86,7 @@ struct SQLConfusableCharacterScannerTests {
 
     @Test("Different characters side by side are separate warnings")
     func differentCharactersStaySeparate() {
-        #expect(ranges("SELECT \u{FF08}\u{FF09}", .sqlite) == [
+        #expect(ranges("SELECT \u{FF08}\u{FF09}", TestGrammar.sqlite) == [
             NSRange(location: 7, length: 1),
             NSRange(location: 8, length: 1)
         ])
@@ -95,32 +94,40 @@ struct SQLConfusableCharacterScannerTests {
 
     // MARK: - Never flagged inside literals, identifiers and comments
 
-    @Test("Characters inside quoted text and comments are left alone", arguments: SqlDialect.allCases)
-    func quotedTextAndCommentsAreQuiet(dialect: SqlDialect) {
-        let texts = [
+    @Test("Characters inside quoted text and comments are left alone", arguments: [
+        TestGrammar.postgres, TestGrammar.mysql, TestGrammar.sqlite, TestGrammar.oracle, TestGrammar.standard
+    ])
+    func quotedTextAndCommentsAreQuiet(grammar: SQLLexicalGrammar) {
+        var texts = [
             "SELECT '\u{4F60}\u{597D}\u{FF0C}\u{4E16}\u{754C}\u{FF1B}' FROM t",
             "SELECT \"\u{540D}\u{524D}\u{FF08}\u{65E7}\u{FF09}\" FROM t",
-            "SELECT `\u{540D}\u{FF1B}` FROM t",
             "SELECT 1 -- \u{FF1B}\u{3000}\u{201C}",
             "SELECT 1 /* \u{FF08}\u{00A0}\u{2019} */",
             "SELECT '\u{2018}quoted\u{2019}'"
         ]
+        /// A backtick quotes an identifier on MySQL and SQLite and is a syntax error elsewhere, so the characters
+        /// inside one are worth flagging on an engine that does not read it as a quote.
+        if grammar.contains(.backtickQuotes) {
+            texts.append("SELECT `\u{540D}\u{FF1B}` FROM t")
+        }
         for text in texts {
-            #expect(scan(text, dialect).isEmpty, "\(dialect) flagged \(text)")
+            #expect(scan(text, grammar).isEmpty, "\(grammar) flagged \(text)")
         }
     }
 
-    @Test("An unquoted identifier in another script is left alone", arguments: SqlDialect.allCases)
-    func nativeScriptIdentifiers(dialect: SqlDialect) {
-        #expect(scan("SELECT \u{540D}\u{524D} FROM \u{9867}\u{5BA2}", dialect).isEmpty)
-        #expect(scan("SELECT * FROM \u{58F2}\u{4E0A}\u{FF12}\u{FF10}\u{FF12}\u{FF14}", dialect).isEmpty)
-        #expect(scan("SELECT caf\u{00E9}\u{FF3F}\u{FF11}", dialect).isEmpty)
+    @Test("An unquoted identifier in another script is left alone", arguments: [
+        TestGrammar.postgres, TestGrammar.mysql, TestGrammar.sqlite, TestGrammar.oracle, TestGrammar.standard
+    ])
+    func nativeScriptIdentifiers(grammar: SQLLexicalGrammar) {
+        #expect(scan("SELECT \u{540D}\u{524D} FROM \u{9867}\u{5BA2}", grammar).isEmpty)
+        #expect(scan("SELECT * FROM \u{58F2}\u{4E0A}\u{FF12}\u{FF10}\u{FF12}\u{FF14}", grammar).isEmpty)
+        #expect(scan("SELECT caf\u{00E9}\u{FF3F}\u{FF11}", grammar).isEmpty)
     }
 
     @Test("Full-width letters and digits outside another script are flagged as one word")
     func fullWidthWords() {
         let keyword = "\u{FF33}\u{FF25}\u{FF2C}\u{FF25}\u{FF23}\u{FF34} 1"
-        #expect(scan(keyword, .mysql) == [
+        #expect(scan(keyword, TestGrammar.mysql) == [
             ConfusableSQLCharacterMatch(
                 character: .fullWidthText(asciiSpelling: "SELECT"),
                 range: NSRange(location: 0, length: 6)
@@ -128,7 +135,7 @@ struct SQLConfusableCharacterScannerTests {
         ])
 
         let digit = "SELECT * FROM t WHERE id = \u{FF11}"
-        #expect(scan(digit, .postgres) == [
+        #expect(scan(digit, TestGrammar.postgres) == [
             ConfusableSQLCharacterMatch(
                 character: .fullWidthText(asciiSpelling: "1"),
                 range: range(of: "\u{FF11}", in: digit)
@@ -136,7 +143,7 @@ struct SQLConfusableCharacterScannerTests {
         ])
 
         let mixed = "SELECT user\u{FF3F}\u{FF49}d FROM t"
-        #expect(scan(mixed, .sqlite) == [
+        #expect(scan(mixed, TestGrammar.sqlite) == [
             ConfusableSQLCharacterMatch(
                 character: .fullWidthText(asciiSpelling: "_i"),
                 range: range(of: "\u{FF3F}\u{FF49}", in: mixed)
@@ -148,15 +155,15 @@ struct SQLConfusableCharacterScannerTests {
 
     @Test("MySQL: a hash comment is quiet and a conditional comment is read as code")
     func mysqlComments() {
-        #expect(scan("SELECT 1 # \u{FF1B}", .mysql).isEmpty)
+        #expect(scan("SELECT 1 # \u{FF1B}", TestGrammar.mysql).isEmpty)
         let conditional = "SELECT 1 /*!50000 \u{FF1B}*/"
-        #expect(ranges(conditional, .mysql) == [range(of: "\u{FF1B}", in: conditional)])
+        #expect(ranges(conditional, TestGrammar.mysql) == [range(of: "\u{FF1B}", in: conditional)])
     }
 
     @Test("MySQL: a backslash keeps the string open")
     func mysqlBackslashEscape() {
         let text = "SELECT 'it\\'s\u{FF1B}' \u{FF1B}"
-        #expect(ranges(text, .mysql) == [range(of: "\u{FF1B}", in: text, fromEnd: true)])
+        #expect(ranges(text, TestGrammar.mysql) == [range(of: "\u{FF1B}", in: text, fromEnd: true)])
     }
 
     // MARK: - PostgreSQL
@@ -164,43 +171,43 @@ struct SQLConfusableCharacterScannerTests {
     @Test("PostgreSQL: a dollar-quoted body is quiet and the text after it is not")
     func postgresDollarQuotes() {
         let text = "CREATE FUNCTION f() RETURNS int AS $fn$ SELECT 1\u{FF1B} $fn$ LANGUAGE sql\u{FF1B}"
-        #expect(ranges(text, .postgres) == [range(of: "\u{FF1B}", in: text, fromEnd: true)])
-        #expect(scan("SELECT $$\u{FF08}\u{3000}\u{201C}$$", .postgres).isEmpty)
+        #expect(ranges(text, TestGrammar.postgres) == [range(of: "\u{FF1B}", in: text, fromEnd: true)])
+        #expect(scan("SELECT $$\u{FF08}\u{3000}\u{201C}$$", TestGrammar.postgres).isEmpty)
     }
 
     @Test("PostgreSQL: a dollar sign opens no body in another dialect")
     func dollarQuotesArePostgresOnly() {
-        #expect(ranges("SELECT $$\u{FF1B}$$", .mysql) == [NSRange(location: 9, length: 1)])
+        #expect(ranges("SELECT $$\u{FF1B}$$", TestGrammar.mysql) == [NSRange(location: 9, length: 1)])
     }
 
     @Test("PostgreSQL: a backslash escapes only inside an E string")
     func postgresEscapeStrings() {
         let escaped = "SELECT E'it\\'s\u{FF1B}' \u{FF1B}"
-        #expect(ranges(escaped, .postgres) == [range(of: "\u{FF1B}", in: escaped, fromEnd: true)])
+        #expect(ranges(escaped, TestGrammar.postgres) == [range(of: "\u{FF1B}", in: escaped, fromEnd: true)])
 
         let plain = "SELECT 'a\\' \u{FF1B}"
-        #expect(ranges(plain, .postgres) == [range(of: "\u{FF1B}", in: plain)])
+        #expect(ranges(plain, TestGrammar.postgres) == [range(of: "\u{FF1B}", in: plain)])
     }
 
     @Test("PostgreSQL: a nested block comment stays a comment until its last terminator")
     func postgresNestedComments() {
         let text = "SELECT 1 /* a /* b */ \u{FF08} */ \u{FF1B}"
-        #expect(ranges(text, .postgres) == [range(of: "\u{FF1B}", in: text)])
-        #expect(ranges(text, .mysql).count == 2)
+        #expect(ranges(text, TestGrammar.postgres) == [range(of: "\u{FF1B}", in: text)])
+        #expect(ranges(text, TestGrammar.mysql).count == 2)
     }
 
     @Test("PostgreSQL: a hash starts no comment")
     func postgresHashIsNotAComment() {
-        #expect(ranges("SELECT 1 # \u{FF1B}", .postgres) == [NSRange(location: 11, length: 1)])
+        #expect(ranges("SELECT 1 # \u{FF1B}", TestGrammar.postgres) == [NSRange(location: 11, length: 1)])
     }
 
     // MARK: - SQLite
 
     @Test("SQLite: quoted identifiers and comments are quiet, a hash is not a comment")
     func sqliteLexing() {
-        #expect(scan("SELECT \"col\u{FF1B}\", `a\u{FF0C}b` FROM t -- \u{FF1B}\n/* \u{3000} */", .sqlite).isEmpty)
-        #expect(ranges("SELECT 1 # \u{FF1B}", .sqlite) == [NSRange(location: 11, length: 1)])
-        #expect(ranges("SELECT 1\u{FF1B}", .sqlite) == [NSRange(location: 8, length: 1)])
+        #expect(scan("SELECT \"col\u{FF1B}\", `a\u{FF0C}b` FROM t -- \u{FF1B}\n/* \u{3000} */", TestGrammar.sqlite).isEmpty)
+        #expect(ranges("SELECT 1 # \u{FF1B}", TestGrammar.sqlite) == [NSRange(location: 11, length: 1)])
+        #expect(ranges("SELECT 1\u{FF1B}", TestGrammar.sqlite) == [NSRange(location: 8, length: 1)])
     }
 
     // MARK: - Bracketed identifiers
@@ -208,24 +215,24 @@ struct SQLConfusableCharacterScannerTests {
     @Test("Bracketed identifiers are quiet only where brackets quote identifiers")
     func bracketedIdentifiers() {
         let text = "SELECT [\u{4EF7}\u{683C}\u{FF08}\u{5143}\u{FF09}], [a]]\u{FF1B}] FROM t\u{FF1B}"
-        let bracketRules = SQLLexicalRules(dialect: .generic, backslashEscapes: false, bracketsDelimitIdentifiers: true)
-        #expect(ranges(text, bracketRules) == [range(of: "\u{FF1B}", in: text, fromEnd: true)])
-        #expect(ranges(text, .generic).count == 4)
+        let bracketGrammar = TestGrammar.standard.union([.bracketQuotedIdentifiers, .doubledClosingBracketEscapes])
+        #expect(ranges(text, bracketGrammar) == [range(of: "\u{FF1B}", in: text, fromEnd: true)])
+        #expect(ranges(text, TestGrammar.standard).count == 4)
     }
 
     // MARK: - Backslash escapes
 
     @Test("A backslash keeps the string open wherever the engine escapes with one")
     func backslashEscapesFollowTheEngine() {
-        let escaping = SQLLexicalRules(dialect: .generic, backslashEscapes: true, bracketsDelimitIdentifiers: false)
+        let escaping = TestGrammar.standard.union(.backslashEscapesInSingleQuotes)
 
         let quoted = "SELECT 'a\\'b', '\u{4E2D}\u{6587}\u{FF0C}'"
         #expect(scan(quoted, escaping).isEmpty)
-        #expect(ranges(quoted, .generic) == [range(of: "\u{FF0C}", in: quoted)])
+        #expect(ranges(quoted, TestGrammar.standard) == [range(of: "\u{FF0C}", in: quoted)])
 
         let trailing = "SELECT 'it\\'s' FROM t\u{FF1B}"
         #expect(ranges(trailing, escaping) == [range(of: "\u{FF1B}", in: trailing)])
-        #expect(scan(trailing, .generic).isEmpty)
+        #expect(scan(trailing, TestGrammar.standard).isEmpty)
     }
 
     // MARK: - Messages
@@ -286,7 +293,7 @@ struct SQLConfusableCharacterDiagnosticsTests {
 
     @Test("A document at the length limit is checked, and one past it is not")
     func lengthLimit() {
-        let producer = SQLConfusableCharacterDiagnosticsProducer(rules: SQLLexicalRules(dialect: .mysql))
+        let producer = SQLConfusableCharacterDiagnosticsProducer(grammar: TestGrammar.mysql)
         let atLimit = String(repeating: "a", count: 99_999) + "\u{FF1B}"
         let pastLimit = String(repeating: "a", count: 100_000) + "\u{FF1B}"
         #expect(producer.diagnostics(for: atLimit).count == 1)

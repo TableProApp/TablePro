@@ -11,6 +11,7 @@ import Combine
 import os
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
@@ -336,7 +337,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func installStatementRunControls(controller: TextViewController) {
-        statementRunController.dialect = SqlDialect.from(databaseTypeId: (databaseType ?? .mysql).rawValue)
+        statementRunController.grammar = (databaseType ?? .mysql).lexicalGrammar
         statementRunController.statementModel = QueryStatementModel.forDatabaseType(databaseType ?? .mysql)
         statementRunController.isHighlightEnabled = AppSettingsManager.shared.editor.highlightCurrentStatement
         statementRunController.onRun = { [weak self] sql, offset in
@@ -376,7 +377,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         guard let range = anchor.resolve(
             in: textView.string,
             model: statementRunController.statementModel,
-            dialect: statementRunController.dialect
+            grammar: statementRunController.grammar
         ) else {
             return false
         }

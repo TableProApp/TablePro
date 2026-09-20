@@ -7,9 +7,10 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
 @Suite("SQL statement scanner - located ranges")
 struct SQLStatementRangeTests {

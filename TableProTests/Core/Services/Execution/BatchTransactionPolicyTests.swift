@@ -5,6 +5,7 @@
 
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("Batch transaction policy")
@@ -13,7 +14,7 @@ struct BatchTransactionPolicyTests {
         BatchTransactionPolicy.plan(
             for: statements,
             databaseType: type,
-            rules: SQLLexicalRules(databaseType: type, descriptor: nil)
+            grammar: type.lexicalGrammar
         )
     }
 

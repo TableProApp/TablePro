@@ -5,24 +5,55 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
 
 @Suite("SelectSourceTableParser")
 struct SelectSourceTableParserTests {
-    private func table(_ sql: String, _ dialect: SqlDialect = .postgres) -> String? {
-        guard let source = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect) else {
+    private static let unknownEngineReadings = SQLLexicalReadings.resolve(
+        databaseTypeId: "Unknown Whatever",
+        declared: nil,
+        session: nil
+    )
+
+    private static func readings(for dialect: SqlDialect) -> SQLLexicalReadings {
+        switch dialect {
+        case .postgres:
+            return SQLLexicalReadings.single(TestGrammar.postgres)
+        case .mysql:
+            return SQLLexicalReadings.single(TestGrammar.mysql)
+        case .sqlite:
+            return SQLLexicalReadings.single(TestGrammar.sqlite)
+        case .oracle:
+            return SQLLexicalReadings.single(TestGrammar.oracle)
+        default:
+            return SQLLexicalReadings.single(TestGrammar.standard)
+        }
+    }
+
+    private func table(
+        _ sql: String,
+        _ dialect: SqlDialect = .postgres,
+        readings: SQLLexicalReadings? = nil
+    ) -> String? {
+        guard let resolved = source(sql, dialect, readings: readings) else {
             return nil
         }
-        return source.schema == nil ? source.name : nil
+        return resolved.schema == nil ? resolved.name : nil
     }
 
     private func source(
         _ sql: String,
-        _ dialect: SqlDialect = .postgres
+        _ dialect: SqlDialect = .postgres,
+        readings: SQLLexicalReadings? = nil
     ) -> SelectSourceTableParser.SourceTable? {
-        SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect)
+        SelectSourceTableParser.singleSourceTable(
+            in: sql,
+            dialect: dialect,
+            readings: readings ?? Self.readings(for: dialect)
+        )
     }
 
     // MARK: - Table aliases (#2150)
@@ -239,9 +270,13 @@ struct SelectSourceTableParserTests {
     /// dialects that read both as operators. Guessing wrong would hide the real `FROM`.
     @Test("A generic-dialect # or // blocks editing rather than being guessed")
     func genericHashAndSlashComments() {
-        #expect(table("SELECT *\n# read FROM users_v2 where possible\nFROM users u WHERE u.id = 1", .generic) == nil)
-        #expect(table("SELECT *\n// read FROM users_v2\nFROM users u WHERE u.id = 1", .generic) == nil)
-        #expect(table("SELECT a # b FROM t WHERE 1", .generic) == nil)
+        let unknown = Self.unknownEngineReadings
+        #expect(
+            table("SELECT *\n# read FROM users_v2 where possible\nFROM users u WHERE u.id = 1", .generic, readings: unknown)
+                == nil
+        )
+        #expect(table("SELECT *\n// read FROM users_v2\nFROM users u WHERE u.id = 1", .generic, readings: unknown) == nil)
+        #expect(table("SELECT a # b FROM t WHERE 1", .generic, readings: unknown) == nil)
     }
 
     @Test("A backslash escapes a quote on MySQL and in a PostgreSQL E-string only")

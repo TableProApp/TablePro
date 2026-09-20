@@ -4,9 +4,10 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
 @Suite("SQL lexer")
 struct SqlLexerTests {
@@ -40,15 +41,15 @@ struct SqlLexerTests {
     @Test("A doubled quote escapes in every dialect")
     func doubledQuoteEscapes() {
         let text = "'it''s' x" as NSString
-        for dialect in SqlDialect.allCases {
+        for backslashEscapes in [true, false] {
             let span = SqlLexer.skipQuotedString(
                 text,
                 from: 0,
                 quote: SqlLexer.singleQuote,
                 length: text.length,
-                dialect: dialect
+                backslashEscapes: backslashEscapes
             )
-            #expect(span.next == 7, "\(dialect) must treat a doubled quote as an escape")
+            #expect(span.next == 7, "backslashEscapes \(backslashEscapes) must treat a doubled quote as an escape")
         }
     }
 
@@ -60,14 +61,14 @@ struct SqlLexerTests {
             from: 0,
             quote: SqlLexer.singleQuote,
             length: text.length,
-            dialect: .mysql
+            backslashEscapes: true
         )
         let postgres = SqlLexer.skipQuotedString(
             text,
             from: 0,
             quote: SqlLexer.singleQuote,
             length: text.length,
-            dialect: .postgres
+            backslashEscapes: false
         )
         #expect(postgres.next == 4, "PostgreSQL ends the string at the quote after the backslash")
         #expect(mysql.next > postgres.next, "MySQL treats the backslash as an escape and reads further")
@@ -117,7 +118,7 @@ struct SqlLexerTests {
             from: 0,
             quote: SqlLexer.singleQuote,
             length: text.length,
-            dialect: .generic
+            backslashEscapes: false
         )
         #expect(span.next == text.length)
     }

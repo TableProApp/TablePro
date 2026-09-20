@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 enum ConfusableSQLCharacter: Equatable, Sendable {
     case fullWidthPunctuation(Unicode.Scalar)
@@ -11,29 +12,22 @@ enum ConfusableSQLCharacter: Equatable, Sendable {
     case curlyQuote(Unicode.Scalar)
     case nonASCIISpace(Unicode.Scalar)
 
-    private static let fullWidthForms: ClosedRange<UInt16> = 0xFF01...0xFF5E
+    private static let fullWidthForms = SQLSeparatingCharacter.fullWidthForms
     private static let fullWidthOffset: UInt16 = 0xFEE0
 
     static func isFullWidthWordUnit(_ unit: UInt16) -> Bool {
-        switch unit {
-        case 0xFF10...0xFF19, 0xFF21...0xFF3A, 0xFF3F, 0xFF41...0xFF5A:
-            return true
-        default:
-            return false
-        }
+        SQLSeparatingCharacter.isFullWidthWordUnit(unit)
     }
 
     static func separating(_ unit: UInt16) -> ConfusableSQLCharacter? {
-        guard let scalar = Unicode.Scalar(unit) else { return nil }
-        switch unit {
-        case fullWidthForms where !isFullWidthWordUnit(unit):
+        guard let scalar = Unicode.Scalar(unit), let kind = SQLSeparatingCharacter.kind(of: unit) else { return nil }
+        switch kind {
+        case .fullWidthPunctuation:
             return .fullWidthPunctuation(scalar)
-        case 0x2018, 0x2019, 0x201C, 0x201D:
+        case .curlyQuote:
             return .curlyQuote(scalar)
-        case 0x00A0, 0x2000...0x200A, 0x202F, 0x205F, 0x3000:
+        case .nonASCIISpace:
             return .nonASCIISpace(scalar)
-        default:
-            return nil
         }
     }
 

@@ -10,6 +10,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("SQLScriptText")
@@ -209,7 +210,7 @@ struct SQLScriptTextTests {
     func oracleScriptRoundTrips() {
         let script = Self.oracle.script(Self.oracleCorpus)
 
-        #expect(SQLStatementScanner.executableStatements(in: script, dialect: .oracle).map(\.sql) == Self.oracleCorpus)
+        #expect(SQLStatementScanner.executableStatements(in: script, grammar: TestGrammar.oracle).map(\.sql) == Self.oracleCorpus)
         #expect(Self.oracle.sendableStatements(script) == Self.oracleCorpus)
     }
 
@@ -241,16 +242,16 @@ struct SQLScriptTextTests {
         ]
         let script = Self.mysql.script(statements)
 
-        #expect(try await Self.imported(script, dialect: .mysql) == statements)
+        #expect(try await Self.imported(script, grammar: TestGrammar.mysql) == statements)
     }
 
-    private static func imported(_ sql: String, dialect: SqlDialect) async throws -> [String] {
+    private static func imported(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
         try sql.write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
 
         var statements: [String] = []
-        for try await (statement, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, dialect: dialect) {
+        for try await (statement, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, grammar: grammar) {
             statements.append(statement)
         }
         return statements

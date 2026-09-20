@@ -46,6 +46,17 @@ final class LibPQDriverCore: @unchecked Sendable {
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
     var standardConformingStrings: Bool { libpqConnection?.standardConformingStrings ?? true }
 
+    /// Whether a backslash escapes in a plain string literal on this session, which is exactly what
+    /// `standard_conforming_strings` decides. The connection re-reads it from every `ParameterStatus` the server
+    /// sends, so a `SET standard_conforming_strings` the user runs is reflected once it has run.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        guard let connection = libpqConnection else { return nil }
+        return PluginSessionLexicalState(
+            determined: .backslashEscapesInSingleQuotes,
+            enabled: connection.standardConformingStrings ? [] : .backslashEscapesInSingleQuotes
+        )
+    }
+
     init(
         config: DriverConnectionConfig,
         schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
@@ -247,6 +258,10 @@ protocol LibPQBackedDriver: PluginDatabaseDriver {
 }
 
 extension LibPQBackedDriver {
+    var sessionLexicalState: PluginSessionLexicalState? {
+        core.sessionLexicalState
+    }
+
     /// The new name must be bare. Every libpq engine here rejects a qualified one, because this
     /// statement renames in place and never moves the object; `SET SCHEMA` is the separate verb.
     ///

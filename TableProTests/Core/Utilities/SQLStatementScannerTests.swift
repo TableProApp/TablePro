@@ -5,6 +5,7 @@
 
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import XCTest
 
 final class SQLStatementScannerTests: XCTestCase {
@@ -55,7 +56,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testSemicolonInsideBackticks() {
         let sql = "SELECT `a;b`; SELECT 2"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql),
             ["SELECT `a;b`", "SELECT 2"]
         )
     }
@@ -79,7 +80,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testBackslashEscape() {
         let sql = "SELECT 'it\\'s'; SELECT 2"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql),
             ["SELECT 'it\\'s'", "SELECT 2"]
         )
     }
@@ -168,15 +169,20 @@ final class SQLStatementScannerTests: XCTestCase {
 
     func testMySQLVersionedCommentSegmentIsKept() {
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */; SELECT 1", dialect: .mysql),
+            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */; SELECT 1", grammar: TestGrammar.mysql),
             ["/*!40101 SET @OLD=1 */", "SELECT 1"]
         )
     }
 
-    func testVersionedCommentKeptRegardlessOfDialect() {
+    /// `/*! */` is SQL MySQL runs and a comment everywhere else, so what it is depends on the engine.
+    func testVersionedCommentRunsOnMySQLAndIsACommentElsewhere() {
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", dialect: .generic),
+            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", grammar: TestGrammar.mysql),
             ["/*!40101 SET @OLD=1 */"]
+        )
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", grammar: TestGrammar.standard),
+            []
         )
     }
 
@@ -199,7 +205,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testDollarQuotedDoBlockKeepsInternalSemicolons() {
         let sql = "DO $$ BEGIN PERFORM 1; PERFORM 2; END $$; SELECT 1;"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
             ["DO $$ BEGIN PERFORM 1; PERFORM 2; END $$", "SELECT 1"]
         )
     }
@@ -207,7 +213,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testTaggedDollarQuoteKeepsInternalSemicolons() {
         let sql = "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql; SELECT f();"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
             [
                 "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql",
                 "SELECT f()"
@@ -218,7 +224,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testNestedDifferentDollarTags() {
         let sql = "DO $outer$ SELECT $inner$ a;b $inner$; END $outer$; SELECT 1;"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
             ["DO $outer$ SELECT $inner$ a;b $inner$; END $outer$", "SELECT 1"]
         )
     }
@@ -226,7 +232,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testPositionalParameterIsNotDollarQuote() {
         let sql = "SELECT $1; SELECT $2;"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
             ["SELECT $1", "SELECT $2"]
         )
     }
@@ -234,7 +240,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testDollarPairInsideIdentifierIsNotOpener() {
         let sql = "SELECT 1 AS a$$; SELECT 2;"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
             ["SELECT 1 AS a$$", "SELECT 2"]
         )
     }
@@ -242,7 +248,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testGenericDialectIgnoresDollarQuotes() {
         let sql = "DO $$ SELECT 1; SELECT 2 $$;"
         XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, dialect: .generic),
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.standard),
             ["DO $$ SELECT 1", "SELECT 2 $$"]
         )
     }
@@ -250,7 +256,7 @@ final class SQLStatementScannerTests: XCTestCase {
     func testCursorInsideDollarBodyReturnsWholeStatement() {
         let sql = "DO $$ BEGIN PERFORM 1; END $$; SELECT 1;"
         XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 20, dialect: .postgres),
+            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 20, grammar: TestGrammar.postgres),
             "DO $$ BEGIN PERFORM 1; END $$"
         )
     }

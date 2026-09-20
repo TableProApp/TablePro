@@ -1,8 +1,3 @@
-//
-//  PLSQLUnitTracker.swift
-//  TablePro
-//
-
 import Foundation
 
 /// Statement boundaries in Oracle's language, where a `;` inside a PL/SQL unit separates the unit's own statements.
@@ -27,7 +22,7 @@ import Foundation
 /// The final `;` of a unit belongs to it, except after a trigger whose body is a `CALL`: measured on Oracle 23ai,
 /// `CREATE TRIGGER ... CALL p(:NEW.a);` is stored INVALID and the same text without the `;` compiles.
 /// `scripts/check-oracle-plsql-terminators.sh` re-measures both rules against a live server.
-struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
+public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     private enum Lead {
         case start
         case afterCreate
@@ -76,11 +71,13 @@ struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     private var expectsDeclaration = false
     private var inlineQueryStarted = false
 
-    var needsWords: Bool {
+    public init() {}
+
+    public var needsWords: Bool {
         lead != .decided || tracksConstructs
     }
 
-    var terminator: SQLStatementTerminator {
+    public var terminator: SQLStatementTerminator {
         switch kind {
         case .anonymousBlock, .opaque:
             return .partOfStatement
@@ -91,7 +88,7 @@ struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         }
     }
 
-    var acceptsBindParameters: Bool {
+    public var acceptsBindParameters: Bool {
         switch kind {
         case .storedUnit, .embeddedSourceHeader, .opaque:
             return false
@@ -100,7 +97,7 @@ struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         }
     }
 
-    mutating func observeWord(_ word: String) {
+    public mutating func observeWord(_ word: String) {
         previousSymbol = nil
         guard !inLabel else { return }
         let isMember = followsPeriod
@@ -155,7 +152,7 @@ struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         observeBodyWord(word)
     }
 
-    mutating func observeSymbol(_ symbol: UInt16) {
+    public mutating func observeSymbol(_ symbol: UInt16) {
         if symbol == Self.lessThan, previousSymbol == Self.lessThan {
             inLabel = true
             previousSymbol = nil
@@ -180,14 +177,14 @@ struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         followsPeriod = symbol == Self.period
     }
 
-    mutating func observeOpaqueToken() {
+    public mutating func observeOpaqueToken() {
         previousSymbol = nil
         followsPeriod = false
         guard tracksConstructs else { return }
         settlePendingBeforeNonWord()
     }
 
-    mutating func observeSemicolon() -> Bool {
+    public mutating func observeSemicolon() -> Bool {
         previousSymbol = nil
         followsPeriod = false
         guard lead == .decided else { return true }
@@ -212,7 +209,7 @@ struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         }
     }
 
-    mutating func reset() {
+    public mutating func reset() {
         self = PLSQLUnitTracker()
     }
 

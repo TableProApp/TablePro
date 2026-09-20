@@ -89,10 +89,12 @@ struct MySQLSessionFootprint: Equatable {
         return nil
     }
 
-    mutating func observe(_ sql: String) {
-        for statement in SQLStatementSplitting.statements(in: sql) {
+    /// `lexicalFeatures` are the connection's own, so a `;` inside a Databend `$$` body or a string the session's
+    /// `NO_BACKSLASH_ESCAPES` closes early is split where the server splits it.
+    mutating func observe(_ sql: String, lexicalFeatures: SQLLexicalFeatures) {
+        for statement in SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures) {
             let body = Self.executableBody(of: statement)
-            observeTransaction(body)
+            observeTransaction(body, lexicalFeatures: lexicalFeatures)
             observeStatement(body)
         }
     }
@@ -121,8 +123,8 @@ struct MySQLSessionFootprint: Equatable {
     /// holds the lock and fails on the `INSERT`: clearing the flag for any `LOCK TABLES` anywhere in
     /// the text released a lock the session was still holding, and the idle release then handed the
     /// connection back.
-    mutating func observeFailure(of sql: String) {
-        let statements = SQLStatementSplitting.statements(in: sql)
+    mutating func observeFailure(of sql: String, lexicalFeatures: SQLLexicalFeatures) {
+        let statements = SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures)
         guard statements.count == 1, let failed = statements.first else { return }
         let head = Self.collapsedHead(of: Self.executableBody(of: failed).uppercased())
         guard head.hasPrefix("LOCK TABLE") else { return }
@@ -139,8 +141,8 @@ struct MySQLSessionFootprint: Equatable {
         return hasLockedTables ? .holdsSessionLocks : .idle
     }
 
-    private mutating func observeTransaction(_ statement: String) {
-        switch SQLTransactionTracking.effect(of: statement) {
+    private mutating func observeTransaction(_ statement: String, lexicalFeatures: SQLLexicalFeatures) {
+        switch SQLTransactionTracking.effect(of: statement, lexicalFeatures: lexicalFeatures) {
         case .opens: hasOpenTransaction = true
         case .closes: hasOpenTransaction = false
         case .unchanged: break

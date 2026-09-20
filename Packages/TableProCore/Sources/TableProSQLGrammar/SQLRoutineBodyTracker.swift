@@ -1,8 +1,3 @@
-//
-//  SQLRoutineBodyTracker.swift
-//  TablePro
-//
-
 import Foundation
 
 /// Statement boundaries for the dialects whose only `;`-holding construct is a routine body written `BEGIN ... END`.
@@ -10,26 +5,28 @@ import Foundation
 /// A `BEGIN` opens a body only inside a statement that defines a routine, for the safety reason recorded on
 /// ``SqlBlockStructure/opensRoutineDefinition(_:)``. The `;` never belongs to the statement: every one of these
 /// engines accepts a statement without it.
-struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
+public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     private var sawStatementKeyword = false
     private var definesRoutine = false
     private var depth = 0
     private var pendingBegin = false
     private var pendingEnd = false
 
-    var needsWords: Bool {
+    public init() {}
+
+    public var needsWords: Bool {
         !sawStatementKeyword || definesRoutine
     }
 
-    var terminator: SQLStatementTerminator {
+    public var terminator: SQLStatementTerminator {
         .separator
     }
 
-    var acceptsBindParameters: Bool {
+    public var acceptsBindParameters: Bool {
         true
     }
 
-    mutating func observeWord(_ word: String) {
+    public mutating func observeWord(_ word: String) {
         if settlePending(before: word) { return }
         if !sawStatementKeyword {
             sawStatementKeyword = true
@@ -48,15 +45,15 @@ struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         }
     }
 
-    mutating func observeSymbol(_ symbol: UInt16) {
+    public mutating func observeSymbol(_ symbol: UInt16) {
         settlePendingBeforeNonWord()
     }
 
-    mutating func observeOpaqueToken() {
+    public mutating func observeOpaqueToken() {
         settlePendingBeforeNonWord()
     }
 
-    mutating func observeSemicolon() -> Bool {
+    public mutating func observeSemicolon() -> Bool {
         pendingBegin = false
         if pendingEnd {
             pendingEnd = false
@@ -65,7 +62,7 @@ struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         return depth == 0
     }
 
-    mutating func reset() {
+    public mutating func reset() {
         self = SQLRoutineBodyTracker()
     }
 
