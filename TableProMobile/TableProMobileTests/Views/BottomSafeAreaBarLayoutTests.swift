@@ -97,6 +97,10 @@ private struct HostedTree {
             return "No visible tab bar. List insets \(probe.listInsets), marker \(probe.markerFrame)"
         }
         let tabBarFrame = tabBar.convert(tabBar.bounds, to: window)
+        guard Self.isHorizontalBand(tabBarFrame) else {
+            return "The tab bar is drawn vertically at \(tabBarFrame) in window \(window.bounds), "
+                + "so it owes the content no bottom inset. Marker \(probe.markerFrame)"
+        }
         return "The list's bottom inset \(probe.listInsets.bottom) never covered the tab bar band "
             + "\(window.bounds.maxY - tabBarFrame.minY). Window \(window.bounds), tab bar \(tabBarFrame), "
             + "marker \(probe.markerFrame), list insets \(probe.listInsets)"
@@ -110,8 +114,13 @@ private struct HostedTree {
     private func isSettled(against tabBar: UITabBar) -> Bool {
         let tabBarFrame = tabBar.convert(tabBar.bounds, to: window)
         guard !tabBarFrame.isEmpty else { return false }
+        guard Self.isHorizontalBand(tabBarFrame) else { return true }
         let tabBarBand = window.bounds.maxY - tabBarFrame.minY
         return probe.listInsets.bottom >= tabBarBand - 0.5
+    }
+
+    static func isHorizontalBand(_ frame: CGRect) -> Bool {
+        frame.width > frame.height
     }
 
     private func visibleTabBar(in view: UIView) -> UITabBar? {

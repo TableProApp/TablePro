@@ -96,6 +96,13 @@ struct SQLHighlightTextView: UIViewRepresentable {
             separator.translatesAutoresizingMaskIntoConstraints = false
             toolbar.addSubview(separator)
 
+            let separatorHeight = separator.heightAnchor.constraint(
+                equalToConstant: HairlineThickness.points(forDisplayScale: toolbar.traitCollection.displayScale)
+            )
+            toolbar.registerForTraitChanges([UITraitDisplayScale.self]) { (view: UIView, _) in
+                separatorHeight.constant = HairlineThickness.points(forDisplayScale: view.traitCollection.displayScale)
+            }
+
             let scrollView = UIScrollView()
             scrollView.showsHorizontalScrollIndicator = false
             scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -127,7 +134,7 @@ struct SQLHighlightTextView: UIViewRepresentable {
                 separator.topAnchor.constraint(equalTo: toolbar.topAnchor),
                 separator.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor),
                 separator.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor),
-                separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+                separatorHeight,
 
                 scrollView.topAnchor.constraint(equalTo: toolbar.topAnchor),
                 scrollView.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 8),

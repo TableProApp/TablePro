@@ -157,15 +157,26 @@ struct ConnectedView: View {
         @Bindable var coordinator = coordinator
         return TabView(selection: $coordinator.selectedTab) {
             Tab("Tables", systemImage: "tablecells", value: .tables) {
-                NavigationStack(path: $coordinator.tablesPath) {
+                NavigationSplitView {
                     tabChrome(coordinator) {
                         TableListView(connectionId: connection.id)
                     }
-                    .navigationDestination(for: TableInfo.self) { table in
-                        DataBrowserView(table: table)
-                            .environment(coordinator)
+                } detail: {
+                    NavigationStack {
+                        if let table = coordinator.selectedTable {
+                            DataBrowserView(table: table)
+                                .environment(coordinator)
+                                .id(table)
+                        } else {
+                            ContentUnavailableView(
+                                "No Table Selected",
+                                systemImage: "tablecells",
+                                description: Text("Pick a table to browse its rows.")
+                            )
+                        }
                     }
                 }
+                .navigationSplitViewStyle(.balanced)
             }
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {
@@ -265,16 +276,14 @@ struct ConnectedView: View {
                 Button {
                     presenter.presentConnectionEditor(for: connection.id)
                 } label: {
-                    Image(systemName: "pencil")
-                        .accessibilityLabel(Text("Edit Connection"))
+                    Label("Edit Connection", systemImage: "pencil")
                 }
             }
         }
-        if connection.safeModeLevel != .off {
+        if let badge = SafeModeBadge(level: connection.safeModeLevel) {
             ToolbarItem(placement: .topBarTrailing) {
-                Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
-                    .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
-                    .font(.caption)
+                Label(badge.title, systemImage: badge.symbolName)
+                    .foregroundStyle(badge.tint == .blocked ? Color.red : Color.orange)
             }
         }
         if coordinator.supportsDatabaseSwitching && coordinator.databases.count > 1 {
@@ -292,18 +301,8 @@ struct ConnectedView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 4) {
-                        Text(coordinator.activeDatabase)
-                            .font(.subheadline)
-                        if coordinator.isSwitching {
-                            ProgressView()
-                                .controlSize(.mini)
-                        } else {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Label(coordinator.activeDatabase, systemImage: "cylinder.split.1x2")
+                        .font(.subheadline)
                 }
                 .disabled(coordinator.isSwitching)
             }

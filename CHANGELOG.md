@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Agent** mode, giving one session the whole connection window: its sessions, its conversation, and what it ran.
+- Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
+- Table list and table browser side by side on iPad and on iPhone Duo's inner display.
 - **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
 - Agent mode holds its connection at Safe Mode **Alert** while it is on, and hands back the level you set on the way out.
 - **Open in Agent Mode** on a connection in the welcome window.
@@ -48,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A column resized moments before its table was dropped saving the layout back over the clear.
 - A connection left pointing at a database that was dropped.
 - A dropped table's saved filters, column layout, highlight rules, value formats and label columns coming back on a table recreated with its name.
+- Database switcher, Safe Mode badge and multi-select actions missing from the side bar on iPhone Duo.
+- Sort, Filter, More, Insert Row, Share, Edit and Add Tag missing from the side bar on iPhone Duo.
+- Safe Mode badge with no accessibility label.
+- Keyboard bar separator measured against the main screen instead of the display the editor is on.
 - A dropped database or schema leaving every one of its tables' saved settings behind.
 - Favorites rows left behind by a dropped table, schema or database.
 - Column and operator pull-downs in **Highlight Rules** snapping back to their previous value, leaving every rule on **equals** and on the column it was created with. (#3015)

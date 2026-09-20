@@ -11,7 +11,9 @@ final class ConnectionCoordinator {
 
     private(set) var session: ConnectionSession?
     private(set) var phase: ConnectionPhase = .connecting
-    private(set) var tables: [TableInfo] = []
+    private(set) var tables: [TableInfo] = [] {
+        didSet { selectedTable = TableSelectionResolver.keeping(selectedTable, in: tables) }
+    }
     private(set) var databases: [String] = []
     private(set) var schemas: [String] = []
     private(set) var activeDatabase: String = ""
@@ -29,7 +31,7 @@ final class ConnectionCoordinator {
     }
     var pendingQuery: String?
     var pendingTableName: String?
-    var tablesPath = NavigationPath()
+    var selectedTable: TableInfo?
 
     private(set) var queryHistory: [QueryHistoryItem] = []
     private let historyStorage = QueryHistoryStorage()
@@ -371,13 +373,10 @@ final class ConnectionCoordinator {
     }
 
     func navigateToPendingTable() {
-        guard let tableName = pendingTableName,
-              let table = tables.first(where: { $0.name == tableName }) else { return }
+        guard let table = TableSelectionResolver.resolve(pendingName: pendingTableName, in: tables) else { return }
         pendingTableName = nil
         selectedTab = .tables
-        Task { @MainActor in
-            tablesPath.append(table)
-        }
+        selectedTable = table
     }
 
     // MARK: - Private Helpers
