@@ -27,7 +27,7 @@ private enum AutocommitOnlyFixture {
         case .sqlServer:
             return sqlServer
         case .oracle:
-            return SQLLexicalRules(dialect: .oracle)
+            return TestGrammar.oracle
         case .redis, .other:
             return TestGrammar.standard
         }
