@@ -11,7 +11,7 @@ public final class ConnectionManager: @unchecked Sendable {
 
     private let lock = NSLock()
     private var sessions: [UUID: ConnectionSession] = [:]
-    private var teardowns: [UUID: Teardown] = [:]
+    private var teardowns: [UUID: ConnectionTeardown] = [:]
     private var blockingTeardowns: Set<UUID> = []
     private var attemptGenerations: [UUID: Int] = [:]
     private var lastTeardownId = 0
@@ -40,13 +40,13 @@ public final class ConnectionManager: @unchecked Sendable {
         prompter: (any ConnectionPrompter)? = nil
     ) async throws -> ConnectionSession {
         let generation = beginAttempt(for: connection.id)
-        switch await awaitTeardown(of: connection.id) {
+        switch await awaitTeardown(of: connection.id, bound: .after(teardownWaitLimit)) {
         case .cleared:
             break
         case .cancelled:
             throw CancellationError()
         case .stillClosing:
-            throw ConnectionError.previousSessionStillClosing(connection.name)
+            throw ConnectionError.previousSessionStillClosing
         }
         guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
         let password = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
@@ -135,23 +135,43 @@ public final class ConnectionManager: @unchecked Sendable {
         "com.TablePro.password.\(connectionId.uuidString)"
     }
 
-    /// Drops the session and waits for its teardown under the same bound `connect` uses, then returns
-    /// whether or not the teardown landed, so a stuck driver cannot hold a background release open.
+    /// Drops the session and waits for the teardown to land, rather than bounding it the way `connect`
+    /// does. `releaseSuspensionBlockingResources` runs through here under an iOS background task
+    /// assertion taken to cover exactly this wait, and giving up early ends that assertion over a driver
+    /// that still holds its file: a `duckdb_close` that checkpoints a long WAL takes as long as it takes.
+    /// The assertion's own expiration handler is the bound, because it is the only one the system honours.
     public func disconnect(_ connectionId: UUID) async {
         invalidateAttempt(for: connectionId)
-        await awaitTeardown(of: connectionId)
+        await awaitTeardown(of: connectionId, bound: .untilFinished)
     }
 
     @discardableResult
-    private func awaitTeardown(of connectionId: UUID) async -> TeardownWait {
+    private func awaitTeardown(of connectionId: UUID, bound: TeardownBound) async -> TeardownWait {
         guard let teardown = claimTeardown(for: connectionId) else { return .cleared }
-        switch await BoundedWait.outcome(of: teardown.task, within: teardownWaitLimit) {
-        case .completed:
-            return .cleared
-        case .cancelled:
-            return .cancelled
-        case .timedOut:
-            return .stillClosing
+        switch bound {
+        case .untilFinished:
+            return await teardown.waitUntilFinished() ? .cleared : .cancelled
+        case .after(let limit):
+            return await Self.wait(on: teardown, within: limit)
+        }
+    }
+
+    private static func wait(on teardown: ConnectionTeardown, within limit: Duration) async -> TeardownWait {
+        await withTaskGroup(of: TeardownWait.self) { group in
+            group.addTask {
+                await teardown.waitUntilFinished() ? .cleared : .cancelled
+            }
+            group.addTask {
+                do {
+                    try await Task.sleep(for: limit)
+                } catch {
+                    return .cancelled
+                }
+                return .stillClosing
+            }
+            let outcome = await group.next() ?? .cancelled
+            group.cancelAll()
+            return outcome
         }
     }
 
@@ -187,24 +207,24 @@ public final class ConnectionManager: @unchecked Sendable {
     /// Closes the tunnel before the driver, because a driver blocked reading through a tunnel the server
     /// dropped only returns once its socket's peer closes; the reverse order queues `disconnect()` behind
     /// a read that never completes. The lock is held past the `teardowns` write, so the task's own
-    /// `finishTeardown` cannot clear an entry that is not installed yet.
-    private func claimTeardown(for connectionId: UUID) -> Teardown? {
+    /// `retireTeardown` cannot clear an entry that is not installed yet.
+    private func claimTeardown(for connectionId: UUID) -> ConnectionTeardown? {
         lock.lock()
         defer { lock.unlock() }
         guard let session = sessions.removeValue(forKey: connectionId) else {
             return teardowns[connectionId]
         }
         lastTeardownId += 1
-        let teardownId = lastTeardownId
+        let teardown = ConnectionTeardown(id: lastTeardownId)
         let sshProvider = sshProvider
-        let task = Task { [weak self] in
+        Task { [weak self] in
             if let sshProvider {
                 try? await sshProvider.closeTunnel(for: connectionId)
             }
             try? await session.driver.disconnect()
-            self?.finishTeardown(teardownId, for: connectionId)
+            self?.retireTeardown(teardown.id, for: connectionId)
+            teardown.finish()
         }
-        let teardown = Teardown(id: teardownId, task: task)
         teardowns[connectionId] = teardown
         if session.driver.holdsSuspensionBlockingResource {
             blockingTeardowns.insert(connectionId)
@@ -212,7 +232,8 @@ public final class ConnectionManager: @unchecked Sendable {
         return teardown
     }
 
-    private func finishTeardown(_ teardownId: Int, for connectionId: UUID) {
+    /// Runs before `ConnectionTeardown.finish()`, so a waiter it wakes already reads the cleared state.
+    private func retireTeardown(_ teardownId: Int, for connectionId: UUID) {
         lock.lock()
         defer { lock.unlock() }
         guard teardowns[connectionId]?.id == teardownId else { return }
@@ -242,9 +263,9 @@ public final class ConnectionManager: @unchecked Sendable {
         return sessions[connectionId]
     }
 
-    private struct Teardown: Sendable {
-        let id: Int
-        let task: Task<Void, Never>
+    private enum TeardownBound: Sendable {
+        case after(Duration)
+        case untilFinished
     }
 
     private enum TeardownWait: Sendable {
@@ -254,32 +275,87 @@ public final class ConnectionManager: @unchecked Sendable {
     }
 }
 
+/// One teardown, and the waiters parked on it.
+///
 /// `await task.value` on a `Task<_, Never>` ignores the awaiting task's cancellation entirely: measured,
-/// a waiter cancelled at +0.200s stayed suspended until the task it awaited finished at +1.059s. Bridging
-/// the completion through an `AsyncStream`, whose iterator is cancellation-aware, ends the wait at +0.205s.
-private enum BoundedWait {
-    fileprivate enum Outcome<Value: Sendable>: Sendable {
-        case completed(Value)
-        case cancelled
-        case timedOut
+/// a waiter cancelled at +0.200s stayed suspended until the task it awaited finished at +1.059s. Parking
+/// each waiter on its own continuation is what makes a wait cancellable, and it is also what lets a wait
+/// that gives up take its continuation with it, rather than leaving one bridging task per attempt
+/// suspended for as long as the teardown runs.
+private final class ConnectionTeardown: @unchecked Sendable {
+    let id: Int
+
+    private let lock = NSLock()
+    private var hasFinished = false
+    private var lastWaiterId = 0
+    private var waiters: [Int: CheckedContinuation<Bool, Never>] = [:]
+    private var cancelledWaiters: Set<Int> = []
+
+    init(id: Int) {
+        self.id = id
     }
 
-    fileprivate static func outcome<Value: Sendable>(
-        of task: Task<Value, Never>,
-        within limit: Duration
-    ) async -> Outcome<Value> {
-        let (outcomes, reporter) = AsyncStream<Outcome<Value>>.makeStream()
-        Task { reporter.yield(.completed(await task.value)) }
-        let deadline = Task {
-            do {
-                try await Task.sleep(for: limit)
-            } catch {
-                return
-            }
-            reporter.yield(.timedOut)
+    func finish() {
+        lock.lock()
+        hasFinished = true
+        let parked = waiters
+        waiters.removeAll()
+        cancelledWaiters.removeAll()
+        lock.unlock()
+        for continuation in parked.values {
+            continuation.resume(returning: true)
         }
-        defer { deadline.cancel() }
-        var iterator = outcomes.makeAsyncIterator()
-        return await iterator.next() ?? .cancelled
+    }
+
+    /// `true` once the teardown lands, `false` when the waiting task is cancelled before it does.
+    func waitUntilFinished() async -> Bool {
+        let waiterId = reserveWaiter()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                park(continuation, as: waiterId)
+            }
+        } onCancel: {
+            cancelWaiter(waiterId)
+        }
+    }
+
+    private func reserveWaiter() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        lastWaiterId += 1
+        return lastWaiterId
+    }
+
+    /// Cancellation can land before the continuation exists, so a waiter cancelled that early is recorded
+    /// by id and answered here instead.
+    private func park(_ continuation: CheckedContinuation<Bool, Never>, as waiterId: Int) {
+        lock.lock()
+        if hasFinished {
+            lock.unlock()
+            continuation.resume(returning: true)
+            return
+        }
+        if cancelledWaiters.remove(waiterId) != nil {
+            lock.unlock()
+            continuation.resume(returning: false)
+            return
+        }
+        waiters[waiterId] = continuation
+        lock.unlock()
+    }
+
+    private func cancelWaiter(_ waiterId: Int) {
+        lock.lock()
+        if hasFinished {
+            lock.unlock()
+            return
+        }
+        guard let continuation = waiters.removeValue(forKey: waiterId) else {
+            cancelledWaiters.insert(waiterId)
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+        continuation.resume(returning: false)
     }
 }

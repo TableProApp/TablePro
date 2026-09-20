@@ -107,6 +107,14 @@ actor Gate {
     }
 }
 
+actor Flag {
+    private(set) var isRaised = false
+
+    func raise() {
+        isRaised = true
+    }
+}
+
 enum TeardownStep: Sendable, Equatable {
     case tunnelClose
     case driverDisconnect

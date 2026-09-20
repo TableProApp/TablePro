@@ -4,7 +4,7 @@ import Foundation
 import Testing
 
 
-@Suite("ConnectionManager Tests")
+@Suite("ConnectionManager Tests", .timeLimit(.minutes(1)))
 struct ConnectionManagerTests {
     @Test("Connect creates a session")
     func connectCreatesSession() async throws {
@@ -432,22 +432,57 @@ struct ConnectionManagerTests {
 
         let release = Task { await manager.disconnect(connection.id) }
         await stuck.waitUntilEntered()
-        await release.value
 
-        await #expect(throws: ConnectionError.previousSessionStillClosing(connection.name)) {
+        await #expect(throws: ConnectionError.previousSessionStillClosing) {
             _ = try await manager.connect(connection)
         }
         #expect(manager.session(for: connection.id) == nil)
         #expect(manager.hasSuspensionBlockingResources)
 
         await stuck.open()
-        await manager.disconnect(connection.id)
+        await release.value
         #expect(!manager.hasSuspensionBlockingResources)
 
         let second = MockDatabaseDriver()
         factory.drivers["mock"] = second
         _ = try await manager.connect(connection)
         #expect(second.isConnected)
+    }
+
+    @Test("Releasing waits out a teardown that outlasts the bound a connect would give it")
+    func releaseWaitsPastTheConnectBound() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            teardownWaitLimit: .milliseconds(50)
+        )
+        let connection = DatabaseConnection(name: "Ledger", type: DatabaseType(rawValue: "mock"))
+        let checkpointing = Gate()
+        let hasReturned = Flag()
+
+        let driver = MockDatabaseDriver()
+        driver.holdsSuspensionBlockingResource = true
+        driver.beforeDisconnect = { await checkpointing.enter() }
+        factory.drivers["mock"] = driver
+        _ = try await manager.connect(connection)
+
+        let release = Task {
+            await manager.releaseSuspensionBlockingResources()
+            await hasReturned.raise()
+        }
+        await checkpointing.waitUntilEntered()
+        try await Task.sleep(for: .milliseconds(250))
+
+        #expect(await hasReturned.isRaised == false)
+        #expect(manager.hasSuspensionBlockingResources)
+
+        await checkpointing.open()
+        await release.value
+
+        #expect(await hasReturned.isRaised)
+        #expect(!manager.hasSuspensionBlockingResources)
+        #expect(driver.disconnectCount == 1)
     }
 
     @Test("A connect cancelled while it waits for a teardown gives up instead of queuing behind it")
