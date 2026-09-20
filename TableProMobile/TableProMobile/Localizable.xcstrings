@@ -16381,6 +16381,9 @@
         }
       }
     },
+    "The connection was lost while a transaction was open. Check which of its changes were saved before running them again." : {
+
+    },
     "The data could not be read: %@" : {
       "localizations" : {
         "ko" : {

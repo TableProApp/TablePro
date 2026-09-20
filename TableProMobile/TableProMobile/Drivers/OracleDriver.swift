@@ -180,7 +180,9 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     // MARK: - Transactions
 
-    func beginTransaction() async throws {}
+    func beginTransaction() async throws {
+        core.beginTransaction()
+    }
 
     func commitTransaction() async throws {
         _ = try await runQuery(OracleSchemaQueries.commitTransaction)
@@ -188,6 +190,10 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     func rollbackTransaction() async throws {
         _ = try await runQuery(OracleSchemaQueries.rollbackTransaction)
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        core.holdsTransaction ? .explicitTransaction : .idle
     }
 
     // MARK: - Database & Schema Navigation

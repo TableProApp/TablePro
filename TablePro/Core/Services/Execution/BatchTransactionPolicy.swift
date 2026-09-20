@@ -81,6 +81,7 @@ internal enum BatchTransactionPolicy {
             let following = cursor.next()?.word
             return following == "START" || following == "BEGIN"
         case "SET":
+            guard !family.setTransactionOpensTransaction else { return cursor.next()?.word == "TRANSACTION" }
             return setsCommitMode(&cursor, family: family)
         default:
             return false

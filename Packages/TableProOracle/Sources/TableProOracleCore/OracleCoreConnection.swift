@@ -54,10 +54,15 @@ public final class OracleCoreConnection: @unchecked Sendable {
     private let unsupportedWarner = UnsupportedTypeWarner()
     private let nioLogger = Logging.Logger(label: "com.TablePro.oracle-nio")
 
+    /// Restoring a replaced session's settings writes nothing, so it neither commits nor joins a transaction.
+    private static let sessionSetupOptions = StatementOptions(autoCommit: false)
+
     private struct LockedState: Sendable {
         var isConnected = false
         var hasEverConnected = false
         var nioConnection: OracleNIO.OracleConnection?
+        var sessionID = 0
+        var transaction = OracleSessionTransaction()
         var queryTimeoutSeconds = 0
         var sessionSchema: String?
         var capturesServerOutput = false
@@ -130,6 +135,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
             state.withLock { current in
                 current.nioConnection = connection
+                current.sessionID = connectionId
                 current.isConnected = true
                 current.hasEverConnected = true
             }
@@ -322,15 +328,73 @@ public final class OracleCoreConnection: @unchecked Sendable {
         let connection = try requireConnection()
         if let schema = state.withLock({ $0.sessionSchema }) {
             _ = try await withQueryDeadline { [self] in
-                try await collectRows(OracleSchemaQueries.setCurrentSchema(schema), on: connection)
+                try await collectRows(
+                    OracleSchemaQueries.setCurrentSchema(schema),
+                    options: Self.sessionSetupOptions,
+                    on: connection
+                )
             }
         }
         if state.withLock({ $0.capturesServerOutput }) {
             _ = try await withQueryDeadline { [self] in
-                try await collectRows(OracleServerOutput.enableStatement, on: connection)
+                try await collectRows(
+                    OracleServerOutput.enableStatement,
+                    options: Self.sessionSetupOptions,
+                    on: connection
+                )
             }
         }
         return connection
+    }
+
+    // MARK: - Transactions
+
+    /// Whether a transaction is open on this session, from ``beginTransaction()`` or from a statement that opens one,
+    /// until a `COMMIT` or `ROLLBACK` ends it.
+    public var holdsTransaction: Bool {
+        state.withLock { $0.transaction.isOpen }
+    }
+
+    /// Holds every statement that follows in one transaction, until a `COMMIT` or `ROLLBACK` runs on the session.
+    ///
+    /// Oracle has no statement that opens a transaction the way `BEGIN` does elsewhere: the first write opens one. So
+    /// this sends nothing, and the statements after it simply stop committing as they run.
+    public func beginTransaction() {
+        state.withLock { $0.transaction.open() }
+    }
+
+    /// The options a statement in `role` runs with, and the connection it runs on. Read under the query gate and after
+    /// any reconnect, so the connection a transaction is bound to is the one the statement runs on.
+    private func admit(_ role: OracleTransactionRole) throws -> (options: StatementOptions, session: Int) {
+        try state.withLock { current in
+            let autoCommit = try current.transaction.admit(role, on: current.sessionID)
+            return (StatementOptions(autoCommit: autoCommit), current.sessionID)
+        }
+    }
+
+    private func recordSuccess(of role: OracleTransactionRole, on session: Int) {
+        state.withLock { $0.transaction.statementSucceeded(role, on: session) }
+    }
+
+    /// Called under the query gate, so the answer about the transaction comes from the connection the refused
+    /// `COMMIT` or `ROLLBACK` ran on.
+    private func recordFailure(of role: OracleTransactionRole) async {
+        guard role == .endsTransaction, holdsTransaction else { return }
+        let serverHoldsTransaction = await serverHoldsTransaction()
+        state.withLock { $0.transaction.statementFailed(role, serverHoldsTransaction: serverHoldsTransaction) }
+    }
+
+    private func serverHoldsTransaction() async -> Bool? {
+        guard let connection = state.withLock({ $0.isConnected ? $0.nioConnection : nil }) else { return nil }
+        let answer = try? await withQueryDeadline { [self] in
+            try await collectRows(
+                OracleSessionTransaction.serverTransactionQuery,
+                options: Self.sessionSetupOptions,
+                on: connection
+            )
+        }
+        guard let answer else { return nil }
+        return answer.rows.first?.first.map { $0 != .null } ?? false
     }
 
     // MARK: - Server Output
@@ -444,13 +508,16 @@ public final class OracleCoreConnection: @unchecked Sendable {
     }
 
     public func executeQuery(_ query: String) async throws -> OracleRawResult {
+        let role = OracleTransactionRole(of: query)
         await queryGate.acquire()
 
         do {
             let connection = try await reconnectedConnection()
+            let admitted = try admit(role)
             let result = try await withQueryDeadline { [self] in
-                try await collectRows(query, on: connection)
+                try await collectRows(query, options: admitted.options, on: connection)
             }
+            recordSuccess(of: role, on: admitted.session)
             await queryGate.release()
             return result
         } catch {
@@ -458,6 +525,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             /// can redial and install a new connection. Marking the failure dead after that would tear
             /// down the connection the next query is already running on.
             let mapped = mapExecutionError(error)
+            await recordFailure(of: role)
             await queryGate.release()
             throw mapped
         }
@@ -465,10 +533,11 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     private func collectRows(
         _ query: String,
+        options: StatementOptions,
         on connection: OracleNIO.OracleConnection
     ) async throws -> OracleRawResult {
         let statement = OracleStatement(stringLiteral: query)
-        let stream = try await connection.execute(statement, logger: nioLogger)
+        let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
         let columnNames = stream.columns.map(\.name)
         var columnTypeNames: [String] = []
@@ -521,17 +590,21 @@ public final class OracleCoreConnection: @unchecked Sendable {
         _ query: String,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
     ) async throws {
+        let role = OracleTransactionRole(of: query)
         await queryGate.acquire()
 
         do {
             let connection = try await reconnectedConnection()
+            let admitted = try admit(role)
             try await withQueryDeadline { [self] in
-                try await streamRows(query, on: connection, continuation: continuation)
+                try await streamRows(query, options: admitted.options, on: connection, continuation: continuation)
             }
+            recordSuccess(of: role, on: admitted.session)
             await queryGate.release()
             continuation.finish()
         } catch {
             let mapped = mapExecutionError(error)
+            await recordFailure(of: role)
             await queryGate.release()
             throw mapped
         }
@@ -539,11 +612,12 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     private func streamRows(
         _ query: String,
+        options: StatementOptions,
         on connection: OracleNIO.OracleConnection,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
     ) async throws {
         let statement = OracleStatement(stringLiteral: query)
-        let stream = try await connection.execute(statement, logger: nioLogger)
+        let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
         let columnNames = stream.columns.map(\.name)
         var columnTypeNames: [String] = []
