@@ -91,10 +91,10 @@ struct StatementAnchor: Equatable {
     func resolve(
         in query: String,
         model: QueryStatementModel = .sql,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar = .ansi
     ) -> NSRange? {
         let statements = QueryStatementScanner.executableStatements(
-            in: query, model: model, dialect: dialect
+            in: query, model: model, grammar: grammar
         )
 
         if let exact = statements.first(where: { $0.range == range && matches($0) }) {

@@ -46,14 +46,15 @@ enum CatalogChangeClassifier {
             let tier = QueryClassifier.classifyTier(trimmed, databaseType: databaseType)
             return tier == .safe ? .none : opaque
         }
-        if QueryClassifier.runsPLSQL(trimmed, databaseType: databaseType) {
+        let grammar = databaseType.lexicalGrammar
+        if QueryClassifier.runsPLSQL(trimmed, grammar: grammar) {
             return opaque
         }
-        return sqlEffect(trimmed)
+        return sqlEffect(trimmed, grammar: grammar)
     }
 
-    private static func sqlEffect(_ trimmed: String) -> CatalogStatementEffect {
-        let tokens = leadingTokens(of: trimmed)
+    private static func sqlEffect(_ trimmed: String, grammar: SQLLexicalGrammar) -> CatalogStatementEffect {
+        let tokens = leadingTokens(of: trimmed, grammar: grammar)
         let leading = leadingKeywordEffect(tokens: tokens, trimmed: trimmed)
         guard leading.kinds.isEmpty else { return leading }
         return leading.union(embeddedDefinitionEffect(tokens: tokens))
@@ -119,9 +120,9 @@ enum CatalogChangeClassifier {
 
     /// Identifier tokens of the statement's opening, with MySQL executable comments revealed and
     /// their version numbers dropped, so `/*!50001 CREATE ... VIEW */` reads as `CREATE VIEW`.
-    private static func leadingTokens(of trimmed: String) -> [String] {
+    private static func leadingTokens(of trimmed: String, grammar: SQLLexicalGrammar) -> [String] {
         let prefix = String(trimmed.prefix(classifiedPrefixLength))
-        let body = QueryClassifier.strippingStringLiterals(prefix, revealingConditionalComments: true).uppercased()
+        let body = SQLCodeProjection.code(of: prefix, grammar: grammar, revealingExecutableComments: true).uppercased()
         var tokens: [String] = []
         var current = ""
         for character in body {

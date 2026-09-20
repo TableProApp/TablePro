@@ -306,11 +306,8 @@ extension QueryExecutionCoordinator {
 
         let statementTexts = statements.map(\.sql)
         let transactionKind = OperationKind.worst(of: statementTexts, databaseType: conn.type)
-        let rules = SQLLexicalRules(
-            databaseType: conn.type,
-            descriptor: PluginManager.shared.sqlDialect(for: conn.type)
-        )
-        let plan = BatchTransactionPolicy.plan(for: statementTexts, databaseType: conn.type, rules: rules)
+        let grammar = parent.lexicalGrammar
+        let plan = BatchTransactionPolicy.plan(for: statementTexts, databaseType: conn.type, grammar: grammar)
         let prepared = statements.map { statement in
             prepareStatement(
                 statement: statement,
@@ -318,7 +315,7 @@ extension QueryExecutionCoordinator {
                 style: style,
                 tabType: tabType,
                 bypassRowLimit: bypassRowLimit,
-                rules: rules
+                grammar: grammar
             )
         }
 
@@ -403,7 +400,7 @@ extension QueryExecutionCoordinator {
         style: ParameterStyle,
         tabType: TabType,
         bypassRowLimit: Bool,
-        rules: SQLLexicalRules
+        grammar: SQLLexicalGrammar
     ) -> PreparedStatement {
         let sql = statement.sql
         let parameterNames = parameters.isEmpty || !statement.acceptsBindParameters
@@ -421,7 +418,7 @@ extension QueryExecutionCoordinator {
             parameterValues: conversion?.values,
             rowCap: bounded.rowCap,
             anchor: StatementAnchor(statement),
-            isCommitPoint: BatchCommitStatement.matches(sql, rules: rules)
+            isCommitPoint: BatchCommitStatement.matches(sql, grammar: grammar)
         )
     }
 

@@ -117,7 +117,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Backtick-quoted identifiers containing semicolons do not split")
     func backtickWithSemicolon() {
         let sql = "SELECT `col;name`; SELECT 2"
-        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 5)
+        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 5, grammar: TestGrammar.mysql)
         #expect(first.sql == "SELECT `col;name`;")
         #expect(first.offset == 0)
     }
@@ -169,7 +169,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Escaped quote inside string does not break parsing")
     func escapedQuoteInString() {
         let sql = "SELECT 'it\\'s here'; SELECT 2"
-        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 0)
+        let first = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 0, grammar: TestGrammar.mysql)
         #expect(first.sql == "SELECT 'it\\'s here';")
         #expect(first.offset == 0)
     }

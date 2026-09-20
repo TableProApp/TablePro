@@ -23,7 +23,7 @@ final class QueryExecutionCoordinator: ObservableObject {
               tab.tabType == .query else { return }
 
         let statements = QueryStatementScanner.executableStatements(
-            in: tab.content.query, model: parent.statementModel, dialect: parent.sqlDialect
+            in: tab.content.query, model: parent.statementModel, grammar: parent.lexicalGrammar
         )
         guard !statements.isEmpty else { return }
 

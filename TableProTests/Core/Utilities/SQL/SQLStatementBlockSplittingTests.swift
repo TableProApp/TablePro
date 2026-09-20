@@ -27,7 +27,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 1;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .sqlite)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.sqlite)
         #expect(statements.count == 2)
         #expect(statements.first?.hasPrefix("CREATE TRIGGER") == true)
         #expect(statements.first?.hasSuffix("END") == true)
@@ -44,7 +44,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 3;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .mysql)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql)
         #expect(statements.count == 2)
         #expect(statements.last == "SELECT 3")
     }
@@ -61,7 +61,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 3;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .mysql)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql)
         #expect(statements.count == 2)
         #expect(statements.last == "SELECT 3")
     }
@@ -78,7 +78,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 3;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .mysql)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql)
         #expect(statements.count == 2)
         #expect(statements.last == "SELECT 3")
     }
@@ -99,12 +99,12 @@ struct SQLStatementBlockSplittingTests {
     /// `BEGIN;` opens a transaction, not a block. Reading it as a block swallows every statement after it, which is
     /// the worst thing block tracking can do to a script.
     @Test("BEGIN; is a transaction and does not swallow the script", arguments: [
-        SqlDialect.postgres, .mysql, .sqlite, .generic,
+        TestGrammar.postgres, TestGrammar.mysql, TestGrammar.sqlite, TestGrammar.standard,
     ])
-    func transactionBeginDoesNotSwallow(dialect: SqlDialect) {
+    func transactionBeginDoesNotSwallow(grammar: SQLLexicalGrammar) {
         let sql = "BEGIN;\nUPDATE t SET a = 1;\nCOMMIT;"
         #expect(
-            SQLStatementScanner.allStatements(in: sql, dialect: dialect) == [
+            SQLStatementScanner.allStatements(in: sql, grammar: grammar) == [
                 "BEGIN", "UPDATE t SET a = 1", "COMMIT",
             ]
         )
@@ -115,7 +115,7 @@ struct SQLStatementBlockSplittingTests {
     ])
     func namedTransactionOpeners(opener: String) {
         let sql = "\(opener);\nSELECT 1;\nCOMMIT;"
-        #expect(SQLStatementScanner.allStatements(in: sql, dialect: .sqlite).count == 3)
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.sqlite).count == 3)
     }
 
     /// T-SQL abbreviates, and an unmatched `BEGIN TRAN` inside a routine swallows every statement after the routine.
@@ -132,7 +132,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT * FROM t;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .generic)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.standard)
         #expect(statements.count == 2, "got \(statements)")
         #expect(statements.last == "SELECT * FROM t")
     }
@@ -151,7 +151,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 3;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .mysql)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql)
         #expect(statements.count == 2, "got \(statements)")
         #expect(statements.last == "SELECT 3")
     }
@@ -168,7 +168,7 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 4;
         """
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .mysql)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql)
         #expect(statements.count == 2, "got \(statements)")
         #expect(statements.last == "SELECT 4")
     }
@@ -178,7 +178,7 @@ struct SQLStatementBlockSplittingTests {
     @Test("The routine flag does not leak into the next statement")
     func routineFlagDoesNotLeak() {
         let sql = "CREATE TABLE t (a int);\n(SELECT begin FROM t);\nDROP TABLE t;\nSELECT 1;"
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .generic)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.standard)
         #expect(statements.count == 4, "got \(statements)")
         #expect(statements.last == "SELECT 1")
     }
@@ -208,7 +208,7 @@ struct SQLStatementBlockSplittingTests {
         "SELECT 1;\nBEGIN\nTRUNCATE t;\nSELECT 2;",
     ])
     func beginOutsideARoutineNeverSwallows(sql: String) throws {
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .postgres)
+        let statements = SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres)
         let last = try #require(statements.last)
         #expect(statements.count >= 2, "everything merged into one statement: \(statements)")
         #expect(last.hasPrefix("SELECT"), "the trailing SELECT was swallowed: \(statements)")
@@ -218,7 +218,7 @@ struct SQLStatementBlockSplittingTests {
     func destructiveKeywordStaysTheLeadingKeyword() {
         let statements = SQLStatementScanner.allStatements(
             in: "BEGIN\nDROP TABLE users;\nSELECT 1;",
-            dialect: .postgres
+            grammar: TestGrammar.postgres
         )
         #expect(statements.count == 2)
         #expect(QueryClassifier.classifyTier(statements[1], databaseType: .postgresql) == .safe)
@@ -235,7 +235,7 @@ struct SQLStatementBlockSplittingTests {
     @Test("An unterminated block takes the rest of the document as one statement")
     func unterminatedBlock() {
         let sql = "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n"
-        #expect(SQLStatementScanner.allStatements(in: sql, dialect: .mysql).count == 1)
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql).count == 1)
     }
 
     // MARK: - MySQL hash comments
@@ -243,13 +243,13 @@ struct SQLStatementBlockSplittingTests {
     @Test("A MySQL # comment hides a semicolon")
     func hashCommentHidesSemicolon() {
         let sql = "SELECT 1; # note; not a split\nSELECT 2;"
-        #expect(SQLStatementScanner.allStatements(in: sql, dialect: .mysql).count == 2)
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql).count == 2)
     }
 
     @Test("# is not a comment outside MySQL")
     func hashIsNotACommentElsewhere() {
         let sql = "SELECT '#a;b';\nSELECT 2;"
-        #expect(SQLStatementScanner.allStatements(in: sql, dialect: .postgres) == ["SELECT '#a;b'", "SELECT 2"])
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == ["SELECT '#a;b'", "SELECT 2"])
     }
 
     // MARK: - Opaque bodies
@@ -258,7 +258,7 @@ struct SQLStatementBlockSplittingTests {
     func dollarQuotedBodyIsOpaque() {
         let sql = "DO $$ BEGIN PERFORM 1; END $$;\nSELECT 2;"
         #expect(
-            SQLStatementScanner.allStatements(in: sql, dialect: .postgres) == [
+            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == [
                 "DO $$ BEGIN PERFORM 1; END $$", "SELECT 2",
             ]
         )
@@ -278,9 +278,9 @@ struct SQLStatementBlockSplittingTests {
         END;
         SELECT 3;
         """
-        let statements = SQLStatementScanner.locatedStatements(in: sql, dialect: .mysql)
+        let statements = SQLStatementScanner.locatedStatements(in: sql, grammar: TestGrammar.mysql)
             .filter(\.hasContent)
-        let structure = SQLFoldScanner.scan(sql as NSString, dialect: .mysql)
+        let structure = SQLFoldScanner.scan(sql as NSString, grammar: TestGrammar.mysql)
         let statementRegions = structure.regions.filter { $0.kind == .statement }
 
         #expect(statements.count == 2)

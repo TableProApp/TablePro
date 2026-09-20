@@ -14,7 +14,7 @@ struct BatchTransactionPolicyTests {
         BatchTransactionPolicy.plan(
             for: statements,
             databaseType: type,
-            rules: SQLLexicalRules(databaseType: type, descriptor: nil)
+            grammar: type.lexicalGrammar
         )
     }
 

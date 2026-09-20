@@ -198,7 +198,7 @@ internal actor CompareSyncExecutor {
     /// the way the editor sends them. Every other engine takes the script text as written.
     private static func driverText(of statement: SyncStatement, dialect: SqlDialect) -> String {
         guard dialect == .oracle else { return statement.sql }
-        return SQLStatementScanner.executableText(of: statement.sql, dialect: dialect)
+        return SQLStatementScanner.executableText(of: statement.sql, grammar: DatabaseType.oracle.lexicalGrammar)
     }
 
     private func run(

@@ -39,9 +39,12 @@ struct StatementNavigationCommandTests {
         return controller
     }
 
-    private func makeSubject(dialect: SqlDialect = .generic, sizeLimit: Int? = nil) -> StatementRunController {
+    private func makeSubject(
+        grammar: SQLLexicalGrammar = TestGrammar.standard,
+        sizeLimit: Int? = nil
+    ) -> StatementRunController {
         let subject = StatementRunController()
-        subject.dialect = dialect
+        subject.grammar = grammar
         if let sizeLimit {
             subject.sizeLimit = sizeLimit
         }
@@ -242,12 +245,12 @@ struct StatementNavigationCommandTests {
     func landingInsideAFoldRevealsIt() throws {
         let text = "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\nEND;\nSELECT 2;\n"
         let controller = makeController(text: text)
-        let subject = makeSubject(dialect: .mysql)
+        let subject = makeSubject(grammar: TestGrammar.mysql)
         subject.install(on: controller)
 
         controller.foldAll()
         let target = try #require(
-            SQLStatementScanner.statementStart(after: 0, in: text, dialect: .mysql),
+            SQLStatementScanner.statementStart(after: 0, in: text, grammar: TestGrammar.mysql),
             "the script must have a second statement to navigate to"
         )
         let hiddenBefore = controller.textView.layoutManager.textLineForOffset(target) == nil
@@ -268,7 +271,7 @@ struct StatementNavigationCommandTests {
     func revealExpandsTheCoveringFold() {
         let text = "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\n"
         let controller = makeController(text: text)
-        let subject = makeSubject(dialect: .mysql)
+        let subject = makeSubject(grammar: TestGrammar.mysql)
         subject.install(on: controller)
 
         controller.foldAll()

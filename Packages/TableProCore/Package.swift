@@ -74,7 +74,7 @@ let package = Package(
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar"],
             path: "Sources/TableProQuery"
         ),
         .target(
@@ -176,6 +176,11 @@ let package = Package(
             name: "TableProQueryTests",
             dependencies: ["TableProQuery", "TableProModels", "TableProPluginKit"],
             path: "Tests/TableProQueryTests"
+        ),
+        .testTarget(
+            name: "TableProSQLGrammarTests",
+            dependencies: ["TableProSQLGrammar"],
+            path: "Tests/TableProSQLGrammarTests"
         ),
         .testTarget(
             name: "TableProAnalyticsTests",

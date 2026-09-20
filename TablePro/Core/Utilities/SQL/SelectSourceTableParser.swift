@@ -42,8 +42,12 @@ enum SelectSourceTableParser {
     /// column, so neither describes rows that can be written back.
     private static let rowLockingModifiers: Set<String> = ["UPDATE", "SHARE", "NO", "KEY", "READ"]
 
-    static func singleSourceTable(in sql: String, dialect: SqlDialect) -> SourceTable? {
-        var cursor = Cursor(sql, dialect: dialect)
+    /// - Parameters:
+    ///   - dialect: decides whether `MINUS` is a set operator, which is grammar and not lexing.
+    ///   - readings: where strings, comments and identifiers end. The parse reads the execution grammar and gives up
+    ///     wherever the plausible readings disagree about whether `#` or `//` starts a comment.
+    static func singleSourceTable(in sql: String, dialect: SqlDialect, readings: SQLLexicalReadings) -> SourceTable? {
+        var cursor = Cursor(sql, dialect: dialect, readings: readings)
         guard cursor.consumeKeyword("SELECT") else { return nil }
         guard cursor.advanceToTopLevelFrom() else { return nil }
         guard let table = cursor.consumeTableReference() else { return nil }
@@ -57,20 +61,32 @@ enum SelectSourceTableParser {
         /// Scanning reads one code unit at a time. `NSString.character(at:)` leaves its fast path
         /// as soon as the bridged string is not ASCII, so a single accented character anywhere in
         /// the text made every later read transcode and turned a 4 ms scan of a wide select list
-        /// into 33 ms on the main actor. Transcoding once up front keeps every read a subscript.
-        /// The `NSString` stays only for `SqlDollarQuote`, which takes one.
+        /// into 33 ms on the main actor. Transcoding once up front keeps every read a subscript,
+        /// and the `NSString` the lexer reads is built over those same UTF-16 units, so its reads
+        /// stay constant time too.
         private let text: NSString
         private let units: [UInt16]
         private let length: Int
         private let dialect: SqlDialect
+        private let grammar: SQLLexicalGrammar
+        private let hashCommentsAreAmbiguous: Bool
+        private let slashCommentsAreAmbiguous: Bool
         private var index = 0
         private(set) var didAbortLexing = false
 
-        init(_ sql: String, dialect: SqlDialect) {
-            text = sql as NSString
+        init(_ sql: String, dialect: SqlDialect, readings: SQLLexicalReadings) {
             units = Array(sql.utf16)
+            text = NSString(characters: units, length: units.count)
             length = units.count
             self.dialect = dialect
+            grammar = readings.execution
+            hashCommentsAreAmbiguous = Self.readingsDisagree(readings, on: .hashLineComments)
+            slashCommentsAreAmbiguous = Self.readingsDisagree(readings, on: .doubleSlashLineComments)
+        }
+
+        private static func readingsDisagree(_ readings: SQLLexicalReadings, on fact: SQLLexicalGrammar) -> Bool {
+            let holding = readings.all.filter { $0.contains(fact) }.count
+            return holding > 0 && holding < readings.all.count
         }
 
         private func unit(at position: Int) -> UInt16? {
@@ -97,94 +113,32 @@ enum SelectSourceTableParser {
             }
         }
 
+        /// Whitespace and comments, where the grammar ends them: a block comment nests only on an engine that
+        /// nests it, and a line comment ends at a lone carriage return only where the engine ends it there.
         private mutating func skipTrivia() {
             while index < length {
-                let ch = units[index]
-                if Self.isSpace(ch) {
+                if Self.isSpace(units[index]) {
                     index += 1
-                } else if ch == 0x2D, unit(at: index + 1) == 0x2D {
-                    index += 2
-                    skipToEndOfLine()
-                } else if ch == 0x23, dialect.supportsHashLineComments {
-                    index += 1
-                    skipToEndOfLine()
-                } else if ch == 0x2F, unit(at: index + 1) == 0x2A {
-                    skipBlockComment()
-                } else {
-                    return
-                }
-            }
-        }
-
-        /// A lone carriage return ends a line comment too, so SQL pasted with classic Mac line
-        /// endings does not swallow the rest of the statement as trivia.
-        private mutating func skipToEndOfLine() {
-            while index < length {
-                let ch = units[index]
-                if ch == 0x0A || ch == 0x0D { return }
-                index += 1
-            }
-        }
-
-        /// Only PostgreSQL nests block comments. Counting depth on a dialect that does not nest
-        /// would swallow real SQL, and not counting it on PostgreSQL would expose commented-out
-        /// SQL as if it were live.
-        private mutating func skipBlockComment() {
-            index += 2
-            var depth = 1
-            let nests = dialect == .postgres
-            while index < length, depth > 0 {
-                if nests, units[index] == 0x2F, unit(at: index + 1) == 0x2A {
-                    depth += 1
-                    index += 2
-                } else if units[index] == 0x2A, unit(at: index + 1) == 0x2F {
-                    depth -= 1
-                    index += 2
-                } else {
-                    index += 1
-                }
-            }
-        }
-
-        /// PostgreSQL honours backslash escapes only inside an `E'...'` literal.
-        private func hasEscapeStringPrefix(at quote: Int) -> Bool {
-            guard quote > 0 else { return false }
-            let previous = units[quote - 1]
-            guard previous == 0x45 || previous == 0x65 else { return false }
-            return quote < 2 || !Self.isIdentifierUnit(units[quote - 2])
-        }
-
-        private mutating func skipStringLiteral() {
-            let escapesWithBackslash = dialect.requiresBackslashEscapesInSingleQuotes
-                || (dialect.supportsEscapeStringPrefix && hasEscapeStringPrefix(at: index))
-            index += 1
-            while index < length {
-                let ch = units[index]
-                if escapesWithBackslash, ch == 0x5C, index + 1 < length {
-                    index += 2
                     continue
                 }
-                if ch == 0x27 {
-                    if unit(at: index + 1) == 0x27 {
-                        index += 2
-                        continue
-                    }
-                    index += 1
+                guard !startsAmbiguousLineComment(at: index),
+                      let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar), span.kind.isComment
+                else {
                     return
                 }
-                index += 1
+                index = max(span.end, index + 1)
             }
         }
 
         /// Returns the unescaped identifier, or `nil` when the closing delimiter is missing.
         private mutating func consumeDelimited(closing: UInt16) -> String? {
+            let backslashEscapes = grammar.backslashEscapes(inQuote: units[index])
             index += 1
             let start = index
             var doubled = false
             while index < length {
                 let ch = units[index]
-                if closing == 0x22, dialect.requiresBackslashEscapesInSingleQuotes,
-                   ch == 0x5C, index + 1 < length {
+                if backslashEscapes, ch == 0x5C, index + 1 < length {
                     index += 2
                     continue
                 }
@@ -247,19 +201,6 @@ enum SelectSourceTableParser {
             return false
         }
 
-        private mutating func skipDollarQuotedBody(openerLength: Int, tag: String) -> Bool {
-            index += openerLength
-            while index < length {
-                if units[index] == SqlDollarQuote.dollar,
-                   SqlDollarQuote.matchesClose(at: index, tag: tag, in: text, bufLen: length) {
-                    index += (tag as NSString).length + 2
-                    return true
-                }
-                index += 1
-            }
-            return false
-        }
-
         /// Scans forward for one of `keywords` appearing as a bare word outside any parentheses.
         /// Parenthesised subqueries, string literals, delimited identifiers, dollar-quoted bodies
         /// and comments are skipped, so a keyword hidden inside any of them never matches.
@@ -280,32 +221,19 @@ enum SelectSourceTableParser {
                 case 0x29:
                     depth -= 1
                     index += 1
-                case 0x27:
-                    skipStringLiteral()
                 case 0x3B:
                     return false
-                case 0x23 where dialect == .generic,
-                     0x2F where dialect == .generic && unit(at: index + 1) == 0x2F:
-                    // ClickHouse spells line comments `#` and `//` and lands in `.generic`, which
-                    // it shares with dialects that read both as operators. Neither reading can be
-                    // trusted, and guessing wrong hides the real `FROM`. MySQL never reaches here
-                    // because `skipTrivia` has already taken its `#` comment, and PostgreSQL keeps
-                    // `#` as the jsonb path operator it is.
-                    didAbortLexing = true
-                    return false
                 default:
-                    if ch == SqlDollarQuote.dollar,
-                       case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(
-                           at: index, in: text, bufLen: length
-                       ) {
-                        guard consumeDollarQuoted(openerLength: openerLength, tag: tag, keywords: keywords) else {
-                            return false
-                        }
-                    } else if ch != 0x5B, let closing = Self.closingDelimiter(for: ch) {
-                        guard consumeDelimited(closing: closing) != nil else {
+                    if startsAmbiguousLineComment(at: index) || closesUnreadDollarBody(at: index) {
+                        didAbortLexing = true
+                        return false
+                    }
+                    if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                        if !span.isTerminated, Self.closingDelimiter(for: ch) != nil {
                             didAbortLexing = true
                             return false
                         }
+                        index = max(span.end, index + 1)
                     } else if Self.isIdentifierUnit(ch) {
                         if skipWordMatchingAny(keywords), depth == 0 { return true }
                     } else {
@@ -315,28 +243,37 @@ enum SelectSourceTableParser {
             }
         }
 
-        /// A dollar-quoted body is only a literal on PostgreSQL. DuckDB accepts the same spelling
-        /// but maps to `.sqlite`, so on any other dialect a body that really is closed means the
-        /// text cannot be lexed as SQL and the statement must not resolve. An opener with no closer
-        /// is an ordinary `$` in an identifier and rewinds.
-        private mutating func consumeDollarQuoted(
-            openerLength: Int,
-            tag: String,
-            keywords: [[UInt16]]
-        ) -> Bool {
-            let saved = index
-            let closed = skipDollarQuotedBody(openerLength: openerLength, tag: tag)
-            if dialect.supportsDollarQuotes {
-                guard closed else { return false }
-                return true
-            }
-            if closed {
-                didAbortLexing = true
+        /// A `#` or `//` the plausible readings disagree about. Reading it as a comment where the
+        /// engine reads an operator, or the other way round, hides the real `FROM`, so the parse
+        /// gives up instead of guessing. `#` is a comment on MySQL and an operator on PostgreSQL.
+        private func startsAmbiguousLineComment(at position: Int) -> Bool {
+            let ch = units[position]
+            if ch == 0x23 { return hashCommentsAreAmbiguous }
+            return ch == 0x2F && unit(at: position + 1) == 0x2F && slashCommentsAreAmbiguous
+        }
+
+        /// A tagged dollar body that closes, on a grammar with no dollar quotes: the text cannot be
+        /// lexed as that engine's SQL, so the statement must not resolve. An opener with no closer
+        /// is an ordinary `$` in an identifier.
+        private func closesUnreadDollarBody(at position: Int) -> Bool {
+            guard units[position] == SqlDollarQuote.dollar, grammar.dollarQuoteStyle == nil,
+                  case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(
+                      at: position,
+                      in: text,
+                      bufLen: length
+                  )
+            else {
                 return false
             }
-            index = saved
-            _ = skipWordMatchingAny(keywords)
-            return true
+            var cursor = position + openerLength
+            while cursor < length {
+                if units[cursor] == SqlDollarQuote.dollar,
+                   SqlDollarQuote.matchesClose(at: cursor, tag: tag, in: text, bufLen: length) {
+                    return true
+                }
+                cursor += 1
+            }
+            return false
         }
 
         /// Finds the `FROM` belonging to the outer query.

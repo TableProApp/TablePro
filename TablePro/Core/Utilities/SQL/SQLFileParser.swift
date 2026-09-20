@@ -18,6 +18,8 @@ final class SQLFileParser: Sendable {
         case inSingleQuotedString
         case inDoubleQuotedString
         case inBacktickQuotedString
+        case inTripleQuotedString
+        case inBracketedIdentifier
         case inDollarQuote
         case inAlternativeQuote
     }
@@ -39,11 +41,15 @@ final class SQLFileParser: Sendable {
     private static let kDollar: unichar = 0x24
     private static let kCapitalE: unichar = 0x45
     private static let kSmallE: unichar = 0x65
+    private static let kCapitalM: unichar = 0x4D
+    private static let kSmallM: unichar = 0x6D
+    private static let kOpenBracket: unichar = 0x5B
+    private static let kCloseBracket: unichar = 0x5D
 
     nonisolated private static func needsLookahead(
         _ char: unichar,
         state: ParserState,
-        dialect: SqlDialect,
+        grammar: SQLLexicalGrammar,
         delimiter: NSString,
         isSingleCharDelimiter: Bool
     ) -> Bool {
@@ -51,27 +57,25 @@ final class SQLFileParser: Sendable {
         case .normal:
             var result = char == kDash || char == kSlash || char == kBackslash || char == kStar
                 || char == kSingleQuote || char == kDoubleQuote || char == kBacktick
-            if dialect == .oracle && char == kDollar {
+            if char == kDollar
+                && (grammar.dollarQuoteStyle != nil || grammar.contains(.dollarAndHashInIdentifiers)) {
                 result = true
             }
-            if dialect.supportsDollarQuotes && char == kDollar {
-                result = true
-            }
-            if dialect.supportsEscapeStringPrefix && (char == kCapitalE || char == kSmallE) {
+            if grammar.contains(.escapeStringPrefix) && (char == kCapitalE || char == kSmallE) {
                 result = true
             }
             if !isSingleCharDelimiter && char == delimiter.character(at: 0) {
                 result = true
             }
             return result
-        case .inSingleQuotedString:
-            return char == kSingleQuote || char == kBackslash
-        case .inDoubleQuotedString:
-            return char == kDoubleQuote || char == kBackslash
+        case .inSingleQuotedString, .inDoubleQuotedString, .inTripleQuotedString:
+            return char == kSingleQuote || char == kDoubleQuote || char == kBackslash
         case .inBacktickQuotedString:
-            return char == kBacktick
+            return char == kBacktick || char == kBackslash
+        case .inBracketedIdentifier:
+            return char == kCloseBracket
         case .inMultiLineComment:
-            return char == kStar
+            return char == kStar || char == kSlash
         case .inSingleLineComment:
             return false
         case .inDollarQuote:
@@ -120,16 +124,18 @@ final class SQLFileParser: Sendable {
     }
 
     private struct ParserContext {
-        let dialect: SqlDialect
+        let grammar: SQLLexicalGrammar
         var state: ParserState = .normal
         let currentStatement: NSMutableString?
         var hasStatementContent = false
         var currentLine = 1
         var statementStartLine = 1
         var isConditionalComment = false
+        var commentDepth = 0
         var currentDelimiter: NSString = ";" as NSString
         var isSingleCharDelimiter = true
         var dollarTag: String = ""
+        var quoteChar: unichar = 0
         var backslashEscapesActive = false
         var collected: [(statement: String, lineNumber: Int)] = []
 
@@ -143,14 +149,18 @@ final class SQLFileParser: Sendable {
         var pendingSlashLine = false
         var pendingSlashTrailing: [unichar] = []
 
+        /// The unit before the one being read, carried across chunks, so a prefix like `E'` or `q'` is only a
+        /// literal where a word could start.
+        var previousUnit: unichar = 0x20
+
         /// Set for the last pass over the buffer, once the file has nothing more to give. A character held back for
         /// the one after it is settled with nothing after it, instead of being left in the buffer and dropped.
         var atEndOfInput = false
 
-        init(dialect: SqlDialect, currentStatement: NSMutableString?) {
-            self.dialect = dialect
+        init(grammar: SQLLexicalGrammar, currentStatement: NSMutableString?) {
+            self.grammar = grammar
             self.currentStatement = currentStatement
-            self.boundaries = dialect == .oracle ? PLSQLUnitTracker() : nil
+            self.boundaries = grammar.contains(.plsqlBlocks) ? PLSQLUnitTracker() : nil
         }
     }
 
@@ -188,16 +198,21 @@ final class SQLFileParser: Sendable {
         nsBuffer: NSString,
         bufLen: Int
     ) -> WordStep {
-        guard ctx.boundaries != nil else { return .none }
+        let readsAlternativeQuotes = ctx.grammar.contains(.alternativeQuoting)
+        guard ctx.boundaries != nil || readsAlternativeQuotes else { return .none }
         if !ctx.word.isEmpty {
-            if SqlBlockStructure.continuesWord(char, dialect: ctx.dialect) {
+            if SqlBlockStructure.continuesWord(char, grammar: ctx.grammar) {
                 ctx.word.append(char)
                 return .continues
             }
             flushWord(&ctx)
         }
-        guard SqlBlockStructure.startsWord(nsBuffer, at: i, length: bufLen, dialect: ctx.dialect) else { return .none }
-        if let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
+        guard !SQLNonCodeSpan.isWordUnit(ctx.previousUnit),
+              SqlBlockStructure.startsWord(nsBuffer, at: i, length: bufLen, grammar: ctx.grammar)
+        else {
+            return .none
+        }
+        if readsAlternativeQuotes, let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
             if quoteLength > 0 {
                 return .opensAlternativeQuote(prefixLength: quoteLength)
             }
@@ -271,7 +286,7 @@ final class SQLFileParser: Sendable {
     }
 
     private static func processDelimiterChange(_ ctx: inout ParserContext, char: unichar) {
-        guard ctx.dialect == .mysql || ctx.dialect == .generic else { return }
+        guard ctx.grammar.contains(.delimiterDirective) else { return }
         guard char == kNewline && ctx.hasStatementContent else { return }
         let text = trimmedStatement(ctx)
         if let newDelim = extractDelimiterChange(text) {
@@ -323,19 +338,31 @@ final class SQLFileParser: Sendable {
         processDelimiterChange(&ctx, char: char)
 
         if char == kDash && nextChar == kDash {
-            ctx.state = .inSingleLineComment
-            i += 2
-            return StepResult(advanced: true, deferred: false)
+            if ctx.grammar.contains(.dashCommentsNeedWhitespace), i + 2 >= bufLen, !ctx.atEndOfInput {
+                return StepResult(advanced: false, deferred: true)
+            }
+            if SqlLexer.startsDashComment(
+                nsBuffer,
+                at: i,
+                length: bufLen,
+                needsWhitespace: ctx.grammar.contains(.dashCommentsNeedWhitespace)
+            ) {
+                ctx.state = .inSingleLineComment
+                i += 2
+                return StepResult(advanced: true, deferred: false)
+            }
         }
 
-        if char == kHash && (ctx.dialect == .mysql || ctx.dialect == .generic) {
+        if (char == kHash && ctx.grammar.contains(.hashLineComments))
+            || (char == kSlash && nextChar == kSlash && ctx.grammar.contains(.doubleSlashLineComments)) {
             ctx.state = .inSingleLineComment
             return StepResult(advanced: false, deferred: false)
         }
 
         if char == kSlash, let next = nextChar, next == kStar {
-            let thirdChar: unichar? = (i + 2 < bufLen) ? nsBuffer.character(at: i + 2) : nil
-            ctx.isConditionalComment = (ctx.dialect == .mysql) && thirdChar == kExclamation
+            ctx.isConditionalComment = ctx.grammar.contains(.executableComments)
+                && SqlLexer.executableCommentOpenerLength(nsBuffer, at: i, length: bufLen) != nil
+            ctx.commentDepth = 1
             ctx.state = .inMultiLineComment
             if ctx.isConditionalComment {
                 (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
@@ -347,21 +374,32 @@ final class SQLFileParser: Sendable {
             return StepResult(advanced: true, deferred: false)
         }
 
-        if ctx.dialect.supportsEscapeStringPrefix
+        if ctx.grammar.contains(.escapeStringPrefix)
             && (char == kCapitalE || char == kSmallE)
-            && nextChar == kSingleQuote {
+            && nextChar == kSingleQuote
+            && !SQLNonCodeSpan.isWordUnit(ctx.previousUnit) {
             (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                 ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
             appendChar(char, to: ctx.currentStatement)
             appendChar(kSingleQuote, to: ctx.currentStatement)
             ctx.state = .inSingleQuotedString
+            ctx.quoteChar = kSingleQuote
             ctx.backslashEscapesActive = true
             i += 2
             return StepResult(advanced: true, deferred: false)
         }
 
-        if ctx.dialect.supportsDollarQuotes && char == kDollar {
-            switch SqlDollarQuote.scanOpener(at: i, in: nsBuffer, bufLen: bufLen) {
+        if char == kOpenBracket, ctx.grammar.contains(.bracketQuotedIdentifiers) {
+            (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+                ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+            appendChar(char, to: ctx.currentStatement)
+            ctx.state = .inBracketedIdentifier
+            ctx.boundaries?.observeOpaqueToken()
+            return StepResult(advanced: false, deferred: false)
+        }
+
+        if let style = ctx.grammar.dollarQuoteStyle, char == kDollar {
+            switch SqlDollarQuote.scanOpener(at: i, in: nsBuffer, bufLen: bufLen, style: style) {
             case .opener(let length, let tag):
                 (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                     ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
@@ -380,6 +418,17 @@ final class SQLFileParser: Sendable {
             }
         }
 
+        if isQuote(char, grammar: ctx.grammar) {
+            if ctx.grammar.contains(.tripleQuotedStrings), char != kBacktick, i + 2 >= bufLen, !ctx.atEndOfInput {
+                return StepResult(advanced: false, deferred: true)
+            }
+            if ctx.grammar.contains(.tripleQuotedStrings), SqlLexer.startsTripleQuote(nsBuffer, at: i, length: bufLen) {
+                openTripleQuote(&ctx, quote: char, at: i, in: nsBuffer)
+                i += 3
+                return StepResult(advanced: true, deferred: false)
+            }
+        }
+
         if let advanced = processQuoteOpen(&ctx, char: char, nextChar: nextChar) {
             ctx.boundaries?.observeOpaqueToken()
             if advanced { i += 2 }
@@ -391,7 +440,7 @@ final class SQLFileParser: Sendable {
             return StepResult(advanced: false, deferred: false)
         }
 
-        if ctx.dialect.endsStatementsAtSlashLines && char == kSlash && !ctx.lineHasCode {
+        if ctx.grammar.contains(.slashLineTerminators) && char == kSlash && !ctx.lineHasCode {
             ctx.pendingSlashLine = true
             return StepResult(advanced: false, deferred: false)
         }
@@ -471,40 +520,131 @@ final class SQLFileParser: Sendable {
         return StepResult(advanced: true, deferred: false)
     }
 
+    private static func isQuote(_ char: unichar, grammar: SQLLexicalGrammar) -> Bool {
+        grammar.isQuote(char)
+    }
+
     private static func processQuoteOpen(
         _ ctx: inout ParserContext,
         char: unichar,
         nextChar: unichar?
     ) -> Bool? {
-        let quoteMapping: [(unichar, ParserState)] = [
-            (kSingleQuote, .inSingleQuotedString),
-            (kDoubleQuote, .inDoubleQuotedString),
-            (kBacktick, .inBacktickQuotedString)
-        ]
-        for (quoteChar, targetState) in quoteMapping {
-            guard char == quoteChar else { continue }
-            if let next = nextChar, next == quoteChar {
-                (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
-                    ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
-                appendChar(char, to: ctx.currentStatement)
-                appendChar(next, to: ctx.currentStatement)
-                return true
-            }
-            ctx.state = targetState
-            switch targetState {
-            case .inSingleQuotedString:
-                ctx.backslashEscapesActive = ctx.dialect.requiresBackslashEscapesInSingleQuotes
-            case .inDoubleQuotedString:
-                ctx.backslashEscapesActive = ctx.dialect == .mysql
-            default:
-                ctx.backslashEscapesActive = false
-            }
+        guard isQuote(char, grammar: ctx.grammar) else { return nil }
+        if let next = nextChar, next == char {
             (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                 ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
             appendChar(char, to: ctx.currentStatement)
-            return false
+            appendChar(next, to: ctx.currentStatement)
+            return true
         }
-        return nil
+        switch char {
+        case kSingleQuote: ctx.state = .inSingleQuotedString
+        case kDoubleQuote: ctx.state = .inDoubleQuotedString
+        default: ctx.state = .inBacktickQuotedString
+        }
+        ctx.quoteChar = char
+        ctx.backslashEscapesActive = ctx.grammar.backslashEscapes(inQuote: char)
+        (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+            ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+        appendChar(char, to: ctx.currentStatement)
+        return false
+    }
+
+    private static func openTripleQuote(_ ctx: inout ParserContext, quote: unichar, at i: Int, in buffer: NSString) {
+        (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+            ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+        appendRange(&ctx, from: i, to: i + 3, in: buffer)
+        ctx.state = .inTripleQuotedString
+        ctx.quoteChar = quote
+        ctx.backslashEscapesActive = ctx.grammar.backslashEscapes(inQuote: quote)
+        ctx.boundaries?.observeOpaqueToken()
+    }
+
+    /// Runs a triple-quoted literal to the three quotes that close it, holding back a quote or a backslash the buffer
+    /// ends on until the next chunk shows what follows.
+    private static func processTripleQuotedString(
+        _ ctx: inout ParserContext,
+        i: inout Int,
+        nsBuffer: NSString,
+        bufLen: Int
+    ) -> StepResult {
+        let start = i
+        var pos = i
+        while pos < bufLen {
+            let ch = nsBuffer.character(at: pos)
+            if pos > start && ch == kNewline {
+                ctx.currentLine += 1
+            }
+            if ctx.backslashEscapesActive && ch == kBackslash {
+                guard pos + 1 < bufLen || ctx.atEndOfInput else {
+                    appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+                    i = pos
+                    return StepResult(advanced: true, deferred: true)
+                }
+                pos += 2
+                continue
+            }
+            if ch == ctx.quoteChar {
+                guard pos + 2 < bufLen || ctx.atEndOfInput else {
+                    appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+                    i = pos
+                    return StepResult(advanced: true, deferred: true)
+                }
+                if SqlLexer.startsTripleQuote(nsBuffer, at: pos, length: bufLen) {
+                    pos += 3
+                    ctx.state = .normal
+                    ctx.backslashEscapesActive = false
+                    appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+                    i = pos
+                    return StepResult(advanced: true, deferred: false)
+                }
+            }
+            pos += 1
+        }
+        appendRange(&ctx, from: start, to: min(pos, bufLen), in: nsBuffer)
+        i = min(pos, bufLen)
+        return StepResult(advanced: true, deferred: false)
+    }
+
+    /// Runs a `[...]` identifier to its `]`, which `]]` does not close where the grammar escapes it.
+    private static func processBracketedIdentifier(
+        _ ctx: inout ParserContext,
+        i: inout Int,
+        nsBuffer: NSString,
+        bufLen: Int
+    ) -> StepResult {
+        let start = i
+        var pos = i
+        let doubledEscapes = ctx.grammar.contains(.doubledClosingBracketEscapes)
+        while pos < bufLen {
+            let ch = nsBuffer.character(at: pos)
+            if pos > start && ch == kNewline {
+                ctx.currentLine += 1
+            }
+            guard ch == kCloseBracket else {
+                pos += 1
+                continue
+            }
+            if doubledEscapes {
+                guard pos + 1 < bufLen || ctx.atEndOfInput else {
+                    appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+                    i = pos
+                    return StepResult(advanced: true, deferred: true)
+                }
+                if pos + 1 < bufLen, nsBuffer.character(at: pos + 1) == kCloseBracket {
+                    pos += 2
+                    continue
+                }
+            }
+            pos += 1
+            ctx.state = .normal
+            appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+            i = pos
+            return StepResult(advanced: true, deferred: false)
+        }
+        appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+        i = pos
+        return StepResult(advanced: true, deferred: false)
     }
 
     private static func yieldAndReset(_ ctx: inout ParserContext) {
@@ -524,13 +664,21 @@ final class SQLFileParser: Sendable {
         if ctx.isConditionalComment {
             appendChar(char, to: ctx.currentStatement)
         }
+        if char == kSlash, nextChar == kStar, !ctx.isConditionalComment, ctx.grammar.contains(.nestedBlockComments) {
+            ctx.commentDepth += 1
+            i += 2
+            return true
+        }
         if char == kStar, let next = nextChar, next == kSlash {
             if ctx.isConditionalComment {
                 appendChar(next, to: ctx.currentStatement)
             }
+            ctx.commentDepth -= 1
+            i += 2
+            guard ctx.commentDepth <= 0 || ctx.isConditionalComment else { return true }
             ctx.state = .normal
             ctx.isConditionalComment = false
-            i += 2
+            ctx.commentDepth = 0
             return true
         }
         return false
@@ -652,10 +800,10 @@ final class SQLFileParser: Sendable {
     func parseFile(
         url: URL,
         encoding: String.Encoding,
-        dialect: SqlDialect = .generic,
+        grammar: SQLLexicalGrammar,
         countOnly: Bool = false
     ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        let session = ParseSession(url: url, encoding: encoding, dialect: dialect, countOnly: countOnly)
+        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: countOnly)
         return AsyncThrowingStream(unfolding: {
             try await session.next()
         })
@@ -664,7 +812,7 @@ final class SQLFileParser: Sendable {
     private final class ParseSession: @unchecked Sendable {
         private let url: URL
         private let encoding: String.Encoding
-        private let dialect: SqlDialect
+        private let grammar: SQLLexicalGrammar
         private let chunkSize = 65_536
 
         private var fileHandle: FileHandle?
@@ -674,13 +822,13 @@ final class SQLFileParser: Sendable {
         private var emitIndex = 0
         private var finished = false
 
-        init(url: URL, encoding: String.Encoding, dialect: SqlDialect, countOnly: Bool) {
+        init(url: URL, encoding: String.Encoding, grammar: SQLLexicalGrammar, countOnly: Bool) {
             self.url = url
             self.encoding = encoding
-            self.dialect = dialect
+            self.grammar = grammar
             self.decoder = SQLChunkDecoder(encoding: encoding)
             self.ctx = ParserContext(
-                dialect: dialect,
+                grammar: grammar,
                 currentStatement: countOnly ? nil : NSMutableString()
             )
         }
@@ -760,7 +908,7 @@ final class SQLFileParser: Sendable {
                 if nextChar == nil && !ctx.atEndOfInput && SQLFileParser.needsLookahead(
                     char,
                     state: ctx.state,
-                    dialect: dialect,
+                    grammar: grammar,
                     delimiter: ctx.currentDelimiter,
                     isSingleCharDelimiter: ctx.isSingleCharDelimiter
                 ) {
@@ -780,7 +928,9 @@ final class SQLFileParser: Sendable {
                     shouldDefer = result.deferred
 
                 case .inSingleLineComment:
-                    if char == SQLFileParser.kNewline {
+                    if char == SQLFileParser.kNewline
+                        || (char == SQLFileParser.kCarriageReturn
+                            && grammar.contains(.carriageReturnEndsLineComments)) {
                         ctx.state = .normal
                     }
 
@@ -809,6 +959,18 @@ final class SQLFileParser: Sendable {
                     didManuallyAdvance = result.advanced
                     shouldDefer = result.deferred
 
+                case .inTripleQuotedString:
+                    let result = SQLFileParser.processTripleQuotedString(
+                        &ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+
+                case .inBracketedIdentifier:
+                    let result = SQLFileParser.processBracketedIdentifier(
+                        &ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
+
                 case .inDollarQuote:
                     let result = SQLFileParser.processDollarQuote(
                         &ctx, i: &i,
@@ -831,6 +993,9 @@ final class SQLFileParser: Sendable {
                     ctx.lineHasCode = true
                 }
                 if !didManuallyAdvance { i += 1 }
+                if i > 0, i <= bufLen {
+                    ctx.previousUnit = nsBuffer.character(at: i - 1)
+                }
             }
 
             if i < bufLen {
@@ -874,11 +1039,11 @@ final class SQLFileParser: Sendable {
     func countStatements(
         url: URL,
         encoding: String.Encoding,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) async throws -> Int {
         var count = 0
 
-        for try await _ in parseFile(url: url, encoding: encoding, dialect: dialect, countOnly: true) {
+        for try await _ in parseFile(url: url, encoding: encoding, grammar: grammar, countOnly: true) {
             try Task.checkCancellation()
             count += 1
         }

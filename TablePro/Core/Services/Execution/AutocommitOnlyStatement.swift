@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 /// Whether the engine refuses this statement, or silently ignores it, inside a transaction block.
 ///
@@ -23,27 +24,27 @@ internal enum AutocommitOnlyStatement {
     internal static func matches(
         _ statement: String,
         family: TransactionEngineFamily,
-        rules: SQLLexicalRules
+        grammar: SQLLexicalGrammar
     ) -> Bool {
-        matches(statement as NSString, family: family, rules: rules)
+        matches(statement as NSString, family: family, grammar: grammar)
     }
 
     internal static func matches(
         _ statement: NSString,
         family: TransactionEngineFamily,
-        rules: SQLLexicalRules
+        grammar: SQLLexicalGrammar
     ) -> Bool {
         switch family {
         case .postgres, .redshift, .cockroach:
-            return matchesPostgresFamily(statement, family: family, rules: rules)
+            return matchesPostgresFamily(statement, family: family, grammar: grammar)
         case .mysql:
-            return matchesMySQLFamily(statement, rules: rules)
+            return matchesMySQLFamily(statement, grammar: grammar)
         case .sqlite:
-            return matchesSQLite(statement, rules: rules)
+            return matchesSQLite(statement, grammar: grammar)
         case .duckdb:
-            return matchesDuckDB(statement, rules: rules)
+            return matchesDuckDB(statement, grammar: grammar)
         case .sqlServer:
-            return matchesSQLServer(statement, rules: rules)
+            return matchesSQLServer(statement, grammar: grammar)
         case .redis, .other:
             return false
         }

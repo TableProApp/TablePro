@@ -60,17 +60,23 @@ struct QueryStatementModelTests {
     @Test("Statement navigation moves between statements under the JavaScript model")
     func navigation() {
         let script = "db.a.find();\ndb.b.find();"
-        #expect(QueryStatementScanner.statementStart(after: 0, in: script, model: .javascript) == 13)
+        let grammar = TestGrammar.standard
+        #expect(QueryStatementScanner.statementStart(after: 0, in: script, model: .javascript, grammar: grammar) == 13)
         // A caret past its own statement's start goes to that start first, as it does under SQL.
-        #expect(QueryStatementScanner.statementStart(before: 16, in: script, model: .javascript) == 13)
-        #expect(QueryStatementScanner.statementStart(before: 13, in: script, model: .javascript) == 0)
-        #expect(QueryStatementScanner.statementStart(after: 20, in: script, model: .javascript) == nil)
+        #expect(QueryStatementScanner.statementStart(before: 16, in: script, model: .javascript, grammar: grammar) == 13)
+        #expect(QueryStatementScanner.statementStart(before: 13, in: script, model: .javascript, grammar: grammar) == 0)
+        #expect(QueryStatementScanner.statementStart(after: 20, in: script, model: .javascript, grammar: grammar) == nil)
     }
 
     @Test("Selection past the last statement reaches its far edge")
     func selectionEnd() {
         let script = "db.a.find();\ndb.b.find();"
-        let end = QueryStatementScanner.statementSelectionEnd(after: 14, in: script, model: .javascript)
+        let end = QueryStatementScanner.statementSelectionEnd(
+            after: 14,
+            in: script,
+            model: .javascript,
+            grammar: TestGrammar.standard
+        )
         #expect(end == (script as NSString).length)
     }
 

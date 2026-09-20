@@ -40,11 +40,11 @@ enum QueryStatementScanner {
     static func locatedStatements(
         in text: String,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> [SQLStatementScanner.LocatedStatement] {
         switch model {
         case .sql:
-            return SQLStatementScanner.locatedStatements(in: text, dialect: dialect)
+            return SQLStatementScanner.locatedStatements(in: text, grammar: grammar)
         case .javascript:
             return JavaScriptStatementScanner.locatedStatements(in: text).map(located)
         }
@@ -53,11 +53,11 @@ enum QueryStatementScanner {
     static func navigableStatements(
         in text: String,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> [SQLStatementScanner.LocatedStatement] {
         switch model {
         case .sql:
-            return SQLStatementScanner.navigableStatements(in: text, dialect: dialect)
+            return SQLStatementScanner.navigableStatements(in: text, grammar: grammar)
         case .javascript:
             return JavaScriptStatementScanner.executableStatements(in: text)
                 .map(located)
@@ -68,11 +68,11 @@ enum QueryStatementScanner {
     static func executableStatements(
         in text: String,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> [SQLStatementScanner.ExecutableStatement] {
         switch model {
         case .sql:
-            return SQLStatementScanner.executableStatements(in: text, dialect: dialect)
+            return SQLStatementScanner.executableStatements(in: text, grammar: grammar)
         case .javascript:
             return JavaScriptStatementScanner.executableStatements(in: text).compactMap { statement in
                 let located = located(statement)
@@ -89,12 +89,12 @@ enum QueryStatementScanner {
         in text: String,
         cursorPosition: Int,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> SQLStatementScanner.LocatedStatement {
         switch model {
         case .sql:
             return SQLStatementScanner.locatedStatementAtCursor(
-                in: text, cursorPosition: cursorPosition, dialect: dialect
+                in: text, cursorPosition: cursorPosition, grammar: grammar
             )
         case .javascript:
             guard let statement = JavaScriptStatementScanner.statementAtCursor(
@@ -110,13 +110,13 @@ enum QueryStatementScanner {
         after offset: Int,
         in text: String,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> Int? {
         switch model {
         case .sql:
-            return SQLStatementScanner.statementStart(after: offset, in: text, dialect: dialect)
+            return SQLStatementScanner.statementStart(after: offset, in: text, grammar: grammar)
         case .javascript:
-            return navigableStatements(in: text, model: model)
+            return navigableStatements(in: text, model: model, grammar: grammar)
                 .first { $0.contentRange.location > offset }?
                 .contentRange.location
         }
@@ -126,13 +126,13 @@ enum QueryStatementScanner {
         before offset: Int,
         in text: String,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> Int? {
         switch model {
         case .sql:
-            return SQLStatementScanner.statementStart(before: offset, in: text, dialect: dialect)
+            return SQLStatementScanner.statementStart(before: offset, in: text, grammar: grammar)
         case .javascript:
-            return navigableStatements(in: text, model: model)
+            return navigableStatements(in: text, model: model, grammar: grammar)
                 .last { $0.contentRange.location < offset }?
                 .contentRange.location
         }
@@ -142,14 +142,14 @@ enum QueryStatementScanner {
         after offset: Int,
         in text: String,
         model: QueryStatementModel,
-        dialect: SqlDialect = .generic
+        grammar: SQLLexicalGrammar
     ) -> Int? {
         switch model {
         case .sql:
-            return SQLStatementScanner.statementSelectionEnd(after: offset, in: text, dialect: dialect)
+            return SQLStatementScanner.statementSelectionEnd(after: offset, in: text, grammar: grammar)
         case .javascript:
-            if let next = statementStart(after: offset, in: text, model: model) { return next }
-            let end = navigableStatements(in: text, model: model).last?.contentRange.upperBound
+            if let next = statementStart(after: offset, in: text, model: model, grammar: grammar) { return next }
+            let end = navigableStatements(in: text, model: model, grammar: grammar).last?.contentRange.upperBound
             return end.flatMap { $0 > offset ? $0 : nil }
         }
     }

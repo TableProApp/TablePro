@@ -219,7 +219,7 @@ public actor MCPConnectionBridge {
     }
 
     static func statementText(_ query: String, databaseType: DatabaseType) -> String {
-        DatabaseAccessBridge.statementText(query, dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue))
+        DatabaseAccessBridge.statementText(query, grammar: databaseType.lexicalGrammar)
     }
 }
 

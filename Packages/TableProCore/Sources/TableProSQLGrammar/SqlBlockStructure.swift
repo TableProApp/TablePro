@@ -8,7 +8,7 @@ import Foundation
 /// to run a fragment. ``SQLStatementScanner`` and ``SQLFoldScanner`` both read the vocabulary from here for that
 /// reason, including the `END IF` disambiguation that is easy to get subtly different twice.
 ///
-/// What they do not share is how much they will let a block swallow: see `allowsBlock` on ``effect(of:endingAt:in:length:allowsBlock:)``.
+/// What they do not share is how much they will let a block swallow: see `allowsBlock` on ``effect(of:endingAt:in:length:allowsBlock:grammar:)``.
 ///
 /// This sits beside ``SqlLexer`` rather than inside it because these rules are about words, not characters.
 public enum SqlBlockStructure {
@@ -126,17 +126,18 @@ public enum SqlBlockStructure {
         endingAt wordEnd: Int,
         in text: NSString,
         length: Int,
-        allowsBlock: Bool
+        allowsBlock: Bool,
+        grammar: SQLLexicalGrammar
     ) -> Effect {
         guard allowsBlock else { return .none }
 
         switch keyword {
         case "BEGIN":
-            return startsTransaction(after: wordEnd, in: text, length: length) ? .none : .opensBlock
+            return startsTransaction(after: wordEnd, in: text, length: length, grammar: grammar) ? .none : .opensBlock
         case "CASE":
             return .opensBlock
         case "END":
-            return endEffect(after: wordEnd, in: text, length: length)
+            return endEffect(after: wordEnd, in: text, length: length, grammar: grammar)
         default:
             return .none
         }
@@ -144,15 +145,25 @@ public enum SqlBlockStructure {
 
     // MARK: - Private
 
-    private static func startsTransaction(after offset: Int, in text: NSString, length: Int) -> Bool {
-        let cursor = skipTrivia(from: offset, in: text, length: length)
+    private static func startsTransaction(
+        after offset: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> Bool {
+        let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return true }
         guard text.character(at: cursor) != SqlLexer.semicolon else { return true }
         return beginStartsTransaction(followedBy: readKeyword(text, at: cursor, length: length).text)
     }
 
-    private static func endEffect(after offset: Int, in text: NSString, length: Int) -> Effect {
-        let cursor = skipTrivia(from: offset, in: text, length: length)
+    private static func endEffect(
+        after offset: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> Effect {
+        let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return .closesBlock(resumeAt: offset) }
         let follower = readKeyword(text, at: cursor, length: length)
         switch endingFollowedBy(follower.text) {
@@ -165,22 +176,17 @@ public enum SqlBlockStructure {
         }
     }
 
-    private static func skipTrivia(from offset: Int, in text: NSString, length: Int) -> Int {
+    private static func skipTrivia(from offset: Int, in text: NSString, length: Int, grammar: SQLLexicalGrammar) -> Int {
         var cursor = offset
         while cursor < length {
             if SqlLexer.isWhitespace(text.character(at: cursor)) {
                 cursor += 1
                 continue
             }
-            if SqlLexer.startsLineComment(text, at: cursor, length: length) {
-                cursor = SqlLexer.endOfLine(text, from: cursor, length: length)
-                continue
+            guard let span = SQLNonCodeSpan.span(at: cursor, in: text, grammar: grammar), span.kind.isComment else {
+                break
             }
-            if SqlLexer.startsBlockComment(text, at: cursor, length: length) {
-                cursor = SqlLexer.skipBlockComment(text, from: cursor, length: length).next
-                continue
-            }
-            break
+            cursor = max(span.end, cursor + 1)
         }
         return cursor
     }

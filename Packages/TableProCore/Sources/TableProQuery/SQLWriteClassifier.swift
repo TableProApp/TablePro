@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProSQLGrammar
 
 /// Decides whether a statement batch writes, so Safe Mode can block or confirm it.
 ///
@@ -7,6 +8,10 @@ import TableProModels
 /// short, closed set of read verbs. Everything else writes, including a keyword this classifier has
 /// never heard of. A write-keyword allowlist cannot be safe, because anything it has not been
 /// taught, or anything hidden behind a leading comment, runs unguarded.
+///
+/// The batch is split into statements the way its engine lexes it, by the grammar the Mac reads
+/// too, and under every reading the engine could be using: iOS drivers send the whole text in one
+/// call, so a `DELETE` hidden behind a quote only one reading closes still runs.
 public enum SQLWriteClassifier {
     /// `EXPLAIN` and `PRAGMA` are deliberately absent: `EXPLAIN ANALYZE DELETE …` runs the delete on
     /// PostgreSQL, and `PRAGMA journal_mode = WAL` writes on SQLite and DuckDB.
@@ -25,18 +30,23 @@ public enum SQLWriteClassifier {
 
     public static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
         if databaseType == .redis { return redisWrites(sql) }
-        let statements = splitStatements(sql)
-        guard !statements.isEmpty else { return false }
-        return statements.contains(where: statementWrites)
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil)
+        return readings.distinct(for: sql).contains { grammar in
+            SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
+                statementWrites(statement.sql, grammar: grammar)
+            }
+        }
     }
 
-    private static func statementWrites(_ statement: String) -> Bool {
-        let body = strippingLeadingTrivia(statement)
-        // Content this cannot name is content it cannot vouch for.
+    /// Reads the statement's code with every literal and comment blanked by its engine's own rules. A MySQL
+    /// `/*! ... */` is kept as the code it is, so a keyword the server runs from one is never mistaken for a read.
+    private static func statementWrites(_ statement: String, grammar: SQLLexicalGrammar) -> Bool {
+        let code = SQLCodeProjection.code(of: statement, grammar: grammar, revealingExecutableComments: true)
+        let body = String(code.drop { $0.isWhitespace })
         guard let keyword = leadingKeyword(of: body) else { return true }
-        if keyword == "WITH" { return commonTableExpressionWrites(body) }
+        if keyword == "WITH" { return commonTableExpressionWrites(code) }
         if readUnlessIntoKeywords.contains(keyword) {
-            return containsWord("INTO", in: maskingLiteralsAndComments(body).uppercased())
+            return containsWord("INTO", in: code.uppercased())
         }
         return !readKeywords.contains(keyword)
     }
@@ -76,10 +86,10 @@ public enum SQLWriteClassifier {
         "TS.RANGE", "TS.REVRANGE", "TS.GET", "TS.MGET", "TS.INFO", "FT.SEARCH", "FT.INFO"
     ]
 
-    /// A CTE's leading keyword says nothing about what the statement finally does, so the body is
-    /// searched for a write verb with its literals and comments blanked out first.
-    private static func commonTableExpressionWrites(_ statement: String) -> Bool {
-        let masked = maskingLiteralsAndComments(statement).uppercased()
+    /// A CTE's leading keyword says nothing about what the statement finally does, so its code is
+    /// searched for a write verb.
+    private static func commonTableExpressionWrites(_ code: String) -> Bool {
+        let masked = code.uppercased()
         return writeKeywordsInsideCTE.contains { keyword in
             containsWord(keyword, in: masked)
         }
@@ -130,103 +140,5 @@ public enum SQLWriteClassifier {
             if rest == beforeTrim { break }
         }
         return String(rest)
-    }
-
-    /// Splits on semicolons that are not inside a string, an identifier quote, or a comment.
-    private static func splitStatements(_ sql: String) -> [String] {
-        let characters = Array(sql)
-        let quoted = quotedOrCommentMask(characters)
-        var statements: [String] = []
-        var current = ""
-
-        for (index, character) in characters.enumerated() {
-            if character == ";", !quoted[index] {
-                appendIfMeaningful(current, to: &statements)
-                current = ""
-                continue
-            }
-            current.append(character)
-        }
-        appendIfMeaningful(current, to: &statements)
-        return statements
-    }
-
-    private static func appendIfMeaningful(_ statement: String, to statements: inout [String]) {
-        let body = strippingLeadingTrivia(statement).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-        statements.append(statement)
-    }
-
-    private static func maskingLiteralsAndComments(_ sql: String) -> String {
-        let characters = Array(sql)
-        let quoted = quotedOrCommentMask(characters)
-        return String(characters.enumerated().map { quoted[$0.offset] ? " " : $0.element })
-    }
-
-    /// One pass marking every position that sits inside a string literal, a quoted identifier, or a
-    /// comment. Doubled and backslash-escaped quotes do not end a literal. Splitting and blanking
-    /// both read this rather than re-deriving the state, so neither can drift from the other.
-    private static func quotedOrCommentMask(_ characters: [Character]) -> [Bool] {
-        var mask = [Bool](repeating: false, count: characters.count)
-        var index = 0
-        var quote: Character?
-
-        while index < characters.count {
-            let character = characters[index]
-            let following = index + 1 < characters.count ? characters[index + 1] : nil
-
-            if let open = quote {
-                mask[index] = true
-                // A backslash is not an escape under PostgreSQL's standard_conforming_strings, which
-                // PostgreSQLDriver sets on. Treating it as one would swallow the terminating quote
-                // and hide the rest of the batch, so it is left alone: ending a literal early splits
-                // more statements, and more statements can only classify toward write.
-                if character == open {
-                    if following == open {
-                        mask[index + 1] = true
-                        index += 2
-                        continue
-                    }
-                    quote = nil
-                }
-                index += 1
-                continue
-            }
-
-            if character == "-", following == "-" {
-                while index < characters.count, !characters[index].isNewline {
-                    mask[index] = true
-                    index += 1
-                }
-                continue
-            }
-
-            if character == "/", following == "*" {
-                mask[index] = true
-                mask[index + 1] = true
-                index += 2
-                while index < characters.count {
-                    if characters[index] == "*", index + 1 < characters.count, characters[index + 1] == "/" {
-                        mask[index] = true
-                        mask[index + 1] = true
-                        index += 2
-                        break
-                    }
-                    mask[index] = true
-                    index += 1
-                }
-                continue
-            }
-
-            if character == "'" || character == "\"" || character == "`" {
-                quote = character
-                mask[index] = true
-                index += 1
-                continue
-            }
-
-            index += 1
-        }
-        return mask
     }
 }

@@ -52,6 +52,10 @@ The Redis, MongoDB, and etcd drivers cannot open a read-only session, so Safe Mo
 
 The server runs the text inside a MySQL conditional comment, `/*! ... */` or MariaDB's `/*M! ... */`, so a statement holding one counts as a write even when the rest of it only reads. Remove the comment to run the statement on a Read-Only connection.
 
+## Statements are counted the way the server counts them
+
+Where a string, a quoted name or a comment ends depends on the engine. A backslash escapes a quote on MySQL and not on PostgreSQL, and block comments nest on PostgreSQL and SQL Server and not on MySQL. A query is split into statements by its own engine's rules. When a session setting changes the answer, such as `NO_BACKSLASH_ESCAPES` on MySQL or `standard_conforming_strings` on PostgreSQL, the query is read under each setting and the strictest result applies: a query that holds a write under any reading asks for confirmation, and Read-Only blocks it.
+
 ## Changing the level while connected
 
 A padlock in the toolbar carries the current level: open for **Silent**, closed for the rest. Click it for the six levels with the current one ticked. **Database > Safe Mode Level** is the same list.

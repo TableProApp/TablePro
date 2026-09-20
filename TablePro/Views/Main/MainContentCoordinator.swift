@@ -136,6 +136,11 @@ final class MainContentCoordinator: ObservableObject {
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
     var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
+
+    /// How this connection's scripts are split for execution, with what the driver read from its own session.
+    var lexicalGrammar: SQLLexicalGrammar {
+        SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connectionId)
+    }
     var statementModel: QueryStatementModel { QueryStatementModel.forDatabaseType(connection.type) }
     var browseDatabaseName: String {
         services.databaseManager.browseDatabaseName(for: connection)
@@ -1079,7 +1084,7 @@ final class MainContentCoordinator: ObservableObject {
                 in: fullQuery,
                 cursorPosition: cursorPositions.first?.range.location ?? 0,
                 model: statementModel,
-                dialect: sqlDialect
+                grammar: lexicalGrammar
             )
             sql = statement.sql
             sourceOffset = statement.offset
@@ -1131,7 +1136,7 @@ final class MainContentCoordinator: ObservableObject {
         // cannot run.
         if services.appSettings.editor.queryParametersEnabled, statementModel == .sql {
             let paramStatements = anchored(
-                QueryStatementScanner.executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
+                QueryStatementScanner.executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
             )
             guard !paramStatements.isEmpty else { return false }
             let combinedSQL = SQLParameterExtractor.parameterSource(of: paramStatements)
@@ -1161,7 +1166,7 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         let statements = anchored(
-            QueryStatementScanner.executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
+            QueryStatementScanner.executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
         )
         guard !statements.isEmpty else { return false }
 
@@ -1528,6 +1533,7 @@ final class MainContentCoordinator: ObservableObject {
         QuerySqlParser.extractTableName(
             from: sql,
             dialect: sqlDialect,
+            readings: connection.type.lexicalReadings,
             browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
         )
     }
@@ -1559,7 +1565,7 @@ final class MainContentCoordinator: ObservableObject {
                 let orderQuery = QuerySqlParser.applyingOrderBy(
                     orderClause,
                     to: baseQuery,
-                    lexicalDialect: self.sqlDialect
+                    grammar: self.lexicalGrammar
                 )
                 guard self.tabManager.mutate(tabId: tabId, { tab in
                     tab.sortState = capturedSort

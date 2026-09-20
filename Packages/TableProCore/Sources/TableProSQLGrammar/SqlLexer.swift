@@ -1,15 +1,11 @@
 import Foundation
 
-/// The character level rules every SQL scanner in the app agrees on: which UTF-16 units matter, and how far a comment,
-/// a quoted string or a dollar quoted body runs.
+/// The character level pieces every SQL scanner is built from: which UTF-16 units matter, and how far one comment,
+/// quoted string or dollar quoted body runs once its kind is known.
 ///
-/// Scanners differ in what they do with the structure they find, so they are not merged. Offsets are UTF-16 units, so
-/// an `NSString` can be walked in constant time per character.
-///
-/// ``skipQuotedString`` gates backslash escapes on the grammar, which is what PostgreSQL requires.
-/// `SQLStatementScanner` deliberately keeps its own ungated handling, because splitting a script for execution is
-/// safer when a backslash never ends a string early; `SQLStatementScannerTests` pins that behaviour. Oracle is the
-/// exception there: a backslash is never an escape in Oracle, and scripts written for it routinely quote Windows paths.
+/// Which kind starts at an offset is ``SQLNonCodeSpan``'s decision, made from an ``SQLLexicalGrammar``; these
+/// functions only run a span to its end. Offsets are UTF-16 units, so an `NSString` can be walked in constant time per
+/// character.
 public enum SqlLexer {
     public static let space = UInt16(UnicodeScalar(" ").value)
     public static let tab = UInt16(UnicodeScalar("\t").value)
@@ -39,13 +35,16 @@ public enum SqlLexer {
     private static let greaterThan = UInt16(UnicodeScalar(">").value)
 
     /// How far a scan ran, and how many lines it crossed. A caller that does not track lines ignores `newlines`.
+    /// `isClosed` is false when the text ended before the closing delimiter.
     public struct Span: Sendable {
         public let next: Int
         public let newlines: Int
+        public let isClosed: Bool
 
-        public init(next: Int, newlines: Int) {
+        public init(next: Int, newlines: Int, isClosed: Bool = true) {
             self.next = next
             self.newlines = newlines
+            self.isClosed = isClosed
         }
     }
 
@@ -95,7 +94,7 @@ public enum SqlLexer {
             }
             cursor += 1
         }
-        return Span(next: length, newlines: newlines)
+        return Span(next: length, newlines: newlines, isClosed: false)
     }
 
     public static func skipNestedBlockComment(_ text: NSString, from offset: Int, length: Int) -> Span {
@@ -120,7 +119,7 @@ public enum SqlLexer {
             }
             cursor += 1
         }
-        return Span(next: length, newlines: newlines)
+        return Span(next: length, newlines: newlines, isClosed: false)
     }
 
     /// Runs past the closing quote, or to the end of the document when the string is never closed.
@@ -154,7 +153,7 @@ public enum SqlLexer {
             }
             cursor += 1
         }
-        return Span(next: length, newlines: newlines)
+        return Span(next: length, newlines: newlines, isClosed: false)
     }
 
     /// Runs past an Oracle `q'<delim>...<delim>'` literal, or its national form `nq'...'`, when one starts at
@@ -187,7 +186,7 @@ public enum SqlLexer {
             }
             cursor += 1
         }
-        return Span(next: length, newlines: newlines)
+        return Span(next: length, newlines: newlines, isClosed: false)
     }
 
     private static func alternativeQuoteCloser(for opener: UInt16) -> UInt16 {
@@ -221,6 +220,205 @@ public enum SqlLexer {
             }
             cursor += 1
         }
-        return (length, Span(next: length, newlines: newlines))
+        return (length, Span(next: length, newlines: newlines, isClosed: false))
+    }
+
+    /// Whether `--` at `offset` starts a comment. MySQL and MariaDB read `--` as a comment only when a space or a
+    /// control character follows it, measured on 8.4 and 11.8 as `SELECT 1--1` returning 2.
+    public static func startsDashComment(_ text: NSString, at offset: Int, length: Int, needsWhitespace: Bool) -> Bool {
+        guard startsLineComment(text, at: offset, length: length) else { return false }
+        guard needsWhitespace, offset + 2 < length else { return true }
+        return text.character(at: offset + 2) <= space
+    }
+
+    /// Whether `//` starts at `offset`.
+    public static func startsDoubleSlash(_ text: NSString, at offset: Int, length: Int) -> Bool {
+        text.character(at: offset) == slash && offset + 1 < length && text.character(at: offset + 1) == slash
+    }
+
+    /// The offset of the line break that ends a line comment, or the end of the document.
+    public static func endOfLineComment(
+        _ text: NSString,
+        from offset: Int,
+        length: Int,
+        carriageReturnEnds: Bool
+    ) -> Int {
+        var cursor = min(offset, length)
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline || (carriageReturnEnds && character == carriageReturn) {
+                return cursor
+            }
+            cursor += 1
+        }
+        return cursor
+    }
+
+    /// The length of a MySQL `/*!NNNNN` or MariaDB `/*M!NNNNN` opener at `offset`, or nil when none starts there.
+    public static func executableCommentOpenerLength(_ text: NSString, at offset: Int, length: Int) -> Int? {
+        guard startsBlockComment(text, at: offset, length: length) else { return nil }
+        var cursor = offset + 2
+        if cursor < length, text.character(at: cursor) == capitalM || text.character(at: cursor) == smallM {
+            cursor += 1
+        }
+        guard cursor < length, text.character(at: cursor) == exclamationMark else { return nil }
+        cursor += 1
+        while cursor < length, isDigit(text.character(at: cursor)) {
+            cursor += 1
+        }
+        return cursor - offset
+    }
+
+    /// Runs past a `[...]` identifier. With `doubledCloseEscapes`, `]]` stands for one `]`, as T-SQL reads it; SQLite
+    /// ends the identifier at the first `]`.
+    public static func skipBracketedIdentifier(
+        _ text: NSString,
+        from offset: Int,
+        length: Int,
+        doubledCloseEscapes: Bool
+    ) -> Span {
+        var cursor = offset + 1
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline {
+                newlines += 1
+            }
+            guard character == closeBracket else {
+                cursor += 1
+                continue
+            }
+            guard doubledCloseEscapes, cursor + 1 < length, text.character(at: cursor + 1) == closeBracket else {
+                return Span(next: cursor + 1, newlines: newlines)
+            }
+            cursor += 2
+        }
+        return Span(next: length, newlines: newlines, isClosed: false)
+    }
+
+    /// Whether three of `quote` start at `offset`, which opens a GoogleSQL triple-quoted literal.
+    public static func startsTripleQuote(_ text: NSString, at offset: Int, length: Int) -> Bool {
+        let quote = text.character(at: offset)
+        guard quote == singleQuote || quote == doubleQuote, offset + 2 < length else { return false }
+        return text.character(at: offset + 1) == quote && text.character(at: offset + 2) == quote
+    }
+
+    /// Runs past a triple-quoted literal starting at `offset`, which only three of its own quote end.
+    public static func skipTripleQuotedString(
+        _ text: NSString,
+        from offset: Int,
+        length: Int,
+        backslashEscapes: Bool
+    ) -> Span {
+        let quote = text.character(at: offset)
+        var cursor = offset + 3
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline {
+                newlines += 1
+            }
+            if backslashEscapes, character == backslash, cursor + 1 < length {
+                cursor += 2
+                continue
+            }
+            if character == quote, cursor + 2 < length,
+               text.character(at: cursor + 1) == quote, text.character(at: cursor + 2) == quote {
+                return Span(next: cursor + 3, newlines: newlines)
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: newlines, isClosed: false)
+    }
+
+    /// Runs past SQLite's Tcl-style parameter `$name(...)`, `@name(...)`, `:name(...)` or `#name(...)` starting at
+    /// `offset`, or returns nil when none starts there.
+    ///
+    /// SQLite's tokenizer takes everything from the `(` to the first `)` or whitespace as part of the name, quotes
+    /// and semicolons included, so `$a('); DROP TABLE t; --'` is the parameter `$a(')` followed by a `DROP` the server
+    /// runs, measured on 3.54 for all four prefixes. A name that meets whitespace first is an illegal token, which ends
+    /// where the whitespace starts. `::` continues a name, as in `$a::b(...)`.
+    public static func skipParenthesizedParameterName(_ text: NSString, at offset: Int, length: Int) -> Span? {
+        guard parameterPrefixes.contains(text.character(at: offset)) else { return nil }
+        var cursor = offset + 1
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if isSQLiteIdentifierCharacter(character) {
+                cursor += 1
+                continue
+            }
+            guard character == colonUnit, cursor + 1 < length, text.character(at: cursor + 1) == colonUnit else { break }
+            cursor += 2
+        }
+        guard cursor > offset + 1, cursor < length, text.character(at: cursor) == openParen else { return nil }
+        cursor += 1
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == closeParen {
+                return Span(next: cursor + 1, newlines: 0)
+            }
+            if character <= space {
+                return Span(next: cursor, newlines: 0, isClosed: false)
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: 0, isClosed: false)
+    }
+
+    /// Runs past a MySQL executable comment whose opener is `openerLength` long. The server lexes the body as SQL, so
+    /// a `*/` inside a quoted string does not close it, measured on 8.4 and 11.8 with `/*! , '*/' */`.
+    public static func skipExecutableComment(
+        _ text: NSString,
+        from offset: Int,
+        openerLength: Int,
+        length: Int,
+        backslashEscapes: (UInt16) -> Bool
+    ) -> Span {
+        var cursor = offset + openerLength
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline {
+                newlines += 1
+            }
+            if character == star, cursor + 1 < length, text.character(at: cursor + 1) == slash {
+                return Span(next: cursor + 2, newlines: newlines)
+            }
+            if character == singleQuote || character == doubleQuote || character == backtick {
+                let quoted = skipQuotedString(
+                    text,
+                    from: cursor,
+                    quote: character,
+                    length: length,
+                    backslashEscapes: backslashEscapes(character)
+                )
+                newlines += quoted.newlines
+                cursor = quoted.next
+                continue
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: newlines, isClosed: false)
+    }
+
+    private static let smallM = UInt16(UnicodeScalar("m").value)
+    private static let capitalM = UInt16(UnicodeScalar("M").value)
+    private static let digitZero = UInt16(UnicodeScalar("0").value)
+    private static let digitNine = UInt16(UnicodeScalar("9").value)
+    private static let colonUnit = UInt16(UnicodeScalar(":").value)
+    private static let parameterPrefixes: Set<UInt16> = [
+        SqlDollarQuote.dollar,
+        UInt16(UnicodeScalar("@").value),
+        UInt16(UnicodeScalar(":").value),
+        UInt16(UnicodeScalar("#").value),
+    ]
+
+    private static func isDigit(_ character: UInt16) -> Bool {
+        character >= digitZero && character <= digitNine
+    }
+
+    /// SQLite's `IdChar`: ASCII letters, digits, `_`, `$`, and every unit from 0x80 up.
+    private static func isSQLiteIdentifierCharacter(_ character: UInt16) -> Bool {
+        SqlDollarQuote.isIdentifierPart(character) || character == SqlDollarQuote.dollar || character >= 0x80
     }
 }

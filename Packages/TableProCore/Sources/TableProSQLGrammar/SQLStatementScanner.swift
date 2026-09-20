@@ -259,11 +259,8 @@ public enum SQLStatementScanner {
         let safePosition = cursorPosition.map { min(max(0, $0), length) }
 
         var tracker = SQLStatementBoundaries.makeTracker(for: grammar)
-        var nonCode = NonCodeSpan(grammar: grammar)
         var currentStart = 0
         var hasStatementContent = false
-        let dollarQuotesEnabled = grammar.contains(.taggedDollarQuotes)
-        let hashCommentsEnabled = grammar.contains(.hashLineComments)
         var i = 0
 
         var lastStatementWithContent: LocatedStatement?
@@ -298,57 +295,22 @@ public enum SQLStatementScanner {
         while i < length {
             let ch = nsQuery.character(at: i)
 
-            if nonCode.isOpen {
-                i = nonCode.advance(from: i, in: nsQuery, length: length)
-                continue
-            }
-
-            if SqlLexer.startsLineComment(nsQuery, at: i, length: length) {
-                nonCode.state = .lineComment
-                i += 2
-                continue
-            }
-
-            if hashCommentsEnabled && ch == SqlLexer.hash {
-                nonCode.state = .lineComment
-                i += 1
-                continue
-            }
-
-            if SqlLexer.startsBlockComment(nsQuery, at: i, length: length) {
-                if SqlLexer.startsConditionalComment(nsQuery, at: i, length: length) {
+            if let span = SQLNonCodeSpan.span(at: i, in: nsQuery, grammar: grammar) {
+                switch span.kind {
+                case .lineComment, .blockComment:
+                    break
+                case .executableComment:
                     hasStatementContent = true
+                case .quoted, .parameter:
+                    hasStatementContent = true
+                    tracker.observeOpaqueToken()
                 }
-                nonCode.state = .blockComment
-                i += 2
-                continue
-            }
-
-            if grammar.isQuote(ch) {
-                nonCode.state = .string(quote: ch)
-                hasStatementContent = true
-                tracker.observeOpaqueToken()
-                i += 1
-                continue
-            }
-
-            if dollarQuotesEnabled, ch == SqlDollarQuote.dollar,
-               case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: i, in: nsQuery, bufLen: length) {
-                nonCode.state = .dollarQuote(tag: tag)
-                hasStatementContent = true
-                tracker.observeOpaqueToken()
-                i += openerLength
+                i = max(span.end, i + 1)
                 continue
             }
 
             if SqlBlockStructure.startsWord(nsQuery, at: i, length: length, grammar: grammar) {
                 hasStatementContent = true
-                if grammar.contains(.alternativeQuoting),
-                   let literal = SqlLexer.skipAlternativeQuotedString(nsQuery, at: i, length: length) {
-                    tracker.observeOpaqueToken()
-                    i = literal.next
-                    continue
-                }
                 if tracker.needsWords {
                     let word = SqlBlockStructure.readKeyword(nsQuery, at: i, length: length, grammar: grammar)
                     tracker.observeWord(word.text)
@@ -405,61 +367,6 @@ public enum SQLStatementScanner {
                 acceptsBindParameters: tracker.acceptsBindParameters
             )
             _ = onStatement(statement)
-        }
-    }
-
-    /// The literal or comment the scan is inside, where nothing is a token and no `;` ends anything.
-    private struct NonCodeSpan {
-        enum State: Equatable {
-            case code
-            case lineComment
-            case blockComment
-            case string(quote: UInt16)
-            case dollarQuote(tag: String)
-        }
-
-        var state = State.code
-
-        /// Which quotes a backslash keeps open.
-        let grammar: SQLLexicalGrammar
-
-        var isOpen: Bool {
-            state != .code
-        }
-
-        /// Steps past one unit of the open span, closing it where it ends, and returns the next offset.
-        mutating func advance(from i: Int, in text: NSString, length: Int) -> Int {
-            let ch = text.character(at: i)
-            switch state {
-            case .code:
-                return i + 1
-            case .lineComment:
-                if ch == SqlLexer.newline { state = .code }
-                return i + 1
-            case .blockComment:
-                guard ch == SqlLexer.star, i + 1 < length, text.character(at: i + 1) == SqlLexer.slash else {
-                    return i + 1
-                }
-                state = .code
-                return i + 2
-            case let .dollarQuote(tag):
-                guard ch == SqlDollarQuote.dollar,
-                      SqlDollarQuote.matchesClose(at: i, tag: tag, in: text, bufLen: length) else {
-                    return i + 1
-                }
-                state = .code
-                return i + (tag as NSString).length + 2
-            case let .string(quote):
-                if grammar.backslashEscapes(inQuote: quote), ch == SqlLexer.backslash, i + 1 < length {
-                    return i + 2
-                }
-                guard ch == quote else { return i + 1 }
-                if i + 1 < length, text.character(at: i + 1) == quote {
-                    return i + 2
-                }
-                state = .code
-                return i + 1
-            }
         }
     }
 

@@ -6,34 +6,28 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 private enum AutocommitOnlyFixture {
-    static let postgres = SQLLexicalRules(dialect: .postgres)
-    static let mysql = SQLLexicalRules(dialect: .mysql)
-    static let sqlite = SQLLexicalRules(dialect: .sqlite)
-    static let sqlServer = SQLLexicalRules(
-        dialect: .generic,
-        backslashEscapes: false,
-        bracketsDelimitIdentifiers: true
-    )
+    static let sqlServer = TestGrammar.standard.union(.bracketQuotedIdentifiers)
 
     static func matches(_ statement: String, _ family: TransactionEngineFamily) -> Bool {
-        AutocommitOnlyStatement.matches(statement, family: family, rules: rules(for: family))
+        AutocommitOnlyStatement.matches(statement, family: family, grammar: grammar(for: family))
     }
 
-    static func rules(for family: TransactionEngineFamily) -> SQLLexicalRules {
+    static func grammar(for family: TransactionEngineFamily) -> SQLLexicalGrammar {
         switch family {
         case .postgres, .redshift, .cockroach:
-            return postgres
+            return TestGrammar.postgres
         case .mysql:
-            return mysql
+            return TestGrammar.mysql
         case .sqlite, .duckdb:
-            return sqlite
+            return TestGrammar.sqlite
         case .sqlServer:
             return sqlServer
         case .redis, .other:
-            return SQLLexicalRules(dialect: .generic)
+            return TestGrammar.standard
         }
     }
 }
