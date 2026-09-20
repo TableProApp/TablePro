@@ -290,7 +290,7 @@ struct FilterSettingsStorageTests {
             for: "users", connectionId: keptConnection, databaseName: "db", schemaName: nil
         )
 
-        storage.purgeConnections([deletedConnection])
+        storage.purgeConnections([deletedConnection], leavesTombstones: true)
         storage.waitForPendingDiskWrites()
 
         #expect(
@@ -317,7 +317,7 @@ struct FilterSettingsStorageTests {
             )
         }
 
-        storage.purgeConnections([first, second])
+        storage.purgeConnections([first, second], leavesTombstones: true)
         storage.waitForPendingDiskWrites()
 
         #expect(storage.loadLastFilters(for: "users", connectionId: first, databaseName: "db", schemaName: nil).isEmpty)
@@ -343,7 +343,7 @@ struct FilterSettingsStorageTests {
             for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
 
-        storage.purgeConnections([connectionId])
+        storage.purgeConnections([connectionId], leavesTombstones: true)
         storage.waitForPendingDiskWrites()
 
         let fresh = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)

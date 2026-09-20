@@ -45,12 +45,16 @@ internal enum ConnectionLocalState {
         }
 
         for store in tableScopedStores {
-            store.purgeConnections(connectionIds)
+            store.purgeConnections(connectionIds, leavesTombstones: origin == .local)
         }
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
         RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
-        Task { await purgeAsyncStores(connectionIds, sqlFavorites: sqlFavorites, queryHistory: queryHistory) }
+        Task {
+            await purgeAsyncStores(
+                connectionIds, origin: origin, sqlFavorites: sqlFavorites, queryHistory: queryHistory
+            )
+        }
     }
 
     /// The two stores that can only be reached with `await`, so `purge` fires them and does not
@@ -61,19 +65,27 @@ internal enum ConnectionLocalState {
     ///
     /// Separate from `purge` so a test can await what `purge` cannot.
     ///
-    /// `origin` does not reach here, and the two stores differ on why. Query history is device-local
-    /// and never synced, so a remote delete should forget this device's copy and has no tombstone to
-    /// push back. SQL favorites are synced and `removeFavoritesAndFolders` tombstones every record it
-    /// removes, so a remote delete does push one back at the device that sent it. That predates this
-    /// helper and is carried unchanged rather than fixed here, because the without-sync counterpart
-    /// `purgeFavorites` uses for the table favorites does not exist for these.
+    /// `origin` splits the SQL favorites the way `purgeFavorites` splits the table ones, and for the
+    /// same reason. `SyncCoordinator.applyRemoteChanges` suppresses the change tracker only for the
+    /// length of its own synchronous body, and this runs from a `Task` that starts after that body
+    /// has returned and the suppression has been reset, so a remote delete really did write
+    /// tombstones and push the sender's own deletion back at it.
+    ///
+    /// Query history takes no origin: it is device-local and never synced, so a remote delete
+    /// should forget this device's copy and has no tombstone to leave either way.
     internal static func purgeAsyncStores(
         _ connectionIds: Set<UUID>,
+        origin: Origin,
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared
     ) async {
         for connectionId in connectionIds {
-            await sqlFavorites.removeFavoritesAndFolders(for: connectionId)
+            switch origin {
+            case .local:
+                await sqlFavorites.removeFavoritesAndFolders(for: connectionId)
+            case .remote:
+                await sqlFavorites.removeFavoritesAndFoldersWithoutSync(for: connectionId)
+            }
             if await !queryHistory.deleteEverything(forConnection: connectionId) {
                 logger.error(
                     "Query history for a deleted connection could not be cleared: \(connectionId, privacy: .public)"

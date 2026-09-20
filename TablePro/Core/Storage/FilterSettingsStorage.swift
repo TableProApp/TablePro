@@ -547,7 +547,7 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
         ) + Self.browseKeySuffix
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>) {
+    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
         guard !connectionIds.isEmpty else { return }
 
         let encodedPrefixes = connectionIds.map { TableScope.storagePrefix(connectionId: $0) }

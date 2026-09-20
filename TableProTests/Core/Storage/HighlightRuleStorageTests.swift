@@ -142,7 +142,7 @@ struct HighlightRuleStorageTests {
         let storage = HighlightRuleStorage(storageDirectory: directory)
         storage.setRules([HighlightRule(columnName: "status", value: "paid")], for: scope(table: "orders"))
 
-        storage.purgeConnections([connectionId])
+        storage.purgeConnections([connectionId], leavesTombstones: true)
 
         #expect(storage.rules(for: scope(table: "orders")).isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
@@ -157,7 +157,7 @@ struct HighlightRuleStorageTests {
         let preserved = directory.appendingPathComponent("\(connectionId.uuidString).unreadable.json")
         #expect(FileManager.default.fileExists(atPath: preserved.path))
 
-        storage.purgeConnections([connectionId])
+        storage.purgeConnections([connectionId], leavesTombstones: true)
 
         #expect(!FileManager.default.fileExists(atPath: preserved.path))
     }

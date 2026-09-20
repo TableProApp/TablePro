@@ -38,6 +38,16 @@ extension MainContentCoordinator {
     /// Closed Tab, which could only reopen onto an error, and the saved tab set is never cleared,
     /// because an emptied tab list is not consent to forget it.
     func closeTabsForRemovedObjects(ids: [UUID]) {
+        /// Discarded rather than flushed, which is what the user-close path does. The object is
+        /// gone and the adoption has already cleared its saved settings, so a write from the
+        /// teardown would put the layout back after the clear.
+        ///
+        /// Only when the closed tabs include the selected one, because that is the only tab with a
+        /// mounted grid: a pending width belongs to it, and dropping an unrelated table would
+        /// otherwise throw away a resize the reader had just made somewhere else.
+        if let selectedId = tabManager.selectedTabId, ids.contains(selectedId) {
+            dataTabDelegate?.tableViewCoordinator?.discardPendingColumnLayoutPersistence()
+        }
         for id in ids {
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
             releaseResources(of: tab)

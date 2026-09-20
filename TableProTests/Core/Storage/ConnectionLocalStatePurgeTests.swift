@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSyncTransport
 import Testing
 
 /// The stores a deleted connection leaves behind that can only be reached with `await`, and the
@@ -68,7 +69,7 @@ struct ConnectionLocalStatePurgeTests {
         let deleted = UUID()
         _ = await storage.record(entry(connectionId: deleted, query: "SELECT secret FROM billing"))
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
 
         #expect(await recordedQueries(storage, connectionId: deleted).isEmpty)
     }
@@ -81,7 +82,7 @@ struct ConnectionLocalStatePurgeTests {
         _ = await storage.record(entry(connectionId: deleted, query: "SELECT secret FROM billing"))
         _ = await storage.record(entry(connectionId: kept, query: "SELECT 1"))
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
 
         #expect(await recordedQueries(storage, connectionId: deleted).isEmpty)
         #expect(await recordedQueries(storage, connectionId: kept) == ["SELECT 1"])
@@ -95,10 +96,68 @@ struct ConnectionLocalStatePurgeTests {
         _ = await storage.record(entry(connectionId: first, query: "SELECT 1"))
         _ = await storage.record(entry(connectionId: second, query: "SELECT 2"))
 
-        await ConnectionLocalState.purgeAsyncStores([first, second], queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([first, second], origin: .local, queryHistory: manager)
 
         #expect(await recordedQueries(storage, connectionId: first).isEmpty)
         #expect(await recordedQueries(storage, connectionId: second).isEmpty)
+    }
+
+    private func makeFavorites() -> (SQLFavoriteManager, SyncMetadataStorage) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("purge_favorites_\(UUID().uuidString).db")
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let metadata = SyncMetadataStorage(
+            userDefaults: UserDefaults(suiteName: "tablepro-purge-\(UUID().uuidString)") ?? .standard,
+            prefix: "tests.\(UUID().uuidString)"
+        )
+        let manager = SQLFavoriteManager(
+            storage: SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true),
+            syncTracker: SyncChangeTracker(metadataStorage: metadata)
+        )
+        return (manager, metadata)
+    }
+
+    private func seedFavorite(_ manager: SQLFavoriteManager, connectionId: UUID) async -> SQLFavorite {
+        let favorite = SQLFavorite(
+            name: "Active users", query: "SELECT * FROM users", connectionId: connectionId
+        )
+        _ = await manager.addFavorite(favorite)
+        return favorite
+    }
+
+    /// The device that deleted the connection already told CloudKit. A tombstone from here sends
+    /// its own deletion back at it.
+    @Test("A remote purge removes the SQL favorites without tombstoning them")
+    func remotePurgeLeavesNoFavoriteTombstone() async {
+        let (favorites, metadata) = makeFavorites()
+        let (history, _) = makeHistory()
+        let deleted = UUID()
+        let favorite = await seedFavorite(favorites, connectionId: deleted)
+
+        await ConnectionLocalState.purgeAsyncStores(
+            [deleted], origin: .remote, sqlFavorites: favorites, queryHistory: history
+        )
+
+        #expect(await favorites.fetchFavorites(connectionId: deleted).isEmpty)
+        #expect(!metadata.tombstones(for: .favorite).contains { $0.id == favorite.id.uuidString })
+    }
+
+    @Test("A local purge tombstones the SQL favorites it removes")
+    func localPurgeTombstonesFavorites() async {
+        let (favorites, metadata) = makeFavorites()
+        let (history, _) = makeHistory()
+        let deleted = UUID()
+        let favorite = await seedFavorite(favorites, connectionId: deleted)
+
+        await ConnectionLocalState.purgeAsyncStores(
+            [deleted], origin: .local, sqlFavorites: favorites, queryHistory: history
+        )
+
+        #expect(await favorites.fetchFavorites(connectionId: deleted).isEmpty)
+        #expect(metadata.tombstones(for: .favorite).contains { $0.id == favorite.id.uuidString })
     }
 
     /// A filtered clear deletes from `history` alone, and both snapshot tables keep their own copy
@@ -126,7 +185,7 @@ struct ConnectionLocalStatePurgeTests {
         )
         #expect(!(await storage.planSnapshots(matching: identity, excluding: nil, limit: 10)).isEmpty)
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
 
         #expect((await storage.planSnapshots(matching: identity, excluding: nil, limit: 10)).isEmpty)
     }
@@ -151,7 +210,7 @@ struct ConnectionLocalStatePurgeTests {
             )
         )
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
 
         #expect(!(await storage.planSnapshots(matching: keptIdentity, excluding: nil, limit: 10)).isEmpty)
     }
@@ -168,7 +227,11 @@ struct ConnectionLocalStatePurgeTests {
     @Test("Only ConnectionLocalState clears a deleted connection's async stores")
     func onlyConnectionLocalStateClearsAsyncStores() throws {
         let root = try Self.repoRoot().appendingPathComponent("TablePro", isDirectory: true)
-        let calls = ["removeFavoritesAndFolders(for:", "deleteEverything(forConnection:"]
+        let calls = [
+            "removeFavoritesAndFolders(for:",
+            "removeFavoritesAndFoldersWithoutSync(for:",
+            "deleteEverything(forConnection:",
+        ]
 
         var offenders: [String] = []
         for url in try Self.swiftSources(under: root)

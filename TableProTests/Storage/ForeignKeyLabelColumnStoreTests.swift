@@ -242,7 +242,7 @@ struct ForeignKeyLabelColumnStoreTests {
         store.setLabelChoice(.columns(["Title"]), for: scope(connectionId: connection, table: "Album"))
         store.setLabelChoice(.columns(["Code"]), for: scope(connectionId: other))
 
-        store.purgeConnections([connection])
+        store.purgeConnections([connection], leavesTombstones: true)
 
         #expect(store.labelChoice(for: scope(connectionId: connection)) == .unset)
         #expect(store.labelChoice(for: scope(connectionId: connection, table: "Album")) == .unset)

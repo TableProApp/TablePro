@@ -42,10 +42,19 @@ struct LoadedBrowseCatalog: Sendable, Equatable {
 struct CatalogEditAdoption {
     private let databaseManager: DatabaseManager
     private let schemaService: SchemaService
+    private let connectionStorage: ConnectionStorage
+    private let appSettings: AppSettingsStorage
 
-    init(databaseManager: DatabaseManager = .shared, schemaService: SchemaService = .shared) {
+    init(
+        databaseManager: DatabaseManager = .shared,
+        schemaService: SchemaService = .shared,
+        connectionStorage: ConnectionStorage = .shared,
+        appSettings: AppSettingsStorage = .shared
+    ) {
         self.databaseManager = databaseManager
         self.schemaService = schemaService
+        self.connectionStorage = connectionStorage
+        self.appSettings = appSettings
     }
 
     /// Where the object lives. A reference without a database means the one being browsed, and the
@@ -157,6 +166,7 @@ struct CatalogEditAdoption {
         }
         guard container.kind == .database else { return }
         FavoriteDatabasesStorage.shared.removeFavorite(database: database, connectionId: connectionId)
+        clearSavedConnectionDatabase(named: database, connectionId: connectionId)
         sidebarState.clearRecentTables(inDatabase: database)
         var selected = sidebarState.databaseFilterSelected
         guard selected.remove(database) != nil else { return }
@@ -276,11 +286,31 @@ struct CatalogEditAdoption {
 
     /// The saved default is what a reconnect and Reopen Last Session both use, so a database renamed
     /// out from under it leaves the connection opening onto nothing.
-    private func retargetSavedConnectionDatabase(from oldName: String, to newName: String, connectionId: UUID) {
-        guard var saved = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }),
+    internal func retargetSavedConnectionDatabase(from oldName: String, to newName: String, connectionId: UUID) {
+        guard var saved = connectionStorage.loadConnections().first(where: { $0.id == connectionId }),
               saved.database == oldName else { return }
         saved.database = newName
-        ConnectionStorage.shared.updateConnection(saved)
+        connectionStorage.updateConnection(saved)
+    }
+
+    /// A rename has a new name to point the saved default at. A drop has none, so it is emptied,
+    /// along with the last database the session remembered.
+    ///
+    /// Both, because `selectDatabaseFromLastSession` fires precisely when the saved default is
+    /// empty: emptying one and leaving the other would turn that action on and point it at the
+    /// database that was just dropped, so every later connect would try to switch to it and fail.
+    ///
+    /// Not for a type that requires a value. Emptying is the repair for an engine that accepts a
+    /// blank database, which is what the form already allows there, and MySQL connects with no
+    /// default while MongoDB picks one. A type whose form refuses to save without a value would be
+    /// left failing its own validation with nothing on screen saying why.
+    internal func clearSavedConnectionDatabase(named database: String, connectionId: UUID) {
+        guard var saved = connectionStorage.loadConnections().first(where: { $0.id == connectionId }),
+              saved.database == database,
+              !ConnectionDatabaseRequirement.requiresValue(for: saved.type) else { return }
+        saved.database = ""
+        connectionStorage.updateConnection(saved)
+        appSettings.saveLastDatabase(nil, for: connectionId)
     }
 
     private func retargetBrowseCursor(_ connection: DatabaseConnection, from oldName: String, to newName: String) {
