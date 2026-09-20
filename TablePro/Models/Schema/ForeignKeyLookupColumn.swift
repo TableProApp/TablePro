@@ -26,6 +26,14 @@ struct ForeignKeyLookupColumn: Equatable, Sendable, Identifiable {
         return Self.characterTypeNames.contains(base)
     }
 
+    /// The declared type as the reader sees it beside the column's name, or nothing when the
+    /// engine declares none: SQLite accepts `create table t(a, b)`, and an empty string reads as a
+    /// missing word rather than as a column with no type.
+    var displayTypeName: String? {
+        guard let rawType = type.rawType, !rawType.isEmpty else { return nil }
+        return rawType
+    }
+
     /// A UUID takes no `LIKE`, but it does take equality against a literal the engine can parse.
     var isUuid: Bool {
         guard let base = Self.baseTypeName(of: type.rawType) else { return false }
