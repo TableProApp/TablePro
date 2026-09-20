@@ -16,7 +16,8 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
         config: SSHConfiguration,
         connectionId: UUID,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        prompter: (any ConnectionPrompter)?
     ) async throws -> TableProDatabase.SSHTunnel {
         var resolvedConfig = config
         resolvedConfig.privateKeyPath = config.privateKeyPath.map(container.localPath(forStoredPath:))
@@ -25,7 +26,8 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
             config: resolvedConfig,
             remoteHost: remoteHost,
             remotePort: remotePort,
-            credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore)
+            credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore),
+            prompter: prompter
         )
 
         let tunnelId = UUID()

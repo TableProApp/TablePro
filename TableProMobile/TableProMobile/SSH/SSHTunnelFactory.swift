@@ -1,5 +1,6 @@
 import CLibSSH2
 import Foundation
+import TableProDatabase
 import TableProModels
 
 enum SSHTunnelFactory {
@@ -12,7 +13,8 @@ enum SSHTunnelFactory {
         config: SSHConfiguration,
         remoteHost: String,
         remotePort: Int,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        prompter: (any ConnectionPrompter)?
     ) async throws -> SSHTunnel {
         _ = initialized
 
@@ -29,7 +31,8 @@ enum SSHTunnelFactory {
                 keyData: presentedKey.keyData,
                 keyType: presentedKey.keyType,
                 hostname: config.host,
-                port: config.port
+                port: config.port,
+                prompter: prompter
             )
         } catch {
             await tunnel.close()

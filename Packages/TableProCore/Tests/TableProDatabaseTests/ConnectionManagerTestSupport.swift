@@ -138,14 +138,17 @@ final class MockSSHProvider: SSHProvider, @unchecked Sendable {
     var closedTunnelIds: Set<UUID> = []
     var openedTunnelIds: [UUID] = []
     var tunnelledConnectionIds: [UUID] = []
+    var receivedPrompters: [(any ConnectionPrompter)?] = []
 
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        prompter: (any ConnectionPrompter)?
     ) async throws -> SSHTunnel {
         tunnelledConnectionIds.append(connectionId)
+        receivedPrompters.append(prompter)
         let id = UUID()
         openedTunnelIds.append(id)
         return SSHTunnel(id: id, localHost: "127.0.0.1", localPort: 33_306)
@@ -157,5 +160,16 @@ final class MockSSHProvider: SSHProvider, @unchecked Sendable {
 
     func closeTunnel(id: UUID) async throws {
         closedTunnelIds.insert(id)
+    }
+}
+
+// MARK: - Stub Prompter
+
+final class StubPrompter: ConnectionPrompter, @unchecked Sendable {
+    var answer = true
+
+    @MainActor
+    func confirm(_ prompt: ConnectionPrompt) async -> Bool {
+        answer
     }
 }

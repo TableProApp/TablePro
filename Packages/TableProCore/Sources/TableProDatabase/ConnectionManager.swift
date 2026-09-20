@@ -22,7 +22,10 @@ public final class ConnectionManager: @unchecked Sendable {
         self.sshProvider = sshProvider
     }
 
-    public func connect(_ connection: DatabaseConnection) async throws -> ConnectionSession {
+    public func connect(
+        _ connection: DatabaseConnection,
+        prompter: (any ConnectionPrompter)? = nil
+    ) async throws -> ConnectionSession {
         let generation = beginAttempt(for: connection.id)
         await awaitTeardown(of: connection.id)
         guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
@@ -39,7 +42,8 @@ public final class ConnectionManager: @unchecked Sendable {
                 config: ssh,
                 connectionId: connection.id,
                 remoteHost: connection.host,
-                remotePort: connection.port
+                remotePort: connection.port,
+                prompter: prompter
             )
             tunnelId = tunnel.id
             effectiveHost = tunnel.localHost

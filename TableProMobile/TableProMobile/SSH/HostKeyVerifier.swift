@@ -7,55 +7,18 @@
 //
 
 import Foundation
-import Observation
-import SwiftUI
-
-@MainActor
-@Observable
-final class HostKeyPromptPresenter {
-    static let shared = HostKeyPromptPresenter()
-
-    struct Request: Identifiable {
-        let id = UUID()
-        let title: String
-        let message: String
-        let confirmTitle: String
-        let isDestructive: Bool
-        let respond: @MainActor (Bool) -> Void
-    }
-
-    var pending: Request?
-
-    private init() {}
-
-    /// Only one key decision can be on screen at a time. A second connect racing the
-    /// first is refused rather than queued, so no attempt is left waiting on a prompt
-    /// the user never sees.
-    func ask(title: String, message: String, confirmTitle: String, isDestructive: Bool) async -> Bool {
-        guard pending == nil else { return false }
-
-        return await withCheckedContinuation { continuation in
-            pending = Request(
-                title: title,
-                message: message,
-                confirmTitle: confirmTitle,
-                isDestructive: isDestructive
-            ) { accepted in
-                continuation.resume(returning: accepted)
-            }
-        }
-    }
-
-    func resolve(_ request: Request, accepted: Bool) {
-        guard pending?.id == request.id else { return }
-        pending = nil
-        request.respond(accepted)
-    }
-}
+import TableProDatabase
 
 enum HostKeyVerifier {
-    static func verify(keyData: Data, keyType: String, hostname: String, port: Int) async throws {
-        let result = HostKeyStore.shared.verify(
+    static func verify(
+        keyData: Data,
+        keyType: String,
+        hostname: String,
+        port: Int,
+        store: HostKeyStore = .shared,
+        prompter: (any ConnectionPrompter)?
+    ) async throws {
+        let result = store.verify(
             keyData: keyData,
             keyType: keyType,
             hostname: hostname,
@@ -67,7 +30,7 @@ enum HostKeyVerifier {
             return
 
         case let .unknown(fingerprint, presentedType):
-            let accepted = await HostKeyPromptPresenter.shared.ask(
+            let prompt = ConnectionPrompt(
                 title: String(localized: "Unknown SSH Server"),
                 message: String(
                     format: String(localized: """
@@ -82,16 +45,15 @@ enum HostKeyVerifier {
                     presentedType,
                     fingerprint
                 ),
-                confirmTitle: String(localized: "Trust"),
-                isDestructive: false
+                confirmTitle: String(localized: "Trust")
             )
-            guard accepted else {
-                throw SSHTunnelError.hostKeyRejected(String(localized: "The server's host key was not trusted."))
-            }
-            HostKeyStore.shared.trust(hostname: hostname, port: port, key: keyData, keyType: keyType)
+            try await decide(prompt, prompter: prompter, rejection: .hostKeyRejected(
+                String(localized: "The server's host key was not trusted.")
+            ))
+            store.trust(hostname: hostname, port: port, key: keyData, keyType: keyType)
 
         case let .mismatch(expected, actual):
-            let accepted = await HostKeyPromptPresenter.shared.ask(
+            let prompt = ConnectionPrompt(
                 title: String(localized: "SSH Host Key Changed"),
                 message: String(
                     format: String(localized: """
@@ -111,49 +73,32 @@ enum HostKeyVerifier {
                     actual
                 ),
                 confirmTitle: String(localized: "Connect Anyway"),
-                isDestructive: true
+                style: .destructive
             )
-            guard accepted else {
-                throw SSHTunnelError.hostKeyRejected(String(localized: "The server's host key has changed."))
-            }
-            HostKeyStore.shared.trust(hostname: hostname, port: port, key: keyData, keyType: keyType)
+            try await decide(prompt, prompter: prompter, rejection: .hostKeyRejected(
+                String(localized: "The server's host key has changed.")
+            ))
+            store.trust(hostname: hostname, port: port, key: keyData, keyType: keyType)
         }
+    }
+
+    /// Without a prompter there is no screen to ask from, which is every background caller:
+    /// a Shortcut, Siri, or a widget. Those end with an error naming what to do instead of
+    /// waiting on a question nobody can answer.
+    private static func decide(
+        _ prompt: ConnectionPrompt,
+        prompter: (any ConnectionPrompter)?,
+        rejection: SSHTunnelError
+    ) async throws {
+        guard let prompter else {
+            throw SSHTunnelError.hostKeyUnverified(String(localized: """
+                Open this connection in TablePro to check the server's SSH host key first.
+                """))
+        }
+        guard await prompter.confirm(prompt) else { throw rejection }
     }
 
     private static func hostDisplay(_ hostname: String, _ port: Int) -> String {
         "[\(hostname)]:\(port)"
-    }
-}
-
-struct HostKeyPromptModifier: ViewModifier {
-    @Bindable var presenter = HostKeyPromptPresenter.shared
-
-    func body(content: Content) -> some View {
-        content.alert(
-            presenter.pending?.title ?? "",
-            isPresented: Binding(
-                get: { presenter.pending != nil },
-                set: { presenting in
-                    guard !presenting, let request = presenter.pending else { return }
-                    presenter.resolve(request, accepted: false)
-                }
-            ),
-            presenting: presenter.pending
-        ) { request in
-            Button(request.confirmTitle, role: request.isDestructive ? .destructive : nil) {
-                presenter.resolve(request, accepted: true)
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {
-                presenter.resolve(request, accepted: false)
-            }
-        } message: { request in
-            Text(request.message)
-        }
-    }
-}
-
-extension View {
-    func hostKeyPrompt() -> some View {
-        modifier(HostKeyPromptModifier())
     }
 }

@@ -126,6 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No confirmation before deleting a tag on iPhone and iPad.
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 - Table page range shown in English in every language on iPhone and iPad.
+- Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
 
 ### Security
 

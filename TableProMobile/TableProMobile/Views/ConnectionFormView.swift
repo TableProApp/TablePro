@@ -162,6 +162,7 @@ struct ConnectionFormView: View {
                 case nil: break
                 }
             }
+            .connectionPrompts(viewModel.prompts)
             .sheet(item: $pasteTarget) { role in
                 CertificatePasteSheet(viewModel: viewModel, role: role)
             }
