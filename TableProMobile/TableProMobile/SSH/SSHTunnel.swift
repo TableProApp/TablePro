@@ -34,7 +34,14 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let acceptQueue: DispatchQueue
 
     private let aliveLatch = TeardownLatch()
-    private let clientTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+
+    /// The relays still running, so teardown frees the session only once none of them can touch
+    /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
+    /// one thing a `[Task]` pruned on `isCancelled` never noticed, so a tunnel that had served
+    /// clients carried every one of them until it closed. It is also all a task was ever worth
+    /// here, since the relay runs on `relayQueue` outside the task's cancellation scope and stops
+    /// on `aliveLatch` rather than on `Task.isCancelled`.
+    private let clientRelays = DispatchGroup()
     private var forwardingTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
 
@@ -152,19 +159,18 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
     /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
     /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
+    ///
+    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
+    /// is the only thing that starts one: once it has ended, the group can only empty.
     private func performTeardown() {
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        let currentClientTasks = clientTasks.withLock { tasks -> [Task<Void, Never>] in
-            let copy = tasks
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-            return copy
-        }
 
         shutdown(socketFD, SHUT_RDWR)
 
         let sessionQueue = self.sessionQueue
+        let relayQueue = self.relayQueue
+        let clientRelays = self.clientRelays
         let session = self.session
         let socketFD = self.socketFD
         let listenFD = self.listenFD
@@ -174,8 +180,8 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         Task.detached {
             await forwardingTask?.value
             await keepAliveTask?.value
-            for task in currentClientTasks {
-                await task.value
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                clientRelays.notify(queue: relayQueue) { continuation.resume() }
             }
 
             sessionQueue.sync {
@@ -218,31 +224,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// cannot delay the next accept. The loop runs on `relayQueue` (concurrent); individual
     /// libssh2 calls are dispatched to `sessionQueue` (serial) for thread safety.
     private func spawnClient(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
-        let task = Task.detached { [weak self] in
+        let clientRelays = self.clientRelays
+        clientRelays.enter()
+        relayQueue.async { [weak self] in
+            defer { clientRelays.leave() }
             guard let self else {
                 Darwin.close(clientFD)
                 return
             }
-
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.relayQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else {
-                        Darwin.close(clientFD)
-                        return
-                    }
-                    self.openAndRelay(clientFD: clientFD, acceptedAt: acceptedAt, destination: destination)
-                }
-            }
-        }
-
-        let shouldCancel = clientTasks.withLock { tasks -> Bool in
-            tasks.removeAll { $0.isCancelled }
-            tasks.append(task)
-            return !aliveLatch.isLive
-        }
-        if shouldCancel {
-            task.cancel()
+            self.openAndRelay(clientFD: clientFD, acceptedAt: acceptedAt, destination: destination)
         }
     }
 
