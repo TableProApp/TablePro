@@ -91,10 +91,12 @@ internal struct FavoritesTabView: View {
 
                 switch FavoritesEmptyState.resolve(FavoritesEmptyState.Input(
                     isInitialLoadComplete: viewModel.isInitialLoadComplete,
-                    hasAnyFavorite: !viewModel.nodes.isEmpty
-                        || !availableFavoriteTables.isEmpty
-                        || !teamLibraryQueries.isEmpty
-                        || !favoriteDatabases.isEmpty,
+                    hasAnyFavorite: FavoritesEmptyState.hasAnyFavorite(
+                        hasQueries: !viewModel.nodes.isEmpty,
+                        favoriteTableCount: favoriteTables.count,
+                        favoriteDatabaseCount: favoriteDatabases.count,
+                        teamLibraryQueryCount: allTeamLibraryQueries.count
+                    ),
                     hasVisibleContent: !items.isEmpty
                         || !groups.isEmpty
                         || !filteredTables.isEmpty
@@ -205,9 +207,16 @@ internal struct FavoritesTabView: View {
 
     // MARK: - List
 
-    private var teamLibraryQueries: [TeamLibraryPullResponse.Query] {
+    /// Every team query this license can see, before the filter field has had a word to say about
+    /// it. The empty state asks whether the user owns anything, and the filtered list cannot answer
+    /// that question.
+    private var allTeamLibraryQueries: [TeamLibraryPullResponse.Query] {
         guard licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
-        let all = teamLibrarySync.library.queries
+        return teamLibrarySync.library.queries
+    }
+
+    private var teamLibraryQueries: [TeamLibraryPullResponse.Query] {
+        let all = allTeamLibraryQueries
         guard !searchText.isEmpty else { return all }
         return all.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) || $0.query.localizedCaseInsensitiveContains(searchText)

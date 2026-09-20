@@ -40,6 +40,19 @@ internal enum FavoritesEmptyState: Equatable {
         }
     }
 
+    /// Whether the user owns a favorite at all, which is a different question from whether one is
+    /// on screen. Every term has to come from an unnarrowed source: a list the search field or the
+    /// browsed database has already been over cannot answer it, and reading "nothing matched" as
+    /// "you have none" is how the onboarding view came up over a full Team Library.
+    internal static func hasAnyFavorite(
+        hasQueries: Bool,
+        favoriteTableCount: Int,
+        favoriteDatabaseCount: Int,
+        teamLibraryQueryCount: Int
+    ) -> Bool {
+        hasQueries || favoriteTableCount > 0 || favoriteDatabaseCount > 0 || teamLibraryQueryCount > 0
+    }
+
     internal static func resolve(_ input: Input) -> FavoritesEmptyState {
         if input.hasVisibleContent { return .content }
         if !input.isInitialLoadComplete && !input.hasAnyFavorite { return .loading }
