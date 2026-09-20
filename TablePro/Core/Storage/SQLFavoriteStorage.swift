@@ -303,7 +303,11 @@ internal actor SQLFavoriteStorage {
         return result == SQLITE_DONE
     }
 
-    func updateFavorite(_ favorite: SQLFavorite) -> Bool {
+    func updateFavorite(_ favorite: SQLFavorite) -> FavoriteScopeWrite {
+        guard case .found(let previousConnectionId) = currentScope(table: "favorites", id: favorite.id) else {
+            return .failed
+        }
+
         let sql = """
             UPDATE favorites SET name = ?, query = ?, keyword = ?, folder_id = ?, connection_id = ?, sort_order = ?, updated_at = ?
             WHERE id = ?;
@@ -311,7 +315,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -343,10 +347,12 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 7, favorite.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 8, favorite.id.uuidString, -1, SQLITE_TRANSIENT)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        return .updatedExisting(previousConnectionId: previousConnectionId)
     }
 
-    func upsertFavorite(_ favorite: SQLFavorite) -> Bool {
+    func upsertFavorite(_ favorite: SQLFavorite) -> FavoriteScopeWrite {
+        let existingScope = currentScope(table: "favorites", id: favorite.id)
         let sql = """
             INSERT INTO favorites (id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -358,7 +364,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -391,7 +397,8 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 8, favorite.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(statement, 9, favorite.updatedAt.timeIntervalSince1970)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        return existingScope.write
     }
 
     func deleteFavorite(id: UUID) -> Bool {
@@ -460,6 +467,29 @@ internal actor SQLFavoriteStorage {
 
         guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return .none }
         return DeletedFavoriteRecords(favorites: favorites, folders: folders)
+    }
+
+    /// The row's scope as it stands, read before the write replaces it.
+    ///
+    /// `RETURNING` cannot serve: SQLite reports the post-image of an `UPDATE`, and what a caller
+    /// needs here is the scope the record is leaving.
+    ///
+    /// It is read inside the same actor call as the write it precedes, never awaited separately by
+    /// the caller. A sync pull applies remote records from its own task while the user is editing,
+    /// so a read and a write the caller awaits one after the other are two entries this actor is
+    /// free to interleave, and the scope reported would be one somebody else had already replaced.
+    private func currentScope(table: String, id: UUID) -> FavoriteScopeRead {
+        var statement: OpaquePointer?
+        let sql = "SELECT connection_id FROM \(table) WHERE id = ?;"
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return .notFound }
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else { return .notFound }
+        guard let raw = sqlite3_column_text(statement, 0) else { return .found(nil) }
+        return .found(UUID(uuidString: String(cString: raw)))
     }
 
     private func ids(from sql: String, bindings: [String]) -> [UUID] {
@@ -733,7 +763,11 @@ internal actor SQLFavoriteStorage {
         return sqlite3_step(statement) == SQLITE_DONE
     }
 
-    func updateFolder(_ folder: SQLFavoriteFolder) -> Bool {
+    func updateFolder(_ folder: SQLFavoriteFolder) -> FavoriteScopeWrite {
+        guard case .found(let previousConnectionId) = currentScope(table: "folders", id: folder.id) else {
+            return .failed
+        }
+
         let sql = """
             UPDATE folders SET name = ?, parent_id = ?, connection_id = ?, sort_order = ?, updated_at = ?
             WHERE id = ?;
@@ -741,7 +775,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -766,10 +800,12 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 5, folder.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 6, folder.id.uuidString, -1, SQLITE_TRANSIENT)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        return .updatedExisting(previousConnectionId: previousConnectionId)
     }
 
-    func upsertFolder(_ folder: SQLFavoriteFolder) -> Bool {
+    func upsertFolder(_ folder: SQLFavoriteFolder) -> FavoriteScopeWrite {
+        let existingScope = currentScope(table: "folders", id: folder.id)
         let sql = """
             INSERT INTO folders (id, name, parent_id, connection_id, sort_order, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -781,7 +817,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -807,7 +843,8 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 6, folder.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(statement, 7, folder.updatedAt.timeIntervalSince1970)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        return existingScope.write
     }
 
     func deleteFolder(id: UUID) -> Bool {
@@ -1101,6 +1138,37 @@ internal actor SQLFavoriteStorage {
 /// supplied them. A delete keyed on a connection does not, and reporting only success meant those
 /// records were never marked deleted: they stayed in CloudKit for good and reappeared on the next
 /// device to sync.
+/// What a write to a favorite or a folder did, and to which scope.
+///
+/// A plain `Bool` cannot say it, and the caller cannot ask afterwards: the row already holds the new
+/// scope. Without the old one, a change that moves a record between global and one connection is
+/// announced to that connection alone, and every other window goes on showing a record that has
+/// left it.
+enum FavoriteScopeWrite: Equatable {
+    case failed
+    case insertedNew
+    case updatedExisting(previousConnectionId: UUID?)
+
+    var succeeded: Bool {
+        self != .failed
+    }
+}
+
+/// Whether a row exists, and its scope if it does. Separate from `UUID??`, which reads as one
+/// optional too many at every call site.
+enum FavoriteScopeRead: Equatable {
+    case notFound
+    case found(UUID?)
+
+    /// What an upsert reports, given what was there before it ran.
+    var write: FavoriteScopeWrite {
+        switch self {
+        case .notFound: return .insertedNew
+        case .found(let previousConnectionId): return .updatedExisting(previousConnectionId: previousConnectionId)
+        }
+    }
+}
+
 struct DeletedFavoriteRecords {
     let favorites: [UUID]
     let folders: [UUID]

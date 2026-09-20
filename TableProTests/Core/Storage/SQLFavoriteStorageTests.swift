@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("SQLFavoriteStorage")
 struct SQLFavoriteStorageTests {
@@ -76,7 +77,7 @@ struct SQLFavoriteStorageTests {
         fav.name = "Updated"
         fav.keyword = "upd"
         let updated = await storage.updateFavorite(fav)
-        #expect(updated)
+        #expect(updated == .updatedExisting(previousConnectionId: nil))
 
         let fetched = await storage.fetchFavorites()
         let found = fetched.first { $0.id == fav.id }

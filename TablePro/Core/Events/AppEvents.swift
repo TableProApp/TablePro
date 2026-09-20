@@ -95,10 +95,14 @@ final class AppEvents {
     let queryHistoryDidUpdate = PassthroughSubject<UUID?, Never>()
 
     /// SQL favorites or favorite folders changed.
-    /// Payload is the affected connection's id, or `nil` for cross-connection
-    /// favorites (`favorite.connectionId == nil`) and bulk operations
-    /// (multi-favorite delete) where the sender doesn't track a single id.
+    /// Payload is the connection whose list changed, or `nil` when every connection's did.
     /// Per-connection subscribers should refresh on `payload == nil || payload == self.connectionId`.
+    ///
+    /// A global favorite is part of every connection's list, so a record moving into or out of
+    /// global scope changes them all and is sent as `nil`, as are bulk operations and any delete.
+    /// Only the sender can know this: the scope it moved from is no longer in the record by the
+    /// time a subscriber sees the event. `SQLFavoriteManager.scopeToAnnounce(for:newConnectionId:)`
+    /// is where that is decided.
     let sqlFavoritesDidUpdate = PassthroughSubject<UUID?, Never>()
 
     let linkedFoldersDidUpdate = PassthroughSubject<Void, Never>()

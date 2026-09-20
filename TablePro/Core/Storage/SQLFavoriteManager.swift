@@ -34,11 +34,10 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     func updateFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.updateFavorite(favorite)
-        if result {
-            syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
-            postUpdateNotification(connectionId: favorite.connectionId)
-        }
-        return result
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
+        postUpdateNotification(for: result, newConnectionId: favorite.connectionId)
+        return true
     }
 
     func deleteFavorite(id: UUID) async -> Bool {
@@ -119,11 +118,10 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     func updateFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.updateFolder(folder)
-        if result {
-            syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
-            postUpdateNotification(connectionId: folder.connectionId)
-        }
-        return result
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
+        postUpdateNotification(for: result, newConnectionId: folder.connectionId)
+        return true
     }
 
     func deleteFolder(id: UUID) async -> Bool {
@@ -142,15 +140,15 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Remote Apply (does not mark dirty, to avoid sync loops)
 
     func applyRemoteFavorite(_ favorite: SQLFavorite) async {
-        if await storage.upsertFavorite(favorite) {
-            postUpdateNotification(connectionId: favorite.connectionId)
-        }
+        let result = await storage.upsertFavorite(favorite)
+        guard result.succeeded else { return }
+        postUpdateNotification(for: result, newConnectionId: favorite.connectionId)
     }
 
     func applyRemoteFolder(_ folder: SQLFavoriteFolder) async {
-        if await storage.upsertFolder(folder) {
-            postUpdateNotification(connectionId: folder.connectionId)
-        }
+        let result = await storage.upsertFolder(folder)
+        guard result.succeeded else { return }
+        postUpdateNotification(for: result, newConnectionId: folder.connectionId)
     }
 
     func applyRemoteDeleteFavorite(id: UUID) async {
@@ -226,5 +224,21 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         Task { @MainActor in
             AppEvents.shared.sqlFavoritesDidUpdate.send(connectionId)
         }
+    }
+
+    private func postUpdateNotification(for write: FavoriteScopeWrite, newConnectionId: UUID?) {
+        postUpdateNotification(connectionId: Self.scopeToAnnounce(for: write, newConnectionId: newConnectionId))
+    }
+
+    /// Which connection a write has to be announced to, where nil means all of them.
+    ///
+    /// A record scoped to one connection is in that connection's list alone, so naming it is
+    /// enough. A record that moved between scopes has left a list it used to be in, and the
+    /// subscriber holding that list filters for a connection this event does not name, so it never
+    /// hears about it and goes on showing the record. Every global record is in every connection's
+    /// list, which is what makes a move to or from global everybody's business.
+    internal static func scopeToAnnounce(for write: FavoriteScopeWrite, newConnectionId: UUID?) -> UUID? {
+        guard case .updatedExisting(let previousConnectionId) = write else { return newConnectionId }
+        return previousConnectionId == newConnectionId ? newConnectionId : nil
     }
 }
