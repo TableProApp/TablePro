@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.
 - etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
 - etcd connections carrying a username refusing a server that has authentication disabled.
 - Raw JSON shown instead of etcd's own message when a username or password is wrong.
