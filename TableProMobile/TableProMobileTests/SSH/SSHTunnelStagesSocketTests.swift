@@ -4,9 +4,12 @@
 //
 //  Ownership of the real descriptors, against a loopback listener that accepts and then says
 //  nothing. Measured before the hand-over guarantee landed: five failed handshakes left ten
-//  descriptors open, five of them established TCP sockets to the SSH server. The server side is
-//  what has to observe the close, because freeing the session happens on the session queue after
-//  the blocking call returns, while the socket is broken at once.
+//  descriptors open, five of them established TCP sockets to the SSH server.
+//
+//  Two observations, because one does not imply the other. The server side sees a zero-length
+//  read, which is what proves the connection was broken; `shutdown` alone produces it, so the
+//  descriptor count is what proves the number was given back. Deleting `Darwin.close` from
+//  `discard()` leaves every EOF assertion here passing and fails the count.
 //
 
 import Foundation
@@ -53,13 +56,27 @@ struct SSHTunnelStagesSocketTests {
         #expect(accepted.allSatisfy { LoopbackListener.readsEOF($0, timeout: 2) })
     }
 
-    @Test("Cancelling during the handshake returns at once and closes the socket")
+    @Test("A discarded connect gives the descriptor back, not only the connection")
+    func discardReleasesTheDescriptor() async throws {
+        let listener = try LoopbackListener()
+        defer { listener.close() }
+
+        try await Self.connectThenDiscard(listener)
+        let baseline = OpenDescriptors.settledCount()
+
+        for _ in 0 ..< 20 {
+            try await Self.connectThenDiscard(listener)
+        }
+
+        #expect(OpenDescriptors.settledCount(notAbove: baseline) <= baseline)
+    }
+
+    @Test("Cancelling inside the handshake returns at once and closes the socket")
     func cancellingHandshakeClosesTheSocket() async throws {
         let listener = try LoopbackListener()
         defer { listener.close() }
 
         let port = listener.port
-        let started = Date()
         let task = Task {
             try await SSHTunnelFactory.create(
                 config: SSHConfiguration(
@@ -82,15 +99,55 @@ struct SSHTunnelStagesSocketTests {
         let accepted = try #require(listener.acceptOne(timeout: 5))
         defer { Darwin.close(accepted) }
 
+        let banner = try #require(LoopbackListener.readLine(accepted, timeout: 5))
+        #expect(banner.hasPrefix("SSH-2.0-"))
+
+        let cancelledAt = Date()
         task.cancel()
         let result = await task.result
-        let elapsed = Date().timeIntervalSince(started)
+        let elapsed = Date().timeIntervalSince(cancelledAt)
 
         if case .success = result {
-            Issue.record("expected the cancelled connect to throw")
+            Issue.record("expected the cancelled handshake to throw")
         }
         #expect(elapsed < 5)
         #expect(LoopbackListener.readsEOF(accepted, timeout: 5))
+    }
+
+    private static func connectThenDiscard(_ listener: LoopbackListener) async throws {
+        let stages = LibSSH2TunnelStages()
+        try await stages.connect(host: "127.0.0.1", port: listener.port)
+
+        let accepted = try #require(listener.acceptOne(timeout: 2))
+        defer { Darwin.close(accepted) }
+
+        stages.discard()
+        #expect(LoopbackListener.readsEOF(accepted, timeout: 2))
+    }
+}
+
+/// How many descriptors this process holds. A socket that was only shut down still counts, which
+/// is the whole point: the server's zero-length read cannot tell a `shutdown` from a `close`.
+private enum OpenDescriptors {
+    static func count() -> Int {
+        (0 ..< getdtablesize()).reduce(into: 0) { total, descriptor in
+            if fcntl(descriptor, F_GETFD) >= 0 { total += 1 }
+        }
+    }
+
+    /// The count once two readings agree and it is no higher than `notAbove`, or the last reading
+    /// at the deadline. `discard()` closes on the session queue, so the release lands after the
+    /// call has returned; a leak instead settles at a count that never comes back down.
+    static func settledCount(notAbove limit: Int = .max, timeout: TimeInterval = 5) -> Int {
+        let deadline = Date().addingTimeInterval(timeout)
+        var previous = count()
+        while Date() < deadline {
+            usleep(100_000)
+            let current = count()
+            if current == previous, current <= limit { return current }
+            previous = current
+        }
+        return previous
     }
 }
 
@@ -159,7 +216,7 @@ private final class LoopbackListener {
     }
 
     /// Whether the peer closed or shut down its end. `shutdown` and `close` both surface here as a
-    /// zero-length read, which is the only observation that proves the descriptor was released.
+    /// zero-length read, so this proves the connection was broken and nothing about the descriptor.
     static func readsEOF(_ fd: Int32, timeout: Int32) -> Bool {
         let deadline = Date().addingTimeInterval(TimeInterval(timeout))
         while Date() < deadline {
@@ -171,5 +228,27 @@ private final class LoopbackListener {
             if pollFD.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 { return true }
         }
         return false
+    }
+
+    /// The first line the peer sends, which for libssh2 is its SSH version banner. Reading it is
+    /// what names the step in flight: `libssh2_session_handshake` writes the banner and then blocks
+    /// on the server's own, which this listener never sends, so a connect that has merely finished
+    /// produces nothing here.
+    static func readLine(_ fd: Int32, timeout: Int32) -> String? {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeout))
+        var bytes: [UInt8] = []
+        while Date() < deadline {
+            var pollFD = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            guard poll(&pollFD, 1, 100) > 0 else { continue }
+
+            var byte: UInt8 = 0
+            guard recv(fd, &byte, 1, 0) == 1 else { return nil }
+            guard byte != UInt8(ascii: "\n") else {
+                return String(bytes: bytes, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            bytes.append(byte)
+        }
+        return nil
     }
 }
