@@ -883,6 +883,15 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(persisted.contains { $0.columnName == "name" && !$0.isEnabled })
     }
 
+    private func savedUsersFilterState(_ coordinator: MainContentCoordinator) -> PersistedFilterState {
+        FilterSettingsStorage.shared.loadLastFilterState(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+    }
+
     private func savedUsersFilters(_ coordinator: MainContentCoordinator) -> [TableFilter] {
         FilterSettingsStorage.shared.loadLastFilters(
             for: "users",
@@ -949,8 +958,8 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(saved.map(\.isEnabled) == [true, false])
     }
 
-    @Test("Switching away after Clear does not write the cleared filters back")
-    func tabSwitchAfterClearKeepsSavedFiltersCleared() {
+    @Test("Switching away from a tab whose rows were never applied saves them as a draft")
+    func tabSwitchSavesAnUnappliedDraft() {
         let (coordinator, tabManager) = makeCoordinator()
         let tableId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tableId)
@@ -963,16 +972,14 @@ struct MainContentCoordinatorTabSwitchTests {
         let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
         let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
         tabManager.tabs[index].filterState.filters = [first, second]
-        coordinator.applyAllFilters()
-        coordinator.clearAppliedFilters()
-        coordinator.filterCoordinator.clearLastFilters(for: "users")
-        #expect(savedUsersFilters(coordinator).isEmpty)
+        tabManager.tabs[index].filterState.commit = nil
 
         let queryId = addQueryTab(to: tabManager)
         coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
 
-        #expect(savedUsersFilters(coordinator).isEmpty)
-        #expect(tabManager.tabs[index].filterState.filters.map(\.id) == [first.id, second.id])
+        let saved = savedUsersFilterState(coordinator)
+        #expect(saved.filters.map(\.id) == [first.id, second.id])
+        #expect(!saved.isApplied)
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")

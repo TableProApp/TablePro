@@ -298,17 +298,23 @@ struct TabFilterState: Equatable, Hashable, Codable {
         return Self.resolve(commit, in: filters)
     }
 
-    /// What a table's saved filters hold: every valid row with its own enabled flag, and the logic mode.
+    /// What a table's saved filters hold: every valid row with its own enabled flag, the logic mode,
+    /// and whether those rows were running.
     ///
     /// Never `appliedFilters`, which is the query's reading of the same rows: `.all` drops unchecked
     /// rows and `.solo` keeps one row forced on, so saving that loses rows the reader only switched off.
     ///
-    /// Nothing committed saves nothing. Clear deletes the table's saved filters on purpose, and
-    /// restoring commits whatever was saved, so writing the rows back would apply them again on the
-    /// next open.
+    /// Rows the reader typed but never applied are saved too, with `isApplied` false, so reopening
+    /// the table brings them back without running them. An empty row list still saves nothing, which
+    /// the storage reads as a delete: that is Remove All Filters, the gesture that destroys the
+    /// table's saved state. Under `FilterRestoreBehavior.dontSave` nothing is written at all, in
+    /// either direction, so what is already on disk survives both a save and a delete.
     var persistedState: PersistedFilterState {
-        guard commit != nil else { return PersistedFilterState(filters: [], logicMode: filterLogicMode) }
-        return PersistedFilterState(filters: filters.filter(\.isValid), logicMode: filterLogicMode)
+        PersistedFilterState(
+            filters: filters.filter(\.isValid),
+            logicMode: filterLogicMode,
+            isApplied: commit != nil
+        )
     }
 
     static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {

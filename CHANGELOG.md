@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
 - **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995)
 - Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
+- **Saved Filters** in the filter bar's **Filter Settings**, for restoring a table's filter without running it, or not saving it at all. (#3006)
+- **Always Show Filter Bar** in **Filter Settings**, split out from the option that also decided what happened to the saved filter.
 
 ### Changed
 
@@ -45,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Favorite queries missing from the sidebar Favorites tab on the first switch to it. (#3016)
 - Favorites list silently dropping rows during a burst of iCloud favorites updates.
+- A filter row typed but never applied counted as applied, so the status bar reported it and the next page turn ran it. (#3006)
+- Filter rows typed and never applied lost on closing the tab. (#3006)
+- Saved filters lost on the next tab switch for every restored table tab but the selected one. (#3006)
+- Cancelling the unsaved-changes alert on **Apply** leaving the filter applied and saved over rows it never ran. (#3006)
+- **Clear** deleting a table's saved filter rows along with the query they were running. (#3006)
+- Column and operator pull-downs in **Highlight Rules** snapping back to their previous value. (#3015)
+- Highlight rules stuck on **equals**, leaving the other 14 operators unreachable. (#3015)
+- A highlight rule's **between** second value field drawn past the edge of the popover on a long column name.
+- A highlight rule counted as active when its regular expression will not compile, matching nothing without saying so.
 - Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.
 - etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
 - `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)

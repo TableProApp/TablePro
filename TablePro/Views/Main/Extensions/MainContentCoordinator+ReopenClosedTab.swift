@@ -11,9 +11,9 @@ extension MainContentCoordinator {
     /// filters before it loads, rather than a first page drawn without them.
     internal func adoptRestoredTab(_ tab: QueryTab) {
         tabManager.adoptTab(tab, claimFocus: tab.tabType == .query)
-        guard tab.tabType == .table, let tableName = tab.tableContext.tableName else { return }
+        guard tab.tabType == .table, tab.tableContext.tableName != nil else { return }
         restoreLastHiddenColumnsForTable()
-        restoreFiltersForTable(tableName)
+        restoreFiltersForSelectedTab()
         lazyLoadCurrentTabIfNeeded(trigger: .restore)
     }
 }

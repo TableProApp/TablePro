@@ -21,7 +21,7 @@ Each row has a drag grip, a checkbox, a column picker, an operator, a value fiel
 | Row grip, or right-click > **Move Up** / **Move Down** | Reorders the list. Order never changes the result |
 | ⋯ > **Remove All Filters** | Deletes every saved row for this table |
 
-Filters are saved per connection, database, schema, and table, and survive a relaunch, unchecked rows included. A table with an active filter opens in a new tab rather than replacing the current one.
+Filters are saved per connection, database, schema, and table, and survive a relaunch, unchecked rows and rows you never applied included. **Clear** keeps the rows and stops filtering, so they come back when you reopen the table. A table with an active filter opens in a new tab rather than replacing the current one.
 
 <Info>
 Redis shows a key-pattern search bar (`user:*` and the like) with a key-type picker instead of the filter bar.
@@ -110,4 +110,14 @@ The text goes into the WHERE clause as written. A condition whose syntax does no
 
 Both live in the ⋯ menu. **Save as Preset…** stores the current rows, clicking a preset name loads it, and **Delete Preset** removes one.
 
-**Filter Settings** sets what a new row starts as (**Default Column**: Raw SQL, Primary Key, or Any Column; **Default Operator**: Equal or Contains) and what happens when you reopen a table. **Restore Last Filter**, the default, brings back the filter you last applied; **Always Hide** reopens the table unfiltered with the bar closed; **Always Show** keeps the bar visible with no filter set.
+**Filter Settings** sets what a new row starts as: **Default Column** is Raw SQL, Primary Key, or Any Column, and **Default Operator** is Equal or Contains. **Always Show Filter Bar** keeps the bar open on a table that has no filter.
+
+**Saved Filters** decides what reopening a table does with the rows saved for it.
+
+| Option | Reopening a table |
+|---|---|
+| **Restore and apply** | Runs the filter the table was last showing |
+| **Restore without applying** | Brings the rows back in the filter bar over unfiltered results. Press **Apply** to run them |
+| **Don't save** | Opens unfiltered. Filters last as long as the tab, and rows already saved are kept rather than deleted |
+
+**Restore and apply** is the default. Pick **Restore without applying** to see a table whole before deciding to filter it.
