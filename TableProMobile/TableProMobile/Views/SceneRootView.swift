@@ -11,13 +11,14 @@ struct SceneRootView: View {
     @State private var coordinatorStore: ConnectionCoordinatorStore
     @State private var presenter: ScenePresenter
 
-    /// The lock arrives through the initializer rather than the environment because the restore
-    /// binding's getter runs before any `.task`, so the hold has to exist before the first body.
-    init(connectionManager: ConnectionManager, isLocked: Bool) {
+    /// The launch lock arrives through the initializer rather than the environment because the
+    /// restore binding's getter runs before any `.task`, so the hold has to exist before the first
+    /// body. Only the hold is seeded here; every later question about the lock reads `lockState`.
+    init(connectionManager: ConnectionManager, isLockedAtLaunch: Bool) {
         _coordinatorStore = State(
             initialValue: ConnectionCoordinatorStore(connectionManager: connectionManager)
         )
-        _presenter = State(initialValue: ScenePresenter(isLocked: isLocked))
+        _presenter = State(initialValue: ScenePresenter(isLockedAtLaunch: isLockedAtLaunch))
     }
 
     var body: some View {

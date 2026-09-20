@@ -61,7 +61,6 @@ final class ScenePresenter {
     private(set) var pendingTable: PendingTableRequest?
     private(set) var restoreHolds: Set<RestoreHold> = []
     private(set) var editorHolds: Set<UUID> = []
-    private(set) var isLocked: Bool
 
     var holdsConnectionRestore: Bool { !restoreHolds.isEmpty }
 
@@ -71,18 +70,17 @@ final class ScenePresenter {
     @ObservationIgnored private var presentedLaunchSheet = false
     @ObservationIgnored private var presentedFirstRunPages: [FirstRunPage] = []
 
-    init(isLocked: Bool) {
-        self.isLocked = isLocked
-        if isLocked {
-            restoreHolds.insert(.appLock)
-        }
+    init(isLockedAtLaunch: Bool = false) {
+        guard isLockedAtLaunch else { return }
+        restoreHolds.insert(.appLock)
     }
 
-    /// The lock hold is seeded at construction and released on the first unlock, never taken again.
+    /// The lock hold is taken at launch and released on the first unlock, never taken again.
     /// Re-taking it over a presented connection makes SwiftUI call the restore binding's setter with
-    /// nil, which erases the stored connection id rather than postponing it.
+    /// nil, which erases the stored connection id rather than postponing it. Releasing it is not the
+    /// same as answering "is the app locked": that stays a live read the caller passes in, because a
+    /// copy kept here is only as fresh as the last view update that remembered to refresh it.
     func lockDidChange(_ isLocked: Bool) {
-        self.isLocked = isLocked
         guard !isLocked else { return }
         restoreHolds.remove(.appLock)
     }
@@ -147,7 +145,7 @@ final class ScenePresenter {
         }
     }
 
-    func takeDeliverableIntent(isLibraryWritable: Bool) -> SceneIntent? {
+    func takeDeliverableIntent(isLocked: Bool, isLibraryWritable: Bool) -> SceneIntent? {
         guard let pendingIntent, sheet == nil, !isLocked, !holdsConnectionRestore, !isHeldByEditor else { return nil }
         if case .importConnections = pendingIntent, !isLibraryWritable {
             return nil

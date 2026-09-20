@@ -24,7 +24,10 @@ struct TableProMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            SceneRootView(connectionManager: appState.connectionManager, isLocked: lockState.isLocked)
+            SceneRootView(
+                connectionManager: appState.connectionManager,
+                isLockedAtLaunch: lockState.isLocked
+            )
                 .environment(appState)
                 .environment(lockState)
         }
