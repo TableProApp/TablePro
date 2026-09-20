@@ -300,7 +300,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Transaction Management
 
     func beginTransaction() async throws {
-        // Oracle uses implicit transactions — no explicit BEGIN needed
+        guard let core else { throw OraclePluginError(core: .notConnected) }
+        core.beginTransaction()
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let core else { return .unknown }
+        return core.holdsTransaction ? .inTransaction : .idle
     }
 
     // MARK: - Query Execution
