@@ -220,6 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Query history kept for a connection deleted on another Mac, including the statements' own text and its literals.
 - A locked launch on iPhone and iPad connecting to the last session, and asking to trust a host key, before Face ID was answered.
 - Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
 - The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.

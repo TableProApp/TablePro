@@ -1096,6 +1096,37 @@ actor QueryHistoryStorage {
         return true
     }
 
+    /// Everything this connection left in the database, across all three tables.
+    ///
+    /// `clear(matching:)` cannot serve, because it deletes from `history` alone and both snapshot
+    /// tables hold their own copy of what the statement said: `plan_snapshots.subject_sql` and
+    /// `raw_plan`, and `rewind_snapshots.payload`, which is captured row data. Their `history_id`
+    /// is `ON DELETE SET NULL`, so deleting the history rows unlinks them and leaves them on disk,
+    /// out of reach of the UI and, for a pinned plan, out of reach of retention pruning too.
+    @discardableResult
+    func deleteEverything(forConnection connectionId: UUID) -> Bool {
+        guard let db else { return false }
+        let id = connectionId.uuidString
+        var succeeded = true
+        for table in ["history", "plan_snapshots", "rewind_snapshots"] {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                db, "DELETE FROM \(table) WHERE connection_id = ?;", -1, &statement, nil
+            ) == SQLITE_OK else {
+                logSqliteError(context: "prepare delete for connection")
+                succeeded = false
+                continue
+            }
+            QueryHistorySqlBinding.text(id).bind(to: statement, at: 1)
+            if sqlite3_step(statement) != SQLITE_DONE {
+                logSqliteError(context: "delete for connection")
+                succeeded = false
+            }
+            sqlite3_finalize(statement)
+        }
+        return succeeded
+    }
+
     // MARK: - Retention
 
     func updateSettingsCache(maxEntries: Int, maxDays: Int, autoCleanup: Bool) {
