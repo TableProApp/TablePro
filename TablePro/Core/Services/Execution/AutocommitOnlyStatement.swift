@@ -45,7 +45,7 @@ internal enum AutocommitOnlyStatement {
             return matchesDuckDB(statement, grammar: grammar)
         case .sqlServer:
             return matchesSQLServer(statement, grammar: grammar)
-        case .redis, .other:
+        case .oracle, .redis, .other:
             return false
         }
     }

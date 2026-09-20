@@ -30,6 +30,16 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     /// every driver answers the same question: what would recreate this.
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String
 
+    /// `ddl` as a script written for this engine's own client, with each statement in it ended the way that client
+    /// ends one.
+    ///
+    /// A trailing `;` is not that everywhere. SQL*Plus reads a PL/SQL unit until a line holding only `/`, so a
+    /// procedure written with only its `;` swallows every statement after it, and the mysql client ends a statement
+    /// at the first `;`, so a routine body has to sit inside a `DELIMITER` block. The export cannot tell a unit from
+    /// a plain statement without the engine's grammar, which the host has. The default appends a `;` when `ddl`
+    /// does not already end in one.
+    func scriptText(for ddl: String) -> String
+
     /// The GRANT statements that recreate one principal's privileges, rendered by the engine's own
     /// grant builder. `host` is the MySQL-style host part, which is what separates two principals
     /// that share a name. Empty on an engine with no principal management.
@@ -70,6 +80,10 @@ public extension PluginExportDataSource {
 
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
         try await fetchTableDDL(table: object.name, databaseName: object.databaseName)
+    }
+
+    func scriptText(for ddl: String) -> String {
+        ddl.hasSuffix(";") ? ddl : ddl + ";"
     }
 
     func fetchGrantStatements(principal: String, host: String?) async throws -> [String] { [] }

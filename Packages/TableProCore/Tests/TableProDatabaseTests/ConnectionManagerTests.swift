@@ -106,6 +106,28 @@ struct ConnectionManagerTests {
         }
     }
 
+    @Test("The attempt's prompter reaches the tunnel, so its questions belong to the screen that asked")
+    func connectForwardsThePrompter() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        var connection = DatabaseConnection(name: "Tunnelled", type: DatabaseType(rawValue: "mock"))
+        connection.sshEnabled = true
+        connection.sshConfiguration = SSHConfiguration(host: "jump.example.com")
+        let prompter = StubPrompter()
+
+        _ = try await manager.connect(connection, prompter: prompter)
+        await manager.disconnect(connection.id)
+
+        #expect(ssh.receivedPrompters.count == 1)
+        #expect(ssh.receivedPrompters.first.map { $0 is StubPrompter } == true)
+    }
+
     @Test("SSH tunnel cleanup on connect failure")
     func sshTunnelCleanupOnFailure() async throws {
         let factory = MockDriverFactory()

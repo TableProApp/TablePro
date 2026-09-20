@@ -71,6 +71,35 @@ struct BatchTransactionPolicyTests {
         #expect(Self.plan(["INSERT INTO t VALUES (1)", statement], .postgresql) == .appTransaction)
     }
 
+    /// Oracle has no `BEGIN` for a transaction: `BEGIN` opens a PL/SQL block. `SET TRANSACTION` is
+    /// the statement that opens one, so a script holding it manages its own.
+    @Test(
+        "An Oracle script that opens its own transaction runs as written",
+        arguments: [
+            "SET TRANSACTION READ ONLY",
+            "set transaction isolation level serializable",
+            "SET TRANSACTION NAME 'nightly'",
+            "-- hold the rows\nSET TRANSACTION READ WRITE",
+        ]
+    )
+    func oracleSetTransactionIsNotWrapped(statement: String) {
+        #expect(Self.plan([statement, "UPDATE t SET a = 1"], .oracle) == .scriptTransaction)
+    }
+
+    @Test(
+        "An Oracle script without SET TRANSACTION is wrapped",
+        arguments: [
+            ["INSERT INTO t VALUES (1)", "UPDATE t SET a = 2"],
+            ["SAVEPOINT a", "INSERT INTO t VALUES (1)", "ROLLBACK TO a"],
+            ["LOCK TABLE t IN EXCLUSIVE MODE", "UPDATE t SET a = 1"],
+            ["SET ROLE ALL", "UPDATE t SET a = 1"],
+            ["BEGIN NULL; END;", "COMMIT"],
+        ]
+    )
+    func oracleBatchIsWrapped(statements: [String]) {
+        #expect(Self.plan(statements, .oracle) == .appTransaction)
+    }
+
     @Test(
         "MySQL refuses SET TRANSACTION inside a transaction, so a script that sets one runs as written",
         arguments: ["SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", "set transaction read only"]

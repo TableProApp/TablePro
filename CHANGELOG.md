@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Acknowledgements and a privacy policy link under **Settings > About** on iPhone and iPad.
 - Privacy manifest for the iOS app.
 - Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
+- Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
 
 ### Changed
 
@@ -44,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
 - `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
 - 1 row affected reported for every Oracle PL/SQL block.
+- Crash when an Oracle query timed out or was cancelled while its rows were loading.
+- Empty results with no error after about 300 failed Oracle statements on one connection.
+- Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
+- Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
+- Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
@@ -126,6 +132,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No confirmation before deleting a tag on iPhone and iPad.
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 - Table page range shown in English in every language on iPhone and iPad.
+- Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
+- Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped.
+- Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported.
+- Oracle triggers synced into another schema created back in the source schema.
+- Oracle table with an index failing to sync or copy with ORA-03405.
+- Oracle object lost when a sync or copy replacing it failed.
+- Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
+- Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
+- Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
 
 ### Security
 
@@ -136,6 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Require Face ID** turned off on iPhone and iPad without authenticating.
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
+- Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
 - Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
 - Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
 - Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.

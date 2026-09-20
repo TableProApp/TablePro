@@ -11,7 +11,8 @@ import XCTest
 
 final class ObjectCopySequenceStatementTests: XCTestCase {
     /// The driver returns the create and the reposition as one block, and the runner sends one
-    /// statement per `execute`, so the block has to arrive already split.
+    /// statement per `execute`, so the block has to arrive already split, each piece as the driver
+    /// takes it.
     func testAMultiStatementSequenceDDLBecomesOneStatementEach() {
         let statements = ObjectCopyPlanner.sequenceStatements(
             [
@@ -21,16 +22,18 @@ final class ObjectCopySequenceStatementTests: XCTestCase {
             table: "orders"
         )
         XCTAssertEqual(statements.map(\.sql), [
-            "CREATE SEQUENCE \"orders_id_seq\" INCREMENT BY 1 MINVALUE 1 MAXVALUE 100 START WITH 1;",
-            "SELECT pg_catalog.setval('\"orders_id_seq\"', 42, true);"
+            "CREATE SEQUENCE \"orders_id_seq\" INCREMENT BY 1 MINVALUE 1 MAXVALUE 100 START WITH 1",
+            "SELECT pg_catalog.setval('\"orders_id_seq\"', 42, true)"
         ])
     }
 
-    func testAlreadyTerminatedSQLIsNotTerminatedTwice() {
+    /// A separator is the script's to write, never the statement's, so none is added to what goes
+    /// to the driver.
+    func testASequenceStatementGetsNoSeparator() {
         XCTAssertEqual(
-            ObjectCopyPlanner.sequenceStatements(["CREATE SEQUENCE \"s\";"], table: "orders")
+            ObjectCopyPlanner.sequenceStatements(["CREATE SEQUENCE \"s\""], table: "orders")
                 .map(\.sql),
-            ["CREATE SEQUENCE \"s\";"]
+            ["CREATE SEQUENCE \"s\""]
         )
     }
 
@@ -52,11 +55,11 @@ final class ObjectCopySequenceStatementTests: XCTestCase {
     func testSequencesRunBeforeTheTableTheyBelongTo() {
         let step = ObjectCopyTableStep(
             selection: ObjectCopySelection(kind: .table, name: "orders", schema: "public"),
-            dropStatements: [SyncStatement(sql: "DROP TABLE \"orders\";", objectName: "orders", summary: "")],
+            dropStatements: [SyncStatement(sql: "DROP TABLE \"orders\"", objectName: "orders", summary: "")],
             sequenceStatements: ObjectCopyPlanner.sequenceStatements(
                 ["CREATE SEQUENCE \"orders_id_seq\""], table: "orders"
             ),
-            createStatements: [SyncStatement(sql: "CREATE TABLE \"orders\";", objectName: "orders", summary: "")],
+            createStatements: [SyncStatement(sql: "CREATE TABLE \"orders\"", objectName: "orders", summary: "")],
             truncateStatements: [],
             columns: ["id"],
             primaryKeyColumns: ["id"],
@@ -69,9 +72,9 @@ final class ObjectCopySequenceStatementTests: XCTestCase {
             note: nil
         )
         XCTAssertEqual(step.ddl.map(\.sql), [
-            "DROP TABLE \"orders\";",
-            "CREATE SEQUENCE \"orders_id_seq\";",
-            "CREATE TABLE \"orders\";"
+            "DROP TABLE \"orders\"",
+            "CREATE SEQUENCE \"orders_id_seq\"",
+            "CREATE TABLE \"orders\""
         ])
     }
 }

@@ -21,6 +21,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case protocolError
     case loginTimedOut
     case queryTimedOut
+    case transactionLost
     case authVerifierUnsupported(flag: String)
     case authVersionNotSupported
     case authConnectionDropped(phase: String?)
@@ -46,6 +47,8 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(localized: "Timed out during the Oracle login handshake. The server accepted the network connection but did not finish logging in.")
         case .queryTimedOut:
             return String(localized: "The query did not finish within the configured timeout, so the connection was reset. Run the query again.")
+        case .transactionLost:
+            return String(localized: "The connection was lost while a transaction was open. Check which of its changes were saved before running them again.")
         case .authVerifierUnsupported:
             return String(localized: "This account uses a password verifier the database driver does not support.")
         case .authVersionNotSupported:

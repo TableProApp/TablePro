@@ -65,10 +65,12 @@ struct ServerSideExportTests {
     @Test("Oracle starts a Data Pump job against the named directory object")
     func oracleUsesDataPump() throws {
         let sql = try #require(statement(.oracle, destination: .oracleDirectory(name: "data_pump_dir")))
-        #expect(sql.contains("DBMS_DATAPUMP.OPEN"))
-        #expect(sql.contains("DBMS_DATAPUMP.START_JOB"))
-        #expect(sql.contains("'orders.dmp', 'DATA_PUMP_DIR'"))
-        #expect(sql.contains("'orders.log', 'DATA_PUMP_DIR'"))
+        #expect(sql.contains("CALL SYS.DBMS_DATAPUMP.OPEN"))
+        #expect(sql.contains("CALL SYS.DBMS_DATAPUMP.START_JOB"))
+        #expect(sql.contains("l_stem VARCHAR2(4000) := 'orders';"))
+        #expect(sql.contains("l_dir VARCHAR2(4000) := 'DATA_PUMP_DIR';"))
+        #expect(sql.contains("l_stem || '.dmp'"))
+        #expect(sql.contains("l_stem || '.log'"))
         #expect(sql.contains("'IN (''ORDERS'')'"))
     }
 
@@ -119,7 +121,7 @@ struct ServerSideExportTests {
     @Test("The session-user fallback concatenates USER rather than quoting it")
     func oracleUserFallbackIsConcatenated() throws {
         let sql = try #require(statement(.oracle, destination: .oracleDirectory(name: "d")))
-        #expect(sql.contains(#"'SCHEMA_EXPR', 'IN (''' || USER || ''')'"#))
+        #expect(sql.contains(#"l_schema_expr VARCHAR2(4000) := 'IN (''' || USER || ''')';"#))
     }
 
     // MARK: - Snowflake

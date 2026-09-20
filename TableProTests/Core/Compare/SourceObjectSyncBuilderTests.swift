@@ -63,6 +63,11 @@ private final class DialectDropDriver: DropStubDriver, @unchecked Sendable {
 /// Takes neither an argument list nor an `ON`, the way MySQL does, and so inherits both defaults.
 private final class PlainDropDriver: DropStubDriver, @unchecked Sendable {}
 
+/// Replaces an object with its `CREATE OR REPLACE` definition alone, the way Oracle does.
+private final class InPlaceReplacingDriver: DropStubDriver, @unchecked Sendable {
+    var replacesDefinitionsInPlace: Bool { true }
+}
+
 final class SourceObjectSyncBuilderTests: XCTestCase {
     private func drop(
         _ identity: CompareObjectIdentity,
@@ -82,7 +87,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
                 ),
                 driver: DialectDropDriver()
             ),
-            "DROP FUNCTION IF EXISTS \"public\".\"total\"(integer);"
+            "DROP FUNCTION IF EXISTS \"public\".\"total\"(integer)"
         )
     }
 
@@ -94,7 +99,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
                 ),
                 driver: DialectDropDriver()
             ),
-            "DROP PROCEDURE IF EXISTS \"public\".\"rebuild\"();"
+            "DROP PROCEDURE IF EXISTS \"public\".\"rebuild\"()"
         )
     }
 
@@ -107,7 +112,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
                 ),
                 driver: DialectDropDriver()
             ),
-            "DROP TRIGGER IF EXISTS \"audit\" ON \"public\".\"orders\";"
+            "DROP TRIGGER IF EXISTS \"audit\" ON \"public\".\"orders\""
         )
     }
 
@@ -118,7 +123,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
                 CompareObjectIdentity(kind: .trigger, schema: "public", name: "audit"),
                 driver: DialectDropDriver()
             ),
-            "DROP TRIGGER \"public\".\"audit\";"
+            "DROP TRIGGER \"public\".\"audit\""
         )
     }
 
@@ -131,8 +136,113 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
                 ),
                 driver: PlainDropDriver()
             ),
-            "DROP FUNCTION \"shop\".\"total\";"
+            "DROP FUNCTION \"shop\".\"total\""
         )
+    }
+
+    // MARK: - Create
+
+    private func create(
+        _ definition: String,
+        kind: CompareObjectKind,
+        databaseType: DatabaseType
+    ) -> [String] {
+        SourceObjectSyncBuilder(targetDriver: PlainDropDriver(), targetDatabaseType: databaseType)
+            .build(
+                for: CompareObjectResult(
+                    identity: CompareObjectIdentity(kind: kind, schema: "APP", name: "x"),
+                    status: .onlyInSource,
+                    sourceDefinition: definition.components(separatedBy: "\n")
+                ),
+                action: .create
+            )
+            .map(\.sql)
+    }
+
+    /// Measured on Oracle 23ai: sent with a `;` after the call, the trigger is stored INVALID.
+    func testAnOracleCallTriggerGoesOutWithoutASemicolon() {
+        XCTAssertEqual(
+            create(
+                "CREATE OR REPLACE TRIGGER x BEFORE INSERT ON t FOR EACH ROW\nCALL p(:NEW.id);",
+                kind: .trigger,
+                databaseType: .oracle
+            ),
+            ["CREATE OR REPLACE TRIGGER x BEFORE INSERT ON t FOR EACH ROW\nCALL p(:NEW.id)"]
+        )
+    }
+
+    /// And a procedure sent without its own `;` is stored INVALID the same way.
+    func testAnOracleUnitKeepsItsOwnSemicolon() {
+        let unit = "CREATE OR REPLACE PROCEDURE x IS\nBEGIN\n  NULL;\nEND;"
+        XCTAssertEqual(create(unit, kind: .procedure, databaseType: .oracle), [unit])
+    }
+
+    /// The generic grammar would cut a T-SQL body with no BEGIN into pieces the server rejects.
+    func testAnUntrackedEngineSendsTheDefinitionWhole() {
+        let body = "CREATE PROCEDURE dbo.x AS SET NOCOUNT ON; SELECT 1; SELECT 2;"
+        XCTAssertEqual(create(body, kind: .procedure, databaseType: .mssql), [body])
+    }
+
+    func testAMySQLRoutineIsOneStatementWithoutItsSeparator() {
+        XCTAssertEqual(
+            create("CREATE PROCEDURE x()\nBEGIN\n  SELECT 1;\nEND;", kind: .procedure, databaseType: .mysql),
+            ["CREATE PROCEDURE x()\nBEGIN\n  SELECT 1;\nEND"]
+        )
+    }
+
+    // MARK: - Replace
+
+    private func replace(
+        _ definition: String,
+        kind: CompareObjectKind = .trigger,
+        driver: any PluginDatabaseDriver
+    ) -> [SyncStatement] {
+        SourceObjectSyncBuilder(targetDriver: driver, targetDatabaseType: .oracle).build(
+            for: CompareObjectResult(
+                identity: CompareObjectIdentity(kind: kind, schema: "APP", name: "x", signature: "t"),
+                status: .differs,
+                sourceDefinition: [definition]
+            ),
+            action: .alter
+        )
+    }
+
+    /// Measured on Oracle 23ai: a DROP followed by a CREATE the engine refused left no trigger, while
+    /// the same CREATE OR REPLACE refused on its own left the existing one VALID.
+    func testADefinitionThatReplacesItselfIsNotDroppedFirst() {
+        let definition = "CREATE OR REPLACE TRIGGER x BEFORE INSERT ON t FOR EACH ROW\nBEGIN NULL; END;"
+
+        let statements = replace(definition, driver: InPlaceReplacingDriver())
+
+        XCTAssertEqual(statements.map(\.sql), [definition])
+        XCTAssertEqual(statements.first?.summary.hasPrefix("Replace trigger"), true)
+    }
+
+    func testAReplacementIsDroppedFirstWhereTheDriverCannotReplaceInPlace() {
+        let definition = "CREATE OR REPLACE TRIGGER x BEFORE INSERT ON t FOR EACH ROW\nBEGIN NULL; END;"
+
+        XCTAssertEqual(replace(definition, driver: PlainDropDriver()).map(\.sql), [
+            "DROP TRIGGER \"APP\".\"x\"", definition,
+        ])
+    }
+
+    func testADefinitionWithoutOrReplaceIsDroppedFirst() {
+        let statements = replace(
+            "CREATE TRIGGER x BEFORE INSERT ON t FOR EACH ROW\nBEGIN NULL; END;", driver: InPlaceReplacingDriver()
+        )
+
+        XCTAssertEqual(statements.count, 2)
+        XCTAssertTrue(statements[0].sql.hasPrefix("DROP TRIGGER"))
+    }
+
+    func testAMaterializedViewIsAlwaysDroppedFirst() {
+        let statements = replace(
+            "CREATE OR REPLACE MATERIALIZED VIEW x AS SELECT 1 FROM dual",
+            kind: .materializedView,
+            driver: InPlaceReplacingDriver()
+        )
+
+        XCTAssertEqual(statements.count, 2)
     }
 
     /// A view is addressed by name on every engine, so it must not be routed through either hook.
@@ -142,7 +252,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
                 CompareObjectIdentity(kind: .view, schema: "public", name: "recent"),
                 driver: DialectDropDriver()
             ),
-            "DROP VIEW \"public\".\"recent\";"
+            "DROP VIEW \"public\".\"recent\""
         )
     }
 }

@@ -85,10 +85,15 @@ final class ConnectionCoordinator {
     private var attemptToken = UUID()
     private var connectTask: Task<Void, Never>?
 
+    private var joiners = AttemptJoiners()
+
+    /// Questions this attempt has to ask, shown by the screen that owns the attempt.
+    let prompts = ConnectionPromptQueue()
+
     /// Returning early without touching `phase` is what left the connecting screen up for good.
     func connect() async {
         if let inFlight = connectTask {
-            await inFlight.value
+            await join(inFlight)
             return
         }
 
@@ -101,8 +106,24 @@ final class ConnectionCoordinator {
             await self.runAttempt(token: token)
         }
         connectTask = task
-        await task.value
+        await join(task)
         if connectTask == task { connectTask = nil }
+    }
+
+    /// A caller that goes away mid-connect (its screen was dismissed) abandons the attempt rather
+    /// than leaving it running for the next screen to join and wait on forever.
+    private func join(_ task: Task<Void, Never>) async {
+        let joiner = joiners.join()
+        await withTaskCancellationHandler {
+            await task.value
+            _ = joiners.leave(joiner)
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard joiners.leave(joiner), connectTask == task else { return }
+                cancelConnect()
+            }
+        }
     }
 
     func adopt(_ record: DatabaseConnection) {
@@ -114,12 +135,17 @@ final class ConnectionCoordinator {
         attemptToken = UUID()
         connectTask?.cancel()
         connectTask = nil
+        prompts.cancelAll()
         appState.connectionManager.invalidateAttempt(for: connection.id)
         session = nil
     }
 
     /// Never waits on the driver: `Task.cancel()` is cooperative and these drivers ignore it.
+    ///
+    /// The questions go first and unconditionally: a reconnect or a database switch asks them
+    /// without owning `connectTask`, and leaving one suspended holds its tunnel open for good.
     func cancelConnect() {
+        prompts.cancelAll()
         guard connectTask != nil else { return }
         retire()
         phase = .error(Self.cancelledError)
@@ -165,7 +191,7 @@ final class ConnectionCoordinator {
         IOSAnalyticsProvider.shared.markConnectionAttempted()
 
         do {
-            let newSession = try await appState.connectionManager.connect(connection)
+            let newSession = try await appState.connectionManager.connect(connection, prompter: prompts)
             let newTables = try await newSession.driver.fetchTables(schema: nil)
             guard attemptToken == token else { return }
             session = newSession
@@ -183,7 +209,7 @@ final class ConnectionCoordinator {
             // leaving the user on an error screen whose only button repeats the same failure.
             if allowSignIn,
                EntraSignIn.needsSignIn(error),
-               await EntraSignIn.offer(fields: connection.additionalFields) {
+               await EntraSignIn.offer(fields: connection.additionalFields, prompts: prompts) {
                 guard attemptToken == token else { return }
                 await connectFresh(token: token, allowSignIn: false)
                 return
@@ -212,7 +238,7 @@ final class ConnectionCoordinator {
         isReconnecting = true
         defer { isReconnecting = false }
         do {
-            let newSession = try await appState.connectionManager.connect(connection)
+            let newSession = try await appState.connectionManager.connect(connection, prompter: prompts)
             guard attemptToken == token else { return }
             self.session = newSession
         } catch {
@@ -264,7 +290,7 @@ final class ConnectionCoordinator {
 
         let token = attemptToken
         do {
-            let newSession = try await appState.connectionManager.connect(newConnection)
+            let newSession = try await appState.connectionManager.connect(newConnection, prompter: prompts)
             guard attemptToken == token else { return }
             self.session = newSession
             self.tables = try await newSession.driver.fetchTables(schema: nil)
@@ -274,7 +300,7 @@ final class ConnectionCoordinator {
         } catch {
             Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
             do {
-                let fallbackSession = try await appState.connectionManager.connect(connection)
+                let fallbackSession = try await appState.connectionManager.connect(connection, prompter: prompts)
                 guard attemptToken == token else { return }
                 self.session = fallbackSession
                 self.tables = try await fallbackSession.driver.fetchTables(schema: nil)

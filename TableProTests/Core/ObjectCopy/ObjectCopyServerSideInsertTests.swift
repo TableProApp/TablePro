@@ -134,7 +134,7 @@ final class ObjectCopyServerSideInsertTests: XCTestCase {
         )
         XCTAssertEqual(
             sql,
-            "INSERT INTO `new`.`orders` (`id`, `name`) SELECT `id`, `name` FROM `old`.`orders`;"
+            "INSERT INTO `new`.`orders` (`id`, `name`) SELECT `id`, `name` FROM `old`.`orders`"
         )
     }
 
@@ -147,7 +147,7 @@ final class ObjectCopyServerSideInsertTests: XCTestCase {
         )
         XCTAssertEqual(
             sql,
-            "INSERT INTO `orders` (`id`, `name`) SELECT `id`, `name` FROM `shop`.`orders`;"
+            "INSERT INTO `orders` (`id`, `name`) SELECT `id`, `name` FROM `shop`.`orders`"
         )
     }
 
@@ -185,7 +185,7 @@ final class ObjectCopyServerSideInsertTests: XCTestCase {
             driver: ServerSideInsertDriver()
         )
         XCTAssertEqual(sql?.contains("WHERE total > 10"), true)
-        XCTAssertEqual(sql?.hasSuffix("LIMIT 100;"), true)
+        XCTAssertEqual(sql?.hasSuffix("LIMIT 100"), true)
     }
 
     /// The same rule the streamed path follows: a filter is one expression, and text carrying a

@@ -25,6 +25,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     case sqlite
     case duckdb
     case sqlServer
+    case oracle
     case redis
     case other
 
@@ -48,10 +49,19 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
     /// Whether `SAVEPOINT` opens a transaction of its own, which makes a batch holding one a script
     /// that manages its own transaction rather than one running in autocommit. Measured on SQLite
     /// 3.54.0: `SAVEPOINT a; INSERT ...; BEGIN` answers "cannot start a transaction within a
-    /// transaction". DuckDB has no `SAVEPOINT` at all, and PostgreSQL rejects one outside a
+    /// transaction", and on Oracle 23ai `DBMS_TRANSACTION.LOCAL_TRANSACTION_ID` is set after a
+    /// `SAVEPOINT` alone. DuckDB has no `SAVEPOINT` at all, and PostgreSQL rejects one outside a
     /// transaction block instead of opening one.
     internal var savepointOpensTransaction: Bool {
-        self == .sqlite
+        self == .sqlite || self == .oracle
+    }
+
+    /// Whether `SET TRANSACTION` opens a transaction, which makes a batch holding one a script that
+    /// manages its own. Measured on Oracle 23ai: `DBMS_TRANSACTION.LOCAL_TRANSACTION_ID` is set
+    /// right after it, and the transaction lasts until a `COMMIT` or `ROLLBACK`. Oracle has no
+    /// `BEGIN` for a transaction, so this is the statement a script opens one with.
+    internal var setTransactionOpensTransaction: Bool {
+        self == .oracle
     }
 
     private static let familiesByTypeId: [String: TransactionEngineFamily] = [
@@ -71,6 +81,7 @@ internal enum TransactionEngineFamily: String, Hashable, Sendable, CaseIterable 
         "Turso": .sqlite,
         "DuckDB": .duckdb,
         "SQL Server": .sqlServer,
+        "Oracle": .oracle,
         "Redis": .redis
     ]
 }

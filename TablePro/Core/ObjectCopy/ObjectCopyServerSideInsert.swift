@@ -69,7 +69,7 @@ internal enum ObjectCopyServerSideInsert {
         if let rowLimit = input.scope?.rowLimit {
             select = driver.injectRowLimit(select, limit: rowLimit) ?? "\(select) LIMIT \(rowLimit)"
         }
-        return "INSERT INTO \(into) (\(targetList)) \(select);"
+        return "INSERT INTO \(into) (\(targetList)) \(select)"
     }
 
     internal struct Input: Sendable {

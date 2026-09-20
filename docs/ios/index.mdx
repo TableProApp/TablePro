@@ -108,7 +108,7 @@ Tap a row to open it full screen, page between rows, edit values, toggle one to 
 
 A new row starts with every column on **DEFAULT**, which leaves that column out of the `INSERT` so the database fills it in. The badge beside a field switches it between **DEFAULT**, **NULL** and a typed value, and **NULL** is offered on nullable columns only. Generated columns are never written, and an auto-increment key stays on **DEFAULT** until you type one.
 
-A save, insert, delete, truncate or drop runs inside a read-write transaction. MySQL, MariaDB, PostgreSQL and Redshift report what their session is already holding, and a write there runs inside that rather than under a transaction of its own, so the rows wait for whoever opened it. A server that starts its sessions read-only is a different problem: see [Server read-only is not Safe Mode](/features/safe-mode#server-read-only-is-not-safe-mode). SQL typed into the Query section is yours and goes out as written.
+A save, insert, delete, truncate or drop runs inside a read-write transaction. MySQL, MariaDB, PostgreSQL, Redshift and Oracle report what their session is already holding, and a write there runs inside that rather than under a transaction of its own, so the rows wait for whoever opened it. A server that starts its sessions read-only is a different problem: see [Server read-only is not Safe Mode](/features/safe-mode#server-read-only-is-not-safe-mode). SQL typed into the Query section is yours and goes out as written.
 
 ### Querying
 
@@ -128,7 +128,7 @@ Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold lau
 
 Each connection carries its own [safe mode](/features/safe-mode) level, synced from the Mac and settable here. iOS has three: **Off**, **Confirm Writes**, and **Read-Only**, which refuses writes outright. **Settings > New Connections** sets the level a new connection starts at.
 
-SSH tunnels authenticate with a password or a private key, and an unknown host key prompts with its fingerprint first. A key pasted under **Paste Key**, or picked as a text file, is kept in the Keychain beside the connection's passwords, never in the saved connection list. A key file that is not text is copied into the app and read from there. Setting **Auth Method** to **Password**, choosing **Import File**, or turning **SSH Tunnel** off deletes the saved key when you tap **Save**.
+SSH tunnels authenticate with a password or a private key, and an unknown host key prompts with its fingerprint first, on the connection's own screen. The question waits there until you answer it, and leaving the screen ends that attempt. A key pasted under **Paste Key**, or picked as a text file, is kept in the Keychain beside the connection's passwords, never in the saved connection list. A key file that is not text is copied into the app and read from there. Setting **Auth Method** to **Password**, choosing **Import File**, or turning **SSH Tunnel** off deletes the saved key when you tap **Save**.
 
 ## Privacy
 

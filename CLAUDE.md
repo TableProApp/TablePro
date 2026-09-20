@@ -337,7 +337,7 @@ These are **non-negotiable**, never skip them:
     - Settings changes → `docs/customization/settings.mdx`
     - Database driver changes → `docs/databases/*.mdx`
 
-    **`docs/STYLE.md` is the spec for how a page is written, and it is binding.** Read it before writing, not after. Then run `.claude/skills/fix-issue/scripts/verify.sh docs`, which runs the two checks that actually read `docs/`. The `agent docs:` line in `verify.sh lint` is a different check over `CLAUDE.md` and `.claude/`; it never opens `docs/`. `.claude/rules/docs-authoring.md` lists the STYLE.md rules no script enforces, each with the defect that produced it.
+    **`docs/STYLE.md` is the spec for how a page is written, and it is binding.** Read it before writing, not after. Then run `.claude/skills/fix-issue/scripts/verify.sh docs`, which runs the three checks that actually read `docs/`. The `agent docs:` line in `verify.sh lint` is a different check over `CLAUDE.md` and `.claude/`; it never opens `docs/`. `.claude/rules/docs-authoring.md` lists the STYLE.md rules no script enforces, each with the defect that produced it.
 
 4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code, never adjust tests to match incorrect output. Tests define expected behavior.
 

@@ -102,6 +102,22 @@ In a trigger body, `:NEW` and `:OLD` are left as written. In an anonymous block,
 
 An anonymous block, or a query whose `WITH` clause declares a function, runs code on the server. One that drops or truncates, including through `EXECUTE IMMEDIATE '…'`, raises the [dangerous query warning](/features/safe-mode) before it runs, and a Read-Only connection refuses it like any write. [MCP clients](/external-api/mcp-tools) and the AI assistant cannot send either.
 
+## Transactions
+
+A statement commits the moment it succeeds, and another session sees the change at once. A `SELECT ... FOR UPDATE` holds its row locks until the next statement you run that is not a query. To hold changes until you decide, start with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`. Everything after it waits in one transaction until a `COMMIT` or `ROLLBACK`, and `ROLLBACK TO` a savepoint keeps the rest of it open.
+
+```sql
+SAVEPOINT before_raise;
+UPDATE emp SET sal = sal * 1.1 WHERE deptno = 20;
+SELECT ename, sal FROM emp WHERE deptno = 20;
+ROLLBACK TO before_raise;
+COMMIT;
+```
+
+Run the lines one at a time with `Cmd+Enter`, or all of them with `Cmd+Shift+Enter`. While the transaction is open, a grid save and a batch run inside it and leave the commit to you; see [which transaction a batch runs in](/features/sql-editor#which-transaction-the-batch-runs-in). A `CREATE`, `ALTER`, `DROP` or `TRUNCATE` commits the open transaction before it runs, so a `ROLLBACK` after one takes back only what came later.
+
+If the connection drops while a transaction is open, the next write fails with "The connection was lost while a transaction was open" and runs nothing. Check which of the transaction's changes were saved before running them again.
+
 ## Column type support
 
 | Oracle type | Display |

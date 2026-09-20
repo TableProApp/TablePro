@@ -183,15 +183,18 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             disconnect()
             throw error
         }
-        detectedServerVersion = (try? await scalarText("SELECT BANNER FROM V$VERSION WHERE ROWNUM = 1"))
+        detectedServerVersion = (try? await scalarText("SELECT BANNER FROM SYS.V$VERSION WHERE ROWNUM = 1"))
             .map { String($0.prefix(60)) }
         hasConnectedBefore = true
     }
 
     /// Keeps the mode the previous connection established when the probe fails, because
     /// `.unknown` refuses every value containing a backslash for the rest of the session.
+    ///
+    /// No `FROM DUAL`: DM8 has no `SYS.DUAL`, and a bare `DUAL` resolves to a table a schema the session switched into
+    /// could plant. DM8 evaluates a `SELECT` with no `FROM`, so the probe reads the built-in `LENGTH` on its own.
     func detectTextEscaping() async -> DamengTextEscaping {
-        guard let length = try? await scalarText("SELECT LENGTH('\\\\') FROM DUAL") else {
+        guard let length = try? await scalarText("SELECT LENGTH('\\\\')") else {
             return textEscaping
         }
         switch length.trimmingCharacters(in: .whitespaces).prefix(1) {

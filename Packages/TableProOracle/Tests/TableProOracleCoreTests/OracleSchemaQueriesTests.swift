@@ -60,7 +60,7 @@ final class OracleSchemaQueriesTests: XCTestCase {
 
     func testTableListingReadsPartitioningFromAllPartTables() {
         let sql = OracleSchemaQueries.tables(schema: "HR")
-        XCTAssertTrue(sql.contains("LEFT JOIN all_part_tables pt"))
+        XCTAssertTrue(sql.contains("LEFT JOIN SYS.ALL_PART_TABLES pt"))
         XCTAssertTrue(sql.contains("CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END"))
         XCTAssertTrue(sql.contains("CASE WHEN pt.interval IS NULL THEN pt.partition_count END"))
     }
