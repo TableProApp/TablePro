@@ -5,7 +5,7 @@ import TableProOracleCore
 nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     nonisolated struct SSHTunnel: Equatable, Sendable {
         var host: String
-        var port: Int
+        var port: Int?
         var username: String
         var authMethod: SSHConfiguration.SSHAuthMethod
         var privateKeyPath: String?

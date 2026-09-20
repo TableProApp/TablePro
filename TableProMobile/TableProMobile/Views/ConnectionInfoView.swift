@@ -96,7 +96,7 @@ struct ConnectionInfoView: View {
     private func sshSection(_ ssh: SSHConfiguration) -> some View {
         Section("SSH Tunnel") {
             LabeledContent("SSH Host") {
-                Text(verbatim: "\(ssh.host):\(ssh.port)")
+                Text(verbatim: "\(ssh.host):\(ssh.resolvedPort)")
                     .textSelection(.enabled)
             }
             LabeledContent("SSH Username", value: ssh.username)

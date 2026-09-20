@@ -35,6 +35,59 @@ struct SSHConfigurationTests {
         #expect(try decode(authMethod: "totp-only").authMethod == .password)
     }
 
+    @Test("An auth method re-encodes in the spelling macOS reads")
+    func reencodesTheMacSpelling() throws {
+        let cases: [(method: SSHConfiguration.SSHAuthMethod, spelling: String)] = [
+            (.password, "Password"),
+            (.privateKey, "Private Key"),
+            (.sshAgent, "SSH Agent"),
+            (.keyboardInteractive, "Keyboard Interactive"),
+            (.none, "None")
+        ]
+        for testCase in cases {
+            let config = SSHConfiguration(host: "prod-1", username: "deploy", authMethod: testCase.method)
+            let fields = try #require(
+                JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any]
+            )
+            #expect(fields["authMethod"] as? String == testCase.spelling, "\(testCase.method)")
+        }
+    }
+
+    @Test("An agent tunnel the Mac wrote is still an agent tunnel after an iOS round trip")
+    func agentTunnelSurvivesRoundTrip() throws {
+        let macJSON = """
+        {"enabled":true,"host":"prod-1","username":"deploy","authMethod":"SSH Agent","jumpHosts":[]}
+        """
+        let fields = try reencodedFields(macJSON)
+        #expect(fields["authMethod"] as? String == "SSH Agent")
+    }
+
+    // MARK: - Tunnel port
+
+    @Test("A tunnel the Mac left without a port keeps it unset through an iOS round trip")
+    func portlessTunnelStaysUnset() throws {
+        let macJSON = """
+        {"enabled":true,"host":"prod-1","username":"deploy","authMethod":"password","jumpHosts":[]}
+        """
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(macJSON.utf8))
+
+        #expect(decoded.port == nil)
+        #expect(decoded.resolvedPort == 22)
+        #expect(try reencodedFields(macJSON)["port"] == nil)
+    }
+
+    @Test("A tunnel port the user set is carried, not replaced by the default")
+    func setPortIsCarried() throws {
+        let macJSON = """
+        {"enabled":true,"host":"prod-1","port":2222,"username":"deploy","authMethod":"password","jumpHosts":[]}
+        """
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(macJSON.utf8))
+
+        #expect(decoded.port == 2_222)
+        #expect(decoded.resolvedPort == 2_222)
+        #expect(try reencodedFields(macJSON)["port"] as? Int == 2_222)
+    }
+
     // MARK: - Sync round trip preserves the macOS fields
 
     private func reencodedFields(_ macJSON: String) throws -> [String: Any] {
@@ -125,8 +178,8 @@ struct SSHConfigurationTests {
     @Test("A hop's auth method and key path survive an iOS round trip")
     func preservesJumpHostCredentialFields() throws {
         let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(Self.macJumpHostsJSON.utf8))
-        #expect(decoded.jumpHosts[0].macAuthMethod == "SSH Agent")
-        #expect(decoded.jumpHosts[1].macAuthMethod == "Private Key")
+        #expect(decoded.jumpHosts[0].macAuthMethod == .sshAgent)
+        #expect(decoded.jumpHosts[1].macAuthMethod == .privateKey)
         #expect(decoded.jumpHosts[1].macPrivateKeyPath == "~/.ssh/id_ed25519")
 
         let reencoded = try JSONEncoder().encode(decoded)
@@ -167,7 +220,33 @@ struct SSHConfigurationTests {
 
         #expect(config.jumpHosts.count == 1)
         #expect(config.jumpHosts[0].port == 22)
-        #expect(config.jumpHosts[0].macAuthMethod == "SSH Agent")
+        #expect(config.jumpHosts[0].macAuthMethod == .sshAgent)
         #expect(config.jumpHosts[0].macPrivateKeyPath == "")
+    }
+
+    @Test("The hop spelling a shipped iOS build wrote is normalized rather than carried back out")
+    func legacyIOSHopSpellingIsNormalized() throws {
+        let legacy = """
+        {"host":"db-1","username":"deploy","authMethod":"password","jumpHosts":[
+          {"id":"6E0B1B3C-7E4C-4C3E-9B1E-4C8D2A1F0004","host":"bastion-1","username":"ops",
+           "authMethod":"sshAgent","privateKeyPath":""}
+        ]}
+        """
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(legacy.utf8))
+        #expect(decoded.jumpHosts[0].macAuthMethod == .sshAgent)
+
+        let hops = try #require(reencodedFields(legacy)["jumpHosts"] as? [[String: Any]])
+        #expect(hops[0]["authMethod"] as? String == "SSH Agent")
+    }
+
+    @Test("Every hop spelling this model can hold is one macOS reads back")
+    func everyHopSpellingIsReadableOnMac() {
+        for method in SSHJumpAuthMethod.allCases {
+            #expect(SSHJumpAuthMethod(carrying: method.rawValue) == method)
+        }
+        #expect(SSHJumpAuthMethod(carrying: "privateKey") == .privateKey)
+        #expect(SSHJumpAuthMethod(carrying: "publicKey") == .privateKey)
+        #expect(SSHJumpAuthMethod(carrying: "sshAgent") == .sshAgent)
+        #expect(SSHJumpAuthMethod(carrying: "totp-only") == .sshAgent)
     }
 }

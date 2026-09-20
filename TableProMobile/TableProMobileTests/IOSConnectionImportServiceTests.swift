@@ -68,21 +68,9 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: "com.TablePro.password.\(id.uuidString)") == nil)
     }
 
-    @Test("an imported jump host keeps its port, auth method and key path")
-    func importKeepsJumpHostFields() throws {
+    private func importedSSH(_ ssh: ExportableSSHConfig) throws -> SSHConfiguration {
         let fixture = try AppStateFixture()
         let appState = fixture.makeState(syncEnabled: false, secureStore: MockSecureStore())
-        let ssh = ExportableSSHConfig(
-            enabled: true, host: "db-1", port: 22, username: "deploy",
-            authMethod: "Password", privateKeyPath: "", agentSocketPath: "",
-            jumpHosts: [
-                ExportableJumpHost(
-                    host: "bastion-1", port: nil, username: "ops",
-                    authMethod: "Private Key", privateKeyPath: "~/.ssh/id_ed25519"
-                )
-            ],
-            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
-        )
         let imported = ExportableConnection(
             name: "Bastion", host: "db-1", port: 5_432, database: "", username: "",
             type: DatabaseType.postgresql.rawValue, sshConfig: ssh, sslConfig: nil, color: nil, tagName: nil,
@@ -102,11 +90,49 @@ struct IOSConnectionImportServiceTests {
         )
 
         #expect(result.importedCount == 1)
-        let hop = try #require(appState.connections.first?.sshConfiguration?.jumpHosts.first)
+        return try #require(appState.connections.first?.sshConfiguration)
+    }
+
+    @Test("an imported jump host keeps its port, auth method and key path")
+    func importKeepsJumpHostFields() throws {
+        let config = try importedSSH(ExportableSSHConfig(
+            enabled: true, host: "db-1", port: 22, username: "deploy",
+            authMethod: "Password", privateKeyPath: "", agentSocketPath: "",
+            jumpHosts: [
+                ExportableJumpHost(
+                    host: "bastion-1", port: nil, username: "ops",
+                    authMethod: "Private Key", privateKeyPath: "~/.ssh/id_ed25519"
+                )
+            ],
+            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
+        ))
+
+        let hop = try #require(config.jumpHosts.first)
         #expect(hop.host == "bastion-1")
         #expect(hop.port == nil)
-        #expect(hop.macAuthMethod == "Private Key")
+        #expect(hop.macAuthMethod == .privateKey)
         #expect(hop.macPrivateKeyPath == "~/.ssh/id_ed25519")
+    }
+
+    @Test("A file a shipped iOS build wrote imports with an unset port and a hop macOS can read")
+    func importNormalizesLegacyIOSFile() throws {
+        let config = try importedSSH(ExportableSSHConfig(
+            enabled: true, host: "db-1", port: nil, username: "deploy",
+            authMethod: "sshAgent", privateKeyPath: "", agentSocketPath: "",
+            jumpHosts: [
+                ExportableJumpHost(
+                    host: "bastion-1", port: nil, username: "ops",
+                    authMethod: "sshAgent", privateKeyPath: ""
+                )
+            ],
+            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
+        ))
+
+        #expect(config.port == nil)
+        #expect(config.resolvedPort == 22)
+        #expect(config.authMethod == .sshAgent)
+        let hop = try #require(config.jumpHosts.first)
+        #expect(hop.macAuthMethod == .sshAgent)
     }
 
     @Test("suggested filename uses the connection name for a single export")

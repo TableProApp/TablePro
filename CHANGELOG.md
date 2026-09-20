@@ -142,6 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
+- An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 
 ### Security
 

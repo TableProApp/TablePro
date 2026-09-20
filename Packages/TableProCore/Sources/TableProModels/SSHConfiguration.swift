@@ -1,8 +1,14 @@
 import Foundation
 
 public struct SSHConfiguration: Codable, Hashable, Sendable {
+    public static let defaultPort = 22
+
     public var host: String
-    public var port: Int
+
+    /// Nil where the macOS form left the port unset, which is its default: the tunnel then takes
+    /// `Port` from `~/.ssh/config`, or 22. Writing 22 back instead pins it and stops that lookup.
+    public var port: Int?
+
     public var username: String
     public var authMethod: SSHAuthMethod
     public var privateKeyPath: String?
@@ -23,12 +29,16 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public var macTotpDigits: Int?
     public var macTotpPeriod: Int?
 
+    /// The raw values are the spellings the macOS app writes, because they are the only ones it
+    /// reads back: its own `SSHAuthMethod(rawValue:)` is strict and falls back to Password, so a
+    /// round trip that re-encoded the lowercase case name silently downgraded an agent or key
+    /// tunnel. Decoding stays lenient so a connection an older iOS build stored still reads.
     public enum SSHAuthMethod: String, Codable, Sendable {
-        case password
-        case privateKey
-        case sshAgent
-        case keyboardInteractive
-        case none
+        case password = "Password"
+        case privateKey = "Private Key"
+        case sshAgent = "SSH Agent"
+        case keyboardInteractive = "Keyboard Interactive"
+        case none = "None"
 
         public init(from decoder: Decoder) throws {
             let raw = try decoder.singleValueContainer().decode(String.self)
@@ -49,9 +59,12 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         }
     }
 
+    /// The port to dial. iOS reads no `~/.ssh/config`, so an unset port is the SSH default here.
+    public var resolvedPort: Int { port ?? Self.defaultPort }
+
     public init(
         host: String = "",
-        port: Int = 22,
+        port: Int? = nil,
         username: String = "",
         authMethod: SSHAuthMethod = .password,
         privateKeyPath: String? = nil,
@@ -76,7 +89,7 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         host = (try? container.decode(String.self, forKey: .host)) ?? ""
-        port = (try? container.decode(Int.self, forKey: .port)) ?? 22
+        port = try? container.decodeIfPresent(Int.self, forKey: .port)
         username = (try? container.decode(String.self, forKey: .username)) ?? ""
         authMethod = (try? container.decode(SSHAuthMethod.self, forKey: .authMethod)) ?? .password
         privateKeyPath = try? container.decode(String.self, forKey: .privateKeyPath)
@@ -95,7 +108,7 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(host, forKey: .host)
-        try container.encode(port, forKey: .port)
+        try container.encodeIfPresent(port, forKey: .port)
         try container.encode(username, forKey: .username)
         try container.encode(authMethod, forKey: .authMethod)
         try container.encodeIfPresent(privateKeyPath, forKey: .privateKeyPath)
@@ -112,6 +125,30 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     }
 }
 
+/// How a hop authenticates, in the two spellings the macOS app writes. A hop is never dialled from
+/// iOS, so the value is carried rather than used, and the risk is carrying one macOS cannot read: an
+/// already-shipped build decodes this raw value strictly, and a `dataCorrupted` thrown inside
+/// `jumpHosts` takes the whole SSH configuration with it, and with that the connection. Every
+/// shipped iOS build wrote the case name `sshAgent`, which is exactly such a value, so anything but
+/// the two spellings normalizes here instead of being carried back out.
+public enum SSHJumpAuthMethod: String, Codable, Sendable, CaseIterable {
+    case privateKey = "Private Key"
+    case sshAgent = "SSH Agent"
+
+    public init(carrying raw: String) {
+        switch raw {
+        case "Private Key", "privateKey", "publicKey":
+            self = .privateKey
+        default:
+            self = .sshAgent
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init(carrying: try decoder.singleValueContainer().decode(String.self))
+    }
+}
+
 public struct SSHJumpHost: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var host: String
@@ -121,21 +158,17 @@ public struct SSHJumpHost: Codable, Hashable, Sendable, Identifiable {
     public var port: Int?
     public var username: String
 
-    /// How the hop authenticates, in the spelling the macOS app writes ("SSH Agent", "Private Key").
-    /// A hop has no dialable credential on iOS, so these two are carried rather than used. Both are
-    /// always encoded: a hop without them fails the macOS decode and takes the whole connection
-    /// with it.
-    public var macAuthMethod: String
+    /// The hop's macOS credential, carried so a sync round trip gives it back. Both are always
+    /// encoded: a hop without them fails the macOS decode and takes the whole connection with it.
+    public var macAuthMethod: SSHJumpAuthMethod
     public var macPrivateKeyPath: String
-
-    public static let defaultMacAuthMethod = "SSH Agent"
 
     public init(
         id: UUID = UUID(),
         host: String = "",
         port: Int? = nil,
         username: String = "",
-        macAuthMethod: String = SSHJumpHost.defaultMacAuthMethod,
+        macAuthMethod: SSHJumpAuthMethod = .sshAgent,
         macPrivateKeyPath: String = ""
     ) {
         self.id = id
@@ -159,8 +192,7 @@ public struct SSHJumpHost: Codable, Hashable, Sendable, Identifiable {
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         port = try container.decodeIfPresent(Int.self, forKey: .port)
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
-        macAuthMethod = try container.decodeIfPresent(String.self, forKey: .authMethod)
-            ?? Self.defaultMacAuthMethod
+        macAuthMethod = (try? container.decodeIfPresent(SSHJumpAuthMethod.self, forKey: .authMethod)) ?? .sshAgent
         macPrivateKeyPath = try container.decodeIfPresent(String.self, forKey: .privateKeyPath) ?? ""
     }
 

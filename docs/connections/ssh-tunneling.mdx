@@ -103,7 +103,7 @@ For a database behind more than one bastion, expand **Jump Hosts** and add each 
 
 With the list left empty and an SSH host that matches a config entry carrying `ProxyJump`, that directive is followed instead.
 
-Hops are Mac only. A connection that has them syncs to [iPhone and iPad](/ios) with every hop and its key path intact, and does not open there.
+Hops are Mac only. A connection that has them syncs to [iPhone and iPad](/ios) with every hop, its port and its key path intact, and does not open there. The tunnel's own port and auth method make the same round trip: a port you left empty stays empty, so `~/.ssh/config` still decides it.
 
 ## Forwarding to a unix socket
 

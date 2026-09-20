@@ -748,7 +748,7 @@ enum ConnectionExportService {
             config.host = ssh.host
             config.port = ssh.port
             config.username = ssh.username
-            config.authMethod = SSHAuthMethod(rawValue: ssh.authMethod) ?? .password
+            config.authMethod = SSHAuthMethod(carrying: ssh.authMethod)
             config.privateKeyPath = PathPortability.expandHome(ssh.privateKeyPath)
             config.agentSocketPath = PathPortability.expandHome(ssh.agentSocketPath)
             config.jumpHosts = (ssh.jumpHosts ?? []).map { jump in
@@ -756,7 +756,7 @@ enum ConnectionExportService {
                     host: jump.host,
                     port: jump.port,
                     username: jump.username,
-                    authMethod: SSHJumpAuthMethod(rawValue: jump.authMethod) ?? .sshAgent,
+                    authMethod: SSHJumpAuthMethod(carrying: jump.authMethod),
                     privateKeyPath: PathPortability.expandHome(jump.privateKeyPath)
                 )
             }

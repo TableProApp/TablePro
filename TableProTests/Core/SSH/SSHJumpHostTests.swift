@@ -114,10 +114,22 @@ struct SSHJumpHostTests {
 
     @Test("An auth method this app does not know falls back to SSH Agent")
     func testDecodesUnknownAuthMethod() throws {
-        let json = #"[{"host":"bastion.example.com","username":"ops","authMethod":"sshAgent"}]"#
+        let json = #"[{"host":"bastion.example.com","username":"ops","authMethod":"totp-only"}]"#
         let hops = try JSONDecoder().decode([SSHJumpHost].self, from: Data(json.utf8))
 
         #expect(hops[0].authMethod == .sshAgent)
+    }
+
+    @Test("A hop an iPhone wrote by case name keeps the method it names")
+    func testDecodesIOSSpelling() throws {
+        let json = """
+        [{"host":"b1.example.com","username":"ops","authMethod":"sshAgent"},
+         {"host":"b2.example.com","username":"ops","authMethod":"privateKey","privateKeyPath":"~/.ssh/id"}]
+        """
+        let hops = try JSONDecoder().decode([SSHJumpHost].self, from: Data(json.utf8))
+
+        #expect(hops[0].authMethod == .sshAgent)
+        #expect(hops[1].authMethod == .privateKey)
     }
 
     @Test("A hop with no port encodes without the key, so the config lookup still applies")

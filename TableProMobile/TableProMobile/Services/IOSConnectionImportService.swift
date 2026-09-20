@@ -160,7 +160,7 @@ enum IOSConnectionImportService {
             sshEnabled = true
             sshConfiguration = SSHConfiguration(
                 host: ssh.host,
-                port: ssh.port ?? 22,
+                port: ssh.port,
                 username: ssh.username,
                 authMethod: sshAuthMethod(from: ssh.authMethod),
                 privateKeyPath: PathPortability.expandHome(ssh.privateKeyPath).isEmpty
@@ -170,7 +170,7 @@ enum IOSConnectionImportService {
                         host: $0.host,
                         port: $0.port,
                         username: $0.username,
-                        macAuthMethod: $0.authMethod,
+                        macAuthMethod: SSHJumpAuthMethod(carrying: $0.authMethod),
                         macPrivateKeyPath: $0.privateKeyPath
                     )
                 }

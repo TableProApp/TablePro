@@ -80,7 +80,7 @@ struct IOSConnectionExportServiceTests {
                     SSHJumpHost(
                         host: "bastion-1",
                         username: "ops",
-                        macAuthMethod: "Private Key",
+                        macAuthMethod: .privateKey,
                         macPrivateKeyPath: "~/.ssh/id_ed25519"
                     )
                 ]
@@ -101,5 +101,30 @@ struct IOSConnectionExportServiceTests {
         #expect(hop.port == nil)
         #expect(hop.authMethod == "Private Key")
         #expect(hop.privateKeyPath == "~/.ssh/id_ed25519")
+    }
+
+    @Test("An exported tunnel writes the port and auth method in the spellings macOS reads back")
+    func exportWritesMacReadableTunnel() async throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let connection = DatabaseConnection(
+            name: "Agent",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db-1", username: "deploy", authMethod: .sshAgent)
+        )
+        #expect(state.addConnection(connection))
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: false,
+            passphrase: nil
+        )
+        let envelope = try ConnectionImportDecoder.decodeData(data)
+        let ssh = try #require(envelope.connections.first?.sshConfig)
+
+        #expect(ssh.port == nil)
+        #expect(ssh.authMethod == "SSH Agent")
     }
 }

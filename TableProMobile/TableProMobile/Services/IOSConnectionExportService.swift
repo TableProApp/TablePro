@@ -162,7 +162,7 @@ enum IOSConnectionExportService {
                 host: $0.host,
                 port: $0.port,
                 username: $0.username,
-                authMethod: $0.macAuthMethod,
+                authMethod: $0.macAuthMethod.rawValue,
                 privateKeyPath: $0.macPrivateKeyPath
             )
         }

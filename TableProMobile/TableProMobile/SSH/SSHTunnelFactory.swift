@@ -22,7 +22,7 @@ enum SSHTunnelFactory {
 
         let tunnel = SSHTunnel()
 
-        try await tunnel.connect(host: config.host, port: config.port)
+        try await tunnel.connect(host: config.host, port: config.resolvedPort)
         try await tunnel.handshake()
 
         let presentedKey = try await tunnel.hostKey()
@@ -31,7 +31,7 @@ enum SSHTunnelFactory {
                 keyData: presentedKey.keyData,
                 keyType: presentedKey.keyType,
                 hostname: config.host,
-                port: config.port,
+                port: config.resolvedPort,
                 prompter: prompter
             )
         } catch {
