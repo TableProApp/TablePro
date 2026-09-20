@@ -8,8 +8,8 @@
 //
 //  Two observations, because one does not imply the other. The server side sees a zero-length
 //  read, which is what proves the connection was broken; `shutdown` alone produces it, so the
-//  descriptor count is what proves the number was given back. Deleting `Darwin.close` from
-//  `discard()` leaves every EOF assertion here passing and fails the count.
+//  socket's own local port is what proves the number was given back. Deleting `Darwin.close` from
+//  `discard()` leaves every EOF assertion here passing and fails the port lookup.
 //
 
 import Foundation
@@ -61,14 +61,12 @@ struct SSHTunnelStagesSocketTests {
         let listener = try LoopbackListener()
         defer { listener.close() }
 
-        try await Self.connectThenDiscard(listener)
-        let baseline = OpenDescriptors.settledCount()
-
-        for _ in 0 ..< 20 {
-            try await Self.connectThenDiscard(listener)
+        var connectedPorts: Set<Int> = []
+        for _ in 0 ..< 5 {
+            connectedPorts.insert(try await Self.connectThenDiscard(listener))
         }
 
-        #expect(OpenDescriptors.settledCount(notAbove: baseline) <= baseline)
+        #expect(OpenSockets.awaitRelease(of: connectedPorts).isEmpty)
     }
 
     @Test("Cancelling inside the handshake returns at once and closes the socket")
@@ -114,40 +112,75 @@ struct SSHTunnelStagesSocketTests {
         #expect(LoopbackListener.readsEOF(accepted, timeout: 5))
     }
 
-    private static func connectThenDiscard(_ listener: LoopbackListener) async throws {
+    /// The local port the discarded connect was using, which the server side reads off the
+    /// connection it accepted. It names that one socket for the rest of the test: no other suite
+    /// can hold a socket on it while this one does.
+    private static func connectThenDiscard(_ listener: LoopbackListener) async throws -> Int {
         let stages = LibSSH2TunnelStages()
         try await stages.connect(host: "127.0.0.1", port: listener.port)
 
         let accepted = try #require(listener.acceptOne(timeout: 2))
         defer { Darwin.close(accepted) }
 
+        let connectedPort = try #require(LoopbackListener.peerPort(accepted))
+
         stages.discard()
         #expect(LoopbackListener.readsEOF(accepted, timeout: 2))
+        return connectedPort
     }
 }
 
-/// How many descriptors this process holds. A socket that was only shut down still counts, which
-/// is the whole point: the server's zero-length read cannot tell a `shutdown` from a `close`.
-private enum OpenDescriptors {
-    static func count() -> Int {
-        (0 ..< getdtablesize()).reduce(into: 0) { total, descriptor in
-            if fcntl(descriptor, F_GETFD) >= 0 { total += 1 }
+/// Which of the named local ports this process still holds a socket for. It answers for the
+/// sockets the test itself opened rather than for the whole descriptor table, so a suite running
+/// beside this one cannot move it.
+///
+/// `getsockname` is what can tell a `shutdown` from a `close`, measured: it keeps answering with
+/// the port after `shutdown(SHUT_RDWR)` and after the peer has closed, and fails with `EBADF` the
+/// moment the descriptor goes. The server's zero-length read can tell neither.
+private enum OpenSockets {
+    static func holdingPorts(among ports: Set<Int>) -> Set<Int> {
+        var held: Set<Int> = []
+        for descriptor in 0 ..< getdtablesize() where fcntl(descriptor, F_GETFD) >= 0 {
+            guard let port = localPort(of: descriptor), ports.contains(port) else { continue }
+            held.insert(port)
         }
+        return held
     }
 
-    /// The count once two readings agree and it is no higher than `notAbove`, or the last reading
-    /// at the deadline. `discard()` closes on the session queue, so the release lands after the
-    /// call has returned; a leak instead settles at a count that never comes back down.
-    static func settledCount(notAbove limit: Int = .max, timeout: TimeInterval = 5) -> Int {
+    /// The ports still held at the deadline. `discard()` closes on the session queue, so the
+    /// release lands after the call has returned; a leaked socket keeps its port forever.
+    static func awaitRelease(of ports: Set<Int>, timeout: TimeInterval = 5) -> Set<Int> {
         let deadline = Date().addingTimeInterval(timeout)
-        var previous = count()
-        while Date() < deadline {
+        var held = holdingPorts(among: ports)
+        while !held.isEmpty, Date() < deadline {
             usleep(100_000)
-            let current = count()
-            if current == previous, current <= limit { return current }
-            previous = current
+            held = holdingPorts(among: ports)
         }
-        return previous
+        return held
+    }
+
+    private static func localPort(of descriptor: Int32) -> Int? {
+        var storage = sockaddr_storage()
+        var length = socklen_t(MemoryLayout<sockaddr_storage>.size)
+        let named = withUnsafeMutablePointer(to: &storage) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getsockname(descriptor, $0, &length)
+            }
+        }
+        guard named == 0 else { return nil }
+
+        switch Int32(storage.ss_family) {
+        case AF_INET:
+            return withUnsafePointer(to: &storage) {
+                $0.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { Int($0.pointee.sin_port.bigEndian) }
+            }
+        case AF_INET6:
+            return withUnsafePointer(to: &storage) {
+                $0.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { Int($0.pointee.sin6_port.bigEndian) }
+            }
+        default:
+            return nil
+        }
     }
 }
 
@@ -213,6 +246,20 @@ private final class LoopbackListener {
             }
         }
         return clientFD >= 0 ? clientFD : nil
+    }
+
+    /// The port the peer of an accepted connection is connected from, asked of the server side
+    /// because the client side belongs to the code under test.
+    static func peerPort(_ fd: Int32) -> Int? {
+        var address = sockaddr_in()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let named = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getpeername(fd, $0, &length)
+            }
+        }
+        guard named == 0 else { return nil }
+        return Int(address.sin_port.bigEndian)
     }
 
     /// Whether the peer closed or shut down its end. `shutdown` and `close` both surface here as a
