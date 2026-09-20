@@ -800,10 +800,10 @@ struct RowImportSheet: View {
         switch destination {
         case .existingTable:
             guard let table = selectedTargetTable else { return }
-            runImport(targetTable: table, mapping: existingMapping(), createTableSQL: nil)
+            runImport(targetTable: table, mapping: existingMapping(), createTableStatements: nil)
         case .newTable:
             let name = newTableName.trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty, let sql = buildCreateTableSQL(tableName: name) else {
+            guard !name.isEmpty, let statements = buildCreateTableStatements(tableName: name) else {
                 importError = NSError(
                     domain: "RowImport", code: -1,
                     userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not build the CREATE TABLE statement")]
@@ -811,7 +811,7 @@ struct RowImportSheet: View {
                 showErrorDialog = true
                 return
             }
-            runImport(targetTable: name, mapping: newTableMapping(), createTableSQL: sql)
+            runImport(targetTable: name, mapping: newTableMapping(), createTableStatements: statements)
         }
     }
 
@@ -833,7 +833,7 @@ struct RowImportSheet: View {
         return mapping
     }
 
-    private func buildCreateTableSQL(tableName: String) -> String? {
+    private func buildCreateTableStatements(tableName: String) -> [String]? {
         let included = newColumns.filter {
             $0.include
                 && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -862,18 +862,22 @@ struct RowImportSheet: View {
         )
 
         let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver
-        return pluginDriver?.generateCreateTableSQL(definition: definition)
+        let statements = pluginDriver?.generateCreateTableStatements(definition: definition)?
+            .map { StatementBlank.trimming($0) }
+            .filter { !$0.isEmpty }
+        guard let statements, !statements.isEmpty else { return nil }
+        return statements
     }
 
-    private func runImport(targetTable: String, mapping: [String: String], createTableSQL: String?) {
+    private func runImport(targetTable: String, mapping: [String: String], createTableStatements: [String]?) {
         let service = ImportService(connection: connection)
         importService = service
         showProgressDialog = true
 
         importTask = Task {
             do {
-                if let createTableSQL {
-                    try await prepareTable(named: targetTable, sql: createTableSQL)
+                if let createTableStatements {
+                    try await prepareTable(named: targetTable, statements: createTableStatements)
                 }
                 let result = try await service.importFile(
                     from: fileURL,
@@ -907,12 +911,13 @@ struct RowImportSheet: View {
     }
 
     @MainActor
-    private func prepareTable(named tableName: String, sql: String) async throws {
+    private func prepareTable(named tableName: String, statements: [String]) async throws {
+        let sql = statements.joined(separator: "\n")
         switch NewTableImportPlanner.plan(
             forTable: tableName, createTableSQL: sql, alreadyCreated: createdTables
         ) {
         case .create:
-            try await createTable(sql: sql)
+            try await createTable(statements: statements)
             createdTables[tableName] = sql
         case .reuseAfterClearing:
             try await clearRows(of: tableName)
@@ -941,11 +946,16 @@ struct RowImportSheet: View {
         try await runOnLeasedDriver(sql)
     }
 
-    private func createTable(sql: String) async throws {
+    /// One call per statement the driver wrote, because an engine that runs one statement per call refuses a table
+    /// and its indexes sent together.
+    private func createTable(statements: [String]) async throws {
+        let script = SQLScriptText(databaseType: connection.type).script(statements)
         try await authorize(
-            sql: sql, kind: .schemaMutation, description: String(localized: "Create Table")
+            sql: script, kind: .schemaMutation, description: String(localized: "Create Table")
         )
-        try await runOnLeasedDriver(sql)
+        for statement in statements {
+            try await runOnLeasedDriver(statement)
+        }
         CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .tables)))
     }
 

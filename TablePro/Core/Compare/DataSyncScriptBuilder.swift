@@ -92,9 +92,9 @@ internal struct DataSyncScriptBuilder {
         guard !statements.inserts.isEmpty, identityInsertStyle == .identityInsertSession else { return }
         let table = qualifiedTable
         let scope = "identity-insert|\(plan.targetSchema ?? "")|\(plan.table)"
-        let closingSQL = "SET IDENTITY_INSERT \(table) OFF;"
+        let closingSQL = "SET IDENTITY_INSERT \(table) OFF"
         let open = SyncStatement(
-            sql: "SET IDENTITY_INSERT \(table) ON;",
+            sql: "SET IDENTITY_INSERT \(table) ON",
             objectName: plan.id,
             summary: String(format: String(localized: "Allow explicit identity values in %@"), plan.table),
             sessionEffect: .opens(scope: scope, closingSQL: closingSQL)
@@ -144,7 +144,7 @@ internal struct DataSyncScriptBuilder {
         let valueList = columns.map { literal(row.value(for: $0), column: $0) }.joined(separator: ", ")
         let override = identityInsertStyle == .overridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
         return SyncStatement(
-            sql: "INSERT INTO \(qualifiedTable) (\(columnList))\(override) VALUES (\(valueList));",
+            sql: "INSERT INTO \(qualifiedTable) (\(columnList))\(override) VALUES (\(valueList))",
             objectName: plan.id,
             summary: String(format: String(localized: "Insert row %@ into %@"), entry.keyDescription, plan.table),
             expectedRowCount: 1
@@ -160,7 +160,7 @@ internal struct DataSyncScriptBuilder {
             .map { "\(targetDriver.quoteIdentifier($0)) = \(literal(source.value(for: $0), column: $0))" }
             .joined(separator: ", ")
         return SyncStatement(
-            sql: "UPDATE \(qualifiedTable) SET \(assignments) WHERE \(predicate);",
+            sql: "UPDATE \(qualifiedTable) SET \(assignments) WHERE \(predicate)",
             objectName: plan.id,
             summary: String(format: String(localized: "Update row %@ in %@"), entry.keyDescription, plan.table),
             expectedRowCount: 1
@@ -170,7 +170,7 @@ internal struct DataSyncScriptBuilder {
     private func deleteStatement(row: DataRow, entry: RowDiffEntry) -> SyncStatement? {
         guard let predicate = keyPredicate(row: row) else { return nil }
         return SyncStatement(
-            sql: "DELETE FROM \(qualifiedTable) WHERE \(predicate);",
+            sql: "DELETE FROM \(qualifiedTable) WHERE \(predicate)",
             objectName: plan.id,
             summary: String(format: String(localized: "Delete row %@ from %@"), entry.keyDescription, plan.table),
             hazards: [SyncHazard(

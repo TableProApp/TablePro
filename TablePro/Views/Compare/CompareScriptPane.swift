@@ -120,7 +120,7 @@ internal struct CompareScriptPane: View {
     // MARK: - Text
 
     private var scriptText: String {
-        session.statements.map { $0.sql }.joined(separator: "\n")
+        session.scriptText
     }
 
     /// `database` is the whole file path on SQLite and DuckDB, so Save… prefilled

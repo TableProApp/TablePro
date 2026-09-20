@@ -516,6 +516,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var triggerEditUsesReplace: Bool { true }
 
+    var replacesDefinitionsInPlace: Bool { true }
+
     func createTriggerTemplate(table: String, schema: String?) -> String? {
         let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\""))\""
         return """
@@ -530,7 +532,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER \"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        OracleObjectQueries.dropTrigger(name: name, schema: schema, currentSchema: _currentSchema)
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -924,6 +926,16 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard let statements = generateCreateTableStatements(definition: definition),
+              let createTable = statements.first else { return nil }
+        let indexStatements = statements.dropFirst()
+        guard !indexStatements.isEmpty else { return createTable + ";" }
+        return createTable + ";\n\n" + indexStatements.joined(separator: ";\n") + ";"
+    }
+
+    /// The table and each of its indexes as a statement of its own. Oracle runs one statement per call, and sent as
+    /// one text the table and its indexes fail with ORA-03405 and create nothing.
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
         guard !definition.columns.isEmpty else { return nil }
 
         let qualifiedTable = oracleQualifiedTable(definition.tableName)
@@ -940,19 +952,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             parts.append(oracleForeignKeyConstraint(fk))
         }
 
-        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
+        let createTable = "CREATE TABLE \(qualifiedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        var indexStatements: [String] = []
-        for index in definition.indexes {
-            indexStatements.append(oracleIndexDefinition(index, qualifiedTable: qualifiedTable))
-        }
-        if !indexStatements.isEmpty {
-            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
-        }
-
-        return sql
+            "\n)"
+        let indexStatements = definition.indexes.map { oracleIndexDefinition($0, qualifiedTable: qualifiedTable) }
+        return [createTable] + indexStatements
     }
 
     // MARK: - Definition SQL (clipboard copy)
