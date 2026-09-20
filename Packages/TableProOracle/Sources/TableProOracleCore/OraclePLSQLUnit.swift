@@ -65,7 +65,7 @@ public struct OraclePLSQLUnit: Sendable, Equatable {
         let owner = owner.map { "'\(OracleSchemaQueries.escapeLiteral($0))'" }
             ?? "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
         return """
-            SELECT LINE, POSITION, TEXT FROM ALL_ERRORS \
+            SELECT LINE, POSITION, TEXT FROM \(OracleDictionary.allErrors) \
             WHERE OWNER = \(owner) \
             AND NAME = '\(OracleSchemaQueries.escapeLiteral(name))' \
             AND TYPE = '\(OracleSchemaQueries.escapeLiteral(type))' \

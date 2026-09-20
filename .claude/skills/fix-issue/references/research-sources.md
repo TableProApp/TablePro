@@ -17,7 +17,7 @@ There are no MCP servers configured in this repo. Everything below is a built-in
 ### The local SDK interface files
 
 ```
-/Applications/Xcode-beta.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/<Framework>.framework/Modules/<Framework>.swiftmodule/arm64e-apple-macos.swiftinterface
+$(xcrun --sdk macosx --show-sdk-path)/System/Library/Frameworks/<Framework>.framework/Modules/<Framework>.swiftmodule/arm64e-apple-macos.swiftinterface
 ```
 
 `AppKit`, `SwiftUI`, `Foundation`, and the rest are all there. This is the ground truth for "does this API exist and what is its signature", because it is the interface the compiler will read. Web docs describe intent; the interface file settles facts. Use both: the interface for the signature, the docs for the behaviour.
@@ -28,7 +28,7 @@ There are no MCP servers configured in this repo. Everything below is a built-in
 - **AppKit**: `https://developer.apple.com/documentation/appkit`. Native windows, sheets, `NSToolbar`, `NSTableView` and `NSOutlineView`, `NSWindow` tabbing, the responder chain, menus, `NSViewController`.
 - **SwiftUI**: `https://developer.apple.com/documentation/swiftui`. TablePro is SwiftUI-first with AppKit where SwiftUI falls short. Check whether a native SwiftUI modifier already does the job before dropping to AppKit, and check the reverse too: several TablePro views are AppKit precisely because the SwiftUI equivalent misbehaves, and `CLAUDE.md` records why.
 - **Deprecations matter.** Name the modern API. If the only documented option is deprecated, say so and note the replacement.
-- **Availability matters.** TablePro targets macOS 14. An API introduced in 15 or 26 needs an `if #available` branch and a fallback, and the blueprint has to say what the fallback is.
+- **Availability matters.** TablePro targets macOS 13 (`deploymentTarget` in `project.yml`). An API introduced in 14, 15 or 26 needs an `if #available` branch and a fallback, and the blueprint has to say what the fallback is.
 
 ## Competitor apps
 

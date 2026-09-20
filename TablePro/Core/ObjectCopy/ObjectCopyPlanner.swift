@@ -132,13 +132,13 @@ internal struct ObjectCopyPlanner {
             scope: targetScope(request, endpoint: request.target)
         ) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [] }
-            return namespaces.compactMap { name in
-                guard let sql = plugin.createSchemaStatement(name: name) else { return nil }
-                return SyncStatement(
-                    sql: sql.hasSuffix(";") ? sql : sql + ";",
-                    objectName: name,
-                    summary: String(format: String(localized: "Create schema %@"), name)
-                )
+            let scriptText = SQLScriptText(databaseType: driver.connection.type)
+            return namespaces.flatMap { name -> [SyncStatement] in
+                guard let sql = plugin.createSchemaStatement(name: name) else { return [] }
+                let summary = String(format: String(localized: "Create schema %@"), name)
+                return scriptText.sendableStatements(sql).map { statement in
+                    SyncStatement(sql: statement, objectName: name, summary: summary)
+                }
             }
         }
     }
@@ -528,7 +528,7 @@ internal struct ObjectCopyPlanner {
     ) -> [SyncStatement] {
         sql.map { statement in
             SyncStatement(
-                sql: statement.hasSuffix(";") ? statement : statement + ";",
+                sql: statement,
                 objectName: table,
                 summary: String(format: String(localized: "Create the sequences %@ defaults from"), table)
             )
@@ -626,7 +626,7 @@ internal struct ObjectCopyPlanner {
             name: table, schema: schema, databaseType: databaseType, quote: driver.quoteIdentifier
         )
         return [SyncStatement(
-            sql: "DROP TABLE \(target);",
+            sql: "DROP TABLE \(target)",
             objectName: table,
             summary: String(format: String(localized: "Drop table %@"), table),
             hazards: SyncSafetyClassifier().hazards(forDropping: table)
@@ -690,18 +690,17 @@ internal struct ObjectCopyPlanner {
             ? nil
             : driver.truncateTableStatements(table: table, schema: schema, cascade: false)?.first
         let sql = truncate ?? "DELETE FROM \(qualified)"
-        return [SyncStatement(
-            sql: sql.hasSuffix(";") ? sql : sql + ";",
-            objectName: table,
-            summary: String(format: String(localized: "Empty %@ before copying"), table),
-            hazards: [SyncHazard(
-                kind: .dataLoss,
-                severity: .refusedByDefault,
-                explanation: String(
-                    format: String(localized: "Every row already in %@ is removed."), table
-                )
-            )]
+        let summary = String(format: String(localized: "Empty %@ before copying"), table)
+        let hazards = [SyncHazard(
+            kind: .dataLoss,
+            severity: .refusedByDefault,
+            explanation: String(
+                format: String(localized: "Every row already in %@ is removed."), table
+            )
         )]
+        return SQLScriptText(databaseType: databaseType).sendableStatements(sql).map { statement in
+            SyncStatement(sql: statement, objectName: table, summary: summary, hazards: hazards)
+        }
     }
 
     // MARK: - Views, routines and triggers
@@ -821,7 +820,11 @@ internal struct ObjectCopyPlanner {
             let builder = SourceObjectSyncBuilder(targetDriver: plugin, targetDatabaseType: driver.connection.type)
             var statements: [String: (drop: [SyncStatement], create: [SyncStatement])] = [:]
             for input in inputs {
-                let drop = input.drop.map { builder.build(for: $0, action: .drop) } ?? []
+                let drop = input.drop.map { existing in
+                    builder.replacesInPlace(existing.identity, with: input.create)
+                        ? []
+                        : builder.build(for: existing, action: .drop)
+                } ?? []
                 let create = builder.build(for: input.create, action: .create)
                 statements[input.id] = (drop, create)
             }

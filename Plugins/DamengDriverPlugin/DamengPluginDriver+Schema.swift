@@ -6,11 +6,11 @@ extension DamengPluginDriver {
         let result = try await executeParameterized(
             query: """
                 SELECT TABLE_NAME, 'TABLE' AS TABLE_TYPE
-                FROM ALL_TABLES
+                FROM SYS.ALL_TABLES
                 WHERE OWNER = ?
                 UNION ALL
                 SELECT VIEW_NAME, 'VIEW'
-                FROM ALL_VIEWS
+                FROM SYS.ALL_VIEWS
                 WHERE OWNER = ?
                 ORDER BY 1
                 """,
@@ -35,18 +35,18 @@ extension DamengPluginDriver {
                        CAST(c.DATA_DEFAULT AS VARCHAR(8188)) AS DATA_DEFAULT,
                        CAST(com.COMMENTS AS VARCHAR(8188)) AS COMMENTS,
                        CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
-                FROM ALL_TAB_COLUMNS c
+                FROM SYS.ALL_TAB_COLUMNS c
                 LEFT JOIN (
                     SELECT acc.COLUMN_NAME
-                    FROM ALL_CONS_COLUMNS acc
-                    JOIN ALL_CONSTRAINTS ac
+                    FROM SYS.ALL_CONS_COLUMNS acc
+                    JOIN SYS.ALL_CONSTRAINTS ac
                       ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
                      AND acc.OWNER = ac.OWNER
                     WHERE ac.CONSTRAINT_TYPE = 'P'
                       AND ac.OWNER = ?
                       AND ac.TABLE_NAME = ?
                 ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
-                LEFT JOIN ALL_COL_COMMENTS com
+                LEFT JOIN SYS.ALL_COL_COMMENTS com
                   ON c.OWNER = com.SCHEMA_NAME
                  AND c.TABLE_NAME = com.TABLE_NAME
                  AND c.COLUMN_NAME = com.COLUMN_NAME
@@ -88,11 +88,11 @@ extension DamengPluginDriver {
                        CAST(c.DATA_DEFAULT AS VARCHAR(8188)) AS DATA_DEFAULT,
                        CAST(com.COMMENTS AS VARCHAR(8188)) AS COMMENTS,
                        CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
-                FROM ALL_TAB_COLUMNS c
+                FROM SYS.ALL_TAB_COLUMNS c
                 LEFT JOIN (
                     SELECT acc.OWNER, acc.TABLE_NAME, acc.COLUMN_NAME
-                    FROM ALL_CONS_COLUMNS acc
-                    JOIN ALL_CONSTRAINTS ac
+                    FROM SYS.ALL_CONS_COLUMNS acc
+                    JOIN SYS.ALL_CONSTRAINTS ac
                       ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
                      AND acc.OWNER = ac.OWNER
                     WHERE ac.CONSTRAINT_TYPE = 'P'
@@ -100,7 +100,7 @@ extension DamengPluginDriver {
                   ON c.OWNER = pk.OWNER
                  AND c.TABLE_NAME = pk.TABLE_NAME
                  AND c.COLUMN_NAME = pk.COLUMN_NAME
-                LEFT JOIN ALL_COL_COMMENTS com
+                LEFT JOIN SYS.ALL_COL_COMMENTS com
                   ON c.OWNER = com.SCHEMA_NAME
                  AND c.TABLE_NAME = com.TABLE_NAME
                  AND c.COLUMN_NAME = com.COLUMN_NAME
@@ -139,11 +139,11 @@ extension DamengPluginDriver {
                        i.UNIQUENESS,
                        ic.COLUMN_NAME,
                        CASE WHEN c.CONSTRAINT_TYPE = 'P' THEN 'Y' ELSE 'N' END AS IS_PK
-                FROM ALL_INDEXES i
-                JOIN ALL_IND_COLUMNS ic
+                FROM SYS.ALL_INDEXES i
+                JOIN SYS.ALL_IND_COLUMNS ic
                   ON i.INDEX_NAME = ic.INDEX_NAME
                  AND i.OWNER = ic.INDEX_OWNER
-                LEFT JOIN ALL_CONSTRAINTS c
+                LEFT JOIN SYS.ALL_CONSTRAINTS c
                   ON i.INDEX_NAME = c.INDEX_NAME
                  AND i.OWNER = c.OWNER
                  AND c.CONSTRAINT_TYPE = 'P'
@@ -177,8 +177,8 @@ extension DamengPluginDriver {
         let result = try await executeParameterized(
             query: """
                 SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME
-                FROM ALL_INDEXES i
-                JOIN ALL_IND_COLUMNS ic
+                FROM SYS.ALL_INDEXES i
+                JOIN SYS.ALL_IND_COLUMNS ic
                   ON i.INDEX_NAME = ic.INDEX_NAME
                  AND i.OWNER = ic.INDEX_OWNER
                 WHERE i.TABLE_NAME = ?
@@ -187,7 +187,7 @@ extension DamengPluginDriver {
                     -- Only the primary key. fetchTableDDL declares that inline and no other
                     -- constraint, so a unique constraint's index has to come through here or the
                     -- restore loses the uniqueness.
-                    SELECT 1 FROM ALL_CONSTRAINTS c
+                    SELECT 1 FROM SYS.ALL_CONSTRAINTS c
                     WHERE c.INDEX_NAME = i.INDEX_NAME
                       AND c.OWNER = i.OWNER
                       AND c.CONSTRAINT_TYPE = 'P'
@@ -212,14 +212,14 @@ extension DamengPluginDriver {
                        rcc.COLUMN_NAME,
                        ac.DELETE_RULE,
                        rc.OWNER
-                FROM ALL_CONSTRAINTS ac
-                JOIN ALL_CONS_COLUMNS acc
+                FROM SYS.ALL_CONSTRAINTS ac
+                JOIN SYS.ALL_CONS_COLUMNS acc
                   ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
                  AND ac.OWNER = acc.OWNER
-                JOIN ALL_CONSTRAINTS rc
+                JOIN SYS.ALL_CONSTRAINTS rc
                   ON ac.R_CONSTRAINT_NAME = rc.CONSTRAINT_NAME
                  AND ac.R_OWNER = rc.OWNER
-                JOIN ALL_CONS_COLUMNS rcc
+                JOIN SYS.ALL_CONS_COLUMNS rcc
                   ON rc.CONSTRAINT_NAME = rcc.CONSTRAINT_NAME
                  AND rc.OWNER = rcc.OWNER
                  AND acc.POSITION = rcc.POSITION
@@ -251,7 +251,7 @@ extension DamengPluginDriver {
     func fetchSchemas() async throws -> [String] {
         let result = try await execute(query: """
             SELECT OBJECT_NAME
-            FROM ALL_OBJECTS
+            FROM SYS.ALL_OBJECTS
             WHERE OBJECT_TYPE = 'SCH'
             ORDER BY OBJECT_NAME
             """)
@@ -264,7 +264,7 @@ extension DamengPluginDriver {
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let result = try await executeParameterized(
-            query: "SELECT COUNT(*) FROM ALL_TABLES WHERE OWNER = ?",
+            query: "SELECT COUNT(*) FROM SYS.ALL_TABLES WHERE OWNER = ?",
             parameters: [.text(database)]
         )
         return PluginDatabaseMetadata(
@@ -280,8 +280,8 @@ extension DamengPluginDriver {
         let result = try await executeParameterized(
             query: """
                 SELECT t.NUM_ROWS, t.AVG_ROW_LEN, CAST(c.COMMENTS AS VARCHAR(8188)) AS COMMENTS
-                FROM ALL_TABLES t
-                LEFT JOIN ALL_TAB_COMMENTS c
+                FROM SYS.ALL_TABLES t
+                LEFT JOIN SYS.ALL_TAB_COMMENTS c
                   ON t.OWNER = c.OWNER
                  AND t.TABLE_NAME = c.TABLE_NAME
                 WHERE t.OWNER = ?
@@ -304,7 +304,7 @@ extension DamengPluginDriver {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let result = try await executeParameterized(
             query: """
-                SELECT CAST(TEXT AS VARCHAR(8188)), LENGTHB(TEXT) FROM ALL_VIEWS
+                SELECT CAST(TEXT AS VARCHAR(8188)), LENGTHB(TEXT) FROM SYS.ALL_VIEWS
                 WHERE OWNER = ? AND VIEW_NAME = ?
                 """,
             parameters: [.text(effectiveSchema(schema)), .text(view)]

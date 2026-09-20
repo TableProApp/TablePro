@@ -161,13 +161,18 @@ report_errors() {
 # ---------------------------------------------------------------------------- environment
 
 setup_toolchain() {
-    if [ ! -x "${DEVELOPER_DIR:-/nonexistent}/usr/bin/xcodebuild" ]; then
-        if [ -d /Applications/Xcode-beta.app/Contents/Developer ]; then
-            export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-        elif [ -d /Applications/Xcode.app/Contents/Developer ]; then
-            export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+    [ -x "${DEVELOPER_DIR:-/nonexistent}/usr/bin/xcodebuild" ] && return 0
+    # The Xcode that xcode-select names wins when it is a full Xcode. Command Line Tools has no
+    # xcodebuild and no sourcekitd, so fall back to whichever Xcode is installed.
+    local candidate
+    for candidate in "$(xcode-select -p 2> /dev/null)" \
+        /Applications/Xcode.app/Contents/Developer \
+        /Applications/Xcode-beta.app/Contents/Developer; do
+        if [ -x "$candidate/usr/bin/xcodebuild" ]; then
+            export DEVELOPER_DIR="$candidate"
+            return 0
         fi
-    fi
+    done
 }
 
 wait_for_free_toolchain() {
@@ -512,13 +517,14 @@ case "$STEP" in
         ;;
 
     docs)
-        # The two checks that actually read docs/. Neither runs anywhere else in this script, and
+        # The three checks that actually read docs/. None runs anywhere else in this script, and
         # CI runs them in the "Validate docs" job, so a local run is the only way to see a failure
-        # before the push.
+        # before the push. check-links.py was missing here, so a link to a heading that does not
+        # exist reached main on a green local run (#2988).
         log="$(new_log docs)"
         : > "$log"
         code=0
-        for check in "check-writing-style.sh" "check-docs-against-source.py"; do
+        for check in "check-writing-style.sh" "check-docs-against-source.py" "check-links.py"; do
             script="$REPO_ROOT/docs/scripts/$check"
             if [ ! -f "$script" ]; then
                 note "missing: docs/scripts/$check"
@@ -533,12 +539,12 @@ case "$STEP" in
         if [ "$STATUS" != "INCONCLUSIVE" ]; then
             if [ $code -eq 0 ]; then
                 STATUS=PASS
-                note "docs/: house style and source claims both agree"
+                note "docs/: house style, source claims and links all agree"
             else
                 STATUS=FAIL
                 # The scripts print one line per check, most of them "ok". Show the failing check
                 # and the file:line under it, not the twenty passes above it.
-                note "$(grep -A 2 -E '^FAIL' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
+                note "$(grep -A 2 -E '^ *FAIL' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
                 note "$(grep -E 'contradict|house style' "$log" 2> /dev/null | sed 's/^/  /' | head -3)"
             fi
         fi

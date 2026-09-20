@@ -155,7 +155,7 @@ ${DIGEST_RULES}
 
   () => agent(`
 You are the Platform Researcher on a TablePro fix investigation. TablePro is a native macOS
-app (SwiftUI + AppKit, macOS 14+) built with the Xcode at /Applications/Xcode-beta.app.
+app (SwiftUI + AppKit, macOS 13+) built with the Xcode that `xcode-select -p` names.
 
 Problem statement:
 ${PROBLEM}
@@ -165,11 +165,11 @@ Establish what the correct behaviour and the right API are, from the authoritati
 If this is a UI or interaction problem, that source is Apple:
 1. The relevant Human Interface Guidelines section, quoted and linked.
 2. The right AppKit/SwiftUI API, named exactly, with its documented behaviour, its
-   availability against our macOS 14 target, and its gotchas. Prefer the modern API; if the
+   availability against our macOS 13 target, and its gotchas. Prefer the modern API; if the
    only option is deprecated, say so and name the replacement.
 3. Any standard system control that already does this, so we do not reinvent it.
 4. Confirm every symbol against the local SDK interface, which is exact for our toolchain:
-   /Applications/Xcode-beta.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/<Framework>.framework/Modules/<Framework>.swiftmodule/arm64e-apple-macos.swiftinterface
+   $(xcrun --sdk macosx --show-sdk-path)/System/Library/Frameworks/<Framework>.framework/Modules/<Framework>.swiftmodule/arm64e-apple-macos.swiftinterface
 
 If this is a database driver or dependency problem, that source is the vendored header and
 the shipped binary, not the web docs:

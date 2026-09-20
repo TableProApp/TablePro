@@ -490,7 +490,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         dataSource: any PluginExportDataSource
     ) -> String? {
         if let driverStatement = dataSource.dropStatement(for: object) {
-            return driverStatement.hasSuffix(";") ? driverStatement : "\(driverStatement);"
+            return dataSource.scriptText(for: driverStatement)
         }
         let keyword = object.kind.dropKeyword
         guard !keyword.isEmpty else { return nil }
@@ -588,7 +588,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(ddl.hasSuffix(";") ? ddl : ddl + ";")
+                try writer.write(dataSource.scriptText(for: ddl))
                 try writer.write("\n\n")
             } catch {
                 ddlFailures.append(sanitizedName)
@@ -631,8 +631,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 table: object.name, databaseName: object.databaseName)
             guard !statements.isEmpty else { return }
             for statement in statements {
-                let terminated = statement.hasSuffix(";") ? statement : "\(statement);"
-                try writer.write("\(terminated)\n")
+                try writer.write("\(dataSource.scriptText(for: statement))\n")
             }
             try writer.write("\n")
         } catch {
@@ -675,7 +674,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(ddl.hasSuffix(";") ? ddl : ddl + ";")
+                try writer.write(dataSource.scriptText(for: ddl))
                 try writer.write("\n\n")
             } catch {
                 ddlFailures.append(sanitizedName)
@@ -709,8 +708,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     principal: principal.name, host: principal.identity)
                 guard !statements.isEmpty else { continue }
                 for statement in statements {
-                    let terminated = statement.hasSuffix(";") ? statement : "\(statement);"
-                    try writer.write("\(terminated)\n")
+                    try writer.write("\(dataSource.scriptText(for: statement))\n")
                 }
             } catch {
                 let sanitized = PluginExportUtilities.sanitizeForSQLComment(principal.name)
@@ -835,8 +833,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 let statements = try await dataSource.fetchIndexDDL(
                     table: object.name, databaseName: object.databaseName)
                 for statement in statements {
-                    let terminated = statement.hasSuffix(";") ? statement : "\(statement);"
-                    try writer.write("\(terminated)\n")
+                    try writer.write("\(dataSource.scriptText(for: statement))\n")
                     emittedAnything = true
                 }
             } catch {

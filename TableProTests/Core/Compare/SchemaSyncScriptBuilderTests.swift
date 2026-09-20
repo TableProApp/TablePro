@@ -10,6 +10,9 @@ import XCTest
 @testable import TablePro
 
 private final class StubSyncDriver: PluginDatabaseDriver, @unchecked Sendable {
+    var createTableStatements: [String]?
+    var modifyColumnSQL: String?
+
     func connect() async throws {}
 
     func disconnect() {}
@@ -44,6 +47,10 @@ private final class StubSyncDriver: PluginDatabaseDriver, @unchecked Sendable {
         "CREATE TABLE \(definition.tableName)"
     }
 
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        createTableStatements ?? generateCreateTableSQL(definition: definition).map { [$0] }
+    }
+
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         "DROP \(objectType) \(name)"
     }
@@ -61,7 +68,7 @@ private final class StubSyncDriver: PluginDatabaseDriver, @unchecked Sendable {
         oldColumn: PluginColumnDefinition,
         newColumn: PluginColumnDefinition
     ) -> String? {
-        "ALTER TABLE \(table) MODIFY \(newColumn.name)"
+        modifyColumnSQL ?? "ALTER TABLE \(table) MODIFY \(newColumn.name)"
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
@@ -296,15 +303,50 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
         XCTAssertTrue(statements[0].hazards.isEmpty)
     }
 
-    func testEveryStatementIsTerminated() throws {
+    /// A statement is what the driver is sent, and the separator after it is the script's to write.
+    func testEveryStatementIsSentWithoutASeparator() throws {
         let statements = try builder.build(
             operations: [.createTable(snapshot("users")), .dropTable(name: "old", schema: nil)],
             foreignKeysByTable: [:]
         )
 
-        for statement in statements {
-            XCTAssertTrue(statement.sql.hasSuffix(";"), "\(statement.sql) is not terminated")
+        XCTAssertEqual(statements.map(\.sql), ["DROP TABLE old", "CREATE TABLE users"])
+        XCTAssertEqual(
+            SQLScriptText(databaseType: .mysql).script(statements.map(\.sql)),
+            "DROP TABLE old;\nCREATE TABLE users;"
+        )
+    }
+
+    /// Sent as one text, Oracle refuses a table and its index with ORA-03405 and creates neither.
+    func testATableAndItsIndexGoOutAsTheStatementsTheDriverWrote() throws {
+        driver.createTableStatements = ["CREATE TABLE \"T\" (\n  \"A\" NUMBER\n)", "CREATE INDEX \"I\" ON \"T\" (\"A\")"]
+        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle)
+            .build(operations: [.createTable(snapshot("T"))], foreignKeysByTable: [:])
+
+        XCTAssertEqual(statements.map(\.sql), driver.createTableStatements)
+        XCTAssertEqual(Set(statements.map(\.objectName)), ["T"])
+        XCTAssertEqual(Set(statements.map(\.summary)).count, 1)
+    }
+
+    /// Oracle's rename plus retype is two statements in one string, which the target refuses whole.
+    func testAnAlterTheDriverWritesAsTwoStatementsGoesOutAsTwo() throws {
+        driver.modifyColumnSQL = "ALTER TABLE \"T\" RENAME COLUMN \"A\" TO \"B\";\nALTER TABLE \"T\" MODIFY (\"B\" NUMBER)"
+        let column = { (name: String) in
+            EditableColumnDefinition(
+                id: UUID(), name: name, dataType: "NUMBER", isNullable: true, defaultValue: nil,
+                autoIncrement: false, unsigned: false, comment: nil, collation: nil,
+                onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
+            )
         }
+        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle).build(
+            operations: [.alterTable(name: "T", schema: nil, changes: [.modifyColumn(old: column("A"), new: column("B"))])],
+            foreignKeysByTable: [:]
+        )
+
+        XCTAssertEqual(statements.map(\.sql), [
+            "ALTER TABLE \"T\" RENAME COLUMN \"A\" TO \"B\"",
+            "ALTER TABLE \"T\" MODIFY (\"B\" NUMBER)",
+        ])
     }
 }
 

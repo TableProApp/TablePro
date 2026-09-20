@@ -22,13 +22,13 @@ Everything below is the underlying detail: read it when a verdict needs interpre
 
 ## Environment setup
 
-`xcode-select` points at `/Library/Developer/CommandLineTools`, which has no `xcodebuild` and no `sourcekitd`. Both `xcodebuild` and `swiftlint` fail without the export below, which reads as "local builds are broken" and leads to shipping unverified code. They are not broken.
+`xcodebuild` and `swiftlint` need a full Xcode. When `xcode-select -p` names `/Library/Developer/CommandLineTools` instead, which has no `xcodebuild` and no `sourcekitd`, both fail, which reads as "local builds are broken" and leads to shipping unverified code. They are not broken.
+
+`verify.sh` resolves `DEVELOPER_DIR` itself: the Xcode `xcode-select` names when it is a full Xcode, else `/Applications/Xcode.app`, else `/Applications/Xcode-beta.app`. For a command the wrapper does not cover, export the same, once per shell command chain or as a prefix:
 
 ```bash
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+export DEVELOPER_DIR="$(xcode-select -p)"
 ```
-
-`/Applications/Xcode-beta.app` is the only Xcode installed. Export it once per shell command chain, or prefix each invocation.
 
 ## Regenerate before building
 

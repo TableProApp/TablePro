@@ -72,23 +72,23 @@ struct IOSConnectionExportFileDataTests {
     func sealingLeavesMainActorFree() async throws {
         let envelope = makeEnvelope(password: "s3cret")
         let probe = SealingProbe()
-        let task = Task { @MainActor in
-            probe.hasStarted = true
+        let (started, signalStarted) = AsyncStream.makeStream(of: Void.self)
+        let sealing = Task { @MainActor in
+            signalStarted.yield()
             _ = try await IOSConnectionExportService.fileData(for: envelope, passphrase: "correct horse")
             probe.hasFinished = true
         }
-        while !probe.hasStarted {
-            await Task.yield()
+        for await _ in started {
+            break
         }
 
         #expect(!probe.hasFinished)
-        try await task.value
+        try await sealing.value
         #expect(probe.hasFinished)
     }
 }
 
 @MainActor
 private final class SealingProbe {
-    var hasStarted = false
     var hasFinished = false
 }
