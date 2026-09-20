@@ -1,6 +1,6 @@
 //
 //  TeardownLatch.swift
-//  TablePro
+//  TableProSSHTransport
 //
 
 import Foundation
@@ -17,11 +17,13 @@ import os
 ///
 /// `claim()` returns true to exactly one caller for the lifetime of the latch. **Whoever gets true
 /// owes the teardown.** Checking `isLive` never claims.
-struct TeardownLatch: Sendable {
+public struct TeardownLatch: Sendable {
     private let live = OSAllocatedUnfairLock(initialState: true)
 
+    public init() {}
+
     /// True for the first caller and false for every caller after it, including concurrent ones.
-    func claim() -> Bool {
+    public func claim() -> Bool {
         live.withLock { isLive -> Bool in
             let was = isLive
             isLive = false
@@ -30,7 +32,7 @@ struct TeardownLatch: Sendable {
     }
 
     /// Whether the thing this latch guards is still running. Observation only; never claims.
-    var isLive: Bool {
+    public var isLive: Bool {
         live.withLock { $0 }
     }
 }

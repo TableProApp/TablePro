@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
 - Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
 - Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
+- Memory held for every connection an SSH tunnel served, and its listening socket closed while it was still accepting.
+- SSH tunnel stalling part-way through a result when two connections share one session, on iPhone and iPad.
+- Slow SSH tunnel throughput while a channel has bytes queued behind it.
+- Cancel ignored during an SSH connect on iPhone and iPad.
+- Sockets to the SSH server left open after a failed SSH connect on iPhone and iPad.
+- No more than a dozen SSH tunnels connecting at a time on iPhone and iPad.
+- SSH tunnels on iPhone and iPad spinning on a closed connection instead of ending.
+- Up to 150 seconds before an SSH forward that cannot open gives up, on iPhone and iPad.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.

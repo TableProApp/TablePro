@@ -1,6 +1,7 @@
 import CMariaDB
 import Foundation
 import os
+import TableProCoreTypes
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore

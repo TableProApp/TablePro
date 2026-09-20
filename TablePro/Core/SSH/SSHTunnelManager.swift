@@ -8,6 +8,8 @@
 import Foundation
 import os
 
+import TableProSSHTransport
+
 /// Why an SSH authentication attempt failed. Drives the user-facing error string so the
 /// alert points at the actual cause (wrong OTP, missing key, agent rejection) instead of
 /// the catch-all "credentials or private key" message.

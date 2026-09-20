@@ -1,5 +1,5 @@
 import Foundation
-@testable import TableProMSSQLCore
+@testable import TableProCoreTypes
 import Testing
 
 private final class FlagBox: @unchecked Sendable {
@@ -24,8 +24,8 @@ private func pollUntil(_ condition: @Sendable () -> Bool, timeout: TimeInterval 
 
 private struct TimeoutError: Error {}
 
-@Suite("Connect cancellation")
-struct MSSQLConnectCancellationTests {
+@Suite("Cancellable blocking work")
+struct CancellableBlockingWorkTests {
     @Test("Work that completes normally returns its value")
     func normalCompletion() async throws {
         let queue = DispatchQueue(label: "test.normal")

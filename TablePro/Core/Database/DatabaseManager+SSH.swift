@@ -7,6 +7,8 @@
 
 import Foundation
 
+import TableProSSHTransport
+
 // MARK: - SSH Tunnel Helper
 
 extension DatabaseManager {

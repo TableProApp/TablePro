@@ -1,6 +1,6 @@
 //
 //  SSHChannelRelayTests.swift
-//  TableProTests
+//  TableProSSHTransportTests
 //
 //  Tests for SSHChannelRelay termination behaviour. The relay runs over real
 //  socketpairs with a scripted channel so the regression case (a closed peer fd
@@ -8,8 +8,9 @@
 //
 
 import Foundation
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHTransport
 
 @Suite("SSHChannelRelay")
 struct SSHChannelRelayTests {
@@ -149,12 +150,13 @@ struct SSHChannelRelayTests {
         var dummy: UInt8 = 1
         _ = Darwin.send(transport.b, &dummy, 1, 0)
 
-        let counter = TransportByteCounter()
+        let counter = RecordingByteObserver()
         let io = FakeChannelIO(actions: [.data(payload)], fallback: .closed)
         let result = runRelay(localFD: local.a, transportFD: transport.a, io: io, byteCounter: counter)
 
         #expect(result == .channelClosed)
-        #expect(counter.totals == TransportByteTotals(received: UInt64(payload.count), sent: 0))
+        #expect(counter.received == payload.count)
+        #expect(counter.sent == 0)
     }
 
     @Test("Local data counts as sent")
@@ -168,7 +170,7 @@ struct SSHChannelRelayTests {
             _ = Darwin.send(local.b, raw.baseAddress, raw.count, 0)
         }
 
-        let counter = TransportByteCounter()
+        let counter = RecordingByteObserver()
         let io = FakeChannelIO(fallback: .wouldBlock)
         let result = runRelay(
             localFD: local.a,
@@ -179,7 +181,8 @@ struct SSHChannelRelayTests {
         )
 
         #expect(result == .cancelled)
-        #expect(counter.totals == TransportByteTotals(received: 0, sent: UInt64(payload.count)))
+        #expect(counter.received == 0)
+        #expect(counter.sent == payload.count)
     }
 
     @Test("A relay with no counter still runs")
@@ -247,7 +250,7 @@ struct SSHChannelRelayTests {
         transportFD: Int32,
         io: FakeChannelIO,
         isActive: @escaping @Sendable () -> Bool = { true },
-        byteCounter: TransportByteCounter? = nil,
+        byteCounter: (any RelayByteObserver)? = nil,
         timeout: Double = 3
     ) -> RelayTermination? {
         let box = ResultBox()
@@ -265,6 +268,94 @@ struct SSHChannelRelayTests {
     }
 }
 
+/// The lost wakeup and the drain that follows it, both against a transport fd that is never
+/// readable. libssh2 decrypts whole SSH packets into its own buffer, so a second channel on the
+/// session holds bytes the transport has already given up: `poll` reports nothing, forever.
+///
+/// Measured against a real sshd with two channels and 98,304 queued bytes: reading only when the
+/// transport polls readable delivered 0 bytes in 60,178ms; pumping on the poll timeout too
+/// delivered all of it in 1,504ms with one buffer per timeout; draining until the channel answers
+/// EAGAIN delivered all of it in 502ms.
+@Suite("SSHChannelRelay backlog drain")
+struct SSHChannelRelayBacklogTests {
+    fileprivate static let bufferSize = 32_768
+    fileprivate static let queuedBuffers = 3
+
+    @Test("A backlog reaches the local socket although the transport never polls readable")
+    func deliversBacklogWithoutATransportWakeup() throws {
+        let run = try runBacklogRelay()
+
+        #expect(run.delivered == Self.bufferSize * Self.queuedBuffers)
+    }
+
+    @Test("One poll round drains the whole backlog instead of one buffer per timeout")
+    func drainsInOnePollRound() throws {
+        let run = try runBacklogRelay()
+
+        #expect(run.reads == Self.queuedBuffers + 1)
+        #expect(run.elapsed < 1.0)
+    }
+
+    @Test("A backlog past the per-round cap still lands inside one poll interval")
+    func drainsPastTheReadCapWithoutWaiting() throws {
+        let run = try runBacklogRelay(buffers: 20)
+
+        #expect(run.delivered == Self.bufferSize * 20)
+        #expect(run.reads == 21)
+        #expect(run.elapsed < 1.0)
+    }
+
+    private struct BacklogRun {
+        let delivered: Int
+        let reads: Int
+        let elapsed: TimeInterval
+    }
+
+    /// Drains the local socket on a reader thread so a 96KB backlog cannot fill the socket
+    /// buffer and stall the relay inside `send`. The relay stops once the channel has handed
+    /// over every queued byte, which is what the two shapes take different numbers of poll
+    /// rounds to reach.
+    private func runBacklogRelay(buffers: Int = SSHChannelRelayBacklogTests.queuedBuffers) throws -> BacklogRun {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        let total = Self.bufferSize * buffers
+        let io = FakeChannelIO(
+            actions: Array(repeating: .data(Data(repeating: 0x41, count: Self.bufferSize)), count: buffers),
+            fallback: .wouldBlock
+        )
+
+        let drained = ByteTally()
+        let reader = Thread {
+            var buffer = [UInt8](repeating: 0, count: Self.bufferSize)
+            while drained.value < total {
+                let count = recv(local.b, &buffer, buffer.count, 0)
+                if count <= 0 { return }
+                drained.add(count)
+            }
+        }
+        reader.stackSize = 512 * 1_024
+        reader.start()
+
+        let box = ResultBox()
+        let semaphore = DispatchSemaphore(value: 0)
+        let started = Date()
+        runRelayOnDedicatedThread(
+            localFD: local.a,
+            transportFD: transport.a,
+            io: io,
+            isActive: { io.deliveredCount < total },
+            box: box
+        ) { semaphore.signal() }
+
+        #expect(semaphore.wait(timeout: .now() + 10) == .success)
+        let elapsed = Date().timeIntervalSince(started)
+        _ = drained.waitUntil(total, timeout: 2)
+        return BacklogRun(delivered: drained.value, reads: io.readCount, elapsed: elapsed)
+    }
+}
+
 /// Runs a relay on a thread of its own rather than borrowing from the shared global
 /// queue. The relay loop blocks its thread for as long as it runs, and the test suite
 /// runs in parallel, so relays sharing the global queue's bounded pool can starve each
@@ -275,7 +366,7 @@ internal func runRelayOnDedicatedThread(
     io: any SSHChannelIO,
     isActive: @escaping @Sendable () -> Bool,
     box: ResultBox,
-    byteCounter: TransportByteCounter? = nil,
+    byteCounter: (any RelayByteObserver)? = nil,
     onFinish: @escaping @Sendable () -> Void
 ) {
     let thread = Thread {
@@ -298,7 +389,63 @@ internal final class ResultBox: @unchecked Sendable {
     var value: RelayTermination?
 }
 
-private final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
+internal final class ByteTally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func add(_ amount: Int) {
+        lock.lock()
+        count += amount
+        lock.unlock()
+    }
+
+    func waitUntil(_ target: Int, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while value < target {
+            if Date() >= deadline { return false }
+            usleep(2_000)
+        }
+        return true
+    }
+}
+
+internal final class RecordingByteObserver: RelayByteObserver, @unchecked Sendable {
+    private let lock = NSLock()
+    private var receivedBytes = 0
+    private var sentBytes = 0
+
+    var received: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return receivedBytes
+    }
+
+    var sent: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return sentBytes
+    }
+
+    func recordReceived(_ count: Int) {
+        lock.lock()
+        receivedBytes += count
+        lock.unlock()
+    }
+
+    func recordSent(_ count: Int) {
+        lock.lock()
+        sentBytes += count
+        lock.unlock()
+    }
+}
+
+internal final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
     enum Action {
         case data(Data)
         case wouldBlock
@@ -309,6 +456,8 @@ private final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
     private var actions: [Action]
     private let fallback: Action
     private var writtenBuffer = Data()
+    private var reads = 0
+    private var delivered = 0
 
     init(actions: [Action] = [], fallback: Action = .wouldBlock) {
         self.actions = actions
@@ -321,6 +470,18 @@ private final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
         return writtenBuffer
     }
 
+    var readCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return reads
+    }
+
+    var deliveredCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return delivered
+    }
+
     func activeUntilWritten(_ target: Int) -> @Sendable () -> Bool {
         { [weak self] in (self?.written.count ?? target) < target }
     }
@@ -328,6 +489,7 @@ private final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
     func read(into buffer: UnsafeMutablePointer<CChar>, count: Int) -> ChannelReadResult {
         lock.lock()
         defer { lock.unlock() }
+        reads += 1
         let action = actions.isEmpty ? fallback : actions.removeFirst()
         switch action {
         case .data(let data):
@@ -335,6 +497,7 @@ private final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
             buffer.withMemoryRebound(to: UInt8.self, capacity: length) { destination in
                 _ = data.copyBytes(to: UnsafeMutableBufferPointer(start: destination, count: length))
             }
+            delivered += length
             return .bytes(length)
         case .wouldBlock:
             return .wouldBlock
