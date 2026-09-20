@@ -236,6 +236,9 @@ struct AISettings: Codable, Equatable, Sendable {
     var maxToolRoundtripsEnabled: Bool
     var defaultConnectionPolicy: AIConnectionPolicy
     var chatMode: AIChatMode
+    /// Set from the composer's own context menu rather than the Settings window, because the only
+    /// place the highlight is worth thinking about is the field it wraps.
+    var composerHighlightEnabled: Bool
 
     static let defaultInlineSuggestionDebounceMs: Int = 500
     static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
@@ -255,7 +258,8 @@ struct AISettings: Codable, Equatable, Sendable {
         maxToolRoundtrips: AISettings.defaultMaxToolRoundtrips,
         maxToolRoundtripsEnabled: true,
         defaultConnectionPolicy: .askEachTime,
-        chatMode: .ask
+        chatMode: .ask,
+        composerHighlightEnabled: true
     )
 
     init(
@@ -271,7 +275,8 @@ struct AISettings: Codable, Equatable, Sendable {
         maxToolRoundtrips: Int = AISettings.defaultMaxToolRoundtrips,
         maxToolRoundtripsEnabled: Bool = true,
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
-        chatMode: AIChatMode = .ask
+        chatMode: AIChatMode = .ask,
+        composerHighlightEnabled: Bool = true
     ) {
         self.enabled = enabled
         self.providers = providers
@@ -286,6 +291,7 @@ struct AISettings: Codable, Equatable, Sendable {
         self.maxToolRoundtripsEnabled = maxToolRoundtripsEnabled
         self.defaultConnectionPolicy = defaultConnectionPolicy
         self.chatMode = chatMode
+        self.composerHighlightEnabled = composerHighlightEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -311,6 +317,9 @@ struct AISettings: Codable, Equatable, Sendable {
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
         chatMode = try container.decodeIfPresent(AIChatMode.self, forKey: .chatMode) ?? .ask
+        composerHighlightEnabled = try container.decodeIfPresent(
+            Bool.self, forKey: .composerHighlightEnabled
+        ) ?? true
     }
 
     var activeProvider: AIProviderConfig? {

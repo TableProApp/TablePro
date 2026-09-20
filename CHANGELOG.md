@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy manifest for the iOS app.
 - Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
 - Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
+- **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995)
 - Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
 
 ### Changed
@@ -41,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Colored highlight on the AI chat input painting over a window that is not key.
+- Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
+- AI chat input focus crossfade playing against Reduce Motion.
+- AI chat input announced with no name by VoiceOver.
 - Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
 - Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.

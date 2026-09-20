@@ -284,6 +284,10 @@ struct AIChatPanelView: View {
                     },
                     onImageAttachmentFailed: { message in
                         viewModel.reportImageAttachmentFailure(message)
+                    },
+                    highlightEnabled: settingsManager.ai.composerHighlightEnabled,
+                    onToggleHighlight: {
+                        settingsManager.ai.composerHighlightEnabled.toggle()
                     }
                 )
 
