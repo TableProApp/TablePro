@@ -53,7 +53,7 @@ For anything other than an exact match, click the highlighter button in the stat
   <img className="hidden dark:block" src="/images/highlight-rules-dark.png" alt="Highlight Rules popover listing three rules over an Invoice grid with tinted rows and cells" />
 </Frame>
 
-Rules run top to bottom and the first match colors the row, so drag the rule that should win to the top. A rule picked from the cell menu goes in first. A cell rule tints its own cell over the row's color. Rules read the stored value rather than the text a **Display As** format shows: a numeric column compares as numbers, a boolean column accepts `true`, `1`, `t` and `yes` alike, and `NULL` never satisfies a comparison: match it with **is NULL** or **is empty**.
+Rules run top to bottom and the first match colors the row, so drag the rule that should win to the top. A new rule picked from the cell menu goes in first. Picking a color for a rule that is already in the list changes its color and leaves it where it is. A cell rule tints its own cell over the row's color. Rules read the stored value rather than the text a **Display As** format shows: a numeric column compares as numbers, a boolean column accepts `true`, `1`, `t` and `yes` alike, and `NULL` never satisfies a comparison: match it with **is NULL** or **is empty**.
 
 A row waiting to be inserted or deleted keeps its [change tracking](/features/change-tracking) tint over any rule, and a selected row shows the selection. On a table you edit, give row rules a color other than the green and red those tints use, so a highlight never reads as a pending change.
 

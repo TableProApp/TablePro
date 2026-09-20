@@ -153,6 +153,22 @@ struct HighlightRuleEditingTests {
         #expect(HighlightRuleWarning.warning(for: rule(value: "^(Live"), isColumnPresent: true) == nil)
     }
 
+    @Test("A long but valid pattern is usable, because the limit caps the text and not the pattern")
+    func aLongValidPatternIsUsable() {
+        let long = (0..<4_000).map { "a\($0 % 10)b" }.joined(separator: "|")
+
+        #expect((long as NSString).length > HighlightCondition.searchLimit)
+        #expect(HighlightCondition.isUsableRegexPattern(long))
+        #expect(!rule(filterOperator: .regex, value: long).hasUnusablePattern)
+    }
+
+    @Test("A long pattern that will not compile is still reported as unusable")
+    func aLongMalformedPatternIsUnusable() {
+        let long = String(repeating: "a", count: HighlightCondition.searchLimit + 1) + "("
+
+        #expect(!HighlightCondition.isUsableRegexPattern(long))
+    }
+
     @Test("A rule whose pattern will not compile is not counted among the active rules")
     func unusablePatternIsNotCountedAsActive() {
         let broken = rule(filterOperator: .regex, value: "^(Live")
@@ -163,7 +179,7 @@ struct HighlightRuleEditingTests {
             isPersisted: true,
             presentationRequest: 0,
             onChange: { _ in },
-            onDismiss: {}
+            onDismiss: { _ in }
         )
 
         #expect(broken.hasUnusablePattern)

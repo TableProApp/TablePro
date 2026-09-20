@@ -25,11 +25,20 @@ extension MainContentCoordinator {
         tabManager.mutate(at: index) { $0.sessionHighlightRules = rules }
     }
 
+    /// Only a rule this result does not already carry earns the first position. The order is the
+    /// user's, and the popover promises the first match sets the color, so promoting a rule the user
+    /// is merely recoloring hands it rows another rule was coloring. `paletteItem` passes back the
+    /// rule it found for the cell, so the id names it; the condition arm covers a rule whose id was
+    /// regenerated on load, and both arms resolve to the same rule because that is the one the menu
+    /// showed.
     func applyQuickHighlight(_ rule: HighlightRule, forTab tabId: UUID) {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
         var rules = highlightRules(for: tab)
-        rules.removeAll { $0.hasSameCondition(as: rule) }
-        rules.insert(rule, at: 0)
+        if let index = rules.firstIndex(where: { $0.id == rule.id || $0.hasSameCondition(as: rule) }) {
+            rules[index] = rule
+        } else {
+            rules.insert(rule, at: 0)
+        }
         setHighlightRules(rules, forTab: tabId)
     }
 

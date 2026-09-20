@@ -56,8 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved filters lost on the next tab switch for every restored table tab but the selected one. (#3006)
 - Cancelling the unsaved-changes alert on **Apply** leaving the filter applied and saved over rows it never ran. (#3006)
 - **Clear** deleting a table's saved filter rows along with the query they were running. (#3006)
-- Column and operator pull-downs in **Highlight Rules** snapping back to their previous value. (#3015)
-- Highlight rules stuck on **equals**, leaving the other 14 operators unreachable. (#3015)
+- A highlight rule jumping to the top of the list, and taking rows another rule was coloring, when its color is picked again from the cell menu.
+- Picking the color a highlight rule already has deleting the rule.
+- The cell menu offering a switched-off highlight rule's color as the one in force.
+- An unfinished highlight rule kept on the table you started it from when you switch tab before typing a value.
+- A valid regular expression longer than 10,000 characters refused and reported as invalid.
 - A highlight rule's **between** second value field drawn past the edge of the popover on a long column name.
 - A highlight rule counted as active when its regular expression will not compile, matching nothing without saying so.
 - Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.

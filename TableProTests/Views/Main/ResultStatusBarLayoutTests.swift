@@ -71,7 +71,7 @@ struct ResultStatusBarLayoutTests {
                 isPersisted: tabType == .table,
                 presentationRequest: 0,
                 onChange: { _ in },
-                onDismiss: {}
+                onDismiss: { _ in }
             ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: {},

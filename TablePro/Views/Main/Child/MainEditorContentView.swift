@@ -1100,7 +1100,7 @@ struct MainEditorContentView: View {
                 onChange: { [coordinator, tabId = tab.id] rules in
                     coordinator.setHighlightRules(rules, forTab: tabId)
                 },
-                onDismiss: { [coordinator, tabId = tab.id] in
+                onDismiss: { [coordinator] tabId in
                     coordinator.discardIncompleteHighlightRules(forTab: tabId)
                 }
             ),
