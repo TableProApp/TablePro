@@ -21,18 +21,38 @@ struct ForeignKeyPickerView: View {
 
     @State private var searchText = ""
     @State private var columns: [ForeignKeyLookupColumn] = []
-    @State private var labelColumnName: String?
+    @State private var labelChoice: ForeignKeyLabelChoice = .unset
+    @State private var isChoosingLabels = false
     @State private var rows: [ForeignKeyLookupService.Row] = []
     @State private var isLoading = true
     @State private var hasLoadedColumns = false
     @State private var hasSearched = false
+    @State private var termIsNotSearchable = false
     @State private var errorMessage: String?
     @State private var selection: ForeignKeyPickerEntry.ID?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ForeignKeyPicker")
     private static let searchDebounce = Duration.milliseconds(200)
+    private static let listHeight: CGFloat = 220
 
     var body: some View {
+        Group {
+            if isChoosingLabels {
+                labelChooser
+            } else {
+                picker
+            }
+        }
+        .frame(width: 360)
+        .task {
+            await loadColumns()
+        }
+        .task(id: SearchKey(term: searchText, labels: labelColumnNames, isReady: hasLoadedColumns)) {
+            await runSearch()
+        }
+    }
+
+    private var picker: some View {
         VStack(spacing: 0) {
             header
             Divider()
@@ -42,13 +62,20 @@ struct ForeignKeyPickerView: View {
             Divider()
             footer
         }
-        .frame(width: 360)
-        .task {
-            await loadColumns()
-        }
-        .task(id: SearchKey(term: searchText, label: labelColumnName, isReady: hasLoadedColumns)) {
-            await runSearch()
-        }
+    }
+
+    /// Drilled in to rather than opened beside: the HIG rules out both a second popover over a
+    /// popover and a sheet over one, and no macOS menu stays open past a single tick, so a menu of
+    /// checkmarks would cost one reopen per column chosen.
+    private var labelChooser: some View {
+        ForeignKeyLabelChooserView(
+            columns: selectableColumns,
+            selectedNames: labelColumnNames,
+            listHeight: Self.listHeight,
+            onToggle: toggleLabelColumn,
+            onClear: { applyLabelChoice(ForeignKeyLabelChoice(columnNames: [])) },
+            onDone: { withAnimation { isChoosingLabels = false } }
+        )
     }
 
     // MARK: - Header
@@ -119,7 +146,7 @@ struct ForeignKeyPickerView: View {
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .frame(height: 220)
+                .frame(height: Self.listHeight)
         } else if entries.isEmpty {
             emptyState
         } else {
@@ -127,19 +154,28 @@ struct ForeignKeyPickerView: View {
         }
     }
 
+    /// A term no selected column can hold is not a term that matched nothing. Reporting the two the
+    /// same way made a picker on a numeric key with a numeric label answer "No matching rows" to
+    /// every word while still answering a number, which reads as a search that half works.
+    ///
+    /// A search in flight outranks both, because the answer belongs to the term that produced it:
+    /// clearing an unsearchable term left "No text column to search" standing over the full list
+    /// it was already fetching.
     @ViewBuilder
     private var emptyState: some View {
         Group {
-            if hasSearched {
-                Text("No matching rows")
-            } else {
+            if isLoading {
                 Text("Loading rows…")
+            } else if termIsNotSearchable {
+                Text("No text column to search")
+            } else {
+                Text("No matching rows")
             }
         }
         .foregroundStyle(.secondary)
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .center)
-        .frame(height: 220)
+        .frame(height: Self.listHeight)
     }
 
     private var entryList: some View {
@@ -154,7 +190,7 @@ struct ForeignKeyPickerView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .frame(height: 220)
+            .frame(height: Self.listHeight)
             .onChange(of: selection) { newValue in
                 guard let newValue else { return }
                 proxy.scrollTo(newValue)
@@ -162,6 +198,9 @@ struct ForeignKeyPickerView: View {
         }
     }
 
+    /// Both the key and the label are stored values, so both wear the Data Grid Font rather than a
+    /// system text style: one value has to read the same here as it does in the cell it is about
+    /// to fill.
     @ViewBuilder
     private func row(for entry: ForeignKeyPickerEntry) -> some View {
         switch entry {
@@ -181,7 +220,7 @@ struct ForeignKeyPickerView: View {
                 Text(row.key)
                     .font(themeEngine.valueFontSwiftUI)
                     .lineLimit(1)
-                if let label = row.label, !label.isEmpty {
+                if let label = ForeignKeyLabelText.joined(row.labels) {
                     Text(label)
                         .font(themeEngine.valueFontSwiftUI)
                         .foregroundStyle(.secondary)
@@ -197,17 +236,17 @@ struct ForeignKeyPickerView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Picker(selection: labelBinding) {
-                Text("None").tag(String?.none)
-                ForEach(columns) { column in
-                    Text(column.name).tag(String?.some(column.name))
-                }
+            Button {
+                withAnimation { isChoosingLabels = true }
             } label: {
-                Text("Label")
+                Text(String(format: String(localized: "Label: %@"), labelSummary))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .pickerStyle(.menu)
+            .buttonStyle(.link)
             .controlSize(.small)
-            .disabled(columns.isEmpty)
+            .disabled(selectableColumns.isEmpty)
+            .help(String(localized: "Choose the columns shown beside each key"))
             .accessibilityIdentifier("fk-picker-label")
 
             Spacer(minLength: 4)
@@ -216,6 +255,7 @@ struct ForeignKeyPickerView: View {
                 Text(String(format: String(localized: "First %d"), ForeignKeyLookupQuery.rowLimit))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .layoutPriority(1)
             }
 
             if isNullable {
@@ -226,6 +266,7 @@ struct ForeignKeyPickerView: View {
                     Text("Set NULL")
                 }
                 .controlSize(.small)
+                .layoutPriority(1)
             }
         }
         .padding(.horizontal, 10)
@@ -236,19 +277,47 @@ struct ForeignKeyPickerView: View {
         rows.count >= ForeignKeyLookupQuery.rowLimit
     }
 
-    private var labelBinding: Binding<String?> {
-        Binding(
-            get: { labelColumnName },
-            set: { newValue in
-                labelColumnName = newValue
-                /// A cleared menu is the reader choosing to see keys on their own, not the reader
-                /// saying nothing: storing it as absence let the heuristic pick a label again on the
-                /// next open.
-                ForeignKeyLabelColumnStore.shared.setLabelChoice(
-                    newValue.map(ForeignKeyLabelChoice.column) ?? .noLabel, for: referencedTableScope
-                )
-            }
+    private var labelSummary: String {
+        let names = labelColumnNames
+        guard !names.isEmpty else { return String(localized: "None") }
+        return names.joined(separator: ForeignKeyLabelText.separator)
+    }
+
+    // MARK: - Label columns
+
+    private var selectableColumns: [ForeignKeyLookupColumn] {
+        ForeignKeyLabelColumn.selectable(columns, keyColumn: fkInfo.referencedColumn)
+    }
+
+    private var labelColumns: [ForeignKeyLookupColumn] {
+        ForeignKeyLabelColumn.resolve(
+            columns: columns,
+            keyColumn: fkInfo.referencedColumn,
+            choice: labelChoice
         )
+    }
+
+    private var labelColumnNames: [String] {
+        labelColumns.map(\.name)
+    }
+
+    /// Toggling starts from what is on screen, so the first tick over a heuristic label keeps that
+    /// label rather than replacing it, and clearing the last one is remembered as **None** rather
+    /// than as no answer: storing it as absence let the heuristic pick a label again on the next
+    /// open.
+    private func toggleLabelColumn(_ name: String) {
+        var names = labelColumnNames
+        if let index = names.firstIndex(of: name) {
+            names.remove(at: index)
+        } else {
+            names.append(name)
+        }
+        applyLabelChoice(ForeignKeyLabelChoice(columnNames: names))
+    }
+
+    private func applyLabelChoice(_ choice: ForeignKeyLabelChoice) {
+        labelChoice = choice
+        ForeignKeyLabelColumnStore.shared.setLabelChoice(choice, for: referencedTableScope)
     }
 
     // MARK: - Entries
@@ -305,12 +374,7 @@ struct ForeignKeyPickerView: View {
                 in: scope, databaseType: databaseType, reference: fkInfo
             )
             guard !Task.isCancelled else { return }
-            let choice = ForeignKeyLabelColumnStore.shared.labelChoice(for: referencedTableScope)
-            labelColumnName = ForeignKeyLabelColumn.resolve(
-                columns: fetched,
-                keyColumn: fkInfo.referencedColumn,
-                choice: choice
-            )?.name
+            labelChoice = ForeignKeyLabelColumnStore.shared.labelChoice(for: referencedTableScope)
             columns = fetched
             hasLoadedColumns = true
         } catch {
@@ -334,25 +398,32 @@ struct ForeignKeyPickerView: View {
         }
 
         selection = nil
+        isLoading = true
+        termIsNotSearchable = false
+        errorMessage = nil
 
         if hasSearched {
             try? await Task.sleep(for: Self.searchDebounce)
             guard !Task.isCancelled else { return }
         }
 
-        isLoading = true
-        errorMessage = nil
         do {
-            let found = try await ForeignKeyLookupService.search(
+            let outcome = try await ForeignKeyLookupService.search(
                 in: scope,
                 databaseType: databaseType,
                 reference: fkInfo,
                 key: key,
-                label: columns.first { $0.name == labelColumnName },
+                labels: labelColumns,
                 term: searchText
             )
             guard !Task.isCancelled else { return }
-            rows = found
+            switch outcome {
+            case .rows(let found):
+                rows = found
+            case .termNotSearchable:
+                rows = []
+                termIsNotSearchable = true
+            }
         } catch {
             guard !Task.isCancelled else { return }
             Self.logger.error("Foreign key row search failed: \(error.localizedDescription)")
@@ -371,6 +442,6 @@ struct ForeignKeyPickerView: View {
 
 private struct SearchKey: Equatable {
     let term: String
-    let label: String?
+    let labels: [String]
     let isReady: Bool
 }
