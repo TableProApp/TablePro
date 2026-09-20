@@ -182300,6 +182300,84 @@
     },
     "The connection was lost while a transaction was open. Check which of its changes were saved before running them again." : {
 
+    },
+    "Invalid response type" : {
+
+    },
+    "Failed to decode response: %@" : {
+
+    },
+    "Invalid URL: %@" : {
+
+    },
+    "No token in response" : {
+
+    },
+    "endpoint is healthy" : {
+
+    },
+    "etcd returned HTTP %d" : {
+
+    },
+    "No consumer group named %@ on this cluster." : {
+
+    },
+    "Topic %@ has no partition %@. It has %@." : {
+
+    },
+    "The broker rejected %@ for partition %@ of %@: %@" : {
+
+    },
+    "The broker's %@ reply left out partition %@ of %@." : {
+
+    },
+    "Broker %d advertises %@, which could not be reached: %@" : {
+
+    },
+    "Partition %@ of %@ has no elected leader." : {
+
+    },
+    "the broker is not available" : {
+
+    },
+    "the replica is not available on this broker" : {
+
+    },
+    "the connection to the broker broke" : {
+
+    },
+    "this broker is not the cluster controller" : {
+
+    },
+    "the broker could not read the partition's log directory" : {
+
+    },
+    "the broker has no listener for this connection's security protocol" : {
+
+    },
+    "topic deletion is disabled on this cluster" : {
+
+    },
+    "the partition's leader epoch has moved on" : {
+
+    },
+    "the broker has not caught up to the partition's leader epoch" : {
+
+    },
+    "the offset is not available on this broker yet" : {
+
+    },
+    "The broker answered a coordinator lookup with no coordinator." : {
+
+    },
+    "FROM needs NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL." : {
+
+    },
+    "%@ is not a partition number." : {
+
+    },
+    "%@ takes nothing after it, and %@ was given." : {
+
     }
   },
   "version" : "1.1"
