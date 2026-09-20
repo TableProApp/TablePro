@@ -558,6 +558,7 @@ extension DatabaseManager {
         SidebarViewModel.removeConnection(sessionId)
         HistoryPanelState.removeConnection(sessionId)
         QuickSwitcherCatalogStore.shared.removeConnection(sessionId)
+        ConnectionDataCache.removeConnection(sessionId)
 
         if lastActiveSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {

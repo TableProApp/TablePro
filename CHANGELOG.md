@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Favorite queries missing from the sidebar Favorites tab on the first switch to it. (#3016)
+- Favorites list silently dropping rows during a burst of iCloud favorites updates.
 - Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.
 - etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
 - `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)
