@@ -446,7 +446,10 @@ targets:
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
+      - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
+      - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
+      - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
       - Plugins/TypesenseDriverPlugin/TypesenseApiKeys.swift
       - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift

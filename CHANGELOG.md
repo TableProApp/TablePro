@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
+- etcd connections carrying a username refusing a server that has authentication disabled.
+- Raw JSON shown instead of etcd's own message when a username or password is wrong.
+- etcd connections reported as unreachable every 30 seconds for a user without the root role.
+- An etcd `watch` returning no events instead of an error when the session is not authenticated.
+- `The request timed out` from an etcd `watch --timeout` above 60 seconds.
+- Stop in an etcd tab cancelling an unrelated request and leaving the running one alone.
+- Crash from an etcd `watch --timeout` with a negative or out-of-range value.
 - Colored highlight on the AI chat input painting over a window that is not key.
 - Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
 - AI chat input focus crossfade playing against Reduce Motion.
