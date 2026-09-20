@@ -492,7 +492,7 @@ final class CompareSyncExecutorDigestTests: XCTestCase {
             ScopeFixture.statement("DELETE FROM dbo.orders WHERE id = 2;")
         ]
 
-        let digest = CompareSyncExecutor.digest(of: statements)
+        let digest = CompareSyncExecutor.digest(of: statements, databaseType: .mysql)
 
         XCTAssertTrue(digest.hasPrefix("DELETE FROM dbo.orders WHERE id = 1;\n"))
         XCTAssertTrue(digest.hasSuffix("\n"))
@@ -507,8 +507,8 @@ final class CompareSyncExecutorDigestTests: XCTestCase {
     func testDigestDependsOnTheScriptAndNotOnStatementIdentity() {
         let sql = ["UPDATE dbo.orders SET total = 5 WHERE id = 1;", "DELETE FROM dbo.orders WHERE id = 2;"]
 
-        let first = CompareSyncExecutor.digest(of: sql.map { ScopeFixture.statement($0) })
-        let second = CompareSyncExecutor.digest(of: sql.map { ScopeFixture.statement($0) })
+        let first = CompareSyncExecutor.digest(of: sql.map { ScopeFixture.statement($0) }, databaseType: .mysql)
+        let second = CompareSyncExecutor.digest(of: sql.map { ScopeFixture.statement($0) }, databaseType: .mysql)
 
         XCTAssertEqual(first, second)
     }
@@ -524,8 +524,8 @@ final class CompareSyncExecutorDigestTests: XCTestCase {
             ScopeFixture.statement("DELETE FROM dbo.orders WHERE id = 2;")
         ]
 
-        let first = CompareSyncExecutor.digest(of: firstScript)
-        let second = CompareSyncExecutor.digest(of: secondScript)
+        let first = CompareSyncExecutor.digest(of: firstScript, databaseType: .mysql)
+        let second = CompareSyncExecutor.digest(of: secondScript, databaseType: .mysql)
 
         XCTAssertEqual(
             Array(first.split(separator: "\n").dropLast()),

@@ -46,9 +46,7 @@ struct QueryEditorViewModelTests {
 
         let vm = QueryEditorViewModel(windowCapacity: 100)
         let run = Task { await vm.run(driver: driver, query: "SELECT 1") }
-        while !vm.isRunning {
-            await Task.yield()
-        }
+        await ObservedCondition.wait { vm.isRunning }
         vm.stop()
         await gate.open()
         await run.value
@@ -73,9 +71,7 @@ struct QueryEditorViewModelTests {
 
         let vm = QueryEditorViewModel(windowCapacity: 100)
         let run = Task { await vm.run(driver: driver, query: "UPDATE t SET a = 1") }
-        while !vm.isRunning {
-            await Task.yield()
-        }
+        await ObservedCondition.wait { vm.isRunning }
         await vm.handlePressure(.critical)
         await gate.open()
         await run.value

@@ -45,6 +45,8 @@ SQL exports more than tables. A database holding more than one kind of object gr
 | Events | `CREATE EVENT` | MySQL, MariaDB |
 | Privileges | `GRANT`, one principal per row | engines with user management |
 
+An Oracle or Dameng routine or trigger is followed by a `/` line, and a MySQL or MariaDB routine, trigger or event with a body sits in a `DELIMITER` block, the same form a [saved sync script](/features/compare-sync#the-script) uses. Restore those dumps with SQL*Plus, DISQL or the `mysql` client.
+
 A database with only tables lists them flat, with no group to open first.
 
 On an engine that groups by database, each database is listed from what the server says it holds. One the account can list but not open is left out, so the rest of the tree still opens.

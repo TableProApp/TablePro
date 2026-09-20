@@ -297,6 +297,12 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         ) ?? []
     }
 
+    /// Through the same owner Compare & Sync saves its scripts with, so a dump ends an Oracle unit on a `/` line and
+    /// puts a MySQL routine in a `DELIMITER` block exactly as a saved sync script does.
+    func scriptText(for ddl: String) -> String {
+        SQLScriptText(databaseType: dbType).scriptText(forDriverText: ddl)
+    }
+
     /// `tableType` carries the routine's own kind for a `.routine`, because `DROP FUNCTION` and
     /// `DROP PROCEDURE` are different statements on every engine that has both and MySQL has no
     /// `DROP ROUTINE` to fall back on.

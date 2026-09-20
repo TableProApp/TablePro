@@ -40,7 +40,7 @@ Nothing is written until **Apply**. Until then the strip along the top reads **C
 | Procedures, functions | Normalized definition text, matched on name and argument list |
 | Triggers | Normalized definition text, per table |
 
-Tables are never compared as DDL text. Driver-rendered DDL varies by formatting and by system-generated constraint names, which reports identical tables as different. A routine has no parsed form to compare instead, so its body is the definition, and the normalizer folds line endings, trailing semicolons and, when the options say so, whitespace and identifier case.
+Tables are never compared as DDL text. Driver-rendered DDL varies by formatting and by system-generated constraint names, which reports identical tables as different. A routine has no parsed form to compare instead, so its body is the definition. The normalizer compares the text each side would run and folds line endings and, when the options say so, whitespace and identifier case. A semicolon that only separates statements is not a difference. The one after an Oracle unit's `END` is, because Oracle stores the unit INVALID without it.
 
 A column's type is compared as the server declares it, so `character varying(10)` against `character varying(50)` and `numeric(10,2)` against `numeric(12,4)` are differences, and so are two different enum types. The schema a type was found in is not part of the comparison: two schemas that each carry their own `status` enum compare equal, and a PostGIS column matches whichever schema each side installed the extension into. A type the target does not have at all is still written, and its `ALTER … TYPE` fails there with `type "…" does not exist`.
 
@@ -118,6 +118,21 @@ A data comparison needs both sides open at once. On an engine that pools connect
 **Generate Script** builds the SQL. It is read-only: each statement carries the hazards its operation plan computed, and those cannot be recovered from edited text. **Copy** and **Save…** take it elsewhere, and the query editor runs a hand-edited version through the normal path.
 
 Statements are ordered by foreign key dependency, not alphabetically. Tables are created parent-first and dropped child-first; row inserts run parent-first and row deletes child-first.
+
+A view, routine or trigger that differs is dropped and created again. On Oracle it is replaced by its own `CREATE OR REPLACE` instead, with no `DROP` first, so a definition the server refuses leaves the target's object in place.
+
+A saved script is written for the target engine's own client, so each statement ends the way that client reads it:
+
+| Target | A plain statement ends with | A routine, trigger or block ends with |
+|---|---|---|
+| Oracle, Dameng | `;` | a line holding only `/` |
+| MySQL, MariaDB | `;` | its body inside `DELIMITER //` and `//`, then `DELIMITER ;` |
+| SQL Server | `;` and a `GO` line | `;` and a `GO` line |
+| PostgreSQL, SQLite and every other engine | `;` | `;` |
+
+Run the Oracle script in SQL*Plus or SQLcl, the Dameng script in DISQL, the MySQL script in the `mysql` client, and the SQL Server script in `sqlcmd` or SQL Server Management Studio. The query editor reads the Oracle, PostgreSQL and SQLite forms as saved, but sends a `DELIMITER` or `GO` line to the server as a statement: remove those lines before running a MySQL or SQL Server script there.
+
+SQL*Plus ends a plain statement at a blank line and reports `SP2-0734: unknown command` for the rest of it. When a view's definition holds a blank line, run `SET SQLBLANKLINES ON` before the script.
 
 A data script is built from a fresh read of both sides. An included table that has not been compared with its current scope holds the script back until it is compared or excluded, and a table whose rows changed since the comparison stops the script with that table named. Compare again, then generate.
 

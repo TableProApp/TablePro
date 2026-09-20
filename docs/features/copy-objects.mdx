@@ -70,6 +70,8 @@ Chosen once, before the run, and applied to every object in it.
 | **Replace it** | The target's object is dropped and built again | The target's rows are removed first |
 | **Add rows to it** | The target keeps its structure, rows are appended | Rows are appended |
 
+On Oracle, **Replace it** replaces a view, routine or trigger with its own `CREATE OR REPLACE` and drops nothing first, so a definition the target refuses leaves the target's object as it was.
+
 **Add rows to it** writes only the columns both sides have, matched without regard to case. A column
 the target does not have is not written; one the source does not have keeps its default.
 

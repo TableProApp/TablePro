@@ -10,19 +10,27 @@
 //  diffed table DDL as text has shipped a false-positive storm. A routine has no
 //  parsed form to compare instead: its body IS the definition, so text is the
 //  only thing there is. What that costs is a formatting-only difference reading
-//  as a difference, which the normaliser below is there to reduce: it folds
-//  line endings, collapses runs of whitespace and drops trailing semicolons,
-//  and it folds case only when the compare options say identifier case is
-//  ignored.
+//  as a difference, which the normaliser below is there to reduce: it compares
+//  the text each side would send, folds line endings, collapses runs of
+//  whitespace, and folds case only when the compare options say identifier case
+//  is ignored.
 //
 
 import Foundation
 
 internal struct SourceObjectDiffEngine {
     private let options: StructureCompareOptions
+    private let sourceScriptText: SQLScriptText
+    private let targetScriptText: SQLScriptText
 
-    internal init(options: StructureCompareOptions = .default) {
+    internal init(
+        options: StructureCompareOptions = .default,
+        sourceDatabaseType: DatabaseType,
+        targetDatabaseType: DatabaseType
+    ) {
         self.options = options
+        self.sourceScriptText = SQLScriptText(databaseType: sourceDatabaseType)
+        self.targetScriptText = SQLScriptText(databaseType: targetDatabaseType)
     }
 
     internal func compare(
@@ -43,7 +51,8 @@ internal struct SourceObjectDiffEngine {
                 results.append(result(for: read, counterpart: nil, status: .onlyInSource))
                 continue
             }
-            let equal = normalize(read.source) == normalize(counterpart.source)
+            let equal = normalize(read.source, scriptText: sourceScriptText)
+                == normalize(counterpart.source, scriptText: targetScriptText)
             results.append(result(for: read, counterpart: counterpart, status: equal ? .identical : .differs))
         }
 
@@ -93,8 +102,11 @@ internal struct SourceObjectDiffEngine {
         return "\(read.kind.rawValue)|\(schema)|\(name)|\(signature)"
     }
 
-    private func normalize(_ source: String) -> String {
-        var text = SqlNormalizer.normalize(source)
+    /// The text that would run is taken before any whitespace is folded. Folding first turns a line comment's
+    /// newline into a space, so the comment swallows the rest of the body, and a unit's own `;` has to survive:
+    /// Oracle stores `END` without it INVALID and with it VALID.
+    private func normalize(_ source: String, scriptText: SQLScriptText) -> String {
+        var text = scriptText.comparableText(SqlNormalizer.normalize(source))
         if options.ignoreWhitespaceInText {
             text = text
                 .replacingOccurrences(of: "\n", with: " ")
@@ -102,9 +114,6 @@ internal struct SourceObjectDiffEngine {
             while text.contains("  ") {
                 text = text.replacingOccurrences(of: "  ", with: " ")
             }
-        }
-        while text.hasSuffix(";") {
-            text.removeLast()
         }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return options.ignoreIdentifierCase ? text.lowercased() : text
