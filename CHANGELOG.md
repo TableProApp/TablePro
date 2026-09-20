@@ -57,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No more than a dozen SSH tunnels connecting at a time on iPhone and iPad.
 - SSH tunnels on iPhone and iPad spinning on a closed connection instead of ending.
 - Up to 150 seconds before an SSH forward that cannot open gives up, on iPhone and iPad.
-- Connections through an SSH jump host dialled straight at the database on iPhone and iPad.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
