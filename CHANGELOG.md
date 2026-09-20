@@ -95,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.
+- SQLite foreign keys written `REFERENCES parent` with no column list pointing at a column the parent does not have, in the object browser, the ER diagram and the JSON inspector.
 - Preview Referenced Row on iPhone and iPad building its filter by hand, so a value holding a backslash could reach the server as SQL. (#2996)
 - The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all.
 - Foreign key picker reporting no matching rows for a term none of its columns could be searched for.
