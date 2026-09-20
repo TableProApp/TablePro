@@ -48,6 +48,27 @@ nonisolated enum SQLBuilder {
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
+    /// The single row a foreign key points at.
+    ///
+    /// The value reaches the literal through the driver's own escaper, like every other predicate
+    /// here. Doubling the quote by hand is not enough on a MySQL-family server, where a backslash
+    /// escapes the quote that follows it, so `a\' OR 1=1 -- ` closed the literal and returned an
+    /// unrelated row as the referenced one.
+    static func buildSingleRowLookup(
+        table: String,
+        schema: String?,
+        column: String,
+        value: String,
+        type: DatabaseType,
+        driver: any DatabaseDriver
+    ) -> String {
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quotedColumn = quoteIdentifier(column, for: type)
+        let literal = driver.escapeStringLiteral(value)
+        let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
+        return "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(literal)' \(pagination)"
+    }
+
     static func buildDelete(
         table: String,
         schema: String?,

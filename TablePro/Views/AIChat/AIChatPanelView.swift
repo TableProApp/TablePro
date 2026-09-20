@@ -57,6 +57,8 @@ struct AIChatPanelView: View {
                 }
 
                 inputArea
+            } else if !viewModel.messages.isEmpty {
+                noProviderFooter
             }
         }
         .environment(\.chatPrimaryPendingToolUseId, primaryPendingToolUseId)
@@ -98,6 +100,31 @@ struct AIChatPanelView: View {
             description: String(localized: "AI responses may be inaccurate")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// A transcript outlives the provider that produced it, so removing the active provider leaves
+    /// this pane with messages and nothing to send another. Without this the pane keeps the
+    /// transcript and drops the composer, the model picker and the send button with no reason
+    /// given and no route back: the "Go to Settings…" affordance lives on the empty-transcript
+    /// branch alone.
+    private var noProviderFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+                Text("No AI provider is active, so this conversation is read-only.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button(String(localized: "Settings…")) {
+                    WindowOpener.shared.openSettings(tab: .ai)
+                }
+                .controlSize(.small)
+            }
+            .padding(8)
+        }
     }
 
     private var noProviderState: some View {
@@ -213,7 +240,7 @@ struct AIChatPanelView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 8)
                 .transition(.opacity)
-                .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
+                .motionAnimation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
                 .accessibilityLabel(String(localized: "Scroll to latest message"))
             }
         }
@@ -480,7 +507,7 @@ struct AIChatPanelView: View {
                     updateContext()
                     viewModel.runSlashCommand(command)
                 } label: {
-                    Text("/\(command.name) · \(command.description)")
+                    Text("/\(command.name) (\(command.description))")
                 }
             }
             if !customCommands.isEmpty {
@@ -494,7 +521,7 @@ struct AIChatPanelView: View {
                             if command.description.isEmpty {
                                 Text("/\(command.name)")
                             } else {
-                                Text("/\(command.name) · \(command.description)")
+                                Text("/\(command.name) (\(command.description))")
                             }
                         }
                     }
@@ -553,7 +580,7 @@ struct AIChatPanelView: View {
             viewModel.selectedModel = model
         } label: {
             HStack {
-                Text(showProviderPrefix ? "\(provider.displayName) · \(model)" : model)
+                Text(showProviderPrefix ? "\(provider.displayName) (\(model))" : model)
                 if isSelected {
                     Image(systemName: "checkmark")
                 }

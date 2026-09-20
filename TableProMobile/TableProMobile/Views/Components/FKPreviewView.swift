@@ -74,16 +74,18 @@ struct FKPreviewView: View {
         }
 
         do {
-            let quoted = SQLBuilder.qualifiedIdentifier(
-                table: fk.referencedTable, schema: fk.referencedSchema, for: databaseType
+            /// SQL Server and Oracle reject `LIMIT`, so the whole statement comes from the shared
+            /// builder rather than being written out here. Hardcoding the clause made every preview
+            /// on those two engines fail, and the failure looked exactly like a key with no
+            /// matching row; escaping the value by hand let one break out of its literal.
+            let query = SQLBuilder.buildSingleRowLookup(
+                table: fk.referencedTable,
+                schema: fk.referencedSchema,
+                column: fk.referencedColumn,
+                value: value,
+                type: databaseType,
+                driver: session.driver
             )
-            let quotedCol = SQLBuilder.quoteIdentifier(fk.referencedColumn, for: databaseType)
-            let escapedValue = value.replacingOccurrences(of: "'", with: "''")
-            /// SQL Server and Oracle reject `LIMIT`, so the clause comes from the shared builder
-            /// rather than being written out here. Hardcoding it made every preview on those two
-            /// engines fail, and the failure looked exactly like a key with no matching row.
-            let pagination = SQLBuilder.paginationClause(orderBy: "", limit: 1, offset: 0, for: databaseType)
-            let query = "SELECT * FROM \(quoted) WHERE \(quotedCol) = '\(escapedValue)' \(pagination)"
             let result = try await session.driver.execute(query: query)
             columns = result.columns
             row = result.rows.first

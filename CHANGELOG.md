@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - 537 driver and import/export strings are now translatable, having only ever shown in English.
+- Middle-dot separators dropped from the assistant transcript, slash command list and model picker.
 - Every plugin bundle compiled under the same concurrency settings as the app that loads it.
 - Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
 - Assistant conversations belong to one connection, and outlive the window that opened them.
@@ -42,7 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.
 - etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
+- `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)
+- Kafka `SHOW GROUPS` listing only the groups the bootstrap broker coordinates, and reporting success.
+- Kafka `DESCRIBE GROUP` failing with `this broker does not coordinate that group`.
+- Kafka `DESCRIBE GROUP` on a group that does not exist returning an empty table.
+- Kafka `CONSUME ... FROM NEWEST` returning the oldest messages of its window on a topic with more than one partition.
+- Empty second page when paging a Kafka topic from the newest messages.
+- Kafka sidebar row counts and `DESCRIBE TOPIC` reporting zero for a partition whose broker could not be reached.
+- Backslashes dropped from a Kafka `PRODUCE` value, and a value able to close its own quotes and set the partition.
+- Kafka `CONSUME ... PARTITION` silently ignoring a partition the topic does not have, or one that is not a number.
+- Kafka `SHOW TOPICS INTERNAL` and `DESCRIBE TOPIC "a" "b"` discarding the tokens they cannot use.
+- Kafka `SHOW BROKERS` and `SHOW CLUSTER` naming a different broker as the controller on each run of a KRaft cluster.
+- A cancelled Kafka statement leaving every later one failing with `Not connected to the Kafka cluster`.
+- A Kafka connection dialled twice at once when two requests needed the same broker.
+- `two requests overlapped on one Kafka connection` when the health check ran during a long statement.
 - etcd connections carrying a username refusing a server that has authentication disabled.
 - Raw JSON shown instead of etcd's own message when a username or password is wrong.
 - etcd connections reported as unreachable every 30 seconds for a user without the root role.
@@ -53,7 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Colored highlight on the AI chat input painting over a window that is not key.
 - Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
 - AI chat input focus crossfade playing against Reduce Motion.
+- Sync status and the assistant's scroll-to-bottom button animating against Reduce Motion.
+- Pulsing toolbar symbols left dimmed instead of still under Reduce Motion.
+- Foreign key label picker animating open and closed against Reduce Motion.
 - AI chat input announced with no name by VoiceOver.
+- Assistant pane left with a transcript, no composer and no explanation after the active AI provider is removed.
+- Identical unlabelled **Run** buttons announced for every tool call in a turn that proposes several.
+- Images silently dropped from a multi-file drop on the AI chat input when only some of them failed.
+- An unreadable image file pasted into the AI chat input inserting its path as text.
 - Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
 - Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
@@ -77,6 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.
 - No label and no working search in the foreign key picker on a SQLite table whose columns are declared without a type.
+- SQLite foreign keys written `REFERENCES parent` with no column list pointing at a column the parent does not have, in the object browser, the ER diagram and the JSON inspector.
+- Preview Referenced Row on iPhone and iPad building its filter by hand, so a value holding a backslash could reach the server as SQL. (#2996)
 - The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all.
 - Foreign key picker reporting no matching rows for a term none of its columns could be searched for.
 - No spoken sort direction on Query Plan columns.

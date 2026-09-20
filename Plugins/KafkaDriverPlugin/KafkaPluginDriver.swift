@@ -232,8 +232,14 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         nil
     }
 
+    /// The backslash goes first, and it is not optional: the tokenizer treats a backslash
+    /// inside quotes as an escape, so a value that carried one came back without it, and a
+    /// value ending in one escaped the closing delimiter and let the rest of the value parse
+    /// as further clauses.
     func escapeStringLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\\\"")
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     // MARK: - Browse
@@ -258,15 +264,19 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             anchors.clear(table)
             return "CONSUME \(KafkaQL.quote(table)) FROM NEWEST LIMIT \(page)"
         }
-        guard let anchor = anchors.anchor(for: table), !anchor.isEmpty else {
+        guard let anchor = anchors.anchor(for: table), !anchor.offsets.isEmpty else {
             // Nothing was recorded, so there is no window to continue. Re-deriving is worse
             // than nothing here, but it is what the host asked for.
             return "CONSUME \(KafkaQL.quote(table)) FROM NEWEST LIMIT \(page) SKIP \(offset)"
         }
-        let pairs = anchor.sorted { $0.key < $1.key }
+        let pairs = anchor.offsets.sorted { $0.key < $1.key }
             .map { "\($0.key):\($0.value)" }
             .joined(separator: ",")
-        return "CONSUME \(KafkaQL.quote(table)) FROM ANCHOR (\(pairs)) LIMIT \(page) SKIP \(offset)"
+        // A tail scan continues by stepping further back from the same end, not by reading
+        // forward from the same start. Page one of a NEWEST browse recorded its start, so page
+        // two asked to skip a page inside a window exactly one page long and came back empty.
+        let clause = anchor.readsBackward ? "TAIL" : "ANCHOR"
+        return "CONSUME \(KafkaQL.quote(table)) FROM \(clause) (\(pairs)) LIMIT \(page) SKIP \(offset)"
     }
 
     /// Kafka has no server-side WHERE over a log. Returning nil rather than a filtered query
@@ -358,9 +368,12 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func runConsume(_ query: KafkaConsumeQuery) async throws -> PluginQueryResult {
         let page = try await KafkaBrowseEngine.consume(query, cluster: cluster)
         // Only a fresh scan sets the anchor. A continuation page was handed one already, and
-        // overwriting it with its own start would walk the window forward a page at a time.
-        if case .resolved = query.start {} else {
-            anchors.record(page.anchor, for: query.topic)
+        // overwriting it with its own window would walk that window a page at a time.
+        switch query.start {
+        case .resolved, .tail:
+            break
+        default:
+            anchors.record(page.window, for: query.topic)
         }
         let kinds = KafkaMessageFlattener.payloadKinds(for: page.records)
         return Self.makeResult(
@@ -397,7 +410,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             key: query.key.map { Data($0.utf8) },
             value: query.value.map { Data($0.utf8) },
             headers: query.headers,
-            timestamp: Int64(Date().timeIntervalSince1970 * 1000),
+            timestamp: Int64(Date().timeIntervalSince1970 * 1_000),
             cluster: cluster
         )
         return Self.makeResult(
@@ -435,6 +448,15 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// The cluster's brokers.
+    ///
+    /// The last column says which broker this connection would send an admin request to, and it
+    /// is deliberately not called "controller". Under KRaft a broker fills Metadata's
+    /// `controllerId` with a randomly chosen live broker and forwards admin requests itself
+    /// (KIP-590), so the answer moves between runs and names the real controller only by
+    /// accident: measured on one three-node cluster, the three brokers answered 1, 2 and 1 for
+    /// the same question. Naming what the field actually decides is true on a KRaft cluster and
+    /// on a ZooKeeper one, where it is also the controller.
     private func runShowBrokers() async throws -> PluginQueryResult {
         let metadata = try await cluster.metadata(refresh: true)
         let rows = metadata.brokers.sorted { $0.nodeId < $1.nodeId }.map { broker -> [PluginCellValue] in
@@ -452,16 +474,22 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 PluginColumnInfo(name: "host", dataType: "TEXT", isNullable: false),
                 PluginColumnInfo(name: "port", dataType: "INTEGER", isNullable: false),
                 PluginColumnInfo(name: "rack", dataType: "TEXT", isNullable: true),
-                PluginColumnInfo(name: "controller", dataType: "TEXT", isNullable: false)
+                PluginColumnInfo(name: "takes_admin_requests", dataType: "TEXT", isNullable: false)
             ],
             rows: rows,
             rowsAffected: 0
         )
     }
 
+    /// Every consumer group, gathered from every broker.
+    ///
+    /// A broker answers ListGroups with the groups it coordinates and says nothing about the
+    /// rest, with no error, so asking one broker reported a fraction of a cluster's groups as
+    /// though that were all of them. When a broker could not be asked the list really is short,
+    /// and the truncation flag is what says so instead of presenting it as complete.
     private func runShowGroups() async throws -> PluginQueryResult {
-        let groups = try await KafkaGroupsRequest.listGroups(cluster: cluster)
-        let rows = groups.sorted { $0.groupId < $1.groupId }.map { group -> [PluginCellValue] in
+        let listing = try await KafkaGroupsRequest.listGroups(cluster: cluster)
+        let rows = listing.groups.map { group -> [PluginCellValue] in
             [.text(group.groupId), .text(group.state), .text(group.protocolType)]
         }
         return Self.makeResult(
@@ -471,13 +499,21 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 PluginColumnInfo(name: "protocol_type", dataType: "TEXT", isNullable: false)
             ],
             rows: rows,
-            rowsAffected: 0
+            rowsAffected: 0,
+            isTruncated: !listing.isComplete
         )
     }
 
     /// A group's lag, per partition. This is the number a Kafka debugging session is usually
     /// after: how far behind the consumers are, and on which partition.
     private func runDescribeGroup(_ group: String) async throws -> PluginQueryResult {
+        // Asked first, and only to tell a typo apart from a group with nothing committed. Kafka
+        // answers OffsetFetch for a group it has never heard of with an empty topic list and no
+        // error, which is byte for byte what a real group that has not committed yet returns, so
+        // the lag table alone reported both as five columns and no rows.
+        let detail = try await KafkaGroupsRequest.describeGroups([group], cluster: cluster).first
+        guard detail?.isKnown ?? true else { throw KafkaError.unknownGroup(group) }
+
         let committed = try await KafkaGroupsRequest.fetchCommittedOffsets(group: group, cluster: cluster)
         var rows: [[PluginCellValue]] = []
         let byTopic = Dictionary(grouping: committed, by: \.topic)
@@ -575,7 +611,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let metadata = try await cluster.metadata(refresh: true)
         let rows: [[PluginCellValue]] = [
             [.text("cluster_id"), metadata.clusterId.map { PluginCellValue.text($0) } ?? .null],
-            [.text("controller"), .text(String(metadata.controllerId))],
+            [.text("admin_requests_to"), .text(String(metadata.controllerId))],
             [.text("brokers"), .text(String(metadata.brokers.count))],
             [.text("topics"), .text(String(metadata.topics.filter { !$0.isInternal }.count))],
             [.text("bootstrap"), .text(await cluster.bootstrapEndpointDescription())]
@@ -591,21 +627,32 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
-/// Where each topic's current browse window starts, so page two continues page one.
+/// Where each topic's current browse window sits, so page two continues page one.
 ///
 /// A plain lock rather than an actor: `buildBrowseQuery` is a synchronous protocol requirement
 /// and cannot await.
 private final class KafkaAnchorStore: @unchecked Sendable {
-    private var anchors: [String: [Int32: Int64]] = [:]
-    private let lock = NSLock()
-
-    func record(_ anchor: [Int32: Int64], for table: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        anchors[table] = anchor
+    /// One partition offset per partition, plus which end of the window it is. A forward scan
+    /// pins its start and reads on from there; a tail scan pins its end and later pages step
+    /// back from it.
+    struct Anchor {
+        let offsets: [Int32: Int64]
+        let readsBackward: Bool
     }
 
-    func anchor(for table: String) -> [Int32: Int64]? {
+    private var anchors: [String: Anchor] = [:]
+    private let lock = NSLock()
+
+    func record(_ window: KafkaScanWindow, for table: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        anchors[table] = Anchor(
+            offsets: window.readsBackward ? window.tail : window.start,
+            readsBackward: window.readsBackward
+        )
+    }
+
+    func anchor(for table: String) -> Anchor? {
         lock.lock()
         defer { lock.unlock() }
         return anchors[table]

@@ -17,6 +17,7 @@ struct AISettingsView: View {
     @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
     @ObservedObject private var cursorAgentService = CursorAgentService.shared
     @ObservedObject private var xaiService = XAIService.shared
+    @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -38,6 +39,7 @@ struct AISettingsView: View {
         .task { await chatGPTCodexService.refreshAuthState() }
         .task { await cursorAgentService.refreshStatus() }
         .task { await xaiService.refreshAuthState() }
+        .task { await claudeAgentService.performRefresh() }
         .onChange(of: settings.providers.map(\.id)) { _ in
             refreshKeyAvailability()
         }
@@ -358,6 +360,9 @@ struct AISettingsView: View {
                 ? String(localized: "API key set")
                 : String(localized: "Not configured")
         case .none:
+            if provider.type == .claudeAgent {
+                return claudeAgentStatusText()
+            }
             let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
             guard !endpoint.isEmpty else { return String(localized: "Not configured") }
             if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
@@ -398,6 +403,25 @@ struct AISettingsView: View {
             return String(localized: "Signed in with xAI")
         }
         return String(localized: "Not configured")
+    }
+
+    /// Claude Agent authenticates through the CLI rather than an endpoint or a key, so the endpoint
+    /// arm this type used to fall into could only ever answer "Not configured", however well the
+    /// provider was working. The sheet has always read the service; this row now reads the same one.
+    private func claudeAgentStatusText() -> String {
+        switch claudeAgentService.state {
+        case .signedIn(let account, _):
+            guard let account, !account.isEmpty else { return String(localized: "Signed in") }
+            return String(format: String(localized: "Signed in as %@"), account)
+        case .signedOut:
+            return String(localized: "Not signed in")
+        case .outdated(let version):
+            return String(format: String(localized: "Claude Code %@ is too old"), version)
+        case .notInstalled:
+            return String(localized: "Claude Code not installed")
+        case .unknown:
+            return String(localized: "Checking…")
+        }
     }
 
     private func customStatusText(for provider: AIProviderConfig) -> String {
