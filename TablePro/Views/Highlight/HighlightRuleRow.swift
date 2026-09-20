@@ -16,8 +16,20 @@ struct HighlightRuleRow: View {
     let onRemove: () -> Void
     let onCancel: () -> Void
 
+    /// Bounded rather than `.fixedSize()`. A pull-down takes the width of its widest menu item,
+    /// and the items here are the table's column names, so one long name pushed the BETWEEN
+    /// second value field past the popover's edge: measured, a 29-character name puts the row at
+    /// 582pt and a 62-character one at 791pt, against the 523pt a row actually gets inside this
+    /// popover's 540pt list. Capped, both measure 511pt. The filter bar's own 160 does not fit
+    /// here, because that row lives in a wider host.
+    private static let columnPickerMaximumWidth: CGFloat = 140
+
     private var isColumnMissing: Bool {
         !columnOptions.contains { $0.name == rule.columnName && $0.occurrence == rule.columnOccurrence }
+    }
+
+    private var warning: HighlightRuleWarning? {
+        HighlightRuleWarning.warning(for: rule, isColumnPresent: !isColumnMissing)
     }
 
     var body: some View {
@@ -35,11 +47,12 @@ struct HighlightRuleRow: View {
             HStack(spacing: 8) {
                 colorPicker
                 targetPicker
-                if isColumnMissing {
-                    Label(String(localized: "Not in this result"), systemImage: "exclamationmark.triangle")
+                if let warning {
+                    Label(warning.label, systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .help(String(format: String(localized: "This result has no column named %@"), rule.columnName))
+                        .help(warning.help)
+                        .accessibilityIdentifier("highlight-rule-warning")
                 }
                 Spacer(minLength: 0)
                 removeButton
@@ -73,8 +86,7 @@ struct HighlightRuleRow: View {
             get: { HighlightColumnOption.identifier(name: rule.columnName, occurrence: rule.columnOccurrence) },
             set: { identifier in
                 guard let option = columnOptions.first(where: { $0.id == identifier }) else { return }
-                rule.columnName = option.name
-                rule.columnOccurrence = option.occurrence
+                rule = rule.selectingColumn(named: option.name, occurrence: option.occurrence)
             }
         )
     }
@@ -92,19 +104,19 @@ struct HighlightRuleRow: View {
         }
         .pickerStyle(.menu)
         .controlSize(.small)
-        .fixedSize()
+        .frame(maxWidth: Self.columnPickerMaximumWidth)
         .labelsHidden()
         .accessibilityLabel(String(localized: "Rule column"))
         .accessibilityValue(rule.columnName)
+        .accessibilityIdentifier("highlight-rule-column")
+        .help(rule.columnName)
     }
 
     private var operatorSelection: Binding<FilterOperator> {
         Binding(
             get: { rule.filterOperator },
             set: { newOperator in
-                guard newOperator != rule.filterOperator else { return }
-                rule.filterOperator = newOperator
-                rule.isCaseSensitive = newOperator.defaultIsCaseSensitive
+                rule = rule.selectingOperator(newOperator)
             }
         )
     }
@@ -141,6 +153,7 @@ struct HighlightRuleRow: View {
         .controlSize(.small)
         .fixedSize()
         .accessibilityValue(rule.filterOperator.displayName)
+        .accessibilityIdentifier("highlight-rule-operator")
     }
 
     @ViewBuilder

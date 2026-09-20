@@ -46,7 +46,7 @@ A value filter lives as long as the result does: switching view mode or tab keep
 
 Right-click a cell and open **Highlight**. A color under **Rows Where status = “paid”** tints every row holding that value; a color under **Cells Where status = “paid”** tints only that cell. The palette marks the color a matching rule already uses, and **Remove Highlight** takes the rule away.
 
-For anything other than an exact match, click the highlighter button in the status bar or choose **View > Highlight Rules**. A rule is a column, an operator from the [filter bar](/features/filtering), a value, a color, and **Row** or **Cell**. **Highlight Values…** in the header menu starts a rule on that column. A rule left without a value is dropped when the popover closes.
+For anything other than an exact match, click the highlighter button in the status bar or choose **View > Highlight Rules**. A rule is a column, an operator from the [filter bar](/features/filtering), a value, a color, and **Row** or **Cell**. **Highlight Values…** in the header menu starts a rule on that column. A rule left without a value is dropped when the popover closes. A rule is marked in the popover, and colors nothing, when its column is not in this result or when its regular expression will not compile.
 
 <Frame caption="US invoices in green, Canadian in blue, and customer IDs under 10 in orange">
   <img className="block dark:hidden" src="/images/highlight-rules.png" alt="Highlight Rules popover listing three rules over an Invoice grid with tinted rows and cells" />

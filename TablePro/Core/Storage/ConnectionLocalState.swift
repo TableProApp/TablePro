@@ -55,6 +55,7 @@ internal enum ConnectionLocalState {
         HistoryPanelState.removeConnection(connectionId)
         QuickSwitcherCatalogStore.shared.removeConnection(connectionId)
         FavoritesExpansionState.shared.removeConnection(connectionId)
+        ConnectionDataCache.removeConnection(connectionId)
     }
 
     private static func purgeFavorites(_ connectionId: UUID, origin: Origin) {

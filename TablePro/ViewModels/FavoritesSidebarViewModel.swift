@@ -163,11 +163,26 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
     internal let connectionId: UUID
     private let cache: ConnectionDataCache
     private let services: AppServices
+    private var cacheCancellable: AnyCancellable?
+    private var cachedNodes: (revision: Int, roots: [FavoriteNode])?
     private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
 
     var isInitialLoadComplete: Bool { cache.isInitialLoadComplete }
 
+    /// Built once per committed snapshot rather than once per read. `FavoritesTabView` asks for the
+    /// tree three times in a single pass, to filter it, to test it for emptiness and to list its
+    /// folders for the edit dialog, and every one of those used to walk the whole thing again.
+    ///
+    /// Keyed on the cache's revision rather than cleared from the change signal, so the tree can
+    /// never outlive the content it was built from whatever order the cache publishes in.
     var nodes: [FavoriteNode] {
+        if let cachedNodes, cachedNodes.revision == cache.contentRevision { return cachedNodes.roots }
+        let roots = buildRootNodes()
+        cachedNodes = (cache.contentRevision, roots)
+        return roots
+    }
+
+    private func buildRootNodes() -> [FavoriteNode] {
         var roots = buildNodes(folders: cache.folders, favorites: cache.favorites, parentId: nil)
         for folder in cache.linkedFolders {
             guard folder.isEnabled else {
@@ -185,7 +200,23 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
         self.connectionId = connectionId
         self.services = services
         self.cache = ConnectionDataCache.shared(for: connectionId)
+        observeCache()
         cache.ensureLoaded()
+    }
+
+    /// The tab reads the whole Queries tree out of `cache`, which is an observable object of its
+    /// own, and SwiftUI subscribes only to the one a property wrapper names. Without this relay the
+    /// load that finishes after the first render reaches no subscriber, so the tab kept the empty
+    /// tree it was built with until something unrelated happened to redraw it.
+    ///
+    /// No hop onto the next run-loop turn: `objectWillChange` is the signal SwiftUI wants, and the
+    /// cache commits its properties in one synchronous burst, so the redraw that follows reads the
+    /// finished snapshot.
+    private func observeCache() {
+        cacheCancellable = cache.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
     }
 
     private func buildLinkedTree(files: [LinkedSQLFavorite], folderId: UUID) -> [FavoriteNode] {

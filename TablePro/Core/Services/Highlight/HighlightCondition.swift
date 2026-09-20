@@ -206,6 +206,10 @@ struct HighlightCondition {
         return source.substring(to: cut)
     }
 
+    static func isUsableRegexPattern(_ pattern: String) -> Bool {
+        regularExpression(pattern, ignoresCase: false) != nil
+    }
+
     private static func regularExpression(_ pattern: String, ignoresCase: Bool) -> NSRegularExpression? {
         guard !pattern.isEmpty, (pattern as NSString).length <= searchLimit else { return nil }
         return try? NSRegularExpression(pattern: pattern, options: ignoresCase ? [.caseInsensitive] : [])

@@ -30,7 +30,7 @@ struct StatusBarHighlightState {
     let onDismiss: () -> Void
 
     var activeRuleCount: Int {
-        rules.filter { $0.isEnabled && $0.isValid }.count
+        rules.filter { $0.isEnabled && $0.isValid && !$0.hasUnusablePattern }.count
     }
 }
 

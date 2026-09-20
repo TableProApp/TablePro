@@ -7,15 +7,33 @@ import SwiftUI
 
 struct HighlightRulesPopover: View {
     let columns: [String]
-    let rules: [HighlightRule]
     let isPersisted: Bool
     let onChange: ([HighlightRule]) -> Void
 
+    /// The rules being edited, held here rather than read back out of the store. Measured: SwiftUI
+    /// does not re-evaluate `.popover` content when the presenting view re-renders, so a control
+    /// whose only effect was a write to the store left this view showing what it drew first and the
+    /// pull-downs snapped back. Add Rule looked fine because it also writes `focusedRuleID`, which
+    /// invalidates this view. `@State` is the store every control writes through, so an edit both
+    /// shows and composes with the next one; `onChange` carries it out.
+    @State private var rules: [HighlightRule]
     @State private var focusedRuleID: UUID?
     @Environment(\.dismiss) private var dismiss
 
     private static let rowHeight: CGFloat = 64
     private static let maximumListHeight: CGFloat = 420
+
+    init(
+        columns: [String],
+        rules: [HighlightRule],
+        isPersisted: Bool,
+        onChange: @escaping ([HighlightRule]) -> Void
+    ) {
+        self.columns = columns
+        self.isPersisted = isPersisted
+        self.onChange = onChange
+        _rules = State(initialValue: rules)
+    }
 
     private var columnOptions: [HighlightColumnOption] {
         HighlightColumnOption.options(for: columns)
@@ -104,18 +122,23 @@ struct HighlightRulesPopover: View {
         Binding(
             get: { rules.first { $0.id == rule.id } ?? rule },
             set: { updated in
+                guard let index = rules.firstIndex(where: { $0.id == updated.id }) else { return }
                 var next = rules
-                guard let index = next.firstIndex(where: { $0.id == updated.id }) else { return }
                 next[index] = updated
-                onChange(next)
+                commit(next)
             }
         )
+    }
+
+    private func commit(_ next: [HighlightRule]) {
+        rules = next
+        onChange(next)
     }
 
     private func addRule() {
         guard let first = columnOptions.first else { return }
         let rule = HighlightRule(columnName: first.name, columnOccurrence: first.occurrence)
-        onChange(rules + [rule])
+        commit(rules + [rule])
         focusedRuleID = rule.id
     }
 
@@ -124,13 +147,13 @@ struct HighlightRulesPopover: View {
     }
 
     private func remove(_ rule: HighlightRule) {
-        onChange(rules.filter { $0.id != rule.id })
+        commit(rules.filter { $0.id != rule.id })
     }
 
     private func move(from source: IndexSet, to destination: Int) {
         var next = rules
         next.move(fromOffsets: source, toOffset: destination)
-        onChange(next)
+        commit(next)
     }
 
     private func move(_ rule: HighlightRule, by offset: Int) {
@@ -139,6 +162,6 @@ struct HighlightRulesPopover: View {
         guard rules.indices.contains(target) else { return }
         var next = rules
         next.swapAt(index, target)
-        onChange(next)
+        commit(next)
     }
 }

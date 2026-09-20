@@ -100,6 +100,28 @@ struct HighlightRule: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.target = try container.decodeIfPresent(HighlightTarget.self, forKey: .target) ?? .row
     }
 
+    func selectingColumn(named name: String, occurrence: Int) -> HighlightRule {
+        var updated = self
+        updated.columnName = name
+        updated.columnOccurrence = max(0, occurrence)
+        return updated
+    }
+
+    func selectingOperator(_ newOperator: FilterOperator) -> HighlightRule {
+        guard newOperator != filterOperator else { return self }
+        var updated = self
+        updated.filterOperator = newOperator
+        updated.isCaseSensitive = newOperator.defaultIsCaseSensitive
+        return updated
+    }
+
+    /// A pattern the matcher cannot compile is not a rule that does nothing quietly: it is counted
+    /// and coloured like any other while matching no row at all.
+    var hasUnusablePattern: Bool {
+        guard filterOperator == .regex, !value.isEmpty else { return false }
+        return !HighlightCondition.isUsableRegexPattern(value)
+    }
+
     var isValid: Bool {
         guard !columnName.isEmpty else { return false }
         guard filterOperator.requiresValue else { return true }

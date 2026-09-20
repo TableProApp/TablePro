@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A dropped table's saved filters, column layout, highlight rules, value formats and label columns coming back on a table recreated with its name.
 - A dropped database or schema leaving every one of its tables' saved settings behind.
 - Favorites rows left behind by a dropped table, schema or database.
+- Column and operator pull-downs in **Highlight Rules** snapping back to their previous value, leaving every rule on **equals** and on the column it was created with. (#3015)
+- Favorite queries missing from the sidebar Favorites tab on the first switch to it. (#3016)
+- Favorites list silently dropping rows during a burst of iCloud favorites updates.
 - A filter row typed but never applied counted as applied, so the status bar reported it and the next page turn ran it. (#3006)
 - Filter rows typed and never applied lost on closing the tab. (#3006)
 - Saved filters lost on the next tab switch for every restored table tab but the selected one. (#3006)
