@@ -228,7 +228,7 @@ struct ValueDisplayFormatStorageTests {
         storage.save(["id": .uuid], for: scope("public", connectionId: conn))
         storage.save(["id": .json], for: scope("public", connectionId: other))
 
-        storage.purgeConnections([conn])
+        storage.purgeConnections([conn], leavesTombstones: true)
 
         #expect(defaults.data(forKey: PreferenceKeys.columnDisplayFormats(scope("public", connectionId: conn)).name) == nil)
         #expect(defaults.data(forKey: legacyKey) == nil)

@@ -41,6 +41,52 @@ struct SQLFavoriteDeletionSyncTests {
         Set(metadata.tombstones(for: type).map(\.id))
     }
 
+    /// When the other device did the deleting, a tombstone here pushes its own deletion straight
+    /// back at it. The rows still go.
+    @Test("A remote delete removes the rows and tombstones nothing")
+    func remoteDeleteLeavesNoTombstone() async {
+        let connectionId = UUID()
+        let folder = SQLFavoriteFolder(name: "Reports", connectionId: connectionId)
+        let favorite = SQLFavorite(
+            name: "Active users",
+            query: "SELECT * FROM users",
+            folderId: folder.id,
+            connectionId: connectionId
+        )
+        #expect(await manager.addFolder(folder))
+        #expect(await manager.addFavorite(favorite))
+
+        await manager.removeFavoritesAndFoldersWithoutSync(for: connectionId)
+
+        #expect(!tombstonedIds(.favorite).contains(favorite.id.uuidString))
+        #expect(!tombstonedIds(.favoriteFolder).contains(folder.id.uuidString))
+        #expect(await manager.fetchFavorites(connectionId: connectionId).isEmpty)
+    }
+
+    /// Without this the id stays dirty for good: the next push looks for a record that is gone,
+    /// skips it, and nothing ever drains the entry.
+    @Test("A remote delete drains the dirty marks of what it removed")
+    func remoteDeleteDrainsDirtyMarks() async {
+        let connectionId = UUID()
+        let favorite = SQLFavorite(
+            name: "Active users", query: "SELECT * FROM users", connectionId: connectionId
+        )
+        #expect(await manager.addFavorite(favorite))
+        #expect(metadata.dirtyIds(for: .favorite).contains(favorite.id.uuidString))
+
+        await manager.removeFavoritesAndFoldersWithoutSync(for: connectionId)
+
+        #expect(!metadata.dirtyIds(for: .favorite).contains(favorite.id.uuidString))
+    }
+
+    @Test("A remote delete with nothing to remove tombstones nothing")
+    func remoteDeleteOfNothingTombstonesNothing() async {
+        await manager.removeFavoritesAndFoldersWithoutSync(for: UUID())
+
+        #expect(tombstonedIds(.favorite).isEmpty)
+        #expect(tombstonedIds(.favoriteFolder).isEmpty)
+    }
+
     @Test("Deleting a connection tombstones its favorites and its folders")
     func connectionDeleteTombstonesEverythingItRemoved() async {
         let connectionId = UUID()

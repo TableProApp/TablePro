@@ -78,25 +78,14 @@ final class NetworkPaneViewModel: ObservableObject {
             .connection.hidesBuiltInDatabase ?? false
     }
 
-    /// Whether the form renders the built-in Database field. A driver opts out through
-    /// `hidesBuiltInDatabase` when it names its container some other way, or has none.
-    /// This is deliberately not `requiresAuthentication`: whether a driver needs credentials
-    /// says nothing about whether it accepts a database name.
+    /// This is deliberately not `requiresAuthentication`: whether a driver needs credentials says
+    /// nothing about whether it accepts a database name.
     var showsBuiltInDatabaseField: Bool {
-        switch connectionMode {
-        case .fileBased:
-            return false
-        case .apiOnly:
-            return PluginManager.shared.supportsDatabaseSwitching(for: type) && !hidesBuiltInDatabase
-        default:
-            return !hidesBuiltInDatabase
-        }
+        ConnectionDatabaseRequirement.showsBuiltInField(for: type)
     }
 
-    /// Never require a value the form does not render. A file-based connection stores its
-    /// path in `database` and renders it as the Database File field.
     var requiresDatabaseValue: Bool {
-        connectionMode == .fileBased || (connectionMode == .apiOnly && showsBuiltInDatabaseField)
+        ConnectionDatabaseRequirement.requiresValue(for: type)
     }
 
     var validationIssues: [String] {

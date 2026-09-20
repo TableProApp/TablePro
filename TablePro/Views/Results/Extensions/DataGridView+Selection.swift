@@ -43,6 +43,17 @@ extension TableViewCoordinator {
         }
     }
 
+    /// Throws the pending layout away instead of writing it, for a table that is gone.
+    ///
+    /// A drop clears the table's saved layout and then closes its tab, and the teardown runs on a
+    /// later run-loop turn, so a flush there would write the layout back over the clear and mark it
+    /// dirty for sync again, waiting for a table recreated with the same name.
+    func discardPendingColumnLayoutPersistence() {
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        pendingColumnLayoutPersistence = nil
+    }
+
     func flushPendingColumnLayoutPersistence() {
         layoutPersistTask?.cancel()
         layoutPersistTask = nil

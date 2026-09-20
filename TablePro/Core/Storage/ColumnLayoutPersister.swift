@@ -209,14 +209,21 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         syncTracker.markDeleted(.settings, ids: dropping.map(Self.syncCategory(for:)))
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>) {
-        var deletedCategories: [String] = []
+    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+        var categories: [String] = []
         for connectionId in connectionIds {
-            deletedCategories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
+            categories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
             cache[connectionId] = [:]
             removeFile(for: connectionId)
         }
-        syncTracker.markDeleted(.settings, ids: deletedCategories)
+        /// The dirty marks go either way. A tombstone from a remote delete would push the sender's
+        /// own deletion back at it, but leaving the ids dirty means the next push looks for entries
+        /// that are gone and never drains them.
+        if leavesTombstones {
+            syncTracker.markDeleted(.settings, ids: categories)
+        } else {
+            syncTracker.discardDirty(.settings, ids: categories)
+        }
     }
 
     func clear(for key: ColumnLayoutTableKey) {

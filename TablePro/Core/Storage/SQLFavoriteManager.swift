@@ -79,6 +79,17 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         postUpdateNotification(connectionId: nil)
     }
 
+    /// Used when another device deleted the connection. Marking tombstones here would push its own
+    /// deletion straight back at it, which is the reason `FavoriteTablesStorage` splits the same
+    /// way.
+    func removeFavoritesAndFoldersWithoutSync(for connectionId: UUID) async {
+        let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
+        guard !removed.isEmpty else { return }
+        syncTracker.discardDirty(.favorite, ids: removed.favorites.map(\.uuidString))
+        syncTracker.discardDirty(.favoriteFolder, ids: removed.folders.map(\.uuidString))
+        postUpdateNotification(connectionId: nil)
+    }
+
     func pruneOrphaned(activeConnectionIds: Set<UUID>) async {
         await storage.pruneOrphaned(retaining: activeConnectionIds)
     }

@@ -61,6 +61,16 @@ final class SyncChangeTracker: Sendable {
         postChangeNotification()
     }
 
+    /// Forgets that records were waiting to be pushed, without tombstoning them.
+    ///
+    /// For records another device already deleted: a tombstone would send its own deletion back at
+    /// it, but leaving the dirty ids behind is not free either. The next push looks for records
+    /// that are gone, skips them, and never drains the entries.
+    func discardDirty(_ type: SyncRecordType, ids: [String]) {
+        guard !ids.isEmpty else { return }
+        metadataStorage.removeDirty(ids, type: type)
+    }
+
     func markDeleted(_ type: SyncRecordType, ids: [String]) {
         guard !isSuppressed, !ids.isEmpty else { return }
         metadataStorage.removeDirty(ids, type: type)

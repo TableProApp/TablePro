@@ -38,6 +38,43 @@ struct ColumnLayoutSyncTests {
         ColumnLayoutTableKey(connectionId: UUID(), databaseName: "shop", schemaName: "public", tableName: "orders")
     }
 
+    /// The other device already told CloudKit. A tombstone from here would push its deletion back,
+    /// but the dirty marks still have to go or the next push hunts for entries that are gone.
+    @Test("A remote connection delete drops the layouts without tombstoning them")
+    func remotePurgeLeavesNoTombstone() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let key = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        persister.save(layout(["id": 80]), for: key)
+
+        persister.purgeConnections([connectionId], leavesTombstones: false)
+
+        #expect(persister.load(for: key) == nil)
+        #expect(metadata.tombstones(for: .settings).isEmpty)
+        #expect(!metadata.dirtyIds(for: .settings).contains(FileColumnLayoutPersister.syncCategory(for: key.storageKey)))
+    }
+
+    @Test("A local connection delete tombstones the layouts it drops")
+    func localPurgeTombstones() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let key = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        persister.save(layout(["id": 80]), for: key)
+
+        persister.purgeConnections([connectionId], leavesTombstones: true)
+
+        #expect(
+            metadata.tombstones(for: .settings)
+                .contains { $0.id == FileColumnLayoutPersister.syncCategory(for: key.storageKey) }
+        )
+    }
+
     @Test("Dropping a table tombstones its layout so the deletion syncs")
     func dropTableTombstonesTheLayout() throws {
         let (persister, metadata, directory) = try makeTrackedPersister()
@@ -153,7 +190,7 @@ struct ColumnLayoutSyncTests {
         persister.save(layout(["id": 90]), for: items)
         persister.save(layout(["id": 70]), for: kept)
 
-        persister.purgeConnections([connectionId])
+        persister.purgeConnections([connectionId], leavesTombstones: true)
 
         let file = directory.appendingPathComponent("\(connectionId.uuidString).json")
         #expect(!FileManager.default.fileExists(atPath: file.path))

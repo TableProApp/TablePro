@@ -1022,6 +1022,36 @@ struct TableViewCoordinatorLayoutTests {
         #expect(nextUpdate == liveWidths)
     }
 
+    /// A dropped table's saved layout is cleared by the adoption, and only then does its tab close.
+    /// A flush on that teardown would write the layout straight back over the clear.
+    @Test("Discarding a pending width write persists nothing")
+    func discardDropsPendingWidthWrite() throws {
+        let persister = FakeColumnLayoutPersister()
+        let coordinator = makeCoordinator(
+            tabType: .table,
+            connectionId: UUID(),
+            tableName: "users",
+            persister: persister
+        )
+        let rows = TableRows.from(
+            queryRows: [[.text("Ada")]],
+            columns: ["name"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let columns = attachColumns(["name": 180], tableRows: rows, to: coordinator)
+        let column = try #require(columns["name"])
+        #expect(coordinator.markColumnWidthUserSized(column))
+        coordinator.scheduleLayoutPersist()
+        #expect(coordinator.pendingColumnLayoutPersistence != nil)
+
+        coordinator.discardPendingColumnLayoutPersistence()
+        coordinator.flushPendingColumnLayoutPersistence()
+
+        #expect(persister.stored["users"] == nil)
+        #expect(coordinator.pendingColumnLayoutPersistence == nil)
+        #expect(coordinator.layoutPersistTask == nil)
+    }
+
     @Test("Reset cancels a pending width write")
     func resetCancelsPendingWidthWrite() throws {
         let persister = FakeColumnLayoutPersister()
