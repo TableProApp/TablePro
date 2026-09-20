@@ -57,6 +57,11 @@ struct ResultStatusBar: View {
 
     @State private var showColumnPopover = false
     @State private var showHighlightPopover = false
+    /// The tab the rules popover was opened for. Switching tab closes the popover, and by the time
+    /// the close is seen this view already belongs to the tab that was switched to, so pruning
+    /// "the selected tab" pruned the wrong one and left an unfinished rule saved on the tab the
+    /// user actually opened it from.
+    @State private var highlightPopoverTabId: UUID?
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -70,8 +75,14 @@ struct ResultStatusBar: View {
             showHighlightPopover = false
         }
         .onChange(of: showHighlightPopover) { isShown in
-            guard !isShown else { return }
-            highlightState.onDismiss()
+            guard !isShown else {
+                highlightPopoverTabId = snapshot.tabId
+                return
+            }
+            if let tabId = highlightPopoverTabId {
+                highlightState.onDismiss(tabId)
+            }
+            highlightPopoverTabId = nil
         }
         .onValueChange(of: highlightPresentation) { previous, current in
             guard previous.tabId == current.tabId, model.controls.showsHighlightRules else { return }

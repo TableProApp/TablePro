@@ -27,7 +27,7 @@ struct StatusBarHighlightState {
     let isPersisted: Bool
     let presentationRequest: Int
     let onChange: ([HighlightRule]) -> Void
-    let onDismiss: () -> Void
+    let onDismiss: (UUID) -> Void
 
     var activeRuleCount: Int {
         rules.filter { $0.isEnabled && $0.isValid && !$0.hasUnusablePattern }.count
