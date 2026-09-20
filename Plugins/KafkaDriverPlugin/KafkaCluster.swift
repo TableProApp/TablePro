@@ -36,6 +36,10 @@ actor KafkaCluster {
     /// overwrote the first's entry, leaking its socket. Fanning one request out per leader
     /// makes that race routine rather than rare.
     private var dialsInFlight: [KafkaEndpoint: Task<KafkaConnection, Error>] = [:]
+    /// Bumped by every disconnect. A dial suspends, so one that succeeds after the pool has been
+    /// drained would otherwise put its socket back into an emptied pool that nothing will ever
+    /// close, and its cleanup would remove a newer caller's entry.
+    private var poolGeneration = 0
     /// Why a broker could not be dialled, remembered so a six-partition browse does not pay the
     /// connect timeout once per partition. Cleared whenever Metadata is re-read, because that is
     /// when a broker's advertised address can have changed.
@@ -95,6 +99,7 @@ actor KafkaCluster {
     }
 
     func disconnect() async {
+        poolGeneration &+= 1
         for dial in dialsInFlight.values { dial.cancel() }
         dialsInFlight.removeAll()
         for connection in connections.values {
@@ -178,23 +183,30 @@ actor KafkaCluster {
     /// `bootstrapOnly` that is one broker out of however many the cluster has.
     func everyBrokerConnection() async throws -> (connections: [KafkaConnection], expected: Int) {
         let metadata = try await metadata()
+        let expected = max(1, metadata.brokers.count)
         guard routing == .advertised else {
-            return ([try await controlConnection()], max(1, metadata.brokers.count))
+            return ([try await controlConnection()], expected)
         }
+        // Deduplicated by connection identity, not by broker id. Several brokers can advertise
+        // one address, and asking the same socket three times and counting three answers is how
+        // a partial sweep would report itself as complete, which is the defect this exists to
+        // fix rather than repeat.
         var reachable: [KafkaConnection] = []
+        var seen: Set<ObjectIdentifier> = []
         for broker in metadata.brokers.sorted(by: { $0.nodeId < $1.nodeId }) {
             guard let connection = try? await connection(forLeader: broker.nodeId) else { continue }
+            guard seen.insert(ObjectIdentifier(connection)).inserted else { continue }
             reachable.append(connection)
         }
         if reachable.isEmpty { reachable = [try await controlConnection()] }
-        return (reachable, max(reachable.count, metadata.brokers.count))
+        return (reachable, expected)
     }
 
     private func dial(_ endpoint: KafkaEndpoint) async throws -> KafkaConnection {
+        let generation = poolGeneration
         if let running = dialsInFlight[endpoint] {
             let connection = try await running.value
-            connections[endpoint] = connection
-            return connection
+            return try await install(connection, at: endpoint, from: generation)
         }
         let ssl = ssl
         let credentials = credentials
@@ -211,8 +223,28 @@ actor KafkaCluster {
             return connection
         }
         dialsInFlight[endpoint] = dial
-        defer { dialsInFlight[endpoint] = nil }
-        let connection = try await dial.value
+        let connection: KafkaConnection
+        do {
+            connection = try await dial.value
+        } catch {
+            if poolGeneration == generation { dialsInFlight[endpoint] = nil }
+            throw error
+        }
+        if poolGeneration == generation { dialsInFlight[endpoint] = nil }
+        return try await install(connection, at: endpoint, from: generation)
+    }
+
+    /// Puts a freshly dialled connection into the pool, unless the pool moved on while it was
+    /// being dialled. A connection nobody will own is closed here rather than leaked.
+    private func install(
+        _ connection: KafkaConnection,
+        at endpoint: KafkaEndpoint,
+        from generation: Int
+    ) async throws -> KafkaConnection {
+        guard poolGeneration == generation else {
+            await connection.close()
+            throw KafkaError.notConnected
+        }
         connections[endpoint] = connection
         return connection
     }

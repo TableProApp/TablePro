@@ -12,6 +12,27 @@ enum KafkaPartitionOutcome<Value: Sendable>: Sendable {
     case failed(KafkaError)
 }
 
+/// Whether sending a request a second time can repeat work the broker already did.
+///
+/// A read can always be repeated. A write cannot: `KafkaProduceRequest` asks for `acks = -1`,
+/// where REQUEST_TIMED_OUT means the leader appended the record and its in-sync replicas did
+/// not acknowledge in time, and this client sends no producer id for Kafka to deduplicate on.
+/// Retrying that appends the message twice.
+enum KafkaRequestRepeatability: Sendable {
+    case safeToRepeat
+    case onlyWhenBrokerRefusedIt
+
+    /// Whether a partition that came back with this code should be sent again.
+    func allowsRetry(after code: Int16) -> Bool {
+        switch KafkaErrorCode.retryAction(for: code) {
+        case .report, .findCoordinatorAgain:
+            return false
+        case .resolveLeaderAgain, .retrySameBroker:
+            return self == .safeToRepeat || KafkaErrorCode.provesRequestWasNotApplied(code)
+        }
+    }
+}
+
 extension KafkaPartitionOutcome {
     /// Every partition's value, or the error that best explains the ones missing.
     ///
@@ -48,12 +69,40 @@ extension KafkaPartitionOutcome {
         if !ledElsewhere.isEmpty {
             throw KafkaError.partitionsLedElsewhere(topic: topic, partitions: ledElsewhere)
         }
-        if let code = rejected.values.min() {
+        // Ranked, because the partitions of one topic can come back with different codes and
+        // only one of them can be reported. Picking the numerically smallest let one partition's
+        // OFFSET_OUT_OF_RANGE (1) hide TOPIC_AUTHORIZATION_FAILED (29) on the other five, which
+        // is the least actionable of the failures rather than the most.
+        if let code = chosenFailure(among: rejected) {
             let affected = rejected.filter { $0.value == code }.map(\.key)
             throw KafkaError.partitionsRejected(topic: topic, partitions: affected, api: api, code: code)
         }
         if let firstFailure { throw firstFailure }
         return values
+    }
+
+    /// Which of several partitions' error codes to report.
+    ///
+    /// A permission failure first: it is the one the user has to do something about, and it is
+    /// usually the cause of whatever else came back. Then any other real answer, then a code
+    /// that only says the cluster is moving. Ties go to the lowest partition so the message does
+    /// not change between runs of the same broken query.
+    private static func chosenFailure(among rejected: [Int32: Int16]) -> Int16? {
+        rejected
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+            .min { rank(of: $0) < rank(of: $1) }
+    }
+
+    private static func rank(of code: Int16) -> Int {
+        switch code {
+        case KafkaErrorCode.topicAuthorizationFailed,
+             KafkaErrorCode.groupAuthorizationFailed,
+             KafkaErrorCode.clusterAuthorizationFailed:
+            return 0
+        default:
+            return KafkaErrorCode.retryAction(for: code) == .report ? 1 : 2
+        }
     }
 
     /// How an error thrown by one broker's sub-request is recorded against its partitions.
@@ -83,7 +132,7 @@ extension KafkaCluster {
     func withLeaders<Value: Sendable>(
         topic: String,
         partitions: [Int32],
-        api: String,
+        repeatability: KafkaRequestRepeatability = .safeToRepeat,
         _ body: @Sendable @escaping (KafkaConnection, [Int32]) async throws
             -> [Int32: KafkaPartitionOutcome<Value>]
     ) async throws -> [Int32: KafkaPartitionOutcome<Value>] {
@@ -93,10 +142,7 @@ extension KafkaCluster {
         var merged = try await routeOneRound(topic: topic, partitions: wanted, refresh: false, body: body)
         let moved = wanted.filter { partition in
             guard case .rejected(let code) = merged[partition] else { return false }
-            switch KafkaErrorCode.retryAction(for: code) {
-            case .resolveLeaderAgain, .retrySameBroker: return true
-            case .report, .findCoordinatorAgain: return false
-            }
+            return repeatability.allowsRetry(after: code)
         }
         guard !moved.isEmpty else { return merged }
 
@@ -111,9 +157,14 @@ extension KafkaCluster {
         of partition: Int32,
         topic: String,
         api: String,
+        repeatability: KafkaRequestRepeatability = .safeToRepeat,
         _ body: @Sendable @escaping (KafkaConnection) async throws -> Value
     ) async throws -> Value {
-        let outcomes = try await withLeaders(topic: topic, partitions: [partition], api: api) { connection, _ in
+        let outcomes = try await withLeaders(
+            topic: topic,
+            partitions: [partition],
+            repeatability: repeatability
+        ) { connection, _ in
             [partition: .value(try await body(connection))]
         }
         let values = try KafkaPartitionOutcome.requireAll(
@@ -123,7 +174,7 @@ extension KafkaCluster {
             routing: routing
         )
         guard let value = values[partition] else {
-            throw KafkaError.producedToUnknownPartition(topic: topic, partition: partition)
+            throw KafkaError.partitionsUnanswered(topic: topic, partitions: [partition], api: api)
         }
         return value
     }
@@ -234,14 +285,57 @@ extension KafkaCluster {
         of group: String,
         _ body: @Sendable (KafkaConnection) async throws -> Value
     ) async throws -> Value {
-        do {
-            return try await body(try await coordinatorConnection(for: group, refresh: false))
-        } catch let error as KafkaError {
-            guard case .broker(let code, _) = error,
-                  KafkaErrorCode.retryAction(for: code) == .findCoordinatorAgain else { throw error }
-            coordinatorsByGroup[group] = nil
-            return try await body(try await coordinatorConnection(for: group, refresh: true))
+        let answers = try await withCoordinators(of: [group]) { connection, _ in
+            [try await body(connection)]
         }
+        guard let answer = answers.first else { throw KafkaError.unknownGroup(group) }
+        return answer
+    }
+
+    /// Runs a request against every coordinator the named groups belong to.
+    ///
+    /// DescribeGroups is batched but coordinator-scoped, so a list spanning three coordinators
+    /// is three requests. The retry lives here rather than at each call site because a cached
+    /// coordinator that has moved answers NOT_COORDINATOR forever otherwise: the cache is only
+    /// cleared by a disconnect, so one broker restart used to break DESCRIBE GROUP for the rest
+    /// of the session.
+    func withCoordinators<Value: Sendable>(
+        of groups: [String],
+        _ body: @Sendable (KafkaConnection, [String]) async throws -> [Value]
+    ) async throws -> [Value] {
+        // The lookup itself can draw a coordinator code, because a cluster where no group has
+        // ever committed has no __consumer_offsets topic to own one yet. Retrying here and per
+        // bucket, rather than around the whole loop, is what keeps a bucket that already
+        // answered from being asked twice and its results counted twice.
+        var plan: [(connection: KafkaConnection, groups: [String])]
+        do {
+            plan = try await groupsByCoordinator(groups)
+        } catch let error as KafkaError where Self.saysTheCoordinatorMoved(error) {
+            forgetCoordinators(of: groups)
+            plan = try await groupsByCoordinator(groups)
+        }
+
+        var collected: [Value] = []
+        for entry in plan {
+            do {
+                collected.append(contentsOf: try await body(entry.connection, entry.groups))
+            } catch let error as KafkaError where Self.saysTheCoordinatorMoved(error) {
+                forgetCoordinators(of: entry.groups)
+                for retry in try await groupsByCoordinator(entry.groups) {
+                    collected.append(contentsOf: try await body(retry.connection, retry.groups))
+                }
+            }
+        }
+        return collected
+    }
+
+    private static func saysTheCoordinatorMoved(_ error: KafkaError) -> Bool {
+        guard case .broker(let code, _) = error else { return false }
+        return KafkaErrorCode.retryAction(for: code) == .findCoordinatorAgain
+    }
+
+    private func forgetCoordinators(of groups: [String]) {
+        for group in groups { coordinatorsByGroup[group] = nil }
     }
 
     /// The groups each broker coordinates, for a request that names several.
@@ -303,19 +397,31 @@ extension KafkaCluster {
     ) async throws -> (results: [Value], reachedEveryBroker: Bool) {
         let reachable = try await everyBrokerConnection()
         var collected: [Value] = []
-        var answered = 0
+        var failures: [KafkaError] = []
 
-        await withTaskGroup(of: Optional<Value>.self) { group in
+        await withTaskGroup(of: Result<Value, Error>.self) { group in
             for connection in reachable.connections {
-                group.addTask { try? await body(connection) }
+                group.addTask {
+                    do {
+                        return .success(try await body(connection))
+                    } catch {
+                        return .failure(error)
+                    }
+                }
             }
-            for await value in group {
-                guard let value else { continue }
-                answered += 1
-                collected.append(value)
+            for await answer in group {
+                switch answer {
+                case .success(let value):
+                    collected.append(value)
+                case .failure(let error):
+                    // Kept, because when no broker answers this is the only thing that says
+                    // why. Discarding it reported a missing group permission as a dead
+                    // connection.
+                    failures.append(error as? KafkaError ?? .connectionFailed(error.localizedDescription))
+                }
             }
         }
-        guard answered > 0 else { throw KafkaError.notConnected }
-        return (collected, answered >= reachable.expected)
+        guard !collected.isEmpty else { throw failures.first ?? KafkaError.notConnected }
+        return (collected, collected.count >= reachable.expected)
     }
 }

@@ -99,9 +99,8 @@ enum KafkaGroupsRequest {
     /// A group's state and its members, asked of each group's coordinator.
     static func describeGroups(_ groupIds: [String], cluster: KafkaCluster) async throws -> [KafkaGroupDetail] {
         guard !groupIds.isEmpty else { return [] }
-        var details: [KafkaGroupDetail] = []
-        for entry in try await cluster.groupsByCoordinator(groupIds) {
-            details.append(contentsOf: try await describeGroups(entry.groups, on: entry.connection))
+        let details = try await cluster.withCoordinators(of: groupIds) { connection, held in
+            try await describeGroups(held, on: connection)
         }
         return details.sorted { $0.groupId < $1.groupId }
     }
@@ -235,8 +234,12 @@ enum KafkaGroupsRequest {
     }
 
     /// Reads the topic list and carries every partition's error code back rather than throwing
-    /// at the first one, so a single bad partition cannot discard the offsets already parsed
-    /// for every other topic in the same reply.
+    /// mid-parse.
+    ///
+    /// The reader has to reach the end of the reply either way: throwing from inside the array
+    /// closure abandons it part-read, and at v8 the group's own error code sits AFTER its
+    /// topics, so the caller would never see it. A partition that did report an error still
+    /// fails the call, at `reportFirstFailure`, once everything has been read.
     private static func readTopics(
         _ reader: inout KafkaProtocolReader,
         version: Int16,

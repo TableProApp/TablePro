@@ -33,8 +33,7 @@ enum KafkaOffsetsRequest {
         guard !partitions.isEmpty else { return [:] }
         let outcomes = try await cluster.withLeaders(
             topic: topic,
-            partitions: partitions,
-            api: api
+            partitions: partitions
         ) { connection, slice in
             try await send(topic: topic, partitions: slice, timestamp: timestamp, on: connection)
         }
@@ -73,12 +72,7 @@ enum KafkaOffsetsRequest {
         )
         let missing = partitions.filter { earliest[$0] == nil || latest[$0] == nil }
         guard missing.isEmpty else {
-            throw KafkaError.partitionsRejected(
-                topic: topic,
-                partitions: missing,
-                api: api,
-                code: KafkaErrorCode.leaderNotAvailable
-            )
+            throw KafkaError.partitionsUnanswered(topic: topic, partitions: missing, api: api)
         }
         return partitions.sorted().map { partition in
             KafkaPartitionOffsets(

@@ -17,6 +17,7 @@ enum KafkaError: LocalizedError {
     case producedToUnknownPartition(topic: String, partition: Int32)
     case unknownPartitions(topic: String, partitions: [Int32], available: [Int32])
     case partitionsRejected(topic: String, partitions: [Int32], api: String, code: Int16)
+    case partitionsUnanswered(topic: String, partitions: [Int32], api: String)
     case brokerUnreachable(nodeId: Int32, address: String, reason: String)
     case partitionsLedElsewhere(topic: String, partitions: [Int32])
     case partitionsHaveNoLeader(topic: String, partitions: [Int32])
@@ -94,6 +95,13 @@ enum KafkaError: LocalizedError {
                 KafkaPartitionList.describe(partitions),
                 topic,
                 KafkaErrorCode.describe(code)
+            )
+        case .partitionsUnanswered(let topic, let partitions, let api):
+            return String(
+                format: String(localized: "The broker's %@ reply left out partition %@ of %@."),
+                api,
+                KafkaPartitionList.describe(partitions),
+                topic
             )
         case .brokerUnreachable(let nodeId, let address, let reason):
             return String(
@@ -198,6 +206,25 @@ enum KafkaErrorCode {
             return .retrySameBroker
         default:
             return .report
+        }
+    }
+
+    /// True when the code proves the broker did not take the request, so sending it again
+    /// cannot repeat work the broker already did.
+    ///
+    /// The distinction only matters for a write. `KafkaProduceRequest` asks for
+    /// `acks = -1`, and REQUEST_TIMED_OUT there means the leader appended the record and the
+    /// in-sync replicas did not acknowledge in time; the same is true of a connection that
+    /// broke and of a log directory that failed mid-append. This client sends no producer id,
+    /// so Kafka cannot deduplicate a replay and the message is appended twice. The codes below
+    /// all mean the broker refused the request outright, which is safe to send elsewhere.
+    static func provesRequestWasNotApplied(_ code: Int16) -> Bool {
+        switch code {
+        case unknownTopicOrPartition, leaderNotAvailable, notLeaderOrFollower, replicaNotAvailable,
+             listenerNotFound, fencedLeaderEpoch, unknownLeaderEpoch, unknownTopicId:
+            return true
+        default:
+            return false
         }
     }
 

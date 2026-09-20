@@ -69,6 +69,64 @@ struct KafkaRoutingTests {
         #expect(KafkaErrorCode.retryAction(for: KafkaErrorCode.offsetNotAvailable) == .retrySameBroker)
     }
 
+    // MARK: - Repeating a request
+
+    /// A read can always be sent again. The retry exists for it.
+    @Test("A read is retried on every code that says the cluster moved")
+    func aReadRetriesEveryMovedCode() {
+        for code in [KafkaErrorCode.notLeaderOrFollower, KafkaErrorCode.leaderNotAvailable,
+                     KafkaErrorCode.requestTimedOut, KafkaErrorCode.networkException,
+                     KafkaErrorCode.kafkaStorageError, KafkaErrorCode.offsetNotAvailable] {
+            #expect(KafkaRequestRepeatability.safeToRepeat.allowsRetry(after: code), "code \(code)")
+        }
+    }
+
+    /// A Produce asks for acks = -1 and sends no producer id, so REQUEST_TIMED_OUT can mean the
+    /// leader appended the record and its replicas were late acknowledging it. Sending it again
+    /// writes the message twice, with nothing on the cluster able to tell that it was one
+    /// message.
+    @Test("A write is not repeated on a code that leaves the outcome unknown")
+    func aWriteIsNotRepeatedWhenTheOutcomeIsUnknown() {
+        let ambiguous = [
+            KafkaErrorCode.requestTimedOut,
+            KafkaErrorCode.networkException,
+            KafkaErrorCode.kafkaStorageError,
+            KafkaErrorCode.offsetNotAvailable
+        ]
+        for code in ambiguous {
+            #expect(!KafkaRequestRepeatability.onlyWhenBrokerRefusedIt.allowsRetry(after: code), "code \(code)")
+            #expect(!KafkaErrorCode.provesRequestWasNotApplied(code), "code \(code)")
+        }
+    }
+
+    /// The codes that mean the broker turned the request away are safe for a write, and they
+    /// are the ones that carry the reported bug.
+    @Test("A write is repeated when the broker refused it outright")
+    func aWriteIsRepeatedWhenRefused() {
+        let refused = [
+            KafkaErrorCode.notLeaderOrFollower,
+            KafkaErrorCode.leaderNotAvailable,
+            KafkaErrorCode.unknownTopicOrPartition,
+            KafkaErrorCode.replicaNotAvailable,
+            KafkaErrorCode.listenerNotFound,
+            KafkaErrorCode.fencedLeaderEpoch,
+            KafkaErrorCode.unknownLeaderEpoch,
+            KafkaErrorCode.unknownTopicId
+        ]
+        for code in refused {
+            #expect(KafkaRequestRepeatability.onlyWhenBrokerRefusedIt.allowsRetry(after: code), "code \(code)")
+        }
+    }
+
+    @Test("Neither kind repeats a real answer")
+    func neitherKindRepeatsARealAnswer() {
+        for code in [KafkaErrorCode.offsetOutOfRange, KafkaErrorCode.topicAuthorizationFailed,
+                     KafkaErrorCode.brokerNotAvailable] {
+            #expect(!KafkaRequestRepeatability.safeToRepeat.allowsRetry(after: code), "code \(code)")
+            #expect(!KafkaRequestRepeatability.onlyWhenBrokerRefusedIt.allowsRetry(after: code), "code \(code)")
+        }
+    }
+
     // MARK: - Collecting per-partition answers
 
     @Test("Every partition answering gives every partition's value")
@@ -115,6 +173,62 @@ struct KafkaRoutingTests {
         } catch {
             Issue.record("unexpected error \(error)")
         }
+    }
+
+    private func rejectionCode(_ outcomes: [Int32: KafkaPartitionOutcome<Int64>]) -> Int16? {
+        do {
+            _ = try KafkaPartitionOutcome.requireAll(
+                outcomes,
+                topic: "orders",
+                api: "ListOffsets",
+                routing: .advertised
+            )
+            Issue.record("expected a rejection")
+            return nil
+        } catch let error as KafkaError {
+            guard case .partitionsRejected(_, _, _, let code) = error else {
+                Issue.record("expected partitionsRejected, got \(error)")
+                return nil
+            }
+            return code
+        } catch {
+            Issue.record("unexpected error \(error)")
+            return nil
+        }
+    }
+
+    /// Only one of several partitions' codes can be reported. Picking the numerically smallest
+    /// let OFFSET_OUT_OF_RANGE (1) mask TOPIC_AUTHORIZATION_FAILED (29), which is the one the
+    /// user has to act on.
+    @Test("A permission failure is named ahead of anything else")
+    func aPermissionFailureIsNamedFirst() {
+        #expect(rejectionCode([
+            0: .rejected(code: KafkaErrorCode.offsetOutOfRange),
+            1: .rejected(code: KafkaErrorCode.topicAuthorizationFailed)
+        ]) == KafkaErrorCode.topicAuthorizationFailed)
+
+        #expect(rejectionCode([
+            0: .rejected(code: KafkaErrorCode.notLeaderOrFollower),
+            5: .rejected(code: KafkaErrorCode.groupAuthorizationFailed)
+        ]) == KafkaErrorCode.groupAuthorizationFailed)
+    }
+
+    @Test("A real answer is named ahead of a code that only says the cluster is moving")
+    func aRealAnswerOutranksATransientOne() {
+        #expect(rejectionCode([
+            0: .rejected(code: KafkaErrorCode.leaderNotAvailable),
+            1: .rejected(code: KafkaErrorCode.offsetOutOfRange)
+        ]) == KafkaErrorCode.offsetOutOfRange)
+    }
+
+    /// Two codes of the same rank tie on the lowest partition, so the message does not change
+    /// between runs of the same broken query.
+    @Test("Equally useful codes are broken by partition, not by number")
+    func equalCodesTieOnTheLowestPartition() {
+        #expect(rejectionCode([
+            2: .rejected(code: KafkaErrorCode.offsetOutOfRange),
+            1: .rejected(code: KafkaErrorCode.messageTooLarge)
+        ]) == KafkaErrorCode.messageTooLarge)
     }
 
     /// Under bootstrap-only routing the same code means something the user can act on, so it is

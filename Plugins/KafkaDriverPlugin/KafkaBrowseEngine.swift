@@ -136,7 +136,11 @@ enum KafkaBrowseEngine {
             )
             var starts: [Int32: Int64] = [:]
             for (partition, end) in kept {
-                starts[partition] = max(earliest[partition] ?? 0, end - step)
+                // No fallback offset. A partition whose earliest offset did not come back has
+                // an unknown floor, and anchoring it at zero would send the page to the start of
+                // a log whose first surviving message may be far past it.
+                guard let floor = earliest[partition] else { continue }
+                starts[partition] = max(floor, end - step)
             }
             return KafkaScanWindow(start: starts, tail: kept, readsBackward: true)
 
