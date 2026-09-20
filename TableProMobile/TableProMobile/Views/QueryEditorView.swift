@@ -7,6 +7,7 @@ import TableProQuery
 struct QueryEditorView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
@@ -35,6 +36,7 @@ struct QueryEditorView: View {
     @State private var shareText = ""
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var containerSize: CGSize = .zero
 
     private var session: ConnectionSession? { coordinator.session }
     private var tables: [TableInfo] { coordinator.tables }
@@ -48,6 +50,7 @@ struct QueryEditorView: View {
             Divider()
             resultSection
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { containerSize = $0 }
         .onAppear {
             if let pending = coordinator.pendingQuery {
                 query = pending
@@ -114,10 +117,24 @@ struct QueryEditorView: View {
 
     // MARK: - Editor
 
+    private var duoWidthClass: DuoWidthClass {
+        horizontalSizeClass == .regular ? .regular : .compact
+    }
+
+    private var editorMaxHeight: CGFloat {
+        DuoLayoutResolver.editorMaxHeight(
+            for: DuoLayoutContext(
+                size: containerSize,
+                widthClass: duoWidthClass,
+                showsResult: hasResult || appError != nil
+            )
+        )
+    }
+
     private var editorSection: some View {
         VStack(spacing: 0) {
             SQLHighlightTextView(text: $query, isFocused: $editorFocused)
-                .frame(minHeight: 80, maxHeight: hasResult || appError != nil ? 120 : 250)
+                .frame(minHeight: 80, maxHeight: editorMaxHeight)
 
             actionBar
         }
@@ -280,7 +297,8 @@ struct QueryEditorView: View {
     }
 
     private func resultRowCard(columns: [ColumnInfo], row: [String?]) -> some View {
-        let preview = Array(zip(columns, row).prefix(4))
+        let budget = DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
+        let preview = Array(zip(columns, row).prefix(budget))
         return VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(preview.enumerated()), id: \.offset) { index, pair in
                 HStack(spacing: 6) {
@@ -294,8 +312,8 @@ struct QueryEditorView: View {
                         .lineLimit(1)
                 }
             }
-            if columns.count > 4 {
-                Text("+\(columns.count - 4) more columns")
+            if columns.count > budget {
+                Text("+\(columns.count - budget) more columns")
                     .font(.caption2)
                     .foregroundStyle(.quaternary)
             }

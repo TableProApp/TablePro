@@ -6,6 +6,7 @@ import TableProQuery
 struct DataBrowserView: View {
     @Environment(AppState.self) private var appState
     @Environment(ConnectionCoordinator.self) private var coordinator
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let table: TableInfo
 
     private var connection: DatabaseConnection { coordinator.connection }
@@ -287,7 +288,12 @@ struct DataBrowserView: View {
                 }
             )
         } label: {
-            RowCard(columns: columns, columnDetails: viewModel.columnDetails, row: row)
+            RowCard(
+                columns: columns,
+                columnDetails: viewModel.columnDetails,
+                row: row,
+                previewFieldCount: DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
+            )
         }
         .hoverEffect()
         .contextMenu { rowContextMenu(row: row) }
@@ -377,19 +383,17 @@ struct DataBrowserView: View {
                     .pickerStyle(.inline)
                 }
             } label: {
-                Image(systemName: viewModel.sortState.isSorting
+                Label("Sort", systemImage: viewModel.sortState.isSorting
                     ? "arrow.up.arrow.down.circle.fill"
                     : "arrow.up.arrow.down.circle")
-                    .accessibilityLabel(Text("Sort"))
             }
             .disabled(columns.isEmpty)
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { showFilterSheet = true } label: {
-                Image(systemName: viewModel.hasActiveFilters
+                Label("Filter", systemImage: viewModel.hasActiveFilters
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
-                    .accessibilityLabel(Text("Filter"))
             }
             .badge(viewModel.activeFilterCount)
         }
@@ -414,17 +418,20 @@ struct DataBrowserView: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Label("More", systemImage: "ellipsis.circle")
             }
         }
         if canInsertRow {
             ToolbarItem(placement: .primaryAction) {
                 Button { showInsertSheet = true } label: {
-                    Image(systemName: "plus")
-                        .accessibilityLabel(Text("Insert Row"))
+                    Label("Insert Row", systemImage: "plus")
                 }
             }
         }
+    }
+
+    private var duoWidthClass: DuoWidthClass {
+        horizontalSizeClass == .regular ? .regular : .compact
     }
 
     private var showsPaginationBar: Bool {

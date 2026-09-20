@@ -126,7 +126,7 @@ struct RowDetailView: View {
             Menu {
                 shareMenuContent
             } label: {
-                Image(systemName: "square.and.arrow.up")
+                Label("Share", systemImage: "square.and.arrow.up")
             }
         }
 
@@ -138,7 +138,9 @@ struct RowDetailView: View {
                     }
                     .disabled(viewModel.isSaving)
                 } else {
-                    Button("Edit") { viewModel.startEditing() }
+                    Button { viewModel.startEditing() } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
                 }
             }
         }

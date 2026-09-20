@@ -566,9 +566,15 @@ struct ConnectionListView: View {
         ToolbarItemGroup(placement: .topBarTrailing) {
             moreMenu
             if hasLibraryItems {
-                Button(isEditing ? String(localized: "Done") : String(localized: "Edit")) {
+                Button {
                     withAnimation {
                         editMode = isEditing ? .inactive : .active
+                    }
+                } label: {
+                    if isEditing {
+                        Label("Done", systemImage: "checkmark")
+                    } else {
+                        Label("Edit", systemImage: "checklist")
                     }
                 }
             }
@@ -583,15 +589,17 @@ struct ConnectionListView: View {
         if isEditing {
             ToolbarItemGroup(placement: .bottomBar) {
                 let ids = selectedConnectionIds
-                Button("Move") {
+                Button {
                     presenter.present(.moveConnections(ids))
+                } label: {
+                    Label("Move", systemImage: "folder")
                 }
                 .disabled(ids.isEmpty)
-                Spacer()
                 selectionFavoriteButton(ids)
-                Spacer()
-                Button(String(localized: "Delete"), role: .destructive) {
+                Button(role: .destructive) {
                     connectionsPendingDeletion = Set(ids)
+                } label: {
+                    Label("Delete", systemImage: "trash")
                 }
                 .disabled(ids.isEmpty)
             }
@@ -606,9 +614,9 @@ struct ConnectionListView: View {
             appState.setFavorite(selected, isFavorite: !allFavorites)
         } label: {
             if allFavorites {
-                Text("Unfavorite")
+                Label("Unfavorite", systemImage: "star.slash")
             } else {
-                Text("Favorite")
+                Label("Favorite", systemImage: "star")
             }
         }
         .disabled(ids.isEmpty)

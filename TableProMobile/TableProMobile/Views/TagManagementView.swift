@@ -102,9 +102,8 @@ struct TagManagementView: View {
                     Button {
                         showingAddTag = true
                     } label: {
-                        Image(systemName: "plus")
+                        Label("Add Tag", systemImage: "plus")
                     }
-                    .accessibilityLabel(Text("Add Tag"))
                     CloseButton { dismiss() }
                 }
             }
