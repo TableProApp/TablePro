@@ -15,7 +15,7 @@ struct MySQLSessionFootprintTests {
     private func footprint(after statements: String...) -> MySQLSessionFootprint {
         var footprint = MySQLSessionFootprint()
         for statement in statements {
-            footprint.observe(statement)
+            footprint.observe(statement, lexicalFeatures: MySQLLexicalFeatures.mySQL)
         }
         return footprint
     }
@@ -86,7 +86,7 @@ struct MySQLSessionFootprintTests {
     @Test("A LOCK TABLES the server refused holds nothing")
     func aFailedLockHoldsNothing() {
         var result = footprint(after: "LOCK TABLES users WRITE")
-        result.observeFailure(of: "LOCK TABLES missing WRITE")
+        result.observeFailure(of: "LOCK TABLES missing WRITE", lexicalFeatures: MySQLLexicalFeatures.mySQL)
         #expect(result.hasLockedTables == false)
         #expect(result.isClean)
     }
@@ -100,7 +100,7 @@ struct MySQLSessionFootprintTests {
     func aFailedBatchKeepsTheLockItAlreadyTook() {
         let batch = "LOCK TABLES users WRITE; INSERT INTO users VALUES (bad)"
         var result = footprint(after: batch)
-        result.observeFailure(of: batch)
+        result.observeFailure(of: batch, lexicalFeatures: MySQLLexicalFeatures.mySQL)
         #expect(result.hasLockedTables)
         #expect(result.transactionState(isInTransaction: false) == .holdsSessionLocks)
     }
@@ -108,7 +108,7 @@ struct MySQLSessionFootprintTests {
     @Test("A failure takes back nothing but the lock, because a statement can fail after changing the session")
     func aFailureTakesBackOnlyTheLock() {
         var result = footprint(after: "CREATE TEMPORARY TABLE staging (a INT)", "LOCK TABLES users WRITE")
-        result.observeFailure(of: "CREATE TEMPORARY TABLE staging (a INT)")
+        result.observeFailure(of: "CREATE TEMPORARY TABLE staging (a INT)", lexicalFeatures: MySQLLexicalFeatures.mySQL)
         #expect(result.hasTemporaryTables)
         #expect(result.hasLockedTables)
     }

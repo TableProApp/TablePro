@@ -23,10 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy manifest for the iOS app.
 - Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
 - Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
+- **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995)
+- Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
 
 ### Changed
 
 - 537 driver and import/export strings are now translatable, having only ever shown in English.
+- Middle-dot separators dropped from the assistant transcript, slash command list and model picker.
 - Every plugin bundle compiled under the same concurrency settings as the app that loads it.
 - Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
 - Assistant conversations belong to one connection, and outlive the window that opened them.
@@ -40,18 +43,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
+- `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)
+- Kafka `SHOW GROUPS` listing only the groups the bootstrap broker coordinates, and reporting success.
+- Kafka `DESCRIBE GROUP` failing with `this broker does not coordinate that group`.
+- Kafka `DESCRIBE GROUP` on a group that does not exist returning an empty table.
+- Kafka `CONSUME ... FROM NEWEST` returning the oldest messages of its window on a topic with more than one partition.
+- Empty second page when paging a Kafka topic from the newest messages.
+- Kafka sidebar row counts and `DESCRIBE TOPIC` reporting zero for a partition whose broker could not be reached.
+- Backslashes dropped from a Kafka `PRODUCE` value, and a value able to close its own quotes and set the partition.
+- Kafka `CONSUME ... PARTITION` silently ignoring a partition the topic does not have, or one that is not a number.
+- Kafka `SHOW TOPICS INTERNAL` and `DESCRIBE TOPIC "a" "b"` discarding the tokens they cannot use.
+- Kafka `SHOW BROKERS` and `SHOW CLUSTER` naming a different broker as the controller on each run of a KRaft cluster.
+- A cancelled Kafka statement leaving every later one failing with `Not connected to the Kafka cluster`.
+- A Kafka connection dialled twice at once when two requests needed the same broker.
+- `two requests overlapped on one Kafka connection` when the health check ran during a long statement.
+- etcd connections carrying a username refusing a server that has authentication disabled.
+- Raw JSON shown instead of etcd's own message when a username or password is wrong.
+- etcd connections reported as unreachable every 30 seconds for a user without the root role.
+- An etcd `watch` returning no events instead of an error when the session is not authenticated.
+- `The request timed out` from an etcd `watch --timeout` above 60 seconds.
+- Stop in an etcd tab cancelling an unrelated request and leaving the running one alone.
+- Crash from an etcd `watch --timeout` with a negative or out-of-range value.
+- Colored highlight on the AI chat input painting over a window that is not key.
+- Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
+- AI chat input focus crossfade playing against Reduce Motion.
+- AI chat input announced with no name by VoiceOver.
+- Assistant pane left with a transcript, no composer and no explanation after the active AI provider is removed.
+- Identical unlabelled **Run** buttons announced for every tool call in a turn that proposes several.
+- Images silently dropped from a multi-file drop on the AI chat input when only some of them failed.
+- An unreadable image file pasted into the AI chat input inserting its path as text.
 - Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
 - Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
 - `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
 - 1 row affected reported for every Oracle PL/SQL block.
+- Crash when an Oracle query timed out or was cancelled while its rows were loading.
+- Empty results with no error after about 300 failed Oracle statements on one connection.
+- Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
 - Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
 - Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
+- Memory held for every connection an SSH tunnel served, and its listening socket closed while it was still accepting.
+- SSH tunnel stalling part-way through a result when two connections share one session, on iPhone and iPad.
+- Slow SSH tunnel throughput while a channel has bytes queued behind it.
+- Cancel ignored during an SSH connect on iPhone and iPad.
+- Sockets to the SSH server left open after a failed SSH connect on iPhone and iPad.
+- No more than a dozen SSH tunnels connecting at a time on iPhone and iPad.
+- SSH tunnels on iPhone and iPad spinning on a closed connection instead of ending.
+- Up to 150 seconds before an SSH forward that cannot open gives up, on iPhone and iPad.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.
 - SQLite foreign keys written `REFERENCES parent` with no column list pointing at a column the parent does not have, in the object browser, the ER diagram and the JSON inspector.
+- Preview Referenced Row on iPhone and iPad building its filter by hand, so a value holding a backslash could reach the server as SQL. (#2996)
+- The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all.
+- Foreign key picker reporting no matching rows for a term none of its columns could be searched for.
 - No spoken sort direction on Query Plan columns.
 - No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Composite foreign key columns listed out of order on MariaDB.
@@ -131,6 +178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 - Table page range shown in English in every language on iPhone and iPad.
 - Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
+- Every later connect to a connection on iPhone and iPad hanging for good once its SSH tunnel dropped.
+- Connection errors on iPhone and iPad given a title and advice picked from words in the message.
 - Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped.
 - Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported.
 - Oracle triggers synced into another schema created back in the source schema.
@@ -139,9 +188,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
+- SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
+- An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 
 ### Security
 
+- A locked launch on iPhone and iPad connecting to the last session, and asking to trust a host key, before Face ID was answered.
 - Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
 - The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
@@ -150,6 +202,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 - Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
+- Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
+- Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
+- Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.
+- Statements hidden in a dollar-quoted string skipped Safe Mode on DuckDB, Snowflake and Cassandra, or PostgreSQL with a non-ASCII tag.
+- Statements hidden behind an engine's own literal or comment forms, such as `E'\''`, `'''` or `--1`, skipped Safe Mode.
+- Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
+- Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 
 ## [0.75.0] - 2026-09-18
 

@@ -15,8 +15,8 @@ enum KafkaFetchRequest {
     /// a rolled-back transaction is worse than useless, so this client always reads committed.
     private static let readCommitted: Int8 = 1
 
-    private static let defaultPartitionBudget: Int32 = 1 * 1024 * 1024
-    private static let maximumPartitionBudget: Int32 = 64 * 1024 * 1024
+    private static let defaultPartitionBudget: Int32 = 1 * 1_024 * 1_024
+    private static let maximumPartitionBudget: Int32 = 64 * 1_024 * 1_024
 
     /// Fetches forward from `startOffset` in one partition.
     ///
@@ -82,7 +82,7 @@ enum KafkaFetchRequest {
         budget: Int32,
         cluster: KafkaCluster
     ) async throws -> KafkaFetchResult {
-        try await cluster.withLeader(of: partition, topic: topic) { connection in
+        try await cluster.withLeader(of: partition, topic: topic, api: "Fetch") { connection in
             let version = try await connection.negotiatedVersion(for: .fetch)
             let flexible = KafkaApiKey.fetch.isFlexible(version: version)
 

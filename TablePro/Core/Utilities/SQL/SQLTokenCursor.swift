@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// A lazy reader over the head of one statement, in the vocabulary a rule about that statement
 /// needs: words, quoted identifiers, literals and single symbols.
@@ -36,30 +37,24 @@ internal struct SQLTokenCursor {
     private static let at = UInt16(UnicodeScalar("@").value)
     private static let colon = UInt16(UnicodeScalar(":").value)
     private static let openBracket = UInt16(UnicodeScalar("[").value)
-    private static let capitalE = UInt16(UnicodeScalar("E").value)
-    private static let smallE = UInt16(UnicodeScalar("e").value)
-    private static let capitalM = UInt16(UnicodeScalar("M").value)
-    private static let smallM = UInt16(UnicodeScalar("m").value)
-    private static let digitZero = UInt16(UnicodeScalar("0").value)
-    private static let digitNine = UInt16(UnicodeScalar("9").value)
 
     private let text: NSString
-    private let rules: SQLLexicalRules
+    private let grammar: SQLLexicalGrammar
     private let length: Int
     private var index: Int
     private var conditionalDepth = 0
 
     internal private(set) var parenDepth = 0
 
-    internal init(_ text: NSString, rules: SQLLexicalRules) {
+    internal init(_ text: NSString, grammar: SQLLexicalGrammar) {
         self.text = text
-        self.rules = rules
+        self.grammar = grammar
         length = text.length
         index = 0
     }
 
-    internal init(_ text: String, rules: SQLLexicalRules) {
-        self.init(text as NSString, rules: rules)
+    internal init(_ text: String, grammar: SQLLexicalGrammar) {
+        self.init(text as NSString, grammar: grammar)
     }
 
     internal mutating func next() -> Token? {
@@ -82,8 +77,8 @@ internal struct SQLTokenCursor {
     }
 
     private mutating func skipsNonCode(_ character: UInt16) -> Bool {
-        if rules.dialect == .mysql {
-            if let opener = conditionalCommentOpener(at: index) {
+        if grammar.contains(.executableComments) {
+            if let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: length) {
                 index += opener
                 conditionalDepth += 1
                 return true
@@ -95,29 +90,11 @@ internal struct SQLTokenCursor {
                 return true
             }
         }
-        guard startsComment(character) else { return false }
-        index = SQLNonCodeSpan.end(at: index, in: text, rules: rules) ?? length
+        guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar), span.kind.isComment else {
+            return false
+        }
+        index = max(span.end, index + 1)
         return true
-    }
-
-    private func startsComment(_ character: UInt16) -> Bool {
-        if rules.dialect.supportsHashLineComments, character == SqlLexer.hash { return true }
-        return SqlLexer.startsLineComment(text, at: index, length: length)
-            || SqlLexer.startsBlockComment(text, at: index, length: length)
-    }
-
-    private func conditionalCommentOpener(at offset: Int) -> Int? {
-        guard SqlLexer.startsBlockComment(text, at: offset, length: length) else { return nil }
-        var cursor = offset + 2
-        if cursor < length, text.character(at: cursor) == Self.capitalM || text.character(at: cursor) == Self.smallM {
-            cursor += 1
-        }
-        guard cursor < length, text.character(at: cursor) == SqlLexer.exclamationMark else { return nil }
-        cursor += 1
-        while cursor < length, isDigit(text.character(at: cursor)) {
-            cursor += 1
-        }
-        return cursor - offset
     }
 
     private mutating func token(startingWith character: UInt16) -> Token? {
@@ -131,15 +108,13 @@ internal struct SQLTokenCursor {
             parenDepth = max(0, parenDepth - 1)
             return .symbol(character)
         }
-        if SqlLexer.isQuote(character) || (rules.bracketsDelimitIdentifiers && character == Self.openBracket) {
+        if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar), !span.kind.isComment {
             let start = index
-            index = SQLNonCodeSpan.end(at: index, in: text, rules: rules) ?? length
-            guard character != SqlLexer.singleQuote else { return .literal }
+            index = max(span.end, index + 1)
+            let delimitsIdentifier = character == SqlLexer.doubleQuote || character == SqlLexer.backtick
+                || character == Self.openBracket
+            guard span.kind == .quoted, delimitsIdentifier else { return .literal }
             return .quotedIdentifier(quotedBody(from: start, to: index))
-        }
-        if startsLiteralSpan(at: index) {
-            index = SQLNonCodeSpan.end(at: index, in: text, rules: rules) ?? length
-            return .literal
         }
         if isWordUnit(character) { return .word(readWord()) }
         if character == Self.colon, index + 1 < length, text.character(at: index + 1) == Self.equals {
@@ -148,27 +123,6 @@ internal struct SQLTokenCursor {
         }
         index += 1
         return .symbol(character)
-    }
-
-    private func startsLiteralSpan(at offset: Int) -> Bool {
-        let character = text.character(at: offset)
-        if rules.dialect.supportsAlternativeQuoting,
-           offset == 0 || !SQLNonCodeSpan.isWordUnit(text.character(at: offset - 1)),
-           SqlLexer.skipAlternativeQuotedString(text, at: offset, length: length) != nil {
-            return true
-        }
-        if rules.dialect.supportsEscapeStringPrefix,
-           character == Self.capitalE || character == Self.smallE,
-           offset + 1 < length, text.character(at: offset + 1) == SqlLexer.singleQuote,
-           offset == 0 || !SQLNonCodeSpan.isWordUnit(text.character(at: offset - 1)) {
-            return true
-        }
-        guard rules.dialect.supportsDollarQuotes, character == SqlDollarQuote.dollar,
-              case .opener = SqlDollarQuote.scanOpener(at: offset, in: text, bufLen: length)
-        else {
-            return false
-        }
-        return true
     }
 
     private mutating func readWord() -> String {
@@ -201,10 +155,6 @@ internal struct SQLTokenCursor {
 
     private func isWordUnit(_ character: UInt16) -> Bool {
         SQLNonCodeSpan.isWordUnit(character) || character == Self.at || character == SqlDollarQuote.dollar
-    }
-
-    private func isDigit(_ character: UInt16) -> Bool {
-        character >= Self.digitZero && character <= Self.digitNine
     }
 }
 

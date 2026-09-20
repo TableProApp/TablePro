@@ -579,6 +579,39 @@ struct ConnectionSharingTests {
             #expect(connection.preConnectScript == nil)
         }
 
+        @Test("A file an iPhone wrote keeps the tunnel and hop auth methods it names")
+        @MainActor
+        func testImportKeepsIOSAuthMethodSpellings() {
+            let ssh = ExportableSSHConfig(
+                enabled: true, host: "bastion.prod.com", port: nil, username: "deploy",
+                authMethod: "sshAgent", privateKeyPath: "", agentSocketPath: "",
+                jumpHosts: [
+                    ExportableJumpHost(
+                        host: "jump1.com", port: nil, username: "ops",
+                        authMethod: "privateKey", privateKeyPath: "~/.ssh/jump_key"
+                    )
+                ],
+                totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
+            )
+            let exportable = ExportableConnection(
+                name: "SSH Prod", host: "db.internal", port: 5_432, database: "main",
+                username: "app", type: DatabaseType.postgresql.rawValue, sshConfig: ssh,
+                sslConfig: nil, color: nil, tagName: nil, groupName: nil, sshProfileId: nil,
+                safeModeLevel: nil, aiPolicy: nil, additionalFields: nil, redisDatabase: nil,
+                startupCommands: nil, localOnly: nil
+            )
+
+            let connection = ConnectionExportService.buildDatabaseConnection(
+                id: UUID(), from: exportable, name: exportable.name,
+                tagIdsByName: [:], groupIdsByName: [:]
+            )
+
+            #expect(connection.sshConfig.authMethod == .sshAgent)
+            #expect(connection.sshConfig.port == nil)
+            #expect(connection.sshConfig.jumpHosts.first?.authMethod == .privateKey)
+            #expect(connection.sshConfig.jumpHosts.first?.port == nil)
+        }
+
         private static func parseImportLink(_ items: [URLQueryItem]) -> ExportableConnection? {
             var components = URLComponents()
             components.scheme = "tablepro"

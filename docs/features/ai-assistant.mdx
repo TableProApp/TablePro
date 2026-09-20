@@ -26,7 +26,7 @@ Open **Settings > AI** (`Cmd+,`). **Enable AI Features** at the top gates the wh
   </Step>
 </Steps>
 
-The **Active Provider** picker decides which one handles requests. Where a model supports reasoning effort, its detail sheet adds a picker for it and replies render their thinking in a collapsible **Reasoning** block.
+The **Active Provider** picker decides which one handles requests. Setting it to **None** leaves any open conversation readable but read-only, with a **Settings…** button under it. Where a model supports reasoning effort, its detail sheet adds a picker for it and replies render their thinking in a collapsible **Reasoning** block.
 
 With no preference, start with Claude or OpenAI on an API key: both take a key, tools, and images with no further setup. The others each come with something to know.
 
@@ -60,7 +60,9 @@ Type a question and press Return. Code blocks carry **Copy** and **Insert**, and
 
 Conversations save themselves and take their title from your first message. The clock icon in the inspector header opens recent ones; the pencil-and-square icon starts a new one. Editing a message you already sent puts its text and attachments back in the composer and drops that turn and everything after it.
 
-Paste or drag images into the composer on any provider that takes them, which is all of them except GitHub Copilot, Cursor, ChatGPT, and Claude Agent.
+Paste or drag images into the composer on any provider that takes them, which is all of them except GitHub Copilot, Cursor, ChatGPT, and Claude Agent. A drop that carries files the composer cannot read attaches the rest and says how many it kept.
+
+The focused composer carries a colored highlight. Right-click it and turn **Highlight When Focused** off for the standard macOS focus ring instead. The choice is app-wide and survives restarts. Reduce Transparency and Increase Contrast, both under **System Settings > Accessibility > Display**, also replace the highlight with the focus ring.
 
 ### Chat modes
 

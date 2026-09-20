@@ -536,7 +536,7 @@ struct OracleObjectQueryTests {
     @Test("The trigger list reads ACTION_TYPE, and TRIGGER_BODY stays the last column because it is a LONG")
     func triggerListSelectsActionType() {
         let sql = OracleObjectQueries.triggerList(schema: "HR", table: nil)
-        #expect(sql.contains("ACTION_TYPE,\n    TABLE_OWNER,\n    TRIGGER_BODY\nFROM ALL_TRIGGERS"))
+        #expect(sql.contains("ACTION_TYPE,\n    TABLE_OWNER,\n    TRIGGER_BODY\nFROM SYS.ALL_TRIGGERS"))
     }
 
     /// Unqualified, a trigger another schema owns is looked up in the current schema instead.

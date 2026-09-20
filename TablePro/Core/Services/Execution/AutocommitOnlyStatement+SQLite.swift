@@ -4,14 +4,15 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal extension AutocommitOnlyStatement {
     /// SQLite 3.54.0, each statement run after `BEGIN`. `VACUUM` and a journal-mode or safety-level
     /// change are refused outright; `PRAGMA foreign_keys` is the quiet one, applying no change and
     /// reading back `0` after the `COMMIT` with no error at any point. `wal_checkpoint` is refused
     /// once the transaction has run anything, in every form.
-    static func matchesSQLite(_ statement: NSString, rules: SQLLexicalRules) -> Bool {
-        var cursor = SQLTokenCursor(statement, rules: rules)
+    static func matchesSQLite(_ statement: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        var cursor = SQLTokenCursor(statement, grammar: grammar)
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "VACUUM", "DETACH":
@@ -26,8 +27,8 @@ internal extension AutocommitOnlyStatement {
     /// DuckDB v1.5.4. It takes `VACUUM`, `ATTACH`, `SET` and every `PRAGMA` inside a transaction,
     /// so it shares none of SQLite's rules despite sharing its lexing dialect. What it refuses is a
     /// checkpoint and a detach of a database the transaction has touched.
-    static func matchesDuckDB(_ statement: NSString, rules: SQLLexicalRules) -> Bool {
-        var cursor = SQLTokenCursor(statement, rules: rules)
+    static func matchesDuckDB(_ statement: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        var cursor = SQLTokenCursor(statement, grammar: grammar)
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "DETACH", "CHECKPOINT":

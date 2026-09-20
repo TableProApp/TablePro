@@ -77,6 +77,14 @@ targets:
       - ../Plugins/PostgreSQLDriverPlugin/LibPQCopyState.swift
       # The read-write BEGIN both platforms open a write transaction with.
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
+      # The libssh2 half of the SSH transport, shared with the macOS app by file reference.
+      # The C-free half is the TableProSSHTransport package target; these three touch libssh2
+      # and cannot be, because a manifest cannot express the slice-dependent header path the
+      # iOS xcframework needs. Both CLibSSH2 shims declare the same module and the same four
+      # tablepro_* wrappers, so `import CLibSSH2` resolves on either platform.
+      - ../TablePro/Core/SSH/LibSSH2ChannelIO.swift
+      - ../TablePro/Core/SSH/LibSSH2ForwardChannel.swift
+      - ../TablePro/Core/SSH/SSHKeepAliveResult.swift
       # License texts behind the Acknowledgements screen, copied whole so each keeps the
       # texts/ path Acknowledgements.json names it by.
       - path: ../TablePro/Resources/ThirdPartyLicenses/texts
@@ -96,6 +104,7 @@ targets:
         products:
           - TableProAnalytics
           - TableProConnectionLibrary
+          - TableProCoreTypes
           - TableProDatabase
           - TableProGeometry
           - TableProImport
@@ -103,6 +112,7 @@ targets:
           - TableProMSSQLCore
           - TableProPluginKit
           - TableProQuery
+          - TableProSSHTransport
           - TableProSync
           - TableProSyncTransport
       - package: TableProOracle

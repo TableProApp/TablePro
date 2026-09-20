@@ -178,14 +178,15 @@ struct KafkaIntegrationTests {
         #expect(Set(rows.compactMap { $0[0].asText }) == ["0"])
     }
 
-    /// Paging is the reason the ANCHOR clause exists: page two has to continue page one rather
+    /// Paging is the reason the TAIL clause exists: page two has to continue page one rather
     /// than re-deriving its start against a tail that has moved.
     ///
-    /// The invariant is that no message is shown twice, not that three pages of ten cover
-    /// exactly thirty. A `NEWEST` scan anchors each partition at its own tail, and messages
-    /// are not spread evenly across partitions, so the window a `NEWEST` anchor opens holds
-    /// however many messages happen to be in it. Coverage is asserted from `OLDEST`, where the
-    /// anchor is the start of the log and paging forward really does reach everything.
+    /// The invariant is that no message is shown twice and that no page comes back short, not
+    /// that three pages of ten cover exactly thirty. A `NEWEST` scan anchors each partition at
+    /// its own tail, and messages are not spread evenly across partitions, so the window it
+    /// opens holds however many messages happen to be in it. Coverage is asserted from
+    /// `OLDEST`, where the anchor is the start of the log and paging forward really does reach
+    /// everything.
     @Test("Paging from the tail never shows the same message twice")
     func pagingNeverRepeats() async throws {
         let harness = try await KafkaTestBroker.harness(topic: "tp-it-paging", partitions: 3)
@@ -203,11 +204,14 @@ struct KafkaIntegrationTests {
                 offset: page * 10
             ))
             if page > 0 {
-                // Later pages must name the window page one resolved.
-                #expect(query.contains("FROM ANCHOR"))
+                // Later pages must name the window page one resolved, and a tail browse pins
+                // the END of that window so each page steps further back from it.
+                #expect(query.contains("FROM TAIL"))
             }
             let result = try await harness.driver.execute(query: query)
-            seen.append(contentsOf: result.rows.map { "\($0[0].asText ?? "?"):\($0[1].asText ?? "?")" })
+            let rows = result.rows.map { "\($0[0].asText ?? "?"):\($0[1].asText ?? "?")" }
+            #expect(rows.count == 10, "page \(page + 1) of a tail browse came back short")
+            seen.append(contentsOf: rows)
         }
 
         #expect(seen.isEmpty == false)
@@ -335,17 +339,22 @@ struct KafkaIntegrationTests {
         #expect(topics.columns == ["topic", "partitions", "replication_factor", "internal"])
         #expect(topics.rows.contains { $0.first?.asText == harness.topic })
 
+        // Asserted against however many brokers are actually running rather than against one.
+        // Pinning the count to 1 is what made these three assertions fail the moment the suite
+        // met a cluster big enough to reproduce the routing bug they sit beside.
         let brokers = try await harness.driver.execute(query: "SHOW BROKERS")
-        #expect(brokers.rows.count == 1)
-        #expect(brokers.rows.first?[4].asText == "yes")   // the controller
+        #expect(brokers.columns.last == "takes_admin_requests")
+        #expect(brokers.rows.isEmpty == false)
+        #expect(brokers.rows.filter { $0[4].asText == "yes" }.count == 1)
 
         let cluster = try await harness.driver.execute(query: "SHOW CLUSTER")
         let properties = Dictionary(uniqueKeysWithValues: cluster.rows.compactMap { row -> (String, String)? in
             guard let key = row.first?.asText else { return nil }
             return (key, row[1].asText ?? "")
         })
-        #expect(properties["brokers"] == "1")
+        #expect(properties["brokers"] == String(brokers.rows.count))
         #expect(properties["cluster_id"]?.isEmpty == false)
+        #expect(properties["admin_requests_to"]?.isEmpty == false)
 
         let described = try await harness.driver.execute(query: "DESCRIBE TOPIC \(harness.quoted)")
         #expect(described.rows.count == 2)
@@ -408,22 +417,150 @@ struct KafkaIntegrationTests {
     }
 
     /// The lag report is what a Kafka debugging session is usually after.
+    ///
+    /// Three partitions rather than one, so the end offsets come from ListOffsets sent to three
+    /// different leaders on a multi-broker cluster. With one partition this passed while every
+    /// request went to whichever broker the connection happened to hold.
     @Test("Consumer group lag is reported per partition")
     func consumerGroupLag() async throws {
-        let harness = try await KafkaTestBroker.harness(topic: "tp-it-lag", partitions: 1)
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-lag", partitions: 3)
         defer { harness.tearDown() }
+        // The group consumes everything first, so every partition it was assigned has a
+        // committed offset; the six produced afterwards are the lag. Committing only part of a
+        // topic leaves the partitions it never reached out of the report entirely, which is
+        // correct and not something to assert arithmetic against.
         try await harness.produce(count: 10)
-        try harness.commitGroup(named: "tp-it-group", messages: 4)
+        try harness.commitGroup(named: "tp-it-group", messages: 10)
+        try await harness.produce(count: 6, startingAt: 10)
 
         let groups = try await harness.driver.execute(query: "SHOW GROUPS")
         #expect(groups.rows.contains { $0.first?.asText == "tp-it-group" })
 
         let lag = try await harness.driver.execute(query: "DESCRIBE GROUP \"tp-it-group\"")
         #expect(lag.columns == ["topic", "partition", "committed_offset", "end_offset", "lag"])
-        let row = try #require(lag.rows.first { $0.first?.asText == harness.topic })
-        #expect(row[3].asText == "10")
-        // Four consumed of ten leaves six behind.
-        #expect(row[4].asText == "6")
+        let rows = lag.rows.filter { $0.first?.asText == harness.topic }
+        #expect(rows.count == 3, "every partition the group committed must be reported")
+        let written = rows.compactMap { Int($0[3].asText ?? "") }.reduce(0, +)
+        let consumed = rows.compactMap { Int($0[2].asText ?? "") }.reduce(0, +)
+        let behind = rows.compactMap { Int($0[4].asText ?? "") }.reduce(0, +)
+        #expect(written == 16)
+        #expect(consumed == 10)
+        // Ten consumed of sixteen leaves six behind, wherever the sixteen landed.
+        #expect(behind == 6)
+    }
+
+    /// A group the cluster has never heard of used to come back as five columns and no rows,
+    /// which is byte for byte what a real group with nothing committed returns.
+    @Test("Describing a group that does not exist says so")
+    func describeUnknownGroupReports() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-nogroup", partitions: 1)
+        defer { harness.tearDown() }
+
+        await #expect(throws: (any Error).self) {
+            try await harness.driver.execute(query: "DESCRIBE GROUP \"tp-it-no-such-group-4c71\"")
+        }
+    }
+
+    // MARK: - Routing across brokers
+
+    /// The reported bug (#2993), and the reason the rest of this suite could not catch it.
+    ///
+    /// A topic's partitions are spread across the cluster's brokers, so every one of these
+    /// statements has to reach a broker the connection was not opened to. On a single-broker
+    /// cluster they all pass without any routing at all, which is why they are asserted here
+    /// against whatever the harness is running and are worth running against three.
+    @Test("Every statement that needs an offset works wherever the leaders are")
+    func offsetsReachEveryLeader() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-routing", partitions: 6)
+        defer { harness.tearDown() }
+        try await harness.produce(count: 30)
+
+        let described = try await harness.driver.execute(query: "DESCRIBE TOPIC \(harness.quoted)")
+        #expect(described.rows.count == 6)
+        let counted = described.rows.compactMap { Int($0.last?.asText ?? "") }.reduce(0, +)
+        #expect(counted == 30)
+
+        let metadata = try await harness.driver.fetchTableMetadata(table: harness.topic, schema: nil)
+        #expect(metadata.rowCount == 30)
+
+        let consumed = try await harness.rows("CONSUME \(harness.quoted) FROM NEWEST LIMIT 100")
+        #expect(consumed.count == 30)
+    }
+
+    /// `FROM NEWEST` means the newest messages. On more than one partition the scan steps every
+    /// partition back by the page size and reads forward, so the merged run holds several pages
+    /// and the newest rows sit at its end; taking the front of it returned the oldest rows of
+    /// the tail window and called them the newest.
+    @Test("FROM NEWEST returns the newest messages, not the oldest of its window")
+    func newestReturnsTheNewest() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-newest", partitions: 3)
+        defer { harness.tearDown() }
+        try await harness.produce(count: 60)
+
+        let everything = try await harness.rows("CONSUME \(harness.quoted) FROM OLDEST LIMIT 100")
+        #expect(everything.count == 60)
+        let newestKeys = Set(everything.suffix(10).compactMap { $0[3].asText })
+
+        let newest = try await harness.rows("CONSUME \(harness.quoted) FROM NEWEST LIMIT 10")
+        #expect(newest.count == 10)
+        #expect(Set(newest.compactMap { $0[3].asText }) == newestKeys)
+    }
+
+    /// Page two of a tail browse used to be empty: page one recorded the start of its window
+    /// rather than the end, so page two skipped a page inside a window exactly one page long.
+    @Test("The second page of a tail browse holds the messages before the first")
+    func tailPagingWalksBackwards() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-tailpage", partitions: 3)
+        defer { harness.tearDown() }
+        try await harness.produce(count: 60)
+
+        var pages: [[String]] = []
+        for page in 0 ..< 2 {
+            let query = try #require(harness.driver.buildBrowseQuery(
+                table: harness.topic,
+                schema: nil,
+                sortColumns: [],
+                columns: [],
+                limit: 10,
+                offset: page * 10
+            ))
+            if page > 0 { #expect(query.contains("FROM TAIL")) }
+            let rows = try await harness.driver.execute(query: query).rows
+            pages.append(rows.compactMap { $0[3].asText })
+        }
+
+        #expect(pages[0].count == 10)
+        #expect(pages[1].count == 10, "page two of a tail browse must hold the page before it")
+        #expect(Set(pages[0]).isDisjoint(with: Set(pages[1])))
+    }
+
+    /// A broker answers ListGroups with the groups it coordinates and nothing else, so a client
+    /// that asks one broker reports a fraction of them with no error.
+    @Test("SHOW GROUPS lists groups from every broker, not just the one connected to")
+    func showGroupsCoversEveryBroker() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-groups", partitions: 3)
+        defer { harness.tearDown() }
+        try await harness.produce(count: 6)
+
+        // Several names, because which broker coordinates a group is a hash of its id: one
+        // group lands on one broker and says nothing about whether the sweep happened.
+        let names = (0 ..< 6).map { "tp-it-sweep-\($0)" }
+        for name in names {
+            try harness.commitGroup(named: name, messages: 1)
+        }
+
+        let listed = try await harness.driver.execute(query: "SHOW GROUPS")
+        let found = Set(listed.rows.compactMap { $0.first?.asText })
+        for name in names {
+            #expect(found.contains(name), "SHOW GROUPS did not list \(name)")
+        }
+
+        // And each one is describable, which needs its own coordinator rather than the
+        // bootstrap broker.
+        for name in names {
+            let lag = try await harness.driver.execute(query: "DESCRIBE GROUP \(KafkaQL.quote(name))")
+            #expect(lag.rows.isEmpty == false, "DESCRIBE GROUP \(name) returned nothing")
+        }
     }
 
     // MARK: - Compression, end to end through the driver

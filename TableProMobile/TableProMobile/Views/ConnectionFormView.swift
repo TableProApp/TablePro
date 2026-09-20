@@ -429,7 +429,7 @@ struct ConnectionFormView: View {
                 TextField("SSH Host", text: $viewModel.sshHost)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                TextField("SSH Port", text: $viewModel.sshPort)
+                TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
                     .keyboardType(.numberPad)
                 TextField("SSH Username", text: $viewModel.sshUsername)
                     .textInputAutocapitalization(.never)

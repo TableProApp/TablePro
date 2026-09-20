@@ -6,13 +6,14 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SqlFileImportSource")
 
     private let url: URL
     private let encoding: String.Encoding
-    private let dialect: SqlDialect
+    private let grammar: SQLLexicalGrammar
     private let parser = SQLFileParser()
 
     private let externalDecompressedURL: URL?
@@ -22,13 +23,13 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     init(
         url: URL,
         encoding: String.Encoding,
-        dialect: SqlDialect = .generic,
+        grammar: SQLLexicalGrammar = .ansi,
         decompressedURL: URL? = nil,
         ownsDecompressedFile: Bool? = nil
     ) {
         self.url = url
         self.encoding = encoding
-        self.dialect = dialect
+        self.grammar = grammar
         self.externalDecompressedURL = decompressedURL
         self.ownsDecompressedFile = ownsDecompressedFile ?? (decompressedURL == nil)
     }
@@ -50,7 +51,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
 
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         let fileURL = try await resolveURL()
-        return parser.parseFile(url: fileURL, encoding: encoding, dialect: dialect)
+        return parser.parseFile(url: fileURL, encoding: encoding, grammar: grammar)
     }
 
     /// `ownsDecompressedFile` answers only whether the caller handed over a file to delete. A file

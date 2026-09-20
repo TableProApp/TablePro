@@ -109,6 +109,20 @@ struct ConnectionFormEditsTests {
         #expect(saved.sshConfiguration?.macAgentSocketPath == "/tmp/agent.sock")
     }
 
+    @Test("A tunnel the Mac left without a port keeps it unset when another field is edited")
+    func sshEditKeepsUnsetPort() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(host: "bastion.example.com", username: "deploy")
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.sshUsername = "ops"
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sshConfiguration?.port == nil)
+        #expect(saved.sshConfiguration?.username == "ops")
+    }
+
     @Test("An SSH port edit keeps an SSH host that synced in while the form was open")
     func sshPortEditKeepsSyncedHost() {
         var snapshot = storedConnection()

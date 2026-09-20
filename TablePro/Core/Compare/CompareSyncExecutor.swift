@@ -13,6 +13,7 @@ import CryptoKit
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 internal enum CompareSyncMode: String, Codable, Hashable, Sendable, CaseIterable {
     case structure

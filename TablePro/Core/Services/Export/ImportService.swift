@@ -80,11 +80,10 @@ final class ImportService: ObservableObject {
         if type(of: plugin).requiresTargetTable {
             source = PlainFileImportSource(url: decompressedURL ?? url)
         } else {
-            let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
             source = SqlFileImportSource(
                 url: url,
                 encoding: encoding,
-                dialect: dialect,
+                grammar: connection.type.lexicalGrammar,
                 decompressedURL: decompressedURL,
                 ownsDecompressedFile: ownsDecompressedFile
             )

@@ -10,6 +10,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("Query classifier - Oracle PL/SQL blocks")
@@ -107,7 +108,7 @@ struct QueryClassifierPLSQLTests {
         let plan = BatchTransactionPolicy.plan(
             for: ["BEGIN work := 1; END;", "SELECT 1 FROM dual"],
             databaseType: .oracle,
-            rules: SQLLexicalRules(databaseType: .oracle, descriptor: nil)
+            grammar: DatabaseType.oracle.lexicalGrammar
         )
         #expect(plan != .scriptTransaction)
     }
@@ -121,7 +122,10 @@ struct QueryClassifierPLSQLTests {
             ("CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END; ;", "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;"),
         ]
         for example in cases {
-            #expect(DatabaseAccessBridge.statementText(example.sql, dialect: .oracle) == example.expected, "\(example.sql)")
+            #expect(
+                DatabaseAccessBridge.statementText(example.sql, grammar: TestGrammar.oracle) == example.expected,
+                "\(example.sql)"
+            )
         }
     }
 

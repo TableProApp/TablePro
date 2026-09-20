@@ -140,11 +140,33 @@ struct KafkaQLTests {
     /// backslashes onto the topic.
     @Test("A quoted value round-trips through quote and unquote")
     func quotingRoundTrips() throws {
-        for value in ["plain", "with space", "say \"hi\"", "a,b", "trailing\\"] {
-            #expect(KafkaQL.unquote(KafkaQL.quote(value)) == value)
+        let values = [
+            "plain", "with space", "say \"hi\"", "a,b", "trailing\\",
+            "C:\\temp\\app.log", "\\\\server\\\\share", "a\\\"b", "\\", "\\\\"
+        ]
+        for value in values {
+            #expect(KafkaQL.unquote(KafkaQL.quote(value)) == value, "round trip of \(value)")
         }
         let produced = try produce("PRODUCE INTO t VALUE \"say \\\"hi\\\"\"")
         #expect(produced.value == "say \"hi\"")
+    }
+
+    /// A value carrying a Windows path used to arrive on the topic with its separators gone,
+    /// because `quote` escaped the delimiter but not the escape character the tokenizer honours.
+    @Test("A value full of backslashes reaches the topic intact")
+    func backslashesSurviveTheParser() throws {
+        let statement = "PRODUCE INTO \"logs\" VALUE \(KafkaQL.quote("C:\\temp\\app.log"))"
+        #expect(try produce(statement).value == "C:\\temp\\app.log")
+    }
+
+    /// The same gap let a value close its own quote and have the rest of itself parsed as
+    /// further clauses, so a string chose the partition it was written to.
+    @Test("A value cannot escape its quotes and inject a clause")
+    func aValueCannotInjectAClause() throws {
+        let hostile = "a\\\" PARTITION 3 VALUE \"b"
+        let query = try produce("PRODUCE INTO \"orders\" VALUE \(KafkaQL.quote(hostile))")
+        #expect(query.value == hostile)
+        #expect(query.partition == nil)
     }
 
     @Test("Bad input is reported with a message rather than silently ignored")
@@ -161,6 +183,41 @@ struct KafkaQLTests {
         #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DROP") }
         #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DROP TOPIC") }
         #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DROP TOPIC a b") }
+    }
+
+    /// Every one of these used to parse. A token the grammar has no use for is a typo or a
+    /// modifier the driver does not implement, and reading the statement without it reports
+    /// success for something other than what was asked.
+    @Test("A token the statement has no use for is refused, not discarded")
+    func trailingTokensAreRefused() {
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("SHOW TOPICS INTERNAL") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("SHOW BROKERS ALL") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("SHOW GROUPS STABLE") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("SHOW CLUSTER VERBOSE") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DESCRIBE TOPIC \"orders\" \"payments\"") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DESCRIBE GROUP \"a\" \"b\"") }
+    }
+
+    /// A partition number that does not parse used to be dropped before anything checked it, so
+    /// one typo quietly halved the read and the grid reported a full success.
+    @Test("A partition list refuses what it cannot read as a number")
+    func partitionListRefusesNonNumbers() throws {
+        #expect(try consume("CONSUME t PARTITION (0,2)").partitions == [0, 2])
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("CONSUME t PARTITION (0,two,2)") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("CONSUME t PARTITION (first)") }
+    }
+
+    /// A tail scan pins the end it steps back from, so later pages of a NEWEST browse read the
+    /// window page one measured rather than re-deriving it against a moving tail.
+    @Test("FROM TAIL parses the exclusive end of each partition")
+    func parsesTailAnchors() throws {
+        let query = try consume("CONSUME \"orders\" FROM TAIL (0:400,1:250) LIMIT 10 SKIP 10")
+        guard case .tail(let ends) = query.start else {
+            Issue.record("expected a tail start mode")
+            return
+        }
+        #expect(ends == [0: 400, 1: 250])
+        #expect(query.skip == 10)
     }
 
     /// A topic delete is KafkaQL's own verb. `DROP TABLE` stays a syntax error above, because a

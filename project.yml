@@ -234,7 +234,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -429,6 +429,7 @@ targets:
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBLexicalFeatures.swift
       - Plugins/DuckDBDriverPlugin/DuckDBLockConflict.swift
       - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
@@ -445,7 +446,10 @@ targets:
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
+      - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
+      - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
+      - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
       - Plugins/TypesenseDriverPlugin/TypesenseApiKeys.swift
       - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift
@@ -505,6 +509,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
+      - Plugins/MySQLDriverPlugin/MySQLLexicalFeatures.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLKillLatch.swift
       - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
@@ -592,9 +597,11 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift
+      - Plugins/KafkaDriverPlugin/KafkaCluster+Routing.swift
       - Plugins/KafkaDriverPlugin/KafkaConnection.swift
       - Plugins/KafkaDriverPlugin/KafkaDeleteTopicsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaFetchRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaFindCoordinatorRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaGroupsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaMetadataRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaOffsetsRequest.swift
@@ -694,7 +701,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1210,7 +1217,7 @@ targets:
       principalClass: MSSQLPlugin
     dependencies:
       - package: TableProCore
-        product: TableProMSSQLCore
+        products: [TableProCoreTypes, TableProMSSQLCore]
     settings:
       base:
         HEADER_SEARCH_PATHS:

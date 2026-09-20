@@ -128,22 +128,30 @@ def check_api_versions(broker):
 
 def check_version_floor(apis):
     """The plugin negotiates against the broker's advertised range instead of hardcoding a
-    version, because Kafka 4.x removed the oldest version of several APIs."""
-    # api key -> (name, the version the plugin tops out at)
-    ceilings = {
-        0: ("Produce", 9), 1: ("Fetch", 12), 2: ("ListOffsets", 7), 3: ("Metadata", 12),
-        9: ("OffsetFetch", 8), 10: ("FindCoordinator", 4), 15: ("DescribeGroups", 5),
-        16: ("ListGroups", 4), 17: ("SaslHandshake", 1), 36: ("SaslAuthenticate", 2),
+    version, because Kafka 4.x removed the oldest version of several APIs.
+
+    So the check is that a version can be AGREED, not that the plugin's ceiling is one the
+    broker offers. KafkaApiVersionTable.negotiated takes min(broker high, our ceiling) and only
+    fails when that lands below our floor, which is the whole point of negotiating down. Testing
+    the ceiling for membership instead reported five failures against any broker older than the
+    newest, and a real regression is then indistinguishable from that noise."""
+    # api key -> (name, the plugin's floor, the plugin's ceiling)
+    bounds = {
+        0: ("Produce", 3, 9), 1: ("Fetch", 4, 12), 2: ("ListOffsets", 1, 7),
+        3: ("Metadata", 1, 12), 9: ("OffsetFetch", 1, 8), 10: ("FindCoordinator", 0, 4),
+        15: ("DescribeGroups", 0, 5), 16: ("ListGroups", 0, 4), 17: ("SaslHandshake", 0, 1),
+        36: ("SaslAuthenticate", 0, 2), 20: ("DeleteTopics", 1, 5),
     }
-    for key, (name, ceiling) in ceilings.items():
+    for key, (name, floor, ceiling) in bounds.items():
         if key not in apis:
             check(f"{name} is offered by the broker", False, "the broker does not advertise it")
             continue
         low, high = apis[key]
+        agreed = min(high, ceiling)
         check(
-            f"{name} v{ceiling} is inside the broker's v{low}..v{high}",
-            low <= ceiling <= high,
-            f"the plugin's ceiling v{ceiling} is outside what this broker accepts",
+            f"{name} negotiates to v{agreed} inside the broker's v{low}..v{high}",
+            agreed >= low and agreed >= floor,
+            f"the plugin speaks v{floor}..v{ceiling} and this broker speaks v{low}..v{high}",
         )
 
 
@@ -293,6 +301,189 @@ def check_sasl_handshake_is_never_flexible(apis):
     )
 
 
+def check_find_coordinator_field_order(broker, apis, brokers):
+    """FindCoordinator moved its error code at v4 and the two orders are not distinguishable
+    from a successful parse alone.
+
+    Up to v3 the body opens with the error and then names the node. v4 (KIP-699) made the
+    request batched and put the error at the END of each coordinator entry, after the address.
+    Reading v4 in the v3 order takes the key's length prefix for an error code and a slice of
+    the host for a node id, so it yields a plausible broker rather than a parse failure. Both
+    orders are asserted here because both are hand-coded in KafkaFindCoordinatorRequest.
+
+    What is asserted is the FIELD ORDER, not that a coordinator exists. A cluster where no group
+    has ever committed has no __consumer_offsets topic yet and answers 15
+    COORDINATOR_NOT_AVAILABLE with node -1, which is correct and which the driver retries. The
+    discriminating evidence is that the key echoes back and the reply is consumed exactly."""
+    available = (0, 15)
+    known = {node for node, _, _ in brokers} if brokers else set()
+    high = apis.get(10, (0, 0))[1]
+
+    if high >= 4:
+        body = struct.pack(">b", 0) + b"\x02" + write_compact_string("tp-probe-group") + b"\x00"
+        resp = broker.send(10, 4, body)
+        i = skip_tags(resp, 4) + 4                       # header tags, throttle_time_ms
+        count, i = uvarint(resp, i)
+        key, i = compact_string(resp, i)
+        node_id = struct.unpack(">i", resp[i:i + 4])[0]
+        i += 4
+        host, i = compact_string(resp, i)
+        i += 4                                           # port
+        error_code = struct.unpack(">h", resp[i:i + 2])[0]
+        i += 2
+        _, i = compact_string(resp, i)                   # error_message
+        i = skip_tags(resp, i)
+        i = skip_tags(resp, i)
+        addressed = error_code != 0 or not known or node_id in known
+        check(
+            "FindCoordinator v4 names the coordinator before its error code",
+            count == 2 and key == "tp-probe-group" and error_code in available
+            and addressed and i == len(resp),
+            f"key={key} node={node_id} host={host} error={error_code}, "
+            f"consumed {i} of {len(resp)} bytes",
+        )
+
+    if high >= 3:
+        body = write_compact_string("tp-probe-group") + struct.pack(">b", 0) + b"\x00"
+        resp = broker.send(10, 3, body)
+        i = skip_tags(resp, 4) + 4
+        error_code = struct.unpack(">h", resp[i:i + 2])[0]
+        i += 2
+        _, i = compact_string(resp, i)                   # error_message
+        node_id = struct.unpack(">i", resp[i:i + 4])[0]
+        i += 4
+        _, i = compact_string(resp, i)                   # host
+        i += 4                                           # port
+        i = skip_tags(resp, i)
+        addressed = error_code != 0 or not known or node_id in known
+        check(
+            "FindCoordinator v3 answers with its error code first",
+            error_code in available and addressed and i == len(resp),
+            f"node={node_id} error={error_code}, consumed {i} of {len(resp)} bytes",
+        )
+
+
+def check_group_request_shapes(broker, apis):
+    """ListGroups v4, DescribeGroups v5 and OffsetFetch v8 are each hand-encoded and none of
+    them was covered here before.
+
+    The assertion is that the reply parses to exactly its own length. A version gate written at
+    the wrong number does not raise: it leaves the reader a field ahead or behind, which reads
+    as plausible values and a buffer that ends in the wrong place."""
+    if apis.get(16, (0, 0))[1] >= 4:
+        resp = broker.send(16, 4, b"\x01" + b"\x00")   # empty states filter, tags
+        i = skip_tags(resp, 4) + 4 + 2                  # header tags, throttle, error_code
+        count, i = uvarint(resp, i)
+        for _ in range(max(0, count - 1)):
+            _, i = compact_string(resp, i)              # group_id
+            _, i = compact_string(resp, i)              # protocol_type
+            _, i = compact_string(resp, i)              # group_state, v4 only
+            i = skip_tags(resp, i)
+        i = skip_tags(resp, i)
+        check("ListGroups v4 carries a group state per group", i == len(resp),
+              f"consumed {i} of {len(resp)} bytes")
+
+    if apis.get(15, (0, 0))[1] >= 5:
+        body = b"\x02" + write_compact_string("tp-probe-group") + b"\x00" + b"\x00"
+        resp = broker.send(15, 5, body)
+        i = skip_tags(resp, 4) + 4
+        count, i = uvarint(resp, i)
+        for _ in range(max(0, count - 1)):
+            i += 2                                      # error_code
+            for _ in range(4):                          # group_id, state, protocol_type, protocol
+                _, i = compact_string(resp, i)
+            members, i = uvarint(resp, i)
+            for _ in range(max(0, members - 1)):
+                for _ in range(4):                      # member_id, instance_id, client_id, host
+                    _, i = compact_string(resp, i)
+                for _ in range(2):                      # metadata, assignment
+                    size, i = uvarint(resp, i)
+                    i += max(0, size - 1)
+                i = skip_tags(resp, i)
+            i += 4                                      # authorized_operations
+            i = skip_tags(resp, i)
+        i = skip_tags(resp, i)
+        check("DescribeGroups v5 carries an instance id and authorized operations",
+              i == len(resp), f"consumed {i} of {len(resp)} bytes")
+
+    if apis.get(9, (0, 0))[1] >= 8:
+        body = (b"\x02" + write_compact_string("tp-probe-group") + b"\x00" + b"\x00"
+                + b"\x00" + b"\x00")
+        resp = broker.send(9, 8, body)
+        i = skip_tags(resp, 4) + 4
+        groups, i = uvarint(resp, i)
+        for _ in range(max(0, groups - 1)):
+            _, i = compact_string(resp, i)              # group_id
+            topics, i = uvarint(resp, i)
+            for _ in range(max(0, topics - 1)):
+                _, i = compact_string(resp, i)
+                parts, i = uvarint(resp, i)
+                for _ in range(max(0, parts - 1)):
+                    i += 4 + 8 + 4                      # index, offset, leader_epoch
+                    _, i = compact_string(resp, i)      # metadata
+                    i += 2                              # error_code
+                    i = skip_tags(resp, i)
+                i = skip_tags(resp, i)
+            i += 2                                      # group-level error_code
+            i = skip_tags(resp, i)
+        i = skip_tags(resp, i)
+        check("OffsetFetch v8 groups its topics under a group and ends with a group error",
+              i == len(resp), f"consumed {i} of {len(resp)} bytes")
+
+
+def check_list_offsets_is_per_partition(broker, apis, topic):
+    """ListOffsets answers per partition, which is why the driver splits one request per leader.
+
+    The check is both that the encoding stays in step and that a partition's error arrives
+    INSIDE a successful response. A broker that is not the leader of a partition reports it
+    here, not as a request-level failure, and reading it as one is issue #2993."""
+    if apis.get(2, (0, 0))[1] < 7:
+        return
+    body = struct.pack(">i", -1) + struct.pack(">b", 1)
+    body += b"\x02" + write_compact_string(topic) + b"\x02"
+    body += struct.pack(">i", 0) + struct.pack(">i", -1) + struct.pack(">q", -1) + b"\x00"
+    body += b"\x00" + b"\x00"
+    resp = broker.send(2, 7, body)
+    i = skip_tags(resp, 4) + 4
+    topics, i = uvarint(resp, i)
+    saw_partition = False
+    for _ in range(max(0, topics - 1)):
+        _, i = compact_string(resp, i)
+        parts, i = uvarint(resp, i)
+        for _ in range(max(0, parts - 1)):
+            i += 4 + 2 + 8 + 8 + 4   # index, error_code, timestamp, offset, leader_epoch
+            i = skip_tags(resp, i)
+            saw_partition = True
+        i = skip_tags(resp, i)
+    i = skip_tags(resp, i)
+    check("ListOffsets v7 answers with an error code per partition",
+          saw_partition and i == len(resp), f"consumed {i} of {len(resp)} bytes")
+
+
+def check_delete_topics_shape(broker, apis):
+    """DeleteTopics v5 still names topics; v6 switched to a 16-byte topic UUID, which is a
+    different request rather than a bigger one. v5 also added a broker-supplied message the
+    reader has to consume even though the app does not show it."""
+    if apis.get(20, (0, 0))[1] < 5:
+        return
+    body = b"\x02" + write_compact_string("tp-probe-no-such-topic-9e3f")
+    body += struct.pack(">i", 5000) + b"\x00"
+    resp = broker.send(20, 5, body)
+    i = skip_tags(resp, 4) + 4
+    count, i = uvarint(resp, i)
+    codes = []
+    for _ in range(max(0, count - 1)):
+        _, i = compact_string(resp, i)                  # name, nullable from v6 on
+        codes.append(struct.unpack(">h", resp[i:i + 2])[0])
+        i += 2
+        _, i = compact_string(resp, i)                  # error_message
+        i = skip_tags(resp, i)
+    i = skip_tags(resp, i)
+    check("DeleteTopics v5 names the topic and carries an error message",
+          codes == [3] and i == len(resp),
+          f"codes={codes}, consumed {i} of {len(resp)} bytes; 3 is UNKNOWN_TOPIC_OR_PARTITION")
+
+
 def main():
     host = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 9092
@@ -314,6 +505,10 @@ def main():
             print(f"        broker(s): {', '.join(f'{n}@{h}:{p}' for n, h, p in brokers)}")
         check_fetch_is_name_based_through_v12(broker, "tp-probe-crc")
         check_produce_crc(broker, apis)
+        check_find_coordinator_field_order(broker, apis, brokers)
+        check_group_request_shapes(broker, apis)
+        check_list_offsets_is_per_partition(broker, apis, "tp-probe-crc")
+        check_delete_topics_shape(broker, apis)
     finally:
         broker.close()
 

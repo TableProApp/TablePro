@@ -206,12 +206,24 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     private var _isInTransaction = false
 
+    /// Whether the session runs with `NO_BACKSLASH_ESCAPES`, from the status flags of the last reply, or nil before
+    /// any reply this connection read. Measured on MySQL 8.4.11 and MariaDB 11.8.9: the flag follows every session
+    /// `sql_mode` change on the next OK packet, and a mode `init_connect` sets shows only from the first reply after
+    /// connect, which is why it is read after the session setup statement rather than from the handshake.
+    var noBackslashEscapes: Bool? {
+        stateLock.withLock { _noBackslashEscapes }
+    }
+
+    private var _noBackslashEscapes: Bool?
+
     private func recordTransactionState(on mysql: UnsafeMutablePointer<MYSQL>) {
         var serverStatus: UInt32 = 0
         guard mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus) == 0 else { return }
         let isOpen = (serverStatus & UInt32(SERVER_STATUS_IN_TRANS)) != 0
+        let escapesOff = (serverStatus & UInt32(SERVER_STATUS_NO_BACKSLASH_ESCAPES)) != 0
         stateLock.lock()
         _isInTransaction = isOpen
+        _noBackslashEscapes = escapesOff
         stateLock.unlock()
     }
 
@@ -300,6 +312,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.mysql = handle
             self._isConnected = true
             self.stateLock.unlock()
+            self.recordTransactionState(on: handle)
         }
     }
 

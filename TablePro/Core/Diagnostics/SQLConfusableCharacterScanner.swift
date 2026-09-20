@@ -4,11 +4,11 @@
 //
 
 import Foundation
-import TableProPluginKit
+import TableProSQLGrammar
 
 enum SQLConfusableCharacterScanner {
-    static func scan(_ text: NSString, rules: SQLLexicalRules) -> [ConfusableSQLCharacterMatch] {
-        var scan = ConfusableCharacterScan(text: text, rules: rules)
+    static func scan(_ text: NSString, grammar: SQLLexicalGrammar) -> [ConfusableSQLCharacterMatch] {
+        var scan = ConfusableCharacterScan(text: text, grammar: grammar)
         scan.run()
         return scan.matches
     }
@@ -17,15 +17,15 @@ enum SQLConfusableCharacterScanner {
 private struct ConfusableCharacterScan {
     private let text: NSString
     private let length: Int
-    private let rules: SQLLexicalRules
+    private let grammar: SQLLexicalGrammar
 
     private(set) var matches: [ConfusableSQLCharacterMatch] = []
     private var index = 0
 
-    init(text: NSString, rules: SQLLexicalRules) {
+    init(text: NSString, grammar: SQLLexicalGrammar) {
         self.text = text
         self.length = text.length
-        self.rules = rules
+        self.grammar = grammar
     }
 
     mutating func run() {
@@ -37,7 +37,7 @@ private struct ConfusableCharacterScan {
     private mutating func step() {
         let character = text.character(at: index)
 
-        if let end = SQLNonCodeSpan.end(at: index, in: text, rules: rules) {
+        if let end = SQLNonCodeSpan.end(at: index, in: text, grammar: grammar) {
             index = end
             return
         }
