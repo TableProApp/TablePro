@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Colored highlight on the AI chat input painting over a window that is not key.
 - Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
 - AI chat input focus crossfade playing against Reduce Motion.
+- Sync status and the assistant's scroll-to-bottom button animating against Reduce Motion.
+- Pulsing toolbar symbols left dimmed instead of still under Reduce Motion.
+- Foreign key label picker animating open and closed against Reduce Motion.
 - AI chat input announced with no name by VoiceOver.
 - Assistant pane left with a transcript, no composer and no explanation after the active AI provider is removed.
 - Identical unlabelled **Run** buttons announced for every tool call in a turn that proposes several.

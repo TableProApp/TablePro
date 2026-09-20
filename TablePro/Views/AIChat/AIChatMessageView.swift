@@ -245,10 +245,8 @@ struct ChatTypingIndicatorView: View {
                     .fill(Color(nsColor: .tertiaryLabelColor))
                     .frame(width: 6, height: 6)
                     .offset(y: animating ? -3 : 0)
-                    .animation(
-                        reduceMotion
-                            ? nil
-                            : .easeInOut(duration: 0.4)
+                    .motionAnimation(
+                        .easeInOut(duration: 0.4)
                             .repeatForever(autoreverses: true)
                             .delay(Double(index) * 0.15),
                         value: animating

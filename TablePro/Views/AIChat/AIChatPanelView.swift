@@ -240,7 +240,7 @@ struct AIChatPanelView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 8)
                 .transition(.opacity)
-                .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
+                .motionAnimation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
                 .accessibilityLabel(String(localized: "Scroll to latest message"))
             }
         }

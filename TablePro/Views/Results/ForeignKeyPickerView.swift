@@ -74,7 +74,7 @@ struct ForeignKeyPickerView: View {
             listHeight: Self.listHeight,
             onToggle: toggleLabelColumn,
             onClear: { applyLabelChoice(ForeignKeyLabelChoice(columnNames: [])) },
-            onDone: { withAnimation { isChoosingLabels = false } }
+            onDone: { withMotion { isChoosingLabels = false } }
         )
     }
 
@@ -237,7 +237,7 @@ struct ForeignKeyPickerView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             Button {
-                withAnimation { isChoosingLabels = true }
+                withMotion { isChoosingLabels = true }
             } label: {
                 Text(String(format: String(localized: "Label: %@"), labelSummary))
                     .lineLimit(1)
