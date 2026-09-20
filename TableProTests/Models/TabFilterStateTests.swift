@@ -76,13 +76,35 @@ struct TabFilterStateTests {
         }
     }
 
-    @Test("persistedState saves no rows when nothing is committed")
-    func persistedStateIsEmptyWithNothingCommitted() {
+    @Test("persistedState saves the rows when nothing is committed, marked unapplied")
+    func persistedStateSavesADraft() {
         var state = TabFilterState()
-        state.filters = [
+        let rows = [
             TestFixtures.makeTableFilter(column: "id", value: "1"),
             TestFixtures.makeTableFilter(column: "name", value: "a", isEnabled: false)
         ]
+        state.filters = rows
+        state.commit = nil
+
+        #expect(state.persistedState.filters == rows)
+        #expect(!state.persistedState.isApplied)
+    }
+
+    @Test("persistedState marks a committed set applied")
+    func persistedStateMarksACommittedSetApplied() {
+        var state = TabFilterState()
+        state.filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+        state.commit = .all
+
+        #expect(state.persistedState.isApplied)
+    }
+
+    /// An empty set is what the storage reads as a delete, and Remove All Filters is the gesture
+    /// that produces one.
+    @Test("persistedState saves nothing once the rows are gone")
+    func persistedStateIsEmptyWithoutRows() {
+        var state = TabFilterState()
+        state.filters = []
         state.commit = nil
 
         #expect(state.persistedState.filters.isEmpty)

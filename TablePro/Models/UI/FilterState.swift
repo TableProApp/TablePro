@@ -36,10 +36,22 @@ struct BrowseSearchState: Codable, Equatable {
 struct PersistedFilterState: Codable, Equatable {
     var filters: [TableFilter]
     var logicMode: FilterLogicMode
+    /// Whether the rows were running against the table when they were saved.
+    ///
+    /// A plain flag rather than the `FilterCommit` itself, because `persistedState` drops invalid
+    /// rows and nothing clears a `.solo` commit whose row became invalid: that id would survive to
+    /// disk pointing at a row no longer in the file, and restoring it resolves to nothing applied
+    /// while the panel shows rows. An applied set restores as `.all` over the rows that survived,
+    /// each keeping its own enabled flag.
+    ///
+    /// Absent in every file written before this existed, which decodes to `true`: only an applied
+    /// set was ever saved.
+    var isApplied: Bool
 
-    init(filters: [TableFilter], logicMode: FilterLogicMode = .and) {
+    init(filters: [TableFilter], logicMode: FilterLogicMode = .and, isApplied: Bool = true) {
         self.filters = filters
         self.logicMode = logicMode
+        self.isApplied = isApplied
     }
 
     init(from decoder: Decoder) throws {
@@ -47,15 +59,17 @@ struct PersistedFilterState: Codable, Equatable {
            let filters = try? keyed.decode([TableFilter].self, forKey: .filters) {
             self.filters = filters
             self.logicMode = (try? keyed.decode(FilterLogicMode.self, forKey: .logicMode)) ?? .and
+            self.isApplied = (try? keyed.decode(Bool.self, forKey: .isApplied)) ?? true
             return
         }
         let single = try decoder.singleValueContainer()
         self.filters = try single.decode([TableFilter].self)
         self.logicMode = .and
+        self.isApplied = true
     }
 
     private enum CodingKeys: String, CodingKey {
-        case filters, logicMode
+        case filters, logicMode, isApplied
     }
 }
 

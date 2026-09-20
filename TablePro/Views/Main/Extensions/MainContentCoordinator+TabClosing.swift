@@ -20,6 +20,11 @@ extension MainContentCoordinator {
         dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
         for id in ids {
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
+            /// The closing tab's own save point. A tab switch saves the tab it leaves, but a close
+            /// removes the tab before the selection moves, so nothing else writes the rows the
+            /// reader left in the filter bar. An applied filter was written when it was applied;
+            /// rows that were never applied have only this.
+            saveLastFilters(of: tab)
             RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
             releaseResources(of: tab)
             releaseExecution(of: tab)

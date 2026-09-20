@@ -12,8 +12,6 @@ struct FilterPanelView: View {
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
     let enumValuesByColumn: [String: [String]]
-    let onApply: ([TableFilter]) -> Void
-    let onUnset: () -> Void
 
     @State private var showSQLSheet = false
     @State private var showSettingsPopover = false
@@ -115,8 +113,7 @@ struct FilterPanelView: View {
             filterOptionsMenu
 
             Button("Clear") {
-                coordinator.clearAppliedFilters()
-                onUnset()
+                coordinator.clearAppliedFiltersAndReload()
                 coordinator.focusActiveGrid()
             }
             .buttonStyle(.bordered)
@@ -200,8 +197,7 @@ struct FilterPanelView: View {
             Divider()
 
             Button(role: .destructive) {
-                coordinator.clearFilterState()
-                onUnset()
+                coordinator.removeAllFiltersAndReload()
                 coordinator.focusActiveGrid()
             } label: {
                 Label(String(localized: "Remove All Filters"), systemImage: "xmark.circle")
@@ -302,13 +298,11 @@ struct FilterPanelView: View {
 
     private func applyAllValidFilters() {
         coordinator.applyAllFilters()
-        onApply(coordinator.selectedTabFilterState.appliedFilters)
         coordinator.focusActiveGrid()
     }
 
     private func applySoloFilter(_ filter: TableFilter) {
         coordinator.applySoloFilter(filter)
-        onApply(coordinator.selectedTabFilterState.appliedFilters)
         coordinator.focusActiveGrid()
     }
 

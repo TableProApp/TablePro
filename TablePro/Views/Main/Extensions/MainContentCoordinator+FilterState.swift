@@ -72,10 +72,6 @@ extension MainContentCoordinator {
         filterCoordinator.applySoloFilter(filter)
     }
 
-    func clearAppliedFilters() {
-        filterCoordinator.clearAppliedFilters()
-    }
-
     func toggleFilterPanel() {
         filterCoordinator.toggleFilterPanel()
     }
@@ -88,16 +84,8 @@ extension MainContentCoordinator {
         filterCoordinator.closeFilterPanel()
     }
 
-    func saveLastFiltersForActiveTable() {
-        filterCoordinator.saveLastFiltersForActiveTable()
-    }
-
     func saveLastFilters(of tab: QueryTab) {
         filterCoordinator.saveLastFilters(of: tab)
-    }
-
-    func restoreLastFilters(for tableName: String) {
-        filterCoordinator.restoreLastFilters(for: tableName)
     }
 
     func clearFilterState() {

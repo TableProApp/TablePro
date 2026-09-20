@@ -53,8 +53,6 @@ struct MainEditorContentView: View {
     let onAddRow: () -> Void
     let onSelectionChange: (Set<Int>) -> Void
     let onFilterColumn: (String) -> Void
-    let onApplyFilters: ([TableFilter]) -> Void
-    let onClearFilters: () -> Void
 
     let onFirstPage: () -> Void
     let onPreviousPage: () -> Void
@@ -894,9 +892,7 @@ struct MainEditorContentView: View {
                     columns: rows.columns,
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
-                    enumValuesByColumn: rows.columnEnumValues,
-                    onApply: onApplyFilters,
-                    onUnset: onClearFilters
+                    enumValuesByColumn: rows.columnEnumValues
                 )
             }
             Divider()

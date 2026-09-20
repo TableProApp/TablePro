@@ -27,7 +27,7 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil) == filters
@@ -45,7 +45,7 @@ struct FilterSettingsStorageTests {
             TestFixtures.makeTableFilter(column: "age", op: .greaterThan, value: "18"),
         ]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
 
         let loaded = storage.loadLastFilters(
             for: "users",
@@ -66,7 +66,7 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.waitForPendingDiskWrites()
         storage.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
 
@@ -83,9 +83,9 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.waitForPendingDiskWrites()
-        storage.saveLastFilters([], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: []), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
@@ -110,7 +110,7 @@ struct FilterSettingsStorageTests {
         let connectionB = UUID()
         let filtersA = [TestFixtures.makeTableFilter(column: "a")]
 
-        storage.saveLastFilters(filtersA, for: "users", connectionId: connectionA, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filtersA), for: "users", connectionId: connectionA, databaseName: "db", schemaName: nil)
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionB, databaseName: "db", schemaName: nil).isEmpty
@@ -127,7 +127,7 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let filters = [TestFixtures.makeTableFilter(column: "a")]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db_a", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db_a", schemaName: nil)
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db_b", schemaName: nil).isEmpty
@@ -141,7 +141,7 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let filters = [TestFixtures.makeTableFilter(column: "a")]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: "public")
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: "public")
 
         #expect(
             storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app").isEmpty
@@ -161,10 +161,12 @@ struct FilterSettingsStorageTests {
         let keptFilters = [TestFixtures.makeTableFilter(column: "b")]
 
         storage.saveLastFilters(
-            deletedFilters, for: "users", connectionId: deletedConnection, databaseName: "db", schemaName: nil
+            PersistedFilterState(filters: deletedFilters),
+            for: "users", connectionId: deletedConnection, databaseName: "db", schemaName: nil
         )
         storage.saveLastFilters(
-            keptFilters, for: "users", connectionId: keptConnection, databaseName: "db", schemaName: nil
+            PersistedFilterState(filters: keptFilters),
+            for: "users", connectionId: keptConnection, databaseName: "db", schemaName: nil
         )
 
         storage.purgeConnections([deletedConnection])
@@ -189,7 +191,7 @@ struct FilterSettingsStorageTests {
         let kept = UUID()
         for connectionId in [first, second, kept] {
             storage.saveLastFilters(
-                [TestFixtures.makeTableFilter(column: "a")],
+                PersistedFilterState(filters: [TestFixtures.makeTableFilter(column: "a")]),
                 for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
             )
         }
@@ -216,7 +218,7 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
         storage.saveLastFilters(
-            [TestFixtures.makeTableFilter(column: "a")],
+            PersistedFilterState(filters: [TestFixtures.makeTableFilter(column: "a")]),
             for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
 
@@ -235,9 +237,10 @@ struct FilterSettingsStorageTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let connectionId = UUID()
         storage.saveLastFilters(
-            [TestFixtures.makeTableFilter()], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            PersistedFilterState(filters: [TestFixtures.makeTableFilter()]),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
-        storage.saveLastFilters([], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: []), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.waitForPendingDiskWrites()
 
         #expect(
@@ -245,27 +248,114 @@ struct FilterSettingsStorageTests {
         )
     }
 
-    @Test("New installs default to restoring the last filter")
-    func defaultPanelStateRestoresLast() {
+    @Test("New installs restore and apply the saved filter, with the bar shown only when there is one")
+    func defaultSettingsRestoreAndApply() {
         let (storage, directory) = makeStorage()
         defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(storage.loadSettings().panelState == .restoreLast)
+        #expect(storage.loadSettings().restoreBehavior == .restoreAndApply)
+        #expect(!storage.loadSettings().alwaysShowPanel)
     }
 
-    @Test("Migration upgrades a stored Always Hide setting to Restore Last")
-    func migrationUpgradesAlwaysHide() throws {
-        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+    @Test(
+        "A settings file written before the two axes were split maps onto both",
+        arguments: [
+            ("restoreLast", FilterRestoreBehavior.restoreAndApply, false),
+            ("alwaysShow", FilterRestoreBehavior.restoreAndApply, true),
+            ("alwaysHide", FilterRestoreBehavior.dontSave, false),
+        ]
+    )
+    func legacyPanelStateMapsOntoBothAxes(
+        stored: String,
+        behavior: FilterRestoreBehavior,
+        alwaysShowPanel: Bool
+    ) throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let stored = FilterSettings(panelState: .alwaysHide)
-        defaults.set(try JSONEncoder().encode(stored), forKey: "com.TablePro.filter.settings")
+        let legacy = """
+        {"defaultColumn":"rawSQL","defaultOperator":"equal","panelState":"\(stored)"}
+        """
+        defaults.set(Data(legacy.utf8), forKey: "com.TablePro.filter.settings")
 
-        let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        let settings = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).loadSettings()
 
-        #expect(storage.loadSettings().panelState == .restoreLast)
+        #expect(settings.restoreBehavior == behavior)
+        #expect(settings.alwaysShowPanel == alwaysShowPanel)
+    }
+
+    /// The rewrite this replaced ran once behind a UserDefaults flag, so anyone who set the value
+    /// again afterwards kept it. Reading it in the decoder holds for every launch instead.
+    @Test("Reading a legacy settings file twice gives the same answer")
+    func legacyPanelStateMigrationIsIdempotent() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let legacy = """
+        {"defaultColumn":"rawSQL","defaultOperator":"equal","panelState":"alwaysHide"}
+        """
+        defaults.set(Data(legacy.utf8), forKey: "com.TablePro.filter.settings")
+
+        _ = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).loadSettings()
+        let second = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).loadSettings()
+
+        #expect(second.restoreBehavior == .dontSave)
+    }
+
+    @Test("A draft saved with nothing applied round-trips as a draft")
+    func draftRoundTripsUnapplied() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        storage.saveLastFilters(
+            PersistedFilterState(filters: filters, isApplied: false),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+
+        let state = storage.loadLastFilterState(
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        #expect(state.filters == filters)
+        #expect(!state.isApplied)
+    }
+
+    /// Every file written before the flag existed held a set that was running.
+    @Test("A saved file with no applied flag decodes as applied")
+    func legacyFilterFileDecodesAsApplied() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveLastFilters(
+            PersistedFilterState(filters: [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        writer.waitForPendingDiskWrites()
+
+        let file = try #require(
+            try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                .first { $0.pathExtension == "json" }
+        )
+        var raw = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
+        )
+        raw.removeValue(forKey: "isApplied")
+        try JSONSerialization.data(withJSONObject: raw).write(to: file)
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadLastFilterState(
+                for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            ).isApplied
+        )
     }
 
     @Test("Saved filters decode from disk in a fresh storage instance")
@@ -281,7 +371,7 @@ struct FilterSettingsStorageTests {
         let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
 
         let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
-        writer.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         writer.waitForPendingDiskWrites()
 
         let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
@@ -297,7 +387,7 @@ struct FilterSettingsStorageTests {
         let connectionId = UUID()
         let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
 
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.waitForPendingDiskWrites()
 
@@ -319,7 +409,7 @@ struct FilterSettingsStorageTests {
         let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
 
         let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
-        writer.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        writer.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         writer.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         writer.waitForPendingDiskWrites()
 
@@ -373,7 +463,8 @@ struct FilterSettingsStorageTests {
         ]
 
         storage.saveLastFilters(
-            filters, logicMode: .or, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            PersistedFilterState(filters: filters, logicMode: .or),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
 
         let state = storage.loadLastFilterState(
@@ -393,8 +484,8 @@ struct FilterSettingsStorageTests {
 
         let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
         writer.saveLastFilters(
-            [TestFixtures.makeTableFilter(column: "a")],
-            logicMode: .or, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+            PersistedFilterState(filters: [TestFixtures.makeTableFilter(column: "a")], logicMode: .or),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
         writer.waitForPendingDiskWrites()
 
@@ -444,9 +535,10 @@ struct FilterSettingsStorageTests {
         let search = BrowseSearchState(pattern: "user:*", typeScope: "hash")
 
         let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
         storage.saveLastFilters(
-            archiveFilters, for: "users_archive", connectionId: connectionId, databaseName: "db", schemaName: nil
+            PersistedFilterState(filters: archiveFilters),
+            for: "users_archive", connectionId: connectionId, databaseName: "db", schemaName: nil
         )
         storage.saveBrowseSearch(search, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
 
@@ -488,7 +580,7 @@ struct FilterSettingsStorageTests {
         let search = BrowseSearchState(pattern: "user:*", typeScope: "hash")
 
         let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
-        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app")
+        storage.saveLastFilters(PersistedFilterState(filters: filters), for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app")
         storage.saveBrowseSearch(search, for: "users", connectionId: connectionId, databaseName: "db", schemaName: "app")
 
         storage.renameContainer(
