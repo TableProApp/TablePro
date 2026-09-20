@@ -3,10 +3,12 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("FavoriteNode")
 struct FavoriteNodeTests {
@@ -289,5 +291,71 @@ struct FavoriteNodeTests {
         #expect(folders.contains { $0.id == folder1.id })
         #expect(folders.contains { $0.id == folder2.id })
     }
+}
 
+/// Issue #3016. The view model publishes the Favorites tab's whole Queries tree, but that tree
+/// lives in a cache of its own, and SwiftUI hears only the object a property wrapper names.
+@Suite("Favorites sidebar cache observation")
+@MainActor
+struct FavoritesSidebarCacheObservationTests {
+    private func waitForEmission(from counter: EmissionCounter, timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while counter.emissions.isEmpty, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    @MainActor
+    private final class EmissionCounter {
+        private(set) var emissions: [Void] = []
+        private var cancellable: AnyCancellable?
+
+        init(watching viewModel: FavoritesSidebarViewModel) {
+            cancellable = viewModel.objectWillChange.sink { [weak self] _ in
+                self?.emissions.append(())
+            }
+        }
+    }
+
+    @Test("The view model republishes when its cache finishes loading")
+    func republishesWhenTheInitialLoadLands() async {
+        let connectionId = UUID()
+        defer { ConnectionDataCache.removeConnection(connectionId) }
+        let viewModel = FavoritesSidebarViewModel(connectionId: connectionId)
+        let counter = EmissionCounter(watching: viewModel)
+
+        await waitForEmission(from: counter)
+
+        #expect(viewModel.isInitialLoadComplete)
+        #expect(counter.emissions.isEmpty == false, "The tab renders from this signal, so a finished load has to send one")
+    }
+
+    @Test("The view model republishes when favorites change elsewhere in the app")
+    func republishesWhenFavoritesChange() async {
+        let connectionId = UUID()
+        defer { ConnectionDataCache.removeConnection(connectionId) }
+        let viewModel = FavoritesSidebarViewModel(connectionId: connectionId)
+        let cache = ConnectionDataCache.shared(for: connectionId)
+        let counter = EmissionCounter(watching: viewModel)
+        cache.commit(ConnectionFavoritesSnapshot(), generation: cache.nextRefreshGeneration())
+
+        #expect(counter.emissions.isEmpty == false, "Saving a favorite from the editor has to reach an open sidebar")
+    }
+
+    @Test("A cache change invalidates the tree the next read rebuilds")
+    func aCacheChangeInvalidatesTheTree() {
+        let connectionId = UUID()
+        defer { ConnectionDataCache.removeConnection(connectionId) }
+        let viewModel = FavoritesSidebarViewModel(connectionId: connectionId)
+        let cache = ConnectionDataCache.shared(for: connectionId)
+        cache.commit(
+            ConnectionFavoritesSnapshot(folders: [SQLFavoriteFolder(name: "Reports")]),
+            generation: cache.nextRefreshGeneration()
+        )
+        #expect(viewModel.nodes.count == 1)
+
+        cache.commit(ConnectionFavoritesSnapshot(), generation: cache.nextRefreshGeneration())
+
+        #expect(viewModel.nodes.isEmpty)
+    }
 }
