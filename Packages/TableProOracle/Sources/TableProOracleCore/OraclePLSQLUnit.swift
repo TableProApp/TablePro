@@ -115,7 +115,7 @@ public struct OracleCompilationError: Sendable, Equatable {
 }
 
 /// Reads the words and identifiers at the head of a statement, past comments.
-private struct HeaderReader {
+struct HeaderReader {
     private let scalars: [Unicode.Scalar]
     private var index = 0
 
