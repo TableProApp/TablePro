@@ -7,12 +7,12 @@ import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func applyFilters(_ filters: [TableFilter]) {
-        filterCoordinator.applyFilters(filters)
+    func clearAppliedFiltersAndReload() {
+        filterCoordinator.clearAppliedFiltersAndReload()
     }
 
-    func clearFiltersAndReload() {
-        filterCoordinator.clearFiltersAndReload()
+    func removeAllFiltersAndReload() {
+        filterCoordinator.removeAllFiltersAndReload()
     }
 
     var browseFilterDescriptor: BrowseFilterDescriptor? {
@@ -27,8 +27,12 @@ extension MainContentCoordinator {
         filterCoordinator.clearBrowseSearchAndReload()
     }
 
-    func restoreFiltersForTable(_ tableName: String) {
-        filterCoordinator.restoreFiltersForTable(tableName)
+    func restoreFiltersForSelectedTab() {
+        filterCoordinator.restoreFiltersForSelectedTab()
+    }
+
+    func restoreFilters(forTabAt index: Int) {
+        filterCoordinator.restoreFilters(forTabAt: index)
     }
 
     func rebuildTableQuery(at tabIndex: Int) {

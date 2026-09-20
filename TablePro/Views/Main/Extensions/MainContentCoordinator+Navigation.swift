@@ -141,7 +141,7 @@ extension MainContentCoordinator {
                     clearFilterState()
                     discardRowsForRetarget()
                     restoreLastHiddenColumnsForTable()
-                    restoreFiltersForTable(tableName)
+                    restoreFiltersForSelectedTab()
                     if let dbIndex = Int(currentDatabase) {
                         selectRedisDatabaseAndQuery(dbIndex)
                     }
@@ -281,7 +281,7 @@ extension MainContentCoordinator {
             toolbarState.isTableTab = true
         }
         restoreLastHiddenColumnsForTable()
-        restoreFiltersForTable(tableName)
+        restoreFiltersForSelectedTab()
         if isInPlace, let dbIndex = Int(currentDatabase) {
             selectRedisDatabaseAndQuery(dbIndex)
         } else {
@@ -346,7 +346,7 @@ extension MainContentCoordinator {
         clearFilterState()
         discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
         restoreLastHiddenColumnsForTable()
-        restoreFiltersForTable(tableName)
+        restoreFiltersForSelectedTab()
         if let tabId = tabManager.selectedTab?.id {
             if let token { TableLoadTracer.shared.stage(.cancelPreviousLoad, token: token) }
             cancelTableLoad(for: tabId)

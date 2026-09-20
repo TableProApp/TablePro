@@ -469,12 +469,6 @@ struct MainContentView: View {
             onFilterColumn: { columnName in
                 coordinator.addFilterForColumn(columnName)
             },
-            onApplyFilters: { filters in
-                coordinator.applyFilters(filters)
-            },
-            onClearFilters: {
-                coordinator.clearFiltersAndReload()
-            },
             onFirstPage: {
                 coordinator.goToFirstPage()
             },

@@ -30,14 +30,20 @@ struct FilterSettingsPopover: View {
                 }
             }
 
-            Picker("Panel State", selection: $settings.panelState) {
-                ForEach(FilterPanelDefaultState.allCases) { option in
-                    Text(option.displayName).tag(option)
+            Section {
+                Picker("Saved Filters", selection: $settings.restoreBehavior) {
+                    ForEach(FilterRestoreBehavior.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
                 }
+
+                Toggle("Always Show Filter Bar", isOn: $settings.alwaysShowPanel)
+            } footer: {
+                Text(settings.restoreBehavior.settingsFooter)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 280)
+        .frame(width: 320)
         .onChange(of: settings) { newValue in
             FilterSettingsStorage.shared.saveSettings(newValue)
         }
