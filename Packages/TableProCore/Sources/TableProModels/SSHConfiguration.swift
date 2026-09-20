@@ -125,27 +125,43 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     }
 }
 
-/// How a hop authenticates, in the two spellings the macOS app writes. A hop is never dialled from
-/// iOS, so the value is carried rather than used, and the risk is carrying one macOS cannot read: an
-/// already-shipped build decodes this raw value strictly, and a `dataCorrupted` thrown inside
-/// `jumpHosts` takes the whole SSH configuration with it, and with that the connection. Every
-/// shipped iOS build wrote the case name `sshAgent`, which is exactly such a value, so anything but
-/// the two spellings normalizes here instead of being carried back out.
-public enum SSHJumpAuthMethod: String, Codable, Sendable, CaseIterable {
-    case privateKey = "Private Key"
-    case sshAgent = "SSH Agent"
+/// How a hop authenticates, spelled the way the macOS app writes it. A hop is never dialled from
+/// iOS, so the value is carried rather than used, and a spelling this build does not know still
+/// belongs to the Mac that wrote it: it is held as it arrived and handed back untouched, the way
+/// `DatabaseType` holds a type no plugin here implements. The exception is the case names shipped
+/// iOS builds wrote (`privateKey`, `sshAgent`), which no macOS build can read: an already-shipped
+/// one decodes this raw value strictly, and a `dataCorrupted` thrown inside `jumpHosts` takes the
+/// whole SSH configuration with it, and with that the connection. Those normalize.
+public struct SSHJumpAuthMethod: Hashable, Sendable {
+    public static let privateKey = SSHJumpAuthMethod(rawValue: "Private Key")
+    public static let sshAgent = SSHJumpAuthMethod(rawValue: "SSH Agent")
+
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
 
     public init(carrying raw: String) {
         switch raw {
-        case "Private Key", "privateKey", "publicKey":
+        case "privateKey", "publicKey":
             self = .privateKey
-        default:
+        case "sshAgent", "agent":
             self = .sshAgent
+        default:
+            self.init(rawValue: raw)
         }
     }
+}
 
+extension SSHJumpAuthMethod: Codable {
     public init(from decoder: Decoder) throws {
         self.init(carrying: try decoder.singleValueContainer().decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 

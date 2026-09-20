@@ -239,14 +239,32 @@ struct SSHConfigurationTests {
         #expect(hops[0]["authMethod"] as? String == "SSH Agent")
     }
 
-    @Test("Every hop spelling this model can hold is one macOS reads back")
-    func everyHopSpellingIsReadableOnMac() {
-        for method in SSHJumpAuthMethod.allCases {
+    @Test("A spelling macOS writes today is kept, and a case name a shipped iOS build wrote is normalized")
+    func knownHopSpellingsNormalize() {
+        for method in [SSHJumpAuthMethod.privateKey, .sshAgent] {
             #expect(SSHJumpAuthMethod(carrying: method.rawValue) == method)
         }
         #expect(SSHJumpAuthMethod(carrying: "privateKey") == .privateKey)
         #expect(SSHJumpAuthMethod(carrying: "publicKey") == .privateKey)
         #expect(SSHJumpAuthMethod(carrying: "sshAgent") == .sshAgent)
-        #expect(SSHJumpAuthMethod(carrying: "totp-only") == .sshAgent)
+        #expect(SSHJumpAuthMethod(carrying: "agent") == .sshAgent)
+    }
+
+    @Test("A hop spelling this build does not know survives the round trip unchanged")
+    func unknownHopSpellingIsCarried() throws {
+        #expect(SSHJumpAuthMethod(carrying: "Security Key").rawValue == "Security Key")
+
+        let future = """
+        {"host":"db-1","username":"deploy","authMethod":"password","jumpHosts":[
+          {"id":"6E0B1B3C-7E4C-4C3E-9B1E-4C8D2A1F0005","host":"bastion-1","username":"ops",
+           "authMethod":"Security Key","privateKeyPath":"~/.ssh/id_sk"}
+        ]}
+        """
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(future.utf8))
+        #expect(decoded.jumpHosts[0].macAuthMethod.rawValue == "Security Key")
+
+        let hops = try #require(reencodedFields(future)["jumpHosts"] as? [[String: Any]])
+        #expect(hops[0]["authMethod"] as? String == "Security Key")
+        #expect(hops[0]["privateKeyPath"] as? String == "~/.ssh/id_sk")
     }
 }
