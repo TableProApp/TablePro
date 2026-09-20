@@ -546,7 +546,6 @@ private struct StatementProjection {
 }
 
 private extension QueryClassifier {
-
     static func explainClassification(
         _ projection: StatementProjection,
         keyword: String,

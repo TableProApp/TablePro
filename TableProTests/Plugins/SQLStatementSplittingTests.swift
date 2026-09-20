@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @Suite("SQL statement splitting")
 struct SQLStatementSplittingTests {

@@ -4,10 +4,10 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import TableProSQLGrammar
 import Testing
-@testable import TablePro
 
 @Suite("SQL Fold Scanner")
 struct SQLFoldScannerTests {

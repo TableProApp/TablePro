@@ -7,10 +7,10 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import TableProSQLGrammar
 import Testing
-@testable import TablePro
 
 @Suite("SQL Statement Scanner — locatedStatementAtCursor")
 struct SQLStatementScannerLocatedTests {
@@ -136,7 +136,7 @@ struct SQLStatementScannerLocatedTests {
     @Test("Cursor beyond end of string is clamped")
     func cursorBeyondEnd() {
         let sql = "SELECT 1; SELECT 2"
-        let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 9999)
+        let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 9_999)
         #expect(located.offset == 9)
         #expect(located.sql == " SELECT 2")
     }
