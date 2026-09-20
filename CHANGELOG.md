@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Column and operator pull-downs in **Highlight Rules** snapping back to their previous value, leaving every rule on **equals** and on the column it was created with. (#3015)
+- A highlight rule's **between** second value field drawn past the edge of the popover on a long column name.
+- A highlight rule counted as active when its regular expression will not compile, matching nothing without saying so.
 - Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.
 - etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
 - `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)
