@@ -25,7 +25,7 @@ struct SyncStatusIndicator: View {
                 }
                 .font(.subheadline)
                 .foregroundStyle(foregroundStyle)
-                .animation(.default, value: syncCoordinator.syncStatus)
+                .motionAnimation(.default, value: syncCoordinator.syncStatus)
             }
             .buttonStyle(.plain)
             .help(helpText)

@@ -49,15 +49,40 @@ struct ReduceMotionGateTests {
         var offenders: [String] = []
         for (index, line) in source.components(separatedBy: .newlines).enumerated() {
             guard !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
-            var searchStart = line.startIndex
-            while let found = line.range(of: "withAnimation", range: searchStart ..< line.endIndex) {
-                searchStart = found.upperBound
-                let rest = line[found.upperBound...]
-                /// `NSTableView.insertRows(at:withAnimation:)` spells its parameter the same way and
-                /// gates separately, and `withAnimation(nil)` is already the reduced behaviour.
-                guard !rest.hasPrefix(":"), !rest.hasPrefix("(nil)") else { continue }
-                offenders.append("\(relativePath):\(index + 1)")
-            }
+            offenders += withAnimationOffenders(in: line, path: relativePath, lineNumber: index + 1)
+            offenders += modifierOffenders(in: line, path: relativePath, lineNumber: index + 1)
+        }
+        return offenders
+    }
+
+    private static func withAnimationOffenders(in line: String, path: String, lineNumber: Int) -> [String] {
+        var offenders: [String] = []
+        var searchStart = line.startIndex
+        while let found = line.range(of: "withAnimation", range: searchStart ..< line.endIndex) {
+            searchStart = found.upperBound
+            let rest = line[found.upperBound...]
+            /// `NSTableView.insertRows(at:withAnimation:)` spells its parameter the same way and
+            /// gates separately, and `withAnimation(nil)` is already the reduced behaviour.
+            guard !rest.hasPrefix(":"), !rest.hasPrefix("(nil)") else { continue }
+            offenders.append("\(path):\(lineNumber)")
+        }
+        return offenders
+    }
+
+    /// The modifier form escaped this scan entirely, which is how the AI composer's focus crossfade
+    /// ran at full duration under Reduce Motion: it is `.animation(_:value:)`, never `withAnimation`.
+    private static func modifierOffenders(in line: String, path: String, lineNumber: Int) -> [String] {
+        var offenders: [String] = []
+        var searchStart = line.startIndex
+        while let found = line.range(of: ".animation(", range: searchStart ..< line.endIndex) {
+            searchStart = found.upperBound
+            let rest = line[found.upperBound...]
+            /// `.animation(nil, …)` is already the reduced behaviour, `.motionAnimation(` is the
+            /// gate itself, and `CALayer.animation(forKey:)` is a lookup rather than a change.
+            guard !rest.hasPrefix("nil"), !rest.hasPrefix("forKey") else { continue }
+            let before = line[line.startIndex ..< found.lowerBound]
+            guard !before.hasSuffix("motion"), !before.hasSuffix("layer") else { continue }
+            offenders.append("\(path):\(lineNumber)")
         }
         return offenders
     }
