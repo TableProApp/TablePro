@@ -8,6 +8,8 @@ import os
 
 import CLibSSH2
 
+import TableProSSHTransport
+
 /// Represents an active SSH tunnel backed by libssh2.
 /// Each instance owns a TCP socket, libssh2 session, a local listening socket,
 /// and the forwarding/keep-alive tasks.
@@ -335,7 +337,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     func consumeLastForwardFailure() -> SSHTunnelError? {
-        forwardFailure.consume()
+        forwardFailure.consume()?.tunnelError
     }
 
     private func logChannelOpenOutcome(_ outcome: ChannelOpenOutcome, destination: SSHForwardDestination) {

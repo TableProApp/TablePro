@@ -2,15 +2,20 @@
 //  LibSSH2ChannelIO.swift
 //  TablePro
 //
+//  Compiled into the macOS app and, by file reference, into the iOS app, which defaults to
+//  MainActor isolation. Every top-level declaration states its own isolation for that reason;
+//  scripts/ci/check-ios-shared-isolation.py holds it.
+//
 
 import Foundation
 
 import CLibSSH2
+import TableProSSHTransport
 
 /// Routes channel reads/writes through the serial `sessionQueue` because libssh2
 /// is not thread-safe per session. Maps libssh2 return codes to the transport
 /// agnostic results consumed by `SSHChannelRelay`.
-internal struct LibSSH2ChannelIO: SSHChannelIO {
+nonisolated internal struct LibSSH2ChannelIO: SSHChannelIO {
     let channel: OpaquePointer
     let session: OpaquePointer
     let sessionQueue: DispatchQueue
@@ -36,7 +41,7 @@ internal struct LibSSH2ChannelIO: SSHChannelIO {
     }
 }
 
-internal extension RelayDirections {
+nonisolated internal extension RelayDirections {
     init(libssh2BlockDirections directions: Int32) {
         var result: RelayDirections = []
         if directions & LIBSSH2_SESSION_BLOCK_INBOUND != 0 { result.insert(.inbound) }

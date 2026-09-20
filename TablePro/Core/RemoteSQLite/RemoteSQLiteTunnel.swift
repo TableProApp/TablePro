@@ -7,6 +7,8 @@ import CLibSSH2
 import Foundation
 import os
 
+import TableProSSHTransport
+
 /// A loopback listener whose accepted clients each get a fresh exec channel running the SQLite
 /// agent on the SSH server, so the SQLite plugin can reach a live database on that server as if it
 /// were a local port.

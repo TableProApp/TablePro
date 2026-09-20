@@ -4,8 +4,10 @@
 //
 
 import Foundation
-@testable import TablePro
+import TableProSSHTransport
 import Testing
+
+@testable import TablePro
 
 @Suite("SSH forward destination")
 struct SSHForwardDestinationTests {
@@ -68,11 +70,5 @@ struct SSHForwardDestinationTests {
         let decoded = try JSONDecoder().decode(DatabaseConnection.self, from: data)
 
         #expect(decoded.sshForwardDestination == .unixSocket(path: "/var/run/postgresql/.s.PGSQL.5432"))
-    }
-
-    @Test("Log description names the endpoint")
-    func logDescription() {
-        #expect(SSHForwardDestination.tcp(host: "db", port: 5_432).logDescription == "db:5432")
-        #expect(SSHForwardDestination.unixSocket(path: "/tmp/pg.sock").logDescription == "/tmp/pg.sock")
     }
 }

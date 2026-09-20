@@ -1,12 +1,12 @@
 //
 //  TeardownLatchTests.swift
-//  TableProTests
+//  TableProSSHTransportTests
 //
 
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProSSHTransport
 
 /// The latch exists because two paths can decide a tunnel is over at the same moment, and exactly
 /// one of them has to release its listening socket, session and jump hops.

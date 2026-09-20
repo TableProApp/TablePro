@@ -33,19 +33,18 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
         let tunnelId = UUID()
         await tunnelStore.add(tunnel, id: tunnelId, connectionId: connectionId)
 
-        let port = await tunnel.port
-        return TableProDatabase.SSHTunnel(id: tunnelId, localHost: "127.0.0.1", localPort: port)
+        return TableProDatabase.SSHTunnel(id: tunnelId, localHost: "127.0.0.1", localPort: tunnel.localPort)
     }
 
     func closeTunnel(for connectionId: UUID) async throws {
         for tunnel in await tunnelStore.removeAll(connectionId: connectionId) {
-            await tunnel.close()
+            tunnel.close()
         }
     }
 
     func closeTunnel(id: UUID) async throws {
         guard let tunnel = await tunnelStore.remove(id: id) else { return }
-        await tunnel.close()
+        tunnel.close()
     }
 }
 

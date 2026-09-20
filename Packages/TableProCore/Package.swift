@@ -29,7 +29,8 @@ let package = Package(
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
-        .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"])
+        .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"])
     ],
     targets: [
         .target(
@@ -94,7 +95,7 @@ let package = Package(
         ),
         .target(
             name: "TableProMSSQLCore",
-            dependencies: [],
+            dependencies: ["TableProCoreTypes"],
             path: "Sources/TableProMSSQLCore"
         ),
         .target(
@@ -137,10 +138,25 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProSQLGrammar"
         ),
+        .target(
+            name: "TableProSSHTransport",
+            dependencies: [],
+            path: "Sources/TableProSSHTransport"
+        ),
         .testTarget(
             name: "TableProConnectionLibraryTests",
             dependencies: ["TableProConnectionLibrary"],
             path: "Tests/TableProConnectionLibraryTests"
+        ),
+        .testTarget(
+            name: "TableProCoreTypesTests",
+            dependencies: ["TableProCoreTypes"],
+            path: "Tests/TableProCoreTypesTests"
+        ),
+        .testTarget(
+            name: "TableProSSHTransportTests",
+            dependencies: ["TableProSSHTransport"],
+            path: "Tests/TableProSSHTransportTests"
         ),
         .testTarget(
             name: "TableProGeometryTests",
