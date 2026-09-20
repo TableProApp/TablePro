@@ -2,32 +2,52 @@ import Foundation
 import TableProModels
 
 public final class ConnectionManager: @unchecked Sendable {
+    public static let defaultTeardownWaitLimit: Duration = .seconds(5)
+
     private let driverFactory: DriverFactory
     private let secureStore: SecureStore
     private let sshProvider: SSHProvider?
+    private let teardownWaitLimit: Duration
 
     private let lock = NSLock()
     private var sessions: [UUID: ConnectionSession] = [:]
-    private var teardowns: [UUID: Task<Void, Never>] = [:]
+    private var teardowns: [UUID: Teardown] = [:]
     private var blockingTeardowns: Set<UUID> = []
     private var attemptGenerations: [UUID: Int] = [:]
+    private var lastTeardownId = 0
 
     public init(
         driverFactory: DriverFactory,
         secureStore: SecureStore,
-        sshProvider: SSHProvider? = nil
+        sshProvider: SSHProvider? = nil,
+        teardownWaitLimit: Duration = ConnectionManager.defaultTeardownWaitLimit
     ) {
         self.driverFactory = driverFactory
         self.secureStore = secureStore
         self.sshProvider = sshProvider
+        self.teardownWaitLimit = teardownWaitLimit
     }
 
+    /// Opens a session, waiting out a teardown still running for the same connection first.
+    ///
+    /// That wait ends on the calling task's cancellation with `CancellationError`, and after
+    /// `teardownWaitLimit` with `ConnectionError.previousSessionStillClosing`. Neither ending opens a
+    /// session over resources the old driver still holds, and neither retires the teardown: it keeps
+    /// running, it keeps counting as a suspension-blocking resource, and the next attempt succeeds as
+    /// soon as it lands.
     public func connect(
         _ connection: DatabaseConnection,
         prompter: (any ConnectionPrompter)? = nil
     ) async throws -> ConnectionSession {
         let generation = beginAttempt(for: connection.id)
-        await awaitTeardown(of: connection.id)
+        switch await awaitTeardown(of: connection.id) {
+        case .cleared:
+            break
+        case .cancelled:
+            throw CancellationError()
+        case .stillClosing:
+            throw ConnectionError.previousSessionStillClosing(connection.name)
+        }
         guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
         let password = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
 
@@ -65,10 +85,10 @@ public final class ConnectionManager: @unchecked Sendable {
                 status: .connected
             )
             guard adoptSession(session, for: connection.id, generation: generation) else {
-                try? await driver.disconnect()
                 if let tunnelId, let provider = sshProvider {
                     try? await provider.closeTunnel(id: tunnelId)
                 }
+                try? await driver.disconnect()
                 throw CancellationError()
             }
             return session
@@ -115,15 +135,24 @@ public final class ConnectionManager: @unchecked Sendable {
         "com.TablePro.password.\(connectionId.uuidString)"
     }
 
+    /// Drops the session and waits for its teardown under the same bound `connect` uses, then returns
+    /// whether or not the teardown landed, so a stuck driver cannot hold a background release open.
     public func disconnect(_ connectionId: UUID) async {
         invalidateAttempt(for: connectionId)
         await awaitTeardown(of: connectionId)
     }
 
-    private func awaitTeardown(of connectionId: UUID) async {
-        guard let teardown = claimTeardown(for: connectionId) else { return }
-        await teardown.value
-        finishTeardown(teardown, for: connectionId)
+    @discardableResult
+    private func awaitTeardown(of connectionId: UUID) async -> TeardownWait {
+        guard let teardown = claimTeardown(for: connectionId) else { return .cleared }
+        switch await BoundedWait.outcome(of: teardown.task, within: teardownWaitLimit) {
+        case .completed:
+            return .cleared
+        case .cancelled:
+            return .cancelled
+        case .timedOut:
+            return .stillClosing
+        }
     }
 
     private func isCurrentAttempt(_ generation: Int, for connectionId: UUID) -> Bool {
@@ -155,19 +184,27 @@ public final class ConnectionManager: @unchecked Sendable {
         return Array(blockingTeardowns.union(connected))
     }
 
-    private func claimTeardown(for connectionId: UUID) -> Task<Void, Never>? {
+    /// Closes the tunnel before the driver, because a driver blocked reading through a tunnel the server
+    /// dropped only returns once its socket's peer closes; the reverse order queues `disconnect()` behind
+    /// a read that never completes. The lock is held past the `teardowns` write, so the task's own
+    /// `finishTeardown` cannot clear an entry that is not installed yet.
+    private func claimTeardown(for connectionId: UUID) -> Teardown? {
         lock.lock()
         defer { lock.unlock() }
         guard let session = sessions.removeValue(forKey: connectionId) else {
             return teardowns[connectionId]
         }
+        lastTeardownId += 1
+        let teardownId = lastTeardownId
         let sshProvider = sshProvider
-        let teardown = Task {
-            try? await session.driver.disconnect()
+        let task = Task { [weak self] in
             if let sshProvider {
                 try? await sshProvider.closeTunnel(for: connectionId)
             }
+            try? await session.driver.disconnect()
+            self?.finishTeardown(teardownId, for: connectionId)
         }
+        let teardown = Teardown(id: teardownId, task: task)
         teardowns[connectionId] = teardown
         if session.driver.holdsSuspensionBlockingResource {
             blockingTeardowns.insert(connectionId)
@@ -175,10 +212,10 @@ public final class ConnectionManager: @unchecked Sendable {
         return teardown
     }
 
-    private func finishTeardown(_ teardown: Task<Void, Never>, for connectionId: UUID) {
+    private func finishTeardown(_ teardownId: Int, for connectionId: UUID) {
         lock.lock()
         defer { lock.unlock() }
-        guard teardowns[connectionId] == teardown else { return }
+        guard teardowns[connectionId]?.id == teardownId else { return }
         teardowns.removeValue(forKey: connectionId)
         blockingTeardowns.remove(connectionId)
     }
@@ -203,5 +240,46 @@ public final class ConnectionManager: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return sessions[connectionId]
+    }
+
+    private struct Teardown: Sendable {
+        let id: Int
+        let task: Task<Void, Never>
+    }
+
+    private enum TeardownWait: Sendable {
+        case cleared
+        case cancelled
+        case stillClosing
+    }
+}
+
+/// `await task.value` on a `Task<_, Never>` ignores the awaiting task's cancellation entirely: measured,
+/// a waiter cancelled at +0.200s stayed suspended until the task it awaited finished at +1.059s. Bridging
+/// the completion through an `AsyncStream`, whose iterator is cancellation-aware, ends the wait at +0.205s.
+private enum BoundedWait {
+    fileprivate enum Outcome<Value: Sendable>: Sendable {
+        case completed(Value)
+        case cancelled
+        case timedOut
+    }
+
+    fileprivate static func outcome<Value: Sendable>(
+        of task: Task<Value, Never>,
+        within limit: Duration
+    ) async -> Outcome<Value> {
+        let (outcomes, reporter) = AsyncStream<Outcome<Value>>.makeStream()
+        Task { reporter.yield(.completed(await task.value)) }
+        let deadline = Task {
+            do {
+                try await Task.sleep(for: limit)
+            } catch {
+                return
+            }
+            reporter.yield(.timedOut)
+        }
+        defer { deadline.cancel() }
+        var iterator = outcomes.makeAsyncIterator()
+        return await iterator.next() ?? .cancelled
     }
 }

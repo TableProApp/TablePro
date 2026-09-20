@@ -107,6 +107,19 @@ actor Gate {
     }
 }
 
+enum TeardownStep: Sendable, Equatable {
+    case tunnelClose
+    case driverDisconnect
+}
+
+actor OrderLog {
+    private(set) var steps: [TeardownStep] = []
+
+    func record(_ step: TeardownStep) {
+        steps.append(step)
+    }
+}
+
 actor Barrier {
     private static let pollInterval: UInt64 = 20_000_000
     private static let maxPolls = 250
@@ -139,6 +152,7 @@ final class MockSSHProvider: SSHProvider, @unchecked Sendable {
     var openedTunnelIds: [UUID] = []
     var tunnelledConnectionIds: [UUID] = []
     var receivedPrompters: [(any ConnectionPrompter)?] = []
+    var beforeCloseTunnel: (@Sendable (UUID) async -> Void)?
 
     func createTunnel(
         config: SSHConfiguration,
@@ -155,6 +169,7 @@ final class MockSSHProvider: SSHProvider, @unchecked Sendable {
     }
 
     func closeTunnel(for connectionId: UUID) async throws {
+        await beforeCloseTunnel?(connectionId)
         closedTunnels.insert(connectionId)
     }
 

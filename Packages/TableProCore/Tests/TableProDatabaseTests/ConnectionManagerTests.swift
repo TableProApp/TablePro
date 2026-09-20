@@ -347,6 +347,143 @@ struct ConnectionManagerTests {
         #expect(slow.disconnectCount == 1)
     }
 
+    @Test("Teardown closes the tunnel before it disconnects the driver")
+    func teardownClosesTheTunnelBeforeTheDriver() async throws {
+        let factory = MockDriverFactory()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        let connection = DatabaseConnection(
+            name: "Tunnelled",
+            type: DatabaseType(rawValue: "mock"),
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+        let order = OrderLog()
+
+        let driver = MockDatabaseDriver()
+        driver.beforeDisconnect = { await order.record(.driverDisconnect) }
+        ssh.beforeCloseTunnel = { _ in await order.record(.tunnelClose) }
+        factory.drivers["mock"] = driver
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        #expect(await order.steps == [.tunnelClose, .driverDisconnect])
+    }
+
+    @Test("A driver that only unblocks when its tunnel closes still finishes its teardown")
+    func blockedDriverUnblocksWhenItsTunnelCloses() async throws {
+        let factory = MockDriverFactory()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        let connection = DatabaseConnection(
+            name: "Tunnelled",
+            type: DatabaseType(rawValue: "mock"),
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+        let unblocked = Gate()
+
+        let driver = MockDatabaseDriver()
+        driver.beforeDisconnect = { await unblocked.enter() }
+        ssh.beforeCloseTunnel = { _ in await unblocked.open() }
+        factory.drivers["mock"] = driver
+
+        _ = try await manager.connect(connection)
+
+        let rescue = Task {
+            try? await Task.sleep(for: .seconds(2))
+            await unblocked.open()
+        }
+        defer { rescue.cancel() }
+
+        let started = ContinuousClock.now
+        await manager.disconnect(connection.id)
+        let elapsed = ContinuousClock.now - started
+
+        #expect(elapsed < .seconds(1))
+        #expect(driver.disconnectCount == 1)
+    }
+
+    @Test("Connect reports a stuck teardown instead of queuing behind it forever")
+    func connectReportsAStuckTeardown() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            teardownWaitLimit: .milliseconds(200)
+        )
+        let connection = DatabaseConnection(name: "Ledger", type: DatabaseType(rawValue: "mock"))
+        let stuck = Gate()
+
+        let first = MockDatabaseDriver()
+        first.holdsSuspensionBlockingResource = true
+        first.beforeDisconnect = { await stuck.enter() }
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+
+        let release = Task { await manager.disconnect(connection.id) }
+        await stuck.waitUntilEntered()
+        await release.value
+
+        await #expect(throws: ConnectionError.previousSessionStillClosing(connection.name)) {
+            _ = try await manager.connect(connection)
+        }
+        #expect(manager.session(for: connection.id) == nil)
+        #expect(manager.hasSuspensionBlockingResources)
+
+        await stuck.open()
+        await manager.disconnect(connection.id)
+        #expect(!manager.hasSuspensionBlockingResources)
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        _ = try await manager.connect(connection)
+        #expect(second.isConnected)
+    }
+
+    @Test("A connect cancelled while it waits for a teardown gives up instead of queuing behind it")
+    func cancelledConnectStopsWaitingForTheTeardown() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            teardownWaitLimit: .seconds(30)
+        )
+        let connection = DatabaseConnection(name: "Ledger", type: DatabaseType(rawValue: "mock"))
+        let stuck = Gate()
+
+        let first = MockDatabaseDriver()
+        first.beforeDisconnect = { await stuck.enter() }
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+
+        let release = Task { await manager.disconnect(connection.id) }
+        await stuck.waitUntilEntered()
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        let attempt = Task { try await manager.connect(connection) }
+        try await Task.sleep(for: .milliseconds(100))
+        attempt.cancel()
+
+        let started = ContinuousClock.now
+        await #expect(throws: CancellationError.self) { try await attempt.value }
+        #expect(ContinuousClock.now - started < .seconds(1))
+        #expect(!second.isConnected)
+
+        await stuck.open()
+        await release.value
+    }
+
     @Test("A tunnel is opened for the connection being dialed, not for whoever asked last")
     func tunnelCarriesItsOwnConnectionId() async throws {
         let factory = MockDriverFactory()
