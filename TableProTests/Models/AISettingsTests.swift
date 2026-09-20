@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("AISettings")
@@ -29,6 +29,27 @@ struct AISettingsTests {
         let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AISettings.self, from: data)
         #expect(settings.enabled == false)
+    }
+
+    /// The highlight is the shipped appearance, so everyone who has never opened the composer's
+    /// context menu has to keep it across the upgrade that adds the key.
+    @Test("Settings saved before the highlight preference existed keep the highlight on")
+    func decodingWithoutComposerHighlightDefaultsToTrue() throws {
+        let settings = try JSONDecoder().decode(AISettings.self, from: Data("{}".utf8))
+        #expect(settings.composerHighlightEnabled == true)
+        #expect(AISettings.default.composerHighlightEnabled == true)
+        #expect(AISettings().composerHighlightEnabled == true)
+    }
+
+    @Test("Turning the highlight off survives a round trip")
+    func composerHighlightRoundTrips() throws {
+        var settings = AISettings.default
+        settings.composerHighlightEnabled = false
+        let decoded = try JSONDecoder().decode(
+            AISettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+        #expect(decoded.composerHighlightEnabled == false)
     }
 
     @Test("Default settings include schema and current query, exclude query results")
