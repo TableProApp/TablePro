@@ -596,9 +596,11 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift
+      - Plugins/KafkaDriverPlugin/KafkaCluster+Routing.swift
       - Plugins/KafkaDriverPlugin/KafkaConnection.swift
       - Plugins/KafkaDriverPlugin/KafkaDeleteTopicsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaFetchRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaFindCoordinatorRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaGroupsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaMetadataRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaOffsetsRequest.swift

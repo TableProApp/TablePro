@@ -43,6 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
+- `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)
+- Kafka `SHOW GROUPS` listing only the groups the bootstrap broker coordinates, and reporting success.
+- Kafka `DESCRIBE GROUP` failing with `this broker does not coordinate that group`.
+- Kafka `DESCRIBE GROUP` on a group that does not exist returning an empty table.
+- Kafka `CONSUME ... FROM NEWEST` returning the oldest messages of its window on a topic with more than one partition.
+- Empty second page when paging a Kafka topic from the newest messages.
+- Kafka sidebar row counts and `DESCRIBE TOPIC` reporting zero for a partition whose broker could not be reached.
+- Backslashes dropped from a Kafka `PRODUCE` value, and a value able to close its own quotes and set the partition.
+- Kafka `CONSUME ... PARTITION` silently ignoring a partition the topic does not have, or one that is not a number.
+- Kafka `SHOW TOPICS INTERNAL` and `DESCRIBE TOPIC "a" "b"` discarding the tokens they cannot use.
+- Kafka `SHOW BROKERS` and `SHOW CLUSTER` naming a different broker as the controller on each run of a KRaft cluster.
+- A cancelled Kafka statement leaving every later one failing with `Not connected to the Kafka cluster`.
+- A Kafka connection dialled twice at once when two requests needed the same broker.
+- `two requests overlapped on one Kafka connection` when the health check ran during a long statement.
 - etcd connections carrying a username refusing a server that has authentication disabled.
 - Raw JSON shown instead of etcd's own message when a username or password is wrong.
 - etcd connections reported as unreachable every 30 seconds for a user without the root role.
