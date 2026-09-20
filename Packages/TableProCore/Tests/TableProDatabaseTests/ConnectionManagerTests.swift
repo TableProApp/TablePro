@@ -506,17 +506,22 @@ struct ConnectionManagerTests {
 
         let second = MockDatabaseDriver()
         factory.drivers["mock"] = second
-        let attempt = Task { try await manager.connect(connection) }
+        let outcome = AttemptOutcome<ConnectionSession>()
+        let attempt = Task { await outcome.record { try await manager.connect(connection) } }
         try await Task.sleep(for: .milliseconds(100))
         attempt.cancel()
 
         let started = ContinuousClock.now
-        await #expect(throws: CancellationError.self) { try await attempt.value }
-        #expect(ContinuousClock.now - started < .seconds(1))
+        let settled = await outcome.settled(within: .seconds(2))
+        let elapsed = ContinuousClock.now - started
         #expect(!second.isConnected)
 
         await stuck.open()
         await release.value
+
+        let result = try #require(settled, "the cancelled connect never gave up")
+        #expect(throws: CancellationError.self) { try result.get() }
+        #expect(elapsed < .seconds(1))
     }
 
     @Test("A tunnel is opened for the connection being dialed, not for whoever asked last")
