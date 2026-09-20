@@ -57,6 +57,11 @@ def heading_slug(title):
     Mirrors `slugify` in @mintlify/common over @sindresorhus/slugify. A title is lowercased, its
     whitespace becomes `-` and it is percent-encoded. When encoding escaped anything, the escapes
     are kept, so "PL/SQL" is `pl%2Fsql`, not the `pl-sql` a plain alphanumeric slug would give.
+
+    Agrees with what the published site shows, measured against docs.tablepro.app on 2026-09-19
+    over every heading with punctuation in it (#2991): `PL/SQL` is `pl/sql`, `SSL/TLS` is `ssl/tls`,
+    `Users & Roles` is `users-&-roles`, `Oracle Cloud (ADB)` is `oracle-cloud-adb`,
+    `Breaking changes before 1.0` is `breaking-changes-before-1-0` and `host:1433` is `host1433`.
     """
     unicode_id = quote(re.sub(r"\s+", "-", title.lower().strip()), safe="-_.!~*'()")
     kept = "a-zA-Z0-9%_" if re.search(r"%[0-9A-F]{2}", unicode_id) else "a-z0-9_"
@@ -93,34 +98,6 @@ def nav_pages(node, out, collecting=False):
             nav_pages(value, out, collecting)
     elif collecting and isinstance(node, str) and not node.startswith(("http", "#")):
         out.add(node)
-
-
-HEADING = re.compile(r"^#{2,4} +(.+?)\s*$", re.M)
-DROPPED = re.compile(r"[()\[\]{}:,;?!`~*+=<>|\\^$%#]")
-SEPARATORS = re.compile(r"[\s.]+")
-QUOTES = str.maketrans({"\"": "'", "\u201c": "'", "\u201d": "'", "\u2018": "'", "\u2019": "'"})
-
-
-def heading_anchor(heading):
-    """The id Mintlify gives a heading, as the published site shows it.
-
-    Measured against docs.tablepro.app on 2026-09-19 over every heading with punctuation in it:
-    `PL/SQL` is `pl/sql`, `SSL/TLS` is `ssl/tls`, `Users & Roles` is `users-&-roles`,
-    `Oracle Cloud (ADB)` is `oracle-cloud-adb`, `Breaking changes before 1.0` is
-    `breaking-changes-before-1-0` and `host:1433` is `host1433`. A slash, an ampersand, an at sign,
-    an underscore and an ellipsis stay; brackets, colons, commas, semicolons, question marks,
-    tildes and backticks go; a full stop separates words the way a space does.
-
-    Mintlify also curls straight quotes, and which way it curls one depends on the text around the
-    heading rather than on the heading alone, so quotes are compared as one character.
-    """
-    text = DROPPED.sub("", heading.lower())
-    text = SEPARATORS.sub("-", text)
-    return re.sub(r"-{2,}", "-", text).strip("-").translate(QUOTES)
-
-
-def link_anchor(anchor):
-    return unquote(anchor).lower().translate(QUOTES)
 
 
 IMPORT = re.compile(r'^import\s+(\w+)\s+from\s+"(/snippets/[^"]+)"', re.M)
