@@ -39,6 +39,7 @@ struct ToolApprovalActionsRow: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .keyboardShortcut(takesDefaultAction ? .defaultAction : nil)
+            .accessibilityLabel(runLabel)
 
             if allowsStandingGrant {
                 Button {
@@ -80,7 +81,12 @@ struct ToolApprovalActionsRow: View {
     }
 
     /// Each button names its own call. A turn proposing three writes otherwise hands assistive
-    /// clients three identical "Run" buttons with nothing to tell them apart.
+    /// clients three identical "Run" buttons with nothing to tell them apart, and Run is the one
+    /// that executes the statement.
+    private var runLabel: String {
+        String(format: String(localized: "Run %@"), toolName)
+    }
+
     private var rejectLabel: String {
         String(format: String(localized: "Reject %@"), toolName)
     }
