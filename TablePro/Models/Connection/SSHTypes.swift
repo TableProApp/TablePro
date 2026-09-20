@@ -127,6 +127,25 @@ struct SSHJumpHost: Codable, Hashable, Identifiable {
     }
 }
 
+extension SSHJumpHost {
+    enum CodingKeys: String, CodingKey {
+        case id, host, port, username, authMethod, privateKeyPath
+    }
+
+    /// Same rule as `SSHConfiguration` above: every property has a default, so every key decodes as
+    /// optional. A required decode threw `keyNotFound` on a hop an older iOS build wrote without
+    /// `authMethod`, and that failure took the whole connection out of the sync pull.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(Int.self, forKey: .port)
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        authMethod = (try? container.decodeIfPresent(SSHJumpAuthMethod.self, forKey: .authMethod)) ?? .sshAgent
+        privateKeyPath = try container.decodeIfPresent(String.self, forKey: .privateKeyPath) ?? ""
+    }
+}
+
 /// How a file-backed connection reaches a database file that lives on an SSH server.
 enum RemoteFileAccess: String, Codable, Hashable, Sendable {
     /// Fetch a snapshot over SFTP and open the copy on this Mac, read-only. The original is never

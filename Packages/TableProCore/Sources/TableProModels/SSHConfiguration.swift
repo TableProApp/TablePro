@@ -115,18 +115,62 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
 public struct SSHJumpHost: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var host: String
-    public var port: Int
+
+    /// Nil where the macOS form left the port unset, which is its default: the hop then takes `Port`
+    /// from `~/.ssh/config`, or 22. Writing 22 back instead pins the hop and stops that lookup.
+    public var port: Int?
     public var username: String
+
+    /// How the hop authenticates, in the spelling the macOS app writes ("SSH Agent", "Private Key").
+    /// A hop has no dialable credential on iOS, so these two are carried rather than used. Both are
+    /// always encoded: a hop without them fails the macOS decode and takes the whole connection
+    /// with it.
+    public var macAuthMethod: String
+    public var macPrivateKeyPath: String
+
+    public static let defaultMacAuthMethod = "SSH Agent"
 
     public init(
         id: UUID = UUID(),
         host: String = "",
-        port: Int = 22,
-        username: String = ""
+        port: Int? = nil,
+        username: String = "",
+        macAuthMethod: String = SSHJumpHost.defaultMacAuthMethod,
+        macPrivateKeyPath: String = ""
     ) {
         self.id = id
         self.host = host
         self.port = port
         self.username = username
+        self.macAuthMethod = macAuthMethod
+        self.macPrivateKeyPath = macPrivateKeyPath
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, host, port, username, authMethod, privateKeyPath
+    }
+
+    /// Every key decodes as optional. The macOS app omits `port` whenever the hop has none, and a
+    /// required decode there threw `keyNotFound` inside the `jumpHosts` array, which dropped every
+    /// hop of that connection without a word.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(Int.self, forKey: .port)
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        macAuthMethod = try container.decodeIfPresent(String.self, forKey: .authMethod)
+            ?? Self.defaultMacAuthMethod
+        macPrivateKeyPath = try container.decodeIfPresent(String.self, forKey: .privateKeyPath) ?? ""
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(host, forKey: .host)
+        try container.encodeIfPresent(port, forKey: .port)
+        try container.encode(username, forKey: .username)
+        try container.encode(macAuthMethod, forKey: .authMethod)
+        try container.encode(macPrivateKeyPath, forKey: .privateKeyPath)
     }
 }

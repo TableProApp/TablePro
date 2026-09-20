@@ -86,4 +86,46 @@ struct SSHJumpHostTests {
         #expect(jumpHost.authMethod == .sshAgent)
         #expect(jumpHost.privateKeyPath == "")
     }
+
+    @Test("A hop a shipped iOS build wrote without credentials decodes instead of throwing")
+    func testDecodesHopWithoutCredentials() throws {
+        let json = """
+        [{"id":"6E0B1B3C-7E4C-4C3E-9B1E-4C8D2A1F0001","host":"bastion.example.com",
+          "port":2222,"username":"ops"}]
+        """
+        let hops = try JSONDecoder().decode([SSHJumpHost].self, from: Data(json.utf8))
+
+        #expect(hops.count == 1)
+        #expect(hops[0].host == "bastion.example.com")
+        #expect(hops[0].port == 2_222)
+        #expect(hops[0].authMethod == .sshAgent)
+        #expect(hops[0].privateKeyPath == "")
+    }
+
+    @Test("A hop with no id and no port still decodes")
+    func testDecodesHopWithoutIdOrPort() throws {
+        let json = #"[{"host":"bastion.example.com","username":"ops"}]"#
+        let hops = try JSONDecoder().decode([SSHJumpHost].self, from: Data(json.utf8))
+
+        #expect(hops.count == 1)
+        #expect(hops[0].port == nil)
+        #expect(hops[0].username == "ops")
+    }
+
+    @Test("An auth method this app does not know falls back to SSH Agent")
+    func testDecodesUnknownAuthMethod() throws {
+        let json = #"[{"host":"bastion.example.com","username":"ops","authMethod":"sshAgent"}]"#
+        let hops = try JSONDecoder().decode([SSHJumpHost].self, from: Data(json.utf8))
+
+        #expect(hops[0].authMethod == .sshAgent)
+    }
+
+    @Test("A hop with no port encodes without the key, so the config lookup still applies")
+    func testEncodesNoPortAsAbsentKey() throws {
+        let data = try JSONEncoder().encode(SSHJumpHost(host: "bastion.example.com", username: "ops"))
+        let fields = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        #expect(fields["port"] == nil)
+        #expect(fields["authMethod"] as? String == "SSH Agent")
+    }
 }

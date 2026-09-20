@@ -103,6 +103,8 @@ For a database behind more than one bastion, expand **Jump Hosts** and add each 
 
 With the list left empty and an SSH host that matches a config entry carrying `ProxyJump`, that directive is followed instead.
 
+Hops are Mac only. A connection that has them syncs to [iPhone and iPad](/ios) with every hop and its key path intact, and does not open there.
+
 ## Forwarding to a unix socket
 
 Some servers listen on a unix socket with no TCP port open at all, a PostgreSQL box set up for `local` connections in `pg_hba.conf` being the usual case. Fill in **Socket Path** under **SSH Tunnel** and the forward targets that socket, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set. Jump hosts still apply: the hops reach the SSH server, and the socket opens from there.
