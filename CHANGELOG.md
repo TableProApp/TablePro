@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.
+- Preview Referenced Row on iPhone and iPad building its filter by hand, so a value holding a backslash could reach the server as SQL. (#2996)
 - No spoken sort direction on Query Plan columns.
 - No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Composite foreign key columns listed out of order on MariaDB.
