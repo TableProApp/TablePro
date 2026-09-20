@@ -6,6 +6,7 @@
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Chooses the fold provider for an editor's language.
 ///
@@ -19,7 +20,7 @@ enum FoldProviderResolver {
     static func provider(for databaseType: DatabaseType) -> LineFoldProvider? {
         provider(
             for: PluginManager.shared.editorLanguage(for: databaseType),
-            dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
+            grammar: databaseType.lexicalGrammar
         )
     }
 
@@ -28,10 +29,10 @@ enum FoldProviderResolver {
         language.id == CodeLanguage.sql.id ? SQLLineFoldProvider() : nil
     }
 
-    private static func provider(for language: EditorLanguage, dialect: SqlDialect) -> LineFoldProvider? {
+    private static func provider(for language: EditorLanguage, grammar: SQLLexicalGrammar) -> LineFoldProvider? {
         switch language {
         case .sql:
-            return SQLLineFoldProvider(dialect: dialect)
+            return SQLLineFoldProvider(grammar: grammar)
         case .javascript, .bash, .custom:
             return nil
         }

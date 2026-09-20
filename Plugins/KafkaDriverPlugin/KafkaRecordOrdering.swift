@@ -18,4 +18,21 @@ enum KafkaRecordOrdering {
             return lhs.offset < rhs.offset
         }
     }
+
+    /// The page to show, from the end of the merged run the scan was anchored to.
+    ///
+    /// A tail scan steps each of P partitions back by the page size and then reads forward, so
+    /// the merged run holds up to P times the page and its newest records are at the END.
+    /// Taking the front of it returns the oldest records of the tail window, which on one
+    /// partition is the same rows and on three is the wrong end of the log. This is a separate
+    /// function because that is a presentation decision with no I/O in it, and the defect
+    /// survived because the code that made it could only be reached through a broker.
+    static func page(_ ordered: [KafkaRecord], skip: Int, limit: Int, readsBackward: Bool) -> [KafkaRecord] {
+        guard limit > 0 else { return [] }
+        let dropped = max(0, skip)
+        guard readsBackward else {
+            return Array(ordered.dropFirst(dropped).prefix(limit))
+        }
+        return Array(ordered.dropLast(dropped).suffix(limit))
+    }
 }

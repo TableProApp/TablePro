@@ -28,7 +28,7 @@ record format every message has used since.
 | **Security Protocol** | `PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`, or `SASL_SSL` |
 | **SASL Mechanism** | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, for the two SASL protocols |
 | **Username** / **Password** | The SASL credentials |
-| **Broker Addresses** | Whether to dial the addresses the cluster advertises, or stay on the bootstrap |
+| **Broker Addresses** | Whether to dial the addresses the cluster advertises, or stay on the bootstrap. Leave this on **Use the addresses the cluster advertises** unless those addresses are unreachable from this Mac |
 | **Connect Timeout** | Seconds to wait for a broker. Default `10` |
 
 There is no Database field. A connection is one cluster, and the sidebar shows its topics directly.
@@ -94,6 +94,13 @@ DESCRIBE GROUP "order-processor"
 
 `DESCRIBE GROUP` is the lag report: committed offset, end offset, and the gap, per partition. A
 partition the group has never committed shows an empty lag rather than a number counted from zero.
+A group the cluster does not hold is reported by name instead of coming back empty.
+
+`SHOW GROUPS` asks every broker, because a broker knows only the groups it coordinates. When one
+broker cannot be reached the list is marked truncated rather than presented as the whole cluster's.
+
+In `SHOW BROKERS`, **takes_admin_requests** marks the broker a `DROP TOPIC` goes to. On a KRaft
+cluster any broker forwards an admin request, and the one marked here moves between runs.
 
 ## Producing a message
 
@@ -133,7 +140,8 @@ can still appear in the list for a moment. Truncate is not offered: Kafka remove
 retention or by an offset per partition, neither of which empties a topic the way Truncate means.
 
 Paging jumps are unavailable. Page two continues from where page one stopped, so a topic being
-written to while you read it will not repeat or skip a message.
+written to while you read it will not repeat or skip a message. A tail browse pages backwards
+through the log, one page older each time.
 
 Row counts are approximate. The count is the end offset minus the start offset, which overcounts
 where retention has removed messages from the middle of a compacted topic.
@@ -141,8 +149,8 @@ where retention has removed messages from the middle of a compacted topic.
 Schema Registry is not read. A topic whose values are Avro or Protobuf shows the raw bytes,
 including the five-byte Confluent wire-format prefix.
 
-Creating and deleting topics, editing topic configuration, and resetting consumer group offsets are
-not available.
+Creating a topic, editing topic configuration, and resetting consumer group offsets are not
+available. Deleting a topic is, as the paragraph above describes.
 
 ## Troubleshooting
 
@@ -159,6 +167,25 @@ one protocol per port, so use the port configured for TLS.
 ### Kafka authentication failed: the broker does not offer PLAIN, only …
 
 The mechanism does not match the cluster. Set **SASL Mechanism** to one of the names in the message.
+
+### The broker rejected ListOffsets for partition …: this broker no longer leads the partition
+
+The partition moved to another broker while the request was in flight, and it moved again before
+the retry. Run `DESCRIBE TOPIC "…"` to see the current leader of each partition. A cluster that is
+rebalancing settles on its own; one that keeps moving has a broker leaving and rejoining.
+
+### Broker … advertises …, which could not be reached: …
+
+The address in the message is what the cluster told this Mac to use, and nothing is listening there.
+Check that the broker's `advertised.listeners` names an address reachable from here, not a
+container hostname or a private IP. Where it cannot be changed, set **Broker Addresses** to only use
+the bootstrap address.
+
+### Partition … of … is led by another broker
+
+Only the leader of a partition can answer for it, and this connection is pinned to one broker.
+Set **Broker Addresses** back to the advertised addresses, or forward every broker's port through
+the tunnel so the advertised addresses resolve.
 
 ### Requests time out, or a topic loads on a tunnel but its messages do not
 

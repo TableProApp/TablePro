@@ -411,7 +411,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
     /// One round trip: the block reads the lines with `GET_LINE`, splits them into pieces, and opens a cursor over them,
     /// which the caller rejoins. It reads `DBMS_OUTPUT` only through `EXECUTE IMMEDIATE` of a `CALL`, so a package named
     /// `SYS` in a schema the session has switched into cannot capture the drain, which the block form was measured to
-    /// allow.
+    /// allow. The split has to happen in PL/SQL: a line can be 32767 bytes, and measured on Oracle 23ai with
+    /// `MAX_STRING_SIZE=STANDARD` any SQL over a longer-than-4000-byte element fails with ORA-00910 on the cursor's
+    /// first fetch, so one long line would turn the whole read into an error and lose every other line.
     ///
     /// A session that is closed has lost its buffer with it, so it reads as no output rather than paying for a
     /// reconnect: a query timeout or a dropped transport closes the connection, and the statement's error would

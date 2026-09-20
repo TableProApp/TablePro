@@ -82,6 +82,9 @@ extension EtcdParseError: PluginDriverError {
 struct EtcdCommandParser {
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdCommandParser")
 
+    static let defaultWatchTimeout: TimeInterval = 30
+    static let maximumWatchTimeout: TimeInterval = 3_000
+
     // MARK: - Public API
 
     static func parse(_ input: String) throws -> EtcdOperation {
@@ -198,10 +201,15 @@ struct EtcdCommandParser {
 
         let prefix = flags.has("prefix")
 
-        var timeout: TimeInterval = 30
+        var timeout = Self.defaultWatchTimeout
         if let timeoutStr = flags.value(for: "timeout") {
-            guard let parsed = TimeInterval(timeoutStr) else {
+            guard let parsed = TimeInterval(timeoutStr), parsed.isFinite else {
                 throw EtcdParseError.invalidArgument("--timeout must be a number")
+            }
+            guard parsed >= 0, parsed <= Self.maximumWatchTimeout else {
+                throw EtcdParseError.invalidArgument(
+                    "--timeout must be between 0 and \(Int(Self.maximumWatchTimeout)) seconds"
+                )
             }
             timeout = parsed
         }

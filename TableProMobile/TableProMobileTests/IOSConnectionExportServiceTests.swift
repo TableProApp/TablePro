@@ -64,4 +64,67 @@ struct IOSConnectionExportServiceTests {
         #expect(text.contains("db-secret"))
         #expect(!text.contains(keyMarker))
     }
+
+    @Test("An exported jump host keeps the auth method and key path it was synced with")
+    func exportKeepsJumpHostCredentials() async throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let connection = DatabaseConnection(
+            name: "Bastion",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(
+                host: "db-1",
+                username: "deploy",
+                jumpHosts: [
+                    SSHJumpHost(
+                        host: "bastion-1",
+                        username: "ops",
+                        macAuthMethod: .privateKey,
+                        macPrivateKeyPath: "~/.ssh/id_ed25519"
+                    )
+                ]
+            )
+        )
+        #expect(state.addConnection(connection))
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: false,
+            passphrase: nil
+        )
+        let envelope = try ConnectionImportDecoder.decodeData(data)
+        let hop = try #require(envelope.connections.first?.sshConfig?.jumpHosts?.first)
+
+        #expect(hop.host == "bastion-1")
+        #expect(hop.port == nil)
+        #expect(hop.authMethod == "Private Key")
+        #expect(hop.privateKeyPath == "~/.ssh/id_ed25519")
+    }
+
+    @Test("An exported tunnel writes the port and auth method in the spellings macOS reads back")
+    func exportWritesMacReadableTunnel() async throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let connection = DatabaseConnection(
+            name: "Agent",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db-1", username: "deploy", authMethod: .sshAgent)
+        )
+        #expect(state.addConnection(connection))
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: false,
+            passphrase: nil
+        )
+        let envelope = try ConnectionImportDecoder.decodeData(data)
+        let ssh = try #require(envelope.connections.first?.sshConfig)
+
+        #expect(ssh.port == nil)
+        #expect(ssh.authMethod == "SSH Agent")
+    }
 }

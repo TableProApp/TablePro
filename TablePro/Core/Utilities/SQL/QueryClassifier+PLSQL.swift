@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Tiering Oracle statements that run PL/SQL by what they run rather than by their first word.
 ///
@@ -16,8 +17,14 @@ import TableProPluginKit
 /// of a stored procedure is: a write whose effect the text does not show.
 extension QueryClassifier {
     static func runsPLSQL(_ sql: String, databaseType: DatabaseType) -> Bool {
-        guard SqlDialect.from(databaseTypeId: databaseType.rawValue) == .oracle else { return false }
-        return startsPLSQL(sql)
+        runsPLSQL(sql, grammar: databaseType.lexicalGrammar)
+    }
+
+    /// Whether `sql` is a PL/SQL unit to a grammar that has them. Its leading comments are read by that grammar, so a
+    /// block after a comment is found wherever the comment ends.
+    static func runsPLSQL(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
+        guard grammar.contains(.plsqlBlocks) else { return false }
+        return startsPLSQL(SQLCodeProjection.code(of: sql, grammar: grammar))
     }
 
     /// An anonymous block opens with `DECLARE` or `BEGIN`, after any number of `<<label>>` prefixes and comments. A
@@ -39,8 +46,12 @@ extension QueryClassifier {
         text.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
 
-    static func plsqlBlockClassification(_ trimmed: String, databaseType: DatabaseType) -> QueryClassification {
-        let body = oracleCode(of: trimmed)
+    static func plsqlBlockClassification(
+        _ trimmed: String,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> QueryClassification {
+        let body = unitCode(of: trimmed, grammar: grammar)
         var tier: QueryTier = containsKeyword(body, plsqlDestructiveWordRegex) ? .destructive : .write
         for statement in dynamicStatements(in: trimmed) {
             tier = QueryClassification.worse(tier, classifyTier(statement, databaseType: databaseType))
@@ -49,14 +60,14 @@ extension QueryClassifier {
     }
 
     /// Whether the block deletes without a `WHERE`, in its own text or in a statement it builds from a literal.
-    static func plsqlBlockDeletesEverything(_ trimmed: String) -> Bool {
-        let body = oracleCode(of: trimmed)
+    static func plsqlBlockDeletesEverything(_ trimmed: String, grammar: SQLLexicalGrammar) -> Bool {
+        let body = unitCode(of: trimmed, grammar: grammar)
         let spelledOut = body.split(separator: ";").contains { segment in
             deletesWithoutWhere(String(segment))
         }
         guard !spelledOut else { return true }
         return dynamicStatements(in: trimmed).contains { statement in
-            deletesWithoutWhere(oracleCode(of: statement))
+            deletesWithoutWhere(unitCode(of: statement, grammar: grammar))
         }
     }
 
@@ -64,28 +75,12 @@ extension QueryClassifier {
 
     private static let plsqlDestructiveWordRegex = try? NSRegularExpression(pattern: #"\b(DROP|TRUNCATE)\b"#)
     private static let whereWordRegex = try? NSRegularExpression(pattern: #"\sWHERE\s"#)
-    private static let oracleRules = SQLLexicalRules(dialect: .oracle)
 
-    /// The block's code with every literal and comment blanked, read by Oracle's own rules: a backslash never escapes
-    /// a quote, and `q'[...]'` is one literal. The generic stripper would let `'C:\temp\'` run on past its closing
-    /// quote and hide whatever statement follows it.
-    private static func oracleCode(of sql: String) -> String {
-        let text = sql as NSString
-        let length = text.length
-        var code = ""
-        var index = 0
-        var runStart = 0
-        while index < length {
-            guard let end = SQLNonCodeSpan.end(at: index, in: text, rules: oracleRules) else {
-                index += 1
-                continue
-            }
-            code += text.substring(with: NSRange(location: runStart, length: index - runStart)) + " "
-            index = max(end, index + 1)
-            runStart = index
-        }
-        code += text.substring(from: min(runStart, length))
-        return code.uppercased()
+    /// The unit's code with every literal and comment blanked, read by the engine's own rules: a backslash never
+    /// escapes a quote in Oracle, and `q'[...]'` is one literal. Reading it any other way would let `'C:\temp\'` run on
+    /// past its closing quote and hide whatever statement follows it.
+    private static func unitCode(of sql: String, grammar: SQLLexicalGrammar) -> String {
+        SQLCodeProjection.code(of: sql, grammar: grammar).uppercased()
     }
 
     /// Whether `regex` matches a keyword rather than a member name: `v_list.DELETE` is a collection method, not a

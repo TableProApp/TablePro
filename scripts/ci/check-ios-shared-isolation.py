@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Check every plugin source the iOS app compiles is explicitly nonisolated.
+"""Check every macOS-owned source the iOS app compiles is explicitly nonisolated.
 
 The iOS app target sets SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor, and it also compiles source
-files that live under Plugins/ and belong to a macOS plugin target, which sets no such thing. So
-one file has two default isolations: nonisolated in the plugin, MainActor in the app. Every
+files that live under Plugins/ and TablePro/ and belong to a macOS target, which sets no such
+thing. So one file has two default isolations: nonisolated on macOS, MainActor in the app. Every
 declaration in it that is not marked nonisolated is therefore @MainActor on iOS alone, and the
 first nonisolated caller that touches it fails to compile with
 
@@ -40,9 +40,14 @@ ISOLATION_ATTRIBUTES = ("@MainActor", "@globalActor", "nonisolated")
 
 
 def shared_sources() -> list[Path]:
-    """Every ../Plugins/*.swift file listed in the iOS project."""
+    """Every macOS-owned .swift file listed in the iOS project.
+
+    Plugin sources were the first of these; the libssh2 half of the SSH transport joined them,
+    and it lives under ../TablePro/. The pattern is any source the iOS target reaches for outside
+    its own directory, which is exactly what carries two default isolations.
+    """
     text = PROJECT.read_text(encoding="utf-8")
-    paths = re.findall(r"^\s*-\s*(\.\./Plugins/\S+\.swift)\s*$", text, re.MULTILINE)
+    paths = re.findall(r"^\s*-\s*(\.\./(?:Plugins|TablePro)/\S+\.swift)\s*$", text, re.MULTILINE)
     return [(PROJECT.parent / path).resolve() for path in sorted(set(paths))]
 
 
@@ -76,7 +81,7 @@ def main() -> int:
 
     sources = shared_sources()
     if not sources:
-        print("no shared plugin sources found in TableProMobile/project.yml", file=sys.stderr)
+        print("no shared sources found in TableProMobile/project.yml", file=sys.stderr)
         return 3
 
     failures: list[str] = []
@@ -97,7 +102,7 @@ def main() -> int:
         print(f"{len(failures)} declaration(s) across {len(sources)} shared file(s).")
         return 1
 
-    print(f"{len(sources)} shared plugin sources, every top-level declaration isolated explicitly")
+    print(f"{len(sources)} shared sources, every top-level declaration isolated explicitly")
     return 0
 
 

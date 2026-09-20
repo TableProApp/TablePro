@@ -105,6 +105,18 @@ struct MCPStatementGateRefusalTests {
         #expect(error?.code == .denied)
     }
 
+    /// Each ran its hidden DROP on the live engine, measured on 2026-09-19: PostgreSQL 17.11 through PQexec, DuckDB
+    /// 1.5.2 through duckdb_query, and SQL Server 2019 as one batch.
+    @Test("A DROP hidden where the engine ends a quote the old lexer did not is refused as destructive", arguments: [
+        (DatabaseType.postgresql, "SELECT 'C:\\' AS p; DROP TABLE users"),
+        (DatabaseType.duckdb, "SELECT 1 /* /* */ ' */; DROP TABLE users; --'"),
+        (DatabaseType.mssql, "SELECT [it's] FROM t; DROP TABLE users; SELECT 'x'"),
+    ])
+    func hiddenDropIsRefused(engine: DatabaseType, sql: String) async throws {
+        let error = try await refusal(sql: sql, databaseType: engine, allowsMultiStatement: true)
+        #expect(error?.code == .denied)
+    }
+
     @Test("A write needs the tools:write scope and reports it as insufficient scope")
     func writeNeedsWriteScope() async throws {
         let context = MCPToolTestHarness.context(

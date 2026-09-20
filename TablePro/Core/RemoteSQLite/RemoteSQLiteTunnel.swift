@@ -7,6 +7,8 @@ import CLibSSH2
 import Foundation
 import os
 
+import TableProSSHTransport
+
 /// A loopback listener whose accepted clients each get a fresh exec channel running the SQLite
 /// agent on the SSH server, so the SQLite plugin can reach a live database on that server as if it
 /// were a local port.
@@ -34,7 +36,14 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private var forwardingTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
     private let aliveLatch = TeardownLatch()
-    private let clientTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+
+    /// The relays still running, so teardown frees the session only once none of them can touch
+    /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
+    /// one thing a `[Task]` pruned on `isCancelled` never noticed, so a tunnel that had served
+    /// clients carried every one of them until it closed. It is also all a task was ever worth
+    /// here, since the relay runs on `relayQueue` outside the task's cancellation scope and stops
+    /// on `aliveLatch` rather than on `Task.isCancelled`.
+    private let clientRelays = DispatchGroup()
 
     private let sessionQueue: DispatchQueue
     private let relayQueue: DispatchQueue
@@ -128,16 +137,14 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         performTeardown()
     }
 
+    /// Synchronous cleanup for app termination, which waits for nothing because the process is
+    /// exiting. No descriptor is closed and the session is not freed: the relays and the accept
+    /// loop may still be polling them, and the OS reclaims every one of them anyway.
     func closeSync() {
         guard aliveLatch.claim() else { return }
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        clientTasks.withLock { tasks in
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-        }
         shutdown(socketFD, SHUT_RDWR)
-        Darwin.close(listenFD)
     }
 
     private func markDead() {
@@ -146,27 +153,36 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         onDeath?(connectionId)
     }
 
+    /// Breaks every blocking wait first, then frees the session and the descriptors only once
+    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
+    /// once without releasing the descriptor number, which another thread would otherwise be
+    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
+    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
+    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
+    ///
+    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
+    /// is the only thing that starts one: once it has ended, the group can only empty.
     private func performTeardown() {
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        let currentClientTasks = clientTasks.withLock { tasks -> [Task<Void, Never>] in
-            let copy = tasks
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-            return copy
-        }
 
         shutdown(socketFD, SHUT_RDWR)
-        Darwin.close(listenFD)
 
         let chain = self.chain
+        let relayQueue = self.relayQueue
+        let clientRelays = self.clientRelays
+        let listenFD = self.listenFD
         let forwardingTask = self.forwardingTask
         let keepAliveTask = self.keepAliveTask
         let connectionId = self.connectionId
         Task.detached {
             await forwardingTask?.value
             await keepAliveTask?.value
-            for task in currentClientTasks { await task.value }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                clientRelays.notify(queue: relayQueue) { continuation.resume() }
+            }
+
+            Darwin.close(listenFD)
             LibSSH2TunnelFactory.cleanupChain(chain, reason: "Closing remote SQLite session")
             Self.logger.info("Remote SQLite session closed for \(connectionId)")
         }
@@ -188,22 +204,16 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     }
 
     private func spawnClient(clientFD: Int32) {
-        let task = Task.detached { [weak self] in
-            guard let self else { Darwin.close(clientFD); return }
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.relayQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else { Darwin.close(clientFD); return }
-                    self.admitAndRelay(clientFD: clientFD)
-                }
+        let clientRelays = self.clientRelays
+        clientRelays.enter()
+        relayQueue.async { [weak self] in
+            defer { clientRelays.leave() }
+            guard let self else {
+                Darwin.close(clientFD)
+                return
             }
+            self.admitAndRelay(clientFD: clientFD)
         }
-        let shouldCancel = clientTasks.withLock { tasks -> Bool in
-            tasks.removeAll { $0.isCancelled }
-            tasks.append(task)
-            return !aliveLatch.isLive
-        }
-        if shouldCancel { task.cancel() }
     }
 
     private func admitAndRelay(clientFD: Int32) {

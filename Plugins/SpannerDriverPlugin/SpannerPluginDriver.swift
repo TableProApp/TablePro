@@ -23,6 +23,19 @@ internal final class SpannerPluginDriver: PluginDatabaseDriver, @unchecked Senda
         lock.withLock { connectedDialect }
     }
 
+    /// Spanner fixes a database's dialect when it is created, so once connected the whole grammar is known: GoogleSQL
+    /// or PostgreSQL, each measured on the emulator.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        guard lock.withLock({ connectedExecutor != nil }) else { return nil }
+        let googleSQL: SQLLexicalFeatures = [
+            .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
+            .backtickQuotes, .tripleQuotedStrings, .hashLineComments,
+        ]
+        let postgreSQL: SQLLexicalFeatures = [.taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix]
+        let enabled = dialect == .postgreSQL ? postgreSQL : googleSQL
+        return PluginSessionLexicalState(determined: googleSQL.union(postgreSQL), enabled: enabled)
+    }
+
     var capabilities: PluginCapabilities {
         [.multiSchema, .cancelQuery, .transactions, .truncateTable]
     }

@@ -5,6 +5,8 @@
 
 import Foundation
 
+import TableProSSHTransport
+
 extension DatabaseConnection {
     static let sshForwardUnixSocketPathKey = "sshForwardUnixSocketPath"
 

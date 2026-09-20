@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum SQLParameterExtractor {
     /// The text the parameter panel reads names from: every statement that can bind one, joined.

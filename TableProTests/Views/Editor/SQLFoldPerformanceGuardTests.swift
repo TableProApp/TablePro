@@ -12,6 +12,7 @@ import Foundation
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
@@ -42,7 +43,7 @@ struct SQLFoldPerformanceGuardTests {
     func providerStopsAboveSizeLimit() {
         let text = String(repeating: "CREATE TABLE t (\n  id INT\n);\n", count: 400)
         let controller = makeController(text: text, foldingSizeLimit: 64)
-        let provider = SQLLineFoldProvider(dialect: .postgres)
+        let provider = SQLLineFoldProvider(grammar: TestGrammar.postgres)
 
         let info = provider.foldLevelAtLine(
             lineNumber: 0,
@@ -57,7 +58,7 @@ struct SQLFoldPerformanceGuardTests {
     func providerWorksBelowSizeLimit() {
         let text = "CREATE TABLE t (\n  id INT\n);\n"
         let controller = makeController(text: text, foldingSizeLimit: .max)
-        let provider = SQLLineFoldProvider(dialect: .postgres)
+        let provider = SQLLineFoldProvider(grammar: TestGrammar.postgres)
 
         let info = provider.foldLevelAtLine(
             lineNumber: 0,
@@ -74,7 +75,7 @@ struct SQLFoldPerformanceGuardTests {
         #expect(text.length > 100_000)
 
         let start = ProcessInfo.processInfo.systemUptime
-        let structure = SQLFoldScanner.scan(text, dialect: .postgres)
+        let structure = SQLFoldScanner.scan(text, grammar: TestGrammar.postgres)
         let elapsed = ProcessInfo.processInfo.systemUptime - start
 
         #expect(!structure.startsByLine.isEmpty)
@@ -86,7 +87,7 @@ struct SQLFoldPerformanceGuardTests {
         let text = ("SELECT '" + String(repeating: "x", count: 2_000_000) + "';") as NSString
 
         let start = ProcessInfo.processInfo.systemUptime
-        _ = SQLFoldScanner.scan(text, dialect: .postgres)
+        _ = SQLFoldScanner.scan(text, grammar: TestGrammar.postgres)
         let elapsed = ProcessInfo.processInfo.systemUptime - start
 
         #expect(elapsed < 1.0)

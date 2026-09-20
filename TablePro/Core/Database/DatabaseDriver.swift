@@ -25,6 +25,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
 
+    /// The lexical facts the server decided for this session and the driver has read. See
+    /// `PluginDatabaseDriver.sessionLexicalState`.
+    var sessionLexicalState: PluginSessionLexicalState? { get }
+
     // MARK: - Connection Management
 
     /// Connect to the database
@@ -390,6 +394,8 @@ extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
+
+    var sessionLexicalState: PluginSessionLexicalState? { nil }
 
     func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
         try await connect()

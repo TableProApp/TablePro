@@ -29,7 +29,12 @@ struct ConnectionListView: View {
     @State private var groupPendingDeletion: ConnectionGroup?
     @State private var isConfirmingSampleReset = false
     @State private var showingFileImporter = false
-    @State private var importAfterCoverDismissal: URL?
+
+    /// Whether SwiftUI has the connection cover on screen, which is not the same question as whether
+    /// a connection is selected. Measured on iOS 27: a cover whose item the body already read is
+    /// still cancelled without a trace when a handler in the same update clears it, so only a cover
+    /// that is on screen dismisses, and only one that is on screen can be waited on.
+    @State private var isConnectionCoverOnScreen = false
     @State private var importResultCount: Int?
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
@@ -39,12 +44,19 @@ struct ConnectionListView: View {
         selectedConnectionIdString.flatMap { UUID(uuidString: $0) }
     }
 
+    /// The connection the cover is to show. A held restore keeps the stored id and presents nothing,
+    /// which is how a locked launch reaches Face ID before anything dials, and how a link that has
+    /// not been delivered yet keeps the stored connection from opening ahead of it. A hold postpones
+    /// a restore; it never closes a connection that is already open.
+    private var presentedConnection: DatabaseConnection? {
+        guard let id = selectedConnectionUUID,
+              presenter.presentsConnectionCover(isOnScreen: isConnectionCoverOnScreen) else { return nil }
+        return coordinatorStore.presentedRecord(for: id, in: appState.connections)
+    }
+
     private var openConnection: Binding<DatabaseConnection?> {
         Binding(
-            get: {
-                guard !presenter.holdsConnectionRestore, let id = selectedConnectionUUID else { return nil }
-                return coordinatorStore.presentedRecord(for: id, in: appState.connections)
-            },
+            get: { presentedConnection },
             set: { selectedConnectionIdString = $0?.id.uuidString }
         )
     }
@@ -161,6 +173,7 @@ struct ConnectionListView: View {
         .fullScreenCover(item: openConnection, onDismiss: connectionCoverDidDismiss) { connection in
             ConnectedView(connection: connection)
                 .id(connection.id)
+                .onAppear { isConnectionCoverOnScreen = true }
         }
         .sheet(item: $presenter.sheet, onDismiss: sheetDidDismiss) { sheet in
             sheetContent(sheet)
@@ -182,7 +195,8 @@ struct ConnectionListView: View {
         .onChange(of: presenter.isHeldByEditor) { _, _ in
             deliverPendingIntent()
         }
-        .onChange(of: lockState.isLocked) { _, _ in
+        .onChange(of: lockState.isLocked) { _, locked in
+            presenter.lockDidChange(locked)
             deliverPendingIntent()
         }
         .onChange(of: appState.loadStatus) { _, _ in
@@ -837,12 +851,8 @@ struct ConnectionListView: View {
             presenter.requestTable(table, in: connectionId)
             open(connectionId)
         case .importConnections(let url):
-            guard selectedConnectionUUID != nil else {
-                presenter.present(.importFile(url))
-                return
-            }
-            importAfterCoverDismissal = url
             selectedConnectionIdString = nil
+            presenter.presentImportFile(url, coverIsOnScreen: isConnectionCoverOnScreen)
         }
     }
 
@@ -854,15 +864,10 @@ struct ConnectionListView: View {
     }
 
     private func connectionCoverDidDismiss() {
+        isConnectionCoverOnScreen = false
         presenter.dismissConnectionEditor()
         coordinatorStore.discardRemovedRecords()
-        presentImportAfterCoverDismissal()
-    }
-
-    private func presentImportAfterCoverDismissal() {
-        guard let url = importAfterCoverDismissal else { return }
-        importAfterCoverDismissal = nil
-        presenter.present(.importFile(url))
+        presenter.presentHeldImport()
     }
 }
 

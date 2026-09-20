@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProDatabase
 import TableProModels
 import TableProOracleCore
 
@@ -107,6 +108,10 @@ nonisolated enum ErrorClassifier {
             )
         }
 
+        if let connectionError = error as? ConnectionError {
+            return connectionFailure(connectionError)
+        }
+
         if error is LocalNetworkPermissionError {
             return AppError(
                 category: .network,
@@ -174,6 +179,45 @@ nonisolated enum ErrorClassifier {
             recovery: nil,
             underlying: error
         )
+    }
+
+    /// A typed error is classified by its case. The substring rules below read a message the user
+    /// writes part of, so a connection called "Prod Tunnel" reported itself as an SSH tunnel failure.
+    private static func connectionFailure(_ error: ConnectionError) -> AppError {
+        switch error {
+        case .previousSessionStillClosing:
+            return AppError(
+                category: .system,
+                title: String(localized: "Still Closing"),
+                message: String(localized: "The previous session has not finished closing."),
+                recovery: String(localized: "Tap Retry in a moment."),
+                underlying: error
+            )
+        case .driverNotFound:
+            return AppError(
+                category: .config,
+                title: String(localized: "Driver Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "This build has no driver for that database type."),
+                underlying: error
+            )
+        case .notConnected:
+            return AppError(
+                category: .system,
+                title: String(localized: "Not Connected"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Reconnect and try again."),
+                underlying: error
+            )
+        case .sshNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "SSH Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Turn off the SSH tunnel for this connection."),
+                underlying: error
+            )
+        }
     }
 
     private static func ssh(_ error: Error, context: ErrorContext) -> AppError {

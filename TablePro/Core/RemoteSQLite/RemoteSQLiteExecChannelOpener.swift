@@ -6,6 +6,8 @@
 import CLibSSH2
 import Foundation
 
+import TableProSSHTransport
+
 /// Opens one session channel and starts a command on it, one non-blocking attempt at a time, so
 /// `SSHForwardChannelOpenPump` can drive it to a decision within an app-owned deadline exactly as it
 /// drives a forwarding open. A forwarding channel opens in a single call; an exec channel is two

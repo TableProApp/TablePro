@@ -13,6 +13,7 @@ import Foundation
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
@@ -25,7 +26,7 @@ struct StatementRunPerformanceGuardTests {
         #expect((text as NSString).length > 150_000)
 
         let start = ProcessInfo.processInfo.systemUptime
-        let statements = SQLStatementScanner.locatedStatements(in: text, dialect: .postgres)
+        let statements = SQLStatementScanner.locatedStatements(in: text, grammar: TestGrammar.postgres)
         let elapsed = ProcessInfo.processInfo.systemUptime - start
 
         #expect(statements.count == 4_001)
@@ -40,7 +41,11 @@ struct StatementRunPerformanceGuardTests {
         let text = String(repeating: "SELECT id, name FROM users WHERE active = true;\n", count: 40_000)
 
         let start = ProcessInfo.processInfo.systemUptime
-        let statement = SQLStatementScanner.locatedStatementAtCursor(in: text, cursorPosition: 10, dialect: .postgres)
+        let statement = SQLStatementScanner.locatedStatementAtCursor(
+            in: text,
+            cursorPosition: 10,
+            grammar: TestGrammar.postgres
+        )
         let elapsed = ProcessInfo.processInfo.systemUptime - start
 
         #expect(statement.hasContent)
@@ -52,7 +57,7 @@ struct StatementRunPerformanceGuardTests {
         let text = "SELECT '" + String(repeating: "x", count: 2_000_000) + "';"
 
         let start = ProcessInfo.processInfo.systemUptime
-        _ = SQLStatementScanner.locatedStatements(in: text, dialect: .postgres)
+        _ = SQLStatementScanner.locatedStatements(in: text, grammar: TestGrammar.postgres)
         let elapsed = ProcessInfo.processInfo.systemUptime - start
 
         #expect(elapsed < 1.0)
@@ -63,7 +68,7 @@ struct StatementRunPerformanceGuardTests {
         let text = String(repeating: "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\n", count: 10_000)
 
         let start = ProcessInfo.processInfo.systemUptime
-        let statements = SQLStatementScanner.locatedStatements(in: text, dialect: .mysql)
+        let statements = SQLStatementScanner.locatedStatements(in: text, grammar: TestGrammar.mysql)
         let elapsed = ProcessInfo.processInfo.systemUptime - start
 
         #expect(statements.filter(\.hasContent).count == 10_000)

@@ -26,7 +26,12 @@ enum KafkaProduceRequest {
             timestamp: timestamp
         )
 
-        return try await cluster.withLeader(of: partition, topic: topic) { connection in
+        return try await cluster.withLeader(
+            of: partition,
+            topic: topic,
+            api: "Produce",
+            repeatability: .onlyWhenBrokerRefusedIt
+        ) { connection in
             let version = try await connection.negotiatedVersion(for: .produce)
             let flexible = KafkaApiKey.produce.isFlexible(version: version)
 

@@ -73,7 +73,7 @@ final class ConnectionFormViewModel {
     // SSH
     var sshEnabled = false
     var sshHost = ""
-    var sshPort = "22"
+    var sshPort = ""
     var sshUsername = ""
     var sshPassword = ""
     var sshAuthMethod: SSHConfiguration.SSHAuthMethod = .password
@@ -154,7 +154,7 @@ final class ConnectionFormViewModel {
         safeModeLevel = conn.safeModeLevel
         if let ssh = conn.sshConfiguration {
             sshHost = ssh.host
-            sshPort = String(ssh.port)
+            sshPort = ssh.port.map(String.init) ?? ""
             sshUsername = ssh.username
             sshAuthMethod = ssh.authMethod
             sshKeyPath = ssh.privateKeyPath ?? ""
@@ -232,7 +232,7 @@ final class ConnectionFormViewModel {
         guard sshEnabled else { return nil }
         return ConnectionFormEdits.SSHTunnel(
             host: sshHost,
-            port: Int(sshPort) ?? 22,
+            port: Int(sshPort),
             username: sshUsername,
             authMethod: sshAuthMethod,
             privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath

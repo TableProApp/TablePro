@@ -448,10 +448,10 @@ struct ImportDialog: View {
 
         do {
             let encoding = selectedEncoding.encoding
-            let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
+            let grammar = connection.type.lexicalGrammar
             let parser = SQLFileParser()
             let count = try await Task.detached {
-                try await parser.countStatements(url: url, encoding: encoding, dialect: dialect)
+                try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)
             }.value
             statementCount = count
         } catch {

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 /// Whether one statement of a batch is the script's own point of no return.
 ///
@@ -24,8 +25,8 @@ import Foundation
 internal enum BatchCommitStatement {
     private static let transactionNouns: Set<String> = ["TRANSACTION", "WORK"]
 
-    internal static func matches(_ statement: NSString, rules: SQLLexicalRules) -> Bool {
-        var cursor = SQLTokenCursor(statement, rules: rules)
+    internal static func matches(_ statement: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        var cursor = SQLTokenCursor(statement, grammar: grammar)
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "COMMIT":
@@ -38,7 +39,7 @@ internal enum BatchCommitStatement {
         }
     }
 
-    internal static func matches(_ statement: String, rules: SQLLexicalRules) -> Bool {
-        matches(statement as NSString, rules: rules)
+    internal static func matches(_ statement: String, grammar: SQLLexicalGrammar) -> Bool {
+        matches(statement as NSString, grammar: grammar)
     }
 }

@@ -8,6 +8,8 @@ import os
 
 import CLibSSH2
 
+import TableProSSHTransport
+
 /// Represents an active SSH tunnel backed by libssh2.
 /// Each instance owns a TCP socket, libssh2 session, a local listening socket,
 /// and the forwarding/keep-alive tasks.
@@ -28,7 +30,14 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     private var forwardingTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
     private let aliveLatch = TeardownLatch()
-    private let clientTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+
+    /// The relays still running, so teardown frees the session only once none of them can touch
+    /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
+    /// one thing a `[Task]` pruned on `isCancelled` never noticed, so a tunnel that had served
+    /// clients carried every one of them until it closed. It is also all a task was ever worth
+    /// here, since the relay runs on `relayQueue` outside the task's cancellation scope and stops
+    /// on `aliveLatch` rather than on `Task.isCancelled`.
+    private let clientRelays = DispatchGroup()
 
     /// Serial queue for all libssh2 calls on this tunnel's session.
     /// libssh2 is not thread-safe per session, so every call must be serialized.
@@ -189,41 +198,40 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         aliveLatch.claim()
     }
 
+    /// Breaks every blocking wait first, then frees the session and the descriptors only once
+    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
+    /// once without releasing the descriptor number, which another thread would otherwise be
+    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
+    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
+    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
+    ///
+    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
+    /// is the only thing that starts one: once it has ended, the group can only empty.
     private func performTeardown() {
-        // Cancel all tasks so relay loops see isCancelled
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        let currentClientTasks = clientTasks.withLock { tasks -> [Task<Void, Never>] in
-            let copy = tasks
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-            return copy
-        }
 
-        // Shutdown socketFD to unblock any blocking reads in relay tasks
-        // without closing the fd (which could be reused by another thread)
         shutdown(socketFD, SHUT_RDWR)
-        // Close listenFD to stop accepting new connections
-        Darwin.close(listenFD)
 
-        // Defer session teardown to a detached task that waits for all tasks to exit.
         let sessionQueue = self.sessionQueue
+        let relayQueue = self.relayQueue
+        let clientRelays = self.clientRelays
         let session = self.session
         let socketFD = self.socketFD
+        let listenFD = self.listenFD
         let jumpChain = self.jumpChain
         let connectionId = self.connectionId
         let forwardingTask = self.forwardingTask
         let keepAliveTask = self.keepAliveTask
         Task.detached {
-            // Wait for all tasks to exit before touching the session.
             await forwardingTask?.value
             await keepAliveTask?.value
-            for task in currentClientTasks {
-                await task.value
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                clientRelays.notify(queue: relayQueue) { continuation.resume() }
             }
 
-            // Tear down on sessionQueue to serialize after any pending libssh2 blocks.
             sessionQueue.sync {
+                Darwin.close(listenFD)
                 Darwin.close(socketFD)
                 libssh2_session_set_blocking(session, 1)
                 tablepro_libssh2_session_disconnect(session, "Closing tunnel")
@@ -242,26 +250,17 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
     }
 
-    /// Synchronous cleanup for app termination.
-    /// At termination the process is exiting imminently, so we cancel relay tasks
-    /// and tear down immediately. We avoid closing socketFD or freeing the session
-    /// since relay tasks may still reference them; the OS reclaims all resources.
+    /// Synchronous cleanup for app termination, which waits for nothing because the process is
+    /// exiting. No descriptor is closed and the session is not freed: the relays and the accept
+    /// loop may still be polling them, and the OS reclaims every one of them anyway.
     func closeSync() {
         guard consumeAliveLatch() else { return }
 
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        clientTasks.withLock { tasks in
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-        }
 
-        // Shutdown sockets to unblock reads, close listenFD (accept loop only)
         shutdown(socketFD, SHUT_RDWR)
-        Darwin.close(listenFD)
 
-        // At app termination, skip session teardown and fd close.
-        // Relay tasks may still be using them, and the OS reclaims everything.
         for hop in jumpChain.reversed() {
             hop.relayTask?.cancel()
         }
@@ -335,7 +334,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     func consumeLastForwardFailure() -> SSHTunnelError? {
-        forwardFailure.consume()
+        forwardFailure.consume()?.tunnelError
     }
 
     private func logChannelOpenOutcome(_ outcome: ChannelOpenOutcome, destination: SSHForwardDestination) {
@@ -360,31 +359,15 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     /// open cannot delay the next accept. The loop runs on `relayQueue` (concurrent);
     /// individual libssh2 calls are dispatched to `sessionQueue` (serial) for thread safety.
     private func spawnClient(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
-        let task = Task.detached { [weak self] in
+        let clientRelays = self.clientRelays
+        clientRelays.enter()
+        relayQueue.async { [weak self] in
+            defer { clientRelays.leave() }
             guard let self else {
                 Darwin.close(clientFD)
                 return
             }
-
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.relayQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else {
-                        Darwin.close(clientFD)
-                        return
-                    }
-                    self.openAndRelay(clientFD: clientFD, acceptedAt: acceptedAt, destination: destination)
-                }
-            }
-        }
-
-        let shouldCancel = clientTasks.withLock { tasks -> Bool in
-            tasks.removeAll { $0.isCancelled }
-            tasks.append(task)
-            return !aliveLatch.isLive
-        }
-        if shouldCancel {
-            task.cancel()
+            self.openAndRelay(clientFD: clientFD, acceptedAt: acceptedAt, destination: destination)
         }
     }
 

@@ -9,6 +9,7 @@ import Foundation
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
@@ -40,7 +41,7 @@ struct FoldCommandBehaviourTests {
             language: .sql,
             configuration: configuration,
             cursorPositions: [CursorPosition(range: NSRange(location: 0, length: 0))],
-            foldProvider: SQLLineFoldProvider(dialect: .postgres)
+            foldProvider: SQLLineFoldProvider(grammar: TestGrammar.postgres)
         )
         controller.loadView()
         controller.textView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)

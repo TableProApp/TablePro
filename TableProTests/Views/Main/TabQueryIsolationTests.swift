@@ -15,6 +15,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("Tab query isolation", .serialized)

@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Main provider for SQL autocomplete suggestions
 final class SQLCompletionProvider {
@@ -87,7 +88,9 @@ final class SQLCompletionProvider {
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], candidates: [SQLCompletionItem], context: SQLContext) {
-        var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
+        var context = contextAnalyzer.analyze(
+            query: text, cursorPosition: cursorPosition, grammar: databaseType?.lexicalGrammar ?? .ansi
+        )
         if let forcedTableReferences {
             context = context.replacingTableReferences(forcedTableReferences)
         }
