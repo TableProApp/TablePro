@@ -46,20 +46,46 @@ nonisolated struct PendingTableRequest: Hashable, Sendable {
 
 @MainActor @Observable
 final class ScenePresenter {
+    /// Why the stored connection is not being restored yet. Each reason is inserted and removed by
+    /// its own owner, so releasing one while the other stands keeps the restore waiting.
+    enum RestoreHold: Hashable, Sendable {
+        case firstRun
+        case appLock
+    }
+
     let sceneId = UUID()
 
     var sheet: SceneSheet?
     private(set) var editingConnectionId: UUID?
     private(set) var pendingIntent: SceneIntent?
     private(set) var pendingTable: PendingTableRequest?
-    private(set) var holdsConnectionRestore = false
+    private(set) var restoreHolds: Set<RestoreHold> = []
     private(set) var editorHolds: Set<UUID> = []
+    private(set) var isLocked: Bool
+
+    var holdsConnectionRestore: Bool { !restoreHolds.isEmpty }
 
     var isHeldByEditor: Bool { !editorHolds.isEmpty }
 
     @ObservationIgnored private var hasBegunLaunch = false
     @ObservationIgnored private var presentedLaunchSheet = false
     @ObservationIgnored private var presentedFirstRunPages: [FirstRunPage] = []
+
+    init(isLocked: Bool) {
+        self.isLocked = isLocked
+        if isLocked {
+            restoreHolds.insert(.appLock)
+        }
+    }
+
+    /// The lock hold is seeded at construction and released on the first unlock, never taken again.
+    /// Re-taking it over a presented connection makes SwiftUI call the restore binding's setter with
+    /// nil, which erases the stored connection id rather than postponing it.
+    func lockDidChange(_ isLocked: Bool) {
+        self.isLocked = isLocked
+        guard !isLocked else { return }
+        restoreHolds.remove(.appLock)
+    }
 
     func beginLaunch(with appState: AppState) {
         guard !hasBegunLaunch else { return }
@@ -68,7 +94,7 @@ final class ScenePresenter {
         case .none:
             return
         case .firstRun(let pages):
-            holdsConnectionRestore = true
+            restoreHolds.insert(.firstRun)
             presentedFirstRunPages = pages
             present(.firstRun(pages))
         case .whatsNew(let version):
@@ -79,7 +105,7 @@ final class ScenePresenter {
     func sheetDidDismiss(appState: AppState) {
         guard presentedLaunchSheet, sheet == nil else { return }
         presentedLaunchSheet = false
-        holdsConnectionRestore = false
+        restoreHolds.remove(.firstRun)
         appState.finishFirstRun(pages: presentedFirstRunPages)
         presentedFirstRunPages = []
         appState.releaseLaunchPresentation(for: sceneId)
@@ -121,7 +147,7 @@ final class ScenePresenter {
         }
     }
 
-    func takeDeliverableIntent(isLocked: Bool, isLibraryWritable: Bool) -> SceneIntent? {
+    func takeDeliverableIntent(isLibraryWritable: Bool) -> SceneIntent? {
         guard let pendingIntent, sheet == nil, !isLocked, !holdsConnectionRestore, !isHeldByEditor else { return nil }
         if case .importConnections = pendingIntent, !isLibraryWritable {
             return nil

@@ -125,7 +125,7 @@ A running query appears in a Live Activity on the lock screen and Dynamic Island
 
 ## Security
 
-Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold launch always asks; after that **Auto-Lock** relocks immediately or after 1, 5, 15, or 60 minutes idle, starting at 5. The lock covers open sheets and connections, and the app switcher shows a locked card instead of your data. Turning the lock off asks you to authenticate first.
+Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold launch always asks, and the connection from your last session waits behind that question: no connecting screen, no host key prompt, nothing dialed until you authenticate. After that **Auto-Lock** relocks immediately or after 1, 5, 15, or 60 minutes idle, starting at 5. The lock covers open sheets and connections, and the app switcher shows a locked card instead of your data; a connection open underneath stays connected. Turning the lock off asks you to authenticate first.
 
 Each connection carries its own [safe mode](/features/safe-mode) level, synced from the Mac and settable here. iOS has three: **Off**, **Confirm Writes**, and **Read-Only**, which refuses writes outright. **Settings > New Connections** sets the level a new connection starts at.
 

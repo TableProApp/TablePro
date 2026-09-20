@@ -9,12 +9,15 @@ struct SceneRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var sceneDelegate: TableProSceneDelegate
     @State private var coordinatorStore: ConnectionCoordinatorStore
-    @State private var presenter = ScenePresenter()
+    @State private var presenter: ScenePresenter
 
-    init(connectionManager: ConnectionManager) {
+    /// The lock arrives through the initializer rather than the environment because the restore
+    /// binding's getter runs before any `.task`, so the hold has to exist before the first body.
+    init(connectionManager: ConnectionManager, isLocked: Bool) {
         _coordinatorStore = State(
             initialValue: ConnectionCoordinatorStore(connectionManager: connectionManager)
         )
+        _presenter = State(initialValue: ScenePresenter(isLocked: isLocked))
     }
 
     var body: some View {

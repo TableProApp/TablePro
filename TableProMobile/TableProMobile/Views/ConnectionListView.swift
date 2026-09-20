@@ -42,7 +42,11 @@ struct ConnectionListView: View {
     private var openConnection: Binding<DatabaseConnection?> {
         Binding(
             get: {
-                guard !presenter.holdsConnectionRestore, let id = selectedConnectionUUID else { return nil }
+                let decision = ConnectionRestoreDecision.resolve(
+                    storedId: selectedConnectionUUID,
+                    isHeld: presenter.holdsConnectionRestore
+                )
+                guard let id = decision.presentedId else { return nil }
                 return coordinatorStore.presentedRecord(for: id, in: appState.connections)
             },
             set: { selectedConnectionIdString = $0?.id.uuidString }
@@ -182,7 +186,8 @@ struct ConnectionListView: View {
         .onChange(of: presenter.isHeldByEditor) { _, _ in
             deliverPendingIntent()
         }
-        .onChange(of: lockState.isLocked) { _, _ in
+        .onChange(of: lockState.isLocked) { _, locked in
+            presenter.lockDidChange(locked)
             deliverPendingIntent()
         }
         .onChange(of: appState.loadStatus) { _, _ in
@@ -828,7 +833,6 @@ struct ConnectionListView: View {
 
     private func deliverPendingIntent() {
         guard let intent = presenter.takeDeliverableIntent(
-            isLocked: lockState.isLocked,
             isLibraryWritable: appState.isLibraryWritable
         ) else { return }
         switch intent {
