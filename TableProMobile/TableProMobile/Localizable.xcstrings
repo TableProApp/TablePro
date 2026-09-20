@@ -17323,6 +17323,34 @@
         }
       }
     },
+    "This connection goes through an SSH jump host, which TablePro on iPhone and iPad cannot dial. Open it in TablePro on the Mac." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결은 SSH 점프 호스트를 거치며, iPhone과 iPad의 TablePro는 점프 호스트로 연결할 수 없습니다. Mac용 TablePro에서 여십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối này đi qua một SSH jump host, mà TablePro trên iPhone và iPad không kết nối tới được. Hãy mở kết nối này trong TablePro trên máy Mac."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接经过 SSH 跳板主机，iPhone 和 iPad 上的 TablePro 无法连接。请在 Mac 上的 TablePro 中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線經過 SSH 跳板主機，iPhone 與 iPad 上的 TablePro 無法連線。請在 Mac 版 TablePro 中開啟。"
+          }
+        }
+      }
+    },
     "This connection has a client certificate but no private key. Import both." : {
       "localizations" : {
         "ko" : {
