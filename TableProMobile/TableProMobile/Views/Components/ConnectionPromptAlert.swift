@@ -4,31 +4,52 @@ import TableProDatabase
 /// Presents the attempt's questions from the screen that owns it. Attaching this at the root of the
 /// window instead makes SwiftUI dismiss whatever that root is presenting, which is what took the
 /// connection screen away and answered the host key question without the user.
+///
+/// The question on screen is held here rather than read back from the queue, so a dismissal answers
+/// the question the user was looking at and never the one waiting behind it.
 struct ConnectionPromptAlert: ViewModifier {
     @Bindable var queue: ConnectionPromptQueue
 
+    @State private var shown: ConnectionPrompt?
+
     func body(content: Content) -> some View {
-        content.alert(
-            queue.current?.title ?? "",
-            isPresented: Binding(
-                get: { queue.current != nil },
-                set: { presenting in
-                    guard !presenting, let prompt = queue.current else { return }
-                    queue.answer(prompt.id, accepted: false)
+        content
+            .alert(
+                shown?.title ?? "",
+                isPresented: Binding(
+                    get: { shown != nil },
+                    set: { presenting in
+                        guard !presenting, let prompt = shown else { return }
+                        answer(prompt, accepted: false)
+                    }
+                ),
+                presenting: shown
+            ) { prompt in
+                Button(prompt.confirmTitle, role: buttonRole(for: prompt)) {
+                    answer(prompt, accepted: true)
                 }
-            ),
-            presenting: queue.current
-        ) { prompt in
-            Button(prompt.confirmTitle, role: buttonRole(for: prompt)) {
-                queue.answer(prompt.id, accepted: true)
-            }
-            if prompt.style != .notice {
-                Button(String(localized: "Cancel"), role: .cancel) {
-                    queue.answer(prompt.id, accepted: false)
+                if prompt.style != .notice {
+                    Button(String(localized: "Cancel"), role: .cancel) {
+                        answer(prompt, accepted: false)
+                    }
                 }
+            } message: { prompt in
+                Text(prompt.message)
             }
-        } message: { prompt in
-            Text(prompt.message)
+            .onChange(of: queue.current, initial: true) { _, next in
+                guard shown == nil else { return }
+                shown = next
+            }
+    }
+
+    /// The next question waits a turn of the run loop, so it is asked after this alert has gone
+    /// rather than while iOS is still dismissing it.
+    private func answer(_ prompt: ConnectionPrompt, accepted: Bool) {
+        shown = nil
+        queue.answer(prompt.id, accepted: accepted)
+        Task { @MainActor in
+            guard shown == nil else { return }
+            shown = queue.current
         }
     }
 

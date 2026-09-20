@@ -43,7 +43,12 @@ final class ConnectionPromptQueue: ConnectionPrompter {
 
     nonisolated init() {}
 
+    /// A notice states something and carries a single button, so it can never stand in for a yes.
     func confirm(_ prompt: ConnectionPrompt) async -> Bool {
+        guard prompt.style != .notice else {
+            Self.logger.error("A notice was asked as a question, which cannot be answered")
+            return false
+        }
         guard !Task.isCancelled else { return false }
 
         return await withTaskCancellationHandler {

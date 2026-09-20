@@ -94,6 +94,20 @@ struct ConnectionPromptQueueTests {
         #expect(await secondAnswer == true)
     }
 
+    @Test("A notice can never answer a question, because it has no no")
+    func noticeIsRefusedAsAQuestion() async {
+        let queue = ConnectionPromptQueue()
+        let notice = ConnectionPrompt(
+            title: "Finish Signing In",
+            message: "code",
+            confirmTitle: "OK",
+            style: .notice
+        )
+
+        #expect(await queue.confirm(notice) == false)
+        #expect(queue.pending.isEmpty)
+    }
+
     @Test("A notice needs no waiter and clears when it is acknowledged")
     func noticeClearsOnAcknowledgement() {
         let queue = ConnectionPromptQueue()
