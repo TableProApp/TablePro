@@ -9,11 +9,11 @@ struct ForeignKeyPickerEntryTests {
     private let textKey = ColumnType.text(rawType: "VARCHAR(8)")
 
     private func rows(_ pairs: [(String, String?)]) -> [ForeignKeyLookupService.Row] {
-        pairs.enumerated().map { ForeignKeyLookupService.Row(id: $0.offset, key: $0.element.0, label: $0.element.1) }
+        pairs.enumerated().map { ForeignKeyLookupService.Row(id: $0.offset, key: $0.element.0, labels: [$0.element.1]) }
     }
 
     private func entry(_ index: Int, _ key: String, _ label: String?) -> ForeignKeyPickerEntry {
-        .row(ForeignKeyLookupService.Row(id: index, key: key, label: label))
+        .row(ForeignKeyLookupService.Row(id: index, key: key, labels: [label]))
     }
 
     private func build(
