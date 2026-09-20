@@ -85,10 +85,7 @@ final class ConnectionCoordinator {
     private var attemptToken = UUID()
     private var connectTask: Task<Void, Never>?
 
-    /// Callers awaiting the current attempt. The attempt belongs to the screens waiting on it, so
-    /// the last one to go away cancels it; a screen that was replaced by another must not cancel
-    /// an attempt the new one is still waiting for.
-    private var waiters = AttemptWaiters()
+    private var joiners = AttemptJoiners()
 
     /// Questions this attempt has to ask, shown by the screen that owns the attempt.
     let prompts = ConnectionPromptQueue()
@@ -116,14 +113,14 @@ final class ConnectionCoordinator {
     /// A caller that goes away mid-connect (its screen was dismissed) abandons the attempt rather
     /// than leaving it running for the next screen to join and wait on forever.
     private func join(_ task: Task<Void, Never>) async {
-        waiters.join()
+        let joiner = joiners.join()
         await withTaskCancellationHandler {
             await task.value
-            _ = waiters.leave()
+            _ = joiners.leave(joiner)
         } onCancel: {
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                guard waiters.leave(), connectTask == task else { return }
+                guard joiners.leave(joiner), connectTask == task else { return }
                 cancelConnect()
             }
         }
@@ -144,7 +141,11 @@ final class ConnectionCoordinator {
     }
 
     /// Never waits on the driver: `Task.cancel()` is cooperative and these drivers ignore it.
+    ///
+    /// The questions go first and unconditionally: a reconnect or a database switch asks them
+    /// without owning `connectTask`, and leaving one suspended holds its tunnel open for good.
     func cancelConnect() {
+        prompts.cancelAll()
         guard connectTask != nil else { return }
         retire()
         phase = .error(Self.cancelledError)

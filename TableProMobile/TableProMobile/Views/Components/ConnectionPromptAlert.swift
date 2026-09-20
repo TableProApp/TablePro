@@ -37,20 +37,13 @@ struct ConnectionPromptAlert: ViewModifier {
                 Text(prompt.message)
             }
             .onChange(of: queue.current, initial: true) { _, next in
-                guard shown == nil else { return }
                 shown = next
             }
     }
 
-    /// The next question waits a turn of the run loop, so it is asked after this alert has gone
-    /// rather than while iOS is still dismissing it.
     private func answer(_ prompt: ConnectionPrompt, accepted: Bool) {
         shown = nil
         queue.answer(prompt.id, accepted: accepted)
-        Task { @MainActor in
-            guard shown == nil else { return }
-            shown = queue.current
-        }
     }
 
     private func buttonRole(for prompt: ConnectionPrompt) -> ButtonRole? {

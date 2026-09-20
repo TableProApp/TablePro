@@ -8,14 +8,14 @@ import Testing
 struct HostKeyVerifierTests {
     private final class RecordingPrompter: ConnectionPrompter, @unchecked Sendable {
         let answer: Bool
-        private(set) var asked: [ConnectionPrompt] = []
+        private(set) var asked: [ConnectionQuestion] = []
 
         init(answer: Bool) {
             self.answer = answer
         }
 
-        func confirm(_ prompt: ConnectionPrompt) async -> Bool {
-            asked.append(prompt)
+        func confirm(_ question: ConnectionQuestion) async -> Bool {
+            asked.append(question)
             return answer
         }
     }
@@ -49,7 +49,12 @@ struct HostKeyVerifierTests {
         try await verify(store: store, prompter: prompter)
 
         #expect(prompter.asked.count == 1)
-        #expect(prompter.asked.first?.style == .standard)
+        if case .unknownHostKey(let host, let port, _, _) = prompter.asked.first {
+            #expect(host == "db.example.com")
+            #expect(port == 22)
+        } else {
+            Issue.record("the user should be asked about an unknown host key")
+        }
         #expect(store.trustedHosts().contains("[db.example.com]:22"))
 
         try await verify(store: store, prompter: prompter)
@@ -67,15 +72,20 @@ struct HostKeyVerifierTests {
         #expect(store.trustedHosts().isEmpty)
     }
 
-    @Test("A changed host key asks with the destructive action")
-    func changedKeyIsDestructive() async throws {
+    @Test("A changed host key is asked as a changed key, with both fingerprints")
+    func changedKeyAsksAboutTheChange() async throws {
         let store = makeStore()
         store.trust(hostname: "db.example.com", port: 22, key: Data("old-key".utf8), keyType: "ssh-ed25519")
         let prompter = RecordingPrompter(answer: true)
 
         try await verify(store: store, prompter: prompter, key: Data("new-key".utf8))
 
-        #expect(prompter.asked.first?.style == .destructive)
+        guard case .changedHostKey(_, _, let previous, let current) = prompter.asked.first else {
+            Issue.record("the user should be asked about a changed host key")
+            return
+        }
+        #expect(!previous.isEmpty)
+        #expect(previous != current)
     }
 
     @Test("With no screen to ask from, an unknown host fails at once instead of waiting")

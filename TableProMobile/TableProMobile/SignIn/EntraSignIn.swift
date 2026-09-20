@@ -20,7 +20,8 @@ enum EntraSignIn {
     /// Offers the sign-in and runs it. Returns true when it completed, so the caller can retry.
     /// The question and the code both belong to the attempt, so they go through its own queue.
     static func offer(fields: [String: String], prompts: ConnectionPromptQueue) async -> Bool {
-        let confirmed = await prompts.confirm(
+        let generation = prompts.generation
+        let confirmed = await prompts.ask(
             ConnectionPrompt(
                 title: String(localized: "Microsoft Entra ID Sign-In Required"),
                 message: String(localized: "Sign in to Microsoft Entra ID with your browser?"),
@@ -34,7 +35,7 @@ enum EntraSignIn {
                 fields: fields,
                 presentCode: { url, userCode in
                     Task { @MainActor in
-                        present(code: userCode, url: url, prompts: prompts)
+                        present(code: userCode, url: url, prompts: prompts, generation: generation)
                     }
                 }
             )
@@ -47,7 +48,7 @@ enum EntraSignIn {
     /// Puts the code on the pasteboard and opens the verification page. Microsoft returns a bare
     /// URL and expects the code to be entered there, so it has to be shown as well as copied.
     @MainActor
-    private static func present(code: String, url: URL, prompts: ConnectionPromptQueue) {
+    private static func present(code: String, url: URL, prompts: ConnectionPromptQueue, generation: Int) {
         UIPasteboard.general.string = code
         prompts.notify(
             ConnectionPrompt(
@@ -60,7 +61,8 @@ enum EntraSignIn {
                 ),
                 confirmTitle: String(localized: "OK"),
                 style: .notice
-            )
+            ),
+            generation: generation
         )
         UIApplication.shared.open(url)
     }

@@ -169,7 +169,7 @@ final class StubPrompter: ConnectionPrompter, @unchecked Sendable {
     var answer = true
 
     @MainActor
-    func confirm(_ prompt: ConnectionPrompt) async -> Bool {
+    func confirm(_ question: ConnectionQuestion) async -> Bool {
         answer
     }
 }

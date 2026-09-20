@@ -3,50 +3,50 @@ import Observation
 import os
 import TableProDatabase
 
-/// A question a connect attempt has to ask the user, shown by the screen that owns the attempt.
-///
-/// The queue is per attempt owner rather than app-wide, and it answers every waiter: an attempt
-/// that is cancelled, or whose screen goes away, resolves its question instead of leaving the
-/// tunnel suspended on a prompt nobody can see.
-/// How many screens are waiting on one connect attempt.
-///
-/// An attempt belongs to the screens awaiting it: the last one to leave abandons it, so a reopened
-/// connection never joins an attempt the user walked away from. A screen replaced by another while
-/// the attempt runs must not cancel it, which is why this counts rather than latches.
-nonisolated struct AttemptWaiters: Equatable {
-    private(set) var waiting = 0
-
-    var isAwaited: Bool { waiting > 0 }
-
-    var isIdle: Bool { !isAwaited }
-
-    mutating func join() {
-        waiting += 1
+/// What the user is being asked, as the screen shows it.
+struct ConnectionPrompt: Identifiable, Equatable {
+    enum Style: Equatable {
+        case standard
+        case destructive
+        case notice
     }
 
-    /// True when the caller that left was the last one waiting.
-    mutating func leave() -> Bool {
-        waiting = max(0, waiting - 1)
-        return isIdle
-    }
+    let id = UUID()
+    let title: String
+    let message: String
+    let confirmTitle: String
+    var style: Style = .standard
 }
 
+/// The questions one connect attempt has to ask, shown by the screen that owns the attempt.
+///
+/// The queue belongs to the attempt rather than to the app, and it answers every waiter: an attempt
+/// that is cancelled, or whose screen goes away, resolves its question instead of leaving the tunnel
+/// suspended on a prompt nobody can see.
 @MainActor
 @Observable
 final class ConnectionPromptQueue: ConnectionPrompter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionPrompt")
 
     private(set) var pending: [ConnectionPrompt] = []
+
+    /// Bumped whenever the attempt is abandoned, so work already in flight cannot post a notice onto
+    /// the queue the next attempt will use.
+    private(set) var generation = 0
+
     private var waiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     var current: ConnectionPrompt? { pending.first }
 
     nonisolated init() {}
 
-    /// A notice states something and carries a single button, so it can never stand in for a yes.
-    func confirm(_ prompt: ConnectionPrompt) async -> Bool {
+    func confirm(_ question: ConnectionQuestion) async -> Bool {
+        await ask(Self.prompt(for: question))
+    }
+
+    func ask(_ prompt: ConnectionPrompt) async -> Bool {
         guard prompt.style != .notice else {
-            Self.logger.error("A notice was asked as a question, which cannot be answered")
+            Self.logger.error("A notice cannot be asked as a question")
             return false
         }
         guard !Task.isCancelled else { return false }
@@ -67,7 +67,13 @@ final class ConnectionPromptQueue: ConnectionPrompter {
         }
     }
 
-    func notify(_ prompt: ConnectionPrompt) {
+    /// A statement rather than a question: nothing waits on it, and it is dropped when the attempt
+    /// that produced it has already been abandoned.
+    func notify(_ prompt: ConnectionPrompt, generation: Int) {
+        guard generation == self.generation else {
+            Self.logger.info("Dropped a notice from an attempt that was abandoned")
+            return
+        }
         pending.append(prompt)
     }
 
@@ -79,12 +85,60 @@ final class ConnectionPromptQueue: ConnectionPrompter {
     }
 
     func cancelAll() {
-        let cancelled = pending
+        generation += 1
         pending.removeAll()
-        for prompt in cancelled {
-            waiters.removeValue(forKey: prompt.id)?.resume(returning: false)
-        }
-        for (_, waiter) in waiters { waiter.resume(returning: false) }
+        let abandoned = waiters
         waiters.removeAll()
+        for (_, waiter) in abandoned { waiter.resume(returning: false) }
+    }
+
+    private static func prompt(for question: ConnectionQuestion) -> ConnectionPrompt {
+        switch question {
+        case let .unknownHostKey(host, port, keyType, fingerprint):
+            ConnectionPrompt(
+                title: String(localized: "Unknown SSH Server"),
+                message: String(
+                    format: String(localized: """
+                        TablePro has not connected to %@ before.
+
+                        %@ key fingerprint:
+                        %@
+
+                        Trust this server only if the fingerprint matches the one you expect.
+                        """),
+                    hostDisplay(host, port),
+                    keyType,
+                    fingerprint
+                ),
+                confirmTitle: String(localized: "Trust")
+            )
+        case let .changedHostKey(host, port, previous, current):
+            ConnectionPrompt(
+                title: String(localized: "SSH Host Key Changed"),
+                message: String(
+                    format: String(localized: """
+                        The host key for %@ has changed.
+
+                        This can mean the server was rebuilt, or that someone is intercepting \
+                        the connection.
+
+                        Previous fingerprint:
+                        %@
+
+                        Current fingerprint:
+                        %@
+                        """),
+                    hostDisplay(host, port),
+                    previous,
+                    current
+                ),
+                confirmTitle: String(localized: "Connect Anyway"),
+                style: .destructive
+            )
+        }
+    }
+
+    private static func hostDisplay(_ host: String, _ port: Int) -> String {
+        "[\(host)]:\(port)"
     }
 }

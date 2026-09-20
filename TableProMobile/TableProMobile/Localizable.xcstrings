@@ -10688,6 +10688,34 @@
         }
       }
     },
+    "Open this connection in TablePro to check the server's SSH host key first." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở kết nối này trong TablePro để kiểm tra khóa máy chủ SSH trước."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro에서 이 연결을 열어 서버의 SSH 호스트 키를 먼저 확인하십시오."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在 TablePro 中打开此连接以检查服务器的 SSH 主机密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先在 TablePro 中開啟此連線以檢查伺服器的 SSH 主機金鑰。"
+          }
+        }
+      }
+    },
     "Opens a database connection in TablePro" : {
       "localizations" : {
         "ko" : {
@@ -16978,6 +17006,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器傳送了非預期的訊息，連線已重設。請重新執行該查詢。"
+          }
+        }
+      }
+    },
+    "The server's SSH host key has changed. Open this connection in TablePro to check it." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa máy chủ SSH đã thay đổi. Mở kết nối này trong TablePro để kiểm tra."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버의 SSH 호스트 키가 변경되었습니다. TablePro에서 이 연결을 열어 확인하십시오."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的 SSH 主机密钥已更改。请在 TablePro 中打开此连接进行检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的 SSH 主機金鑰已變更。請在 TablePro 中開啟此連線進行檢查。"
           }
         }
       }
