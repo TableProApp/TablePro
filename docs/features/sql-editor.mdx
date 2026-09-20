@@ -42,15 +42,15 @@ A batch runs top to bottom and stops at the first statement that fails. The erro
 | The batch | Runs in | A failure or Stop |
 |---|---|---|
 | Ordinary statements | A transaction TablePro opens and commits | Everything rolls back |
-| One that manages its own: `BEGIN`, `START TRANSACTION`, `XA START`, `SET autocommit`, `SET IMPLICIT_TRANSACTIONS ON` on SQL Server, `SAVEPOINT` on SQLite | The script's own transaction | The transaction it left open is rolled back |
+| One that manages its own: `BEGIN`, `START TRANSACTION`, `XA START`, `SET autocommit`, `SET IMPLICIT_TRANSACTIONS ON` on SQL Server, `SAVEPOINT` on SQLite, `SET TRANSACTION` on Oracle | The script's own transaction | The transaction it left open is rolled back |
 | One holding a [statement a transaction cannot hold](#statements-a-transaction-cannot-hold) | No transaction | Each statement that ran stays applied, and the banner counts them |
 | Anything, on a connection that already has a transaction open | That transaction | The transaction stays open and the message says so |
 
-The last row wins over the other three. The open transaction comes from a `BEGIN` you ran with `Cmd+Enter`, a `SET autocommit = 0`, `LOCK TABLES` on MySQL or MariaDB, or an [MCP client's](/external-api/mcp-tools) `begin`, and a batch that joins it sends no `BEGIN`, `COMMIT` or `ROLLBACK` at all: the script's own text decides, so a script ending in `COMMIT` commits. Where a failed statement has left the transaction unable to commit, the message says to roll it back rather than offering the choice. A `BEGIN` left running here reaches the rest of the window too, so a grid save and a **Users & Roles** apply land inside it.
+The last row wins over the other three. The open transaction comes from a `BEGIN` you ran with `Cmd+Enter`, a `SET autocommit = 0`, `LOCK TABLES` on MySQL or MariaDB, a `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE` on Oracle, or an [MCP client's](/external-api/mcp-tools) `begin`, and a batch that joins it sends no `BEGIN`, `COMMIT` or `ROLLBACK` at all: the script's own text decides, so a script ending in `COMMIT` commits. Where a failed statement has left the transaction unable to commit, the message says to roll it back rather than offering the choice. A `BEGIN` left running here reaches the rest of the window too, so a grid save and a **Users & Roles** apply land inside it.
 
-PostgreSQL, Redshift, CockroachDB, MySQL, MariaDB, TiDB, SQLite, DuckDB and SQL Server report what their session holds. Anywhere else there is no answer to be had, so a plain batch is wrapped as it always was and a self-managed script is left alone after a failure, since the transaction its text opened may well predate the run.
+PostgreSQL, Redshift, CockroachDB, MySQL, MariaDB, TiDB, SQLite, DuckDB, SQL Server and Oracle report what their session holds. Anywhere else there is no answer to be had, so a plain batch is wrapped as it always was and a self-managed script is left alone after a failure, since the transaction its text opened may well predate the run.
 
-Two things survive a rollback in any of those four cases. MySQL and MariaDB commit a `CREATE`, `ALTER` or `DROP` the moment it runs, along with everything before it, and CockroachDB commits the open transaction before it processes any DDL at all.
+Two things survive a rollback in any of those four cases. MySQL, MariaDB and Oracle commit a `CREATE`, `ALTER` or `DROP` the moment it runs, along with everything before it, and CockroachDB commits the open transaction before it processes any DDL at all.
 
 ### Statements a transaction cannot hold
 

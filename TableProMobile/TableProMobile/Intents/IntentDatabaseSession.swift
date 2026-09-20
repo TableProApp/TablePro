@@ -30,7 +30,7 @@ struct IntentDatabaseSession {
         if connection.sshEnabled {
         }
         do {
-            let session = try await manager.connect(connection)
+            let session = try await manager.connect(connection, prompter: nil)
             return IntentDatabaseSession(connection: connection, session: session, manager: manager)
         } catch {
             throw IntentDataError.connectionFailed(error.localizedDescription)

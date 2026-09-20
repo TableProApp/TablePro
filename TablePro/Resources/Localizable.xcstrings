@@ -182127,6 +182127,9 @@
     },
     "Only the first %lld lines are shown." : {
 
+    },
+    "The connection was lost while a transaction was open. Check which of its changes were saved before running them again." : {
+
     }
   },
   "version" : "1.1"

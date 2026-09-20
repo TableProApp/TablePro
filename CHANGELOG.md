@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Acknowledgements and a privacy policy link under **Settings > About** on iPhone and iPad.
 - Privacy manifest for the iOS app.
 - Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
+- Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
 
 ### Changed
 
@@ -47,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash when an Oracle query timed out or was cancelled while its rows were loading.
 - Empty results with no error after about 300 failed Oracle statements on one connection.
 - Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
+- Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
 - Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
@@ -130,6 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No confirmation before deleting a tag on iPhone and iPad.
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 - Table page range shown in English in every language on iPhone and iPad.
+- Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
 - Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped.
 - Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported.
 - Oracle triggers synced into another schema created back in the source schema.

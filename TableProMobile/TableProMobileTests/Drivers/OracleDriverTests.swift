@@ -184,6 +184,43 @@ final class OracleDriverTests: XCTestCase {
         XCTAssertEqual(result.rows.first?.first, "0")
     }
 
+    func testAQueryEditorWriteIsVisibleToAnotherSession() async throws {
+        let driver = try XCTUnwrap(driver)
+        try await recreateTable("TP_MOBILE_AUTOCOMMIT", body: "v NUMBER(10)")
+        for try await _ in driver.executeStreaming(query: "INSERT INTO TP_MOBILE_AUTOCOMMIT VALUES (1)", options: .default) {}
+
+        let seen = try await countSeenByAnotherSession("TP_MOBILE_AUTOCOMMIT")
+        XCTAssertEqual(seen, "1")
+    }
+
+    func testARowEditIsVisibleToAnotherSession() async throws {
+        let driver = try XCTUnwrap(driver)
+        try await recreateTable("TP_MOBILE_ROW_EDIT", body: "v NUMBER(10)")
+        try await driver.executeWrite(["INSERT INTO TP_MOBILE_ROW_EDIT VALUES (1)"])
+
+        let seen = try await countSeenByAnotherSession("TP_MOBILE_ROW_EDIT")
+        XCTAssertEqual(seen, "1")
+        let state = await driver.sessionTransactionState()
+        XCTAssertEqual(state, .idle)
+    }
+
+    func testAnOpenTransactionHoldsItsWritesUntilRollback() async throws {
+        let driver = try XCTUnwrap(driver)
+        try await recreateTable("TP_MOBILE_HELD", body: "v NUMBER(10)")
+        try await driver.beginTransaction()
+        _ = try await driver.execute(query: "INSERT INTO TP_MOBILE_HELD VALUES (1)")
+        let stateInside = await driver.sessionTransactionState()
+        XCTAssertEqual(stateInside, .explicitTransaction)
+        let seenInside = try await countSeenByAnotherSession("TP_MOBILE_HELD")
+        XCTAssertEqual(seenInside, "0")
+
+        try await driver.rollbackTransaction()
+        let stateAfter = await driver.sessionTransactionState()
+        XCTAssertEqual(stateAfter, .idle)
+        let result = try await driver.execute(query: "SELECT COUNT(*) FROM TP_MOBILE_HELD")
+        XCTAssertEqual(result.rows.first?.first, "0")
+    }
+
     func testStreamingYieldsColumnsThenRows() async throws {
         let driver = try XCTUnwrap(driver)
         try await recreateTable("TP_MOBILE_STREAM", body: "id NUMBER(10) PRIMARY KEY")
@@ -230,6 +267,15 @@ final class OracleDriverTests: XCTestCase {
                 "expected a listener refusal code, got \(description)"
             )
         }
+    }
+
+    private func countSeenByAnotherSession(_ table: String) async throws -> String? {
+        let config = try XCTUnwrap(Self.loadTestConfig())
+        let other = OracleDriver(connection: Self.makeConnection(from: config), password: config["ORACLE_TEST_PASSWORD"] ?? "")
+        try await other.connect()
+        let result = try await other.execute(query: "SELECT COUNT(*) FROM \(schema).\(table)")
+        try await other.disconnect()
+        return result.rows.first?.first ?? nil
     }
 
     private func recreateTable(_ name: String, body: String) async throws {
