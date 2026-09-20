@@ -7,6 +7,12 @@
 
 import Foundation
 
+/// Catalog SQL for routines and triggers. Pure, so it is testable without a server.
+///
+/// Every dictionary view is named with its `SYS` owner. Oracle resolves an unqualified name to a current-schema object
+/// before the public synonym, so a user who owns the schema the reader is in could plant a same-named table or view and
+/// have the app read it. The rule and its measurement live in `OracleDictionary` in TableProOracleCore, which this file
+/// cannot import: it compiles into the test target, which does not link that package, so the prefix is written out here.
 public enum OracleObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
         value.replacingOccurrences(of: "'", with: "''")
@@ -34,7 +40,7 @@ public enum OracleObjectQueries {
                 o.OWNER,
                 o.OBJECT_TYPE,
                 o.STATUS
-            FROM ALL_OBJECTS o
+            FROM SYS.ALL_OBJECTS o
             WHERE o.OWNER = '\(schemaLiteral)'
               AND o.OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION')
             ORDER BY o.OBJECT_TYPE, o.OBJECT_NAME
@@ -47,7 +53,7 @@ public enum OracleObjectQueries {
     public static func routineSource(schema: String, name: String, type: String) -> String {
         """
         SELECT TEXT
-        FROM ALL_SOURCE
+        FROM SYS.ALL_SOURCE
         WHERE OWNER = '\(escapeLiteral(schema))'
           AND NAME = '\(escapeLiteral(name))'
           AND TYPE = '\(escapeLiteral(type))'
@@ -78,7 +84,7 @@ public enum OracleObjectQueries {
                 ACTION_TYPE,
                 TABLE_OWNER,
                 TRIGGER_BODY
-            FROM ALL_TRIGGERS
+            FROM SYS.ALL_TRIGGERS
             WHERE \(scope)
             ORDER BY TABLE_NAME, TRIGGER_NAME
             """
