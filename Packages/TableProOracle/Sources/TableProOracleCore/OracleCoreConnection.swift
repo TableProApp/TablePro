@@ -346,8 +346,8 @@ public final class OracleCoreConnection: @unchecked Sendable {
     ///
     /// One round trip: `GET_LINES` fills a collection, the same block splits every line into pieces a SQL `VARCHAR2`
     /// holds, and a cursor returns them. The split has to happen in PL/SQL. A line can be 32767 bytes, and measured on
-    /// Oracle 23ai with `MAX_STRING_SIZE=STANDARD` any SQL over a longer-than-4000-byte element fails with ORA-00910,
-    /// which oracle-nio does not throw: a failure while the block opens its cursor ends the process inside the driver.
+    /// Oracle 23ai with `MAX_STRING_SIZE=STANDARD` any SQL over a longer-than-4000-byte element fails with ORA-00910 on
+    /// the cursor's first fetch, so one long line would turn the whole read into an error and lose every other line.
     ///
     /// A session that is closed has lost its buffer with it, so it reads as no output rather than paying for a
     /// reconnect: a query timeout or a dropped transport closes the connection, and the statement's error would
