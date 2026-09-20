@@ -129,6 +129,19 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         return success
     }
 
+    /// Used when the connection itself is gone, so it takes the plan and rewind snapshots with the
+    /// history rather than unlinking them the way a filtered clear does.
+    @discardableResult
+    func deleteEverything(forConnection connectionId: UUID) async -> Bool {
+        let success = await storage.deleteEverything(forConnection: connectionId)
+        if success {
+            await MainActor.run {
+                AppEvents.shared.queryHistoryDidUpdate.send(nil)
+            }
+        }
+        return success
+    }
+
     func clear(matching filter: QueryHistoryFilter) async -> Bool {
         let success = await storage.clear(matching: filter)
         if success {

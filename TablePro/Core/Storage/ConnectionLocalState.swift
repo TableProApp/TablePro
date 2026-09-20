@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 
 /// Everything a deleted connection leaves behind on this device, cleaned up in one place.
 ///
@@ -12,6 +13,8 @@ import Foundation
 /// ever removed a single `SidebarPersistenceKey`. A store added here is cleaned up everywhere.
 @MainActor
 internal enum ConnectionLocalState {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionLocalState")
+
     /// Who deleted the connection. A local delete leaves tombstones so the other devices follow;
     /// a remote delete must not, or it pushes back a deletion the sender already made.
     internal enum Origin {
@@ -23,7 +26,9 @@ internal enum ConnectionLocalState {
         connectionIds: Set<UUID>,
         origin: Origin,
         appSettings: AppSettingsStorage = .shared,
-        tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores
+        tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores,
+        sqlFavorites: SQLFavoriteManager = .shared,
+        queryHistory: QueryHistoryManager = .shared
     ) {
         guard !connectionIds.isEmpty else { return }
 
@@ -45,6 +50,36 @@ internal enum ConnectionLocalState {
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
         RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
+        Task { await purgeAsyncStores(connectionIds, sqlFavorites: sqlFavorites, queryHistory: queryHistory) }
+    }
+
+    /// The two stores that can only be reached with `await`, so `purge` fires them and does not
+    /// wait. They belong here for the reason everything else does: written out at the delete sites,
+    /// the query history clear reached the two local ones and never the remote one, so a connection
+    /// deleted on another Mac left every statement it had ever run, with its literals, in the
+    /// history on this one.
+    ///
+    /// Separate from `purge` so a test can await what `purge` cannot.
+    ///
+    /// `origin` does not reach here, and the two stores differ on why. Query history is device-local
+    /// and never synced, so a remote delete should forget this device's copy and has no tombstone to
+    /// push back. SQL favorites are synced and `removeFavoritesAndFolders` tombstones every record it
+    /// removes, so a remote delete does push one back at the device that sent it. That predates this
+    /// helper and is carried unchanged rather than fixed here, because the without-sync counterpart
+    /// `purgeFavorites` uses for the table favorites does not exist for these.
+    internal static func purgeAsyncStores(
+        _ connectionIds: Set<UUID>,
+        sqlFavorites: SQLFavoriteManager = .shared,
+        queryHistory: QueryHistoryManager = .shared
+    ) async {
+        for connectionId in connectionIds {
+            await sqlFavorites.removeFavoritesAndFolders(for: connectionId)
+            if await !queryHistory.deleteEverything(forConnection: connectionId) {
+                logger.error(
+                    "Query history for a deleted connection could not be cleared: \(connectionId, privacy: .public)"
+                )
+            }
+        }
     }
 
     /// The in-memory registries go first. A live `SharedSidebarState` for this connection rewrites

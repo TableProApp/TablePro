@@ -352,12 +352,6 @@ final class ConnectionStorage {
             origin: .local,
             appSettings: appSettingsProvider()
         )
-        Task {
-            await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
-            await QueryHistoryManager.shared.clear(
-                matching: QueryHistoryFilter(scope: .connection(connection.id))
-            )
-        }
         return true
     }
 
@@ -392,14 +386,6 @@ final class ConnectionStorage {
             origin: .local,
             appSettings: appSettingsProvider()
         )
-        Task {
-            for conn in connectionsToDelete {
-                await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
-                await QueryHistoryManager.shared.clear(
-                    matching: QueryHistoryFilter(scope: .connection(conn.id))
-                )
-            }
-        }
         return true
     }
 

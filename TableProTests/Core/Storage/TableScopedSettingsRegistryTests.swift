@@ -35,7 +35,12 @@ struct TableScopedSettingsRegistryTests {
         let second = RecordingStore()
         let deleted: Set<UUID> = [UUID(), UUID()]
 
-        ConnectionLocalState.purge(connectionIds: deleted, origin: .remote, tableScopedStores: [first, second])
+        ConnectionLocalState.purge(
+            connectionIds: deleted,
+            origin: .remote,
+            tableScopedStores: [first, second],
+            queryHistory: Self.isolatedQueryHistory()
+        )
 
         #expect(first.purgedConnectionIds == [deleted])
         #expect(second.purgedConnectionIds == [deleted])
@@ -45,7 +50,12 @@ struct TableScopedSettingsRegistryTests {
     func emptyPurgeReachesNoStore() {
         let store = RecordingStore()
 
-        ConnectionLocalState.purge(connectionIds: [], origin: .remote, tableScopedStores: [store])
+        ConnectionLocalState.purge(
+            connectionIds: [],
+            origin: .remote,
+            tableScopedStores: [store],
+            queryHistory: Self.isolatedQueryHistory()
+        )
 
         #expect(store.purgedConnectionIds.isEmpty)
     }
@@ -90,6 +100,21 @@ struct TableScopedSettingsRegistryTests {
         #expect(
             unregistered.isEmpty,
             "A table-scoped store must be listed in TableScopedSettingsRegistry.stores: \(unregistered.sorted())"
+        )
+    }
+
+    /// `purge` fires its async stores, so a test that injects `tableScopedStores` to stay off the
+    /// real ones has to inject this too, or the unstructured task opens the app's own history
+    /// database and runs a delete against it while another test is using it.
+    private static func isolatedQueryHistory() -> QueryHistoryManager {
+        QueryHistoryManager(
+            storage: QueryHistoryStorage(
+                databaseURL: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("tablepro-tests")
+                    .appendingPathComponent("registry_\(UUID().uuidString).db"),
+                removeDatabaseOnDeinit: true
+            ),
+            isCapturePaused: { false }
         )
     }
 
