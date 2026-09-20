@@ -157,6 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 - Table page range shown in English in every language on iPhone and iPad.
 - Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
+- Every later connect to a connection on iPhone and iPad hanging for good once its SSH tunnel dropped.
+- Connection errors on iPhone and iPad given a title and advice picked from words in the message.
 - Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped.
 - Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported.
 - Oracle triggers synced into another schema created back in the source schema.
