@@ -42,35 +42,111 @@ enum FilterDefaultOperator: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum FilterPanelDefaultState: String, CaseIterable, Identifiable, Codable {
-    case restoreLast = "restoreLast"
-    case alwaysShow = "alwaysShow"
-    case alwaysHide = "alwaysHide"
+/// What reopening a table does with the filter rows saved for it.
+enum FilterRestoreBehavior: String, CaseIterable, Identifiable, Codable {
+    case restoreAndApply = "restoreAndApply"
+    case restoreWithoutApplying = "restoreWithoutApplying"
+    case dontSave = "dontSave"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .restoreLast: return String(localized: "Restore Last Filter")
-        case .alwaysShow: return String(localized: "Always Show")
-        case .alwaysHide: return String(localized: "Always Hide")
+        case .restoreAndApply: return String(localized: "Restore and apply")
+        case .restoreWithoutApplying: return String(localized: "Restore without applying")
+        case .dontSave: return String(localized: "Don't save")
         }
+    }
+
+    var savesToDisk: Bool {
+        self != .dontSave
+    }
+
+    var settingsFooter: String {
+        switch self {
+        case .restoreAndApply:
+            return String(localized: "Reopening a table runs the filter it was last showing.")
+        case .restoreWithoutApplying:
+            return String(localized: "Reopening a table brings its filter rows back unapplied. Press Apply to run them.")
+        case .dontSave:
+            return String(localized: "Filters last as long as the tab. Filters already saved are kept, not deleted.")
+        }
+    }
+}
+
+/// The single enum that used to answer both "is the bar open when a table opens" and "what happens
+/// to the rows saved for it". Kept only to read a settings file written before the two were split.
+private enum LegacyFilterPanelDefaultState: String, Codable {
+    case restoreLast
+    case alwaysShow
+    case alwaysHide
+
+    var restoreBehavior: FilterRestoreBehavior {
+        self == .alwaysHide ? .dontSave : .restoreAndApply
+    }
+
+    var alwaysShowPanel: Bool {
+        self == .alwaysShow
     }
 }
 
 struct FilterSettings: Codable, Equatable {
     var defaultColumn: FilterDefaultColumn
     var defaultOperator: FilterDefaultOperator
-    var panelState: FilterPanelDefaultState
+    var restoreBehavior: FilterRestoreBehavior
+    var alwaysShowPanel: Bool
 
     init(
         defaultColumn: FilterDefaultColumn = .rawSQL,
         defaultOperator: FilterDefaultOperator = .equal,
-        panelState: FilterPanelDefaultState = .restoreLast
+        restoreBehavior: FilterRestoreBehavior = .restoreAndApply,
+        alwaysShowPanel: Bool = false
     ) {
         self.defaultColumn = defaultColumn
         self.defaultOperator = defaultOperator
-        self.panelState = panelState
+        self.restoreBehavior = restoreBehavior
+        self.alwaysShowPanel = alwaysShowPanel
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultColumn, defaultOperator, restoreBehavior, alwaysShowPanel, panelState
+    }
+
+    /// Reads the split fields, and falls back to the single `panelState` a file written before the
+    /// split carries. Doing it in the decoder rather than behind a one-shot UserDefaults flag keeps
+    /// it idempotent: the flag version rewrote a stored `alwaysHide` to `restoreLast` once and left
+    /// anyone who set it afterwards stranded.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try container.decodeIfPresent(LegacyFilterPanelDefaultState.self, forKey: .panelState)
+        self.defaultColumn = try container.decodeIfPresent(FilterDefaultColumn.self, forKey: .defaultColumn) ?? .rawSQL
+        self.defaultOperator = try container.decodeIfPresent(
+            FilterDefaultOperator.self, forKey: .defaultOperator
+        ) ?? .equal
+        self.restoreBehavior = try container.decodeIfPresent(
+            FilterRestoreBehavior.self, forKey: .restoreBehavior
+        ) ?? legacy?.restoreBehavior ?? .restoreAndApply
+        self.alwaysShowPanel = try container.decodeIfPresent(
+            Bool.self, forKey: .alwaysShowPanel
+        ) ?? legacy?.alwaysShowPanel ?? false
+    }
+
+    /// `panelState` goes back in as the nearest of the three old cases. A build from before the
+    /// split decodes this type with a synthesized initializer that requires the key, so leaving it
+    /// out makes a rollback throw and fall back to defaults, taking Default Column and Default
+    /// Operator with it.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(defaultColumn, forKey: .defaultColumn)
+        try container.encode(defaultOperator, forKey: .defaultOperator)
+        try container.encode(restoreBehavior, forKey: .restoreBehavior)
+        try container.encode(alwaysShowPanel, forKey: .alwaysShowPanel)
+        try container.encode(legacyPanelState, forKey: .panelState)
+    }
+
+    private var legacyPanelState: LegacyFilterPanelDefaultState {
+        if alwaysShowPanel { return .alwaysShow }
+        return restoreBehavior.savesToDisk ? .restoreLast : .alwaysHide
     }
 }
 
@@ -198,8 +274,7 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
     }
 
     func saveLastFilters(
-        _ filters: [TableFilter],
-        logicMode: FilterLogicMode = .and,
+        _ state: PersistedFilterState,
         for tableName: String,
         connectionId: UUID,
         databaseName: String,
@@ -213,15 +288,14 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
         )
         let fileURL = fileURL(forKey: key)
 
-        guard !filters.isEmpty else {
-            lastFiltersCache[key] = PersistedFilterState(filters: [])
+        guard !state.filters.isEmpty else {
+            lastFiltersCache[key] = PersistedFilterState(filters: [], isApplied: false)
             ioQueue.async {
                 try? FileManager.default.removeItem(at: fileURL)
             }
             return
         }
 
-        let state = PersistedFilterState(filters: filters, logicMode: logicMode)
         lastFiltersCache[key] = state
         do {
             let data = try encoder.encode(state)
@@ -513,15 +587,6 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
         ) {
             for file in files where file.pathExtension == "json" {
                 try? fileManager.removeItem(at: file)
-            }
-        }
-
-        if let data = defaults.data(forKey: settingsKey),
-           var settings = try? JSONDecoder().decode(FilterSettings.self, from: data),
-           settings.panelState == .alwaysHide {
-            settings.panelState = .restoreLast
-            if let upgraded = try? JSONEncoder().encode(settings) {
-                defaults.set(upgraded, forKey: settingsKey)
             }
         }
 

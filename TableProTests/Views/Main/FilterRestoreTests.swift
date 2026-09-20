@@ -10,13 +10,20 @@ import Testing
 @Suite("FilterRestore")
 @MainActor
 struct FilterRestoreTests {
-    @Test("Restore Last applies saved filters and shows the bar")
-    func restoreLastAppliesSavedFiltersAndShowsBar() {
+    private func settings(
+        _ behavior: FilterRestoreBehavior,
+        alwaysShowPanel: Bool = false
+    ) -> FilterSettings {
+        FilterSettings(restoreBehavior: behavior, alwaysShowPanel: alwaysShowPanel)
+    }
+
+    @Test("Restore and apply runs the saved filters and shows the bar")
+    func restoreAndApplyRunsSavedFilters() {
         let saved = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
 
         let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .restoreLast,
-            saved: saved,
+            settings: settings(.restoreAndApply),
+            saved: PersistedFilterState(filters: saved),
             current: TabFilterState()
         )
 
@@ -25,17 +32,74 @@ struct FilterRestoreTests {
         #expect(result.isVisible)
     }
 
-    @Test("Restore Last restores the saved logic mode instead of defaulting to AND")
-    func restoreLastRestoresLogicMode() {
+    @Test("Restore and apply leaves a saved draft unapplied")
+    func restoreAndApplyKeepsADraftDraft() {
+        let saved = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        let result = FilterCoordinator.resolvedRestoredState(
+            settings: settings(.restoreAndApply),
+            saved: PersistedFilterState(filters: saved, isApplied: false),
+            current: TabFilterState()
+        )
+
+        #expect(result.filters == saved)
+        #expect(result.commit == nil)
+        #expect(!result.hasAppliedFilters)
+        #expect(result.isVisible)
+    }
+
+    @Test("Restore without applying shows a filter that was running without running it")
+    func restoreWithoutApplyingDowngradesAnAppliedFilter() {
+        let saved = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        let result = FilterCoordinator.resolvedRestoredState(
+            settings: settings(.restoreWithoutApplying),
+            saved: PersistedFilterState(filters: saved, isApplied: true),
+            current: TabFilterState()
+        )
+
+        #expect(result.filters == saved)
+        #expect(result.commit == nil)
+        #expect(!result.hasAppliedFilters)
+        #expect(result.isVisible)
+    }
+
+    @Test("A table with nothing saved restores with nothing committed")
+    func emptyRestoreCommitsNothing() {
+        let result = FilterCoordinator.resolvedRestoredState(
+            settings: settings(.restoreAndApply),
+            saved: PersistedFilterState(filters: []),
+            current: TabFilterState(isVisible: true)
+        )
+
+        #expect(result.commit == nil)
+        #expect(!result.isVisible)
+    }
+
+    @Test("A row typed into an empty restored panel is not applied until Apply")
+    func typingIntoAnEmptyRestoredPanelAppliesNothing() {
+        var state = FilterCoordinator.resolvedRestoredState(
+            settings: settings(.restoreAndApply),
+            saved: PersistedFilterState(filters: []),
+            current: TabFilterState()
+        )
+
+        state.filters = [TestFixtures.makeTableFilter(column: "id", value: "5")]
+
+        #expect(state.appliedFilters.isEmpty)
+        #expect(!state.hasAppliedFilters)
+    }
+
+    @Test("Restore brings back the saved logic mode instead of defaulting to AND")
+    func restoreBringsBackLogicMode() {
         let saved = [
             TestFixtures.makeTableFilter(column: "a"),
             TestFixtures.makeTableFilter(column: "b"),
         ]
 
         let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .restoreLast,
-            saved: saved,
-            savedLogicMode: .or,
+            settings: settings(.restoreAndApply),
+            saved: PersistedFilterState(filters: saved, logicMode: .or),
             current: TabFilterState()
         )
 
@@ -48,8 +112,8 @@ struct FilterRestoreTests {
         let inactive = TestFixtures.makeTableFilter(column: "name", value: "bob", isEnabled: false)
 
         let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .restoreLast,
-            saved: [active, inactive],
+            settings: settings(.restoreAndApply),
+            saved: PersistedFilterState(filters: [active, inactive]),
             current: TabFilterState()
         )
 
@@ -58,23 +122,11 @@ struct FilterRestoreTests {
         #expect(result.isVisible)
     }
 
-    @Test("Restore Last with no saved filters keeps the bar hidden")
-    func restoreLastWithNoFiltersKeepsBarHidden() {
-        let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .restoreLast,
-            saved: [],
-            current: TabFilterState(isVisible: true)
-        )
-
-        #expect(result.appliedFilters.isEmpty)
-        #expect(!result.isVisible)
-    }
-
-    @Test("Always Show reveals the bar even without saved filters")
+    @Test("Always show reveals the bar even without saved filters")
     func alwaysShowRevealsBarWithoutFilters() {
         let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .alwaysShow,
-            saved: [],
+            settings: settings(.restoreAndApply, alwaysShowPanel: true),
+            saved: PersistedFilterState(filters: []),
             current: TabFilterState()
         )
 
@@ -82,14 +134,14 @@ struct FilterRestoreTests {
         #expect(result.isVisible)
     }
 
-    @Test("Always Hide never restores filters or shows the bar")
-    func alwaysHideRestoresNothing() {
+    @Test("Don't save restores nothing and hides the bar")
+    func dontSaveRestoresNothing() {
         let saved = [TestFixtures.makeTableFilter(column: "email")]
 
         let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .alwaysHide,
-            saved: saved,
-            current: TabFilterState()
+            settings: settings(.dontSave),
+            saved: PersistedFilterState(filters: saved),
+            current: TabFilterState(isVisible: true)
         )
 
         #expect(result.filters.isEmpty)
@@ -97,17 +149,16 @@ struct FilterRestoreTests {
         #expect(!result.isVisible)
     }
 
-    @Test("Always Hide overrides a visible current bar")
-    func alwaysHideOverridesVisibleBar() {
+    @Test("Don't save still honours always show")
+    func dontSaveHonoursAlwaysShow() {
         let result = FilterCoordinator.resolvedRestoredState(
-            panelState: .alwaysHide,
-            saved: [],
-            current: TabFilterState(isVisible: true)
+            settings: settings(.dontSave, alwaysShowPanel: true),
+            saved: PersistedFilterState(filters: [TestFixtures.makeTableFilter(column: "email")]),
+            current: TabFilterState()
         )
 
         #expect(result.filters.isEmpty)
-        #expect(result.appliedFilters.isEmpty)
-        #expect(!result.isVisible)
+        #expect(result.isVisible)
     }
 
     @Test("Removing a filter that isn't applied changes nothing")

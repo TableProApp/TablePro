@@ -68,8 +68,15 @@ struct InvisibleCharacterRemoverTests {
 
     @Test("A PostgreSQL dollar-quoted body is kept")
     func dollarQuotedBodyIsKept() {
-        let text = "SELECT\u{A0}$$a\u{A0}b$$"
-        #expect(clean(text, grammar: TestGrammar.postgres) == "SELECT $$a\u{A0}b$$")
+        let text = "SELECT $$a\u{A0}b$$"
+        #expect(clean(text, grammar: TestGrammar.postgres) == text)
+    }
+
+    /// Measured on PostgreSQL 17: `SELECT<NBSP>$$a b$$` is a syntax error, because every byte over 0x7F continues an
+    /// identifier there and a `$` glued to one opens no literal. So the text is code, and its blanks are cleaned.
+    @Test("A dollar sign glued to a non-ASCII blank opens no literal")
+    func dollarQuoteBehindABlankIsCode() {
+        #expect(clean("SELECT\u{A0}$$a\u{A0}b$$", grammar: TestGrammar.postgres) == "SELECT $$a b$$")
     }
 
     @Test("A MySQL conditional comment runs, so it is cleaned like code")

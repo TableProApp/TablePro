@@ -47,11 +47,11 @@ extension MainContentView {
         case .openContent:
             if let selectedTab = tabManager.selectedTab,
                 selectedTab.tabType == .table,
-                let tableName = selectedTab.tableContext.tableName
+                selectedTab.tableContext.tableName != nil
             {
                 coordinator.restoreLastHiddenColumnsForTable()
                 if selectedTab.filterState.appliedFilters.isEmpty {
-                    coordinator.restoreFiltersForTable(tableName)
+                    coordinator.restoreFiltersForSelectedTab()
                 } else if let tabIndex = tabManager.selectedTabIndex {
                     coordinator.rebuildTableQuery(at: tabIndex)
                 }
@@ -130,11 +130,18 @@ extension MainContentView {
 
         guard let selected = tabManager.selectedTab else { return }
 
-        if selected.tabType == .table, let tableName = selected.tableContext.tableName,
+        if selected.tabType == .table,
             !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             coordinator.restoreLastHiddenColumnsForTable()
-            coordinator.restoreFiltersForTable(tableName)
+        }
+
+        /// Every table tab, not just the selected one. A tab whose filters were never loaded holds
+        /// an empty set, and the next tab switch saves that over the filters the reader left on the
+        /// table, because an empty set is what the storage reads as a delete. The hidden columns
+        /// above go first, so the query this rebuilds for the selected tab selects the right ones.
+        for index in tabManager.tabs.indices where tabManager.tabs[index].tabType == .table {
+            coordinator.restoreFilters(forTabAt: index)
         }
 
         restoreConnectionContext(

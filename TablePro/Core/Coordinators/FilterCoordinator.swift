@@ -86,7 +86,19 @@ final class FilterCoordinator: ObservableObject {
         parent.runQuery(viewport: .firstRow)
     }
 
-    func clearFiltersAndReload() {
+    /// Stops filtering and keeps the rows in the panel, so Apply brings them back.
+    func clearAppliedFiltersAndReload() {
+        unsetFilters(removingRows: false)
+    }
+
+    /// Drops the table's filter rows along with the query they were running, which an empty save
+    /// then reads as a delete. `FilterRestoreBehavior.dontSave` writes nothing either way, so a
+    /// file saved before the setting was turned off outlives this.
+    func removeAllFiltersAndReload() {
+        unsetFilters(removingRows: true)
+    }
+
+    private func unsetFilters(removingRows: Bool) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               let tableName = tab.tableContext.tableName else { return }
 
@@ -112,21 +124,45 @@ final class FilterCoordinator: ObservableObject {
 
             parent.tabManager.mutate(at: capturedTabIndex) {
                 $0.content.query = newQuery
+                $0.filterState.commit = nil
                 $0.filterState.executedFilters = []
+                if removingRows {
+                    $0.filterState.filters = []
+                }
             }
-            clearLastFilters(for: capturedTableName)
+            /// Saved rather than deleted, because the rows left in the panel are still the table's
+            /// working set and reopening it should bring them back with nothing running. Removing
+            /// the rows empties that set, and an empty set is what the storage reads as a delete.
+            saveLastFilters(of: parent.tabManager.tabs[capturedTabIndex])
             parent.runQuery(viewport: .firstRow)
         }
     }
 
-    func restoreFiltersForTable(_ tableName: String) {
-        restoreLastFilters(for: tableName)
-        restoreBrowseSearch(for: tableName)
-        guard let (_, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
-        let state = parent.tabManager.tabs[tabIndex].filterState
-        if state.hasAppliedFilters || state.hasActiveBrowseSearch {
-            rebuildTableQuery(at: tabIndex)
-        }
+    func restoreFiltersForSelectedTab() {
+        guard let index = parent.tabManager.selectedTabIndex else { return }
+        restoreFilters(forTabAt: index)
+    }
+
+    /// Loads a tab's saved filters into it, whether or not it is the selected tab.
+    ///
+    /// The selected tab also has its query rebuilt, because the query is derived from the filters
+    /// and the tab may be carrying one built from a different set. A tab reopened from the recently
+    /// closed history carries the last *filtered* SQL it ran, which would otherwise keep running
+    /// while the panel reported nothing applied. A session restore is already safe, because
+    /// `handleRestoreOrDefault` rewrites every table tab's query to a base query first.
+    ///
+    /// A tab that is not selected gets its filter state and nothing else. Its schema columns are
+    /// not loaded yet (`prepareTableTabFirstLoad` gates that on selection) so a query built now
+    /// would type its values by guessing at their text, and `rebuildTableQuery` writes
+    /// `executedFilters`, which is the record of what the rows on screen were fetched with. That
+    /// tab has no rows. Its first selection runs the first load, which rebuilds the query properly.
+    func restoreFilters(forTabAt index: Int) {
+        guard index < parent.tabManager.tabs.count,
+              let tableName = parent.tabManager.tabs[index].tableContext.tableName else { return }
+        restoreLastFilters(for: tableName, at: index)
+        restoreBrowseSearch(for: tableName, at: index)
+        guard parent.tabManager.selectedTabIndex == index else { return }
+        rebuildTableQuery(at: index)
     }
 
     var usesBrowseSearch: Bool {
@@ -185,15 +221,16 @@ final class FilterCoordinator: ObservableObject {
         )
     }
 
-    private func restoreBrowseSearch(for tableName: String) {
-        guard usesBrowseSearch, let tab = parent.tabManager.selectedTab else { return }
+    private func restoreBrowseSearch(for tableName: String, at index: Int) {
+        guard usesBrowseSearch, index < parent.tabManager.tabs.count else { return }
+        let tab = parent.tabManager.tabs[index]
         let saved = FilterSettingsStorage.shared.loadBrowseSearch(
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,
             schemaName: tab.tableContext.schemaName
         )
-        mutateSelectedTabFilterState { state in
+        mutateFilterState(at: index) { state in
             state.browseSearch = saved
             if saved.isActive {
                 state.isVisible = true
@@ -383,7 +420,7 @@ final class FilterCoordinator: ObservableObject {
         case .noChange:
             break
         case .clear:
-            clearFiltersAndReload()
+            clearAppliedFiltersAndReload()
         case .reapply(let remaining):
             applyFilters(remaining)
         }
@@ -496,23 +533,35 @@ final class FilterCoordinator: ObservableObject {
     }
 
     func applyAllFilters() {
-        mutateSelectedTabFilterState { state in
-            state.commit = .all
-        }
-        saveLastFiltersForActiveTable()
+        applyCommit(.all)
     }
 
     func applySoloFilter(_ filter: TableFilter) {
         guard filter.isValid else { return }
-        mutateSelectedTabFilterState { state in
-            state.commit = .solo(filter.id)
-        }
-        saveLastFiltersForActiveTable()
+        applyCommit(.solo(filter.id))
     }
 
-    func clearAppliedFilters() {
-        mutateSelectedTabFilterState { state in
-            state.commit = nil
+    /// Writes the commit, persists it and re-queries, all behind the discard guard.
+    ///
+    /// Behind it, because `commit` is the record of what the rows on screen were fetched with.
+    /// Setting it first and taking the guard afterwards left a declined apply reporting a filter
+    /// the grid had never run, saved to disk, and re-run by the next page turn.
+    private func applyCommit(_ commit: FilterCommit) {
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
+              let tableName = tab.tableContext.tableName else { return }
+
+        let capturedTabIndex = tabIndex
+        let capturedTableName = tableName
+        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
+            parent.tabManager.mutate(at: capturedTabIndex) { $0.filterState.commit = commit }
+            commitFilters(
+                parent.tabManager.tabs[capturedTabIndex].filterState.appliedFilters,
+                logicMode: nil,
+                tabIndex: capturedTabIndex,
+                tableName: capturedTableName
+            )
         }
     }
 
@@ -544,21 +593,18 @@ final class FilterCoordinator: ObservableObject {
 
     // MARK: - Persistence
 
-    func saveLastFiltersForActiveTable() {
-        guard let tab = parent.tabManager.selectedTab else { return }
-        saveLastFilters(of: tab)
-    }
-
     /// The one writer of a table's saved filters, so every path saves the same shape.
     ///
     /// Takes the tab rather than reading the selection: a tab switch saves the outgoing tab after
     /// the selection has already moved to the incoming one.
     func saveLastFilters(of tab: QueryTab) {
         guard let tableName = tab.tableContext.tableName else { return }
+        /// Turning saving off stops writing, and leaves what is already on disk alone. Falling
+        /// through to an empty write would delete it, so the setting could never be turned back on.
+        guard FilterSettingsStorage.shared.loadSettings().restoreBehavior.savesToDisk else { return }
         let persisted = tab.filterState.persistedState
         FilterSettingsStorage.shared.saveLastFilters(
-            persisted.filters,
-            logicMode: persisted.logicMode,
+            persisted,
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,
@@ -566,64 +612,44 @@ final class FilterCoordinator: ObservableObject {
         )
     }
 
-    func clearLastFilters(for tableName: String) {
-        guard let tab = parent.tabManager.selectedTab else { return }
-        FilterSettingsStorage.shared.clearLastFilters(
-            for: tableName,
-            connectionId: parent.connectionId,
-            databaseName: tab.tableContext.databaseName,
-            schemaName: tab.tableContext.schemaName
-        )
-    }
-
-    func restoreLastFilters(for tableName: String) {
+    private func restoreLastFilters(for tableName: String, at index: Int) {
         let settings = FilterSettingsStorage.shared.loadSettings()
-        guard let tab = parent.tabManager.selectedTab else { return }
+        guard index < parent.tabManager.tabs.count else { return }
+        let tab = parent.tabManager.tabs[index]
 
         let saved: PersistedFilterState
-        if settings.panelState == .alwaysHide {
-            saved = PersistedFilterState(filters: [])
-        } else {
+        if settings.restoreBehavior.savesToDisk {
             saved = FilterSettingsStorage.shared.loadLastFilterState(
                 for: tableName,
                 connectionId: parent.connectionId,
                 databaseName: tab.tableContext.databaseName,
                 schemaName: tab.tableContext.schemaName
             )
+        } else {
+            saved = PersistedFilterState(filters: [], isApplied: false)
         }
-        mutateSelectedTabFilterState { state in
-            state = Self.resolvedRestoredState(
-                panelState: settings.panelState,
-                saved: saved.filters,
-                savedLogicMode: saved.logicMode,
-                current: state
-            )
+        mutateFilterState(at: index) { state in
+            state = Self.resolvedRestoredState(settings: settings, saved: saved, current: state)
         }
     }
 
+    /// What a table's filter state becomes when the table opens.
+    ///
+    /// The commit is never fabricated. Setting it to `.all` regardless of what was saved is what
+    /// made a row the reader typed and did not apply count as applied the moment it became valid,
+    /// so the status bar reported it and the next page turn ran it.
     static func resolvedRestoredState(
-        panelState: FilterPanelDefaultState,
-        saved: [TableFilter],
-        savedLogicMode: FilterLogicMode = .and,
+        settings: FilterSettings,
+        saved: PersistedFilterState,
         current: TabFilterState
     ) -> TabFilterState {
         var state = current
-        switch panelState {
-        case .alwaysHide:
-            state.filters = []
-            state.commit = nil
-            state.isVisible = false
-        case .alwaysShow:
-            state.filters = saved
-            state.commit = .all
-            state.isVisible = true
-            state.filterLogicMode = savedLogicMode
-        case .restoreLast:
-            state.filters = saved
-            state.commit = .all
-            state.isVisible = !saved.isEmpty
-            state.filterLogicMode = savedLogicMode
-        }
+        let restored = settings.restoreBehavior.savesToDisk ? saved.filters : []
+        let appliesRestored = settings.restoreBehavior == .restoreAndApply && saved.isApplied
+        state.filters = restored
+        state.commit = restored.isEmpty || !appliesRestored ? nil : .all
+        state.isVisible = settings.alwaysShowPanel || !restored.isEmpty
+        state.filterLogicMode = restored.isEmpty ? state.filterLogicMode : saved.logicMode
         return state
     }
 
@@ -689,6 +715,11 @@ final class FilterCoordinator: ObservableObject {
 
     private func mutateSelectedTabFilterState(_ mutate: (inout TabFilterState) -> Void) {
         guard let index = parent.tabManager.selectedTabIndex else { return }
+        mutateFilterState(at: index, mutate)
+    }
+
+    private func mutateFilterState(at index: Int, _ mutate: (inout TabFilterState) -> Void) {
+        guard index < parent.tabManager.tabs.count else { return }
         var newState = parent.tabManager.tabs[index].filterState
         mutate(&newState)
         parent.tabManager.mutate(at: index) { $0.filterState = newState }

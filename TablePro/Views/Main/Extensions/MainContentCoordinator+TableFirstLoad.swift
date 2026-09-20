@@ -60,14 +60,14 @@ extension MainContentCoordinator {
               tabManager.tabs[index].tableContext.tableName == tableName,
               tabManager.tabs[index].tableContext.schemaName == schemaName else { return false }
 
-        let restoreApplied = applyPendingRestoredViewState(at: index)
-        let sortApplied = restoreApplied ? false : applyResolvedDefaultSort(at: index, hint: hint)
-        let loadedTab = tabManager.tabs[index]
-        if restoreApplied || sortApplied
-            || !loadedTab.columnLayout.hiddenColumns.isEmpty
-            || loadedTab.filterState.hasAppliedFilters {
-            filterCoordinator.rebuildTableQuery(at: index)
+        if !applyPendingRestoredViewState(at: index) {
+            _ = applyResolvedDefaultSort(at: index, hint: hint)
         }
+        /// Unconditional, like the branch above that skips the schema load. The query is derived
+        /// from the tab's filters, sort, hidden columns and page, so rebuilding it is always
+        /// correct, and a tab reopened from the recently closed history carries the last *filtered*
+        /// SQL it ran. When that filter comes back unapplied, nothing else drops its WHERE.
+        filterCoordinator.rebuildTableQuery(at: index)
         return true
     }
 
