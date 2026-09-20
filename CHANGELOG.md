@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - 537 driver and import/export strings are now translatable, having only ever shown in English.
+- Middle-dot separators dropped from the assistant transcript, slash command list and model picker.
 - Every plugin bundle compiled under the same concurrency settings as the app that loads it.
 - Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
 - Assistant conversations belong to one connection, and outlive the window that opened them.
@@ -54,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
 - AI chat input focus crossfade playing against Reduce Motion.
 - AI chat input announced with no name by VoiceOver.
+- Assistant pane left with a transcript, no composer and no explanation after the active AI provider is removed.
+- Identical unlabelled **Run** buttons announced for every tool call in a turn that proposes several.
+- Images silently dropped from a multi-file drop on the AI chat input when only some of them failed.
+- An unreadable image file pasted into the AI chat input inserting its path as text.
 - Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
 - Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.

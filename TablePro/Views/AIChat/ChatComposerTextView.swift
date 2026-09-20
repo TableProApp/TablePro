@@ -25,6 +25,7 @@ struct ChatComposerTextView: NSViewRepresentable {
     let onTab: () -> Bool
     let onEscape: () -> Bool
     let onPasteImageData: (Data, String) -> Void
+    let onPasteImageFailed: (String) -> Void
 
     func makeNSView(context: Context) -> ChatComposerScrollView {
         let textView = ChatComposerNSTextView.make()
@@ -32,6 +33,7 @@ struct ChatComposerTextView: NSViewRepresentable {
         textView.placeholder = placeholder
         textView.acceptsImagePaste = acceptsImages
         textView.onPasteImageData = onPasteImageData
+        textView.onPasteImageFailed = onPasteImageFailed
         textView.highlightEnabled = highlightEnabled
         textView.onToggleHighlight = onToggleHighlight
 
@@ -214,6 +216,7 @@ final class ChatComposerNSTextView: NSTextView {
     var onSizeChange: (() -> Void)?
     var acceptsImagePaste: Bool = false
     var onPasteImageData: ((Data, String) -> Void)?
+    var onPasteImageFailed: ((String) -> Void)?
     var highlightEnabled: Bool = true
     var onToggleHighlight: (() -> Void)?
 
@@ -321,10 +324,19 @@ final class ChatComposerNSTextView: NSTextView {
             return
         }
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
-           let fileURL = urls.first(where: { (try? $0.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.conforms(to: .image) ?? false }),
-           let data = try? Data(contentsOf: fileURL) {
-            let uti = (try? fileURL.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.identifier ?? UTType.image.identifier
-            onPasteImageData(data, uti)
+           let fileURL = urls.first(where: { (try? $0.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.conforms(to: .image) ?? false }) {
+            /// Identifying the file and reading it are separate answers. Folding the read into the
+            /// same `if let` made an unreadable image (an iCloud file still in the cloud, a network
+            /// volume that went away) fall through to `super.paste`, which pastes its path as text
+            /// into the prompt. The user asked for the picture and silently got a file URL.
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let uti = (try? fileURL.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.identifier
+                    ?? UTType.image.identifier
+                onPasteImageData(data, uti)
+            } catch {
+                onPasteImageFailed?(error.localizedDescription)
+            }
             return
         }
         super.paste(sender)

@@ -80,7 +80,8 @@ struct ChatComposerView: View {
             onArrow: { delta in moveMention(by: delta) },
             onTab: { commitMentionIfVisible() },
             onEscape: { dismissMention() },
-            onPasteImageData: handlePastedImageData
+            onPasteImageData: handlePastedImageData,
+            onPasteImageFailed: onImageAttachmentFailed
         )
         .fixedSize(horizontal: false, vertical: true)
         .background(composerBackground)
@@ -120,18 +121,19 @@ struct ChatComposerView: View {
         guard acceptsImages, !providers.isEmpty else { return false }
         Task { @MainActor in
             var collected: [ChatImageInput] = []
-            var lastError: Error?
+            var failures: [String] = []
             for provider in providers {
                 do {
                     collected.append(try await ChatImageConverter.convert(itemProvider: provider))
                 } catch {
-                    lastError = error
+                    failures.append(error.localizedDescription)
                 }
             }
             if !collected.isEmpty {
                 onAttachImages(collected)
-            } else if let lastError {
-                onImageAttachmentFailed(lastError.localizedDescription)
+            }
+            if let message = ChatImageDropReport.message(attached: collected.count, failures: failures) {
+                onImageAttachmentFailed(message)
             }
         }
         return true
