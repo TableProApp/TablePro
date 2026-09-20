@@ -14,7 +14,7 @@ extension DamengPluginDriver {
         let result = try await executeParameterized(
             query: """
                 SELECT OBJECT_NAME, OWNER, OBJECT_TYPE, STATUS
-                FROM ALL_OBJECTS
+                FROM SYS.ALL_OBJECTS
                 WHERE OWNER = ?
                   AND OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION')
                 ORDER BY OBJECT_TYPE, OBJECT_NAME
@@ -47,7 +47,7 @@ extension DamengPluginDriver {
         let result = try await executeParameterized(
             query: """
                 SELECT TEXT
-                FROM ALL_SOURCE
+                FROM SYS.ALL_SOURCE
                 WHERE OWNER = ? AND NAME = ? AND TYPE = ?
                 ORDER BY LINE
                 """,
@@ -97,7 +97,7 @@ extension DamengPluginDriver {
             query: """
                 SELECT TRIGGER_NAME, TABLE_NAME, OWNER, TRIGGER_TYPE, TRIGGERING_EVENT,
                        STATUS, WHEN_CLAUSE, DESCRIPTION, TRIGGER_BODY
-                FROM ALL_TRIGGERS
+                FROM SYS.ALL_TRIGGERS
                 WHERE \(scope)
                 ORDER BY TABLE_NAME, TRIGGER_NAME
                 """,

@@ -22,8 +22,23 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         RoutineSourceRead(name: name, kind: kind, schema: schema, signature: signature, source: source)
     }
 
-    private func engine(_ options: StructureCompareOptions = .default) -> SourceObjectDiffEngine {
-        SourceObjectDiffEngine(options: options)
+    private func engine(
+        _ options: StructureCompareOptions = .default,
+        databaseType: DatabaseType = .postgresql
+    ) -> SourceObjectDiffEngine {
+        SourceObjectDiffEngine(options: options, sourceDatabaseType: databaseType, targetDatabaseType: databaseType)
+    }
+
+    private func status(
+        of source: String,
+        against target: String,
+        on databaseType: DatabaseType,
+        options: StructureCompareOptions = .default
+    ) -> TableDiffStatus? {
+        engine(options, databaseType: databaseType).compare(
+            source: [read("audit", source: source)],
+            target: [read("audit", source: target)]
+        ).first?.status
     }
 
     // MARK: - Status
@@ -80,6 +95,41 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(results[0].status, .identical)
+    }
+
+    /// Measured on Oracle 23ai: a procedure sent without the `;` after its END is stored INVALID, with it VALID.
+    func testAnOracleUnitWithoutItsOwnSemicolonIsADifferentObject() {
+        let valid = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL;\nEND;"
+        let invalid = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL;\nEND"
+
+        XCTAssertEqual(status(of: valid, against: invalid, on: .oracle), .differs)
+        XCTAssertEqual(status(of: valid, against: valid + "\n", on: .oracle), .identical)
+    }
+
+    /// Folding whitespace first turned the comment's newline into a space, and the comment then ran to the end of
+    /// the text: a body that differed after it compared equal.
+    func testALineCommentCannotHideTheRestOfTheBody() {
+        let source = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL; -- keep\nEND;"
+        let target = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL; -- keep\nEND"
+
+        XCTAssertEqual(status(of: source, against: target, on: .oracle), .differs)
+    }
+
+    func testAWhenClauseOrADisabledStateIsADifference() {
+        let plain = "CREATE OR REPLACE TRIGGER audit BEFORE INSERT ON t FOR EACH ROW\nBEGIN NULL; END;"
+        let guarded = "CREATE OR REPLACE TRIGGER audit BEFORE INSERT ON t FOR EACH ROW\nWHEN (NEW.id > 0)\nBEGIN NULL; END;"
+        let disabled = "CREATE OR REPLACE TRIGGER audit BEFORE INSERT ON t FOR EACH ROW\nDISABLE\nBEGIN NULL; END;"
+
+        XCTAssertEqual(status(of: plain, against: guarded, on: .oracle), .differs)
+        XCTAssertEqual(status(of: plain, against: disabled, on: .oracle), .differs)
+    }
+
+    /// An engine the app has no grammar for accepts a definition with or without its trailing `;`.
+    func testATrailingSemicolonIsNoDifferenceWhereTheGrammarIsNotTracked() {
+        XCTAssertEqual(
+            status(of: "CREATE VIEW audit AS SELECT 1;", against: "CREATE VIEW audit AS SELECT 1", on: .mssql),
+            .identical
+        )
     }
 
     func testWhitespaceIsADifferenceUntilItIsIgnored() {

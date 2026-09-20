@@ -91,27 +91,25 @@ final class CompareSyncExecutorTests: XCTestCase {
         )
     }
 
-    // MARK: - Oracle terminators
+    // MARK: - Statement text
 
-    /// The script shows every statement ending in `;`, and Oracle stores a CALL-bodied trigger sent with that `;` as
-    /// INVALID while a PL/SQL unit sent without its own is INVALID too.
-    func testOracleStatementsGoOutAsTheEditorSendsThem() async throws {
-        let driver = RecordingDriver()
-        _ = try await run(
-            statements: [
-                statement("CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;"),
-                statement("CREATE OR REPLACE TRIGGER t BEFORE INSERT ON x FOR EACH ROW CALL p(:NEW.a);"),
-                statement("CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM dual;"),
-            ],
-            driver: driver,
-            databaseType: .oracle
-        )
-
-        XCTAssertEqual(driver.executed, [
-            "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;",
-            "CREATE OR REPLACE TRIGGER t BEFORE INSERT ON x FOR EACH ROW CALL p(:NEW.a)",
-            "CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM dual",
-        ])
+    /// A statement already is the text the driver takes, one call each: on Oracle a unit keeps its own `;` and a
+    /// CALL trigger has none, and on SQL Server a body the generic grammar would cut stays whole.
+    func testEveryStatementGoesOutExactlyAsBuilt() async throws {
+        let cases: [(DatabaseType, [String])] = [
+            (.oracle, [
+                "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;",
+                "CREATE OR REPLACE TRIGGER t BEFORE INSERT ON x FOR EACH ROW CALL p(:NEW.a)",
+                "CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM dual",
+            ]),
+            (.mssql, ["CREATE PROCEDURE dbo.p AS SET NOCOUNT ON; SELECT 1;"]),
+            (.mysql, ["CREATE PROCEDURE p() BEGIN SELECT 1; END"]),
+        ]
+        for (databaseType, sql) in cases {
+            let driver = RecordingDriver()
+            _ = try await run(statements: sql.map { statement($0) }, driver: driver, databaseType: databaseType)
+            XCTAssertEqual(driver.executed, sql, "\(databaseType.rawValue)")
+        }
     }
 
     // MARK: - Held back statements

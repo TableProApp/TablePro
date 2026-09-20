@@ -32,6 +32,8 @@ private enum AutocommitOnlyFixture {
             return sqlite
         case .sqlServer:
             return sqlServer
+        case .oracle:
+            return SQLLexicalRules(dialect: .oracle)
         case .redis, .other:
             return SQLLexicalRules(dialect: .generic)
         }
@@ -389,5 +391,15 @@ struct AutocommitOnlyStatementSQLServerTests {
     )
     func unknownEnginesKeepTheWrap(statement: String) {
         #expect(!AutocommitOnlyFixture.matches(statement, .other))
+    }
+
+    /// Oracle has no statement it refuses inside a transaction: DDL commits the open one on its own
+    /// instead of failing, so nothing forces an Oracle batch out of the wrap.
+    @Test(
+        "Oracle keeps the wrap for every statement",
+        arguments: ["CREATE TABLE t (a NUMBER)", "ALTER SESSION SET CURRENT_SCHEMA = hr", "SET TRANSACTION READ ONLY"]
+    )
+    func oracleKeepsTheWrap(statement: String) {
+        #expect(!AutocommitOnlyFixture.matches(statement, .oracle))
     }
 }

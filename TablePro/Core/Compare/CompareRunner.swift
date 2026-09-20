@@ -358,6 +358,11 @@ internal struct CompareRunner {
         targetReads: [TableStructureRead]
     ) async throws -> [CompareObjectResult] {
         var results: [CompareObjectResult] = []
+        let diffEngine = SourceObjectDiffEngine(
+            options: session.structureOptions,
+            sourceDatabaseType: context.source.databaseType,
+            targetDatabaseType: context.target.databaseType
+        )
 
         /// Each pair reads two independent endpoints, so the two sides run together rather than the
         /// second waiting out the first.
@@ -370,8 +375,7 @@ internal struct CompareRunner {
             async let targetDefinitions = metadataService.viewDefinitions(
                 for: context.target, connection: context.targetConnection, views: targetViews
             )
-            results += try await SourceObjectDiffEngine(options: session.structureOptions)
-                .compare(source: sourceDefinitions, target: targetDefinitions)
+            results += try await diffEngine.compare(source: sourceDefinitions, target: targetDefinitions)
         }
 
         if session.includedKinds.contains(.procedure) || session.includedKinds.contains(.function) {
@@ -381,8 +385,7 @@ internal struct CompareRunner {
             async let targetRoutines = metadataService.routineReads(
                 for: context.target, connection: context.targetConnection
             )
-            results += try await SourceObjectDiffEngine(options: session.structureOptions)
-                .compare(source: sourceRoutines, target: targetRoutines)
+            results += try await diffEngine.compare(source: sourceRoutines, target: targetRoutines)
                 .filter { session.includedKinds.contains($0.identity.kind) }
         }
 
@@ -397,8 +400,7 @@ internal struct CompareRunner {
                 connection: context.targetConnection,
                 tables: targetReads.map(\.table.name)
             )
-            results += try await SourceObjectDiffEngine(options: session.structureOptions)
-                .compare(source: sourceTriggers, target: targetTriggers)
+            results += try await diffEngine.compare(source: sourceTriggers, target: targetTriggers)
         }
 
         return results

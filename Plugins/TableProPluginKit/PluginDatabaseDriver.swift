@@ -360,6 +360,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
+    /// The statements that create the table, one element per call the driver is sent, each without the `;` that
+    /// would separate it from the next.
+    ///
+    /// ``generateCreateTableSQL(definition:)`` is one string, and a driver that writes the table's indexes after it
+    /// puts several statements in it. An engine that runs one statement per call rejects that whole: Oracle 23ai
+    /// answers ORA-03405 and creates nothing. Only the driver knows where its own statements end, so a driver whose
+    /// DDL holds more than one statement answers here. The default is that one string, sent whole.
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]?
+
     // Definition SQL for clipboard copy (optional — return nil if not supported)
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String?
@@ -454,6 +463,17 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
     func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String?
     var triggerEditUsesReplace: Bool { get }
+
+    /// Whether an object whose definition this driver reports as `CREATE OR REPLACE` is replaced by running that
+    /// definition alone: swapped in one statement, with a statement the engine refuses leaving the old object as it
+    /// was.
+    ///
+    /// Dropping first is what loses the object when the new definition fails, and on an engine that commits DDL
+    /// implicitly nothing brings it back. Measured on Oracle 23ai, a replacement refused with ORA-04079 or ORA-00942
+    /// left the existing trigger VALID. PostgreSQL does not qualify: it refuses a `CREATE OR REPLACE FUNCTION` whose
+    /// return type changed, which a `DROP` first allows. Defaults to false, which keeps the `DROP`.
+    var replacesDefinitionsInPlace: Bool { get }
+
     var supportsTransactionalDDL: Bool { get }
 
     // User-defined type editing (optional: return nil when unsupported)
@@ -608,6 +628,7 @@ public extension PluginDatabaseDriver {
         isFunction: Bool
     ) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
+    var replacesDefinitionsInPlace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
 
     var supportsSchemas: Bool { false }
@@ -915,6 +936,10 @@ public extension PluginDatabaseDriver {
     var checkConstraintRefusal: String? { nil }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
+
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        generateCreateTableSQL(definition: definition).map { [$0] }
+    }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }

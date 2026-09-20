@@ -384,6 +384,21 @@ internal final class CompareSyncSession: ObservableObject {
         statements.filter { executionSettings.canRun($0) }.count
     }
 
+    /// The script Save and Copy hand over, written for the target's own client: an Oracle unit ends on a `/` line,
+    /// a MySQL routine sits in a `DELIMITER` block and a SQL Server statement in a batch of its own.
+    internal var scriptText: String {
+        script(of: statements)
+    }
+
+    internal var runnableScriptText: String {
+        script(of: statements.filter { executionSettings.canRun($0) })
+    }
+
+    private func script(of statements: [SyncStatement]) -> String {
+        guard let databaseType = target?.databaseType else { return "" }
+        return SQLScriptText(databaseType: databaseType).script(statements.map(\.sql))
+    }
+
     // MARK: - Results view
 
     internal var visibleResults: [CompareObjectResult] {

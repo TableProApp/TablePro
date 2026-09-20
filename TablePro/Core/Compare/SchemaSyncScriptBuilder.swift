@@ -13,11 +13,13 @@ import TableProPluginKit
 internal struct SchemaSyncScriptBuilder {
     private let targetDriver: any PluginDatabaseDriver
     private let targetTypeFamily: SQLTypeFamily
+    private let scriptText: SQLScriptText
     private let classifier = SyncSafetyClassifier()
 
     internal init(targetDriver: any PluginDatabaseDriver, targetDatabaseType: DatabaseType) {
         self.targetDriver = targetDriver
         self.targetTypeFamily = SQLTypeFamily.of(targetDatabaseType)
+        self.scriptText = SQLScriptText(databaseType: targetDatabaseType)
     }
 
     internal func build(
@@ -104,29 +106,32 @@ internal struct SchemaSyncScriptBuilder {
                 reason
             ))
         }
-        guard let sql = targetDriver.generateCreateTableSQL(definition: definition) else {
+        /// Taken from the driver statement by statement rather than divided here: the driver wrote them and knows
+        /// where each ends, and Oracle refuses its table and its indexes sent as one call.
+        let statements = (targetDriver.generateCreateTableStatements(definition: definition) ?? [])
+            .map { StatementBlank.trimming($0) }
+            .filter { !$0.isEmpty }
+        guard !statements.isEmpty else {
             throw CompareSyncError.unsupportedOperation(String(
                 format: String(localized: "The target does not support creating table %@."),
                 snapshot.name
             ))
         }
-        return [SyncStatement(
-            sql: Self.terminated(sql),
-            objectName: snapshot.qualifiedName,
-            summary: String(format: String(localized: "Create table %@"), snapshot.name)
-        )]
+        let summary = String(format: String(localized: "Create table %@"), snapshot.name)
+        return statements.map { sql in
+            SyncStatement(sql: sql, objectName: snapshot.qualifiedName, summary: summary)
+        }
     }
 
     private func dropStatements(name: String, schema: String?) -> [SyncStatement] {
         guard let sql = targetDriver.dropObjectStatement(
             name: name, objectType: "TABLE", schema: schema, cascade: false
         ) else { return [] }
-        return [SyncStatement(
-            sql: Self.terminated(sql),
-            objectName: name,
-            summary: String(format: String(localized: "Drop table %@"), name),
-            hazards: classifier.hazards(forDropping: name)
-        )]
+        let summary = String(format: String(localized: "Drop table %@"), name)
+        let hazards = classifier.hazards(forDropping: name)
+        return scriptText.sendableStatements(sql).map { statement in
+            SyncStatement(sql: statement, objectName: name, summary: summary, hazards: hazards)
+        }
     }
 
     private func alterStatements(
@@ -140,20 +145,12 @@ internal struct SchemaSyncScriptBuilder {
             let hazards = classifier.hazards(for: change, typeFamily: targetTypeFamily)
             let generated = try generator.generate(changes: [change])
             for statement in generated {
-                statements.append(SyncStatement(
-                    sql: Self.terminated(statement.sql),
-                    objectName: name,
-                    summary: statement.description,
-                    hazards: hazards
-                ))
+                statements += scriptText.sendableStatements(statement.sql).map { sql in
+                    SyncStatement(sql: sql, objectName: name, summary: statement.description, hazards: hazards)
+                }
             }
         }
         return statements
-    }
-
-    private static func terminated(_ sql: String) -> String {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.hasSuffix(";") ? trimmed : trimmed + ";"
     }
 }
 

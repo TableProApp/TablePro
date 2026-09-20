@@ -6,14 +6,14 @@ import UIKit
 @MainActor
 @Suite("Bottom safe area bar layout")
 struct BottomSafeAreaBarLayoutTests {
-    @Test("A bar placed on a tab's content clears the tab bar and takes its own touches", .timeLimit(.minutes(1)))
-    func barClearsTheTabBar() async throws {
+    @Test("A bar placed on a tab's content clears the tab bar and takes its own touches")
+    func barClearsTheTabBar() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let probe = LayoutProbe()
         let host = try HostedTree(probe: probe, variant: .bar)
         defer { host.tearDown() }
 
-        let tabBar = try await host.settledTabBar()
+        let tabBar = try host.settledTabBar()
         let marker = probe.markerFrame
 
         #expect(!marker.isEmpty)
@@ -22,18 +22,18 @@ struct BottomSafeAreaBarLayoutTests {
         #expect(hit.map { !$0.isDescendant(of: tabBar) } ?? false)
     }
 
-    @Test("A hidden bar leaves no blank strip above the tab bar", .timeLimit(.minutes(1)))
-    func emptyBarAddsNoInset() async throws {
+    @Test("A hidden bar leaves no blank strip above the tab bar")
+    func emptyBarAddsNoInset() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let emptyProbe = LayoutProbe()
         let emptyHost = try HostedTree(probe: emptyProbe, variant: .emptyBar)
         defer { emptyHost.tearDown() }
-        _ = try await emptyHost.settledTabBar()
+        _ = try emptyHost.settledTabBar()
 
         let plainProbe = LayoutProbe()
         let plainHost = try HostedTree(probe: plainProbe, variant: .noBar)
         defer { plainHost.tearDown() }
-        _ = try await plainHost.settledTabBar()
+        _ = try plainHost.settledTabBar()
 
         #expect(emptyProbe.listInsets.bottom == plainProbe.listInsets.bottom)
     }
@@ -43,37 +43,6 @@ struct BottomSafeAreaBarLayoutTests {
 private final class LayoutProbe {
     var markerFrame: CGRect = .zero
     var listInsets = EdgeInsets()
-    private var unseenChanges = 0
-    private var waiter: CheckedContinuation<Bool, Never>?
-    private var quietTimer: Task<Void, Never>?
-
-    func record() {
-        unseenChanges += 1
-        resumeWaiter(changed: true)
-    }
-
-    func nextChange(quietLimit: Duration) async -> Bool {
-        guard unseenChanges == 0 else {
-            unseenChanges = 0
-            return true
-        }
-        let changed = await withCheckedContinuation { continuation in
-            waiter = continuation
-            quietTimer = Task { [weak self] in
-                try? await Task.sleep(for: quietLimit)
-                self?.resumeWaiter(changed: false)
-            }
-        }
-        unseenChanges = 0
-        return changed
-    }
-
-    private func resumeWaiter(changed: Bool) {
-        quietTimer?.cancel()
-        quietTimer = nil
-        waiter?.resume(returning: changed)
-        waiter = nil
-    }
 }
 
 private struct UnsettledLayout: Error, CustomStringConvertible {
@@ -88,6 +57,9 @@ private struct HostedTree {
         case noBar
     }
 
+    private static let layoutTurns = 300
+    private static let turnLength: TimeInterval = 0.01
+
     let window: UIWindow
     let probe: LayoutProbe
 
@@ -101,13 +73,22 @@ private struct HostedTree {
         window.makeKeyAndVisible()
     }
 
-    func settledTabBar() async throws -> UITabBar {
-        repeat {
+    /// Drives the layout from this thread instead of waiting to be scheduled again.
+    ///
+    /// SwiftUI reports a geometry change on a later run-loop turn, so the tree needs the run loop
+    /// to reach its final size. Awaiting that change costs the test its turn on the main actor, and
+    /// the whole suite runs there: on CI both cases in this file spent a full minute waiting and
+    /// were killed by the execution time allowance, which took the test host down with them and
+    /// left 284 later tests unrun. Running the run loop here keeps the main thread, so progress
+    /// never depends on the scheduler, and the bound is a number of turns rather than a clock.
+    func settledTabBar() throws -> UITabBar {
+        for _ in 0 ..< Self.layoutTurns {
             window.layoutIfNeeded()
             if let tabBar = visibleTabBar(in: window), isSettled(against: tabBar) {
                 return tabBar
             }
-        } while await probe.nextChange(quietLimit: .seconds(10))
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: Self.turnLength))
+        }
         throw UnsettledLayout(description: layoutReport())
     }
 
@@ -189,7 +170,6 @@ private struct ProbeTabs: View {
             proxy.safeAreaInsets
         } action: { insets in
             probe.listInsets = insets
-            probe.record()
         }
     }
 
@@ -201,7 +181,6 @@ private struct ProbeTabs: View {
                 proxy.frame(in: .global)
             } action: { frame in
                 probe.markerFrame = frame
-                probe.record()
             }
     }
 }
