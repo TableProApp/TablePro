@@ -543,8 +543,10 @@ struct KafkaIntegrationTests {
         try await harness.produce(count: 6)
 
         // Several names, because which broker coordinates a group is a hash of its id: one
-        // group lands on one broker and says nothing about whether the sweep happened.
-        let names = (0 ..< 6).map { "tp-it-sweep-\($0)" }
+        // group lands on one broker and says nothing about whether the sweep happened. Three
+        // is the fewest that can land on three brokers, and each one costs a container running
+        // a console consumer, so the count is kept to what the assertion needs.
+        let names = (0 ..< 3).map { "tp-it-sweep-\($0)" }
         for name in names {
             try harness.commitGroup(named: name, messages: 1)
         }
