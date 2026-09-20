@@ -88,9 +88,9 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let client = EtcdHttpClient(config: config)
         try await client.connect()
 
-        let status = try? await client.endpointStatus()
+        let version = await client.serverVersion()
         lock.withLock {
-            _serverVersion = status?.version
+            _serverVersion = version
             _httpClient = client
         }
     }
@@ -404,12 +404,12 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let status = try await client.endpointStatus()
-        let dbSizeBytes = Int64(status.dbSize ?? "0")
-        return PluginDatabaseMetadata(
-            name: database,
-            sizeBytes: dbSizeBytes
-        )
+        do {
+            let status = try await client.endpointStatus()
+            return PluginDatabaseMetadata(name: database, sizeBytes: Int64(status.dbSize ?? "0"))
+        } catch let EtcdError.fault(fault) where fault.provesLiveSession {
+            return PluginDatabaseMetadata(name: database)
+        }
     }
 
     // MARK: - NoSQL Query Building Hooks
@@ -860,8 +860,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func dispatchEndpointHealth(
         client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
-        try await client.ping()
-        return singleMessageResult("endpoint is healthy", startTime: startTime)
+        try await client.healthCheck()
+        return singleMessageResult(String(localized: "endpoint is healthy"), startTime: startTime)
     }
 
     // MARK: - Tagged Query Execution

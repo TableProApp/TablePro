@@ -307,6 +307,54 @@ struct EtcdCommandParserWatchTests {
             try EtcdCommandParser.parse("watch")
         }
     }
+
+    @Test("A negative timeout is rejected instead of reaching the transport")
+    func watchNegativeTimeout() {
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout -1")
+        }
+    }
+
+    @Test("A timeout past the transport ceiling is rejected")
+    func watchTimeoutTooLarge() {
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout 1e30")
+        }
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse(
+                "watch key --timeout \(Int(EtcdCommandParser.maximumWatchTimeout) + 1)"
+            )
+        }
+    }
+
+    @Test("A non-finite timeout is rejected")
+    func watchTimeoutNotFinite() {
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout inf")
+        }
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout nan")
+        }
+    }
+
+    @Test("Zero and the ceiling are accepted")
+    func watchTimeoutBounds() throws {
+        let zero = try EtcdCommandParser.parse("watch key --timeout 0")
+        guard case .watch(_, _, let zeroTimeout) = zero else {
+            Issue.record("Expected .watch")
+            return
+        }
+        #expect(zeroTimeout == 0)
+
+        let ceiling = try EtcdCommandParser.parse(
+            "watch key --timeout \(Int(EtcdCommandParser.maximumWatchTimeout))"
+        )
+        guard case .watch(_, _, let ceilingTimeout) = ceiling else {
+            Issue.record("Expected .watch")
+            return
+        }
+        #expect(ceilingTimeout == EtcdCommandParser.maximumWatchTimeout)
+    }
 }
 
 // MARK: - Lease Commands

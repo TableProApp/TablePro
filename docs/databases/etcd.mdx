@@ -19,7 +19,7 @@ Click **New Connection…**, select **etcd**, enter host and port, then click **
 |-------|-------------|
 | **Host** | etcd server hostname or IP. `localhost` by default |
 | **Port** | Client port, `2379` by default |
-| **Username / Password** | Only when etcd authentication is enabled |
+| **Username / Password** | The etcd user to authenticate as. Leave both empty on a server that has no authentication |
 
 ### Advanced fields
 
@@ -29,6 +29,14 @@ Click **New Connection…**, select **etcd**, enter host and port, then click **
 | **TLS Mode** | Disabled, Required (skip verify), Verify CA, or Verify Identity |
 | **CA Certificate** | Path to `ca.pem`, for Verify CA and Verify Identity |
 | **Client Certificate** / **Client Key** | Paths to the client certificate and private key, for mutual TLS |
+
+## Authentication
+
+Fill in **Username** and **Password** once the server has run `auth enable`. Credentials against a server that has authentication off still connect, unauthenticated, the way `etcdctl --user` does.
+
+The user does not need the `root` role. A user whose roles cover part of the keyspace connects and browses what those roles allow. `endpoint status` and the `user` and `role` commands do need `root`, and answer `etcdserver: permission denied` without it. On etcd 3.6.0 through 3.6.11 that also leaves the database size blank.
+
+Running `auth enable` from the command editor turns authentication on for the whole cluster. A connection that already holds a username and password keeps working; one that holds neither cannot, and has to be reopened with credentials.
 
 ## Connection URL
 
@@ -88,13 +96,25 @@ TLS here is set by **TLS Mode** in the Advanced fields, not by the connection's 
 
 ## Troubleshooting
 
-### No supported etcd API found
+### No etcd v3 API found
 
-The HTTP/JSON gateway answered on none of the v3 paths. Point the connection at the client port, 2379 by default, and not the peer port on 2380.
+The gateway answered 404 on `/v3`, `/v3beta` and `/v3alpha`. Point the connection at the client port, 2379 by default, and not the peer port on 2380.
 
-### Authentication failed
+### The server answered but is not an etcd v3 JSON gateway
 
-The username and password were rejected, or the user holds no role covering the key. Check both, and that `auth enable` has been run.
+Something is listening on that port and it is not etcd. A reverse proxy that rewrites 404 into a branded page does this too.
+
+### This etcd server has authentication enabled
+
+The server wants a token and the connection carries no credentials. Add a **Username** and **Password** and connect again.
+
+### etcdserver: authentication failed, invalid user ID or password
+
+etcd rejected the credentials. Check them with `etcdctl --user=name:password endpoint health`.
+
+### etcdserver: permission denied
+
+The credentials were accepted and the user's roles do not cover that key or command. `endpoint status`, `user` and `role` need the `root` role.
 
 ## Related
 
