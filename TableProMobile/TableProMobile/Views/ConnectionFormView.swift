@@ -162,6 +162,8 @@ struct ConnectionFormView: View {
                 case nil: break
                 }
             }
+            .connectionPrompts(viewModel.prompts)
+            .onDisappear { viewModel.prompts.cancelAll() }
             .sheet(item: $pasteTarget) { role in
                 CertificatePasteSheet(viewModel: viewModel, role: role)
             }

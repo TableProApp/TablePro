@@ -94,6 +94,9 @@ final class ConnectionFormViewModel {
 
     // Async state
     private(set) var isTesting = false
+
+    /// Test Connection asks its own questions, shown from the form sheet that started it.
+    let prompts = ConnectionPromptQueue()
     private(set) var isSaving = false
     private(set) var testResult: TestResult?
     private(set) var credentialError: String?
@@ -441,7 +444,10 @@ final class ConnectionFormViewModel {
     func testConnection() async {
         isTesting = true
         testResult = nil
-        defer { isTesting = false }
+        defer {
+            isTesting = false
+            prompts.cancelAll()
+        }
 
         let tempId = UUID()
         var testConn = buildConnection()
@@ -467,7 +473,7 @@ final class ConnectionFormViewModel {
             if let scratchPath = try await scratchDatabasePath(in: scratchDirectory) {
                 testConn.database = scratchPath
             }
-            _ = try await manager.connect(testConn)
+            _ = try await manager.connect(testConn, prompter: prompts)
             await manager.disconnect(tempId)
             testResult = TestResult(
                 success: true,

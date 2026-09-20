@@ -27,8 +27,6 @@ struct TableProMobileApp: App {
             SceneRootView(connectionManager: appState.connectionManager)
                 .environment(appState)
                 .environment(lockState)
-                .hostKeyPrompt()
-                .entraSignInPrompt()
         }
         .onChange(of: scenePhase) { _, phase in
             guard !TestRuntime.isActive else { return }

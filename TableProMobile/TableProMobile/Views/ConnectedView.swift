@@ -38,6 +38,7 @@ struct ConnectedView: View {
         Group {
             if let coordinator {
                 screen(for: coordinator)
+                    .connectionPrompts(coordinator.prompts)
             } else {
                 statusScreen { connectingView }
             }
@@ -122,6 +123,7 @@ struct ConnectedView: View {
     private var closeToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             DiscardChangesButton(hasChanges: presenter.isHeldByEditor) {
+                coordinator?.cancelConnect()
                 dismiss()
             } label: {
                 Label("Connections", systemImage: "chevron.backward")
