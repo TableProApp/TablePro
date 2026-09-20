@@ -13,6 +13,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct RowImportSheet: View {
     @ObservedObject private var pluginManager = PluginManager.shared

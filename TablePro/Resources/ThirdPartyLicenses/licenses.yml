@@ -298,24 +298,24 @@
     brew has installed (UNVERIFIED at build time; the shipped dylibs are the pinned 3.4.3).
 - id: oracle-nio
   name: OracleNIO
-  version: rev:f09d088889e252655ea1833eed821cd2be0de03a
+  version: rev:ccebdb59fdc8e4b16ba5e42c835973a9c412d44a
   spdx: Apache-2.0
   copyrights:
   - Copyright (c) 2023 Timo Zacherl
   homepageURL: https://github.com/TableProApp/oracle-nio
-  licenseTextURL: https://github.com/TableProApp/oracle-nio/blob/f09d088889e252655ea1833eed821cd2be0de03a/LICENSE
+  licenseTextURL: https://github.com/TableProApp/oracle-nio/blob/ccebdb59fdc8e4b16ba5e42c835973a9c412d44a/LICENSE
   textFile: texts/oracle-nio.txt
   source: spm:oracle-nio
   patched: false
   platforms: [macos, ios]
   notes: 'NO state.version in any of the three Package.resolved files, only a revision. All three pin
     the SAME revision, so there is no version disagreement here. TableProApp/oracle-nio is a fork of lovetodream/oracle-nio
-    (GitHub reports fork: true, parent: lovetodream/oracle-nio); at the pinned revision it is 21 ahead
+    (GitHub reports fork: true, parent: lovetodream/oracle-nio); at the pinned revision it is 28 ahead
     / 10 behind upstream main. LICENSE at the pinned revision is 11357 bytes, PLAIN Apache-2.0, no Runtime
     Library Exception. NOTICE.txt is present and its attribution must be reproduced under section 4(d);
     it still names the upstream homepage and "Copyright (c) 2023 Timo Zacherl". Because the fork MODIFIES
     the files, Apache 2.0 section 4(b) additionally requires that changed files carry prominent notices
-    stating that they were changed. UNVERIFIED: I did not check whether TablePro''s 21 fork commits added
+    stating that they were changed. UNVERIFIED: I did not check whether TablePro''s 28 fork commits added
     those change notices. Second licence inside this package: Sources/OracleConnectionPoolModule/ carries
     its own LICENSE file, MIT, "Copyright (c) 2019 Tanner Nelson" (i.e. Vapor-derived pool code). It is
     `exclude`d from resources by Package.swift but the CODE is compiled in, so the MIT notice must be

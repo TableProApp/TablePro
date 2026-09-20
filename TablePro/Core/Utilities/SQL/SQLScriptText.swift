@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// The one owner of how SQL text meets an engine: what each statement is sent as, and how a list of statements is
 /// written into a script that engine's own client runs.
@@ -25,10 +26,12 @@ internal struct SQLScriptText {
 
     internal let databaseType: DatabaseType
     private let dialect: SqlDialect
+    private let grammar: SQLLexicalGrammar
 
     internal init(databaseType: DatabaseType) {
         self.databaseType = databaseType
         self.dialect = SqlDialect.from(databaseTypeId: databaseType.rawValue)
+        self.grammar = databaseType.lexicalGrammar
     }
 
     /// The statements `text` holds, each exactly as the driver receives it in one call, in order.
@@ -37,7 +40,7 @@ internal struct SQLScriptText {
             let whole = StatementBlank.trimming(text)
             return whole.isEmpty ? [] : [whole]
         }
-        return SQLStatementScanner.executableStatements(in: text, dialect: dialect).map(\.sql)
+        return SQLStatementScanner.executableStatements(in: text, grammar: grammar).map(\.sql)
     }
 
     /// The text that decides whether two definitions create the same object.
@@ -111,7 +114,7 @@ internal struct SQLScriptText {
     /// `CALL` trigger is the case a `;` cannot end, because Oracle stores it INVALID with one. The kind is read from
     /// the statement's first words, which Dameng spells the way Oracle does.
     private func runsAsPLSQLUnit(_ statement: String) -> Bool {
-        guard let located = SQLStatementScanner.executableStatements(in: statement, dialect: .oracle).first else {
+        guard let located = SQLStatementScanner.executableStatements(in: statement, grammar: DatabaseType.oracle.lexicalGrammar).first else {
             return false
         }
         return !located.acceptsBindParameters || located.sql.hasSuffix(";")
@@ -154,11 +157,10 @@ internal struct SQLScriptText {
     private func codeShape(of statement: String) -> CodeShape {
         let text = statement as NSString
         let length = text.length
-        let rules = SQLLexicalRules(dialect: dialect)
         var shape = CodeShape()
         var index = 0
         while index < length {
-            if let end = SQLNonCodeSpan.end(at: index, in: text, rules: rules) {
+            if let end = SQLNonCodeSpan.end(at: index, in: text, grammar: grammar) {
                 if end >= length, startsLineComment(text, at: index, length: length) {
                     shape.endsInLineComment = true
                 }
@@ -175,6 +177,6 @@ internal struct SQLScriptText {
 
     private func startsLineComment(_ text: NSString, at index: Int, length: Int) -> Bool {
         SqlLexer.startsLineComment(text, at: index, length: length)
-            || (dialect.supportsHashLineComments && text.character(at: index) == SqlLexer.hash)
+            || (grammar.contains(.hashLineComments) && text.character(at: index) == SqlLexer.hash)
     }
 }

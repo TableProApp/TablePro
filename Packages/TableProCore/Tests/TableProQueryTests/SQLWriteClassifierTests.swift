@@ -158,4 +158,50 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite("SELECT 1 -- ; DELETE FROM users"))
         #expect(!isWrite("SELECT 1 /* ; DELETE FROM users */"))
     }
+
+    // MARK: - Statements a lexical trick hid from the old splitter
+
+    @Test("PostgreSQL deleted every row behind SELECT $$'$$, measured on 17 through the iOS libpq sequence")
+    func dollarQuoteHidesAWrite() {
+        #expect(isWrite("SELECT $$'$$; DELETE FROM t"))
+        #expect(isWrite("SELECT $ü$'$ü$; DELETE FROM t"))
+    }
+
+    @Test("an E'' literal ends where PostgreSQL ends it")
+    func escapeStringHidesAWrite() {
+        #expect(isWrite("SELECT E'\\''; DELETE FROM t; --'"))
+    }
+
+    @Test("a nested comment ends where PostgreSQL ends it")
+    func nestedCommentHidesAWrite() {
+        #expect(isWrite("SELECT 1 /* /* */ ' */; DELETE FROM t; --'"))
+    }
+
+    @Test("a backslash is literal on PostgreSQL, so the quote after it closes the string")
+    func standardStringHidesAWrite() {
+        #expect(isWrite("SELECT 'C:\\' AS p; DELETE FROM t"))
+    }
+
+    @Test("MySQL reads the batch both ways a backslash can go")
+    func mySQLBackslashHidesAWrite() {
+        #expect(isWrite("SELECT 'a\\'; DELETE FROM t; -- '", .mysql))
+        #expect(isWrite("SELECT 'a\\''; DELETE FROM t; -- '", .mysql))
+    }
+
+    @Test("a bracketed identifier holds a quote on SQL Server")
+    func bracketHidesAWrite() {
+        #expect(isWrite("SELECT 1 AS [a'b]; DELETE FROM t", .mssql))
+        #expect(!isWrite("SELECT 1 AS [a;b]", .mssql))
+    }
+
+    @Test("an Oracle q'[...]' literal holds a quote")
+    func alternativeQuoteHidesAWrite() {
+        #expect(isWrite("SELECT q'[it's]' FROM dual; DELETE FROM t", .oracle))
+        #expect(!isWrite("SELECT q'[it's; fine]' FROM dual", .oracle))
+    }
+
+    @Test("a MySQL executable comment runs what it holds")
+    func executableCommentIsAWrite() {
+        #expect(isWrite("/*!40101 DELETE FROM t */", .mysql))
+    }
 }

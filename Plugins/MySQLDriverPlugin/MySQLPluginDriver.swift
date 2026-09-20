@@ -90,6 +90,22 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var requiresBackslashEscapingInLiterals: Bool { true }
 
+    /// `NO_BACKSLASH_ESCAPES` from the status flags of the last reply the connection read. Databend reports no such
+    /// flag, so it says nothing.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        guard !flavor.isDatabend else { return nil }
+        return MySQLLexicalFeatures.sessionState(noBackslashEscapes: noBackslashEscapes)
+    }
+
+    /// The features this session's statements are split with when the plugin reads them itself.
+    private var lexicalFeatures: SQLLexicalFeatures {
+        MySQLLexicalFeatures.features(for: flavor, noBackslashEscapes: noBackslashEscapes)
+    }
+
+    private var noBackslashEscapes: Bool? {
+        sessionLock.withLock { mariadbConnection }?.noBackslashEscapes
+    }
+
     var capabilities: PluginCapabilities {
         guard !flavor.isDatabend else { return Self.databendCapabilities }
         return [
@@ -366,8 +382,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Idle connection release
 
     private func noteActivity(_ sql: String) {
+        let features = lexicalFeatures
         sessionLock.withLock {
-            footprint.observe(sql)
+            footprint.observe(sql, lexicalFeatures: features)
             lastActivity = ContinuousClock.now
         }
     }
@@ -377,7 +394,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// the table lock: a `LOCK TABLES` that errors holds nothing, and releases what the session held
     /// before it.
     private func noteFailure(_ sql: String) {
-        sessionLock.withLock { footprint.observeFailure(of: sql) }
+        let features = lexicalFeatures
+        sessionLock.withLock { footprint.observeFailure(of: sql, lexicalFeatures: features) }
     }
 
     private func mayReplay(_ query: String) -> Bool {

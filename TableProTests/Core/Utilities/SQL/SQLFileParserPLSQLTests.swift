@@ -10,19 +10,20 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("SQLFileParser - Oracle PL/SQL units")
 struct SQLFileParserPLSQLTests {
     private static let chunkSize = 65_536
 
-    private static func parse(_ sql: String, dialect: SqlDialect) async throws -> [String] {
+    private static func parse(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
         try sql.write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
 
         var statements: [String] = []
-        for try await (statement, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, dialect: dialect) {
+        for try await (statement, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, grammar: grammar) {
             statements.append(statement)
         }
         return statements
@@ -36,7 +37,7 @@ struct SQLFileParserPLSQLTests {
 
     @Test("An imported script splits like the same script in the editor", arguments: commentFreeCases)
     func importMatchesTheEditor(example: PLSQLScriptCase) async throws {
-        #expect(try await Self.parse(example.script, dialect: .oracle) == example.statements)
+        #expect(try await Self.parse(example.script, grammar: TestGrammar.oracle) == example.statements)
     }
 
     @Test("A chunk boundary anywhere in a unit changes nothing")
@@ -56,24 +57,26 @@ struct SQLFileParserPLSQLTests {
         ]
         for boundary in 0..<(script as NSString).length {
             let padding = "--" + String(repeating: "x", count: Self.chunkSize - boundary - 3) + "\n"
-            let statements = try await Self.parse(padding + script, dialect: .oracle)
+            let statements = try await Self.parse(padding + script, grammar: TestGrammar.oracle)
             #expect(statements == expected, "boundary at \(boundary)")
         }
     }
 
     @Test("A slash line at the end of the file ends the statement before it")
     func slashLineAtEndOfFile() async throws {
-        #expect(try await Self.parse("SELECT 1 FROM dual\n/", dialect: .oracle) == ["SELECT 1 FROM dual"])
+        #expect(try await Self.parse("SELECT 1 FROM dual\n/", grammar: TestGrammar.oracle) == ["SELECT 1 FROM dual"])
     }
 
     @Test("A slash that shares its line with code is division")
     func slashWithCodeIsDivision() async throws {
-        #expect(try await Self.parse("SELECT 4\n/ 2 AS v FROM dual;", dialect: .oracle) == ["SELECT 4\n/ 2 AS v FROM dual"])
+        #expect(try await Self.parse("SELECT 4\n/ 2 AS v FROM dual;", grammar: TestGrammar.oracle) == ["SELECT 4\n/ 2 AS v FROM dual"])
     }
 
-    @Test("Other dialects still split an import at every semicolon", arguments: [SqlDialect.mysql, .postgres, .generic])
-    func otherDialectsAreUnchanged(dialect: SqlDialect) async throws {
-        let statements = try await Self.parse("BEGIN NULL; END;", dialect: dialect)
+    @Test("Other dialects still split an import at every semicolon", arguments: [
+        TestGrammar.mysql, TestGrammar.postgres, TestGrammar.standard
+    ])
+    func otherDialectsAreUnchanged(grammar: SQLLexicalGrammar) async throws {
+        let statements = try await Self.parse("BEGIN NULL; END;", grammar: grammar)
         #expect(statements == ["BEGIN NULL", "END"])
     }
 
@@ -81,14 +84,14 @@ struct SQLFileParserPLSQLTests {
     /// it held: a file ending `ORDER BY created_on` imported as `created_o`.
     @Test("A file's last character survives when nothing follows it")
     func lastCharacterSurvives() async throws {
-        let cases: [(dialect: SqlDialect, sql: String)] = [
-            (.oracle, "SELECT a FROM t ORDER BY created_on"),
-            (.oracle, "SELECT q FROM t"),
-            (.generic, "SELECT 'abc'"),
-            (.mysql, "SELECT 1 - 1"),
+        let cases: [(grammar: SQLLexicalGrammar, sql: String)] = [
+            (TestGrammar.oracle, "SELECT a FROM t ORDER BY created_on"),
+            (TestGrammar.oracle, "SELECT q FROM t"),
+            (TestGrammar.standard, "SELECT 'abc'"),
+            (TestGrammar.mysql, "SELECT 1 - 1"),
         ]
         for example in cases {
-            #expect(try await Self.parse(example.sql, dialect: example.dialect) == [example.sql], "\(example.sql)")
+            #expect(try await Self.parse(example.sql, grammar: example.grammar) == [example.sql], "\(example.sql)")
         }
     }
 }

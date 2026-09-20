@@ -215,6 +215,12 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var requiresBackslashEscapingInLiterals: Bool { get }
 
+    /// The lexical facts the server decides for this session and the driver has read, such as MySQL's
+    /// `NO_BACKSLASH_ESCAPES`. `nil` means the driver cannot tell, which leaves the app reading every value the
+    /// engine allows. The app splits statements for execution by it; the Safe Mode and external gates keep reading
+    /// every plausible value whatever it says.
+    var sessionLexicalState: PluginSessionLexicalState? { get }
+
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     var providesBulkColumnFetch: Bool { get }
@@ -692,6 +698,8 @@ public extension PluginDatabaseDriver {
     }
 
     var requiresBackslashEscapingInLiterals: Bool { false }
+
+    var sessionLexicalState: PluginSessionLexicalState? { nil }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? { nil }
 

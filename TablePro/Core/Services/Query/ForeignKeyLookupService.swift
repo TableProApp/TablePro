@@ -14,7 +14,15 @@ enum ForeignKeyLookupService {
     struct Row: Identifiable, Hashable, Sendable {
         let id: Int
         let key: String
-        let label: String?
+        let labels: [String?]
+    }
+
+    /// A search that could not be expressed is not a search that found nothing, and the picker
+    /// says something different about each. Collapsing the two reported "No matching rows" for a
+    /// term no column here can hold.
+    enum Outcome: Sendable {
+        case rows([Row])
+        case termNotSearchable
     }
 
     enum LookupFailure: Error {
@@ -42,11 +50,12 @@ enum ForeignKeyLookupService {
         }
     }
 
-    /// Rows whose key or label matches `term`, capped at `ForeignKeyLookupQuery.rowLimit`.
+    /// Rows whose key or one of whose labels matches `term`, capped at
+    /// `ForeignKeyLookupQuery.rowLimit`.
     ///
-    /// Empty when the term cannot be expressed as a predicate against either column, which is what
-    /// a word typed into a picker on an integer key with no text label comes to. No query is sent
-    /// in that case.
+    /// `.termNotSearchable` when the term cannot be expressed as a predicate against any selected
+    /// column, which is what a word typed into a picker on an integer key with no text label comes
+    /// to. No query is sent in that case.
     ///
     /// Routed through `withMetadataDriver` rather than the session driver, which the single-row
     /// preview uses: a search runs on every keystroke, and the session driver is the one carrying
@@ -56,9 +65,9 @@ enum ForeignKeyLookupService {
         databaseType: DatabaseType,
         reference: ForeignKeyInfo,
         key: ForeignKeyLookupColumn,
-        label: ForeignKeyLookupColumn?,
+        labels: [ForeignKeyLookupColumn],
         term: String
-    ) async throws -> [Row] {
+    ) async throws -> Outcome {
         guard let dialect = PluginManager.shared.sqlDialect(for: databaseType) else {
             throw LookupFailure.noDialect
         }
@@ -74,29 +83,32 @@ enum ForeignKeyLookupService {
             guard let query = ForeignKeyLookupQuery.rows(
                 quotedTable: quotedTable(table: table, schema: schema, driver: driver),
                 key: key,
-                label: label,
+                labels: labels,
                 searchTerm: term,
                 dialect: dialect,
                 stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
                 quoteIdentifier: driver.quoteIdentifier
             ) else {
-                return []
+                return .termNotSearchable
             }
             let result = try await driver.execute(query: query)
-            return rows(from: result, key: key, label: label)
+            return .rows(rows(from: result, key: key, labels: labels))
         }
     }
 
+    /// The labels sit at every select position after the key, however many there are. A row keeps
+    /// a NULL as a NULL rather than dropping it here, because how a missing value reads beside the
+    /// ones around it is a rendering question that `ForeignKeyLabelText` answers.
     nonisolated private static func rows(
         from result: QueryResult,
         key: ForeignKeyLookupColumn,
-        label: ForeignKeyLookupColumn?
+        labels: [ForeignKeyLookupColumn]
     ) -> [Row] {
-        let labelIndex = ForeignKeyLookupQuery.selectedColumns(key: key, label: label).count > 1 ? 1 : nil
+        let labelIndices = ForeignKeyLookupQuery.selectedColumns(key: key, labels: labels).indices.dropFirst()
         return result.rows.enumerated().compactMap { index, values in
             guard let keyValue = values.first?.asText else { return nil }
-            let labelValue = labelIndex.flatMap { values.indices.contains($0) ? values[$0].asText : nil }
-            return Row(id: index, key: keyValue, label: labelValue)
+            let labelValues = labelIndices.map { values.indices.contains($0) ? values[$0].asText : nil }
+            return Row(id: index, key: keyValue, labels: labelValues)
         }
     }
 

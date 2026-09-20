@@ -30,15 +30,15 @@ struct ForeignKeyLabelColumnStoreTests {
     func storedChoiceRoundTrips() throws {
         let store = try makeStore()
         let target = scope(connectionId: UUID())
-        store.setLabelChoice(.column("Name"), for: target)
-        #expect(store.labelChoice(for: target) == .column("Name"))
+        store.setLabelChoice(.columns(["Name"]), for: target)
+        #expect(store.labelChoice(for: target) == .columns(["Name"]))
     }
 
     @Test("Unset clears the stored choice")
     func unsetClearsTheChoice() throws {
         let store = try makeStore()
         let target = scope(connectionId: UUID())
-        store.setLabelChoice(.column("Name"), for: target)
+        store.setLabelChoice(.columns(["Name"]), for: target)
         store.setLabelChoice(.unset, for: target)
         #expect(store.labelChoice(for: target) == .unset)
     }
@@ -49,7 +49,7 @@ struct ForeignKeyLabelColumnStoreTests {
     func explicitNoneOutlivesAReopen() throws {
         let store = try makeStore()
         let target = scope(connectionId: UUID())
-        store.setLabelChoice(.column("Name"), for: target)
+        store.setLabelChoice(.columns(["Name"]), for: target)
         store.setLabelChoice(.noLabel, for: target)
         #expect(store.labelChoice(for: target) == .noLabel)
     }
@@ -61,11 +61,19 @@ struct ForeignKeyLabelColumnStoreTests {
         let none = scope(connectionId: UUID())
         let named = scope(connectionId: UUID())
         store.setLabelChoice(.noLabel, for: none)
-        store.setLabelChoice(.column("Name"), for: named)
+        store.setLabelChoice(.columns(["Name"]), for: named)
 
         #expect(store.labelChoice(for: unset) == .unset)
         #expect(store.labelChoice(for: none) == .noLabel)
-        #expect(store.labelChoice(for: named) == .column("Name"))
+        #expect(store.labelChoice(for: named) == .columns(["Name"]))
+    }
+
+    @Test("Several chosen columns come back in order")
+    func severalChosenColumnsRoundTrip() throws {
+        let store = try makeStore()
+        let target = scope(connectionId: UUID())
+        store.setLabelChoice(.columns(["descrizione", "marchio"]), for: target)
+        #expect(store.labelChoice(for: target) == .columns(["descrizione", "marchio"]))
     }
 
     /// SQLite accepts `create table t("" integer)`, so a zero-length column name is one a reader can
@@ -74,8 +82,8 @@ struct ForeignKeyLabelColumnStoreTests {
     func anEmptyColumnNameIsAChoiceOfItsOwn() throws {
         let store = try makeStore()
         let target = scope(connectionId: UUID())
-        store.setLabelChoice(.column(""), for: target)
-        #expect(store.labelChoice(for: target) == .column(""))
+        store.setLabelChoice(.columns([""]), for: target)
+        #expect(store.labelChoice(for: target) == .columns([""]))
     }
 
     @Test("Choosing no label survives a rename")
@@ -105,7 +113,7 @@ struct ForeignKeyLabelColumnStoreTests {
         let resolved = ForeignKeyLabelColumn.resolve(
             columns: columns, keyColumn: "id", choice: store.labelChoice(for: target)
         )
-        #expect(resolved == nil)
+        #expect(resolved.isEmpty)
     }
 
     /// The choice belongs to the table being picked from, so two tables of the same name in
@@ -114,22 +122,22 @@ struct ForeignKeyLabelColumnStoreTests {
     func choiceIsScopedToTheTable() throws {
         let store = try makeStore()
         let connection = UUID()
-        store.setLabelChoice(.column("Name"), for: scope(connectionId: connection))
-        store.setLabelChoice(.column("Title"), for: scope(connectionId: connection, table: "Album"))
-        store.setLabelChoice(.column("Email"), for: scope(connectionId: connection, database: "other"))
-        store.setLabelChoice(.column("Code"), for: scope(connectionId: UUID()))
+        store.setLabelChoice(.columns(["Name"]), for: scope(connectionId: connection))
+        store.setLabelChoice(.columns(["Title"]), for: scope(connectionId: connection, table: "Album"))
+        store.setLabelChoice(.columns(["Email"]), for: scope(connectionId: connection, database: "other"))
+        store.setLabelChoice(.columns(["Code"]), for: scope(connectionId: UUID()))
 
-        #expect(store.labelChoice(for: scope(connectionId: connection)) == .column("Name"))
-        #expect(store.labelChoice(for: scope(connectionId: connection, table: "Album")) == .column("Title"))
-        #expect(store.labelChoice(for: scope(connectionId: connection, database: "other")) == .column("Email"))
+        #expect(store.labelChoice(for: scope(connectionId: connection)) == .columns(["Name"]))
+        #expect(store.labelChoice(for: scope(connectionId: connection, table: "Album")) == .columns(["Title"]))
+        #expect(store.labelChoice(for: scope(connectionId: connection, database: "other")) == .columns(["Email"]))
     }
 
     @Test("A name with a dot or a quote survives the key encoding")
     func awkwardNamesSurvive() throws {
         let store = try makeStore()
         let target = scope(connectionId: UUID(), schema: "public.v2", table: "user\"s")
-        store.setLabelChoice(.column("full name"), for: target)
-        #expect(store.labelChoice(for: target) == .column("full name"))
+        store.setLabelChoice(.columns(["full name"]), for: target)
+        #expect(store.labelChoice(for: target) == .columns(["full name"]))
         #expect(store.labelChoice(for: scope(connectionId: target.connectionId)) == .unset)
     }
 
@@ -138,9 +146,9 @@ struct ForeignKeyLabelColumnStoreTests {
         let store = try makeStore()
         let connection = UUID()
         let other = UUID()
-        store.setLabelChoice(.column("Name"), for: scope(connectionId: connection))
-        store.setLabelChoice(.column("Title"), for: scope(connectionId: connection, table: "Artist_archive"))
-        store.setLabelChoice(.column("Code"), for: scope(connectionId: other))
+        store.setLabelChoice(.columns(["Name"]), for: scope(connectionId: connection))
+        store.setLabelChoice(.columns(["Title"]), for: scope(connectionId: connection, table: "Artist_archive"))
+        store.setLabelChoice(.columns(["Code"]), for: scope(connectionId: other))
 
         store.renameTable(
             from: scope(connectionId: connection),
@@ -148,9 +156,9 @@ struct ForeignKeyLabelColumnStoreTests {
         )
 
         #expect(store.labelChoice(for: scope(connectionId: connection)) == .unset)
-        #expect(store.labelChoice(for: scope(connectionId: connection, table: "Performer")) == .column("Name"))
-        #expect(store.labelChoice(for: scope(connectionId: connection, table: "Artist_archive")) == .column("Title"))
-        #expect(store.labelChoice(for: scope(connectionId: other)) == .column("Code"))
+        #expect(store.labelChoice(for: scope(connectionId: connection, table: "Performer")) == .columns(["Name"]))
+        #expect(store.labelChoice(for: scope(connectionId: connection, table: "Artist_archive")) == .columns(["Title"]))
+        #expect(store.labelChoice(for: scope(connectionId: other)) == .columns(["Code"]))
     }
 
     @Test("A schema rename moves every table in it and nothing outside it")
@@ -158,38 +166,38 @@ struct ForeignKeyLabelColumnStoreTests {
         let store = try makeStore()
         let connection = UUID()
         let other = UUID()
-        store.setLabelChoice(.column("Name"), for: scope(connectionId: connection, schema: "music"))
-        store.setLabelChoice(.column("Title"), for: scope(connectionId: connection, schema: "music", table: "Album"))
-        store.setLabelChoice(.column("Code"), for: scope(connectionId: connection, schema: "music_old"))
-        store.setLabelChoice(.column("Email"), for: scope(connectionId: other, schema: "music"))
+        store.setLabelChoice(.columns(["Name"]), for: scope(connectionId: connection, schema: "music"))
+        store.setLabelChoice(.columns(["Title"]), for: scope(connectionId: connection, schema: "music", table: "Album"))
+        store.setLabelChoice(.columns(["Code"]), for: scope(connectionId: connection, schema: "music_old"))
+        store.setLabelChoice(.columns(["Email"]), for: scope(connectionId: other, schema: "music"))
 
         store.renameContainer(
             connectionId: connection, fromDatabase: "chinook", fromSchema: "music",
             toDatabase: "chinook", toSchema: "catalog"
         )
 
-        #expect(store.labelChoice(for: scope(connectionId: connection, schema: "catalog")) == .column("Name"))
-        #expect(store.labelChoice(for: scope(connectionId: connection, schema: "catalog", table: "Album")) == .column("Title"))
+        #expect(store.labelChoice(for: scope(connectionId: connection, schema: "catalog")) == .columns(["Name"]))
+        #expect(store.labelChoice(for: scope(connectionId: connection, schema: "catalog", table: "Album")) == .columns(["Title"]))
         #expect(store.labelChoice(for: scope(connectionId: connection, schema: "music")) == .unset)
-        #expect(store.labelChoice(for: scope(connectionId: connection, schema: "music_old")) == .column("Code"))
-        #expect(store.labelChoice(for: scope(connectionId: other, schema: "music")) == .column("Email"))
+        #expect(store.labelChoice(for: scope(connectionId: connection, schema: "music_old")) == .columns(["Code"]))
+        #expect(store.labelChoice(for: scope(connectionId: other, schema: "music")) == .columns(["Email"]))
     }
 
     @Test("A database rename moves its tables and leaves a longer database name alone")
     func renameDatabaseMovesItsTables() throws {
         let store = try makeStore()
         let connection = UUID()
-        store.setLabelChoice(.column("Name"), for: scope(connectionId: connection))
-        store.setLabelChoice(.column("Title"), for: scope(connectionId: connection, database: "chinook_backup"))
+        store.setLabelChoice(.columns(["Name"]), for: scope(connectionId: connection))
+        store.setLabelChoice(.columns(["Title"]), for: scope(connectionId: connection, database: "chinook_backup"))
 
         store.renameContainer(
             connectionId: connection, fromDatabase: "chinook", fromSchema: nil,
             toDatabase: "music", toSchema: nil
         )
 
-        #expect(store.labelChoice(for: scope(connectionId: connection, database: "music")) == .column("Name"))
+        #expect(store.labelChoice(for: scope(connectionId: connection, database: "music")) == .columns(["Name"]))
         #expect(store.labelChoice(for: scope(connectionId: connection)) == .unset)
-        #expect(store.labelChoice(for: scope(connectionId: connection, database: "chinook_backup")) == .column("Title"))
+        #expect(store.labelChoice(for: scope(connectionId: connection, database: "chinook_backup")) == .columns(["Title"]))
     }
 
     @Test("Deleting a connection removes its choices and keeps every other connection's")
@@ -197,14 +205,14 @@ struct ForeignKeyLabelColumnStoreTests {
         let store = try makeStore()
         let connection = UUID()
         let other = UUID()
-        store.setLabelChoice(.column("Name"), for: scope(connectionId: connection))
-        store.setLabelChoice(.column("Title"), for: scope(connectionId: connection, table: "Album"))
-        store.setLabelChoice(.column("Code"), for: scope(connectionId: other))
+        store.setLabelChoice(.columns(["Name"]), for: scope(connectionId: connection))
+        store.setLabelChoice(.columns(["Title"]), for: scope(connectionId: connection, table: "Album"))
+        store.setLabelChoice(.columns(["Code"]), for: scope(connectionId: other))
 
         store.purgeConnections([connection])
 
         #expect(store.labelChoice(for: scope(connectionId: connection)) == .unset)
         #expect(store.labelChoice(for: scope(connectionId: connection, table: "Album")) == .unset)
-        #expect(store.labelChoice(for: scope(connectionId: other)) == .column("Code"))
+        #expect(store.labelChoice(for: scope(connectionId: other)) == .columns(["Code"]))
     }
 }

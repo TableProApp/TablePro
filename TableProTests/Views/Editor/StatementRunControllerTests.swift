@@ -12,6 +12,7 @@ import Foundation
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
@@ -38,9 +39,12 @@ struct StatementRunControllerTests {
         return controller
     }
 
-    private func makeSubject(dialect: SqlDialect = .generic, sizeLimit: Int? = nil) -> StatementRunController {
+    private func makeSubject(
+        grammar: SQLLexicalGrammar = TestGrammar.standard,
+        sizeLimit: Int? = nil
+    ) -> StatementRunController {
         let subject = StatementRunController()
-        subject.dialect = dialect
+        subject.grammar = grammar
         if let sizeLimit {
             subject.sizeLimit = sizeLimit
         }
@@ -68,7 +72,7 @@ struct StatementRunControllerTests {
     func routineBodyGetsOneControl() {
         let text = "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\nSELECT 3;"
         let controller = makeController(text: text)
-        let subject = makeSubject(dialect: .mysql)
+        let subject = makeSubject(grammar: TestGrammar.mysql)
         subject.install(on: controller)
 
         #expect(controller.runnableStatements.count == 2)

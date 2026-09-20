@@ -4,14 +4,15 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal extension AutocommitOnlyStatement {
     /// Measured on MySQL 8.4.11 with `gtid_mode = ON` and MariaDB 11.4.13 with the binary log on,
     /// each statement run after `START TRANSACTION` and an `INSERT`. The errors are 1694, 1679,
     /// 1685, 1766, 1953, 1929, 1179, 1192 and 1568 depending on the variable; what they share is
     /// that the statement works on its own and fails inside the wrap.
-    static func matchesMySQLFamily(_ statement: NSString, rules: SQLLexicalRules) -> Bool {
-        var cursor = SQLTokenCursor(statement, rules: rules)
+    static func matchesMySQLFamily(_ statement: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        var cursor = SQLTokenCursor(statement, grammar: grammar)
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "SET":

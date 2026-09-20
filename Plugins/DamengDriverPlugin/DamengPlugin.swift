@@ -355,6 +355,22 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var requiresBackslashEscapingInLiterals: Bool { textEscaping == .backslashEscape }
 
+    /// The server's `BACKSLASH_ESCAPE` mode as the connect probe measured it. It is a static `dm.ini` parameter, so
+    /// it holds for the whole session; an unknown mode leaves the app reading both.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        switch textEscaping {
+        case .backslashEscape:
+            return PluginSessionLexicalState(
+                determined: .backslashEscapesInSingleQuotes,
+                enabled: .backslashEscapesInSingleQuotes
+            )
+        case .backslashLiteral:
+            return PluginSessionLexicalState(determined: .backslashEscapesInSingleQuotes, enabled: [])
+        case .unknown:
+            return nil
+        }
+    }
+
     func escapeStringLiteral(_ value: String) -> String {
         let stripped = String(String.UnicodeScalarView(value.unicodeScalars.filter { $0 != "\0" }))
         let escaping: DamengTextEscaping = textEscaping == .backslashLiteral ? .backslashLiteral : .backslashEscape

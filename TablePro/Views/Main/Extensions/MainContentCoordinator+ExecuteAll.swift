@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
     func runAllStatements(extraCapabilities: CallerCapabilities = []) {

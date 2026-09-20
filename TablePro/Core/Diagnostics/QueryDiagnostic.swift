@@ -51,10 +51,7 @@ enum QueryDiagnosticsFactory {
         case .sql:
             return CombinedQueryDiagnosticsProducer(producers: [
                 SQLDiagnosticsProducer(),
-                SQLConfusableCharacterDiagnosticsProducer(rules: SQLLexicalRules(
-                    databaseType: resolvedType,
-                    descriptor: PluginManager.shared.sqlDialect(for: resolvedType)
-                ))
+                SQLConfusableCharacterDiagnosticsProducer(grammar: resolvedType.lexicalGrammar)
             ])
         default:
             return SQLDiagnosticsProducer()

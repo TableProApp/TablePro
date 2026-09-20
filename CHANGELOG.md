@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privacy manifest for the iOS app.
 - Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
 - Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
+- **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995)
+- Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
 
 ### Changed
 
@@ -48,17 +50,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `The request timed out` from an etcd `watch --timeout` above 60 seconds.
 - Stop in an etcd tab cancelling an unrelated request and leaving the running one alone.
 - Crash from an etcd `watch --timeout` with a negative or out-of-range value.
+- Colored highlight on the AI chat input painting over a window that is not key.
+- Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
+- AI chat input focus crossfade playing against Reduce Motion.
+- AI chat input announced with no name by VoiceOver.
 - Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
 - Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
 - `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
 - 1 row affected reported for every Oracle PL/SQL block.
+- Crash when an Oracle query timed out or was cancelled while its rows were loading.
+- Empty results with no error after about 300 failed Oracle statements on one connection.
+- Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
 - Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
 - Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.
+- The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all.
+- Foreign key picker reporting no matching rows for a term none of its columns could be searched for.
 - No spoken sort direction on Query Plan columns.
 - No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Composite foreign key columns listed out of order on MariaDB.
@@ -157,6 +168,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 - Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
+- Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
+- Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
+- Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.
+- Statements hidden in a dollar-quoted string skipped Safe Mode on DuckDB, Snowflake and Cassandra, or PostgreSQL with a non-ASCII tag.
+- Statements hidden behind an engine's own literal or comment forms, such as `E'\''`, `'''` or `--1`, skipped Safe Mode.
+- Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
+- Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 
 ## [0.75.0] - 2026-09-18
 

@@ -28,7 +28,8 @@ let package = Package(
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
-        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"])
+        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
+        .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"])
     ],
     targets: [
         .target(
@@ -73,7 +74,7 @@ let package = Package(
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar"],
             path: "Sources/TableProQuery"
         ),
         .target(
@@ -131,6 +132,11 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProConnectionLibrary"
         ),
+        .target(
+            name: "TableProSQLGrammar",
+            dependencies: [],
+            path: "Sources/TableProSQLGrammar"
+        ),
         .testTarget(
             name: "TableProConnectionLibraryTests",
             dependencies: ["TableProConnectionLibrary"],
@@ -170,6 +176,11 @@ let package = Package(
             name: "TableProQueryTests",
             dependencies: ["TableProQuery", "TableProModels", "TableProPluginKit"],
             path: "Tests/TableProQueryTests"
+        ),
+        .testTarget(
+            name: "TableProSQLGrammarTests",
+            dependencies: ["TableProSQLGrammar"],
+            path: "Tests/TableProSQLGrammarTests"
         ),
         .testTarget(
             name: "TableProAnalyticsTests",

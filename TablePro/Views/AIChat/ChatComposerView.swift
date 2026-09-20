@@ -18,10 +18,16 @@ struct ChatComposerView: View {
     let acceptsImages: Bool
     let onAttachImages: ([ChatImageInput]) -> Void
     let onImageAttachmentFailed: (String) -> Void
+    let highlightEnabled: Bool
+    let onToggleHighlight: () -> Void
 
     @State private var isFocused: Bool = false
     @State private var isCommittingMention = false
     @State private var isDropTargeted: Bool = false
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.controlActiveState) private var controlActiveState
 
     init(
         text: Binding<String>,
@@ -34,7 +40,9 @@ struct ChatComposerView: View {
         onAttach: @escaping (ContextItem) -> Void,
         acceptsImages: Bool = false,
         onAttachImages: @escaping ([ChatImageInput]) -> Void = { _ in },
-        onImageAttachmentFailed: @escaping (String) -> Void = { _ in }
+        onImageAttachmentFailed: @escaping (String) -> Void = { _ in },
+        highlightEnabled: Bool = true,
+        onToggleHighlight: @escaping () -> Void = {}
     ) {
         self._text = text
         self.placeholder = placeholder
@@ -47,6 +55,8 @@ struct ChatComposerView: View {
         self.acceptsImages = acceptsImages
         self.onAttachImages = onAttachImages
         self.onImageAttachmentFailed = onImageAttachmentFailed
+        self.highlightEnabled = highlightEnabled
+        self.onToggleHighlight = onToggleHighlight
     }
 
     var body: some View {
@@ -58,6 +68,9 @@ struct ChatComposerView: View {
             maxLines: maxLines,
             isCommittingMention: isCommittingMention,
             acceptsImages: acceptsImages,
+            paintsHighlight: paintsHighlight,
+            highlightEnabled: highlightEnabled,
+            onToggleHighlight: onToggleHighlight,
             onTextChange: { newText, caret in
                 guard !isCommittingMention else { return }
                 onTextChange(newText, caret)
@@ -92,7 +105,7 @@ struct ChatComposerView: View {
                     )
                     .overlay {
                         if isDropTargeted {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: ChatComposerMetrics.cornerRadius, style: .continuous)
                                 .strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 2)
                                 .allowsHitTesting(false)
                         }
@@ -135,12 +148,29 @@ struct ChatComposerView: View {
         }
     }
 
+    /// The preference and the two system settings that override it, answered once for both the
+    /// SwiftUI overlay and the scroll view's focus ring type, so the two can never both paint.
+    private var paintsHighlight: Bool {
+        ComposerHighlightPreference.paintsHighlight(
+            enabled: highlightEnabled,
+            reduceTransparency: reduceTransparency,
+            contrast: contrast
+        )
+    }
+
+    /// A focus affordance belongs to the key window alone, which is why AppKit withdraws its own
+    /// ring the moment the window resigns key. The highlight is drawn by SwiftUI and gets no such
+    /// treatment for free, so it asks.
+    private var showsHighlight: Bool {
+        paintsHighlight && isFocused && controlActiveState == .key
+    }
+
     private var composerBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: ChatComposerMetrics.cornerRadius, style: .continuous)
         return shape
             .fill(Color(nsColor: .textBackgroundColor))
             .overlay {
-                if isFocused {
+                if showsHighlight {
                     IntelligenceFocusBorder(shape: shape)
                         .transition(.opacity)
                         .accessibilityHidden(true)
@@ -150,7 +180,7 @@ struct ChatComposerView: View {
                         .accessibilityHidden(true)
                 }
             }
-            .animation(.easeOut(duration: 0.25), value: isFocused)
+            .motionAnimation(.easeOut(duration: 0.25), value: showsHighlight)
     }
 
     private var popoverBinding: Binding<Bool> {
