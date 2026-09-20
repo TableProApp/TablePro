@@ -39,18 +39,22 @@ nonisolated enum SSHTunnelFactory {
         var handedOver = false
         defer { if !handedOver { stages.discard() } }
 
-        try await stages.connect(host: config.host, port: config.port)
-        try await stages.handshake()
+        try await tunnel.connect(host: config.host, port: config.resolvedPort)
+        try await tunnel.handshake()
 
-        let presentedKey = try await stages.hostKey()
-        try await HostKeyVerifier.verify(
-            keyData: presentedKey.keyData,
-            keyType: presentedKey.keyType,
-            hostname: config.host,
-            port: config.port,
-            store: hostKeyStore,
-            prompter: prompter
-        )
+        let presentedKey = try await tunnel.hostKey()
+        do {
+            try await HostKeyVerifier.verify(
+                keyData: presentedKey.keyData,
+                keyType: presentedKey.keyType,
+                hostname: config.host,
+                port: config.resolvedPort,
+                prompter: prompter
+            )
+        } catch {
+            await tunnel.close()
+            throw error
+        }
 
         try await authenticate(stages, config: config, credentials: credentials)
 

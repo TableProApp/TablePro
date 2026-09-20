@@ -167,9 +167,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
+- SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
+- An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 
 ### Security
 
+- A locked launch on iPhone and iPad connecting to the last session, and asking to trust a host key, before Face ID was answered.
 - Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
 - The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
