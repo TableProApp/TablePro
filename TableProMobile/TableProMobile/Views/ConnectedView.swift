@@ -157,15 +157,26 @@ struct ConnectedView: View {
         @Bindable var coordinator = coordinator
         return TabView(selection: $coordinator.selectedTab) {
             Tab("Tables", systemImage: "tablecells", value: .tables) {
-                NavigationStack(path: $coordinator.tablesPath) {
+                NavigationSplitView {
                     tabChrome(coordinator) {
                         TableListView(connectionId: connection.id)
                     }
-                    .navigationDestination(for: TableInfo.self) { table in
-                        DataBrowserView(table: table)
-                            .environment(coordinator)
+                } detail: {
+                    NavigationStack {
+                        if let table = coordinator.selectedTable {
+                            DataBrowserView(table: table)
+                                .environment(coordinator)
+                                .id(table)
+                        } else {
+                            ContentUnavailableView(
+                                "No Table Selected",
+                                systemImage: "tablecells",
+                                description: Text("Pick a table to browse its rows.")
+                            )
+                        }
                     }
                 }
+                .navigationSplitViewStyle(.balanced)
             }
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {

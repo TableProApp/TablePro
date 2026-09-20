@@ -153,7 +153,7 @@ struct ConnectionCoordinatorStoreTests {
     func reorderKeepsTheCoordinator() {
         let original = connection("A")
         let coordinator = store.coordinator(for: original, appState: appState)
-        coordinator.tablesPath.append(TableInfo(name: "users"))
+        coordinator.selectedTable = TableInfo(name: "users")
         var reordered = original
         reordered.sortOrder = 5
 
@@ -162,7 +162,7 @@ struct ConnectionCoordinatorStoreTests {
         let resolved = store.coordinator(for: reordered, appState: appState)
         #expect(resolved === coordinator)
         #expect(resolved.connection.sortOrder == 5)
-        #expect(resolved.tablesPath.count == 1)
+        #expect(resolved.selectedTable?.name == "users")
         #expect(store.generation(for: original.id) == 0)
     }
 

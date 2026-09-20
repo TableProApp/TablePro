@@ -75,13 +75,13 @@ struct TableListView: View {
     }
 
     var body: some View {
-        List {
+        @Bindable var coordinator = coordinator
+        return List(selection: $coordinator.selectedTable) {
             ForEach(tableSections, id: \.0) { sectionTitle, items in
                 Section {
                     ForEach(items) { table in
-                        NavigationLink(value: table) {
-                            TableRow(table: table)
-                        }
+                        TableRow(table: table)
+                        .tag(table)
                         .contextMenu {
                             Button {
                                 ClipboardExporter.copyToClipboard(table.name)
