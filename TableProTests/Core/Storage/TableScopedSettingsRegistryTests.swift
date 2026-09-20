@@ -12,7 +12,15 @@ import Testing
 struct TableScopedSettingsRegistryTests {
     @MainActor
     private final class RecordingStore: TableScopedSettingsStore {
+        struct DroppedContainer: Equatable {
+            let connectionId: UUID
+            let database: String
+            let schema: String?
+        }
+
         private(set) var purgedConnectionIds: [Set<UUID>] = []
+        private(set) var droppedTables: [TableScope] = []
+        private(set) var droppedContainers: [DroppedContainer] = []
 
         func renameTable(from oldScope: TableScope, to newScope: TableScope) {}
 
@@ -23,6 +31,14 @@ struct TableScopedSettingsRegistryTests {
             toDatabase: String,
             toSchema: String?
         ) {}
+
+        func dropTable(_ scope: TableScope) {
+            droppedTables.append(scope)
+        }
+
+        func dropContainer(connectionId: UUID, database: String, schema: String?) {
+            droppedContainers.append(DroppedContainer(connectionId: connectionId, database: database, schema: schema))
+        }
 
         func purgeConnections(_ connectionIds: Set<UUID>) {
             purgedConnectionIds.append(connectionIds)

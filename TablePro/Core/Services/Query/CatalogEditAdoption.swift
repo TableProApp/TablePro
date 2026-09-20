@@ -60,12 +60,25 @@ struct CatalogEditAdoption {
         )
     }
 
+    /// A dropped table takes its saved settings with it, the way a renamed one takes them along.
+    /// Left behind, they outlive the table and come back on a table that is recreated with the same
+    /// name: a filter on a column the new table does not have opens the tab on a server error.
     func adoptDroppedTables(_ refs: [DatabaseTreeTableRef], connectionId: UUID) {
         let dropped = Set(refs)
         updatePendingOperations(connectionId: connectionId) { dropped.contains($0) ? nil : $0 }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
         for ref in refs {
             sidebarState.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
+            FavoriteTablesStorage.shared.removeFavorite(
+                name: ref.table.name, schema: ref.favoriteSchema, database: ref.database, connectionId: connectionId
+            )
+            guard let scope = objectScope(for: ref, connectionId: connectionId) else { continue }
+            let tableScope = TableScope(
+                connectionId: connectionId, database: scope.database, schema: scope.schema, table: ref.table.name
+            )
+            for store in TableScopedSettingsRegistry.stores {
+                store.dropTable(tableScope)
+            }
         }
     }
 
@@ -123,6 +136,16 @@ struct CatalogEditAdoption {
             if let schema, ref.qualifyingSchema != schema { return ref }
             return nil
         }
+        /// Every table inside the container loses its saved settings and its favorite, for the
+        /// reason a dropped table does. Swept by prefix rather than by table, because the table
+        /// list is lazy and a table nobody opened this session still has settings on disk.
+        for store in TableScopedSettingsRegistry.stores {
+            store.dropContainer(connectionId: connectionId, database: database, schema: schema)
+        }
+        FavoriteTablesStorage.shared.removeFavorites(
+            inDatabase: database, schema: schema, connectionId: connectionId
+        )
+
         let sidebarState = SharedSidebarState.forConnection(connectionId)
         /// A dropped schema takes its own Recent entries with it and leaves its siblings alone.
         /// Skipping this left every Recent row for that schema opening a tab whose query failed
@@ -133,6 +156,7 @@ struct CatalogEditAdoption {
             return
         }
         guard container.kind == .database else { return }
+        FavoriteDatabasesStorage.shared.removeFavorite(database: database, connectionId: connectionId)
         sidebarState.clearRecentTables(inDatabase: database)
         var selected = sidebarState.databaseFilterSelected
         guard selected.remove(database) != nil else { return }
@@ -191,13 +215,18 @@ struct CatalogEditAdoption {
         }
     }
 
+    /// Reads and writes the entry with `favoriteSchema`, the spelling the only writer of a table
+    /// favorite uses. Asking with the row's own schema instead missed the entry outright in a
+    /// hierarchical tree, where the schema hangs on the node and not on the `TableInfo`, so a
+    /// renamed table silently lost its star.
     private func moveFavorite(_ ref: DatabaseTreeTableRef, to newName: String, connectionId: UUID) {
         let storage = FavoriteTablesStorage.shared
+        let schema = ref.favoriteSchema
         guard storage.isFavorite(
-            name: ref.table.name, schema: ref.schema, database: ref.database, connectionId: connectionId
+            name: ref.table.name, schema: schema, database: ref.database, connectionId: connectionId
         ) else { return }
-        storage.removeFavorite(name: ref.table.name, schema: ref.schema, database: ref.database, connectionId: connectionId)
-        storage.addFavorite(name: newName, schema: ref.schema, database: ref.database, connectionId: connectionId)
+        storage.removeFavorite(name: ref.table.name, schema: schema, database: ref.database, connectionId: connectionId)
+        storage.addFavorite(name: newName, schema: schema, database: ref.database, connectionId: connectionId)
     }
 
     private func retargetContainer(

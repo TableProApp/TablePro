@@ -58,6 +58,17 @@ internal final class ForeignKeyLabelColumnStore: TableScopedSettingsStore {
         )
     }
 
+    func dropTable(_ scope: TableScope) {
+        store.setDataValue(nil, forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name)
+    }
+
+    func dropContainer(connectionId: UUID, database: String, schema: String?) {
+        store.removeValues(
+            withPrefix: Self.keyPrefix
+                + TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
+        )
+    }
+
     func purgeConnections(_ connectionIds: Set<UUID>) {
         for connectionId in connectionIds {
             store.removeValues(withPrefix: Self.keyPrefix + TableScope.storagePrefix(connectionId: connectionId))

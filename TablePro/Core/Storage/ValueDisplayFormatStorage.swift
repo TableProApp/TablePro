@@ -61,6 +61,21 @@ internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
         )
     }
 
+    func dropTable(_ scope: TableScope) {
+        clear(for: scope)
+    }
+
+    /// The legacy key is deliberately left alone. It is `prefix + connectionId + table` and names no
+    /// database or schema, so nothing here can tell which container it belonged to, and sweeping the
+    /// connection's would take the formats of tables in databases that still exist. `dropTable`
+    /// clears it, because there the table is named.
+    func dropContainer(connectionId: UUID, database: String, schema: String?) {
+        store.removeValues(
+            withPrefix: Self.keyPrefix
+                + TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
+        )
+    }
+
     func purgeConnections(_ connectionIds: Set<UUID>) {
         for connectionId in connectionIds {
             store.removeValues(withPrefix: Self.keyPrefix + TableScope.storagePrefix(connectionId: connectionId))

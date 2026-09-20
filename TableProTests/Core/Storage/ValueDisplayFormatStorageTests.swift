@@ -19,6 +19,57 @@ struct ValueDisplayFormatStorageTests {
         TableScope(connectionId: connectionId, database: "shop", schema: schema, table: table)
     }
 
+    @Test("Dropping a table forgets its formats and leaves its siblings alone")
+    func dropTableForgetsOnlyThatTable() throws {
+        let (storage, _) = try makeStorage()
+        let connectionId = UUID()
+        let dropped = scope("public", connectionId: connectionId, table: "orders")
+        let kept = scope("public", connectionId: connectionId, table: "customers")
+        storage.save(["id": .uuid], for: dropped)
+        storage.save(["id": .uuid], for: kept)
+
+        storage.dropTable(dropped)
+
+        #expect(storage.load(for: dropped) == nil)
+        #expect(storage.load(for: kept) == ["id": .uuid])
+    }
+
+    @Test("Dropping a schema forgets every table in it and nothing outside it")
+    func dropContainerForgetsTheWholeSchema() throws {
+        let (storage, _) = try makeStorage()
+        let connectionId = UUID()
+        let inSchema = scope("public", connectionId: connectionId, table: "orders")
+        let alsoInSchema = scope("public", connectionId: connectionId, table: "invoices")
+        let otherSchema = scope("billing", connectionId: connectionId, table: "orders")
+        for target in [inSchema, alsoInSchema, otherSchema] {
+            storage.save(["id": .uuid], for: target)
+        }
+
+        storage.dropContainer(connectionId: connectionId, database: "shop", schema: "public")
+
+        #expect(storage.load(for: inSchema) == nil)
+        #expect(storage.load(for: alsoInSchema) == nil)
+        #expect(storage.load(for: otherSchema) == ["id": .uuid])
+    }
+
+    @Test("Dropping a database forgets every schema under it")
+    func dropContainerWithoutSchemaForgetsTheDatabase() throws {
+        let (storage, _) = try makeStorage()
+        let connectionId = UUID()
+        let publicScope = scope("public", connectionId: connectionId)
+        let billingScope = scope("billing", connectionId: connectionId)
+        let otherConnection = scope("public", connectionId: UUID())
+        for target in [publicScope, billingScope, otherConnection] {
+            storage.save(["id": .uuid], for: target)
+        }
+
+        storage.dropContainer(connectionId: connectionId, database: "shop", schema: nil)
+
+        #expect(storage.load(for: publicScope) == nil)
+        #expect(storage.load(for: billingScope) == nil)
+        #expect(storage.load(for: otherConnection) == ["id": .uuid])
+    }
+
     @Test("Round-trips and clears per scope")
     func roundTrip() throws {
         let (storage, _) = try makeStorage()

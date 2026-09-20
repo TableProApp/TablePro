@@ -1,7 +1,7 @@
 import Foundation
 @testable import TablePro
-import Testing
 import TableProSyncTransport
+import Testing
 
 @Suite("FavoriteTablesStorage")
 struct FavoriteTablesStorageTests {
@@ -17,6 +17,84 @@ struct FavoriteTablesStorageTests {
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncTracker: tracker)
         return (storage, metadata)
+    }
+
+    /// The only writer of a table favorite keys it on the table's own schema, so anything reading
+    /// one back has to ask the same way. Asking with the outline row's schema instead missed the
+    /// entry outright in a hierarchical tree, where the schema hangs on the node.
+    @Test("A tree row spells its favorite's schema the way the writer does")
+    func favoriteSchemaMatchesTheWriter() {
+        let hierarchical = DatabaseTreeTableRef(
+            database: "shop", schema: "public", table: TestFixtures.makeTableInfo(name: "orders")
+        )
+        #expect(hierarchical.favoriteSchema == nil)
+        #expect(hierarchical.qualifyingSchema == "public")
+
+        let flat = DatabaseTreeTableRef(
+            database: "shop", schema: nil, table: TestFixtures.makeTableInfo(name: "orders", schema: "public")
+        )
+        #expect(flat.favoriteSchema == "public")
+    }
+
+    @Test("Dropping a schema removes only the favorites inside it")
+    func removeFavoritesInSchema() throws {
+        let (storage, _) = try makeStorage()
+        let connId = UUID()
+        storage.addFavorite(name: "orders", schema: "public", database: "shop", connectionId: connId)
+        storage.addFavorite(name: "invoices", schema: "public", database: "shop", connectionId: connId)
+        storage.addFavorite(name: "orders", schema: "billing", database: "shop", connectionId: connId)
+        storage.addFavorite(name: "orders", schema: "public", database: "other", connectionId: connId)
+
+        storage.removeFavorites(inDatabase: "shop", schema: "public", connectionId: connId)
+
+        let remaining = storage.favorites(for: connId)
+        #expect(remaining.map(\.name).sorted() == ["orders", "orders"])
+        #expect(remaining.contains { $0.schema == "billing" })
+        #expect(remaining.contains { $0.database == "other" })
+    }
+
+    @Test("Dropping a database removes every schema's favorites under it")
+    func removeFavoritesInDatabase() throws {
+        let (storage, _) = try makeStorage()
+        let connId = UUID()
+        storage.addFavorite(name: "orders", schema: "public", database: "shop", connectionId: connId)
+        storage.addFavorite(name: "orders", schema: "billing", database: "shop", connectionId: connId)
+        storage.addFavorite(name: "orders", schema: "public", database: "other", connectionId: connId)
+
+        storage.removeFavorites(inDatabase: "shop", schema: nil, connectionId: connId)
+
+        #expect(storage.favorites(for: connId).allSatisfy { $0.database == "other" })
+    }
+
+    @Test("Dropping a container leaves another connection's favorites alone")
+    func removeFavoritesIsScopedToItsConnection() throws {
+        let (storage, _) = try makeStorage()
+        let connId = UUID()
+        let other = UUID()
+        storage.addFavorite(name: "orders", schema: "public", database: "shop", connectionId: connId)
+        storage.addFavorite(name: "orders", schema: "public", database: "shop", connectionId: other)
+
+        storage.removeFavorites(inDatabase: "shop", schema: nil, connectionId: connId)
+
+        #expect(storage.favorites(for: connId).isEmpty)
+        #expect(storage.favorites(for: other).count == 1)
+    }
+
+    @Test("Dropping a container tombstones each removed favorite so the deletion syncs")
+    func removeFavoritesTombstonesEachEntry() throws {
+        let (storage, metadata) = try makeStorage()
+        let connId = UUID()
+        storage.addFavorite(name: "orders", schema: "public", database: "shop", connectionId: connId)
+        let entry = FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connId, database: "shop", schema: "public", name: "orders"
+        )
+
+        storage.removeFavorites(inDatabase: "shop", schema: nil, connectionId: connId)
+
+        #expect(
+            metadata.tombstones(for: .tableFavorite)
+                .contains { $0.id == FavoriteTablesStorage.syncId(for: entry) }
+        )
     }
 
     @Test("Add favorite marks stable sync ID dirty")

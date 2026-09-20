@@ -20,6 +20,127 @@ struct FilterSettingsStorageTests {
         return (FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults), directory)
     }
 
+    @Test("Dropping a table forgets its filters and its browse search")
+    func dropTableForgetsFiltersAndBrowseSearch() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+        storage.saveLastFilters(
+            PersistedFilterState(filters: filters),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+        storage.saveBrowseSearch(
+            BrowseSearchState(pattern: "user:*"),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil
+        )
+
+        storage.dropTable(TableScope(connectionId: connectionId, database: "db", schema: nil, table: "users"))
+        storage.waitForPendingDiskWrites()
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isEmpty
+        )
+        #expect(
+            !storage.loadBrowseSearch(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isActive
+        )
+    }
+
+    @Test("Dropping a table leaves its siblings alone")
+    func dropTableLeavesSiblingsAlone() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+        for table in ["users", "orders"] {
+            storage.saveLastFilters(
+                PersistedFilterState(filters: filters),
+                for: table, connectionId: connectionId, databaseName: "db", schemaName: nil
+            )
+        }
+
+        storage.dropTable(TableScope(connectionId: connectionId, database: "db", schema: nil, table: "users"))
+        storage.waitForPendingDiskWrites()
+
+        #expect(
+            storage.loadLastFilters(for: "orders", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                == filters
+        )
+    }
+
+    /// The table list is lazy, so a table nobody opened this session is exactly the case a
+    /// per-table sweep would miss. A fresh reader proves the file went, not just the cache.
+    @Test("Dropping a schema forgets a table this session never loaded")
+    func dropContainerForgetsAnUnloadedTable() throws {
+        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+
+        let writer = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        writer.saveLastFilters(
+            PersistedFilterState(filters: filters),
+            for: "users", connectionId: connectionId, databaseName: "db", schemaName: "public"
+        )
+        writer.saveLastFilters(
+            PersistedFilterState(filters: filters),
+            for: "orders", connectionId: connectionId, databaseName: "db", schemaName: "billing"
+        )
+        writer.waitForPendingDiskWrites()
+
+        let dropper = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        dropper.dropContainer(connectionId: connectionId, database: "db", schema: "public")
+        dropper.waitForPendingDiskWrites()
+
+        let reader = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        #expect(
+            reader.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: "public")
+                .isEmpty
+        )
+        #expect(
+            reader.loadLastFilters(for: "orders", connectionId: connectionId, databaseName: "db", schemaName: "billing")
+                == filters
+        )
+    }
+
+    @Test("Dropping a database forgets every schema under it")
+    func dropContainerWithoutSchemaForgetsTheDatabase() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "email", value: "a@b.com")]
+        for schema in ["public", "billing"] {
+            storage.saveLastFilters(
+                PersistedFilterState(filters: filters),
+                for: "users", connectionId: connectionId, databaseName: "db", schemaName: schema
+            )
+        }
+        storage.saveLastFilters(
+            PersistedFilterState(filters: filters),
+            for: "users", connectionId: connectionId, databaseName: "other", schemaName: "public"
+        )
+
+        storage.dropContainer(connectionId: connectionId, database: "db", schema: nil)
+        storage.waitForPendingDiskWrites()
+
+        for schema in ["public", "billing"] {
+            #expect(
+                storage.loadLastFilters(
+                    for: "users", connectionId: connectionId, databaseName: "db", schemaName: schema
+                ).isEmpty
+            )
+        }
+        #expect(
+            storage.loadLastFilters(
+                for: "users", connectionId: connectionId, databaseName: "other", schemaName: "public"
+            ) == filters
+        )
+    }
+
     @Test("Saving then loading round-trips the filters")
     func roundTripsSaveAndLoad() {
         let (storage, directory) = makeStorage()

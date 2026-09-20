@@ -105,6 +105,25 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         notify(after: action, skipSync: true)
     }
 
+    /// Drops every favorite inside a database, or inside one schema of it when a schema is named.
+    ///
+    /// The container is gone, so each entry names a table that no longer exists. Removed one at a
+    /// time through the syncing path, because the tables are gone on every device, not only this one.
+    @discardableResult
+    func removeFavorites(inDatabase database: String?, schema: String?, connectionId: UUID) -> [FavoriteEntry] {
+        let doomed = favorites(for: connectionId).filter { entry in
+            guard entry.database == database else { return false }
+            guard let schema else { return true }
+            return entry.schema == schema
+        }
+        for entry in doomed {
+            removeFavorite(
+                name: entry.name, schema: entry.schema, database: entry.database, connectionId: connectionId
+            )
+        }
+        return Array(doomed)
+    }
+
     @discardableResult
     func removeFavorites(for connectionId: UUID) -> [FavoriteEntry] {
         removeFavorites(for: connectionId, skipSync: false)
