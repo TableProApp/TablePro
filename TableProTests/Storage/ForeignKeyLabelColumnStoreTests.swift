@@ -20,6 +20,39 @@ struct ForeignKeyLabelColumnStoreTests {
         TableScope(connectionId: connectionId, database: database, schema: schema, table: table)
     }
 
+    @Test("Dropping a table forgets its label column and leaves its siblings alone")
+    func dropTableForgetsOnlyThatTable() throws {
+        let store = try makeStore()
+        let connectionId = UUID()
+        let dropped = scope(connectionId: connectionId, table: "Artist")
+        let kept = scope(connectionId: connectionId, table: "Album")
+        store.setLabelChoice(.columns(["Name"]), for: dropped)
+        store.setLabelChoice(.columns(["Title"]), for: kept)
+
+        store.dropTable(dropped)
+
+        #expect(store.labelChoice(for: dropped) == .unset)
+        #expect(store.labelChoice(for: kept) == .columns(["Title"]))
+    }
+
+    @Test("Dropping a database forgets every table under it and nothing outside it")
+    func dropContainerForgetsTheWholeDatabase() throws {
+        let store = try makeStore()
+        let connectionId = UUID()
+        let inside = scope(connectionId: connectionId, table: "Artist")
+        let alsoInside = scope(connectionId: connectionId, table: "Album")
+        let otherDatabase = scope(connectionId: connectionId, database: "other", table: "Artist")
+        store.setLabelChoice(.columns(["Name"]), for: inside)
+        store.setLabelChoice(.columns(["Title"]), for: alsoInside)
+        store.setLabelChoice(.columns(["Name"]), for: otherDatabase)
+
+        store.dropContainer(connectionId: connectionId, database: "chinook", schema: nil)
+
+        #expect(store.labelChoice(for: inside) == .unset)
+        #expect(store.labelChoice(for: alsoInside) == .unset)
+        #expect(store.labelChoice(for: otherDatabase) == .columns(["Name"]))
+    }
+
     @Test("A table with no stored choice answers nil")
     func unsetScopeAnswersNil() throws {
         let store = try makeStore()

@@ -333,6 +333,71 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
         }
     }
 
+    /// Forgets a dropped table's filters and its browse search.
+    ///
+    /// Both caches are written as absent rather than removed, for the reason `clearLastFilters`
+    /// gives: the file delete runs on `ioQueue`, so a load arriving first would find no cache
+    /// entry, read the file that is still there, and hand back the settings of a table that no
+    /// longer exists.
+    func dropTable(_ scope: TableScope) {
+        guard let database = scope.database else { return }
+        clearLastFilters(
+            for: scope.table,
+            connectionId: scope.connectionId,
+            databaseName: database,
+            schemaName: scope.schema
+        )
+        let browse = browseKey(
+            tableName: scope.table,
+            connectionId: scope.connectionId,
+            databaseName: database,
+            schemaName: scope.schema
+        )
+        browseSearchCache[browse] = BrowseSearchState()
+        let browseURL = fileURL(forKey: browse)
+        ioQueue.async {
+            try? FileManager.default.removeItem(at: browseURL)
+        }
+    }
+
+    /// Every key under the container is cached as absent rather than dropped from the cache, for the
+    /// reason `dropTable` gives: a missing entry sends the next read to a file the queued sweep has
+    /// not reached yet, and the settings of a table that no longer exists come back as authoritative.
+    /// The keys come from the cache and from the directory together, because one holds what was
+    /// written this session and the other what was written before it.
+    func dropContainer(connectionId: UUID, database: String, schema: String?) {
+        let prefix = TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
+        var keys = Set(lastFiltersCache.keys.filter { $0.hasPrefix(prefix) })
+        keys.formUnion(browseSearchCache.keys.filter { $0.hasPrefix(prefix) })
+        if let files = try? FileManager.default.contentsOfDirectory(
+            at: filterStateDirectory, includingPropertiesForKeys: nil
+        ) {
+            for file in files where file.pathExtension == "json" {
+                let key = file.deletingPathExtension().lastPathComponent
+                if key.hasPrefix(prefix) { keys.insert(key) }
+            }
+        }
+        for key in keys {
+            if key.hasSuffix(Self.browseKeySuffix) {
+                browseSearchCache[key] = BrowseSearchState()
+            } else {
+                lastFiltersCache[key] = PersistedFilterState(filters: [], isApplied: false)
+            }
+        }
+
+        /// Swept by prefix on the queue rather than by the keys above, so a write still queued when
+        /// this ran is deleted too: the queue is serial, so that write lands first.
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            guard let files = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            else { return }
+            for file in files where file.lastPathComponent.hasPrefix(prefix) {
+                try? fm.removeItem(at: file)
+            }
+        }
+    }
+
     /// Moves a table's saved filters onto its new name. A rename keeps the columns the filters
     /// name, so the working set is still valid; leaving it behind would silently drop it.
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {

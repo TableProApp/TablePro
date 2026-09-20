@@ -26,6 +26,64 @@ struct HighlightRuleStorageTests {
         directory.appendingPathComponent("\(connectionId.uuidString).json")
     }
 
+    @Test("Dropping a table forgets its rules and leaves its siblings alone")
+    func dropTableForgetsOnlyThatTable() {
+        let store = HighlightRuleStorage(storageDirectory: directory)
+        let rules = [HighlightRule(columnName: "status", value: "paid", color: .green)]
+        store.setRules(rules, for: scope(table: "orders"))
+        store.setRules(rules, for: scope(table: "customers"))
+
+        store.dropTable(scope(table: "orders"))
+
+        #expect(store.rules(for: scope(table: "orders")).isEmpty)
+        #expect(store.rules(for: scope(table: "customers")) == rules)
+    }
+
+    @Test("Dropping a schema forgets every table in it and nothing outside it")
+    func dropContainerForgetsTheWholeSchema() {
+        let store = HighlightRuleStorage(storageDirectory: directory)
+        let rules = [HighlightRule(columnName: "status", value: "paid", color: .green)]
+        store.setRules(rules, for: scope(table: "orders", schema: "public"))
+        store.setRules(rules, for: scope(table: "invoices", schema: "public"))
+        store.setRules(rules, for: scope(table: "orders", schema: "billing"))
+        store.setRules(rules, for: scope(table: "orders", database: "other"))
+
+        store.dropContainer(connectionId: connectionId, database: "shop", schema: "public")
+
+        #expect(store.rules(for: scope(table: "orders", schema: "public")).isEmpty)
+        #expect(store.rules(for: scope(table: "invoices", schema: "public")).isEmpty)
+        #expect(store.rules(for: scope(table: "orders", schema: "billing")) == rules)
+        #expect(store.rules(for: scope(table: "orders", database: "other")) == rules)
+    }
+
+    @Test("Dropping a database forgets every schema under it")
+    func dropContainerWithoutSchemaForgetsTheDatabase() {
+        let store = HighlightRuleStorage(storageDirectory: directory)
+        let rules = [HighlightRule(columnName: "status", value: "paid", color: .green)]
+        store.setRules(rules, for: scope(table: "orders", schema: "public"))
+        store.setRules(rules, for: scope(table: "orders", schema: "billing"))
+        store.setRules(rules, for: scope(table: "orders", database: "other"))
+
+        store.dropContainer(connectionId: connectionId, database: "shop", schema: nil)
+
+        #expect(store.rules(for: scope(table: "orders", schema: "public")).isEmpty)
+        #expect(store.rules(for: scope(table: "orders", schema: "billing")).isEmpty)
+        #expect(store.rules(for: scope(table: "orders", database: "other")) == rules)
+    }
+
+    @Test("Dropping a table nobody has rules for changes nothing")
+    func dropContainerWithNoMatchIsANoOp() {
+        let store = HighlightRuleStorage(storageDirectory: directory)
+        let rules = [HighlightRule(columnName: "status", value: "paid", color: .green)]
+        store.setRules(rules, for: scope(table: "orders"))
+        let before = store.revision
+
+        store.dropContainer(connectionId: connectionId, database: "nothing_here", schema: nil)
+
+        #expect(store.revision == before)
+        #expect(store.rules(for: scope(table: "orders")) == rules)
+    }
+
     @Test("Rules round-trip through a fresh store")
     func roundTrip() {
         let rules = [

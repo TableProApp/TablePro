@@ -177,6 +177,38 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
     }
 
+    func dropTable(_ scope: TableScope) {
+        guard let database = scope.database else { return }
+        clear(for: ColumnLayoutTableKey(
+            connectionId: scope.connectionId,
+            databaseName: database,
+            schemaName: scope.schema,
+            tableName: scope.table
+        ))
+    }
+
+    /// Drops every table's layout under a container. The sync deletions go out after the file is
+    /// written, not before, so a sync fired by the notification cannot read the entries back off a
+    /// stale file and re-upload them.
+    func dropContainer(connectionId: UUID, database: String, schema: String?) {
+        let prefix = TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
+        var entries = loadEntries(for: connectionId)
+        let dropping = entries.keys.filter { $0.hasPrefix(prefix) }
+        guard !dropping.isEmpty else { return }
+        for key in dropping {
+            entries.removeValue(forKey: key)
+        }
+
+        if entries.isEmpty {
+            cache[connectionId] = [:]
+            removeFile(for: connectionId)
+        } else {
+            cache[connectionId] = entries
+            writeEntries(entries, for: connectionId)
+        }
+        syncTracker.markDeleted(.settings, ids: dropping.map(Self.syncCategory(for:)))
+    }
+
     func purgeConnections(_ connectionIds: Set<UUID>) {
         var deletedCategories: [String] = []
         for connectionId in connectionIds {

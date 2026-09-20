@@ -44,6 +44,14 @@ struct DatabaseTreeTableRef: Hashable, Identifiable, Sendable {
         schema ?? table.schema?.nilIfEmpty
     }
 
+    /// The schema a favorite entry for this row is keyed by, which is the table's own and never the
+    /// row's. `DatabaseTreeOutlineCoordinator.favoriteEntry(for:)` is the only writer of one and
+    /// spells it this way, and `FavoriteEntry` hashes all four of its fields, so anything reading an
+    /// entry back has to ask with the same spelling or miss it.
+    var favoriteSchema: String? {
+        table.schema?.nilIfEmpty
+    }
+
     private static func escaped(_ value: String?) -> String {
         (value ?? "")
             .replacingOccurrences(of: "\\", with: "\\\\")
