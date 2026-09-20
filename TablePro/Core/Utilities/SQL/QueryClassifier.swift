@@ -192,7 +192,7 @@ enum QueryClassifier {
 
     /// The first keyword of a code projection, past any opening parentheses.
     static func leadingCodeKeyword(_ code: String) -> String {
-        let remaining = code.drop { $0.isWhitespace || $0 == "(" }
+        let remaining = code.drop { StatementBlank.isBlank($0) || $0 == "(" }
         return remaining.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
 }
