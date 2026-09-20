@@ -103,8 +103,8 @@ struct ChatComposerScrollViewTests {
         image.unlockFocus()
 
         let bitmap = try #require(NSBitmapImageRep(data: image.tiffRepresentation ?? Data()))
-        let centre = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)
-        #expect(try #require(centre).alphaComponent > 0.5)
+        let centre = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2))
+        #expect(centre.alphaComponent > 0.5)
     }
 }
 
