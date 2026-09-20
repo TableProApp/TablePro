@@ -29,13 +29,12 @@ struct ConnectionListView: View {
     @State private var groupPendingDeletion: ConnectionGroup?
     @State private var isConfirmingSampleReset = false
     @State private var showingFileImporter = false
-    @State private var importAfterCoverDismissal: URL?
 
-    /// Whether the connection cover is on screen, which is not the same question as whether one is
-    /// selected: an unlock releases the restore hold and delivers a pending intent in one closure,
-    /// before the body that presents the cover has run. Only a cover that is up dismisses, so only
-    /// a cover that is up can be waited on.
-    @State private var isConnectionCoverPresented = false
+    /// Whether SwiftUI has the connection cover on screen, which is not the same question as whether
+    /// a connection is selected. Measured on iOS 27: a cover whose item the body already read is
+    /// still cancelled without a trace when a handler in the same update clears it, so only a cover
+    /// that is on screen dismisses, and only one that is on screen can be waited on.
+    @State private var isConnectionCoverOnScreen = false
     @State private var importResultCount: Int?
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
@@ -46,10 +45,12 @@ struct ConnectionListView: View {
     }
 
     /// The connection the cover is to show. A held restore keeps the stored id and presents nothing,
-    /// which is how a locked launch reaches Face ID before anything dials. Whether a cover is
-    /// already on screen is a different question, and `isConnectionCoverPresented` answers it.
+    /// which is how a locked launch reaches Face ID before anything dials, and how a link that has
+    /// not been delivered yet keeps the stored connection from opening ahead of it. A hold postpones
+    /// a restore; it never closes a connection that is already open.
     private var presentedConnection: DatabaseConnection? {
-        guard !presenter.holdsConnectionRestore, let id = selectedConnectionUUID else { return nil }
+        guard let id = selectedConnectionUUID,
+              presenter.presentsConnectionCover(isOnScreen: isConnectionCoverOnScreen) else { return nil }
         return coordinatorStore.presentedRecord(for: id, in: appState.connections)
     }
 
@@ -172,7 +173,7 @@ struct ConnectionListView: View {
         .fullScreenCover(item: openConnection, onDismiss: connectionCoverDidDismiss) { connection in
             ConnectedView(connection: connection)
                 .id(connection.id)
-                .onAppear { isConnectionCoverPresented = true }
+                .onAppear { isConnectionCoverOnScreen = true }
         }
         .sheet(item: $presenter.sheet, onDismiss: sheetDidDismiss) { sheet in
             sheetContent(sheet)
@@ -850,13 +851,8 @@ struct ConnectionListView: View {
             presenter.requestTable(table, in: connectionId)
             open(connectionId)
         case .importConnections(let url):
-            let waitsForCover = isConnectionCoverPresented
             selectedConnectionIdString = nil
-            guard waitsForCover else {
-                presenter.present(.importFile(url))
-                return
-            }
-            importAfterCoverDismissal = url
+            presenter.presentImportFile(url, coverIsOnScreen: isConnectionCoverOnScreen)
         }
     }
 
@@ -868,16 +864,10 @@ struct ConnectionListView: View {
     }
 
     private func connectionCoverDidDismiss() {
-        isConnectionCoverPresented = false
+        isConnectionCoverOnScreen = false
         presenter.dismissConnectionEditor()
         coordinatorStore.discardRemovedRecords()
-        presentImportAfterCoverDismissal()
-    }
-
-    private func presentImportAfterCoverDismissal() {
-        guard let url = importAfterCoverDismissal else { return }
-        importAfterCoverDismissal = nil
-        presenter.present(.importFile(url))
+        presenter.presentHeldImport()
     }
 }
 
