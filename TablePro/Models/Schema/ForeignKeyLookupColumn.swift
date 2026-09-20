@@ -21,9 +21,29 @@ struct ForeignKeyLookupColumn: Equatable, Sendable, Identifiable {
     /// question is asked of the raw type name and answered closed: a name that is not a known
     /// character type carries no pattern predicate, which costs a search rather than an error on
     /// every search.
+    ///
+    /// A column that declares no type at all is the one open answer, and it is not a gap in the
+    /// list. Only a dynamically typed engine reports one: `create table t(a, b)` is legal SQLite
+    /// and `PRAGMA table_xinfo` gives back a zero-length type for it, measured on 3.54.0, while
+    /// every strict engine always names a type. `LIKE` is defined on every column there, measured
+    /// on the same build, so an undeclared column takes a predicate and can be a label. Reading it
+    /// as unknown instead left a hand-written SQLite database with no label anywhere and no way to
+    /// search one.
     var supportsPatternMatch: Bool {
-        guard case .text = type, let base = Self.baseTypeName(of: type.rawType) else { return false }
+        guard case .text = type else { return false }
+        guard let base = Self.baseTypeName(of: type.rawType) else { return declaresNoType }
         return Self.characterTypeNames.contains(base)
+    }
+
+    /// True when the engine answered with a type and that type was empty, which is how SQLite
+    /// reports a column declared without one.
+    ///
+    /// A missing `rawType` is deliberately not this. That is the app having no type information at
+    /// all, which several of its own conversions produce, and reading it as "the engine declared
+    /// nothing" would hand a pattern predicate to a column nobody has typed.
+    var declaresNoType: Bool {
+        guard let rawType = type.rawType else { return false }
+        return rawType.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     /// The declared type as the reader sees it beside the column's name, or nothing when the
