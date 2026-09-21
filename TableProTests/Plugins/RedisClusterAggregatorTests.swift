@@ -113,3 +113,122 @@ struct RedisClusterAggregatorDefaultTests {
         #expect(RedisClusterAggregator.combine([], policy: .aggSum).arrayValue?.isEmpty == true)
     }
 }
+
+/// Measured on a two-master redis-server 8.10.1 cluster: a `~app:*` user's `DEL app:1 other:1`
+/// deleted `app:1` on one shard and was refused on the other, and the driver reported one
+/// deletion; with `-dbsize` on one master, or that master busy running a script, the sidebar
+/// counted only the other master's keys.
+@Suite("Redis cluster aggregation - a shard that did not answer")
+struct RedisClusterAggregatorShardFailureTests {
+    static let loading = "LOADING Redis is loading the dataset in memory"
+
+    static let everyPolicyButOneSucceeded: [RedisResponsePolicy?] = [
+        .aggSum, .aggMin, .aggMax, .aggLogicalAnd, .aggLogicalOr, .allSucceeded, .special, nil,
+    ]
+
+    @Test("A shard's error is the answer, never counted as zero", arguments: everyPolicyButOneSucceeded)
+    func errorWins(policy: RedisResponsePolicy?) {
+        let combined = RedisClusterAggregator.combine(
+            [.integer(1_000), .error(Self.loading), .integer(1_000)],
+            policy: policy
+        )
+        #expect(combined.errorMessage == Self.loading)
+    }
+
+    @Test("A split DEL one shard refused reports the refusal, not the other shard's deletions")
+    func partialDeleteReportsRefusal() {
+        let combined = RedisClusterAggregator.combine(
+            [.integer(1), .error("NOPERM No permissions to access a key")],
+            policy: .aggSum
+        )
+        #expect(combined.errorMessage == "NOPERM No permissions to access a key")
+        #expect(intValue(combined) == nil)
+    }
+
+    @Test("The first shard to fail, in the order they were asked, is the one reported")
+    func firstFailureInAskOrder() {
+        let combined = RedisClusterAggregator.combine(
+            [.integer(1), .error("NOPERM a"), .error("BUSY b")],
+            policy: .aggSum
+        )
+        #expect(combined.errorMessage == "NOPERM a")
+    }
+
+    @Test("An error outranks a queued acknowledgement")
+    func errorOutranksQueued() {
+        let combined = RedisClusterAggregator.combine([.status("QUEUED"), .error("NOPERM a")], policy: .aggSum)
+        #expect(combined.errorMessage == "NOPERM a")
+    }
+
+    /// A user's `MULTI` opens a block on one master only, so `DBSIZE` came back as that master's
+    /// `+QUEUED` beside the other's count, and summed to the other's count.
+    @Test("A shard that queued its part is reported as queued, not counted as zero")
+    func queuedShardIsQueued() {
+        let combined = RedisClusterAggregator.combine([.integer(4), .status("QUEUED")], policy: .aggSum)
+        #expect(combined.isQueued)
+    }
+
+    @Test("KEYS with one queued shard is queued, not a key named QUEUED")
+    func queuedShardInConcatenation() {
+        let combined = RedisClusterAggregator.combine(
+            [.array([.string("a"), .string("b")]), .status("QUEUED")],
+            policy: nil
+        )
+        #expect(combined.isQueued)
+    }
+
+    @Test("one_succeeded still takes a success over another shard's failure")
+    func oneSucceededToleratesFailure() {
+        let combined = RedisClusterAggregator.combine([.error("NOSCRIPT"), .integer(1)], policy: .oneSucceeded)
+        #expect(intValue(combined) == 1)
+    }
+}
+
+@Suite("Redis cluster aggregation - replies that are not one number")
+struct RedisClusterAggregatorShapeTests {
+    private static func integers(_ reply: RedisReply) -> [Int64?]? {
+        reply.arrayValue?.map(intValue)
+    }
+
+    /// `SCRIPT EXISTS` answers one flag per script from every shard; reading the array as a
+    /// number reported `0` for a script every shard had loaded.
+    @Test("agg_logical_and over SCRIPT EXISTS folds each script's flag across shards")
+    func scriptExistsFoldsPerPosition() {
+        let combined = RedisClusterAggregator.combine(
+            [
+                .array([.integer(1), .integer(0), .integer(1)]),
+                .array([.integer(1), .integer(1), .integer(0)]),
+            ],
+            policy: .aggLogicalAnd
+        )
+        #expect(Self.integers(combined) == [1, 0, 0])
+    }
+
+    @Test("agg_min over WAITAOF takes the smallest local and replica counts")
+    func waitAofFoldsPerPosition() {
+        let combined = RedisClusterAggregator.combine(
+            [.array([.integer(1), .integer(2)]), .array([.integer(0), .integer(3)])],
+            policy: .aggMin
+        )
+        #expect(Self.integers(combined) == [0, 2])
+    }
+
+    @Test("Replies the policy cannot count come back whole instead of as a made-up number")
+    func uncountableRepliesComeBackWhole() {
+        let mixed = RedisClusterAggregator.combine([.integer(1), .null], policy: .aggSum)
+        #expect(intValue(mixed) == nil)
+        #expect(mixed.arrayValue?.count == 2)
+
+        let ragged = RedisClusterAggregator.combine(
+            [.array([.integer(1), .integer(2)]), .array([.integer(1), .integer(2), .integer(3)])],
+            policy: .aggSum
+        )
+        #expect(ragged.arrayValue?.map { $0.arrayValue?.count } == [2, 3])
+    }
+
+    @Test("A count sent as a string still sums")
+    func numericStringsSum() {
+        let combined = RedisClusterAggregator.combine([.integer(2), .string("3")], policy: .aggSum)
+        #expect(intValue(combined) == 5)
+    }
+}

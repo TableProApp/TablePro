@@ -64,6 +64,16 @@ struct RedisConnectionFieldsTests {
         }
     }
 
+    /// The app cannot see plugin code, so the curated copy spells the range out. The plugin's
+    /// fields replace it once the plugin loads, and until then the form shows this one.
+    @Test("The curated Database Index offers the same range as the plugin")
+    func databaseIndexMatchesPlugin() throws {
+        let database = try #require(try redisFields().first { $0.id == RedisDatabaseIndex.fieldName })
+        #expect(database.fieldType == .stepper(range: ConnectionField.IntRange(RedisDatabaseIndex.selectable)))
+        #expect(database.defaultValue == "0")
+        #expect(database.section == .advanced)
+    }
+
     @Test("The Sentinel password is secure, so it is stored in the Keychain")
     func sentinelPasswordIsSecure() throws {
         let password = try #require(try redisFields().first { $0.id == "redisSentinelPassword" })

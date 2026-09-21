@@ -333,6 +333,23 @@ internal class UITestCase: XCTestCase {
         return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
     }
 
+    /// Reached by the row's own identifier, because a section row's label is nested and does not
+    /// answer a subscript by title.
+    ///
+    /// Not finding the row fails the test rather than skipping it: a section list the accessibility
+    /// tree cannot see is a section list VoiceOver cannot drive.
+    internal func selectConnectionFormTab(_ tab: String, in form: XCUIElement) {
+        let row = form.descendants(matching: .any)
+            .matching(identifier: "connection-form-section-\(tab)")
+            .firstMatch
+        XCTAssertTrue(
+            row.waitToExist(timeout: 10),
+            "No section row identified connection-form-section-\(tab)"
+        )
+        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
+        row.click()
+    }
+
     /// The app removes its own defaults domain as it terminates, which is the only point that
     /// reliably comes after `cfprefsd` has written it. This sweep is the backstop for a run that
     /// crashed or was killed before it got there, and it runs before the class's tests so a

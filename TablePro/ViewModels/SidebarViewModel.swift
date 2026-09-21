@@ -127,10 +127,6 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
-    var redisKeyTreeViewModel: RedisKeyTreeViewModel? {
-        get { sharedState.redisKeyTreeViewModel }
-        set { sharedState.redisKeyTreeViewModel = newValue }
-    }
     @Published var showOperationDialog = false
     @Published var pendingOperationType: TableOperationType?
     @Published var pendingOperationTables: [DatabaseTreeTableRef] = []

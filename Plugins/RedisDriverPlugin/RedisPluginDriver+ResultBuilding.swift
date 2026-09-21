@@ -6,12 +6,6 @@
 import Foundation
 import TableProPluginKit
 
-private struct RedisKeyProbe {
-    let kind: RedisKeyKind
-    let lengthIndex: Int
-    let previewIndex: Int
-}
-
 extension RedisPluginDriver {
     static let keyBrowseColumns = ["Key", "Type", "TTL", "Length", "Value"]
     static let keyBrowseColumnTypeNames = ["String", "RedisType", "RedisInt", "Int64", "RedisRaw"]
@@ -24,13 +18,9 @@ extension RedisPluginDriver {
         startTime: Date,
         isTruncated: Bool
     ) async throws -> PluginQueryResult {
-        var rows: [PluginRow] = []
-        if !keys.isEmpty {
-            let typeReplies = try await conn.executePipeline(keys.map { ["TYPE", $0] })
-            rows.reserveCapacity(keys.count)
-            for (i, key) in keys.enumerated() {
-                rows.append([.text(key), .text((typeReplies[i].stringValue ?? "unknown").uppercased())])
-            }
+        let typeNames = try await conn.keyTypeNames(keys)
+        let rows: [PluginRow] = zip(keys, typeNames).map { key, typeName in
+            [.text(key), .fromOptional(typeName?.uppercased())]
         }
 
         return PluginQueryResult(
@@ -70,63 +60,22 @@ extension RedisPluginDriver {
     ) async throws -> [PluginRow] {
         guard !keys.isEmpty else { return [] }
 
-        var typeAndTtlCommands: [[String]] = []
-        typeAndTtlCommands.reserveCapacity(keys.count * 2)
-        for key in keys {
-            typeAndTtlCommands.append(["TYPE", key])
-            typeAndTtlCommands.append(["TTL", key])
-        }
-        let typeAndTtlReplies = try await conn.executePipeline(typeAndTtlCommands)
-
-        var typeNames: [String] = []
-        typeNames.reserveCapacity(keys.count)
-        var ttlValues: [Int] = []
-        ttlValues.reserveCapacity(keys.count)
-        for i in 0 ..< keys.count {
-            typeNames.append((typeAndTtlReplies[i * 2].stringValue ?? "unknown").uppercased())
-            ttlValues.append(typeAndTtlReplies[i * 2 + 1].intValue ?? -1)
-        }
-
-        var probeCommands: [[String]] = []
-        probeCommands.reserveCapacity(keys.count * 2)
-        var probes: [RedisKeyProbe?] = []
-        probes.reserveCapacity(keys.count)
-
-        for (i, key) in keys.enumerated() {
-            guard let kind = RedisKeyKind(typeName: typeNames[i]) else {
-                probes.append(nil)
-                continue
-            }
-            let lengthIndex = probeCommands.count
-            probeCommands.append(RedisKeySummary.lengthCommand(for: kind, key: key))
-            let previewIndex = probeCommands.count
-            probeCommands.append(RedisKeySummary.previewCommand(for: kind, key: key))
-            probes.append(RedisKeyProbe(kind: kind, lengthIndex: lengthIndex, previewIndex: previewIndex))
-        }
-
-        var probeReplies: [RedisReply] = []
-        if !probeCommands.isEmpty {
-            probeReplies = try await conn.executePipeline(probeCommands)
-        }
-
-        var rows: [PluginRow] = []
-        rows.reserveCapacity(keys.count)
-        for (i, key) in keys.enumerated() {
-            var length: String?
-            var value = PluginCellValue.null
-            if let probe = probes[i], probe.previewIndex < probeReplies.count {
-                length = probeReplies[probe.lengthIndex].intValue.map(String.init)
-                value = previewCell(probeReplies[probe.previewIndex], kind: probe.kind)
-            }
-            rows.append([
+        let descriptions = try await conn.describeKeys(keys)
+        let contents = try await conn.readContents(of: keys, describedAs: descriptions)
+        return zip(keys, zip(descriptions, contents)).map { key, summary in
+            let (description, content) = summary
+            return [
                 .text(key),
-                .text(typeNames[i]),
-                .text(String(ttlValues[i])),
-                PluginCellValue.fromOptional(length),
-                value
-            ])
+                description.typeCell,
+                description.ttlCell,
+                content?.lengthCell ?? .null,
+                content.flatMap(valueCell(for:)) ?? .null
+            ]
         }
-        return rows
+    }
+
+    private func valueCell(for content: RedisKeyContents) -> PluginCellValue? {
+        content.preview.map { previewCell($0, kind: content.kind) }
     }
 
     func previewCell(_ reply: RedisReply, kind: RedisKeyKind) -> PluginCellValue {

@@ -67,8 +67,8 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _currentDatabase: Int
-    private var _queuedDatabase = RedisQueuedDatabase()
+    private var _database: RedisSessionDatabase
+    private var _footprint = RedisSessionFootprint()
 
     var isConnected: Bool {
         stateLock.lock()
@@ -107,7 +107,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.connectTimeout = connectTimeout
-        self._currentDatabase = database
+        self._database = RedisSessionDatabase(database)
     }
 
     deinit {
@@ -145,7 +145,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             stateLock.lock()
             _cachedServerVersion = versionString
             _isConnected = true
-            _currentDatabase = database
+            _database = RedisSessionDatabase(database)
             stateLock.unlock()
 
             logger.info("Connected to Redis \(versionString ?? "unknown")")
@@ -167,8 +167,8 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #endif
         _isConnected = false
         _cachedServerVersion = nil
-        _currentDatabase = database
-        _queuedDatabase.clear()
+        _database = RedisSessionDatabase(database)
+        _footprint = RedisSessionFootprint()
         stateLock.unlock()
 
         #if canImport(CRedis)
@@ -208,21 +208,28 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     func currentDatabase() -> Int {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return _currentDatabase
+        return _database.current
+    }
+
+    func databaseForNextCommand() -> Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _footprint.pendingDatabase ?? _database.current
+    }
+
+    func homeDatabase() -> Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _database.home
     }
 
     // MARK: - Command Execution
 
-    func executeCommand(_ args: [String]) async throws -> RedisReply {
-        try await executeCommand(args.map { Data($0.utf8) })
-    }
-
-    func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
-        try await executePipeline(commands.map { $0.map { Data($0.utf8) } })
-    }
-
-    func executeCommand(_ args: [Data]) async throws -> RedisReply {
+    /// The session's held state is read on the serial queue, right before the send, so a `MULTI`
+    /// already queued ahead of this command is what it is checked against.
+    func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         #if canImport(CRedis)
+        let visiting = RedisDatabaseVisit.database
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
@@ -233,9 +240,11 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
+            try admit(scope, command: args.first)
+            try moveToCommandDatabase(visiting: visiting)
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
-            let result = try executeCommandSyncRetrying(args)
+            let result = try executeCommandSyncRetrying(args, scope: scope)
             try throwIfCancelled(generation)
             return result
         }
@@ -244,8 +253,9 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #endif
     }
 
-    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
+    func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         #if canImport(CRedis)
+        let visiting = RedisDatabaseVisit.database
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
@@ -256,9 +266,11 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
+            try admit(scope, command: commands.first?.first)
+            try moveToCommandDatabase(visiting: visiting)
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
-            let results = try executePipelineSyncRetrying(commands)
+            let results = try executePipelineSyncRetrying(commands, scope: scope)
             try throwIfCancelled(generation)
             return results
         }
@@ -267,13 +279,78 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #endif
     }
 
+    /// Hands a lost block or `WATCH` to the connection that replaces this one, so a Sentinel
+    /// failover that re-points mid-block still reports it.
+    func sessionStateForHandOver() -> RedisHeldState? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _footprint.pendingLoss ?? _footprint.heldState
+    }
+
+    func adoptLostSessionState(_ held: RedisHeldState?) {
+        stateLock.lock()
+        _footprint.adoptLoss(held)
+        stateLock.unlock()
+    }
+
+    /// Runs on the serial queue right before the send, so no other command can land between the
+    /// move and the command it is for. An open block is left alone: a visit is held back from one,
+    /// so the session cannot be away from home while it is open.
+    private func moveToCommandDatabase(visiting: Int?) throws {
+        stateLock.lock()
+        let target = _footprint.hasOpenBlock ? nil : _database.databaseToMoveTo(visiting: visiting)
+        stateLock.unlock()
+        guard let target else { return }
+        try select(target, scope: .outsideBlock)
+        stateLock.lock()
+        _database.visited(target)
+        stateLock.unlock()
+    }
+
+    private func select(_ index: Int, scope: RedisCommandScope) throws {
+        let reply = try executeCommandSyncRetrying(["SELECT", String(index)].map { Data($0.utf8) }, scope: scope)
+        if case .error(let msg) = reply {
+            throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(msg)")
+        }
+        guard reply.isQueued else { return }
+        stateLock.lock()
+        _footprint.queueDatabase(index)
+        stateLock.unlock()
+        throw RedisQueuedCommand(command: "SELECT")
+    }
+
+    private func admit(_ scope: RedisCommandScope, command: Data?) throws {
+        let name = command.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if scope == .session, let lost = _footprint.takePendingLoss() {
+            throw RedisSessionStateLost(held: lost, outcomeUnknown: false)
+        }
+        if let held = _footprint.heldBack(scope) {
+            throw RedisHeldBackCommand(command: name, held: held)
+        }
+    }
+
     // MARK: - Database Selection
 
     /// A `SELECT` the server queued into an open `MULTI` block has not moved the session, so the
-    /// index is held aside until the block resolves rather than recorded now. Recording it now is
-    /// right only if `EXEC` follows: after a `DISCARD` the session is still on the old database,
-    /// and a `FLUSHDB` staged against the row the app believed it was on would empty that one.
-    func selectDatabase(_ index: Int) async throws {
+    /// index is held aside until the block resolves rather than recorded now, and the caller hears
+    /// it was queued. Recording it now is right only if `EXEC` follows: after a `DISCARD` the
+    /// session is still on the old database, and a `FLUSHDB` staged against the row the app
+    /// believed it was on would empty that one.
+    func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
+        try await moveSession(to: index, scope: scope) { $0.selected(index) }
+    }
+
+    func visitDatabase(_ index: Int) async throws {
+        try await moveSession(to: index, scope: .outsideBlock) { $0.visited(index) }
+    }
+
+    private func moveSession(
+        to index: Int,
+        scope: RedisCommandScope,
+        recording move: @escaping @Sendable (inout RedisSessionDatabase) -> Void
+    ) async throws {
         #if canImport(CRedis)
         try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
@@ -285,19 +362,12 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
+            try admit(scope, command: Data("SELECT".utf8))
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
-            let reply = try executeCommandSyncRetrying(["SELECT", String(index)])
-            if case .error(let msg) = reply {
-                throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(msg)")
-            }
+            try select(index, scope: scope)
             stateLock.lock()
-            if reply.isQueued {
-                _queuedDatabase.queue(index)
-            } else {
-                _queuedDatabase.clear()
-                _currentDatabase = index
-            }
+            move(&_database)
             stateLock.unlock()
         }
         #else
@@ -464,7 +534,7 @@ private extension RedisPluginConnection {
         context = nil
         sslContext = nil
         _isConnected = false
-        _queuedDatabase.clear()
+        _footprint.sessionEnded()
         stateLock.unlock()
         if let handle { redisFree(handle) }
         if let ssl { redisFreeSSLContext(ssl) }
@@ -485,10 +555,6 @@ private extension RedisPluginConnection {
         try executeCommandSync(args.map { Data($0.utf8) })
     }
 
-    func executeCommandSyncRetrying(_ args: [String]) throws -> RedisReply {
-        try executeCommandSyncRetrying(args.map { Data($0.utf8) })
-    }
-
     /// A lost connection is only safe to replay over when the command provably never ran.
     ///
     /// hiredis reports a read timeout as REDIS_ERR_IO, exactly like a failed write, so the old
@@ -496,44 +562,81 @@ private extension RedisPluginConnection {
     /// server made one INCR count twice. The write and the read are split so the failure knows
     /// which side it happened on. An incomplete RESP command is never executed, so a failed write
     /// is always replayable; once the command is on the wire only a read-only command is.
-    func executeCommandSyncRetrying(_ args: [Data]) throws -> RedisReply {
-        let reply = try sendAllowingReplay(args)
-        resolveQueuedDatabase(command: args.first, reply: reply)
+    func executeCommandSyncRetrying(_ args: [Data], scope: RedisCommandScope) throws -> RedisReply {
+        let reply = try sendAllowingReplay(args, scope: scope)
+        observe(command: args.first, reply: reply)
         return reply
     }
 
-    private func sendAllowingReplay(_ args: [Data]) throws -> RedisReply {
+    private func sendAllowingReplay(_ args: [Data], scope: RedisCommandScope) throws -> RedisReply {
         do {
             return try executeCommandSync(args)
-        } catch let failure as RedisTransportFailure where !isShuttingDown && canReplay(args, after: failure) {
+        } catch let failure as RedisTransportFailure where !isShuttingDown {
+            try reportLostSessionState(for: args.first, scope: scope, after: failure)
+            guard canReplay(args, after: failure) else { throw failure }
             try reconnectSync()
             return try executeCommandSync(args)
         }
     }
 
-    /// The block a queued `SELECT` was held in has resolved, so the session's database follows the
-    /// server's own answer. `reconnectSync` frees the context, which drops any pending index, so a
-    /// replay never promotes one the lost session had queued.
-    private func resolveQueuedDatabase(command: Data?, reply: RedisReply) {
+    /// The user's own command was meant for a block or a `WATCH` the dropped session held, so
+    /// sending it again on a new session would run it outside the transaction it belongs to. It
+    /// reports the loss instead, and the connection is reopened so the next command works. A read
+    /// the app makes replays as before and leaves the loss for the user's next command.
+    private func reportLostSessionState(
+        for command: Data?,
+        scope: RedisCommandScope,
+        after failure: RedisTransportFailure
+    ) throws {
+        guard scope == .session, let held = heldOrLostState() else { return }
+        let isExec = command.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() == "EXEC"
+        do {
+            try reconnectSync()
+        } catch {
+            logger.warning("Reconnect after a lost \(String(describing: held), privacy: .public) failed")
+        }
+        stateLock.lock()
+        _ = _footprint.takePendingLoss()
+        stateLock.unlock()
+        throw RedisSessionStateLost(held: held, outcomeUnknown: isExec && failure.wasDelivered)
+    }
+
+    /// A pipeline that fails has already let go of its context, which latched what it held.
+    private func heldOrLostState() -> RedisHeldState? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _footprint.heldState ?? _footprint.pendingLoss
+    }
+
+    /// Every reply tells the footprint what the session holds now. The block a queued `SELECT` was
+    /// held in may have resolved, so the session's database follows the server's own answer.
+    /// `reconnectSync` frees the context, which drops any pending index, so a replay never promotes
+    /// one the lost session had queued.
+    private func observe(command: Data?, reply: RedisReply) {
         let name = command.flatMap { String(data: $0, encoding: .utf8) }
         stateLock.lock()
-        if let selected = _queuedDatabase.resolve(command: name, reply: reply) {
-            _currentDatabase = selected
+        if let selected = _footprint.observe(command: name, reply: reply) {
+            _database.selected(selected)
         }
         stateLock.unlock()
     }
 
     /// A pipeline puts several commands in one buffer, so a read failure part-way through cannot
     /// say which of them ran. Replaying is only safe when none of them writes.
-    func executePipelineSyncRetrying(_ commands: [[Data]]) throws -> [RedisReply] {
+    func executePipelineSyncRetrying(_ commands: [[Data]], scope: RedisCommandScope) throws -> [RedisReply] {
+        let replies: [RedisReply]
         do {
-            return try executePipelineSync(commands)
-        } catch let failure as RedisTransportFailure
-            where !isShuttingDown && (!failure.wasDelivered || commands.allSatisfy({ routing.isReadOnly($0) }))
-        {
+            replies = try executePipelineSync(commands)
+        } catch let failure as RedisTransportFailure where !isShuttingDown {
+            try reportLostSessionState(for: commands.first?.first, scope: scope, after: failure)
+            guard !failure.wasDelivered || commands.allSatisfy({ routing.isReadOnly($0) }) else { throw failure }
             try reconnectSync()
-            return try executePipelineSync(commands)
+            replies = try executePipelineSync(commands)
         }
+        for (command, reply) in zip(commands, replies) {
+            observe(command: command.first, reply: reply)
+        }
+        return replies
     }
 
     func canReplay(_ args: [Data], after failure: RedisTransportFailure) -> Bool {
@@ -640,6 +743,7 @@ private extension RedisPluginConnection {
         let handle = context
         context = nil
         _isConnected = false
+        _footprint.sessionEnded()
         stateLock.unlock()
         #if canImport(CRedis)
         if let handle {

@@ -38,7 +38,7 @@ nonisolated enum RedisConnectProbe {
 
     /// RESP puts the error class in the first word, so the class is compared whole. A prefix test
     /// would let a future `NOAUTHZ` read as `NOAUTH`.
-    private static func errorClass(of message: String) -> String {
+    static func errorClass(of message: String) -> String {
         String(message.prefix { !$0.isWhitespace }).uppercased()
     }
 }

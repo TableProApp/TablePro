@@ -252,11 +252,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         /// One token covers every table, routine and per-schema load for this connection, which is
         /// the whole reactive surface the flat and hierarchical shapes read.
         _ = schemaService.generationToken(for: connectionId)
-        if let keyTree = sidebarState?.redisKeyTreeViewModel {
-            _ = keyTree.isLoading
-            _ = keyTree.isTruncated
-            _ = keyTree.allKeys.count
-        }
+        _ = sidebarState?.redisKeyTreeViewModel?.state
         for node in nodeCache.values {
             switch node.kind {
             case .database(let metadata):

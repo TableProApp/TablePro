@@ -239,9 +239,11 @@ struct DatabaseTreeRowView: View {
                     Text(name)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text(keyType)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let keyType {
+                        Text(keyType)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } icon: {
                 Image(systemName: RedisKeyNode.iconName(forKeyType: keyType))

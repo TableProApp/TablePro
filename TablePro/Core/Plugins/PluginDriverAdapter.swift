@@ -864,12 +864,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.allTablesMetadataSQL(schema: schema)
     }
 
-    // MARK: - EXPLAIN
-
-    func buildExplainQuery(_ sql: String) -> String? {
-        pluginDriver.buildExplainQuery(sql)
-    }
-
     // MARK: - View Templates
 
     func createViewTemplate() -> String? {

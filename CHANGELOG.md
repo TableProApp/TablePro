@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Assistant conversations belong to one connection, and outlive the window that opened them.
 - iCloud sync and usage data on iPhone and iPad stay off until you turn them on.
 - Group rows in the iOS connection list take swipe actions and show even when no connection is saved.
+- Typed entry beside the stepper for number settings in the connection form.
 
 ### Removed
 
@@ -225,6 +226,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
+- Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)
+- Empty tab after clicking a Redis database the server refuses to switch to.
+- No wrong-mode error when a Standalone Redis connection points at a Valkey 8 or later Sentinel or cluster node.
+- Redis `MULTI` blocks aborted, or padded with extra replies, by the sidebar, the key browser and the connection check.
+- A Redis `MULTI` block or `WATCH` lost without notice when the connection dropped.
+- Redis row counts, statistics, DDL preview, export and grid edits using the session's current database instead of the row's own.
+- Refreshing a Redis database tab after a refused switch showing another database's keys.
+- Redis key grid showing type UNKNOWN, TTL -1 and empty collections for keys an ACL user cannot read.
+- Redis Cluster deletes and key counts reported as complete when a shard refused them, and `SCRIPT EXISTS` answering 0.
+- Database Index in the Redis connection form stopping at 15.
+- Empty Redis key list on iPhone and iPad when the server refuses the scan or a `MULTI` block is open.
+- Explain Query failing on Redis with a `DEBUG` command error, and enabled for databases with no query plan.
+- Redis key tree showing "No items" when the server refuses the key scan or a `MULTI` block is open.
 
 ### Security
 

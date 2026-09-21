@@ -737,6 +737,7 @@ extension MainContentCoordinator {
 
         let connId = connectionId
         let database = String(dbIndex)
+        let tabId = tabManager.selectedTabId
         redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -744,47 +745,45 @@ extension MainContentCoordinator {
             } catch {
                 guard !Task.isCancelled else { return }
                 navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.publicLogShape, privacy: .public)")
-                if let tabId = tabManager.selectedTab?.id {
-                    declineTableLoad(for: tabId)
+                if let tabId {
+                    reportRedisSelectionFailure(error, onTab: tabId)
                 }
                 return
             }
             guard !Task.isCancelled else { return }
             toolbarState.currentDatabase = database
-            executeTableTabQueryDirectly(viewport: .firstRow)
+            if let tabId, tabManager.selectedTabId != tabId {
+                declineTableLoad(for: tabId)
+            } else {
+                executeTableTabQueryDirectly(viewport: .firstRow)
+            }
 
-            let separator = connection.additionalFields["redisSeparator"] ?? ":"
-            if sidebarViewModel?.redisKeyTreeViewModel == nil {
-                let vm = RedisKeyTreeViewModel()
-                sidebarViewModel?.redisKeyTreeViewModel = vm
-                let sidebarState = SharedSidebarState.forConnection(connId)
-                sidebarState.redisKeyTreeViewModel = vm
-            }
-            Task {
-                await self.sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
-                    connectionId: connId,
-                    database: database,
-                    separator: separator
-                )
-            }
+            loadRedisKeyTree(database: database)
         }
     }
 
     func initRedisKeyTreeIfNeeded() {
         guard connection.type == .redis else { return }
+        guard SharedSidebarState.forConnection(connectionId).redisKeyTreeViewModel == nil else { return }
+        loadRedisKeyTree(database: toolbarState.currentDatabase)
+    }
+
+    /// The tree belongs to the connection's shared sidebar state rather than to this window's sidebar
+    /// view model, which may not exist yet, so the load never depends on which window asked for it.
+    private func loadRedisKeyTree(database: String) {
         let sidebarState = SharedSidebarState.forConnection(connectionId)
-        guard sidebarState.redisKeyTreeViewModel == nil else { return }
+        let keyTree = sidebarState.redisKeyTreeViewModel ?? makeRedisKeyTree(in: sidebarState)
+        keyTree.loadKeys(
+            connectionId: connectionId,
+            database: database,
+            separator: connection.additionalFields["redisSeparator"] ?? ":"
+        )
+    }
 
-        let vm = RedisKeyTreeViewModel()
-        sidebarState.redisKeyTreeViewModel = vm
-        sidebarViewModel?.redisKeyTreeViewModel = vm
-
-        let connId = connectionId
-        let database = toolbarState.currentDatabase
-        let separator = connection.additionalFields["redisSeparator"] ?? ":"
-        Task {
-            await vm.loadKeys(connectionId: connId, database: database, separator: separator)
-        }
+    private func makeRedisKeyTree(in sidebarState: SharedSidebarState) -> RedisKeyTreeViewModel {
+        let keyTree = RedisKeyTreeViewModel()
+        sidebarState.redisKeyTreeViewModel = keyTree
+        return keyTree
     }
 
     // MARK: - Redis Key Tree Navigation
@@ -793,19 +792,19 @@ extension MainContentCoordinator {
         applyBrowseSearch(BrowseSearchState(pattern: "\(prefix)*"))
     }
 
-    func openRedisKey(_ keyName: String, keyType: String) {
+    func openRedisKey(_ keyName: String, keyType: String?) {
         let escapedKey = keyName.replacingOccurrences(of: "\"", with: "\\\"")
         let query: String
-        switch keyType.lowercased() {
-        case "hash":
+        switch keyType?.lowercased() {
+        case "hash"?:
             query = "HGETALL \"\(escapedKey)\""
-        case "list":
+        case "list"?:
             query = "LRANGE \"\(escapedKey)\" 0 -1"
-        case "set":
+        case "set"?:
             query = "SMEMBERS \"\(escapedKey)\""
-        case "zset":
+        case "zset"?:
             query = "ZRANGE \"\(escapedKey)\" 0 -1 WITHSCORES"
-        case "stream":
+        case "stream"?:
             query = "XRANGE \"\(escapedKey)\" - +"
         default:
             query = "GET \"\(escapedKey)\""

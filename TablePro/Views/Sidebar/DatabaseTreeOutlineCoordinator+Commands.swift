@@ -160,6 +160,8 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(text)
         case .showObjectSource(let ref):
             mainCoordinator?.showObjectSource(ref)
+        case .refreshRedisKeys:
+            sidebarState?.redisKeyTreeViewModel?.reload()
         case .copyRedisNamespacePrefix(let prefix):
             ClipboardService.shared.writeText(prefix)
         case .copyRedisKey(let key):

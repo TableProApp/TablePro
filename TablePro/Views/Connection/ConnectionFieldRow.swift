@@ -67,15 +67,12 @@ struct ConnectionFieldRow: View {
                 )
             )
         case .stepper(let range):
-            Stepper(
-                value: Binding(
-                    get: { Int(value) ?? range.lowerBound },
-                    set: { value = String($0) }
-                ),
-                in: range.closedRange
-            ) {
-                Text(verbatim: "\(field.label): \(Int(value) ?? range.lowerBound)")
-            }
+            ConnectionStepperField(
+                label: field.label,
+                range: range,
+                defaultValue: field.defaultValue,
+                value: $value
+            )
         case .hostList:
             EmptyView()
         }

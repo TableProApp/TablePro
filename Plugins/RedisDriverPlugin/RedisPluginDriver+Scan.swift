@@ -20,7 +20,7 @@ extension RedisPluginDriver {
         repeat {
             try Task.checkCancellation()
             let page = try await conn.scanKeyspace(
-                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000
+                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000, scope: .outsideBlock
             )
             cursor = page.cursor
             allKeys.append(contentsOf: page.keys)

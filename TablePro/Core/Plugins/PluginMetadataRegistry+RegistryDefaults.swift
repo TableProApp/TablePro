@@ -210,7 +210,7 @@ extension PluginMetadataRegistry {
                             id: "redisDatabase",
                             label: String(localized: "Database Index"),
                             defaultValue: "0",
-                            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+                            fieldType: .stepper(range: ConnectionField.IntRange(0...(Int(Int32.max) - 1))),
                             visibleWhen: FieldVisibilityRule(
                                 fieldId: "redisMode",
                                 values: ["standalone", "sentinel"]

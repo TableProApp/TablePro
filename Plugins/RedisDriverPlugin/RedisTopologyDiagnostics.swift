@@ -28,15 +28,29 @@ enum RedisServerInfo {
 
     static func version(from info: String) -> String? { value("redis_version", in: info) }
 
+    /// Valkey 8 and later write `server_mode` unless `extended-redis-compatibility` is on, so a
+    /// Sentinel port or a cluster node reporting only that line would otherwise pass as Standalone.
     static func mode(from info: String) -> RedisServerMode? {
-        value("redis_mode", in: info).flatMap(RedisServerMode.init(rawValue:))
+        (value("redis_mode", in: info) ?? value("server_mode", in: info)).flatMap(RedisServerMode.init(rawValue:))
     }
 
-    /// `INFO keyspace` reports one `dbN:keys=...` line per non-empty database on this node alone.
-    static func keyCount(forDatabase name: String, in info: String) -> Int? {
-        guard let stats = value(name, in: info) else { return nil }
-        for pair in stats.components(separatedBy: ",") {
-            let parts = pair.components(separatedBy: "=")
+    /// `INFO keyspace` reports one `dbN:keys=...` line per non-empty database on this node alone,
+    /// so a database missing from the answer holds no keys.
+    static func keyspace(from info: String) -> [Int: Int] {
+        var counts: [Int: Int] = [:]
+        for line in info.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("db"), let separator = trimmed.firstIndex(of: ":"),
+                  let index = RedisDatabaseIndex.parse(String(trimmed[..<separator])), index >= 0,
+                  let keys = keyCount(inStats: trimmed[trimmed.index(after: separator)...]) else { continue }
+            counts[index] = keys
+        }
+        return counts
+    }
+
+    private static func keyCount(inStats stats: Substring) -> Int? {
+        for pair in stats.split(separator: ",") {
+            let parts = pair.split(separator: "=", maxSplits: 1)
             if parts.count == 2, parts[0] == "keys", let count = Int(parts[1]) { return count }
         }
         return nil

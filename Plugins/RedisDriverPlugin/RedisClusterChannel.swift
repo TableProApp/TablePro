@@ -113,7 +113,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     func currentDatabase() -> Int { 0 }
 
-    func selectDatabase(_ index: Int) async throws {
+    func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
         guard index == 0 else {
             throw RedisPluginError(
                 code: 0,
@@ -124,27 +124,27 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     // MARK: - Command dispatch
 
-    func executeCommand(_ args: [Data]) async throws -> RedisReply {
+    func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         guard !args.isEmpty else { return .null }
         let snapshot = snapshotState()
         let spec = snapshot.routing.spec(for: args)
 
         switch spec?.requestPolicy {
         case .allNodes:
-            return try await broadcast(args, to: snapshot.topology.allNodes, policy: spec?.responsePolicy)
+            return try await broadcast(args, to: snapshot.topology.allNodes, policy: spec?.responsePolicy, scope: scope)
         case .allShards:
             guard spec?.responsePolicy != .special else {
-                return try await routeToAnyMaster(args, snapshot: snapshot)
+                return try await routeToAnyMaster(args, snapshot: snapshot, scope: scope)
             }
-            return try await broadcast(args, to: snapshot.topology.masters, policy: spec?.responsePolicy)
+            return try await broadcast(args, to: snapshot.topology.masters, policy: spec?.responsePolicy, scope: scope)
         case .multiShard:
-            return try await runMultiShard(args, spec: spec, snapshot: snapshot)
+            return try await runMultiShard(args, spec: spec, snapshot: snapshot, scope: scope)
         case .special, .none:
-            return try await routeSingle(args, spec: spec, snapshot: snapshot)
+            return try await routeSingle(args, spec: spec, snapshot: snapshot, scope: scope)
         }
     }
 
-    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
+    func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         guard !commands.isEmpty else { return [] }
         let snapshot = snapshotState()
 
@@ -163,19 +163,26 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         for target in order {
             guard let entries = grouped[target], let address = address(forIdentifier: target) else { continue }
             let connection = try await connection(to: address)
-            let batch = try await connection.executePipeline(entries.map(\.command))
+            let batch = try await connection.executePipeline(entries.map(\.command), scope: scope)
             for (entry, reply) in zip(entries, batch) {
                 replies[entry.index] = try await resolveRedirectIfNeeded(
                     reply,
                     command: entry.command,
-                    from: address
+                    from: address,
+                    scope: scope
                 )
             }
         }
         return replies
     }
 
-    func scanKeyspace(cursor: String, pattern: String?, type: String?, count: Int) async throws -> RedisKeyspacePage {
+    func scanKeyspace(
+        cursor: String,
+        pattern: String?,
+        type: String?,
+        count: Int,
+        scope: RedisCommandScope
+    ) async throws -> RedisKeyspacePage {
         let snapshot = snapshotState()
         let ordered = snapshot.topology.orderedMasters
         let nodeIds = ordered.map(\.id)
@@ -193,7 +200,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             if let type { args += ["TYPE", type] }
 
             let connection = try await connection(to: node.address)
-            let reply = try await connection.executeCommand(args).throwIfError().throwIfQueued("SCAN")
+            let reply = try await connection.executeCommand(args, scope: scope).throwIfError().throwIfQueued("SCAN")
             let page = RedisScanReply.parse(reply)
             let next = RedisClusterCursor.advance(
                 after: node.id,
@@ -240,72 +247,111 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         return snapshot.topology.master(forSlot: RedisKeySlot.slot(for: first))
     }
 
-    private func routeSingle(_ args: [Data], spec: RedisCommandSpec?, snapshot: Snapshot) async throws -> RedisReply {
+    private func routeSingle(
+        _ args: [Data],
+        spec: RedisCommandSpec?,
+        snapshot: Snapshot,
+        scope: RedisCommandScope
+    ) async throws -> RedisReply {
         if spec?.hasMovableKeys == true, let resolved = try? await serverResolvedKeys(for: args, snapshot: snapshot) {
             guard RedisKeySlot.slotsAreEqual(for: resolved) else {
                 throw RedisPluginError(code: 0, message: Self.crossSlotMessage(for: args))
             }
             if let first = resolved.first,
                let node = snapshot.topology.master(forSlot: RedisKeySlot.slot(for: first)) {
-                return try await send(args, to: node.address)
+                return try await send(args, to: node.address, scope: scope)
             }
         }
         guard let node = try owningNode(for: args, snapshot: snapshot) else {
-            return try await routeToAnyMaster(args, snapshot: snapshot)
+            return try await routeToAnyMaster(args, snapshot: snapshot, scope: scope)
         }
-        return try await send(args, to: node.address)
+        return try await send(args, to: node.address, scope: scope)
     }
 
-    private func routeToAnyMaster(_ args: [Data], snapshot: Snapshot) async throws -> RedisReply {
+    private func routeToAnyMaster(_ args: [Data], snapshot: Snapshot, scope: RedisCommandScope) async throws -> RedisReply {
         guard let node = snapshot.topology.orderedMasters.first else { throw RedisPluginError.notConnected }
-        return try await send(args, to: node.address)
+        return try await send(args, to: node.address, scope: scope)
     }
 
-    private func runMultiShard(_ args: [Data], spec: RedisCommandSpec?, snapshot: Snapshot) async throws -> RedisReply {
-        guard let spec else { return try await routeSingle(args, spec: nil, snapshot: snapshot) }
+    private func runMultiShard(
+        _ args: [Data],
+        spec: RedisCommandSpec?,
+        snapshot: Snapshot,
+        scope: RedisCommandScope
+    ) async throws -> RedisReply {
+        guard let spec else { return try await routeSingle(args, spec: nil, snapshot: snapshot, scope: scope) }
         guard let groups = RedisMultiShardPlanner.split(arguments: args, spec: spec) else {
-            return try await routeSingle(args, spec: spec, snapshot: snapshot)
+            return try await routeSingle(args, spec: spec, snapshot: snapshot, scope: scope)
         }
 
         var replies: [RedisReply] = []
+        var nodes: [RedisNodeAddress] = []
         replies.reserveCapacity(groups.count)
+        nodes.reserveCapacity(groups.count)
         for group in groups {
             guard let node = snapshot.topology.master(forSlot: group.slot) else {
                 throw RedisPluginError.notConnected
             }
-            replies.append(try await send(group.arguments, to: node.address))
+            replies.append(try await send(group.arguments, to: node.address, scope: scope))
+            nodes.append(node.address)
         }
 
-        guard let policy = spec.responsePolicy else {
-            return RedisMultiShardPlanner.scatterInKeyOrder(
+        let combined: RedisReply
+        if let policy = spec.responsePolicy {
+            combined = RedisClusterAggregator.combine(replies, policy: policy)
+        } else {
+            combined = RedisMultiShardPlanner.scatterInKeyOrder(
                 groups: groups,
                 replies: replies,
                 keyIndices: spec.keyIndices(forArgumentCount: args.count)
             )
         }
-        return RedisClusterAggregator.combine(replies, policy: policy)
+        noteShardFailures(of: args, combined: combined, replies: replies, nodes: nodes)
+        return combined
     }
 
     private func broadcast(
         _ args: [Data],
         to nodes: [RedisClusterNode],
-        policy: RedisResponsePolicy?
+        policy: RedisResponsePolicy?,
+        scope: RedisCommandScope
     ) async throws -> RedisReply {
         let targets = nodes.isEmpty ? snapshotState().topology.masters : nodes
         guard !targets.isEmpty else { throw RedisPluginError.notConnected }
         var replies: [RedisReply] = []
         replies.reserveCapacity(targets.count)
         for node in targets {
-            replies.append(try await send(args, to: node.address, followRedirects: false))
+            replies.append(try await send(args, to: node.address, followRedirects: false, scope: scope))
         }
-        return RedisClusterAggregator.combine(replies, policy: policy)
+        let combined = RedisClusterAggregator.combine(replies, policy: policy)
+        noteShardFailures(of: args, combined: combined, replies: replies, nodes: targets.map(\.address))
+        return combined
+    }
+
+    /// The reply the user sees is the refusing shard's own, which names neither the node nor the
+    /// fact that the other shards ran their part, so the log keeps both. The class only, because
+    /// the rest of an error message can quote a key.
+    private func noteShardFailures(
+        of args: [Data],
+        combined: RedisReply,
+        replies: [RedisReply],
+        nodes: [RedisNodeAddress]
+    ) {
+        guard combined.isError else { return }
+        let name = args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? ""
+        for (position, (reply, node)) in zip(replies, nodes).enumerated() {
+            guard let message = reply.errorMessage else { continue }
+            let errorClass = RedisConnectProbe.errorClass(of: message)
+            let part = "\(node.identifier), part \(position + 1) of \(replies.count)"
+            logger.notice("\(name, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
+        }
     }
 
     private func serverResolvedKeys(for args: [Data], snapshot: Snapshot) async throws -> [Data] {
         guard let node = snapshot.topology.orderedMasters.first else { return [] }
         var request: [Data] = [Data("COMMAND".utf8), Data("GETKEYS".utf8)]
         request.append(contentsOf: args)
-        let reply = try await send(request, to: node.address, followRedirects: false)
+        let reply = try await send(request, to: node.address, followRedirects: false, scope: .outsideBlock)
         guard case .array(let items) = reply else { return [] }
         return items.compactMap { item in
             switch item {
@@ -321,7 +367,8 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     private func send(
         _ args: [Data],
         to address: RedisNodeAddress,
-        followRedirects: Bool = true
+        followRedirects: Bool = true,
+        scope: RedisCommandScope
     ) async throws -> RedisReply {
         var target = address
         var redirects = 0
@@ -329,7 +376,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
         while true {
             let connection = try await connection(to: target)
-            let reply = try await connection.executeCommand(args)
+            let reply = try await connection.executeCommand(args, scope: scope)
             guard followRedirects, let message = reply.errorMessage,
                   let redirect = RedisClusterRedirect.parse(message, fallbackHost: target.host) else {
                 return reply
@@ -344,7 +391,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             case .ask(_, let asked):
                 guard redirects < Limits.maxRedirects else { return reply }
                 redirects += 1
-                return try await sendAsking(args, to: asked)
+                return try await sendAsking(args, to: asked, scope: scope)
             case .tryAgain(let slot):
                 guard busyRetries < Limits.maxBusyRetries else {
                     throw RedisPluginError(code: 0, message: Self.migrationMessage(slot: slot))
@@ -361,16 +408,17 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     /// ASKING is a one-shot flag, so it has to travel in the same pipeline as the command it
     /// applies to. Measured: sending it on its own leaves the next command answering MOVED.
-    private func sendAsking(_ args: [Data], to address: RedisNodeAddress) async throws -> RedisReply {
+    private func sendAsking(_ args: [Data], to address: RedisNodeAddress, scope: RedisCommandScope) async throws -> RedisReply {
         let connection = try await connection(to: address)
-        let replies = try await connection.executePipeline([[Data("ASKING".utf8)], args])
+        let replies = try await connection.executePipeline([[Data("ASKING".utf8)], args], scope: scope)
         return replies.last ?? .null
     }
 
     private func resolveRedirectIfNeeded(
         _ reply: RedisReply,
         command: [Data],
-        from address: RedisNodeAddress
+        from address: RedisNodeAddress,
+        scope: RedisCommandScope
     ) async throws -> RedisReply {
         guard let message = reply.errorMessage,
               let redirect = RedisClusterRedirect.parse(message, fallbackHost: address.host) else {
@@ -379,9 +427,9 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         switch redirect {
         case .moved(let slot, let moved):
             noteMoved(slot: slot, to: moved)
-            return try await send(command, to: moved)
+            return try await send(command, to: moved, scope: scope)
         case .ask(_, let asked):
-            return try await sendAsking(command, to: asked)
+            return try await sendAsking(command, to: asked, scope: scope)
         default:
             return reply
         }
@@ -488,7 +536,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     ) async throws -> RedisClusterTopology {
         let connection = try await connection(to: seed)
 
-        let shardsReply = try await connection.executeCommand(["CLUSTER", "SHARDS"])
+        let shardsReply = try await connection.executeCommand(["CLUSTER", "SHARDS"], scope: .outsideBlock)
         if let parsed = RedisClusterTopologyParser.parseShards(shardsReply, fallbackHost: seed.host) {
             return parsed
         }
@@ -496,7 +544,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             throw RedisPluginError(code: 0, message: RedisTopologyDiagnostics.notAClusterMessage)
         }
 
-        let slotsReply = try await connection.executeCommand(["CLUSTER", "SLOTS"])
+        let slotsReply = try await connection.executeCommand(["CLUSTER", "SLOTS"], scope: .outsideBlock)
         if let message = slotsReply.errorMessage {
             if message.contains("cluster support disabled") {
                 throw RedisPluginError(code: 0, message: RedisTopologyDiagnostics.notAClusterMessage)
@@ -525,7 +573,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
         if let first = discovered.orderedMasters.first {
             let connection = try await connection(to: first.address)
-            let info = (try? await connection.executeCommand(["INFO", "server"]))?.stringValue
+            let info = (try? await connection.executeCommand(["INFO", "server"], scope: .outsideBlock))?.stringValue
             adoptVersion(info.flatMap(RedisServerInfo.version(from:)))
         }
     }
@@ -535,7 +583,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     /// denied CLUSTER SLOTS too, so there is no case where lazy lookups would have helped.
     private func fetchRouting(from seed: RedisNodeAddress) async throws -> RedisCommandRouting {
         let connection = try await connection(to: seed)
-        let reply = try await connection.executeCommand(["COMMAND"])
+        let reply = try await connection.executeCommand(["COMMAND"], scope: .outsideBlock)
         guard let parsed = RedisCommandRouting.parse(commandReply: reply) else {
             logger.notice("COMMAND unavailable; using the curated routing table")
             return RedisCommandRouting()

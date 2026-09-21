@@ -340,23 +340,14 @@ extension DatabaseTreeOutlineCoordinator {
             guard case .namespace(_, _, let children, _) = parent else { return [] }
             return children.map { node(id: DatabaseTreeNode.redisNodeId($0), kind: .redisNode($0)) }
         }
-        if keyTree.isLoading {
-            return [statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: .loading)]
+        return RedisKeyTreeRows.rows(for: keyTree.state, searchText: searchText).map { row in
+            switch row {
+            case .status(let status):
+                return statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: status)
+            case .node(let keyNode):
+                return node(id: DatabaseTreeNode.redisNodeId(keyNode), kind: .redisNode(keyNode))
+            }
         }
-        let roots = keyTree.displayNodes(searchText: searchText)
-        guard !roots.isEmpty else {
-            return [statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: .empty)]
-        }
-        var nodes = roots.map { node(id: DatabaseTreeNode.redisNodeId($0), kind: .redisNode($0)) }
-        if keyTree.isTruncated {
-            nodes.append(
-                statusNode(
-                    parentId: DatabaseTreeNode.redisKeysSectionId,
-                    status: .truncated(RedisKeyTreeTruncation.message(limit: RedisKeyTreeViewModel.maxKeys))
-                )
-            )
-        }
-        return nodes
     }
 
     private func recentTableRefs() -> [DatabaseTreeTableRef] {

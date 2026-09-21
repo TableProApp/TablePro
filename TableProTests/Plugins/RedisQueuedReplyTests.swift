@@ -12,39 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-/// Driven by one task at a time, so the replies are handed out in order with no synchronisation.
-private final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
-    private var queuedReplies: [RedisReply]
-    private(set) var sentCommands: [[String]] = []
-
-    init(_ replies: [RedisReply]) {
-        queuedReplies = replies
-    }
-
-    var isConnected: Bool { true }
-
-    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {}
-    func disconnect() {}
-    func cancelCurrentQuery() {}
-    func serverVersion() -> String? { "8.10.1" }
-    func currentDatabase() -> Int { 0 }
-    func selectDatabase(_ index: Int) async throws {}
-
-    func executeCommand(_ args: [Data]) async throws -> RedisReply {
-        sentCommands.append(args.map { String(data: $0, encoding: .utf8) ?? "" })
-        guard !queuedReplies.isEmpty else { return .null }
-        return queuedReplies.removeFirst()
-    }
-
-    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
-        var replies: [RedisReply] = []
-        for command in commands {
-            replies.append(try await executeCommand(command))
-        }
-        return replies
-    }
-}
-
 @Suite("Redis reply - a queued acknowledgement is not an answer")
 struct RedisQueuedReplyShapeTests {
     @Test("A +QUEUED simple string is the acknowledgement")

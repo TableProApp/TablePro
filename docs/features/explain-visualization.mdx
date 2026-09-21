@@ -148,8 +148,8 @@ Properties the driver reported as false or zero are left out of **Details**.
 | Cloudflare R2 SQL | Explain, Explain (JSON) | Raw text only |
 | BigQuery | Dry Run (Cost) | A dry run cost estimate, no plan |
 | Spanner | Plan | From the indented text |
-| MongoDB | Explain | The `explain` runCommand with execution stats |
-| Redis | Explain | `DEBUG OBJECT` for the command's key |
+
+An engine missing from the table has no plan to show, and **Query > Explain Query** is dimmed for it. On MongoDB, call `.explain()` on the query in the editor instead.
 
 <Warning>
 `EXPLAIN` does not run the query. `EXPLAIN ANALYZE` does, so on a production server it costs whatever the query costs. Safe Mode asks before an EXPLAIN too, whichever way you started it, and the Stop button cancels one that is taking too long.

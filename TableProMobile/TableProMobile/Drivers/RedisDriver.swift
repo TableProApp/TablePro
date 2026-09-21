@@ -83,43 +83,13 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema (Redis key space mapped to tables)
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        var keys: [String] = []
-        var cursor = "0"
-
-        repeat {
-            let reply = try await actor.command(["SCAN", cursor, "MATCH", "*", "COUNT", "1000"])
-            guard case .array(let parts) = reply, parts.count == 2 else { break }
-
-            if case .string(let nextCursor) = parts[0] {
-                cursor = nextCursor
-            } else {
-                break
-            }
-
-            if case .array(let keyReplies) = parts[1] {
-                for kr in keyReplies {
-                    if case .string(let k) = kr { keys.append(k) }
-                }
-            }
-
-            if keys.count >= 100_000 { break }
-        } while cursor != "0"
-
-        return keys.sorted().map {
+        try await RedisKeyspaceReads.keys(sending: send).sorted().map {
             TableInfo(name: $0, type: .table, rowCount: nil, dataSize: nil, comment: nil)
         }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let reply = try await actor.command(["TYPE", table])
-        let typeName: String
-        if case .status(let s) = reply {
-            typeName = s
-        } else if case .string(let s) = reply {
-            typeName = s
-        } else {
-            typeName = "unknown"
-        }
+        let typeName = try await RedisKeyspaceReads.typeName(ofKey: table, sending: send)
 
         return [
             ColumnInfo(
@@ -174,10 +144,7 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
             throw RedisError.queryFailed("Invalid database name: \(name). Expected db0, db1, etc.")
         }
 
-        let reply = try await actor.command(["SELECT", dbNum])
-        if case .error(let msg) = reply {
-            throw RedisError.queryFailed(msg)
-        }
+        try await send(["SELECT", dbNum]).throwIfError().throwIfQueued("SELECT")
     }
 
     func switchSchema(to name: String) async throws {
@@ -199,6 +166,10 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Private Helpers
+
+    private func send(_ arguments: [String]) async throws -> RedisReplyValue {
+        try await actor.command(arguments)
+    }
 
     private func parseRedisCommand(_ input: String) -> [String] {
         var args: [String] = []
@@ -328,33 +299,6 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
             return false
         }
         return true
-    }
-}
-
-// MARK: - Redis Reply Value
-
-nonisolated private enum RedisReplyValue: Sendable {
-    case string(String)
-    case integer(Int64)
-    case array([RedisReplyValue])
-    case status(String)
-    case error(String)
-    case null
-
-    var stringRepresentation: String? {
-        switch self {
-        case .string(let s): return s
-        case .integer(let i): return String(i)
-        case .status(let s): return s
-        case .error(let s): return s
-        case .null: return nil
-        case .array(let items): return "[\(items.compactMap(\.stringRepresentation).joined(separator: ", "))]"
-        }
-    }
-
-    var errorMessage: String? {
-        guard case .error(let message) = self else { return nil }
-        return message
     }
 }
 
@@ -590,12 +534,13 @@ private actor RedisActor {
 
 // MARK: - Errors
 
-nonisolated enum RedisError: Error, LocalizedError {
+nonisolated enum RedisError: Error, LocalizedError, Equatable {
     case connectionFailed(String)
     case authenticationFailed(serverMessage: String, failure: RedisAuthCommand.Failure)
     case sessionUnverified(RedisConnectProbe.Outcome)
     case notConnected
     case queryFailed(String)
+    case commandQueued(String)
     case unsupported(String)
 
     var errorDescription: String? {
@@ -616,6 +561,12 @@ nonisolated enum RedisError: Error, LocalizedError {
             return "\(message) \(hint)"
         case .notConnected: return "Not connected to Redis"
         case .queryFailed(let msg): return "Redis command failed: \(msg)"
+        case .commandQueued(let command):
+            let message = String(format: String(localized: "Redis queued %@ instead of running it."), command)
+            let hint = String(
+                localized: "A MULTI block is open on this connection. Run EXEC to apply it, or DISCARD to drop it."
+            )
+            return "\(message) \(hint)"
         case .unsupported(let msg): return msg
         }
     }

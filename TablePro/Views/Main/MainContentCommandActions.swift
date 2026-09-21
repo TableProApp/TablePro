@@ -1077,6 +1077,10 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
+    var supportsExplain: Bool {
+        !connection.type.explainVariants.isEmpty
+    }
+
     func explainQuery() {
         coordinator?.runExplain()
     }
