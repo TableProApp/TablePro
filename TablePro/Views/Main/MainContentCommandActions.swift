@@ -543,7 +543,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     var hasQueryText: Bool {
-        !(coordinator?.tabManager.selectedTab?.content.query.isEmpty ?? true)
+        coordinator?.tabManager.selectedTab?.hasQueryText ?? false
     }
 
     /// Whether there are pending data changes that the SQL preview can show.
@@ -1049,8 +1049,7 @@ final class MainContentCommandActions: ObservableObject {
         }
         // Save As: untitled query tab with content
         else if let tab = coordinator?.tabManager.selectedTab,
-                tab.tabType == .query, tab.content.sourceFileURL == nil,
-                !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                tab.tabType == .query, tab.content.sourceFileURL == nil, tab.hasQueryText {
             saveFileAs()
         }
     }
@@ -1086,15 +1085,15 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func aiExplainQuery() {
-        guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
+        guard let tab = coordinator?.tabManager.selectedTab, tab.hasQueryText else { return }
         coordinator?.showAssistant()
-        coordinator?.aiViewModel?.handleExplainSelection(query)
+        coordinator?.aiViewModel?.handleExplainSelection(tab.content.query)
     }
 
     func aiOptimizeQuery() {
-        guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
+        guard let tab = coordinator?.tabManager.selectedTab, tab.hasQueryText else { return }
         coordinator?.showAssistant()
-        coordinator?.aiViewModel?.handleOptimizeSelection(query)
+        coordinator?.aiViewModel?.handleOptimizeSelection(tab.content.query)
     }
 
     func previewFKReference() {
@@ -1212,7 +1211,7 @@ final class MainContentCommandActions: ObservableObject {
 
     var canSaveAsFavorite: Bool {
         guard let tab = coordinator?.tabManager.selectedTab else { return false }
-        return tab.tabType == .query && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return tab.tabType == .query && tab.hasQueryText
     }
 
     func previewSQL() {

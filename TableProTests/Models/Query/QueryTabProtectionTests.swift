@@ -13,6 +13,15 @@ struct QueryTabProtectionTests {
         #expect(!tab.showsUnsavedIndicator)
     }
 
+    /// The run path treats these as blank, so a tab holding only them has nothing to run.
+    @Test("Zero-width and control characters alone are not query text")
+    func invisibleCharactersAreNotQueryText() {
+        #expect(!QueryTab(query: "\u{200B}\u{FEFF}").hasQueryText)
+        #expect(!QueryTab(query: "\u{00A0}\u{0000}").hasQueryText)
+        #expect(QueryTab(query: "-- note").hasQueryText)
+        #expect(QueryTab(query: "\u{200B}SELECT 1").hasQueryText)
+    }
+
     @Test("Typed SQL in a scratch tab is reopenable work and shows the unsaved dot")
     func typedScratchTabIsProtected() {
         let tab = QueryTab(query: "SELECT 1")
