@@ -8,6 +8,14 @@ import TableProPluginKit
 
 struct FilterPanelView: View {
     @ObservedObject var coordinator: MainContentCoordinator
+    /// The panel draws `coordinator.selectedTabFilterState`, which lives on `QueryTabManager.tabs`
+    /// and not on the coordinator, so the store that publishes it has to be named here. Without it
+    /// SwiftUI compares this view's own stored properties, finds them unchanged and skips `body`:
+    /// the row `onAppear` adds reached the model and never reached the screen, so ⌘⇧F opened an
+    /// empty bar with nothing to type into and the keystrokes went to the object list instead. That
+    /// is what the two closures this view used to carry were hiding, because a closure is never
+    /// equal to another one and forced a re-evaluation on every parent render. (#3026)
+    @ObservedObject var tabManager: QueryTabManager
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
