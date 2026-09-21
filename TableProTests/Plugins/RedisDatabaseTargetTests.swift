@@ -240,6 +240,20 @@ struct RedisSessionDatabaseTests {
         #expect(database.databaseToMoveTo(visiting: 5) == 5)
         #expect(database.databaseToMoveTo(visiting: 0) == nil)
     }
+
+    @Test("A visit that needs a move inside an open block is refused, and nothing else moves one")
+    func moveInsideABlock() {
+        let home = RedisSessionDatabase(0)
+        #expect(home.move(beforeCommandVisiting: 3, blockOpen: false) == .select(3))
+        #expect(home.move(beforeCommandVisiting: 3, blockOpen: true) == .refuse)
+        #expect(home.move(beforeCommandVisiting: 0, blockOpen: true) == .stay)
+        #expect(home.move(beforeCommandVisiting: nil, blockOpen: true) == .stay)
+
+        var away = RedisSessionDatabase(0)
+        away.visited(3)
+        #expect(away.move(beforeCommandVisiting: nil, blockOpen: false) == .select(0))
+        #expect(away.move(beforeCommandVisiting: nil, blockOpen: true) == .stay)
+    }
 }
 
 @Suite("Redis command channel - a visit the app abandoned")

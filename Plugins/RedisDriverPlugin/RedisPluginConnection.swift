@@ -247,7 +247,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             }
             stateLock.unlock()
             try admit(scope, command: args.first)
-            try moveToCommandDatabase(visiting: visiting)
+            try moveToCommandDatabase(visiting: visiting, command: args.first)
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
             let result = try executeCommandSyncRetrying(args, scope: scope)
@@ -273,7 +273,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             }
             stateLock.unlock()
             try admit(scope, command: commands.first?.first)
-            try moveToCommandDatabase(visiting: visiting)
+            try moveToCommandDatabase(visiting: visiting, command: commands.first?.first)
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
             let results = try executePipelineSyncRetrying(commands, scope: scope)
@@ -300,13 +300,22 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     }
 
     /// Runs on the serial queue right before the send, so no other command can land between the
-    /// move and the command it is for. An open block is left alone: a visit is held back from one,
-    /// so the session cannot be away from home while it is open.
-    private func moveToCommandDatabase(visiting: Int?) throws {
+    /// move and the command it is for. A cluster node is visited per command rather than by a
+    /// `SELECT` of its own, so this is where a visit inside an open block is refused.
+    private func moveToCommandDatabase(visiting: Int?, command: Data?) throws {
         stateLock.lock()
-        let target = _footprint.hasOpenBlock ? nil : _database.databaseToMoveTo(visiting: visiting)
+        let move = _database.move(beforeCommandVisiting: visiting, blockOpen: _footprint.hasOpenBlock)
         stateLock.unlock()
-        guard let target else { return }
+        let target: Int
+        switch move {
+        case .stay:
+            return
+        case .refuse:
+            let name = command.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            throw RedisHeldBackCommand(command: name, held: .openBlock)
+        case .select(let index):
+            target = index
+        }
         try select(target, scope: .outsideBlock)
         stateLock.lock()
         _database.visited(target)

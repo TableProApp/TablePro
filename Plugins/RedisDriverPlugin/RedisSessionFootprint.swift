@@ -155,6 +155,18 @@ struct RedisSessionDatabase: Equatable, Sendable {
         let target = visiting ?? home
         return current == target ? nil : target
     }
+
+    func move(beforeCommandVisiting visiting: Int?, blockOpen: Bool) -> RedisCommandDatabaseMove {
+        guard let target = databaseToMoveTo(visiting: visiting) else { return .stay }
+        guard blockOpen else { return .select(target) }
+        return visiting == nil ? .stay : .refuse
+    }
+}
+
+enum RedisCommandDatabaseMove: Equatable, Sendable {
+    case stay
+    case select(Int)
+    case refuse
 }
 
 /// The database a read the app makes for one row is visiting, for the length of that read.

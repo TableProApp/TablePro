@@ -266,6 +266,21 @@ struct RedisClusterDatabaseSelectionTests {
                 let page = try await cluster.channel.scanKeyspace(
                     cursor: cursor, pattern: nil, type: nil, count: 10, scope: .outsideBlock
                 )
+    /// On a cluster the visit is taken per command, so this is the node's own check. Queued, the
+    /// write would run on the home database when EXEC runs.
+    @Test("A write on another database is refused on a primary holding an open block")
+    func visitRefusedInsideBlock() async throws {
+        let cluster = try await StubRedisCluster.connect(clusterDatabases: Self.sixteen)
+        cluster.second.observeOpenBlock()
+        await #expect(throws: RedisHeldBackCommand(command: "HSET", held: .openBlock)) {
+            try await cluster.channel.withDatabase(3) {
+                try await cluster.channel.executeCommand(["HSET", "a", "f", "v"], scope: .session)
+            }
+        }
+        #expect(cluster.second.sentCommands.isEmpty)
+        #expect(cluster.channel.homeDatabase() == 0)
+    }
+
                 keys += page.keys
                 cursor = page.cursor
             } while cursor != RedisClusterCursor.start
