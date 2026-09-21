@@ -71,9 +71,9 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
             throw RedisError.queryFailed("Empty command")
         }
 
-        let reply = try await actor.command(args)
+        let reply = try await send(args)
         let elapsed = Date().timeIntervalSince(start)
-        return formatReply(reply, executionTime: elapsed)
+        return try RedisQueryResultBuilder.result(for: reply, executionTime: elapsed)
     }
 
     func cancelCurrentQuery() async throws {
@@ -210,95 +210,6 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
         }
         if !current.isEmpty { args.append(current) }
         return args
-    }
-
-    private func formatReply(_ reply: RedisReplyValue, executionTime: TimeInterval) -> QueryResult {
-        switch reply {
-        case .string(let s):
-            return QueryResult(
-                columns: [ColumnInfo(name: "value", typeName: "string", ordinalPosition: 0)],
-                rows: [[s]],
-                rowsAffected: 0,
-                executionTime: executionTime,
-                statusMessage: nil
-            )
-        case .integer(let i):
-            return QueryResult(
-                columns: [ColumnInfo(name: "value", typeName: "integer", ordinalPosition: 0)],
-                rows: [[String(i)]],
-                rowsAffected: 0,
-                executionTime: executionTime,
-                statusMessage: nil
-            )
-        case .status(let s):
-            return QueryResult(
-                columns: [ColumnInfo(name: "status", typeName: "string", ordinalPosition: 0)],
-                rows: [[s]],
-                rowsAffected: 0,
-                executionTime: executionTime,
-                statusMessage: s
-            )
-        case .error(let msg):
-            return QueryResult(
-                columns: [ColumnInfo(name: "error", typeName: "string", ordinalPosition: 0)],
-                rows: [[msg]],
-                rowsAffected: 0,
-                executionTime: executionTime,
-                statusMessage: nil
-            )
-        case .array(let items):
-            if isHashResult(items) {
-                var rows: [[String?]] = []
-                for i in stride(from: 0, to: items.count - 1, by: 2) {
-                    let key = items[i].stringRepresentation
-                    let value = items[i + 1].stringRepresentation
-                    rows.append([key, value])
-                }
-                return QueryResult(
-                    columns: [
-                        ColumnInfo(name: "key", typeName: "string", ordinalPosition: 0),
-                        ColumnInfo(name: "value", typeName: "string", ordinalPosition: 1)
-                    ],
-                    rows: rows,
-                    rowsAffected: 0,
-                    executionTime: executionTime,
-                    isTruncated: rows.count >= 100_000,
-                    statusMessage: nil
-                )
-            }
-
-            let rows: [[String?]] = items.prefix(100_000).enumerated().map { index, item in
-                [String(index), item.stringRepresentation]
-            }
-            return QueryResult(
-                columns: [
-                    ColumnInfo(name: "index", typeName: "integer", ordinalPosition: 0),
-                    ColumnInfo(name: "value", typeName: "string", ordinalPosition: 1)
-                ],
-                rows: rows,
-                rowsAffected: 0,
-                executionTime: executionTime,
-                isTruncated: items.count > 100_000,
-                statusMessage: nil
-            )
-        case .null:
-            return QueryResult(
-                columns: [ColumnInfo(name: "value", typeName: "string", ordinalPosition: 0)],
-                rows: [[nil]],
-                rowsAffected: 0,
-                executionTime: executionTime,
-                statusMessage: nil
-            )
-        }
-    }
-
-    private func isHashResult(_ items: [RedisReplyValue]) -> Bool {
-        guard items.count >= 2, items.count % 2 == 0 else { return false }
-        for i in stride(from: 0, to: items.count, by: 2) {
-            if case .string = items[i] { continue }
-            return false
-        }
-        return true
     }
 }
 

@@ -60,6 +60,12 @@ struct RedisReplyValueGuardTests {
         #expect(reply == .status("OK"))
     }
 
+    @Test("an error reply reads as an error where it is rendered as text")
+    func errorStringRepresentation() {
+        let reply = RedisReplyValue.error("WRONGTYPE Operation against a key holding the wrong kind of value")
+        #expect(reply.stringRepresentation == "(error) WRONGTYPE Operation against a key holding the wrong kind of value")
+    }
+
     @Test("the queued error names the command and the open block")
     func queuedDescription() {
         #expect(
