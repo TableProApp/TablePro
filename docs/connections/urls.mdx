@@ -192,7 +192,7 @@ The part after the host is the database name on most schemes. Seven read it diff
 
 | Scheme | The path is |
 |---|---|
-| `redis://`, `rediss://` | The database index, 0 to 15 |
+| `redis://`, `rediss://` | The database index, 0 when omitted |
 | `cassandra://`, `scylladb://` | The default keyspace. Omit it to connect with none |
 | `sqlite://`, `duckdb://`, `beancount://` | An absolute file path, so the URL carries three slashes |
 | `quack://` | The alias a remote DuckDB server attaches the database under. See [DuckDB](/databases/duckdb) |
