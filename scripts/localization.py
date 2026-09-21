@@ -173,7 +173,23 @@ def verify() -> int:
     return failures
 
 
-PLUGIN_KEY = re.compile(r'String\(localized:\s*"((?:[^"\\\\]|\\\\.)*)"')
+# A call wrapped after `String(` and a literal holding `\"` both read as a key. The first pattern
+# missed both, so a wrapped message and every one naming a quoted value never reached the catalog.
+PLUGIN_KEY = re.compile(r'String\(\s*localized:\s*"((?:[^"\\]|\\.)*)"')
+SWIFT_ESCAPE = re.compile(r'\\(u\{[0-9A-Fa-f]+\}|[ntr0"\'\\])')
+SWIFT_ESCAPED_CHARACTER = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", '"': '"', "'": "'", "\\": "\\"}
+
+
+def swift_literal_value(literal: str) -> str:
+    """The string a Swift literal spells, which is what the catalog keys it by."""
+
+    def replace(match: re.Match) -> str:
+        escape = match.group(1)
+        if escape.startswith("u{"):
+            return chr(int(escape[2:-1], 16))
+        return SWIFT_ESCAPED_CHARACTER[escape]
+
+    return SWIFT_ESCAPE.sub(replace, literal)
 
 
 def plugin_keys() -> list[str]:
@@ -190,10 +206,10 @@ def plugin_keys() -> list[str]:
         if "Tests" in path.parts:
             continue
         for match in PLUGIN_KEY.finditer(path.read_text(encoding="utf8", errors="replace")):
-            key = match.group(1)
+            literal = match.group(1)
             # An interpolated key is a different defect: it never matches any catalog entry.
-            if key and "\\(" not in key:
-                seen.setdefault(key, None)
+            if literal and "\\(" not in literal:
+                seen.setdefault(swift_literal_value(literal), None)
     return list(seen)
 
 
