@@ -88,4 +88,27 @@ struct ConnectionFieldIntegerEntryTests {
         #expect(timeout.stepperValue(fromFieldText: "", defaultValue: "500") == 120)
         #expect(timeout.stepperValue(fromFieldText: "", defaultValue: "none") == 1)
     }
+
+    private func field(_ fieldType: ConnectionField.FieldType) -> ConnectionField {
+        ConnectionField(id: "timeout", label: "Connect Timeout", defaultValue: "10", fieldType: fieldType)
+    }
+
+    /// Typing keeps a value below the range so it can be entered digit by digit, so the form, not
+    /// the keystroke filter, is what stops one from being saved.
+    @Test("A stepper value outside its range is a validation issue")
+    func outOfRangeIsAnIssue() {
+        let stepper = field(.stepper(range: timeout))
+        #expect(stepper.rangeIssue(in: "0") != nil)
+        #expect(stepper.rangeIssue(in: "121") != nil)
+        #expect(stepper.rangeIssue(in: "0")?.contains("Connect Timeout") == true)
+    }
+
+    @Test("An empty, in-range or non-stepper value is not an issue")
+    func inRangeIsNotAnIssue() {
+        let stepper = field(.stepper(range: timeout))
+        #expect(stepper.rangeIssue(in: "") == nil)
+        #expect(stepper.rangeIssue(in: "1") == nil)
+        #expect(stepper.rangeIssue(in: " 120 ") == nil)
+        #expect(field(.text).rangeIssue(in: "0") == nil)
+    }
 }

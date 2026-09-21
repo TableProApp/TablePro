@@ -32,3 +32,18 @@ extension ConnectionField.IntRange {
         return clamping(Int(fieldText(sanitizing: text)) ?? emptyValue)
     }
 }
+
+extension ConnectionField {
+    /// A stepper field keeps the text as typed so a value can be entered digit by digit, which
+    /// leaves one below the range possible when the user stops typing. Saving it would hand the
+    /// driver a number the field says it never accepts.
+    func rangeIssue(in value: String) -> String? {
+        guard case .stepper(let range) = fieldType,
+              let number = Int(value.trimmingCharacters(in: .whitespaces)),
+              range.clamping(number) != number else { return nil }
+        return String(
+            format: String(localized: "%1$@ must be between %2$lld and %3$lld"),
+            label, range.lowerBound, range.upperBound
+        )
+    }
+}

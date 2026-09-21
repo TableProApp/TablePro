@@ -106,6 +106,7 @@ final class NetworkPaneViewModel: ObservableObject {
                 issues.append(String(format: String(localized: "%@ is required"), field.label))
             }
         }
+        issues += connectionFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
         return issues
     }
 
