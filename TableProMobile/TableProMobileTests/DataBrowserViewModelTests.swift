@@ -448,7 +448,7 @@ struct DataBrowserViewModelTests {
 
         await vm.load(isInitial: true)
 
-        #expect(vm.loadError != nil)
+        #expect(vm.loadError?.title == String(localized: "Key Not Found"))
         #expect(vm.legacyRows.isEmpty)
         #expect(vm.isLoading == false)
         #expect(driver.executedQueries.isEmpty)

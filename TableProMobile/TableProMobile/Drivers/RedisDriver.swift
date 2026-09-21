@@ -389,9 +389,9 @@ private actor RedisActor {
         guard let rawReply = redisCommandArgv(ctx, argc, &argv, &argvlen) else {
             if ctx.pointee.err != 0 {
                 let msg = withUnsafePointer(to: &ctx.pointee.errstr.0) { String(cString: $0) }
-                throw RedisError.queryFailed(msg)
+                throw RedisError.connectionFailed(msg)
             }
-            throw RedisError.queryFailed("No reply from server")
+            throw RedisError.connectionFailed("No reply from server")
         }
 
         let reply = rawReply.assumingMemoryBound(to: redisReply.self)
