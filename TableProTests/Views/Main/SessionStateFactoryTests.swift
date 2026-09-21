@@ -158,6 +158,34 @@ struct SessionStateFactoryTests {
         #expect(state.tabManager.tabs.first?.tableContext.schemaName == nil)
     }
 
+    @Test("A Redis window opened on a live session shows the database the session is on")
+    @MainActor
+    func redisWindowFollowsTheLiveSession() {
+        let conn = DatabaseConnection(name: "cache", type: .redis, additionalFields: ["redisDatabase": "4"])
+        var session = ConnectionSession(connection: conn)
+        session.browseDatabase = "7"
+        DatabaseManager.shared.injectSession(session, for: conn.id)
+        defer { DatabaseManager.shared.removeSession(for: conn.id) }
+
+        let state = SessionStateFactory.create(connection: conn, payload: nil)
+
+        #expect(state.toolbarState.currentDatabase == "7")
+    }
+
+    @Test("A Redis window with no session shows the database the connection opens on")
+    @MainActor
+    func redisWindowWithoutSessionShowsTheConfiguredDatabase() {
+        let named = DatabaseConnection(name: "cache", type: .redis, additionalFields: ["redisDatabase": "db4"])
+        let cluster = DatabaseConnection(
+            name: "cluster",
+            type: .redis,
+            additionalFields: ["redisDatabase": "4", "redisMode": "cluster"]
+        )
+
+        #expect(SessionStateFactory.create(connection: named, payload: nil).toolbarState.currentDatabase == "4")
+        #expect(SessionStateFactory.create(connection: cluster, payload: nil).toolbarState.currentDatabase == "0")
+    }
+
     @Test("Nil payload creates empty tab manager")
     @MainActor
     func nilPayload_createsEmptyTabManager() {

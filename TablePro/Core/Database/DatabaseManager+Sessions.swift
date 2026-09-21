@@ -289,9 +289,18 @@ extension DatabaseManager {
                     }
                 }
             case .selectDatabaseFromConnectionField(let fieldId):
-                activeSessions[connection.id]?.browseDatabase = String(
-                    resolvedConnection.databaseIndex(selectedBy: fieldId)
-                )
+                let initialDb = resolvedConnection.databaseIndex(selectedBy: fieldId)
+                if initialDb != 0 {
+                    do {
+                        try await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
+                    } catch {
+                        Self.logger.error(
+                            "Failed to switch to database \(initialDb): \(error.publicLogShape, privacy: .public)"
+                        )
+                        continue
+                    }
+                }
+                activeSessions[connection.id]?.browseDatabase = String(initialDb)
             case .selectSchemaFromLastSession:
                 if let schemaDriver = driver as? SchemaSwitchable,
                    let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id) {
