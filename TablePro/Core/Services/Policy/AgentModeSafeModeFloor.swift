@@ -35,16 +35,26 @@ internal enum AgentModeSafeModeFloor {
             .contains { $0.resolvedContentMode == .agent }
     }
 
-    /// The level this connection should run at right now.
-    internal static func level(for connection: DatabaseConnection) -> SafeModeLevel {
-        let floor = SafeModeFloor.resolve(
+    /// The floor that applies to this connection right now, and why.
+    ///
+    /// Named rather than computed inline, because the reason is what the user needs: the Safe Mode
+    /// menu offers only the levels a floor allows and prints its explanation under them, and the
+    /// toolbar's padlock carries the same sentence in its tooltip. Agent mode used to raise the
+    /// floor silently, so choosing a weaker level appeared to do nothing and nothing said why.
+    internal static func effectiveFloor(for connection: DatabaseConnection) -> SafeModeFloor? {
+        SafeModeFloor.resolve(
             isEngineReadOnly: PluginMetadataRegistry.shared
                 .snapshot(for: connection.type)?.capabilities.isEngineReadOnly ?? false,
             opensRemoteDatabaseFile: connection.opensRemoteDatabaseFile,
             managedMinimum: ManagedPolicyResolver.minimumSafeModeLevel(policy: ManagedPolicyReader.shared),
             isAgentModeActive: isActive(for: connection.id)
         )
-        return floor?.raising(connection.preferredSafeModeLevel) ?? connection.preferredSafeModeLevel
+    }
+
+    /// The level this connection should run at right now.
+    internal static func level(for connection: DatabaseConnection) -> SafeModeLevel {
+        effectiveFloor(for: connection)?.raising(connection.preferredSafeModeLevel)
+            ?? connection.preferredSafeModeLevel
     }
 
     /// Recomputes the live session's level after a mode change.

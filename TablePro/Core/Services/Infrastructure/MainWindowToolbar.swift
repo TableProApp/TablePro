@@ -289,38 +289,45 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     // MARK: - Identifiers
 
-    static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
-    static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
-    static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
-    static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
-    static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
-    static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
-    static let safeMode = NSToolbarItem.Identifier("com.TablePro.toolbar.safeMode")
-    static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
-    static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
-    static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
-    static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
+    /// `nonisolated` throughout: these are immutable strings that name a command, and
+    /// `ToolbarContextResolver` reads them from off the main actor to answer which items a context
+    /// shows. Isolating them to this class was incidental to the class being `@MainActor`.
+    nonisolated static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
+    nonisolated static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
+    nonisolated static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
+    nonisolated static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
+    nonisolated static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
+    nonisolated static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
+    nonisolated static let safeMode = NSToolbarItem.Identifier("com.TablePro.toolbar.safeMode")
+    nonisolated static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
+    nonisolated static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
+    nonisolated static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
+    nonisolated static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
     /// `.toggleInspector` is macOS 14. The identifier only has to be stable and unique, and
     /// AppKit's own inspector behaviour is not used here, so 13 gets an app-owned one.
-    static let inspector: NSToolbarItem.Identifier = {
+    nonisolated static let inspector: NSToolbarItem.Identifier = {
         if #available(macOS 14.0, *) {
             return .toggleInspector
         }
         return NSToolbarItem.Identifier("com.TablePro.toolbar.inspector")
     }()
-    static let assistant = NSToolbarItem.Identifier("com.TablePro.toolbar.assistant")
-    static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
-    static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
-    static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
-    static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
-    static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
-    static let editorGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.editorGroup")
-    static let restorePreviousValues = NSToolbarItem.Identifier("com.TablePro.toolbar.restorePreviousValues")
-    static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
-    static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
-    static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")
-    static let navigateBack = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateBack")
-    static let navigateForward = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateForward")
+    nonisolated static let assistant = NSToolbarItem.Identifier("com.TablePro.toolbar.assistant")
+    nonisolated static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
+    nonisolated static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
+    nonisolated static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
+    nonisolated static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
+    nonisolated static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
+    nonisolated static let editorGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.editorGroup")
+    nonisolated static let restorePreviousValues = NSToolbarItem
+        .Identifier("com.TablePro.toolbar.restorePreviousValues")
+    nonisolated static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
+    nonisolated static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
+    nonisolated static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")
+    nonisolated static let navigateBack = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateBack")
+    nonisolated static let navigateForward = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateForward")
+    /// The pull-down that carries the long tail of a context's commands. One control whose menu
+    /// changes with the tab, instead of one permanent titlebar slot per command.
+    nonisolated static let actions = NSToolbarItem.Identifier("com.TablePro.toolbar.actions")
 
     // MARK: - NSToolbarDelegate
 
