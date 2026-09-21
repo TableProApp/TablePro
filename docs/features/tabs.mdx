@@ -5,7 +5,7 @@ description: Each tab keeps its own SQL, results, sorting, and filters, and come
 
 Open a table while the sidebar is on `app` and that tab keeps querying `app`, and its schema, for the rest of its life. Changing the database in the sidebar moves what the sidebar lists and where the next tab opens; it retargets nothing already open.
 
-The tab strip sits below the toolbar and lists only the current connection's tabs. One tab, no strip.
+The tab strip sits below the toolbar and lists only the current connection's tabs. One tab, no strip. [Agent mode](/features/agent-mode) hides it too, along with the content it lists.
 
 Tabs are named after the object they show. When two would draw the same name, both gain their database: two tables called `orders` become `app.orders` and `staging.orders`. A name nothing else uses stays short, and hovering names the database either way.
 

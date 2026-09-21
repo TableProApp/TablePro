@@ -114,6 +114,7 @@ Every row except the five find rows is built into the editor and cannot be rebou
 | Cancel edit | `Escape` |
 | Add row | `Cmd+Shift+N` |
 | Duplicate row | `Cmd+Shift+D` |
+| Restore Previous Values | none by default, rebindable |
 | Delete selected rows | `Delete` or `Cmd+Delete` |
 | Truncate table (tables selected in the sidebar) | `Option+Delete` |
 | Preview FK reference | `Space` |
@@ -222,6 +223,8 @@ See [Filtering](/features/filtering) for the filter bar itself.
 | Toggle inspector | `Cmd+Option+I` |
 | Toggle assistant | `Cmd+Option+A` |
 | Toggle agent mode | `Cmd+Option+Shift+A` |
+| Show Tables | none by default, rebindable |
+| Show Favorites | none by default, rebindable |
 | Toggle results | `Cmd+Option+R` |
 | Toggle history | `Cmd+Y` |
 | Zoom in: the focused diagram, otherwise the editor font | `Cmd+=` |
@@ -231,6 +234,22 @@ See [Filtering](/features/filtering) for the filter bar itself.
 `Tab` walks the panes in reading order and the six commands under **View > Focus** jump straight to one. The SQL editor keeps `Tab` and `Shift+Tab` for indentation, so a Focus command is the way out of it. A Focus command reveals a collapsed or hidden pane before moving the keyboard into it, and dims when the pane it names is not there.
 
 With the sidebar focused, typing the first letters of an object's name jumps to it.
+
+### In Agent mode
+
+`Cmd+Option+I` opens and closes the Result column instead of the inspector, and the View menu's item reads **Show Result**. Toggle assistant and Focus inspector both dim: the conversation is the window's content column there and the pane beside it holds the result, so neither command has a surface to reach. Focus assistant puts the insertion point in the conversation's composer.
+
+### Agent sessions
+
+| Action | Shortcut |
+|--------|----------|
+| New Session | none by default, rebindable |
+| Open Session | none by default, rebindable |
+| Close Session | none by default, rebindable |
+| Delete Session | none by default, rebindable |
+| New Conversation | none by default, rebindable |
+
+All five sit under **File > Session** in the menu bar and under **Navigation** in **Settings > Keyboard**. `Return` opens the session the rail has highlighted and `Delete` asks to delete it, and neither is rebindable. See [Agent mode](/features/agent-mode#sessions).
 
 ### Results
 
@@ -295,6 +314,8 @@ Turn on Vim mode in **Settings > Editor**. Vim keys apply only in the SQL editor
 ## Customizing shortcuts
 
 Open **Settings > Keyboard** (`Cmd+,`). Each action has a recorder field: click it and press the new combination, and the menu bar updates immediately. Actions are listed under their own names there: the sidebar toggle is Toggle Table Browser. Filter with the search field, press `Delete` in a recorder field to clear a binding, click the curved-arrow button beside a changed shortcut to restore that one, or **Reset to Defaults** to restore all.
+
+Some actions ship with no default and show as unassigned. That is a command waiting for a binding, not one you cleared, and **Reset to Defaults** leaves it unassigned.
 
 <Frame caption="Keyboard shortcut customization">
   <img className="block dark:hidden" src="/images/settings-keyboard.png" alt="Keyboard settings" />

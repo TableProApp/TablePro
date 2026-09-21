@@ -246,6 +246,7 @@
             "icon": "window-maximize",
             "pages": [
               "features/overview",
+              "features/connection-window",
               "features/tabs",
               "features/workspace-rail",
               "features/open-quickly",

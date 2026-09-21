@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Agent** mode, giving one session the whole connection window: sessions to start and delete, its conversation, and what it ran.
+- **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran.
 - Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
 - Table list and table browser side by side on iPad and on iPhone Duo's inner display.
 - **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
@@ -33,9 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DB <index> <command>` in the Redis editor, running one command on another database.
 - Explain for Teradata.
 - **Actions** menu in the connection window's toolbar, with the commands for the tab you are on and every import format.
+- **Actions** menu in the connection window's toolbar, with the commands for the tab you are on.
 - **File > Import > Import Data From**, for choosing the import format from the menu bar.
-- **File > Session**, with the commands for starting, opening, closing and deleting an agent session, and for the assistant's conversations.
-- Eight more commands you can bind a shortcut to in **Settings > Keyboard**, among them the sidebar's two lists and the agent session commands.
+- **File > Session**, with the agent session commands and the assistant's conversation commands.
+- Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 
 ### Changed
 
@@ -48,11 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Group rows in the iOS connection list take swipe actions and show even when no connection is saved.
 - Typed entry beside the stepper for number settings in the connection form.
 - Connection window toolbar trimmed to eight controls that follow the tab and the mode.
+- Connection window toolbar cut to eight controls that follow the tab and the mode, the rest in **Customize Toolbar**.
 - **Tables** and **Favorites** chooser moved from the toolbar to the top of the sidebar.
 - One header for the Inspector and the Assistant, with a picker between them and their commands in its menu.
 - **Fields** / **JSON** and the JSON view's options moved into the Inspector's header menu.
 - Pencil for the Inspector's unsaved-edit marker and a spinner for the AI chat's typing indicator.
-- Middle-dot separators dropped from the CSV inspector's status bar.
+- Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
+- Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
 
 ### Removed
@@ -60,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refresh from iCloud**, **Sync Now** and the toolbar sync button on iPhone and iPad.
 - **Manage Groups**, the **Clear** button on **Recent**, and the **More** menu's tag filter on iPhone and iPad.
 - Throughput readout in the toolbar; the connection switcher still shows it.
-- Back, Forward, New Tab, Open Quickly, Add Row, Restore Previous Values and Assistant from the default toolbar; **Customize Toolbar** adds them back.
+- Back, Forward, New Tab, Open Quickly, Add Row, Restore Previous Values and Assistant from the default toolbar.
 
 ### Fixed
 

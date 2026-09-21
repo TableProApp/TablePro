@@ -28,7 +28,7 @@ Four things the table cannot carry. The confirmation dialog shows the whole stat
 
 ## Connections that are always read-only
 
-A connection that cannot take a write runs at **Read-Only** whatever level it was given. Its edit form shows the level as fixed text, and every other level is dimmed in the toolbar padlock and in **Database > Safe Mode Level**. The level you chose stays saved and applies again once the condition no longer holds.
+A connection that cannot take a write runs at **Read-Only** whatever level it was given. Its edit form shows the level as fixed text, and **Read-Only** is the only level the padlock and **Database > Safe Mode Level** offer. The level you chose stays saved and applies again once the condition no longer holds.
 
 | Connection | Condition |
 |------------|-----------|
@@ -39,6 +39,8 @@ A connection that cannot take a write runs at **Read-Only** whatever level it wa
 ## Agent mode raises the level
 
 A connection open in [Agent mode](/features/agent-mode) runs at **Alert** or stricter for as long as the mode is on, so every write the assistant proposes waits for an answer. The level you chose is untouched and applies again on the way out. A connection already at Alert or stricter keeps its own.
+
+The reason for the floor shows in three places while the mode is on: under the level list, in the padlock's tooltip, and on the line above the agent's transcript.
 
 ## What the level gates
 
@@ -58,7 +60,9 @@ Where a string, a quoted name or a comment ends depends on the engine. A backsla
 
 ## Changing the level while connected
 
-A padlock in the toolbar carries the current level: open for **Silent**, closed for the rest. Click it for the six levels with the current one ticked. **Database > Safe Mode Level** is the same list.
+A padlock in the toolbar carries the current level: open for **Silent**, closed for the rest. Click it for the levels this connection may run at, with the current one ticked. **Database > Safe Mode Level** is the same list.
+
+Four things can hold the level above the one you chose: a read-only engine, a [remote database file](/connections/remote-database-files), a [managed policy](#managed-by-an-organization), and [Agent mode](/features/agent-mode). The weaker levels are then left out of both lists, the reason sits under them, and the padlock's tooltip carries the same sentence. Picking the level already in force writes nothing.
 
 <Frame caption="The padlock reads the level without opening the menu">
   <img className="block dark:hidden" src="/images/safe-mode-toolbar-badge.png" alt="Toolbar padlock with the six Safe Mode levels listed beneath it" />
@@ -104,7 +108,7 @@ An administrator can impose a minimum level through a macOS configuration profil
 |---|---|---|
 | `com.TablePro.policy.minimumSafeModeLevel` | String | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly` |
 
-A connection set below the floor runs at it, and a stricter choice is left alone: the policy is a floor, never a ceiling. A value TablePro does not recognize imposes no floor at all. While the policy is in force, the levels below the floor are dimmed in the toolbar padlock and in **Database > Safe Mode Level**, and the connection form lists only the levels at or above it. The level you chose stays saved and applies again once the profile is removed.
+A connection set below the floor runs at it, and a stricter choice is left alone: the policy is a floor, never a ceiling. A value TablePro does not recognize imposes no floor at all. While the policy is in force, the padlock, **Database > Safe Mode Level** and the connection form each list only the levels at or above it. The level you chose stays saved and applies again once the profile is removed.
 
 This is a floor on TablePro's own behavior, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold.
 

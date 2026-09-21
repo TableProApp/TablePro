@@ -102,7 +102,7 @@ A value that refuses to open in one mode still opens in another.
 
 ## Row details inspector
 
-**View > Show Inspector** (`Cmd+Option+I`), or the toolbar button at the trailing end, opens it. Each field carries its column name and type on one line, with the value on the line beneath, so the value gets the row's full width however long the column name is. A field's editor follows its content, with no **Display As** step, and the first match wins.
+**View > Show Inspector** (`Cmd+Option+I`), or the toolbar button at the trailing end, opens it. The table and which row of how many is selected sit under the [pane's header](/features/connection-window#the-trailing-pane), then the fields. Each field carries its column name and type on one line, with the value on the line beneath, so the value gets the row's full width however long the column name is. A field's editor follows its content, with no **Display As** step, and the first match wins.
 
 | Content | Editor |
 | --- | --- |
@@ -133,7 +133,9 @@ With no row selected, the inspector describes the table the tab is bound to: dat
 
 ## Row as JSON
 
-Right-click a row and choose **Show Row as JSON**, or open the inspector and switch it to **JSON**. The row prints as one JSON object, keys in the result's own column order: numbers and booleans unquoted, NULL as `null`, binary as hex. Like **Fields** beside it, it prints every column the result carries, including any hidden in the grid. A JSON column, and a text column holding a document, arrive as nested keys instead of as a string.
+Right-click a row and choose **Show Row as JSON**, or open the inspector and pick **JSON** from the ellipsis menu at the trailing end of the pane's header. The row prints as one JSON object, keys in the result's own column order: numbers and booleans unquoted, NULL as `null`, binary as hex. Like **Fields** beside it, it prints every column the result carries, including any hidden in the grid. A JSON column, and a text column holding a document, arrive as nested keys instead of as a string.
+
+The pair is offered for a data-grid row and for nothing else. A Structure tab's column definition has no JSON form, and neither does the table information the inspector shows with no row selected, so the choice is not in the menu there.
 
 <Frame caption="A Track row as JSON, with its AlbumId key opened onto the Album row">
   <img className="block dark:hidden" src="/images/row-as-json.png" alt="Row as JSON" />
@@ -142,7 +144,7 @@ Right-click a row and choose **Show Row as JSON**, or open the inspector and swi
 
 A foreign key carries a disclosure control. Click it and the referenced row is fetched and printed underneath; a foreign key inside that row expands the same way, five levels down. A key pointing back at a row already open in the tree, and one past the fifth level, carry a warning icon that says which. A NULL foreign key has no control.
 
-**Always Expand Foreign Keys**, in the options menu at the trailing end of the filter field, fetches the first level on every row selected from then on. It starts off and stays off until you turn it on, every session, since each key it follows is a query. The rest of that menu is **Copy Visible**, which puts the printed lines on the pasteboard as they stand, **Collapse All**, and **Expand All**. Long text wraps rather than being cut.
+**Always Expand Foreign Keys**, in the same header menu, fetches the first level on every row selected from then on. It starts off and stays off until you turn it on, every session, since each key it follows is a query. **Copy Visible** puts the printed lines on the pasteboard as they stand, and **Collapse All** and **Expand All** sit beside it. All four appear only while the JSON rendering is on screen. Long text wraps rather than being cut.
 
 The filter field takes text, or a regular expression wrapped in slashes such as `/^rental/`. It matches keys and values, keeps the keys that lead to a match along with everything under a key that matches, and opens what was collapsed. `Escape` clears it. An invalid expression outlines the field in red and filters nothing.
 

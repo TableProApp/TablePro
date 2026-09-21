@@ -3,25 +3,29 @@ title: Agent mode
 description: "Give one AI session the whole connection window: its sessions, its conversation, and the SQL it proposed"
 ---
 
-The chat in the [inspector](/features/ai-assistant#chat) is for a question. Agent mode is for a job. Press `Cmd+Option+Shift+A`, pick **Agent** under **View > Mode**, or click it in the toolbar, and the window's three columns become the sessions on this connection, the conversation, and what that session proposed and ran.
+The chat in the [inspector](/features/ai-assistant#chat) is for a question. Agent mode is for a job. Press `Cmd+Option+Shift+A`, or pick **Agent** under **View > Mode** or under **Mode** in the toolbar's **Actions** menu, and the window's three columns become the sessions on this connection, the conversation, and what that session proposed and ran.
 
-Nothing closes. The object browser and the editor tabs are where you left them, and **Browse** in the same place puts them back.
+Nothing closes. The object browser and the editor tabs are where you left them, and **Browse** in the same place puts them back: the same tabs, the same scroll position and selection in the grid, the same undo stack and find panel in the editor, and a half-typed Create Table still half-typed.
 
 ## The three columns
 
 | Column | Holds |
 |--------|-------|
 | Sessions | One row per session on this connection, each naming what it is doing |
-| Conversation | The same chat as the inspector's, at the width of the window |
+| Conversation | The same chat as the inspector's, at a reading measure in the middle of the window |
 | Result | What this session proposed, ran and changed |
 
 The choice is per connection, so one connection sits in Agent mode while another in the same window stays on a table. Drag either divider to resize; the widths are the ones the window already had.
 
+While the mode is on, the window names the session it is drawing, or **Agent** until the session has a name, and carries no file icon in its titlebar. The editor tab strip goes with the tabs it lists, and the sidebar's **Tables** and **Favorites** chooser and filter field go with the object list: the session rail takes their height.
+
+A line above the transcript names the connection, the session, and what is holding [Safe Mode](/features/safe-mode) at the level it is on. Point at that last part for the full sentence.
+
 ## Writes wait for you
 
-Agent mode holds the connection at [Safe Mode](/features/safe-mode) **Alert** for as long as the mode is on, whatever level the connection itself is set to. Every `INSERT`, `UPDATE` and `DELETE` the assistant proposes waits on its card for **Run** or **Reject**.
+Agent mode holds the connection at Safe Mode **Alert** for as long as the mode is on, whatever level the connection itself is set to. Every `INSERT`, `UPDATE` and `DELETE` the assistant proposes waits on its card for **Run** or **Reject**.
 
-A connection already at Alert or stricter keeps its own level, and **Read-Only** stays read-only. Leaving Agent mode hands back the level you set, and nothing is written to the connection.
+Nothing below **Alert** is offered while the mode is on: the padlock and **Database > Safe Mode Level** list the levels at or above it and print the reason underneath, and the padlock's tooltip carries the same sentence. A connection already at Alert or stricter keeps its own level, and **Read-Only** stays read-only. Leaving Agent mode hands back the level you set, and nothing is written to the connection.
 
 Each card names the statement and the connection it will run against, and shows the database when the assistant named one. The full request is one click away under the tool name.
 
@@ -33,7 +37,7 @@ The floor is a habit, not a lock. It is one keystroke from off, so treat it as a
 
 ## Sessions
 
-A session belongs to one connection and holds one conversation. Switching to Agent mode opens the first. Click **+** at the foot of the sessions column to start another on the same connection.
+A session belongs to one connection and holds one conversation. Switching to Agent mode opens the first. The list runs newest first by when each session last did something, and the one the window is drawing carries a checkmark.
 
 | State | Meaning |
 |-------|---------|
@@ -44,24 +48,56 @@ A session belongs to one connection and holds one conversation. Switching to Age
 | **Stopped** | Its window closed. The transcript is intact |
 | **Failed** | The provider returned an error, or the app quit mid-reply |
 
-Clicking a row selects it; double-click or **Open Session** in its context menu switches the two columns to its right. **Close Session** ends one and keeps its transcript.
+Clicking a row highlights it and nothing more. To open one, double-click it, press `Return` on it, or choose **Open Session** from its context menu. **+** and **-** at the foot of the column start a session and delete one.
+
+**Close Session** ends a session and keeps its transcript in the list, to be opened again later. It asks first only when the session is working or waiting on your answer, and says which. **Delete Session…** throws the session and its conversation away, always asks, and names what it is about to stop; the **-** button, the context menu and the `Delete` key all reach it.
+
+Close or delete the session the window is drawing and the most recent live session takes its place. With none left, the two columns read **No Session Open** and offer **New Session**.
 
 Closing a window stops that connection's sessions and keeps what they said. Open one again and it continues. Nothing is replayed: a statement that was waiting for an answer when the window closed was rejected by the stop, so the assistant is asked again rather than the call being re-issued.
 
 Sessions stay on this Mac. They are not part of [iCloud sync](/features/icloud-sync).
 
+### From the menu bar
+
+**File > Session** holds the same commands, so a session is reachable with the rail collapsed:
+
+| Item | Acts on |
+|---|---|
+| **New Session** | This connection |
+| **Open Session** | The session the rail has highlighted |
+| **Recent Sessions** | Any session on this connection, the one on screen ticked |
+| **Close Session**, **Delete Session…** | The session the rail has highlighted |
+| **New Conversation**, **Conversation History**, **Clear Recents…** | The conversation, in either mode |
+
+New Session, Open Session, Close Session, Delete Session and New Conversation ship with no shortcut. Bind one in **Settings > Keyboard**, under **Navigation**.
+
 ## The result pane
 
-Four views of one session, and a view with nothing in it says what would appear there.
+Two views of one session, chosen from the menu at the trailing end of the column's header. The choice belongs to the session, so switching sessions does not inherit the other one's view.
 
 | View | Shows |
 |------|-------|
 | **SQL** | Every statement the session proposed, in order, with what became of it |
-| **Plan** | The steps it has taken and what waits on you |
 | **Results** | The rows it read, in the [data grid](/features/data-grid) |
-| **Schema** | Columns, indexes and constraints a `CREATE` or `ALTER` would add or remove |
 
 **Results** is the data grid, so sorting, column widths, selection and `Cmd+C` work the way they do in a query tab, and values use the Data Grid font. A query the session ran more than once has a picker above the rows.
+
+A run with no rows to draw says which of three things happened: **No Rows** for a query that matched nothing, **Statement Completed** for a write, with the number of rows it changed, and **Can't Show This Result** for a reply the grid cannot read, which the conversation still has in full.
+
+`Cmd+Option+I` opens and closes this column, and the View menu's item reads **Show Result** while the mode is on. The column itself reads **No Session Open** until a session starts, and **Not Connected** while the connection is down.
+
+## When the connection drops
+
+The conversation column is replaced by the same unavailable screen browsing shows: the error itself, **Manage Connections…**, and **Reconnect** for a connection that dropped or **Try Again** for one that failed. Reconnecting puts the same session and the same transcript back.
+
+## What Agent mode dims
+
+The commands that act on the browse content have nothing to act on while the conversation fills the detail column, so the menu bar dims them: **Refresh**, **Save**, **Add Row**, **Restore Previous Values…**, **Preview SQL**, **Show Results**, **Show Query History**, **New Tab**, **Open Quickly…**, **Export Tables…**, **Import Data…**, **Server Dashboard**, **Back** and **Forward**.
+
+The [toolbar](/features/connection-window#what-each-context-leaves-out) drops Refresh and the commit control outright, and dims any of the rest you added to it.
+
+Everything that acts on the window or the session stays live: **Switch Connection…**, **Close Connection**, **Safe Mode Level**, **Mode**, and every command under **File > Session**.
 
 ## Starting from the welcome window
 
@@ -72,5 +108,6 @@ The composer stays live while a connection is still being made, so a question ty
 ## Related
 
 - [AI Assistant](/features/ai-assistant) for providers, tool calling and the inspector chat
+- [Connection window](/features/connection-window) for the toolbar and the trailing pane in both modes
 - [Safe Mode](/features/safe-mode) for the levels and what each one gates
 - [Keyboard shortcuts](/features/keyboard-shortcuts)
