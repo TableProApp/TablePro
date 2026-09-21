@@ -176,6 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query in one tab cancelled and rolled back when another tab or window on the connection starts or stops a query.
 - Stop on MySQL 5.5, 5.6 or MariaDB 5.5 interrupting the next statement on the connection.
 - `QUEUED` results and hidden command errors when running several Redis commands or saving Redis grid edits.
+- Redis databases unlistable on a server that removes or denies `CONFIG`, such as AWS ElastiCache, which showed the server's error in place of the keyspace.
 - Query timeout ignored on MySQL before 5.7.8 and MariaDB before 10.1.1.
 - MySQL query run a second time, and left running on the server, after the connection timed out.
 - Empty error when a parameterized MySQL query timed out.

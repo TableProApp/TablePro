@@ -248,7 +248,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return [PluginTableInfo(name: Self.clusterDatabaseName, type: "TABLE", rowCount: count)]
         }
 
-        let databases = try await databaseCount(on: conn)
+        let databases = await RedisDatabaseCount.resolve(on: conn)
         let result = try await conn.run(["INFO", "keyspace"])
         let info = result.stringValue ?? ""
 
@@ -260,17 +260,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     static let clusterDatabaseName = "db0"
-
-    /// A cluster node answers CONFIG GET databases with 1, and refuses SELECT with any other
-    /// index, so the tree shows the one keyspace that exists rather than fifteen that do not.
-    private func databaseCount(on conn: any RedisCommandChannel) async throws -> Int {
-        guard conn.supportsDatabaseSelection else { return 1 }
-        let reply = try await conn.run(["CONFIG", "GET", "databases"])
-        guard let array = reply.arrayValue, array.count >= 2, let count = array[1].intValue, count > 0 else {
-            return 16
-        }
-        return count
-    }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         [
@@ -369,7 +358,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        return try await (0 ..< databaseCount(on: conn)).map { "db\($0)" }
+        let databases = await RedisDatabaseCount.resolve(on: conn)
+        return (0 ..< databases).map { "db\($0)" }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {

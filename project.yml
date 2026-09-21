@@ -636,6 +636,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
       - Plugins/RedisDriverPlugin/RedisConnectProbe.swift
       - Plugins/RedisDriverPlugin/RedisConnectionMode.swift
+      - Plugins/RedisDriverPlugin/RedisDatabaseCount.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisKeySlot.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
