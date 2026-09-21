@@ -18,10 +18,10 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
     @Published var isTruncated = false
     @Published var separator: String = ":"
 
-    @Published private(set) var allKeys: [(key: String, type: String)] = []
+    @Published private(set) var allKeys: [(key: String, type: String?)] = []
 
     /// Test-only setter for allKeys
-    var allKeysForTesting: [(key: String, type: String)] {
+    var allKeysForTesting: [(key: String, type: String?)] {
         get { allKeys }
         set { allKeys = newValue }
     }
@@ -47,11 +47,11 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1
 
-            var keys: [(key: String, type: String)] = []
+            var keys: [(key: String, type: String?)] = []
             for row in result.rows {
                 guard keyColumnIndex < row.count,
                       let keyName = row[keyColumnIndex].asText else { continue }
-                let keyType = typeColumnIndex < row.count ? (row[typeColumnIndex].asText ?? "string") : "string"
+                let keyType = typeColumnIndex < row.count ? row[typeColumnIndex].asText : nil
                 keys.append((key: keyName, type: keyType))
                 if keys.count >= Self.maxKeys { break }
             }
@@ -82,7 +82,7 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
 
     // MARK: - Tree Building (Pure Function)
 
-    static func buildTree(keys: [(key: String, type: String)], separator: String) -> [RedisKeyNode] {
+    static func buildTree(keys: [(key: String, type: String?)], separator: String) -> [RedisKeyNode] {
         guard !separator.isEmpty else {
             return keys.sorted { $0.key < $1.key }
                 .map { .key(name: $0.key, fullKey: $0.key, keyType: $0.type) }
@@ -102,9 +102,9 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
 
 private class TrieNode {
     var children: [String: TrieNode] = [:]
-    var leafKeys: [(fullKey: String, keyType: String)] = []
+    var leafKeys: [(fullKey: String, keyType: String?)] = []
 
-    func insert(parts: [String], fullKey: String, keyType: String) {
+    func insert(parts: [String], fullKey: String, keyType: String?) {
         guard !parts.isEmpty else {
             leafKeys.append((fullKey: fullKey, keyType: keyType))
             return

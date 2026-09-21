@@ -31,7 +31,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Keys with same prefix are grouped under namespace")
     func samePrefix() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("user:1", "string"),
             ("user:2", "string"),
             ("user:3", "string")
@@ -50,7 +50,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Mixed namespaced and bare keys")
     func mixedKeys() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("user:1", "string"),
             ("config", "hash"),
             ("user:2", "string"),
@@ -74,7 +74,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Multi-level nesting")
     func multiLevel() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("app:cache:session:1", "string"),
             ("app:cache:session:2", "string"),
             ("app:config", "hash")
@@ -90,7 +90,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Empty separator returns all keys as flat leaves")
     func emptySeparator() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("user:1", "string"),
             ("user:2", "string")
         ]
@@ -102,7 +102,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Custom separator")
     func customSeparator() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("user/profile/1", "string"),
             ("user/profile/2", "string")
         ]
@@ -116,7 +116,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Key count is recursive")
     func recursiveKeyCount() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("a:b:1", "string"),
             ("a:b:2", "string"),
             ("a:c", "string")
@@ -130,7 +130,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Consecutive separators create empty-name segments")
     func consecutiveSeparators() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("a::b", "string")
         ]
         let tree = RedisKeyTreeViewModel.buildTree(keys: keys, separator: ":")
@@ -143,7 +143,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Multi-character separator")
     func multiCharSeparator() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("user::1", "string"),
             ("user::2", "string")
         ]
@@ -158,7 +158,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Preserves key type information")
     func preservesKeyType() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("myhash", "hash"),
             ("mylist", "list")
         ]
@@ -173,9 +173,25 @@ struct RedisKeyTreeBuildTests {
         }
     }
 
+    @Test("A key whose type the server withheld keeps no type")
+    func unknownTypeStaysUnknown() {
+        let keys: [(key: String, type: String?)] = [
+            ("app:1", "STRING"),
+            ("other:1", nil)
+        ]
+        let tree = RedisKeyTreeViewModel.buildTree(keys: keys, separator: "")
+
+        #expect(tree.count == 2)
+        if case .key(_, _, let keyType) = tree[1] {
+            #expect(keyType == nil)
+        } else {
+            Issue.record("Expected leaf key")
+        }
+    }
+
     @Test("Deeply nested keys")
     func deeplyNested() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("a:b:c:d:e", "string")
         ]
         let tree = RedisKeyTreeViewModel.buildTree(keys: keys, separator: ":")
@@ -195,7 +211,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Keys sorted alphabetically within namespace")
     func sortedKeys() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("ns:zebra", "string"),
             ("ns:apple", "string"),
             ("ns:mango", "string")
@@ -210,7 +226,7 @@ struct RedisKeyTreeBuildTests {
 
     @Test("Namespaces sorted before leaf keys")
     func namespacesBeforeLeafs() {
-        let keys: [(key: String, type: String)] = [
+        let keys: [(key: String, type: String?)] = [
             ("z-bare-key", "string"),
             ("a-namespace:child", "string")
         ]
@@ -244,6 +260,13 @@ struct RedisKeyNodeTests {
         let key = RedisKeyNode.key(name: "session", fullKey: "cache:session", keyType: "hash")
         #expect(ns.displayName == "cache")
         #expect(key.displayName == "session")
+    }
+
+    @Test("A key of unknown type shows the plain key glyph")
+    func unknownTypeIcon() {
+        #expect(RedisKeyNode.iconName(forKeyType: nil) == "key")
+        #expect(RedisKeyNode.iconName(forKeyType: "HASH") == "square.grid.2x2")
+        #expect(RedisKeyNode.iconName(forKeyType: "ReJSON-RL") == "key")
     }
 
     @Test("Equality based on id only")

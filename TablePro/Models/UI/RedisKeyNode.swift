@@ -7,7 +7,7 @@ import Foundation
 
 internal enum RedisKeyNode: Identifiable, Hashable {
     case namespace(name: String, fullPrefix: String, children: [RedisKeyNode], keyCount: Int)
-    case key(name: String, fullKey: String, keyType: String)
+    case key(name: String, fullKey: String, keyType: String?)
 
     var id: String {
         switch self {
@@ -43,14 +43,14 @@ internal enum RedisKeyNode: Identifiable, Hashable {
 extension RedisKeyNode {
     /// Lifted out of the sidebar view so the outline row and anything else that renders a key can
     /// agree on the glyph without importing SwiftUI.
-    static func iconName(forKeyType type: String) -> String {
-        switch type.lowercased() {
-        case "string": return "textformat"
-        case "hash": return "square.grid.2x2"
-        case "list": return "list.bullet"
-        case "set": return "circle.grid.3x3"
-        case "zset": return "chart.bar"
-        case "stream": return "waveform"
+    static func iconName(forKeyType type: String?) -> String {
+        switch type?.lowercased() {
+        case "string"?: return "textformat"
+        case "hash"?: return "square.grid.2x2"
+        case "list"?: return "list.bullet"
+        case "set"?: return "circle.grid.3x3"
+        case "zset"?: return "chart.bar"
+        case "stream"?: return "waveform"
         default: return "key"
         }
     }

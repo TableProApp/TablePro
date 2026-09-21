@@ -257,7 +257,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         [
             PluginColumnInfo(name: "Key", dataType: "String", isNullable: false, isPrimaryKey: true),
-            PluginColumnInfo(name: "Type", dataType: "String", isNullable: false),
+            PluginColumnInfo(name: "Type", dataType: "String", isNullable: true),
             PluginColumnInfo(name: "TTL", dataType: "Int64", isNullable: true),
             PluginColumnInfo(name: "Length", dataType: "Int64", isNullable: true, isGenerated: true),
             PluginColumnInfo(name: "Value", dataType: "String", isNullable: true),
@@ -304,16 +304,13 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             "// Use SCAN 0 MATCH * COUNT 200 to browse keys",
         ]
 
-        let (keys, replies) = try await conn.withDatabase(index) {
+        let (keys, typeNames) = try await conn.withDatabase(index) {
             let keys = try await scanAllKeys(connection: conn, pattern: nil, maxKeys: 100)
-            let replies = try await conn.executePipeline(keys.map { ["TYPE", $0] }, scope: .outsideBlock)
-            return (keys, replies)
+            return (keys, try await conn.keyTypeNames(keys))
         }
         var typeCounts: [String: Int] = [:]
-        for reply in replies {
-            if let typeName = reply.stringValue {
-                typeCounts[typeName, default: 0] += 1
-            }
+        for typeName in typeNames.compactMap({ $0 }) {
+            typeCounts[typeName, default: 0] += 1
         }
 
         if !typeCounts.isEmpty {

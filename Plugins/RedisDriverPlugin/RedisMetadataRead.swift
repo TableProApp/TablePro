@@ -24,6 +24,13 @@ enum RedisMetadataRead {
         let errorClass = RedisConnectProbe.errorClass(of: message)
         return declinedClasses.contains(errorClass) ? errorClass : nil
     }
+
+    /// Nil when the server declined, the reply itself when it answered, and a throw for every
+    /// other error and for a `+QUEUED` acknowledgement, labelled with the command.
+    static func answer(_ reply: RedisReply, to command: String) throws -> RedisReply? {
+        guard declinedClass(of: reply) == nil else { return nil }
+        return try reply.throwIfError(command).throwIfQueued(command)
+    }
 }
 
 extension RedisCommandChannel {
@@ -35,8 +42,32 @@ extension RedisCommandChannel {
         let reply = try await executeCommand(args, scope: .outsideBlock)
         if let declinedClass = RedisMetadataRead.declinedClass(of: reply) {
             logger.notice("\(name, privacy: .public) declined with \(declinedClass, privacy: .public); continuing without it")
-            return nil
         }
-        return try reply.throwIfError(name).throwIfQueued(name)
+        return try RedisMetadataRead.answer(reply, to: name)
+    }
+
+    /// The same rule over one pipeline, one answer per command in the order they were sent. A key
+    /// the user's ACL does not cover is declined on its own (`-NOPERM No permissions to access a
+    /// key`) while the keys around it answer, so a refusal stays in its own place instead of
+    /// failing the batch or reading as a value.
+    func runMetadataReads(_ commands: [[String]]) async throws -> [RedisReply?] {
+        guard !commands.isEmpty else { return [] }
+        let replies = try await executePipeline(commands, scope: .outsideBlock)
+        let answers = try zip(commands, replies).map { command, reply in
+            try RedisMetadataRead.answer(reply, to: command.first ?? "")
+        }
+        noteDeclined(commands: commands, answers: answers)
+        return answers
+    }
+
+    private func noteDeclined(commands: [[String]], answers: [RedisReply?]) {
+        let declined = zip(commands, answers).compactMap { command, answer -> String? in
+            answer == nil ? command.first ?? "" : nil
+        }
+        guard !declined.isEmpty else { return }
+        let names = Set(declined).sorted().joined(separator: ", ")
+        logger.notice(
+            "\(declined.count, privacy: .public) of \(commands.count, privacy: .public) reads declined (\(names, privacy: .public)); continuing without them"
+        )
     }
 }

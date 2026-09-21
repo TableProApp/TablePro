@@ -188,14 +188,7 @@ struct RedisStatementGenerator {
             return key
         }()
 
-        let redisType: String? = {
-            guard let ti = typeColumnIndex,
-                  let originalRow = change.originalRow,
-                  ti < originalRow.count else {
-                return nil
-            }
-            return originalRow[ti].asText
-        }()
+        let valueType = valueWriteType(of: change)
 
         for cellChange in change.cellChanges {
             switch cellChange.columnName {
@@ -203,7 +196,10 @@ struct RedisStatementGenerator {
                 continue // Already handled above
             case "Value":
                 guard let encodedValue = Self.encodedArgument(cellChange.newValue) else { continue }
-                let typeLower = redisType?.lowercased() ?? "string"
+                guard let typeLower = valueType else {
+                    Self.logger.warning("Skipping Value update for key '\(effectiveKey)' - its type is unknown")
+                    continue
+                }
                 if typeLower != "string" {
                     // Non-string types show a preview; blindly SET would destroy the data structure
                     Self.logger.warning(
@@ -230,6 +226,15 @@ struct RedisStatementGenerator {
     }
 
     // MARK: - Helpers
+
+    /// A grid with no Type column holds strings. One with a Type column holds whatever the server
+    /// said, and a Type cell the server would not fill leaves nothing safe to write: `SET` over a
+    /// hash replaces the hash.
+    private func valueWriteType(of change: PluginRowChange) -> String? {
+        guard let typeIndex = typeColumnIndex else { return "string" }
+        guard let originalRow = change.originalRow, typeIndex < originalRow.count else { return nil }
+        return originalRow[typeIndex].asText?.lowercased()
+    }
 
     /// Extract the key value from a PluginRowChange's original row
     private func extractKey(from change: PluginRowChange) -> String? {

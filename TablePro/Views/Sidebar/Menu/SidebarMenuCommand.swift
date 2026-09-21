@@ -74,7 +74,7 @@ internal enum SidebarMenuCommand: Equatable {
     case showObjectSource(DatabaseObjectRef)
     case copyRedisNamespacePrefix(String)
     case copyRedisKey(String)
-    case openRedisKey(key: String, keyType: String)
+    case openRedisKey(key: String, keyType: String?)
     case toggleObjectIcons
     case toggleObjectComments
     case toggleSystemContainers

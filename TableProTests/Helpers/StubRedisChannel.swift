@@ -63,23 +63,39 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     }
 
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
-        let command = args.map { String(data: $0, encoding: .utf8) ?? "" }
-        if let held = footprint.heldBack(scope) {
-            throw RedisHeldBackCommand(command: command.first ?? "", held: held)
-        }
-        sentCommands.append(command)
-        sentScopes.append(scope)
-        guard !outcomes.isEmpty else { return .null }
-        let reply = try outcomes.removeFirst().get()
+        let command = decoded(args)
+        try admit(scope, command: command)
+        guard let reply = try send(command, scope: scope) else { return .null }
         _ = footprint.observe(command: command.first, reply: reply)
         return reply
     }
 
+    /// Admitted once for the whole pipeline and observed after every reply is in, as the hiredis
+    /// connection does, because every command is on the wire before the first reply is read.
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
-        var replies: [RedisReply] = []
-        for command in commands {
-            replies.append(try await executeCommand(command, scope: scope))
+        let pipeline = commands.map(decoded)
+        try admit(scope, command: pipeline.first ?? [])
+        let replies = try pipeline.map { try send($0, scope: scope) }
+        for (command, reply) in zip(pipeline, replies) {
+            guard let reply else { continue }
+            _ = footprint.observe(command: command.first, reply: reply)
         }
-        return replies
+        return replies.map { $0 ?? .null }
+    }
+
+    private func decoded(_ args: [Data]) -> [String] {
+        args.map { String(data: $0, encoding: .utf8) ?? "" }
+    }
+
+    private func admit(_ scope: RedisCommandScope, command: [String]) throws {
+        guard let held = footprint.heldBack(scope) else { return }
+        throw RedisHeldBackCommand(command: command.first ?? "", held: held)
+    }
+
+    private func send(_ command: [String], scope: RedisCommandScope) throws -> RedisReply? {
+        sentCommands.append(command)
+        sentScopes.append(scope)
+        guard !outcomes.isEmpty else { return nil }
+        return try outcomes.removeFirst().get()
     }
 }

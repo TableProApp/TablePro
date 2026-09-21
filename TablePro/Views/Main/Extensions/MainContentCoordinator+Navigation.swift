@@ -798,19 +798,19 @@ extension MainContentCoordinator {
         applyBrowseSearch(BrowseSearchState(pattern: "\(prefix)*"))
     }
 
-    func openRedisKey(_ keyName: String, keyType: String) {
+    func openRedisKey(_ keyName: String, keyType: String?) {
         let escapedKey = keyName.replacingOccurrences(of: "\"", with: "\\\"")
         let query: String
-        switch keyType.lowercased() {
-        case "hash":
+        switch keyType?.lowercased() {
+        case "hash"?:
             query = "HGETALL \"\(escapedKey)\""
-        case "list":
+        case "list"?:
             query = "LRANGE \"\(escapedKey)\" 0 -1"
-        case "set":
+        case "set"?:
             query = "SMEMBERS \"\(escapedKey)\""
-        case "zset":
+        case "zset"?:
             query = "ZRANGE \"\(escapedKey)\" 0 -1 WITHSCORES"
-        case "stream":
+        case "stream"?:
             query = "XRANGE \"\(escapedKey)\" - +"
         default:
             query = "GET \"\(escapedKey)\""

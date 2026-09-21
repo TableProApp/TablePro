@@ -800,6 +800,54 @@ struct RedisStatementGeneratorBrowseColumnTests {
         #expect(results.isEmpty)
     }
 
+    /// The Type cell is NULL when the server would not say, and `SET` over a hash the user cannot
+    /// see replaces the hash.
+    @Test("A value update on a key of unknown type is skipped")
+    func unknownTypeValueUpdateSkipped() {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 4, columnName: "Value", oldValue: nil, newValue: "new")
+            ],
+            originalRow: ["other:h", nil, nil, nil, nil]
+        )
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.isEmpty)
+    }
+
+    @Test("A key of unknown type still takes a TTL change")
+    func unknownTypeTtlUpdateApplies() {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 2, columnName: "TTL", oldValue: nil, newValue: "60")
+            ],
+            originalRow: ["other:h", nil, nil, nil, nil]
+        )
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.map(\.statement) == ["EXPIRE other:h 60"])
+    }
+
     @Test("An insert reads its cells by name, not by position")
     func insertResolvesColumnsByName() {
         let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
