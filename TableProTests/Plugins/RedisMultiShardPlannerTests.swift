@@ -162,4 +162,19 @@ struct RedisMultiShardPlannerScatterTests {
         )
         #expect(combined.errorMessage == "NOPERM")
     }
+
+    @Test("A slot group queued by an open block is reported as queued, not scattered as nils")
+    func surfacesQueuedGroup() throws {
+        let arguments = args("MGET", "a1", "b1")
+        let commandSpec = spec(first: 1, last: -1, step: 1)
+        let groups = try #require(
+            RedisMultiShardPlanner.split(arguments: arguments, spec: commandSpec, slotOf: slotOf)
+        )
+        let combined = RedisMultiShardPlanner.scatterInKeyOrder(
+            groups: groups,
+            replies: [.array([.string("valueA1")]), .status("QUEUED")],
+            keyIndices: commandSpec.keyIndices(forArgumentCount: arguments.count)
+        )
+        #expect(combined.isQueued)
+    }
 }

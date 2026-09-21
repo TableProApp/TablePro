@@ -247,14 +247,6 @@ struct RedisDatabaseListingTests {
         }
     }
 
-    @Test("A cluster has one keyspace and is not asked")
-    func clusterIsOneDatabase() async throws {
-        let channel = StubRedisChannel([], supportsDatabaseSelection: false)
-        let listing = try await channel.databaseListing(includingKeyCounts: true)
-        #expect(listing.databaseCount == 1)
-        #expect(channel.sentCommands.isEmpty)
-    }
-
     @Test("A declined keyspace is unknown, an answered one is a map")
     func keyCountsByDatabase() async throws {
         let declined = StubRedisChannel([Self.deniedInfo])
@@ -262,5 +254,71 @@ struct RedisDatabaseListingTests {
 
         let answered = StubRedisChannel([.string("# Keyspace\r\ndb3:keys=7\r\n")])
         #expect(try await answered.keyCountsByDatabase() == [3: 7])
+    }
+}
+
+/// A cluster answers `INFO` from one master, so its one keyspace is counted with `DBSIZE`, which
+/// every master answers and the channel sums. Measured on a two-master redis-server 8.10.1
+/// cluster with `-dbsize` on one master, and with that master busy running a script: both used
+/// to report the other master's count as the whole keyspace.
+@Suite("Redis command channel - cluster database listing")
+struct RedisClusterDatabaseListingTests {
+    @Test("A cluster lists one database and counts its keys with DBSIZE")
+    func countsWithDbsize() async throws {
+        let channel = StubRedisChannel([.integer(21)], supportsDatabaseSelection: false)
+        let listing = try await channel.databaseListing(includingKeyCounts: true)
+        #expect(listing.databaseCount == 1)
+        #expect(listing.keyCount(forDatabase: 0) == 21)
+        #expect(channel.sentCommands == [["DBSIZE"]])
+        #expect(channel.sentScopes == [.outsideBlock])
+    }
+
+    @Test("A cluster listing without key counts asks nothing")
+    func withoutCountsAsksNothing() async throws {
+        let channel = StubRedisChannel([], supportsDatabaseSelection: false)
+        let listing = try await channel.databaseListing(includingKeyCounts: false)
+        #expect(listing.databaseCount == 1)
+        #expect(listing.keyCounts == nil)
+        #expect(channel.sentCommands.isEmpty)
+    }
+
+    @Test("A master that declines DBSIZE leaves the count unknown rather than short")
+    func declinedIsUnknown() async throws {
+        let channel = StubRedisChannel(
+            [.error("NOPERM User counter has no permissions to run the 'dbsize' command")],
+            supportsDatabaseSelection: false
+        )
+        let listing = try await channel.databaseListing(includingKeyCounts: true)
+        #expect(listing.databaseCount == 1)
+        #expect(listing.keyCount(forDatabase: 0) == nil)
+    }
+
+    @Test("A master still loading fails the listing instead of reporting a short count")
+    func loadingThrows() async throws {
+        let channel = StubRedisChannel(
+            [.error("LOADING Redis is loading the dataset in memory")],
+            supportsDatabaseSelection: false
+        )
+        do {
+            _ = try await channel.databaseListing(includingKeyCounts: true)
+            Issue.record("expected a throw")
+        } catch let error as RedisPluginError {
+            #expect(error.message == "DBSIZE: LOADING Redis is loading the dataset in memory")
+        }
+    }
+
+    @Test("A queued DBSIZE throws instead of counting the acknowledgement")
+    func queuedThrows() async throws {
+        let channel = StubRedisChannel([.status("QUEUED")], supportsDatabaseSelection: false)
+        await #expect(throws: RedisQueuedCommand(command: "DBSIZE")) {
+            try await channel.databaseListing(includingKeyCounts: true)
+        }
+    }
+
+    @Test("The key counts of a cluster are database 0's")
+    func keyCountsByDatabase() async throws {
+        let channel = StubRedisChannel([.integer(9)], supportsDatabaseSelection: false)
+        #expect(try await channel.keyCountsByDatabase() == [0: 9])
+        #expect(channel.sentCommands == [["DBSIZE"]])
     }
 }

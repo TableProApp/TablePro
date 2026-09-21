@@ -233,11 +233,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        guard conn.supportsDatabaseSelection else {
-            let count = try await conn.run(["DBSIZE"], scope: .outsideBlock).intValue ?? 0
-            return [PluginTableInfo(name: Self.clusterDatabaseName, type: "TABLE", rowCount: count)]
-        }
-
         let listing = try await conn.databaseListing(includingKeyCounts: true)
         return (0 ..< listing.databaseCount).map { index in
             PluginTableInfo(name: "db\(index)", type: "TABLE", rowCount: listing.keyCount(forDatabase: index))
@@ -355,12 +350,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let dbName = database.hasPrefix("db") ? database : "db\(database)"
-
-        guard conn.supportsDatabaseSelection else {
-            let count = try await conn.run(["DBSIZE"], scope: .outsideBlock).intValue ?? 0
-            return PluginDatabaseMetadata(name: Self.clusterDatabaseName, tableCount: count)
-        }
-
         let keyCounts = try await conn.keyCountsByDatabase()
         let index = RedisDatabaseIndex.parse(database)
         return PluginDatabaseMetadata(

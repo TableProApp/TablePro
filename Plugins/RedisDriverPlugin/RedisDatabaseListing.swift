@@ -47,7 +47,10 @@ extension RedisCommandChannel {
     /// many databases it has, because then the keyspace is what can widen the count.
     func databaseListing(includingKeyCounts: Bool) async throws -> RedisDatabaseListing {
         guard supportsDatabaseSelection else {
-            return RedisDatabaseListing(databaseCount: 1, keyCounts: nil)
+            return RedisDatabaseListing(
+                databaseCount: 1,
+                keyCounts: includingKeyCounts ? try await keyCountsByDatabase() : nil
+            )
         }
         let reported = try await runMetadataRead(["CONFIG", "GET", "databases"])
             .flatMap(RedisDatabaseCount.reported(by:))
@@ -60,8 +63,13 @@ extension RedisCommandChannel {
         return RedisDatabaseListing(databaseCount: count, keyCounts: includingKeyCounts ? keyCounts : nil)
     }
 
-    /// Nil when the server declines `INFO`, which an ACL user outside `@dangerous` is.
+    /// Nil when the server declines `INFO`, which an ACL user outside `@dangerous` is. A cluster
+    /// answers `INFO` from one master, so its single keyspace is counted with `DBSIZE`, which
+    /// every master answers and which is nil when any of them declines.
     func keyCountsByDatabase() async throws -> [Int: Int]? {
+        guard supportsDatabaseSelection else {
+            return try await runMetadataRead(["DBSIZE"])?.intValue.map { [0: $0] }
+        }
         guard let reply = try await runMetadataRead(["INFO", "keyspace"]) else { return nil }
         return RedisServerInfo.keyspace(from: reply.stringValue ?? "")
     }

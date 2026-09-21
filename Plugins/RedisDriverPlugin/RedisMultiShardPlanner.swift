@@ -63,14 +63,15 @@ enum RedisMultiShardPlanner {
     }
 
     /// The no-policy default for a keyed command: the caller expects one element per input key,
-    /// in the order it asked for them.
+    /// in the order it asked for them. A group that failed or was queued has no elements to
+    /// scatter, so it is the answer rather than a run of nils.
     static func scatterInKeyOrder(
         groups: [RedisMultiShardGroup],
         replies: [RedisReply],
         keyIndices: [Int]
     ) -> RedisReply {
         guard groups.count == replies.count else { return .array(replies) }
-        if let failure = replies.first(where: { $0.isError }) { return failure }
+        if let failure = RedisClusterAggregator.firstNonAnswer(in: replies) { return failure }
 
         var byOriginalIndex: [Int: RedisReply] = [:]
         for (group, reply) in zip(groups, replies) {

@@ -285,22 +285,29 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         }
 
         var replies: [RedisReply] = []
+        var nodes: [RedisNodeAddress] = []
         replies.reserveCapacity(groups.count)
+        nodes.reserveCapacity(groups.count)
         for group in groups {
             guard let node = snapshot.topology.master(forSlot: group.slot) else {
                 throw RedisPluginError.notConnected
             }
             replies.append(try await send(group.arguments, to: node.address, scope: scope))
+            nodes.append(node.address)
         }
 
-        guard let policy = spec.responsePolicy else {
-            return RedisMultiShardPlanner.scatterInKeyOrder(
+        let combined: RedisReply
+        if let policy = spec.responsePolicy {
+            combined = RedisClusterAggregator.combine(replies, policy: policy)
+        } else {
+            combined = RedisMultiShardPlanner.scatterInKeyOrder(
                 groups: groups,
                 replies: replies,
                 keyIndices: spec.keyIndices(forArgumentCount: args.count)
             )
         }
-        return RedisClusterAggregator.combine(replies, policy: policy)
+        noteShardFailures(of: args, combined: combined, replies: replies, nodes: nodes)
+        return combined
     }
 
     private func broadcast(
@@ -316,7 +323,28 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         for node in targets {
             replies.append(try await send(args, to: node.address, followRedirects: false, scope: scope))
         }
-        return RedisClusterAggregator.combine(replies, policy: policy)
+        let combined = RedisClusterAggregator.combine(replies, policy: policy)
+        noteShardFailures(of: args, combined: combined, replies: replies, nodes: targets.map(\.address))
+        return combined
+    }
+
+    /// The reply the user sees is the refusing shard's own, which names neither the node nor the
+    /// fact that the other shards ran their part, so the log keeps both. The class only, because
+    /// the rest of an error message can quote a key.
+    private func noteShardFailures(
+        of args: [Data],
+        combined: RedisReply,
+        replies: [RedisReply],
+        nodes: [RedisNodeAddress]
+    ) {
+        guard combined.isError else { return }
+        let name = args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? ""
+        for (position, (reply, node)) in zip(replies, nodes).enumerated() {
+            guard let message = reply.errorMessage else { continue }
+            let errorClass = RedisConnectProbe.errorClass(of: message)
+            let part = "\(node.identifier), part \(position + 1) of \(replies.count)"
+            logger.notice("\(name, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
+        }
     }
 
     private func serverResolvedKeys(for args: [Data], snapshot: Snapshot) async throws -> [Data] {
