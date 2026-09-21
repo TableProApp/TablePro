@@ -46,12 +46,6 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
-    // MARK: - EXPLAIN
-
-    func buildExplainQuery(_ sql: String) -> String? {
-        "EXPLAIN \(sql)"
-    }
-
     // MARK: - Schema
 
     /// Refreshed from `onPostConnect` and whenever the schema list is loaded, so

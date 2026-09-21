@@ -13,7 +13,7 @@ import TableProPluginKit
 enum ExplainPlanFormatDefaults {
     static func format(for databaseType: DatabaseType) -> ExplainPlanFormat {
         switch databaseType {
-        case .postgresql, .redshift, .pglite:
+        case .postgresql, .pglite:
             return .postgresJson
         case .mysql, .mariadb:
             return .mysqlComposite

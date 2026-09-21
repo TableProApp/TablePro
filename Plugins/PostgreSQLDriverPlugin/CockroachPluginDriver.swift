@@ -52,12 +52,6 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         cachedServerVersion ?? core.serverVersion
     }
 
-    // MARK: - EXPLAIN
-
-    func buildExplainQuery(_ sql: String) -> String? {
-        "EXPLAIN \(sql)"
-    }
-
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {

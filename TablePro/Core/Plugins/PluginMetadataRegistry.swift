@@ -501,6 +501,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
             Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
             Self.adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
+            Self.adoptCuratedExplainVariants(&resolved, registryDefault: registryDefault)
             if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
                 Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
                     "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"

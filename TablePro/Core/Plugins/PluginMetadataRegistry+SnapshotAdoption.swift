@@ -75,6 +75,17 @@ extension PluginMetadataRegistry {
     /// A name is a system database or schema when either the plugin or the app's curated entry lists it. An installed
     /// plugin can predate the app's list or report none at all: every published Oracle plugin lists no system
     /// schemas, which left `SYS` and `XDB` among the user schemas whichever plugin version was installed.
+    /// A plugin that declares no explain variants says nothing about Explain, which is not the
+    /// same as switching it off: DuckDB's plugin declares none and lost the curated `EXPLAIN` the
+    /// moment it loaded. A plugin that declares its own list still wins.
+    static func adoptCuratedExplainVariants(
+        _ snapshot: inout PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) {
+        guard snapshot.explainVariants.isEmpty, !registryDefault.explainVariants.isEmpty else { return }
+        snapshot = snapshot.withExplainVariants(registryDefault.explainVariants)
+    }
+
     static func adoptCuratedSystemNames(
         _ snapshot: inout PluginMetadataSnapshot,
         registryDefault: PluginMetadataSnapshot
