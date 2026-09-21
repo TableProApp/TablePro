@@ -10,7 +10,7 @@ import Foundation
 
 enum RedisDatabaseCount {
     static let assumed = 16
-    static let limit = Int(Int32.max)
+    static let limit = RedisDatabaseIndex.selectable.count
 
     static func reported(by reply: RedisReply) -> Int? {
         guard let pair = reply.arrayValue, pair.count >= 2, let count = pair[1].intValue,

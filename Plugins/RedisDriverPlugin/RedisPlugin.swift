@@ -92,7 +92,7 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
             id: "redisDatabase",
             label: String(localized: "Database Index"),
             defaultValue: "0",
-            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+            fieldType: .stepper(range: ConnectionField.IntRange(RedisDatabaseIndex.selectable)),
             visibleWhen: FieldVisibilityRule(
                 fieldId: RedisConnectionMode.fieldId,
                 values: [RedisConnectionMode.standalone.rawValue, RedisConnectionMode.sentinel.rawValue]

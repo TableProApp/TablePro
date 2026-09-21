@@ -29,6 +29,16 @@ struct RedisDatabaseIndexTests {
         #expect(RedisDatabaseIndex.resolve(additionalFields: ["redisDatabase": ""], database: "db0") == 0)
     }
 
+    /// `databases` accepts 1 to 2147483647 on redis-server 8.10.1 and `SELECT` parses a C int, so
+    /// a server can hold any index up to one below Int32.max. Sixteen is only the default.
+    @Test("every index a server can be configured to hold is selectable")
+    func selectableSpansEveryConfigurableDatabase() {
+        #expect(RedisDatabaseIndex.selectable.lowerBound == 0)
+        #expect(RedisDatabaseIndex.selectable.upperBound == 2_147_483_646)
+        #expect(RedisDatabaseIndex.selectable.count == Int(Int32.max))
+        #expect(RedisDatabaseCount.limit == RedisDatabaseIndex.selectable.count)
+    }
+
     @Test("parse rejects what is not an index so the switch can report it")
     func parseRejectsNonIndexes() {
         #expect(RedisDatabaseIndex.parse("db4") == 4)

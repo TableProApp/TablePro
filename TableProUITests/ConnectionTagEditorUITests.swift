@@ -18,7 +18,7 @@ final class ConnectionTagEditorUITests: UITestCase {
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
 
         let form = try openConnectionForm(for: "SQLite", in: app)
-        selectTab("appearance", in: form)
+        selectConnectionFormTab("appearance", in: form)
 
         let menu = form.descendants(matching: .any).matching(identifier: tagMenu).firstMatch
         XCTAssertTrue(menu.waitToExist(timeout: 10), "The Appearance tab should offer a Tags control")
@@ -48,7 +48,7 @@ final class ConnectionTagEditorUITests: UITestCase {
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
 
         let form = try openConnectionForm(for: "SQLite", in: app)
-        selectTab("appearance", in: form)
+        selectConnectionFormTab("appearance", in: form)
 
         let menu = form.descendants(matching: .any).matching(identifier: tagMenu).firstMatch
         XCTAssertTrue(menu.waitToExist(timeout: 10))
@@ -60,18 +60,6 @@ final class ConnectionTagEditorUITests: UITestCase {
             "A connection with no tags yet still needs a route to making one"
         )
         app.typeKey(.escape, modifierFlags: [])
-    }
-
-    private func selectTab(_ tab: String, in form: XCUIElement) {
-        let row = form.descendants(matching: .any)
-            .matching(identifier: "connection-form-section-\(tab)")
-            .firstMatch
-        XCTAssertTrue(
-            row.waitToExist(timeout: 10),
-            "No sidebar row identified connection-form-section-\(tab)"
-        )
-        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
-        row.click()
     }
 
     /// Scoped to the sheet, not the app: the welcome window behind it owns a `sidebar-filter`
