@@ -340,7 +340,9 @@ final class ConnectionFormCoordinator: ObservableObject {
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
             externalAccess: advanced.externalAccess,
-            redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
+            redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
+                RedisDatabaseIndex.parse($0) ?? 0
+            },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,

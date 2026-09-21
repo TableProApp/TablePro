@@ -864,7 +864,7 @@ enum DatabaseDriverFactory {
             fields["mongoReadPreference"] = connection.mongoReadPreference ?? ""
             fields["mongoWriteConcern"] = connection.mongoWriteConcern ?? ""
         case .redis:
-            fields["redisDatabase"] = String(connection.redisDatabase ?? 0)
+            fields[RedisDatabaseIndex.fieldName] = String(connection.redisDatabaseIndex)
         case .mssql:
             fields["mssqlSchema"] = connection.mssqlSchema ?? "dbo"
         case .oracle:

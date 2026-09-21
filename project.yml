@@ -127,6 +127,8 @@ targets:
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
+      # One parse for a Redis database index, shared with the Redis plugin and the iOS app.
+      - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig

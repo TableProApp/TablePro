@@ -82,8 +82,7 @@ enum SessionStateFactory {
         }
 
         if connection.type.pluginTypeId == "Redis" {
-            let dbIndex = connection.redisDatabase ?? Int(connection.database) ?? 0
-            toolbarSt.currentDatabase = String(dbIndex)
+            toolbarSt.currentDatabase = String(connection.redisDatabaseIndex)
         }
 
         if let payload {

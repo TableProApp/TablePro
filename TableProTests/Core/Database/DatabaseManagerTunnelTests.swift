@@ -28,6 +28,39 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.passwordSource == .env(variable: "DB_PASS"))
     }
 
+    @Test("Tunneled Redis keeps the database index the connection names")
+    func tunnelKeepsRedisDatabaseIndex() {
+        let connection = DatabaseConnection(
+            name: "redis",
+            host: "cache.internal",
+            port: 6_379,
+            type: .redis,
+            redisDatabase: 4,
+            additionalFields: ["redisMode": "standalone"]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.additionalFields["redisDatabase"] == "4")
+        #expect(tunneled.redisDatabaseIndex == 4)
+    }
+
+    @Test("Tunneled Redis Cluster opens database 0 after the tunnel forces Standalone")
+    func tunnelKeepsClusterOnDatabaseZero() {
+        let connection = DatabaseConnection(
+            name: "cluster",
+            host: "node.internal",
+            port: 7_000,
+            type: .redis,
+            additionalFields: ["redisMode": "cluster", "redisDatabase": "4"]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.additionalFields["redisMode"] == "standalone")
+        #expect(tunneled.redisDatabaseIndex == 0)
+    }
+
     @Test("Tunneled MongoDB collapses the seed list and forces a direct connection")
     func tunnelForcesMongoDirectConnection() {
         let connection = DatabaseConnection(

@@ -67,6 +67,7 @@ extension DatabaseManager {
             effectiveFields["mongoParam_directConnection"] = "true"
         }
         if connection.type.pluginTypeId == "Redis" {
+            effectiveFields[RedisDatabaseIndex.fieldName] = String(connection.redisDatabaseIndex)
             effectiveFields["redisMode"] = "standalone"
         }
         /// Kafka's Metadata reply names every broker by its ADVERTISED address, and a client is

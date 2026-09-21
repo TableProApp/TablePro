@@ -122,8 +122,8 @@ struct ConnectionURLFormatter {
         var sshPathComponent = connection.type == .oracle
             ? (connection.oracleServiceName ?? connection.database)
             : connection.database
-        if connection.type == .redis, let redisDb = connection.redisDatabase, redisDb > 0 {
-            sshPathComponent = String(redisDb)
+        if connection.type == .redis {
+            sshPathComponent = redisPath(for: connection)
         }
         result += "/\(sshPathComponent)"
 
@@ -164,8 +164,8 @@ struct ConnectionURLFormatter {
         var pathComponent = connection.type == .oracle
             ? (connection.oracleServiceName ?? connection.database)
             : connection.database
-        if connection.type == .redis, let redisDb = connection.redisDatabase, redisDb > 0 {
-            pathComponent = String(redisDb)
+        if connection.type == .redis {
+            pathComponent = redisPath(for: connection)
         }
         result += "/\(pathComponent)"
 
@@ -175,6 +175,11 @@ struct ConnectionURLFormatter {
         }
 
         return result
+    }
+
+    private static func redisPath(for connection: DatabaseConnection) -> String {
+        let index = connection.redisDatabaseIndex
+        return index == 0 ? "" : String(index)
     }
 
     private static func buildQueryString(

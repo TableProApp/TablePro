@@ -12,6 +12,11 @@ nonisolated enum RedisDatabaseIndex {
         return parse(database) ?? 0
     }
 
+    static func selectableIndex(_ value: String) -> Int? {
+        guard let index = parse(value), selectable.contains(index) else { return nil }
+        return index
+    }
+
     static func parse(_ value: String) -> Int? {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
         if let index = Int(trimmed) { return index }
