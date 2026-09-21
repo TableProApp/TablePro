@@ -234,28 +234,14 @@ private struct AIChatBlockView: View, Equatable {
     }
 }
 
+/// The system's own progress indicator rather than three bouncing dots, which read as decoration
+/// rather than as the app waiting on a reply, and which no other surface in the app uses.
 struct ChatTypingIndicatorView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animating = false
-
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(Color(nsColor: .tertiaryLabelColor))
-                    .frame(width: 6, height: 6)
-                    .offset(y: animating ? -3 : 0)
-                    .motionAnimation(
-                        .easeInOut(duration: 0.4)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.15),
-                        value: animating
-                    )
-            }
-        }
-        .frame(height: 16)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Responding"))
-        .onAppear { animating = !reduceMotion }
+        ProgressView()
+            .controlSize(.small)
+            .frame(height: 16)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(localized: "Responding"))
     }
 }

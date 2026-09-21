@@ -3832,9 +3832,6 @@
         }
       }
     },
-    "%@ through this connection's transport" : {
-
-    },
     "%@ wants to access '%@' (%@)." : {
       "localizations" : {
         "en" : {
@@ -12744,6 +12741,9 @@
       }
     },
     "A view" : {
+
+    },
+    "Actions" : {
 
     },
     "about %@ row" : {
@@ -35944,6 +35944,9 @@
         }
       }
     },
+    "Commands for the current tab and connection" : {
+
+    },
     "Comment Unavailable" : {
 
     },
@@ -39867,6 +39870,7 @@
       }
     },
     "Conversation history" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -39901,7 +39905,6 @@
       }
     },
     "Conversation History" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -63183,6 +63186,7 @@
       }
     },
     "Export & Import" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -76439,6 +76443,9 @@
         }
       }
     },
+    "Import Data From" : {
+
+    },
     "Import data" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -81792,9 +81799,6 @@
           }
         }
       }
-    },
-    "JSON view options" : {
-
     },
     "JSON Viewer" : {
       "localizations" : {
@@ -122088,9 +122092,6 @@
     "Received" : {
 
     },
-    "Receiving %@" : {
-
-    },
     "Recent" : {
       "localizations" : {
         "ko" : {
@@ -122744,6 +122745,9 @@
           }
         }
       }
+    },
+    "Redis Cluster serves database 0 only, so it cannot switch databases." : {
+
     },
     "Redis driver has no TLS fallback. Preferred and Required both force TLS. Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints." : {
       "localizations" : {
@@ -137970,9 +137974,6 @@
         }
       }
     },
-    "Sending %@" : {
-
-    },
     "Sent" : {
 
     },
@@ -152504,6 +152505,7 @@
       }
     },
     "Table Actions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -166924,9 +166926,6 @@
         }
       }
     },
-    "Throughput" : {
-
-    },
     "Throughput is measured for SSH tunnels and SOCKS proxies, the transports TablePro carries the bytes for itself." : {
 
     },
@@ -171960,6 +171959,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未知的 URL scheme：%@"
+          }
+        }
+      }
+    },
+    "Unknown explain variant '%@'." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알 수 없는 EXPLAIN 변형 '%@'입니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilinmeyen açıklama varyantı '%@'."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biến thể EXPLAIN không xác định '%@'."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 EXPLAIN 变体 '%@'。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 EXPLAIN 變體 '%@'。"
           }
         }
       }
@@ -182547,6 +182580,144 @@
 
     },
     "The '%1$@' variant does not run the statement. Leave 'analyze' off, or pass one that does: %2$@." : {
+
+    },
+    "Hide Result" : {
+
+    },
+    "Show Result" : {
+
+    },
+    "Inspector Options" : {
+
+    },
+    "Assistant Options" : {
+
+    },
+    "Result Options" : {
+
+    },
+    "Pane" : {
+
+    },
+    "Result view" : {
+
+    },
+    "No Session Open" : {
+
+    },
+    "What a session proposes and runs appears here" : {
+
+    },
+    "What the session runs appears once the connection is up" : {
+
+    },
+    "Sessions" : {
+
+    },
+    "Open Session" : {
+
+    },
+    "Close Session" : {
+
+    },
+    "Delete Session…" : {
+
+    },
+    "Delete Session" : {
+
+    },
+    "New Session" : {
+
+    },
+    "No Sessions Yet" : {
+
+    },
+    "Start one to ask about this connection." : {
+
+    },
+    "%@, open in this window" : {
+
+    },
+    "Close “%@”?" : {
+
+    },
+    "Delete “%@”?" : {
+
+    },
+    "The session is still working. Closing it stops the reply, and its conversation stays in the list." : {
+
+    },
+    "The session is waiting on your answer about a statement. Closing it cancels the statement, and its conversation stays in the list." : {
+
+    },
+    "The session is still working. Deleting it stops the reply and deletes its conversation, which can't be restored." : {
+
+    },
+    "The session is waiting on your answer about a statement. Deleting it cancels the statement and deletes its conversation, which can't be restored." : {
+
+    },
+    "The session and its conversation are deleted, and can't be restored." : {
+
+    },
+    "Read-only database" : {
+
+    },
+    "Read-only file copy" : {
+
+    },
+    "Required by your organization" : {
+
+    },
+    "Writes wait for you" : {
+
+    },
+    "No Results Yet" : {
+
+    },
+    "Rows the session reads appear here." : {
+
+    },
+    "No Rows" : {
+
+    },
+    "The query returned no rows." : {
+
+    },
+    "Statement Completed" : {
+
+    },
+    "The statement returned no rows to show." : {
+
+    },
+    "No rows changed." : {
+
+    },
+    "%@ row changed." : {
+
+    },
+    "%@ rows changed." : {
+
+    },
+    "Can't Show This Result" : {
+
+    },
+    "The reply is not rows the grid can draw. The conversation has it in full." : {
+
+    },
+    "No Statements Yet" : {
+
+    },
+    "SQL the session proposes appears here before it runs." : {
+
+    },
+    "Session" : {
+
+    },
+    "Recent Sessions" : {
+
+    },
+    "Clear Recents…" : {
 
     }
   },

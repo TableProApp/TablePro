@@ -105,6 +105,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case clearSelection
     case addRow
     case duplicateRow
+    case restorePreviousValues
     case truncateTable
     case toggleHeaderRow
     case previewFKReference
@@ -129,9 +130,16 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case reopenClosedTab
     case quickSwitcher
     case toggleTableBrowser
+    case showTablesList
+    case showFavoritesList
     case toggleInspector
     case toggleAssistant
     case toggleAgentMode
+    case newAgentSession
+    case openAgentSession
+    case closeAgentSession
+    case deleteAgentSession
+    case newAIConversation
     case toggleFilters
     case toggleHistory
     case toggleResults
@@ -166,13 +174,16 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
+             .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+             .showTablesList, .showFavoritesList,
              .toggleInspector, .toggleAssistant, .toggleAgentMode, .toggleFilters, .toggleHistory, .toggleResults,
+             .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
              .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .focusObjectList, .focusEditor, .focusResults, .focusInspector, .focusAssistant,
@@ -196,7 +207,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
-             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn:
+             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
+             /// Named rather than left to the `default:` below. It reverses a row the grid is
+             /// showing, so it belongs in the grid's context the way Add Row and Delete do, and
+             /// inheriting `.global` would let the recorder call a grid combo free for it.
+             .restorePreviousValues:
             return .dataGrid
         default:
             return .global
@@ -270,14 +285,22 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .clearSelection: return String(localized: "Clear Selection")
         case .addRow: return String(localized: "Add Row")
         case .duplicateRow: return String(localized: "Duplicate Row")
+        case .restorePreviousValues: return String(localized: "Restore Previous Values")
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")
         case .previewFKReference: return String(localized: "Preview FK Reference")
         case .saveAsFavorite: return String(localized: "Save as Favorite")
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
+        case .showTablesList: return String(localized: "Show Tables")
+        case .showFavoritesList: return String(localized: "Show Favorites")
         case .toggleInspector: return String(localized: "Toggle Inspector")
         case .toggleAssistant: return String(localized: "Toggle Assistant")
         case .toggleAgentMode: return String(localized: "Toggle Agent Mode")
+        case .newAgentSession: return String(localized: "New Session")
+        case .openAgentSession: return String(localized: "Open Session")
+        case .closeAgentSession: return String(localized: "Close Session")
+        case .deleteAgentSession: return String(localized: "Delete Session")
+        case .newAIConversation: return String(localized: "New Conversation")
         case .toggleFilters: return String(localized: "Toggle Filters")
         case .toggleHistory: return String(localized: "Toggle History")
         case .toggleResults: return String(localized: "Toggle Results")

@@ -16,6 +16,14 @@ struct ImportFormatOption: Identifiable, Equatable {
     var standaloneLabel: String {
         String(format: String(localized: "Import %@\u{2026}"), name)
     }
+
+    /// The format's name alone, for a menu whose parent already names the command: Import Data From
+    /// > CSV…, the shape Keynote and Numbers give Export To. Under that parent `submenuLabel` would
+    /// read "Import Data From > From CSV…". Not localized, because the format's name is the whole of
+    /// it and a format name is a technical term.
+    var formatLabel: String {
+        "\(name)\u{2026}"
+    }
 }
 
 enum ImportSheetRoute: Equatable {

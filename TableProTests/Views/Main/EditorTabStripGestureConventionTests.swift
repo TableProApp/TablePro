@@ -31,6 +31,14 @@ struct EditorTabStripGestureConventionTests {
         return url
     }()
 
+    /// Agent mode's session rail is the other list a row opens from, and it carried the banned
+    /// spelling for as long as it shipped, because this scan only ever read one file. The scan is
+    /// widened by tree rather than by file so the next view added under it is covered as it lands.
+    ///
+    /// `QuickSwitcherPanelView` has the same shape and is left out on purpose: it is not part of this
+    /// work, and a scan that fails on a file nobody touched is a scan that gets disabled.
+    private static let scannedTrees = ["TablePro/Views/Agent"]
+
     /// One spelling covers both, because `onTapGesture(count:` contains `TapGesture(count:`.
     /// Listing them separately made a single offence report twice.
     private static let bannedGestures = ["TapGesture(count:"]
@@ -57,6 +65,37 @@ struct EditorTabStripGestureConventionTests {
             EditorTabStrip.swift uses \(offenders.joined(separator: ", ")). A multi-click SwiftUI \
             tap gesture delays every tab selection by ~371ms and suppresses it on the double-click. \
             Resolve the click through EditorTabActivationResolver instead.
+            """
+        )
+    }
+
+    /// The rail opens a session on the list's own primary action, which is `NSTableView`'s
+    /// `doubleAction` underneath and costs a single click nothing. A `count: 2` tap gesture on the
+    /// row is the same 371ms on every click there as it is in the tab strip.
+    @Test("Agent mode's views compose no multi-click tap gesture")
+    func agentViewsUseNoMultiClickTapGesture() throws {
+        var scanned = 0
+        var offenders: [String] = []
+        for tree in Self.scannedTrees {
+            let root = Self.repositoryRoot.appendingPathComponent(tree)
+            let enumerator = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+            for case let url as URL in enumerator where url.pathExtension == "swift" {
+                scanned += 1
+                let source = code(of: try String(contentsOf: url, encoding: .utf8))
+                for spelling in Self.bannedGestures where source.contains(spelling) {
+                    offenders.append("\(tree)/\(url.lastPathComponent)")
+                }
+            }
+        }
+
+        /// Guards the scan itself: a path that stopped resolving reads as a clean run.
+        #expect(scanned >= 6, "Expected to scan Agent mode's views, scanned \(scanned) files")
+        #expect(
+            offenders.isEmpty,
+            """
+            \(offenders.sorted()) compose a multi-click SwiftUI tap gesture, which delays every \
+            single click by ~371ms. Open from the list's primary action and the row's accessibility \
+            action instead.
             """
         )
     }

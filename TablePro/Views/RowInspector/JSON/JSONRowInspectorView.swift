@@ -44,13 +44,12 @@ struct JSONRowInspectorView: View {
 
     // MARK: - Toolbar
 
+    /// The filter field alone. Copy Visible, the expansion commands and Always Expand Foreign Keys
+    /// are in the pane header's menu, which is where every surface keeps its commands.
     private var toolbar: some View {
-        HStack(spacing: 6) {
-            filterField
-            optionsMenu
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        filterField
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
     }
 
     /// The same `NSSearchField` the Details tab beside it uses.
@@ -73,36 +72,6 @@ struct JSONRowInspectorView: View {
         .help(viewModel.isFilterInvalid
             ? String(localized: "Not a valid regular expression")
             : String(localized: "Filter keys and values. Wrap in slashes for a regular expression."))
-    }
-
-    private var optionsMenu: some View {
-        Menu {
-            Button(String(localized: "Copy Visible")) { viewModel.copyVisible() }
-            Divider()
-            Button(String(localized: "Collapse All")) { viewModel.collapseAll() }
-            Button(String(localized: "Expand All")) { viewModel.expandAll() }
-            Divider()
-            Toggle(
-                String(localized: "Always Expand Foreign Keys"),
-                isOn: Binding(
-                    get: { viewModel.alwaysExpandForeignKeys },
-                    set: { viewModel.setAlwaysExpandForeignKeys($0) }
-                )
-            )
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.subheadline)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 20)
-                .contentShape(Rectangle())
-                .accessibilityLabel(String(localized: "JSON view options"))
-        }
-        .menuStyle(.button)
-        .buttonStyle(.borderless)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help(String(localized: "JSON view options"))
     }
 
     // MARK: - Tree

@@ -936,7 +936,7 @@ final class MainContentCommandActions: ObservableObject {
 
     var supportsServerDashboard: Bool {
         guard let type = coordinator?.connection.type else { return false }
-        return ServerDashboardQueryProviderFactory.provider(for: type) != nil
+        return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
     }
 
     func showUsersAndRoles() {
@@ -1316,10 +1316,6 @@ final class MainContentCommandActions: ObservableObject {
         guard let connectionId = coordinator?.connectionId else { return }
         let state = HistoryPanelState.forConnection(connectionId)
         state.isVisible.toggle()
-    }
-
-    func toggleRightSidebar() {
-        coordinator?.trailingPaneProxy?.toggleInspector()
     }
 
     func goToPreviousPage() {

@@ -6,7 +6,7 @@
 import AppKit
 
 extension MainWindowToolbar {
-    // MARK: - Subitem Builders
+    // MARK: - Item Builders
 
     /// The name of the driver's own query language, so the Preview tooltip says "Preview MQL" on
     /// MongoDB rather than a generic word the user has to translate.
@@ -45,14 +45,6 @@ extension MainWindowToolbar {
         coordinator?.connection.name ?? ""
     }
 
-    /// Whether the centred group carries a throughput readout at all, and whether there is a second
-    /// reading worth taking. Read from the connection's configuration rather than from the registry,
-    /// so it holds for the whole session: the group's shape is settled when the connection is
-    /// adopted and never changes under a running tunnel.
-    var carriesMeasuredTransport: Bool {
-        coordinator?.connection.activeTunnelKind?.carriesMeasuredBytes == true
-    }
-
     /// The container this control switches, and only that. It briefly read "app › public" on a
     /// schema-grouped engine while the click still opened the database chooser, which makes the
     /// word the user aimed at the one thing the control cannot change. The schema has its own
@@ -61,7 +53,13 @@ extension MainWindowToolbar {
         coordinator?.toolbarState.currentDatabase ?? ""
     }
 
-    func subitemConnection() -> NSToolbarItem {
+    /// The verb the selected tab commits with, for an item vended now. `refreshCommitVerb(for:)`
+    /// keeps a live one in step, from the same tab kind.
+    var commitVerb: String {
+        ToolbarContextResolver.commitVerb(for: coordinator?.tabManager.selectedTab?.tabType)
+    }
+
+    func makeConnectionItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.connection,
             label: String(localized: "Connection"),
@@ -75,40 +73,70 @@ extension MainWindowToolbar {
     }
 
     /// A one-of-six chooser that also has to report which one is current, which is
-    /// `NSMenuToolbarItem` plus a glyph that follows the level. `StatefulToolbarItem.validate()`
-    /// re-reads `symbolProvider` on every validation pass, and `observeItemState` puts
+    /// `NSMenuToolbarItem` plus a glyph that follows the level. `SafeModeToolbarItem.validate()`
+    /// re-reads `statusProvider` on every validation pass, and `observeItemState` puts
     /// `safeModeLevel` on the list of things that trigger one.
-    func subitemSafeMode() -> NSToolbarItem {
+    func makeSafeModeItem() -> NSToolbarItem {
         let label = String(localized: "Safe Mode")
         let item = SafeModeToolbarItem(itemIdentifier: Self.safeMode)
         item.label = label
         item.paletteLabel = label
         item.isBordered = true
-        item.levelProvider = { [weak self] in self?.coordinator?.toolbarState.safeModeLevel ?? .silent }
-        item.isEnabledProvider = { [weak self] in
-            guard let self, let context = validationContext() else { return false }
-            return Self.isEnabled(itemIdentifier: Self.safeMode, context: context)
+        item.statusProvider = { [weak self] in
+            self?.coordinator?.safeModeStatus ?? SafeModeStatus(level: .silent, floor: nil)
         }
+        item.isEnabledProvider = enablement(of: Self.safeMode)
         /// The same class the Database menu's submenu uses, so the two lists cannot describe
         /// different levels, and the checkmark is resolved when the menu opens rather than when
         /// the item was built. `NSMenu.delegate` is weak, so the toolbar holds this one.
-        item.menu = safeModeMenu()
+        item.menu = menu(delegate: safeModeMenuDelegate)
 
         /// The overflow entry names the list, not the control, for the same reason the Database
         /// menu's container does: one of the levels inside it is itself called Safe Mode.
         let menuItem = NSMenuItem(title: String(localized: "Safe Mode Level"), action: nil, keyEquivalent: "")
-        menuItem.submenu = safeModeMenu()
+        menuItem.submenu = menu(delegate: safeModeMenuDelegate)
         item.menuFormRepresentation = menuItem
-        /// No `toolTip` here. `levelProvider` already wrote one naming the current level, and
-        /// overwriting it with the bare label was permanent: `applyLevel` returns early once the
-        /// level it applied has not changed, so nothing would ever put the level back.
+        /// No `toolTip` here. `statusProvider` already wrote one naming the current level, and
+        /// overwriting it with the bare label was permanent: `applyStatus` returns early once the
+        /// status it applied has not changed, so nothing would ever put the level back.
         return item
     }
 
-    private func safeModeMenu() -> NSMenu {
+    /// The long tail of what a context can do, in one control whose menu changes with the tab.
+    ///
+    /// `ellipsis.circle` is the glyph Finder gives its own Action pull-down. The menu is built by
+    /// `ConnectionActionsMenuDelegate` when it opens. The overflow entry is AppKit's own and is
+    /// left to it: measured on macOS 27, an `NSMenuToolbarItem` answers `menuFormRepresentation`
+    /// with a fresh item titled with its label over this same menu, whatever was assigned, so a
+    /// narrow window's overflow offers exactly what the control would.
+    func makeActionsItem() -> NSToolbarItem {
+        let label = String(localized: "Actions")
+        let item = StatefulMenuToolbarItem(itemIdentifier: Self.actions)
+        item.label = label
+        item.paletteLabel = label
+        item.isBordered = true
+        item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: label)
+        item.toolTip = String(localized: "Commands for the current tab and connection")
+        item.isEnabledProvider = enablement(of: Self.actions)
+        item.menu = menu(delegate: actionsMenuDelegate)
+        return item
+    }
+
+    /// A menu filled by its delegate when it opens. `NSMenu.delegate` is weak, so the delegate is
+    /// one the toolbar keeps.
+    private func menu(delegate: any NSMenuDelegate) -> NSMenu {
         let menu = NSMenu()
-        menu.delegate = safeModeMenuDelegate
+        menu.delegate = delegate
         return menu
+    }
+
+    /// The enablement a menu-owning item asks for on each validation pass, answered by the same
+    /// resolver and from the same pass context as every other item.
+    private func enablement(of identifier: NSToolbarItem.Identifier) -> @MainActor () -> Bool {
+        { [weak self] in
+            guard let self else { return false }
+            return ToolbarContextResolver.isEnabled(identifier, context: self.validationContext())
+        }
     }
 
     /// What this driver calls the thing a connection browses, so the item reads "Open Keyspace" on
@@ -119,7 +147,7 @@ extension MainWindowToolbar {
         } ?? String(localized: "Database")
     }
 
-    func subitemDatabase() -> NSToolbarItem {
+    func makeDatabaseItem() -> NSToolbarItem {
         let containerName = containerEntityName
         return menuOnlyItem(
             id: Self.database,
@@ -132,7 +160,7 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemNewTab() -> NSToolbarItem {
+    func makeNewTabItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.newTab,
             label: String(localized: "New Tab"),
@@ -143,7 +171,7 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemQuickSwitcher() -> NSToolbarItem {
+    func makeQuickSwitcherItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.quickSwitcher,
             label: String(localized: "Open Quickly"),
@@ -153,7 +181,7 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemRefresh() -> NSToolbarItem {
+    func makeRefreshItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.refresh,
             label: String(localized: "Refresh"),
@@ -166,7 +194,7 @@ extension MainWindowToolbar {
     /// No text label on either button: the HIG asks for the standard chevrons and says not to
     /// label a Back control. `chevron.backward` and `chevron.forward` mirror in a right-to-left
     /// layout, which `chevron.left` and `chevron.right` do not.
-    func subitemNavigateBack() -> NSToolbarItem {
+    func makeNavigateBackItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.navigateBack,
             label: String(localized: "Back"),
@@ -176,7 +204,7 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemNavigateForward() -> NSToolbarItem {
+    func makeNavigateForwardItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.navigateForward,
             label: String(localized: "Forward"),
@@ -186,10 +214,13 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemSaveChanges() -> NSToolbarItem {
+    /// Labelled with the verb the tab commits with, and re-labelled by `refreshCommitVerb(for:)` when
+    /// the tab kind moves, so the palette, the overflow entry and the tooltip never offer to save a
+    /// table definition that is about to be created.
+    func makeSaveChangesItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.saveChanges,
-            label: String(localized: "Save Changes"),
+            label: commitVerb,
             symbol: "checkmark.circle.fill",
             action: #selector(performSaveChanges(_:)),
             shortcut: .saveChanges
@@ -197,10 +228,9 @@ extension MainWindowToolbar {
     }
 
     /// A row insert is a change to the data, so it belongs with the other data commands rather than
-    /// in the status bar, which reports what is on screen. It ships as a subitem of an existing group
-    /// so a toolbar the user already customized picks it up: `autosavesConfiguration` restores the
-    /// saved identifier list, and a brand new top-level identifier would never appear for them.
-    func subitemAddRow() -> NSToolbarItem {
+    /// in the status bar, which reports what is on screen. Offered by Customize Toolbar and by the
+    /// Actions pull-down on a table tab showing data.
+    func makeAddRowItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.addRow,
             label: String(localized: "Add Row"),
@@ -210,13 +240,10 @@ extension MainWindowToolbar {
         )
     }
 
-    /// Rides in the Table Actions group for the same reason Add Row does: a brand new top-level
-    /// identifier never appears for anyone whose toolbar configuration is already saved.
-    ///
     /// It stays enabled without a license. The point of it being here is that someone who has just
     /// saved the wrong thing finds it, and finding it is what makes the licence worth buying; a
     /// dimmed item they never notice sells nothing and helps nobody.
-    func subitemRestorePreviousValues() -> NSToolbarItem {
+    func makeRestorePreviousValuesItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.restorePreviousValues,
             label: String(localized: "Restore Previous Values"),
@@ -226,7 +253,7 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemExport() -> NSToolbarItem {
+    func makeExportItem() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.exportTables,
             label: String(localized: "Export"),
@@ -240,43 +267,20 @@ extension MainWindowToolbar {
     /// `NSMenuToolbarItem` is the toolbar control that opens a menu. A plain `NSToolbarItem` with a
     /// submenu on its `menuFormRepresentation` only shows that menu in the overflow list.
     ///
-    /// It carries no action on purpose. Given one, AppKit splits the control into a body that sends
-    /// the action and a separate chevron that opens the menu, so clicking the item itself does
-    /// nothing whenever the driver offers more than one format. With no action the whole control
-    /// opens the menu, and a single-format driver simply gets a one-item menu.
-    func subitemImport() -> NSToolbarItem {
+    /// The formats come from `ImportFormatMenuDelegate` when the menu opens, the same instance the
+    /// Actions pull-down's Import Data submenu uses, so the two lists cannot differ. The overflow
+    /// entry is AppKit's, over this same menu, for the reason `makeActionsItem` gives.
+    func makeImportItem() -> NSToolbarItem {
         let label = String(localized: "Import")
-        let item = NSMenuToolbarItem(itemIdentifier: Self.importTables)
+        let item = StatefulMenuToolbarItem(itemIdentifier: Self.importTables)
         item.label = label
         item.paletteLabel = label
         item.isBordered = true
         item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: label)
-        item.menu = buildImportSubmenu()
-
-        let menuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
-        menuItem.image = item.image
-        menuItem.submenu = buildImportSubmenu()
-        item.menuFormRepresentation = menuItem
-        bindMenuForm(action: #selector(performImportFormat(_:)), to: Self.importTables)
-
+        item.isEnabledProvider = enablement(of: Self.importTables)
+        item.menu = menu(delegate: importFormatMenuDelegate)
         bindShortcut(.importData, description: String(localized: "Import Data"), to: item)
         return item
-    }
-
-    func buildImportSubmenu() -> NSMenu {
-        let menu = NSMenu()
-        guard let databaseType = coordinator?.connection.type else { return menu }
-        for format in PluginManager.shared.importFormatOptions(for: databaseType) {
-            let menuItem = NSMenuItem(
-                title: format.submenuLabel,
-                action: #selector(performImportFormat(_:)),
-                keyEquivalent: ""
-            )
-            menuItem.target = self
-            menuItem.representedObject = format.id
-            menu.addItem(menuItem)
-        }
-        return menu
     }
 
     // MARK: - Helpers
@@ -353,15 +357,7 @@ extension MainWindowToolbar {
     /// and container titles took the whole content width and every command went to the overflow
     /// menu. A truncated container name is a worse loss than Refresh and Save.
     func applyVisibilityPriority(to item: NSToolbarItem) {
-        guard item.itemIdentifier != Self.connectionGroup else { return }
+        guard item.itemIdentifier != Self.connection, item.itemIdentifier != Self.database else { return }
         item.visibilityPriority = .high
-    }
-
-    /// One slot per identifier, and the slot belongs to the item that is actually in the toolbar.
-    /// AppKit asks the delegate again with `willBeInsertedIntoToolbar: false` to build the palette
-    /// copies shown by Customize Toolbar, and a palette copy that took the slot left every later
-    /// `syncSidebarSelection()` writing into a discarded group.
-    static func claimsItemSlot(willBeInsertedIntoToolbar: Bool) -> Bool {
-        willBeInsertedIntoToolbar
     }
 }

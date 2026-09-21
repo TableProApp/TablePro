@@ -11,26 +11,28 @@ import Testing
 
 @MainActor
 struct MainWindowToolbarLayoutTests {
-    @Test("Sidebar toggle is ordered into the sidebar's titlebar strip")
-    func sidebarToggleOrderedBeforeTrackingSeparator() throws {
+    /// Items ahead of `.sidebarTrackingSeparator` lay out in the sidebar's own titlebar strip and
+    /// follow its divider. The sidebar toggle is the only thing that belongs there: the list chooser
+    /// that used to share the strip now sits at the top of the sidebar, over the list it switches.
+    @Test("AppKit's sidebar toggle is alone in the sidebar's titlebar strip")
+    func sidebarToggleIsAloneBeforeTheTrackingSeparator() throws {
         let identifiers = MainWindowToolbar.defaultItemIdentifiers
-        let toggleIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.sidebarToggle))
         let separatorIndex = try #require(identifiers.firstIndex(of: .sidebarTrackingSeparator))
-        #expect(toggleIndex < separatorIndex)
+        #expect(Array(identifiers[..<separatorIndex]) == [.toggleSidebar])
     }
 
-    @Test("Sidebar toggle is not navigational")
-    func sidebarToggleIsNotNavigational() {
-        let group = MainWindowToolbar.makeSidebarSegmentGroup(target: nil, action: #selector(NSView.layout))
-        #expect(group.isNavigational == false)
-    }
-
-    @Test("Sidebar toggle stays an expanded one-of-two segmented control")
-    func sidebarToggleIsExpandedSegmentedControl() {
-        let group = MainWindowToolbar.makeSidebarSegmentGroup(target: nil, action: #selector(NSView.layout))
-        #expect(group.controlRepresentation == .expanded)
-        #expect(group.selectionMode == .selectOne)
-        #expect(group.subitems.count == 2)
+    /// `.toggleSidebar` is a standard identifier, so AppKit builds it, labels it, gives it a menu
+    /// form and sends `toggleSidebar:` down the responder chain, where the window answers for it in
+    /// every phase. A delegate arm for it could only be worse.
+    @Test("The sidebar toggle is AppKit's own item")
+    func sidebarToggleIsTheStandardItem() {
+        let owner = MainWindowToolbar()
+        let item = owner.toolbar(
+            owner.managedToolbar,
+            itemForItemIdentifier: .toggleSidebar,
+            willBeInsertedIntoToolbar: true
+        )
+        #expect(item == nil)
     }
 }
 
@@ -46,32 +48,37 @@ struct MainWindowToolbarInspectorPlacementTests {
         #expect(MainWindowToolbar.defaultItemIdentifiers.last == MainWindowToolbar.inspector)
     }
 
-    /// One flexible space, immediately after the separator, is what pushes the whole trailing group
-    /// to the window edge. Everything after it is a pane toggle; a second flexible space in there
-    /// would split the group and let the items drift apart as the pane opens.
+    /// One flexible space, immediately after the separator, is what pushes the toggle to the window
+    /// edge. The trailing-pane toggle is the only control behind it: the assistant is a surface of
+    /// the same pane, and a second button there drove the same column under another name.
     @available(macOS 14.0, *)
-    @Test("A flexible space anchors the trailing toggles to the window edge")
+    @Test("A flexible space anchors the trailing toggle to the window edge")
     func flexibleSpaceSeparatesTheTrackingSeparatorFromTheToggle() throws {
         let identifiers = MainWindowToolbar.defaultItemIdentifiers
         let separatorIndex = try #require(identifiers.firstIndex(of: .inspectorTrackingSeparator))
         let toggleIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.inspector))
         #expect(separatorIndex < toggleIndex)
-        #expect(identifiers[separatorIndex + 1] == .flexibleSpace)
-
-        let trailingGroup = Array(identifiers[(separatorIndex + 2) ..< toggleIndex])
-        #expect(!trailingGroup.contains(.flexibleSpace))
-        #expect(trailingGroup.allSatisfy { $0 == MainWindowToolbar.assistant })
+        let trailingRun: [NSToolbarItem.Identifier] = [
+            .inspectorTrackingSeparator, .flexibleSpace, MainWindowToolbar.inspector,
+        ]
+        #expect(Array(identifiers[separatorIndex...]) == trailingRun)
     }
 
-    /// The assistant shares the trailing edge with the inspector, because the two of them drive one
-    /// pane.
-    @Test("The assistant toggle sits beside the inspector toggle")
-    func assistantSitsBesideTheInspectorToggle() throws {
-        let identifiers = MainWindowToolbar.defaultItemIdentifiers
-        let assistantIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.assistant))
-        let toggleIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.inspector))
-        #expect(assistantIndex + 1 == toggleIndex)
-        #expect(MainWindowToolbar.allowedItemIdentifiers.contains(MainWindowToolbar.assistant))
+    /// The assistant left the default set with the trailing run's second button, and stays one drag
+    /// away in Customize Toolbar for a user who wants a button that goes straight to it.
+    /// The assistant has no toolbar item at all any more, in either list.
+    ///
+    /// One command, one control: the trailing-pane toggle says whether the pane is open and the
+    /// picker in the pane's header says which surface it draws. A second button that did both at
+    /// once was the shape this revamp took the Tables and Favorites control out of the titlebar
+    /// for, and offering it in Customize Toolbar kept it reachable. View > Show Assistant and
+    /// ⌥⌘A are the command, and `TrailingPaneCommandTitleTests` is what pins their behaviour.
+    @Test("No toolbar item opens the assistant")
+    func assistantHasNoToolbarItem() {
+        let identifiers = Set(MainWindowToolbar.allowedItemIdentifiers).union(
+            MainWindowToolbar.defaultItemIdentifiers
+        )
+        #expect(!identifiers.contains { $0.rawValue.hasSuffix(".assistant") })
     }
 
     /// Ahead of the separator the toggle lands in the content section, which measured wrong in both
@@ -85,7 +92,6 @@ struct MainWindowToolbarInspectorPlacementTests {
     }
 
     @available(macOS 14.0, *)
-
     @Test("The inspector item is AppKit's standard toggle, not a private identifier")
     func inspectorIsTheStandardIdentifier() {
         #expect(MainWindowToolbar.inspector == NSToolbarItem.Identifier.toggleInspector)
@@ -101,6 +107,7 @@ struct MainWindowToolbarInspectorPlacementTests {
         let standard = MainWindowToolbar.allowedItemIdentifiers.filter { $0.rawValue.hasPrefix("NSToolbar") }
 
         #expect(standard.contains(MainWindowToolbar.inspector))
+        #expect(standard.contains(.toggleSidebar))
         for identifier in standard {
             let item = owner.toolbar(
                 owner.managedToolbar,
@@ -154,12 +161,15 @@ struct MainWindowToolbarOverflowValidationTests {
         let (owner, _) = vendedItems()
         let expected: [Selector: NSToolbarItem.Identifier] = [
             #selector(MainWindowToolbar.performRefresh(_:)): MainWindowToolbar.refresh,
+            #selector(MainWindowToolbar.performSaveChanges(_:)): MainWindowToolbar.saveChanges,
             #selector(MainWindowToolbar.performNewTab(_:)): MainWindowToolbar.newTab,
             #selector(MainWindowToolbar.performOpenQuickSwitcher(_:)): MainWindowToolbar.quickSwitcher,
             #selector(MainWindowToolbar.performExport(_:)): MainWindowToolbar.exportTables,
             #selector(MainWindowToolbar.performOpenDatabaseSwitcher(_:)): MainWindowToolbar.database,
             #selector(MainWindowToolbar.performToggleResults(_:)): MainWindowToolbar.results,
             #selector(MainWindowToolbar.performShowDashboard(_:)): MainWindowToolbar.dashboard,
+            #selector(MainWindowToolbar.performAddRow(_:)): MainWindowToolbar.addRow,
+            #selector(MainWindowToolbar.performRestorePreviousValues(_:)): MainWindowToolbar.restorePreviousValues,
         ]
 
         for (action, identifier) in expected {
@@ -170,14 +180,27 @@ struct MainWindowToolbarOverflowValidationTests {
         }
     }
 
-    /// The import control carries no action of its own; its submenu entries do.
-    @Test("The import submenu validates as the import item")
-    func importSubmenuResolvesToTheImportItem() {
+    /// The Import item carries no action of its own, and its format entries carry no target, so
+    /// they reach the window's controller through the responder chain and are validated there. An
+    /// entry targeted at the toolbar would be validated by `MainWindowToolbar.validateMenuItem`,
+    /// which answers true for every action it did not build.
+    @Test("The import formats resolve through the responder chain, never through the toolbar")
+    func importFormatsResolveThroughTheResponderChain() {
         let owner = MainWindowToolbar()
-        _ = owner.subitemImport()
+        let item = owner.makeImportItem()
+        let format = ImportFormatMenuDelegate.item(for: ImportFormatOption(id: "csv", name: "CSV"))
+
+        #expect(item.action == nil)
+        #expect(item.menuFormRepresentation?.submenu?.delegate === owner.importFormatMenuDelegate)
+        #expect(format.target == nil)
+        #expect(format.action == #selector(MainSplitViewController.importDataFormat(_:)))
+        #expect(format.representedObject as? String == "csv")
+        #expect(owner.itemIdentifier(forMenuFormAction: format.action) == nil)
         #expect(
-            owner.itemIdentifier(forMenuFormAction: #selector(MainWindowToolbar.performImportFormat(_:)))
-                == MainWindowToolbar.importTables
+            MainSplitViewController.resolvedEnablement(
+                #selector(MainSplitViewController.importDataFormat(_:)),
+                context: MenuValidationContext()
+            ) == false
         )
     }
 
@@ -190,7 +213,7 @@ struct MainWindowToolbarOverflowValidationTests {
             action: #selector(MainWindowToolbar.performRefresh(_:)),
             keyEquivalent: ""
         )
-        _ = owner.subitemRefresh()
+        _ = owner.makeRefreshItem()
         #expect(!owner.validateMenuItem(menuItem))
     }
 
@@ -200,62 +223,5 @@ struct MainWindowToolbarOverflowValidationTests {
         let owner = MainWindowToolbar()
         let menuItem = NSMenuItem(title: "Unrelated", action: #selector(NSView.layout), keyEquivalent: "")
         #expect(owner.validateMenuItem(menuItem))
-    }
-}
-
-@MainActor
-struct MainWindowToolbarCustomizationTests {
-    /// Opening Customize Toolbar makes AppKit ask the delegate again, with the flag off, for the
-    /// palette copies. Those used to overwrite the retained hosting controllers, releasing the ones
-    /// whose views were on screen, and the connection group and status item collapsed to nothing.
-    @Test("Only the item going into the toolbar claims the retained controller")
-    func paletteCopiesDoNotClaimTheSlot() {
-        #expect(MainWindowToolbar.claimsItemSlot(willBeInsertedIntoToolbar: true))
-        #expect(!MainWindowToolbar.claimsItemSlot(willBeInsertedIntoToolbar: false))
-    }
-
-    /// The sidebar segmented control keeps a slot of the same shape, and it never read the guard.
-    /// A palette copy took the slot, so every later `syncSidebarSelection()` wrote into a discarded
-    /// group and the segments stopped following the sidebar until the window was reopened.
-    @Test("A palette copy does not take over the live sidebar control")
-    func paletteCopyDoesNotClaimTheSidebarGroup() throws {
-        let owner = MainWindowToolbar()
-        let live = try #require(owner.makeSidebarToggleItem(claimsSlot: true) as? NSToolbarItemGroup)
-        #expect(owner.sidebarGroup === live)
-
-        let palette = try #require(owner.makeSidebarToggleItem(claimsSlot: false) as? NSToolbarItemGroup)
-        #expect(palette !== live)
-        #expect(owner.sidebarGroup === live)
-    }
-
-    /// The delegate is the path Customize Toolbar actually takes.
-    @Test("Vending a palette item through the delegate leaves the live control alone")
-    func delegatePaletteVendLeavesTheSidebarGroupIntact() throws {
-        let owner = MainWindowToolbar()
-        _ = owner.toolbar(
-            owner.managedToolbar,
-            itemForItemIdentifier: MainWindowToolbar.sidebarToggle,
-            willBeInsertedIntoToolbar: true
-        )
-        let live = try #require(owner.sidebarGroup)
-
-        _ = owner.toolbar(
-            owner.managedToolbar,
-            itemForItemIdentifier: MainWindowToolbar.sidebarToggle,
-            willBeInsertedIntoToolbar: false
-        )
-        #expect(owner.sidebarGroup === live)
-    }
-
-    /// The identifier is the autosave name, and changing it discards every user's arrangement. It
-    /// moved to v3 with the rewrite that dropped the hosted status item, because a stored v2 list
-    /// names identifiers the delegate no longer vends and would leave those users the crowded
-    /// toolbar the rewrite exists to fix. It moved to v4 for the throughput readout, whose
-    /// identifier a stored v3 arrangement does not name, so a reader who had customized the toolbar
-    /// would never see it. It is not free, so it does not move again without the same
-    /// justification.
-    @Test("The toolbar identifier is stable")
-    func identifierIsStable() {
-        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v4")
     }
 }

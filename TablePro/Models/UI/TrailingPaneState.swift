@@ -31,9 +31,13 @@ internal final class TrailingPaneState: ObservableObject {
     internal let inspector: RowInspectorState
     internal let assistant: AssistantState
 
+    /// `AppStorageEnvironment.shared.defaults` rather than `.standard`, which is what every other
+    /// per-connection preference already resolves through. Both of this object's keys escaped the
+    /// UI-test sandbox, so a test run read and wrote the surface and inspector mode of whoever was
+    /// running it.
     internal init(
         connectionId: UUID? = nil,
-        defaults: UserDefaults = .standard,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         sessionRegistry: AgentSessionRegistry = .shared
     ) {
         self.connectionId = connectionId

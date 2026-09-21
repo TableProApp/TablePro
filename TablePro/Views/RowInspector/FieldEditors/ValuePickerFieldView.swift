@@ -33,6 +33,9 @@ internal struct ValuePickerFieldView: View {
             .menuIndicator(.visible)
             .fixedSize()
             .disabled(context.isReadOnly)
+            /// The tooltip only. The name already comes from the label's title, and an accessibility
+            /// label modifier on a `Menu` replaces that name with nothing rather than adding one.
+            .help(String(localized: "Choose Value"))
             /// A SwiftUI `Menu` is an `NSPopUpButton` on macOS, so it publishes `menuButton` or
             /// `popUpButton` and never `button`, and no suite has ever resolved one by its label.
             /// The identifier is the hook `InspectorFieldRow`'s own value menu already carries, and

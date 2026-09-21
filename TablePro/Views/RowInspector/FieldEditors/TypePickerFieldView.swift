@@ -26,6 +26,7 @@ internal struct TypePickerFieldView: View {
             }
             .buttonStyle(.borderless)
             .disabled(context.isReadOnly)
+            .help(String(localized: "Choose Type"))
             .accessibilityLabel(String(localized: "Choose Type"))
             .popover(isPresented: $isPickerPresented) {
                 UserDefinedTypeAwarePicker(scope: context.userDefinedTypeScope) { userDefinedTypes in

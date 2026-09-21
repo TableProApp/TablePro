@@ -64,7 +64,7 @@ Paste an access token issued for the account. Nothing refreshes it for you.
 
 The sidebar groups objects by database and schema. Object lists come from `SHOW` commands, which the metadata service answers with no warehouse running; column details come from `INFORMATION_SCHEMA`, which needs one.
 
-Toolbar pickers move the session to another **Warehouse** or **Role** with `USE WAREHOUSE` and `USE ROLE`, no reconnect. A tab bound to a second database stays on that session too: `USE DATABASE` runs ahead of its statements. One TablePro connection is one Snowflake session, held open while idle by a heartbeat.
+**Database > Session Context** moves the session to another **Warehouse** or **Role** with `USE WAREHOUSE` and `USE ROLE`, no reconnect. A tab bound to a second database stays on that session too: `USE DATABASE` runs ahead of its statements. One TablePro connection is one Snowflake session, held open while idle by a heartbeat.
 
 ## Editing
 

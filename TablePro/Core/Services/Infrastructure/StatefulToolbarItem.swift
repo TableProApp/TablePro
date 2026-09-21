@@ -69,43 +69,56 @@ internal final class StatefulToolbarItem: NSToolbarItem {
     }
 }
 
+/// A toolbar control that opens a menu and answers for its own enablement.
+///
+/// It carries no action on purpose: given one, AppKit splits the control into a body that sends
+/// the action and a separate chevron that opens the menu, so a click on the body opens nothing.
+/// And `NSToolbarItem`'s own `validate()` only sends `validateToolbarItem(_:)` for an item that
+/// has an action, so the toolbar's predicate for this identifier would never be consulted and the
+/// control would stay live over a session that had gone. It asks on the validation pass instead,
+/// which is also the one channel measured to keep reaching an item while it is hidden.
+@MainActor
+internal class StatefulMenuToolbarItem: NSMenuToolbarItem {
+    internal var isEnabledProvider: (@MainActor () -> Bool)?
+
+    override internal func validate() {
+        super.validate()
+        guard let isEnabledProvider else { return }
+        isEnabled = isEnabledProvider()
+    }
+}
+
 /// The safe-mode chooser: one of six levels, and the current one has to be readable without
 /// opening the menu. `NSMenuToolbarItem` is the toolbar control that opens a menu, and the glyph
 /// tracks the level through the validation pass `MainWindowToolbar.observeItemState` triggers.
 @MainActor
-internal final class SafeModeToolbarItem: NSMenuToolbarItem {
-    internal var levelProvider: (@MainActor () -> SafeModeLevel)? {
-        didSet { applyLevel() }
+internal final class SafeModeToolbarItem: StatefulMenuToolbarItem {
+    /// The level and the floor under it, read on the same validation pass as the enablement, which
+    /// is also the one pass measured to keep reaching an item while it is hidden. A floor that
+    /// comes and goes without moving the level, Agent mode over a connection the user already set
+    /// stricter than Alert, still changes the tooltip.
+    internal var statusProvider: (@MainActor () -> SafeModeStatus)? {
+        didSet { applyStatus() }
     }
 
-    /// Its own enablement, because AppKit will not ask for it. This item carries no action, and
-    /// `NSToolbarItem`'s own `validate()` only sends `validateToolbarItem(_:)` for an item that
-    /// has one, so the toolbar's predicate for this identifier was never consulted and the control
-    /// stayed live over a session that had gone.
-    internal var isEnabledProvider: (@MainActor () -> Bool)?
-
     private var symbolSource = ToolbarSymbolSource()
-    private var appliedLevel: SafeModeLevel?
+    private var appliedStatus: SafeModeStatus?
 
     override internal func validate() {
         super.validate()
-        applyLevel()
-        if let isEnabledProvider {
-            isEnabled = isEnabledProvider()
-        }
+        applyStatus()
     }
 
-    /// The tooltip carries the level's name because the glyph alone cannot: `lock` and
-    /// `lock.open` differ by a few pixels, and VoiceOver reads no image at all.
-    private func applyLevel() {
-        guard let level = levelProvider?() else { return }
+    private func applyStatus() {
+        guard let status = statusProvider?() else { return }
+        let level = status.level
         symbolSource.provider = { level.iconName }
         symbolSource.accessibilityDescription = level.displayName
         if let pending = symbolSource.pendingImage() {
             image = pending
         }
-        guard level != appliedLevel else { return }
-        appliedLevel = level
-        toolTip = String(format: String(localized: "Safe Mode: %@"), level.displayName)
+        guard status != appliedStatus else { return }
+        appliedStatus = status
+        toolTip = status.toolTip
     }
 }

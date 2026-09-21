@@ -6,18 +6,16 @@
 import SwiftUI
 
 /// Every statement the session proposed, in order, with what became of it.
+///
+/// Handed the statements rather than the session, because projecting them out of the transcript is
+/// what `AgentArtifactCache` does once per change instead of once per redraw.
 internal struct AgentProposedStatementsView: View {
-    @ObservedObject internal var session: AgentSession
-
-    private var statements: [ProposedStatement] {
-        AgentArtifactProjection.build(from: session.viewModel.messages).statements
-    }
+    internal let statements: [ProposedStatement]
 
     var body: some View {
-        let statements = statements
         if statements.isEmpty {
             UnavailableStateView(
-                String(localized: "No statements yet"),
+                String(localized: "No Statements Yet"),
                 systemImage: "curlybraces",
                 description: Text(String(localized: "SQL the session proposes appears here before it runs."))
             )

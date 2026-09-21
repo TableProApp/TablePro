@@ -5,7 +5,7 @@ description: Monitor active sessions, server metrics, and slow queries in real t
 
 What this screen shows is what your account is allowed to see. A MySQL user without the `PROCESS` privilege gets only its own connections in the session list. A PostgreSQL role that is neither a superuser nor a member of `pg_monitor` gets everyone's backends with the Query column blank. An empty or half-blank dashboard is nearly always a privilege, not a fault.
 
-Open it from **Database > Server Dashboard**. A Dashboard toolbar button is available too: right-click the toolbar, choose **Customize Toolbar**, and drag it in.
+Open it from **Database > Server Dashboard**, or from **Server Dashboard** under **Actions** in the toolbar. A **Dashboard** button is in the palette too, through [Customize Toolbar](/features/connection-window#add-a-control-back).
 
 <Frame caption="Server Dashboard showing active sessions, metrics, and slow queries">
   <img
@@ -60,4 +60,4 @@ The interval menu offers 1s, 2s, 5s (the default), 10s, 30s, and Off. **Pause** 
 | DuckDB | - | Database size, block size, total blocks, memory limit, threads | - | - | - |
 | SQLite | - | Database size, page count, page size, journal mode, cache size | - | - | - |
 
-Every other engine has no dashboard provider, so the menu item and the toolbar button are dimmed.
+Every other engine has no dashboard provider. The menu item dims, **Actions** leaves the entry out, and a **Dashboard** button you added to the toolbar dims.

@@ -25,6 +25,8 @@ private final class RecordingToolbar: NSToolbar {
     }
 }
 
+/// Every toolbar item answers from `ToolbarContextResolver`, so the rules are pinned against a
+/// `ToolbarContext` value, and the cases that need a live toolbar build one.
 @MainActor
 struct MainWindowToolbarValidationTests {
     private let sessionScopedIdentifiers: [NSToolbarItem.Identifier] = [
@@ -32,51 +34,52 @@ struct MainWindowToolbarValidationTests {
         MainWindowToolbar.quickSwitcher,
         MainWindowToolbar.newTab,
         MainWindowToolbar.exportTables,
-        MainWindowToolbar.sidebarToggle,
         MainWindowToolbar.saveChanges,
         MainWindowToolbar.previewSQL,
         MainWindowToolbar.database,
         MainWindowToolbar.dashboard,
         MainWindowToolbar.importTables,
-        MainWindowToolbar.results
+        MainWindowToolbar.results,
+        MainWindowToolbar.safeMode,
+        MainWindowToolbar.history,
     ]
 
     private func makeContext(
         connected: Bool = true,
-        isTableTab: Bool = false,
-        canAddRow: Bool = false,
-        canRestorePreviousValues: Bool = false,
-        hasPendingChanges: Bool = false,
+        tabKind: TabType? = .query,
+        pendingChange: PendingChangeKind? = nil,
         hasDataPendingChanges: Bool = false,
         blocksAllWrites: Bool = false,
         fileBased: Bool = false,
         supportsContainerSwitching: Bool = true,
         supportsImport: Bool = true,
-        supportsServerDashboard: Bool = true,
-        canNavigateBack: Bool = false,
-        canNavigateForward: Bool = false
-    ) -> MainWindowToolbar.ValidationContext {
-        MainWindowToolbar.ValidationContext(
-            connected: connected,
-            isTableTab: isTableTab,
-            canAddRow: canAddRow,
-            canRestorePreviousValues: canRestorePreviousValues,
-            hasPendingChanges: hasPendingChanges,
+        supportsServerDashboard: Bool = true
+    ) -> ToolbarContext {
+        ToolbarContext(
+            tabKind: tabKind,
+            pane: connected ? .content : .unavailable(.notConnected),
+            isConnected: connected,
+            hasSelectedWorkspace: true,
+            pendingChange: pendingChange,
             hasDataPendingChanges: hasDataPendingChanges,
             blocksAllWrites: blocksAllWrites,
-            fileBased: fileBased,
+            isFileBased: fileBased,
             supportsContainerSwitching: supportsContainerSwitching,
             supportsImport: supportsImport,
-            supportsServerDashboard: supportsServerDashboard,
-            canNavigateBack: canNavigateBack,
-            canNavigateForward: canNavigateForward
+            supportsServerDashboard: supportsServerDashboard
         )
+    }
+
+    private func isEnabled(_ identifier: NSToolbarItem.Identifier, _ context: ToolbarContext) -> Bool {
+        ToolbarContextResolver.isEnabled(identifier, context: context)
     }
 
     private func makeRecordingOwner() -> (owner: MainWindowToolbar, toolbar: RecordingToolbar) {
         let identifier = NSToolbar.Identifier("com.TablePro.tests.toolbar.\(UUID().uuidString)")
         let toolbar = RecordingToolbar(identifier: identifier)
-        return (MainWindowToolbar(managedToolbar: toolbar), toolbar)
+        let owner = MainWindowToolbar(managedToolbar: toolbar)
+        toolbar.autosavesConfiguration = false
+        return (owner, toolbar)
     }
 
     private func waitForValidation(_ toolbar: RecordingToolbar, after baseline: Int) async {
@@ -94,74 +97,70 @@ struct MainWindowToolbarValidationTests {
 
     @Test("Save Changes disabled when safe mode blocks writes")
     func saveChangesBlockedBySafeMode() {
-        let context = makeContext(
-            connected: true,
-            hasPendingChanges: true,
-            blocksAllWrites: true
-        )
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.saveChanges, context: context) == false)
+        let context = makeContext(pendingChange: .data, blocksAllWrites: true)
+        #expect(isEnabled(MainWindowToolbar.saveChanges, context) == false)
     }
 
     @Test("Save Changes disabled when no pending changes")
     func saveChangesDisabledWhenNoPending() {
-        let context = makeContext(connected: true, hasPendingChanges: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.saveChanges, context: context) == false)
+        #expect(isEnabled(MainWindowToolbar.saveChanges, makeContext()) == false)
     }
 
     @Test("Save Changes enabled when pending changes, connected, writes allowed")
     func saveChangesEnabledHappyPath() {
-        let context = makeContext(connected: true, hasPendingChanges: true, blocksAllWrites: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.saveChanges, context: context) == true)
+        #expect(isEnabled(MainWindowToolbar.saveChanges, makeContext(pendingChange: .data)))
+    }
+
+    /// The defect `PendingChangeKind` was introduced for: staged principals are a pending change,
+    /// and the commit control has to answer for them like any other kind.
+    @Test("Save Changes answers for every kind of staged change", arguments: [
+        PendingChangeKind.data, .structure, .createTable, .principals, .file,
+    ])
+    func saveChangesAnswersForEveryKind(kind: PendingChangeKind) {
+        #expect(isEnabled(MainWindowToolbar.saveChanges, makeContext(pendingChange: kind)))
     }
 
     @Test("Save Changes disabled when disconnected")
     func saveChangesDisabledWhenDisconnected() {
-        let context = makeContext(connected: false, hasPendingChanges: true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.saveChanges, context: context) == false)
+        let context = makeContext(connected: false, pendingChange: .data)
+        #expect(isEnabled(MainWindowToolbar.saveChanges, context) == false)
     }
 
-    @Test("Results enabled only off table tabs")
-    func resultsDisabledOnTableTab() {
-        let onTable = makeContext(connected: true, isTableTab: true)
-        let onQuery = makeContext(connected: true, isTableTab: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.results, context: onTable) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.results, context: onQuery) == true)
+    /// The results pane belongs to the query editor. The shipped rule was `!isTableTab`, which
+    /// enabled it on the five kinds that have no results pane at all.
+    @Test("Results answers on a query tab and nowhere else", arguments: [
+        TabType.query, .table, .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource,
+    ])
+    func resultsIsPerTabKind(tabKind: TabType) {
+        #expect(isEnabled(MainWindowToolbar.results, makeContext(tabKind: tabKind)) == (tabKind == .query))
     }
 
     @Test("Database switcher disabled for file-based connections")
     func databaseDisabledForFileBased() {
-        let fileBased = makeContext(connected: true, fileBased: true)
-        let networked = makeContext(connected: true, fileBased: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.database, context: fileBased) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.database, context: networked) == true)
+        #expect(isEnabled(MainWindowToolbar.database, makeContext(fileBased: true)) == false)
+        #expect(isEnabled(MainWindowToolbar.database, makeContext(fileBased: false)))
     }
 
     @Test("Database switcher requires plugin support")
     func databaseRequiresPluginSupport() {
-        let unsupported = makeContext(connected: true, supportsContainerSwitching: false)
-        let supported = makeContext(connected: true, supportsContainerSwitching: true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.database, context: unsupported) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.database, context: supported) == true)
+        #expect(isEnabled(MainWindowToolbar.database, makeContext(supportsContainerSwitching: false)) == false)
+        #expect(isEnabled(MainWindowToolbar.database, makeContext(supportsContainerSwitching: true)))
     }
 
     @Test("Import disabled when safe mode blocks writes")
     func importBlockedBySafeMode() {
-        let context = makeContext(connected: true, blocksAllWrites: true, supportsImport: true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.importTables, context: context) == false)
+        #expect(isEnabled(MainWindowToolbar.importTables, makeContext(blocksAllWrites: true)) == false)
     }
 
     @Test("Import requires plugin support")
     func importRequiresPluginSupport() {
-        let context = makeContext(connected: true, supportsImport: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.importTables, context: context) == false)
+        #expect(isEnabled(MainWindowToolbar.importTables, makeContext(supportsImport: false)) == false)
     }
 
     @Test("Export requires only connection")
     func exportRequiresConnection() {
-        let connected = makeContext(connected: true)
-        let disconnected = makeContext(connected: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.exportTables, context: connected) == true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.exportTables, context: disconnected) == false)
+        #expect(isEnabled(MainWindowToolbar.exportTables, makeContext(connected: true)))
+        #expect(isEnabled(MainWindowToolbar.exportTables, makeContext(connected: false)) == false)
     }
 
     @Test("Preview SQL requires data pending changes and connection")
@@ -170,66 +169,108 @@ struct MainWindowToolbarValidationTests {
         let onlyConnected = makeContext(connected: true, hasDataPendingChanges: false)
         let onlyPending = makeContext(connected: false, hasDataPendingChanges: true)
         let both = makeContext(connected: true, hasDataPendingChanges: true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.previewSQL, context: neither) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.previewSQL, context: onlyConnected) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.previewSQL, context: onlyPending) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.previewSQL, context: both) == true)
+        #expect(isEnabled(MainWindowToolbar.previewSQL, neither) == false)
+        #expect(isEnabled(MainWindowToolbar.previewSQL, onlyConnected) == false)
+        #expect(isEnabled(MainWindowToolbar.previewSQL, onlyPending) == false)
+        #expect(isEnabled(MainWindowToolbar.previewSQL, both))
+    }
+
+    /// A dirty query file raises the commit control and has no grid SQL to preview. The two are
+    /// computed from different inputs, and this is the case that tells them apart.
+    @Test("A dirty query file lights Save and leaves Preview SQL dim")
+    func dirtyFileIsNotPreviewable() {
+        let context = makeContext(pendingChange: .file, hasDataPendingChanges: false)
+        #expect(isEnabled(MainWindowToolbar.saveChanges, context))
+        #expect(isEnabled(MainWindowToolbar.previewSQL, context) == false)
     }
 
     @Test("Dashboard requires plugin support and connection")
     func dashboardRequirements() {
-        let unsupported = makeContext(connected: true, supportsServerDashboard: false)
-        let disconnected = makeContext(connected: false, supportsServerDashboard: true)
-        let happy = makeContext(connected: true, supportsServerDashboard: true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.dashboard, context: unsupported) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.dashboard, context: disconnected) == false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.dashboard, context: happy) == true)
+        #expect(isEnabled(MainWindowToolbar.dashboard, makeContext(supportsServerDashboard: false)) == false)
+        #expect(isEnabled(MainWindowToolbar.dashboard, makeContext(connected: false)) == false)
+        #expect(isEnabled(MainWindowToolbar.dashboard, makeContext()))
     }
 
-    @Test("Connection and History stay enabled regardless of connection state")
-    func alwaysEnabledItems() {
+    /// Switch Connection is the window's command and the route back from a connection that failed,
+    /// so it answers with no session. Query History used to share that arm and was live and inert
+    /// over a window that had never connected.
+    @Test("Connection answers without a session, and History does not")
+    func connectionIsTheOnlyItemThatNeedsNoSession() {
         let disconnected = makeContext(connected: false)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.connection, context: disconnected) == true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.history, context: disconnected) == true)
+        #expect(isEnabled(MainWindowToolbar.connection, disconnected))
+        #expect(isEnabled(MainWindowToolbar.history, disconnected) == false)
+        #expect(isEnabled(MainWindowToolbar.history, makeContext()))
     }
 
-    ///  said Switch Connection stays enabled and the runtime disagreed: validation
-    /// returned false before reaching that case whenever the connection had gone, which is the one
-    /// state the command exists for. It answers off the window now, ahead of any session context.
-    /// The sidebar item stays out of it, however window-owned the sidebar itself is: it is the
-    /// Tables/Favorites segmented control, its action reaches `coordinator?.splitViewController`,
-    /// and the tab it selects is per-connection state. Marking it window-scoped would enable a
-    /// control whose clicks go nowhere.
-    @Test("Switch Connection answers without a connection behind the toolbar")
-    func connectionItemIsWindowScoped() {
-        #expect(MainWindowToolbar.isWindowScoped(MainWindowToolbar.connection))
-        #expect(!MainWindowToolbar.isWindowScoped(MainWindowToolbar.sidebarToggle))
+    /// The drawer is not mounted in Agent mode, and toggling it there flipped a persisted flag that
+    /// sprang it open on the way back to browsing.
+    @Test("History is gated on browsing")
+    func historyIsGatedOnBrowsing() {
+        let agent = ToolbarContext(
+            tabKind: .query,
+            contentMode: .agent,
+            pane: .content,
+            isConnected: true,
+            hasSelectedWorkspace: true
+        )
+        #expect(isEnabled(MainWindowToolbar.history, agent) == false)
+    }
+
+    /// The toolbar with nothing behind it at all: no window, no coordinator. Switch Connection still
+    /// answers through the live validation path, because the connection that went away is exactly
+    /// what a user reaches for it to leave.
+    @Test("Switch Connection answers with nothing behind the toolbar")
+    func connectionItemAnswersWithNoSubject() {
+        let owner = MainWindowToolbar()
+        #expect(owner.validateToolbarItem(NSToolbarItem(itemIdentifier: MainWindowToolbar.connection)))
+        #expect(isEnabled(MainWindowToolbar.connection, ToolbarContext()))
     }
 
     /// Everything else here acts on the connection that is showing, so no subject still disables
     /// it rather than leaving a live-looking button that does nothing.
     @Test("Every other toolbar item still needs the connection it acts on")
-    func otherItemsAreNotWindowScoped() {
-        let connectionScoped = [
-            MainWindowToolbar.database,
-            MainWindowToolbar.refresh,
-            MainWindowToolbar.newTab,
-            MainWindowToolbar.exportTables,
-            MainWindowToolbar.sidebarToggle,
-            MainWindowToolbar.addRow,
-            MainWindowToolbar.saveChanges,
-            MainWindowToolbar.dashboard
-        ]
-        for identifier in connectionScoped {
-            #expect(!MainWindowToolbar.isWindowScoped(identifier))
+    func otherItemsNeedASubject() {
+        let owner = MainWindowToolbar()
+        let connectionScoped = MainWindowToolbar.allowedItemIdentifiers.filter {
+            $0 != MainWindowToolbar.connection && !$0.rawValue.hasPrefix("NSToolbar")
+        }
+        for identifier in connectionScoped + [MainWindowToolbar.navigateBack, MainWindowToolbar.navigateForward] {
+            #expect(
+                !owner.validateToolbarItem(NSToolbarItem(itemIdentifier: identifier)),
+                "\(identifier.rawValue) answered with no connection behind it"
+            )
         }
     }
 
-    @Test("Unknown identifier defaults to enabled")
-    func unknownIdentifierEnabled() {
-        let context = makeContext(connected: false)
+    /// The old switch ended in `default: return true`, so every identifier nobody had thought about
+    /// was live, including over a window with no coordinator and no session.
+    @Test("An unknown identifier does not answer")
+    func unknownIdentifierIsDisabled() {
         let unknown = NSToolbarItem.Identifier("com.test.unknown")
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: unknown, context: context) == true)
+        #expect(isEnabled(unknown, makeContext()) == false)
+        #expect(isEnabled(unknown, makeContext(connected: false)) == false)
+    }
+
+    /// On macOS 13 the delegate builds its own Inspector item targeting the toolbar, so this arm is
+    /// what that button draws. It follows whether the pane can be toggled, which is AppKit's own
+    /// rule on 14 and later: a connection that drops with the pane open can still close it, and a
+    /// live session is not by itself a reason to open one.
+    @Test("The inspector toggle answers whether the pane can be toggled, not whether a session is up")
+    func inspectorFollowsTheTrailingPane() {
+        let closable = ToolbarContext(
+            pane: .unavailable(.notConnected),
+            isConnected: false,
+            hasSelectedWorkspace: true,
+            canToggleTrailingPane: true
+        )
+        let stranded = ToolbarContext(
+            pane: .content,
+            isConnected: true,
+            hasSelectedWorkspace: true,
+            canToggleTrailingPane: false
+        )
+        #expect(isEnabled(MainWindowToolbar.inspector, closable))
+        #expect(isEnabled(MainWindowToolbar.inspector, stranded) == false)
     }
 
     /// The health monitor writes `.connecting` on every reconnect attempt while the window keeps
@@ -270,11 +311,11 @@ struct MainWindowToolbarValidationTests {
     func sessionScopedItemsStayEnabledWhileExecuting() {
         let context = makeContext(
             connected: MainWindowToolbar.hasLiveSession(.connected),
-            hasPendingChanges: true,
+            pendingChange: .data,
             hasDataPendingChanges: true
         )
         for identifier in sessionScopedIdentifiers {
-            #expect(MainWindowToolbar.isEnabled(itemIdentifier: identifier, context: context) == true)
+            #expect(isEnabled(identifier, context), "\(identifier.rawValue)")
         }
     }
 
@@ -283,11 +324,11 @@ struct MainWindowToolbarValidationTests {
         for state: ToolbarConnectionState in [.disconnected, .error("boom")] {
             let context = makeContext(
                 connected: MainWindowToolbar.hasLiveSession(state),
-                hasPendingChanges: true,
+                pendingChange: .data,
                 hasDataPendingChanges: true
             )
             for identifier in sessionScopedIdentifiers {
-                #expect(MainWindowToolbar.isEnabled(itemIdentifier: identifier, context: context) == false)
+                #expect(isEnabled(identifier, context) == false, "\(identifier.rawValue)")
             }
         }
     }
@@ -349,6 +390,9 @@ struct MainWindowToolbarValidationTests {
         #expect(cleanSnapshot.hasDataPendingChanges == false)
     }
 
+    /// The overflow menu validates as menu items, through `validateMenuItem`, so it has to reach the
+    /// same resolver the buttons do. `pendingChange` is what `updateToolbarPendingState()` writes
+    /// beside `hasPendingChanges`, and it is the one the commit control reads.
     @Test("Overflow Save and Preview use the pending-change predicates")
     func overflowPendingActionsValidateAgainstCurrentState() throws {
         let coordinator = makeCoordinator()
@@ -360,15 +404,12 @@ struct MainWindowToolbarValidationTests {
         coordinator.toolbarState.connectionState = .connected
         owner.repoint(to: coordinator)
 
-        let saveGroup = try #require(
+        let saveItem = try #require(
             owner.toolbar(
                 owner.managedToolbar,
-                itemForItemIdentifier: MainWindowToolbar.refreshSaveGroup,
+                itemForItemIdentifier: MainWindowToolbar.saveChanges,
                 willBeInsertedIntoToolbar: true
-            ) as? NSToolbarItemGroup
-        )
-        let saveItem = try #require(
-            saveGroup.subitems.first { $0.itemIdentifier == MainWindowToolbar.saveChanges }
+            )
         )
         let saveMenuItem = try #require(saveItem.menuFormRepresentation)
         let previewItem = try #require(
@@ -380,12 +421,12 @@ struct MainWindowToolbarValidationTests {
         )
         let previewMenuItem = try #require(previewItem.menuFormRepresentation)
 
-        coordinator.toolbarState.hasPendingChanges = true
+        coordinator.toolbarState.pendingChange = .data
         coordinator.toolbarState.hasDataPendingChanges = true
         #expect(owner.validateMenuItem(saveMenuItem) == true)
         #expect(owner.validateMenuItem(previewMenuItem) == true)
 
-        coordinator.toolbarState.hasPendingChanges = false
+        coordinator.toolbarState.pendingChange = nil
         coordinator.toolbarState.hasDataPendingChanges = false
         #expect(owner.validateMenuItem(saveMenuItem) == false)
         #expect(owner.validateMenuItem(previewMenuItem) == false)
@@ -467,7 +508,6 @@ struct MainWindowToolbarValidationTests {
             toolbarState: ConnectionToolbarState()
         )
     }
-
 }
 
 @MainActor
@@ -551,9 +591,10 @@ struct MainWindowToolbarRepointTests {
         #expect(provider() == "rectangle.bottomhalf.inset.filled")
     }
 
-    /// The delegate used to answer nil for every identifier when it had no coordinator. With
-    /// `autosavesConfiguration` on, a vend in that state pruned the user's saved arrangement for
-    /// good, which this project has already paid for once.
+    /// The delegate used to answer nil for every identifier when it had no coordinator. Measured on
+    /// macOS 27 across separate launches, AppKit prunes an identifier from the saved arrangement as
+    /// soon as the delegate stops vending it, so a vend that answered nil in that state removed the
+    /// user's placed items for good.
     @Test("The delegate builds every advertised item with no subject")
     func delegateNeverAnswersNil() {
         let owner = MainWindowToolbar()
@@ -577,39 +618,28 @@ struct MainWindowToolbarNavigationValidationTests {
         connected: Bool = true,
         canNavigateBack: Bool = false,
         canNavigateForward: Bool = false
-    ) -> MainWindowToolbar.ValidationContext {
-        MainWindowToolbar.ValidationContext(
-            connected: connected,
-            isTableTab: true,
-            canAddRow: false,
-            canRestorePreviousValues: false,
-            hasPendingChanges: false,
-            hasDataPendingChanges: false,
-            blocksAllWrites: false,
-            fileBased: false,
-            supportsContainerSwitching: true,
-            supportsImport: true,
-            supportsServerDashboard: true,
+    ) -> ToolbarContext {
+        ToolbarContext(
+            tabKind: .table,
+            pane: connected ? .content : .unavailable(.notConnected),
+            isConnected: connected,
+            hasSelectedWorkspace: true,
             canNavigateBack: canNavigateBack,
-            canNavigateForward: canNavigateForward
+            canNavigateForward: canNavigateForward,
+            supportsContainerSwitching: true
         )
     }
 
     @Test("Back is disabled with an empty history rather than hidden")
     func backDisabledWithoutHistory() {
-        #expect(
-            MainWindowToolbar.isEnabled(
-                itemIdentifier: MainWindowToolbar.navigateBack,
-                context: context()
-            ) == false
-        )
+        #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.navigateBack, context: context()) == false)
     }
 
     @Test("Back is enabled once the tab has somewhere to go back to")
     func backEnabledWithHistory() {
         #expect(
-            MainWindowToolbar.isEnabled(
-                itemIdentifier: MainWindowToolbar.navigateBack,
+            ToolbarContextResolver.isEnabled(
+                MainWindowToolbar.navigateBack,
                 context: context(canNavigateBack: true)
             )
         )
@@ -618,36 +648,25 @@ struct MainWindowToolbarNavigationValidationTests {
     @Test("Back and Forward run out independently")
     func backAndForwardAreSeparate() {
         let onlyBack = context(canNavigateBack: true)
-        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.navigateBack, context: onlyBack))
-        #expect(
-            MainWindowToolbar.isEnabled(
-                itemIdentifier: MainWindowToolbar.navigateForward,
-                context: onlyBack
-            ) == false
-        )
+        #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.navigateBack, context: onlyBack))
+        #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.navigateForward, context: onlyBack) == false)
     }
 
     @Test("Neither is offered without a connection")
     func bothNeedAConnection() {
         let disconnected = context(connected: false, canNavigateBack: true, canNavigateForward: true)
-        #expect(
-            MainWindowToolbar.isEnabled(
-                itemIdentifier: MainWindowToolbar.navigateBack,
-                context: disconnected
-            ) == false
-        )
-        #expect(
-            MainWindowToolbar.isEnabled(
-                itemIdentifier: MainWindowToolbar.navigateForward,
-                context: disconnected
-            ) == false
-        )
+        #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.navigateBack, context: disconnected) == false)
+        #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.navigateForward, context: disconnected) == false)
     }
 
-    @Test("The group is offered by default so it reaches an existing toolbar")
-    func groupIsADefaultItem() {
-        #expect(MainWindowToolbar.defaultItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
+    /// Two permanent hit targets for a command only a table tab has, so the pair left the default
+    /// set. It is still offered by Customize Toolbar, and a user who puts it back gets a control
+    /// that is always present and dims, since only the default set is ever hidden.
+    @Test("The group is offered by the palette, not the default set")
+    func groupIsPaletteOnly() {
+        #expect(!MainWindowToolbar.defaultItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
         #expect(MainWindowToolbar.allowedItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
+        #expect(!ToolbarContextResolver.hideableIdentifiers.contains(MainWindowToolbar.backForwardGroup))
     }
 }
 
@@ -656,36 +675,30 @@ struct MainWindowToolbarNavigationValidationTests {
 struct MainWindowToolbarAddRowValidationTests {
     private func context(
         connected: Bool, canAddRow: Bool, canRestorePreviousValues: Bool = false
-    ) -> MainWindowToolbar.ValidationContext {
-        MainWindowToolbar.ValidationContext(
-            connected: connected,
-            isTableTab: true,
+    ) -> ToolbarContext {
+        ToolbarContext(
+            tabKind: .table,
+            resultsMode: .data,
+            pane: connected ? .content : .unavailable(.notConnected),
+            isConnected: connected,
+            hasSelectedWorkspace: true,
             canAddRow: canAddRow,
-            canRestorePreviousValues: canRestorePreviousValues,
-            hasPendingChanges: false,
-            hasDataPendingChanges: false,
-            blocksAllWrites: false,
-            fileBased: false,
-            supportsContainerSwitching: true,
-            supportsImport: true,
-            supportsServerDashboard: true,
-            canNavigateBack: false,
-            canNavigateForward: false
+            canRestorePreviousValues: canRestorePreviousValues
         )
     }
 
     @Test("Add Row needs a live session and a tab that can take a row")
     func addRowEnablement() {
-        #expect(MainWindowToolbar.isEnabled(
-            itemIdentifier: MainWindowToolbar.addRow,
+        #expect(ToolbarContextResolver.isEnabled(
+            MainWindowToolbar.addRow,
             context: context(connected: true, canAddRow: true)
         ))
-        #expect(!MainWindowToolbar.isEnabled(
-            itemIdentifier: MainWindowToolbar.addRow,
+        #expect(!ToolbarContextResolver.isEnabled(
+            MainWindowToolbar.addRow,
             context: context(connected: true, canAddRow: false)
         ))
-        #expect(!MainWindowToolbar.isEnabled(
-            itemIdentifier: MainWindowToolbar.addRow,
+        #expect(!ToolbarContextResolver.isEnabled(
+            MainWindowToolbar.addRow,
             context: context(connected: false, canAddRow: true)
         ))
     }
@@ -694,16 +707,16 @@ struct MainWindowToolbarAddRowValidationTests {
     /// what the licence buys. A dimmed item explains nothing.
     @Test("Restore Previous Values follows the tab, not the licence")
     func restorePreviousValuesValidation() {
-        #expect(MainWindowToolbar.isEnabled(
-            itemIdentifier: MainWindowToolbar.restorePreviousValues,
+        #expect(ToolbarContextResolver.isEnabled(
+            MainWindowToolbar.restorePreviousValues,
             context: context(connected: true, canAddRow: false, canRestorePreviousValues: true)
         ))
-        #expect(!MainWindowToolbar.isEnabled(
-            itemIdentifier: MainWindowToolbar.restorePreviousValues,
+        #expect(!ToolbarContextResolver.isEnabled(
+            MainWindowToolbar.restorePreviousValues,
             context: context(connected: true, canAddRow: true, canRestorePreviousValues: false)
         ))
-        #expect(!MainWindowToolbar.isEnabled(
-            itemIdentifier: MainWindowToolbar.restorePreviousValues,
+        #expect(!ToolbarContextResolver.isEnabled(
+            MainWindowToolbar.restorePreviousValues,
             context: context(connected: false, canAddRow: true, canRestorePreviousValues: true)
         ))
     }

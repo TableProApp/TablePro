@@ -10,21 +10,22 @@ struct InspectorStatusBar: View {
     let onPreviousPage: () -> Void
     let onNextPage: () -> Void
 
+    /// Spacing alone separates the counts. A middle dot between them is punctuation the rest of the
+    /// app's chrome no longer uses, and each count already reads as its own phrase.
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 14) {
             rowSummary
-            separator
             Text("\(state.columnNames.count) ^[columns](inflect: true)")
             if !state.selectedRowIndices.isEmpty {
-                separator
                 Text("\(state.selectedRowIndices.count) selected")
             }
             if state.isComputing {
-                separator
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityHidden(true)
-                Text("Updating…")
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                    Text("Updating…")
+                }
             }
             Spacer(minLength: 8)
             if state.pageCount > 1 {
@@ -65,12 +66,5 @@ struct InspectorStatusBar: View {
 
     private var currentPage: Int {
         state.pageSize > 0 ? (state.pageOffset / state.pageSize) + 1 : 1
-    }
-
-    /// Punctuation, so VoiceOver must not read it as an element of its own.
-    private var separator: some View {
-        Text(verbatim: "·")
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
     }
 }

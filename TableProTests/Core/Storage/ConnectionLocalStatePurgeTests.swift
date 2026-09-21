@@ -215,6 +215,50 @@ struct ConnectionLocalStatePurgeTests {
         #expect(!(await storage.planSnapshots(matching: keptIdentity, excluding: nil, limit: 10)).isEmpty)
     }
 
+    @Test("Purging a connection takes its trailing pane preferences with it")
+    @MainActor
+    func purgeClearsTrailingPaneKeys() throws {
+        let suite = "tablepro-purge-pane-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let deleted = UUID()
+
+        defaults.set(TrailingPaneSurface.assistant.rawValue, forKey: TrailingPaneState.surfaceKey(deleted))
+        defaults.set(InspectorViewMode.json.rawValue, forKey: RowInspectorState.viewModeKey(deleted))
+
+        ConnectionLocalState.purgeTrailingPaneKeys([deleted], defaults: defaults)
+
+        #expect(defaults.string(forKey: TrailingPaneState.surfaceKey(deleted)) == nil)
+        #expect(defaults.string(forKey: RowInspectorState.viewModeKey(deleted)) == nil)
+    }
+
+    /// A connection deleted on one device must not take another connection's pane with it, and the
+    /// keys are per connection precisely so it cannot.
+    @Test("Purging one connection leaves another connection's trailing pane alone")
+    @MainActor
+    func purgeLeavesOtherTrailingPanesAlone() throws {
+        let suite = "tablepro-purge-pane-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let deleted = UUID()
+        let kept = UUID()
+
+        defaults.set(TrailingPaneSurface.assistant.rawValue, forKey: TrailingPaneState.surfaceKey(deleted))
+        defaults.set(TrailingPaneSurface.assistant.rawValue, forKey: TrailingPaneState.surfaceKey(kept))
+        defaults.set(InspectorViewMode.json.rawValue, forKey: RowInspectorState.viewModeKey(kept))
+
+        ConnectionLocalState.purgeTrailingPaneKeys([deleted], defaults: defaults)
+
+        #expect(defaults.string(forKey: TrailingPaneState.surfaceKey(deleted)) == nil)
+        #expect(
+            defaults.string(forKey: TrailingPaneState.surfaceKey(kept))
+                == TrailingPaneSurface.assistant.rawValue
+        )
+        #expect(
+            defaults.string(forKey: RowInspectorState.viewModeKey(kept)) == InspectorViewMode.json.rawValue
+        )
+    }
+
     /// `ConnectionLocalState` exists because this list used to be written out at each delete site,
     /// and they drifted: the query history clear reached the two local sites and never the remote
     /// one. Anything reaching these stores itself is that drift starting again.

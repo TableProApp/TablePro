@@ -19,22 +19,23 @@ struct HistoryRowView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                HStack(spacing: 6) {
+                /// Spacing alone separates the three facts, the way the inspector's status bar
+                /// separates its counts. A middle dot between them is punctuation the rest of the
+                /// app's chrome no longer uses, and each fact already reads as its own phrase.
+                HStack(spacing: 12) {
                     if let connectionLabel {
                         Label {
                             Text(connectionLabel.name)
                         } icon: {
-                            connectionDot(connectionLabel.color?.color)
+                            connectionGlyph(connectionLabel.color?.color)
                         }
                         .labelStyle(.titleAndIcon)
-                        Text(verbatim: "·")
                     }
 
                     Text(entry.databaseDisplayName)
                         .truncationMode(.middle)
 
                     if entry.source != .editor {
-                        Text(verbatim: "·")
                         Label(entry.source.displayName, systemImage: entry.source.symbolName)
                             .labelStyle(.titleAndIcon)
                     }
@@ -75,15 +76,23 @@ struct HistoryRowView: View {
         }
     }
 
-    /// A connection's own colour is a fixed value, so it disappears into the accent fill unless it
-    /// switches with the background. The unnamed case is secondary content and adapts by itself.
+    /// The glyph the toolbar's own connection control falls back to, tinted with the connection's
+    /// colour. It replaces a filled dot, which carried the colour and nothing else, so a connection
+    /// with no colour of its own drew a grey dot that named nothing.
+    ///
+    /// Not the engine's own icon, which is the obvious candidate and does not survive this size:
+    /// half of them are asset-catalog line art, and measured at 12pt against the emphasized
+    /// selection fill the PostgreSQL elephant kept no pixel of the tint at all.
+    ///
+    /// A connection's colour is a fixed value, so it disappears into that fill unless it switches
+    /// with the background. The uncoloured case is secondary content and adapts by itself.
     @ViewBuilder
-    private func connectionDot(_ color: Color?) -> some View {
-        let dot = Image(systemName: "circle.fill").font(.system(size: 6))
+    private func connectionGlyph(_ color: Color?) -> some View {
+        let glyph = Image(systemName: "network")
         if let color {
-            dot.selectionAwareTint(color)
+            glyph.selectionAwareTint(color)
         } else {
-            dot.foregroundStyle(Color.secondary)
+            glyph.foregroundStyle(Color.secondary)
         }
     }
 }

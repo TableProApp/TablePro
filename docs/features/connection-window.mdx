@@ -1,0 +1,109 @@
+---
+title: Connection window
+description: The toolbar, the Actions menu, the sidebar's list chooser, and the trailing pane
+---
+
+Nothing in the titlebar is fixed furniture. The toolbar carries the commands for the tab you are on, and what it leaves out is one click away under **Actions** or in the menu bar.
+
+## The toolbar
+
+Eight controls, laid out by pane: the sidebar toggle over the sidebar, the connection and its database in the centre, the tab's own commands after them, and the trailing pane's toggle at the end.
+
+| Control | What it does |
+|---|---|
+| Sidebar | Shows and hides the sidebar (`Cmd+0`) |
+| Connection | The engine's glyph and the connection's name. Click for the [connection switcher](/connections#switch-connections-and-databases) (`Ctrl+Cmd+C`) |
+| Database | The database this window is browsing. Click for the list (`Cmd+K`) |
+| Refresh | Reloads what the tab is showing (`Cmd+R`) |
+| Save Changes | Commits the tab's staged changes (`Cmd+S`) |
+| Actions | The rest of the commands for this tab and this connection |
+| Safe Mode | A padlock carrying the current [level](/features/safe-mode), open for **Silent** and closed for the rest |
+| Inspector | Opens and closes the [trailing pane](#the-trailing-pane) (`Cmd+Option+I`) |
+
+Two of them change their name. The database control follows the engine's own word: **Schema** on [Oracle](/databases/oracle), **Catalog** on [Trino](/databases/trino), **Keyspace** on [Cassandra](/databases/cassandra). The commit control follows the tab: **Create Table** on a new table's tab, **Apply Changes** on [Users & Roles](/features/users-roles), **Save Changes** everywhere else.
+
+### What each context leaves out
+
+A control the tab cannot use leaves the toolbar rather than standing there dimmed.
+
+| Where you are | Not there |
+|---|---|
+| A new table's tab | Refresh. The definition is not on the server yet |
+| ER diagram, Server Dashboard, Query Insights, a DDL tab | The commit control. None of the four stages an edit of its own |
+| [Agent mode](/features/agent-mode) | Refresh and the commit control. The grid and the object browser are behind the conversation |
+| An engine with nothing to switch between | The database control. On [SQLite](/databases/sqlite) and [DuckDB](/databases/duckdb) the file beside it is the database; on an engine with a single namespace there is no second level to name |
+
+That needs macOS 15. On macOS 13 and 14 the same eight stand in every context and dim where they cannot act, except in two places. Refresh stays enabled on a new table's tab. So does the commit control on an ER diagram, Server Dashboard, Query Insights or DDL tab while a **Truncate** or a **Delete** is staged in the sidebar: that queue belongs to the connection, not to the tab in front of it.
+
+The shape settles on a tab switch, a mode switch and a connection switch, and at no other moment. A staged edit, a running query or a dropped connection dims a control; it never moves one.
+
+## Actions
+
+One pull-down, rebuilt from the tab you are on each time it opens. Every entry is also a menu-bar command, so nothing lives only here.
+
+| On | Actions carries |
+|---|---|
+| A table tab | **Add Row** while the Data view is showing, **Restore Previous Values**, **Back**, **Forward**, **Preview SQL**, **Export Results**, **Show DDL**, **Copy DDL** |
+| A query tab | **Restore Previous Values**, **Preview SQL**, **Show Results**, **Export Results** |
+| A new table's tab | **Preview SQL** |
+| A DDL tab | **Show DDL**, **Copy DDL** |
+| Every browse tab | **Export Tables**, **Import Data** and its format list where the driver imports, **Show Query History**, **Users & Roles**, **Query Insights**, **Server Dashboard** where the engine has one, **New Tab**, **Open Quickly** |
+| Agent mode | **New Session**, **Open Session**, **Close Session**, **Delete Session**, **New Conversation** |
+
+Every context ends with **Mode**, **Switch Connection** and **Close Connection**, and **Reconnect** joins them while the connection is down. A window that has not connected carries those alone, and **Mode** is absent with AI features off in **Settings > AI**.
+
+**Import Data** runs the driver's first format and **Import Data From** beside it lists every format it has, which is the same pair the menu bar draws under **File > Import**.
+
+## Add a control back
+
+The toolbar is still yours to arrange. Choose **View > Customize Toolbar**, or right-click the toolbar, and drag in any of these.
+
+| Tile | Runs |
+|---|---|
+| **Navigation** | Back and Forward, as one pair (`Ctrl+Cmd+[` and `Ctrl+Cmd+]`) |
+| **New Tab** | A query tab (`Cmd+T`) |
+| **Open Quickly** | The object and query search (`Cmd+Shift+O`) |
+| **Add Row** | A row at the end of the grid (`Cmd+Shift+N`) |
+| **Restore Previous Values** | The [rewind](/features/change-tracking#restoring-a-save) of the last save |
+| **Preview** | The SQL behind the staged changes (`Cmd+Shift+P`) |
+| **Results** | The query editor's results pane (`Cmd+Option+R`) |
+| **Export** | Export Tables (`Cmd+Shift+E`) |
+| **Import** | The import format list (`Cmd+Shift+I`) |
+| **Dashboard** | The [server dashboard](/features/server-dashboard) |
+| **History** | The [query history](/features/query-history) drawer (`Cmd+Y`) |
+
+A control you add yourself stays put. It stands in every context and dims when it has nothing to do, rather than leaving the way the default eight do. Your arrangement, and the **Show** setting in the same sheet, survive a relaunch.
+
+<Note>
+The palette offers a tile for a control the tab you are on has hidden. Drag **Refresh** in while a new table's tab is in front and nothing appears until you switch tabs.
+</Note>
+
+## The sidebar's list chooser
+
+**Tables** and **Favorites** sit above the filter field, at the top of the sidebar. **Tables** is the object browser; **Favorites** is the [favorites](/features/favorites) list for this connection.
+
+**View > Show Tables** and **View > Show Favorites** pick the same two and reveal a collapsed sidebar on the way. Neither ships with a shortcut. Bind one in **Settings > Keyboard**, where they are listed under **Navigation**.
+
+In [Agent mode](/features/agent-mode) the chooser and the filter field go, and the session list takes their height.
+
+## The trailing pane
+
+One column on the trailing edge, holding one surface at a time. Its header keeps one height across all three, so switching surface moves nothing beneath it.
+
+| Surface | Holds |
+|---|---|
+| **Inspector** | The selected row's fields, or the table's own details when nothing is selected. See [Cell and Row Viewers](/features/json-viewer) |
+| **Assistant** | The connection's [chat](/features/ai-assistant#chat) |
+| **Result** | What an agent session proposed, ran and changed |
+
+The picker at the leading end of the header moves between **Inspector** and **Assistant**, and the segment you pick is remembered for that connection. Where there is nothing to pick the header draws the surface's name instead: with AI features off in **Settings > AI** the pane holds the inspector alone, and Agent mode fixes it on **Result**.
+
+The ellipsis at the trailing end holds that surface's own commands: **Fields** and **JSON** plus the JSON reader's options on the inspector, **New Conversation**, **Conversation History** and **Clear Recents** on the assistant, and **SQL** and **Results** on the result column.
+
+`Cmd+Option+I` opens and closes the pane, and `Cmd+Option+A` swaps an open inspector for the assistant rather than closing the column. **View > Show Inspector** and **View > Show Assistant** are the same two, each reading **Hide** once its surface is on screen.
+
+## Related
+
+- [Query Tabs](/features/tabs) for the strip under the toolbar and what a tab is bound to
+- [Connections strip](/features/workspace-rail) for the narrow strip on the leading edge
+- [Keyboard Shortcuts](/features/keyboard-shortcuts) for every default binding

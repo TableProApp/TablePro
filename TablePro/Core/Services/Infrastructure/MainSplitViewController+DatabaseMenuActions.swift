@@ -24,6 +24,7 @@ extension MainSplitViewController {
         switcherPresenter.present(
             from: view.window,
             anchoredTo: MainWindowToolbar.connection,
+            hiddenBy: toolbarOwner?.visibility,
             subject: .connection,
             contentSize: ConnectionSwitcherPopover.contentSize
         ) { [selectedConnectionId] dismiss in
@@ -63,10 +64,18 @@ extension MainSplitViewController {
         )
     }
 
+    /// Reached through the workspace's coordinator rather than `commandActions`, which exists only
+    /// once the browse content has appeared. A window opened straight into Agent mode never shows
+    /// that content, so its Safe Mode list had no checkmark and no entry in it did anything.
     @objc func setSafeModeLevel(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let level = SafeModeLevel(rawValue: raw) else { return }
-        commandActions?.coordinator?.setSafeModeLevel(level)
+        workspaces.selected?.sessionState?.coordinator.setSafeModeLevel(level)
+    }
+
+    /// What the Safe Mode list offers for the connection on screen, or nil with no session behind it.
+    var safeModeStatus: SafeModeStatus? {
+        workspaces.selected?.sessionState?.coordinator.safeModeStatus
     }
 
     @objc func switchSessionContext(_ sender: Any?) {

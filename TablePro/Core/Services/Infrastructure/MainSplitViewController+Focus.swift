@@ -58,32 +58,59 @@ internal extension MainSplitViewController {
 
     /// A visible inspector with nothing to inspect draws a `ContentUnavailableView` and holds no key
     /// view, so the command would reveal a pane it cannot focus and report success. While the pane is
-    /// hidden its content is not built yet, and revealing it is a visible outcome of its own.
+    /// hidden its content is not built yet, and revealing it is a visible outcome of its own. Agent
+    /// mode draws no inspector at all, so there the command is dimmed.
     var canFocusInspector: Bool {
-        guard canToggleTrailingPane else { return false }
+        guard TrailingPaneCommandResolver.inspectorFocus(trailingPaneCommandContext) != nil else { return false }
         guard isInspectorVisible else { return true }
         return workspaces.selected?.panes.inspector.view.firstKeyViewDescendant != nil
     }
 
+    /// Into the trailing pane while browsing, and into the content column in Agent mode, where the
+    /// same conversation is drawn. The pane beside it holds the result there, and revealing the
+    /// assistant first would have written a browse preference and focused a pane with no window.
     @discardableResult
     func focusAssistantPane() -> Bool {
-        guard canFocusAssistant else { return false }
-        showAssistant()
-        return focusFirstKeyView(in: workspaces.selected?.panes.assistant.view)
+        switch TrailingPaneCommandResolver.assistantFocus(trailingPaneCommandContext) {
+        case .conversation?:
+            return focusComposer(in: shownConversation)
+        case .trailingPane?:
+            showAssistant()
+            return focusComposer(in: workspaces.selected?.panes.assistant.view)
+        case nil:
+            return false
+        }
     }
 
+    /// The conversation column is checked for a composer because Agent mode draws one only once a
+    /// session and a provider are there to answer it.
     var canFocusAssistant: Bool {
-        canRevealAssistant
+        switch TrailingPaneCommandResolver.assistantFocus(trailingPaneCommandContext) {
+        case .conversation?:
+            return shownConversation?.firstDescendant(of: ChatComposerNSTextView.self) != nil
+        case .trailingPane?:
+            return true
+        case nil:
+            return false
+        }
     }
 
-    /// The one answer to "can the assistant be put on screen", shared with the View menu's toggle.
-    /// The assistant is the single surface a setting can take away, so the command goes with it.
-    var canRevealAssistant: Bool {
-        isAssistantVisible || (currentPane == .content && AppSettingsManager.shared.ai.enabled)
+    /// Asked only while the conversation is the tree in the detail column. A connection that drops
+    /// in Agent mode hands the column to the unavailable screen and keeps the conversation built
+    /// behind it, detached, and a search of the pane alone still found its composer there: the
+    /// command stayed enabled, and `makeFirstResponder` on a view in no window reported success
+    /// while it moved focus off Retry and onto the window itself.
+    private var shownConversation: NSView? {
+        guard let selected = workspaces.selected, selected.detailMode == .agent else { return nil }
+        return selected.panes.agentConversation.view
     }
 
+    /// Asked only of browse content the window is showing. Agent mode keeps the editor mounted
+    /// behind the conversation, detached, and a search of the tree alone would find it there and
+    /// offer to focus a view that is in no window.
     private var mountedQueryEditor: TextView? {
-        workspaces.selected?.panes.detail.view.firstDescendant(of: TextView.self)
+        guard let selected = workspaces.selected, selected.detailMode == .browse else { return nil }
+        return selected.panes.detail.view.firstDescendant(of: TextView.self)
     }
 
     /// Revealing a pane parents its views on the next layout pass, so the search has to run after
@@ -93,6 +120,16 @@ internal extension MainSplitViewController {
         guard let paneView, let window = view.window else { return false }
         paneView.layoutSubtreeIfNeeded()
         guard let target = paneView.firstKeyViewDescendant else { return false }
+        return window.makeFirstResponder(target)
+    }
+
+    /// The composer rather than the first view that takes the keyboard. A transcript's messages are
+    /// selectable text and come first in the tree, and Focus Assistant is a request to type.
+    private func focusComposer(in paneView: NSView?) -> Bool {
+        guard let paneView, let window = view.window else { return false }
+        paneView.layoutSubtreeIfNeeded()
+        let composer: NSView? = paneView.firstDescendant(of: ChatComposerNSTextView.self)
+        guard let target = composer ?? paneView.firstKeyViewDescendant else { return false }
         return window.makeFirstResponder(target)
     }
 }

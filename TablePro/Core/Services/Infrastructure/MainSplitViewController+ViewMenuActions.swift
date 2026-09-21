@@ -22,8 +22,8 @@ extension MainSplitViewController {
         activateWorkspace(offsetBy: 1)
     }
 
-    /// Both mode commands. A tolerant sender: AppKit hands the menu item here and the toolbar
-    /// group's own action hands the group, and neither should be the only one that works.
+    /// Both routes to a mode, View > Mode and the Actions pull-down, send a menu item that names
+    /// its mode in `representedObject`. An item without one does nothing.
     @objc func setContentModeFromMenu(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let mode = ConnectionWorkspaceContentMode(rawValue: raw) else { return }

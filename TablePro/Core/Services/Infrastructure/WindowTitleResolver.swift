@@ -10,9 +10,21 @@ import Foundation
 /// Title and subtitle decided together. Resolving them apart is how a window ended up
 /// announcing "TablePro - TablePro": two callers each picked the connection name without
 /// knowing the other had.
+///
+/// The proxy icon is decided with them, because it is the rest of what the titlebar says. It
+/// used to be written by the browse content alone, which named its own tab's file whatever the
+/// window was showing, so a conversation in Agent mode sat under a query file's icon and its
+/// Command-click path menu.
 struct ResolvedWindowTitle: Equatable {
     let title: String
     let subtitle: String
+    let representedURL: URL?
+
+    init(title: String, subtitle: String, representedURL: URL? = nil) {
+        self.title = title
+        self.subtitle = subtitle
+        self.representedURL = representedURL
+    }
 }
 
 @MainActor
@@ -26,14 +38,27 @@ enum WindowTitleResolver {
     /// after a tab is naming something that is not there: that is how a connecting window came
     /// to be called "SQL Query", and how a window that lost its session kept the name of the
     /// table it had stopped displaying.
+    ///
+    /// The same holds for the mode. Agent mode puts a conversation in the detail column and the
+    /// editor tabs behind it, so the window names the session it is showing rather than whichever
+    /// tab was selected when the mode came on. `agentSessionTitle` is read only then.
     static func resolveWindow(
         pane: ConnectionWindowPane,
+        contentMode: ConnectionWorkspaceContentMode,
+        agentSessionTitle: String?,
         connection: DatabaseConnection?,
         tab: QueryTab?,
         hasTabs: Bool,
         queryLanguageName: String?
     ) -> ResolvedWindowTitle {
         let connectionName = connection?.name ?? ""
+
+        switch ConnectionWindowPaneResolver.detailMode(for: pane, contentMode: contentMode) {
+        case .agent:
+            return agentTitle(agentSessionTitle)
+        case .browse:
+            break
+        }
 
         guard pane == .content else {
             return connectionTitle(connectionName)
@@ -47,11 +72,23 @@ enum WindowTitleResolver {
         /// HIG's principal item "takes precedent over". The title names the tab, which is a
         /// different fact and the one a window tab label needs.
         let title = resolveTitle(tab: tab, connection: connection, queryLanguageName: queryLanguageName)
-        return ResolvedWindowTitle(title: title, subtitle: "")
+        return ResolvedWindowTitle(title: title, subtitle: "", representedURL: tab?.content.sourceFileURL)
     }
 
     private static func connectionTitle(_ name: String) -> ResolvedWindowTitle {
         ResolvedWindowTitle(title: name.isBlank ? fallbackTitle : name, subtitle: "")
+    }
+
+    /// A session has no name until its first reply or its first question gives it one, and the
+    /// window still needs one from the moment the mode comes on, so the mode's own name stands in.
+    /// No subtitle, for the reason the tab title carries none: the connection is the toolbar's
+    /// centred item. No proxy icon either, since a conversation is not a file, whatever file the
+    /// tab behind it was opened from.
+    private static func agentTitle(_ sessionTitle: String?) -> ResolvedWindowTitle {
+        guard let sessionTitle, !sessionTitle.isBlank else {
+            return ResolvedWindowTitle(title: ConnectionWorkspaceContentMode.agent.localizedTitle, subtitle: "")
+        }
+        return ResolvedWindowTitle(title: sessionTitle, subtitle: "")
     }
 
     static func resolveTitle(

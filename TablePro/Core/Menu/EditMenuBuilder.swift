@@ -84,7 +84,9 @@ enum EditMenuBuilder {
             /// reversal of something already committed is a separate, named command.
             MenuItemFactory.item(
                 String(localized: "Restore Previous Values…"),
-                action: #selector(MainSplitViewController.restorePreviousValues(_:))
+                action: #selector(MainSplitViewController.restorePreviousValues(_:)),
+                shortcut: .restorePreviousValues,
+                keyboard: keyboard
             ),
             MenuItemFactory.separator,
             tabularEditingSubmenu(keyboard: keyboard)

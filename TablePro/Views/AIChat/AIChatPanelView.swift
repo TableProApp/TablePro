@@ -17,6 +17,9 @@ struct AIChatPanelView: View {
     var queryResults: String?
 
     @ObservedObject var viewModel: AIChatViewModel
+    /// Fills its column in the trailing pane, and takes a reading measure in the window's content
+    /// column, where filling it would run a line the whole width of the window.
+    var contentWidth: ChatContentWidth = .pane
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var bottomVisibleMessageID: UUID?
     @State private var pinnedToBottom: Bool = true
@@ -123,6 +126,7 @@ struct AIChatPanelView: View {
                 }
                 .controlSize(.small)
             }
+            .chatColumn(contentWidth)
             .padding(8)
         }
     }
@@ -194,7 +198,7 @@ struct AIChatPanelView: View {
                             }
                         )
                 }
-                .frame(maxWidth: .infinity)
+                .chatColumn(contentWidth)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
             }
@@ -267,6 +271,7 @@ struct AIChatPanelView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(String(localized: "Dismiss error"))
         }
+        .chatColumn(contentWidth)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.yellow.opacity(Self.warningBackgroundOpacity))
@@ -323,9 +328,13 @@ struct AIChatPanelView: View {
                     slashCommandMenu
                     modeMenu
                     modelPicker
+                    Spacer(minLength: 0)
                     sendOrStopButton
                 }
             }
+            /// Capped before the padding, the way the transcript above it is, so the composer's
+            /// leading edge lines up with the first character of the conversation.
+            .chatColumn(contentWidth)
             .padding(8)
         }
     }
@@ -404,6 +413,14 @@ struct AIChatPanelView: View {
         }
     }
 
+    /// Sized to the model's name, and able to compress below it.
+    ///
+    /// Its label used to carry `maxWidth: .infinity`, which spread the button across the window as
+    /// soon as the conversation had one to spread across. `.fixedSize()` is the other end of the same
+    /// mistake: measured on macOS 27, a 44-character model name holds the button at 339pt, which
+    /// overflows the trailing pane's composer row by 85pt at 240pt wide. Unframed it takes the name's
+    /// width where there is room and truncates where there is not, and the spacer after it is what
+    /// keeps Send at the trailing edge in both widths.
     @ViewBuilder
     private var modelPicker: some View {
         let providers = settingsManager.ai.providers
@@ -435,7 +452,6 @@ struct AIChatPanelView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(String(localized: "Choose AI provider and model"))
             }
             .menuStyle(.button)
@@ -596,7 +612,7 @@ struct AIChatPanelView: View {
     }
 
     /// Hide system turns and user turns that exist only to carry tool-result
-    /// blocks back to the model — those are protocol plumbing, not user input.
+    /// blocks back to the model: those are protocol plumbing, not user input.
     private func isVisibleInMessageList(_ message: ChatTurn) -> Bool {
         guard message.role != .system else { return false }
         if message.role == .user {

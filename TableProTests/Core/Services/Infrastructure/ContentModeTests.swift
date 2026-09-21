@@ -69,58 +69,122 @@ struct ContentModeTests {
         #expect(TrailingPaneSurface.resolved(.assistant, isAIEnabled: true) == .assistant)
     }
 
-    // MARK: - The toolbar control
+    /// A mode switch is one of the three moments the titlebar may change shape, so it has to reach
+    /// the key the toolbar compares before it writes anything.
+    @Test("A mode switch changes the titlebar's visibility key")
+    func modeSwitchChangesTheVisibilityKey() {
+        let browse = ToolbarContext(tabKind: .table, contentMode: .browse, isAIEnabled: true)
+        let agent = ToolbarContext(tabKind: .table, contentMode: .agent, isAIEnabled: true)
+        #expect(browse.visibilityKey != agent.visibilityKey)
+    }
 
-    /// Measured on macOS 27: an expanded `selectOne` group publishes a radio group whose buttons
-    /// take their name from each image's `accessibilityDescription`, never from `labels:`. With nil
-    /// the sidebar control announced its SF Symbol names, "List" and "favorite".
-    @Test("Every toolbar segment names itself for assistive clients")
-    func segmentsAreNamed() {
-        let mode = MainWindowToolbar.makeContentModeGroup(target: nil, action: #selector(NSResponder.selectAll(_:)))
-        let sidebar = MainWindowToolbar.makeSidebarSegmentGroup(target: nil, action: #selector(NSResponder.selectAll(_:)))
+    /// Nothing on screen draws a session while browsing, so nothing may be rebuilt after one: a
+    /// session started or switched then would otherwise repaint panes nobody is looking at.
+    @Test("The displayed agent session, and the render key, name a session only in Agent mode")
+    func agentSessionIsNamedOnlyInAgentMode() {
+        AIFeatureScope.enabled {
+            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let workspace = Self.makeWorkspace(phase: .idle, agentSessions: registry)
+            let session = registry.startSession(for: workspace.connectionId)
 
-        for group in [mode, sidebar] {
-            for subitem in group.subitems {
-                #expect(subitem.image?.accessibilityDescription?.isEmpty == false)
-            }
+            #expect(workspace.displayedAgentSession == nil)
+            #expect(workspace.paneRenderKey.agentSessionId == nil)
+
+            workspace.contentMode = .agent
+
+            #expect(workspace.displayedAgentSession === session)
+            #expect(workspace.paneRenderKey.agentSessionId == session.id)
         }
     }
 
-    /// The overflow menu sends an `NSMenuItem`, and reading `selectedIndex` off whatever arrived
-    /// meant choosing a mode from the overflow did nothing at all.
-    @Test("A segment action resolves its index from either sender")
-    func segmentIndexAcceptsBothSenders() {
-        let group = MainWindowToolbar.makeContentModeGroup(target: nil, action: #selector(NSResponder.selectAll(_:)))
-        group.selectedIndex = 1
+    @Test("A workspace reads its sessions from the registry it was given")
+    func workspaceReadsItsOwnRegistry() {
+        AIFeatureScope.enabled {
+            let mine = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let other = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let workspace = Self.makeWorkspace(phase: .idle, agentSessions: mine)
+            workspace.contentMode = .agent
+            other.startSession(for: workspace.connectionId)
 
-        let fromGroup = MainWindowToolbar.segmentIndex(from: group, group: group)
-        #expect(fromGroup == 1)
+            #expect(workspace.displayedAgentSession == nil)
 
-        let menuItem = NSMenuItem()
-        menuItem.tag = 0
-        #expect(MainWindowToolbar.segmentIndex(from: menuItem, group: group) == 0)
-
-        #expect(MainWindowToolbar.segmentIndex(from: nil, group: group) == 1)
-    }
-
-    @Test("The mode control owns an overflow menu with one item per mode")
-    func menuFormHasEveryMode() throws {
-        let group = MainWindowToolbar.makeContentModeGroup(target: nil, action: #selector(NSResponder.selectAll(_:)))
-        let submenu = try #require(group.menuFormRepresentation?.submenu)
-
-        #expect(submenu.items.count == ConnectionWorkspaceContentMode.allCases.count)
-        for (index, item) in submenu.items.enumerated() {
-            #expect(item.tag == index)
-            #expect(item.title == ConnectionWorkspaceContentMode.allCases[index].localizedTitle)
+            let session = mine.startSession(for: workspace.connectionId)
+            #expect(workspace.displayedAgentSession === session)
         }
     }
 
-    /// `isNavigational` lets AppKit lift an item out of its declared slot and pin it to the leading
-    /// edge, which is what put the sidebar control past the sidebar divider.
-    @Test("The mode control stays in the slot it was given")
-    func modeControlIsNotNavigational() {
-        let group = MainWindowToolbar.makeContentModeGroup(target: nil, action: #selector(NSResponder.selectAll(_:)))
-        #expect(group.isNavigational == false)
-        #expect(group.selectionMode == NSToolbarItemGroup.SelectionMode.selectOne)
+    /// The conversation is what Agent mode draws while the connection is up or coming up, and the
+    /// unavailable screen, with its Retry, is what it draws over one that cannot be reached.
+    @Test("The detail column follows the mode, except over a connection that cannot be reached")
+    func detailModeFollowsTheModeAndThePane() {
+        AIFeatureScope.enabled {
+            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let connecting = Self.makeWorkspace(phase: .connecting, agentSessions: registry)
+            let failed = Self.makeWorkspace(
+                phase: .unavailable(.failed(ConnectionFailureInfo(message: "refused"))),
+                agentSessions: registry
+            )
+
+            #expect(connecting.detailMode == .browse)
+            connecting.contentMode = .agent
+            failed.contentMode = .agent
+            #expect(connecting.detailMode == .agent)
+            #expect(failed.detailMode == .browse)
+        }
+    }
+
+    /// The result column is one hosting controller per window, drawing whichever session is open, so
+    /// a view holding the choice handed one session's view to the next. Nothing stores it: a session
+    /// is opened on its statements.
+    @Test("Which result view is showing belongs to the session")
+    func resultSegmentBelongsToTheSession() {
+        AIFeatureScope.enabled {
+            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let connectionId = UUID()
+            let first = registry.startSession(for: connectionId)
+            let second = registry.startSession(for: connectionId)
+
+            first.resultSegment = .results
+
+            #expect(second.resultSegment == .sql)
+        }
+    }
+
+    /// Nothing stores the choice, so a session comes back from disk on its statements.
+    @Test("The result view is not carried across a relaunch")
+    func resultSegmentIsNotPersisted() throws {
+        let store = AgentSessionStore(directory: Self.temporaryDirectory())
+        let registry = AgentSessionRegistry(store: store)
+        let session = registry.startSession(for: UUID())
+        session.resultSegment = .results
+        registry.persistNow()
+
+        let reopened = AgentSessionRegistry(store: store)
+        let restored = try #require(reopened.session(id: session.id))
+
+        #expect(restored.resultSegment == .sql)
+    }
+
+    private static func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("ContentModeTests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private static func makeWorkspace(
+        phase: ConnectionWindowPhase,
+        agentSessions: AgentSessionRegistry
+    ) -> ConnectionWorkspace {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        return ConnectionWorkspace(
+            connectionId: connection.id,
+            payload: nil,
+            autoConnect: false,
+            payloadConnection: connection,
+            session: nil,
+            sessionState: nil,
+            trailingPaneState: nil,
+            phase: phase,
+            agentSessions: agentSessions
+        )
     }
 }

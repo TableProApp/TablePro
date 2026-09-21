@@ -10,13 +10,23 @@ import os
 @MainActor
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private var itemStateObservation: AnyCancellable?
+    private var tabStateObservation: AnyCancellable?
     nonisolated internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// The autosave name. Bumping it discards every saved arrangement, so it moves only when the
-    /// default set changes enough that replaying a stored one would be worse than resetting it. The
-    /// v3 move drops the hosted status item and four commands from the default, and a v2 list still
-    /// names identifiers the delegate no longer vends. v4 adds the throughput readout: a stored v3
-    /// arrangement does not name it, so a reader who had customized the toolbar would never see it.
+    /// The autosave name, and deliberately not bumped when the default set changes.
+    ///
+    /// Measured on macOS 27 across separate process launches under one identifier: AppKit diffs the
+    /// stored `TB Default Item Identifiers` against the current default list and splices a new
+    /// identifier in at its position in that list rather than at the end, so a stored
+    /// `[alpha, charlie]` against a new default `[alpha, bravo, charlie, delta]` came back
+    /// `[alpha, bravo, charlie]`, and an identifier the delegate stops vending is pruned from the
+    /// record on the next launch. A user who customized keeps their arrangement and still receives
+    /// new items where they belong; a bump would throw that away along with their display mode.
+    /// The record is six keys and `isHidden` is not among them, since it is runtime state that is
+    /// never persisted, so a context-sensitive item set is no reason to bump either.
+    ///
+    /// Bump only for a change that diff cannot express, and say which. Neither fact was measured on
+    /// macOS 13 or 14.
     internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v4")
 
     /// Which connection the toolbar is about. Every item reads this rather than capturing a
@@ -53,37 +63,42 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// `shortcutBindings` is: a second hand-written table drifts.
     private var menuFormIdentifiers: [Selector: NSToolbarItem.Identifier] = [:]
 
-    private(set) var sidebarGroup: NSToolbarItemGroup?
-    internal var contentModeGroup: NSToolbarItemGroup?
+    /// What the app last took out of the titlebar, written by `apply(_:)` and by nothing else.
+    ///
+    /// The switcher reads this to decide whether its anchor is reachable, because the palette
+    /// poisons AppKit's own answer for good: see `ToolbarVisibility`.
+    internal private(set) var visibility = ToolbarVisibility()
 
-    /// The throughput readout. One item per toolbar rather than one per vend: the ticker writes
-    /// into it directly, so it has to be the instance the toolbar is actually showing.
-    internal let transportRateItem = TransportRateToolbarItem()
+    /// The slow-moving half of the context the visibility and the commit verb were last applied
+    /// from. A keystroke builds a fresh key and compares it with this, and writes nothing unless it
+    /// moved, which is what keeps the titlebar from moving while the user types.
+    private var appliedVisibilityKey: ToolbarContext.VisibilityKey?
 
-    /// A group holding nothing but the readout, and the reason it exists is that emptying it is how
-    /// the readout leaves the toolbar. Measured: an item whose view is hidden keeps its 75pt, and a
-    /// view constrained to zero width still leaves a 24pt gap, so neither hides it cleanly.
-    /// `NSToolbarItem.isHidden` does, but it is macOS 15 and the app targets 14. An empty group
-    /// reclaims the space exactly, on every version, with no availability gate.
-    internal private(set) lazy var transportRateGroup: NSToolbarItemGroup = {
-        let group = NSToolbarItemGroup(itemIdentifier: TransportRateToolbarItem.identifier)
-        let label = String(localized: "Throughput")
-        group.label = label
-        group.paletteLabel = label
-        group.subitems = []
-        return group
-    }()
-    private var transportSampler = TransportRateSampler()
-    private var transportTicker: Task<Void, Never>?
+    /// The context of the validation pass in progress, and nil between passes. See
+    /// `validationContext()`.
+    private var validationPassContext: ToolbarContext?
 
-    private static let transportSampleInterval = Duration.seconds(1)
+    /// Coalesces the passes Customize Toolbar asks for, so a drop of several items is one pass.
+    private var isVisibilityReapplyScheduled = false
 
     /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
     /// menu bar, so this toolbar is what keeps its delegate alive.
     internal let safeModeMenuDelegate = SafeModeMenuDelegate()
 
+    /// The import formats, filled when the menu opens. One instance serves the Actions pull-down's
+    /// submenu and the Import item a user can add from Customize Toolbar, so the two cannot list
+    /// different formats.
+    internal let importFormatMenuDelegate = ImportFormatMenuDelegate()
+
+    /// Kept for the same reason as the two above. The Actions menu is built on every open from the
+    /// context the toolbar is pointed at, so it holds the toolbar weakly and asks it.
+    internal private(set) lazy var actionsMenuDelegate = ConnectionActionsMenuDelegate(
+        importFormats: importFormatMenuDelegate,
+        context: { [weak self] in self?.currentContext() ?? ToolbarContext() }
+    )
+
     override internal convenience init() {
-        self.init(managedToolbar: NSToolbar(identifier: Self.toolbarIdentifier))
+        self.init(managedToolbar: ContextValidatedToolbar(identifier: Self.toolbarIdentifier))
     }
 
     internal init(managedToolbar: NSToolbar) {
@@ -97,7 +112,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = true
-        self.managedToolbar.centeredItemIdentifiers = [Self.connectionGroup]
+        self.managedToolbar.centeredItemIdentifiers = [Self.connection, Self.database]
         /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
         /// items are mutated re-entrantly, part way through the settings write that triggered them.
         AppEvents.shared.keyboardSettingsChanged
@@ -166,9 +181,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         itemStateObservationGeneration += 1
         self.coordinator = coordinator
         observeItemState()
-        restartTransportTicker()
         refreshConnectionScopedItems()
-        syncSidebarSelection()
+        refreshContext(forcing: true)
         managedToolbar.validateVisibleItems()
     }
 
@@ -179,74 +193,47 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         /// connection was released has no coordinator to reach it through.
         windowController?.switcherPresenter.dismiss()
         itemStateObservationGeneration += 1
-        transportTicker?.cancel()
-        transportTicker = nil
-        transportRateItem.apply(rate: nil)
-        sidebarGroup = nil
+        itemStateObservation = nil
+        tabStateObservation = nil
         coordinator = nil
-    }
-
-    /// Runs only for a connection whose transport the app carries the bytes for, so an ordinary
-    /// direct connection costs nothing at all. It writes into the readout's own field rather than
-    /// asking the toolbar to revalidate: the field is a fixed width, so a new figure is a redraw
-    /// inside one view and never a layout pass.
-    private func restartTransportTicker() {
-        transportTicker?.cancel()
-        transportSampler = TransportRateSampler()
-        transportRateItem.apply(rate: nil)
-        guard carriesMeasuredTransport else {
-            transportTicker = nil
-            return
-        }
-
-        transportTicker = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.transportSampleInterval)
-                guard !Task.isCancelled, let self else { return }
-                self.sampleTransportRate()
-            }
-        }
-    }
-
-    private func sampleTransportRate() {
-        guard let connection = coordinator?.connection else { return }
-        let totals = TransportActivityRegistry.shared.totals(for: connection.id)
-        transportRateItem.apply(rate: totals.flatMap { transportSampler.sample($0, at: .now) })
-    }
-
-    /// Emptying and refilling the readout's own group is the one structural change AppKit
-    /// re-measures. It happens when a connection is adopted, never under a running tunnel, so
-    /// nothing moves while a figure is ticking.
-    private func syncTransportRateVisibility() {
-        let carries = !transportRateGroup.subitems.isEmpty
-        guard carries != carriesMeasuredTransport else { return }
-        transportRateGroup.subitems = carriesMeasuredTransport ? [transportRateItem] : []
     }
 
     /// What a validation pass depends on beyond the responder chain. `validateVisibleItems()` is
     /// also what re-runs `StatefulToolbarItem.validate()`, so the safe-mode glyph tracks the level
     /// through the same channel rather than through an observer of its own.
+    ///
+    /// The tab manager is watched for the visibility key alone. It publishes on every edit to a
+    /// tab, typing included, so its observer builds the key from its eight inputs, compares it and
+    /// returns: no whole context, no validation pass and no write.
     private func observeItemState() {
+        itemStateObservation = nil
+        tabStateObservation = nil
+        guard let coordinator else { return }
         let generation = itemStateObservationGeneration
-        let coordinatorIdentifier = coordinator.map { ObjectIdentifier($0) }
-        /// Wakes for any change on the toolbar state rather than only the four properties the
-        /// tracked closure read. `validateVisibleItems()` is idempotent, so the wider wake set
-        /// costs a revalidation pass and nothing else.
-        guard let toolbarState = coordinator?.toolbarState else { return }
-        itemStateObservation = toolbarState.onMainActorChange { [weak self] in
-            guard let self,
-                  generation == self.itemStateObservationGeneration,
-                  coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
-            else { return }
+        let coordinatorIdentifier = ObjectIdentifier(coordinator)
+        /// Wakes for any change on the toolbar state rather than only the properties the items
+        /// read. `validateVisibleItems()` is idempotent and builds one context for the whole pass,
+        /// so the wider wake set costs a revalidation pass and nothing else.
+        itemStateObservation = coordinator.toolbarState.onMainActorChange { [weak self] in
+            guard let self, self.isObserving(generation, coordinatorIdentifier) else { return }
+            self.refreshContext()
             self.managedToolbar.validateVisibleItems()
+        }
+        tabStateObservation = coordinator.tabManager.onMainActorChange { [weak self] in
+            guard let self, self.isObserving(generation, coordinatorIdentifier) else { return }
+            self.refreshContext()
         }
     }
 
-    /// Items carrying text or a menu derived from the connection. Validation cannot repoint them:
-    /// a menu built at construction keeps whatever it was built with, and a label is not part of
-    /// what `validate()` reconsiders. They are pushed here instead.
+    /// A callback queued before a repoint must not act on the connection that replaced its own.
+    private func isObserving(_ generation: Int, _ coordinatorIdentifier: ObjectIdentifier) -> Bool {
+        generation == itemStateObservationGeneration
+            && coordinatorIdentifier == coordinator.map { ObjectIdentifier($0) }
+    }
+
+    /// Items carrying text derived from the connection. Validation cannot repoint them: a label is
+    /// not part of what `validate()` reconsiders. They are pushed here instead.
     private func refreshConnectionScopedItems() {
-        syncTransportRateVisibility()
         for item in allItems() {
             switch item.itemIdentifier {
             case Self.connection:
@@ -264,12 +251,26 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             case Self.previewSQL:
                 updateShortcutDescription(previewDescription, for: Self.previewSQL)
                 applyShortcutBinding(to: item)
-            case Self.importTables:
-                (item as? NSMenuToolbarItem)?.menu = buildImportSubmenu()
-                item.menuFormRepresentation?.submenu = buildImportSubmenu()
             default:
                 continue
             }
+        }
+    }
+
+    /// The commit control says what its tab commits: Create Table on a definition tab, Apply
+    /// Changes on Users & Roles, Save Changes everywhere else. The palette, the overflow menu and the
+    /// tooltip all read the label, so all three move with it.
+    ///
+    /// Run only when the visibility key moves, because the verb is a function of the tab kind the
+    /// key carries. It used to follow the staged change, which a Create Table draft raises and
+    /// drops as it becomes valid and invalid, so the label flipped while the user typed and, with
+    /// labels shown, every flip changed the item's width and reflowed the titlebar.
+    private func refreshCommitVerb(for tabKind: TabType?) {
+        let verb = ToolbarContextResolver.commitVerb(for: tabKind)
+        for item in managedToolbar.items where item.itemIdentifier == Self.saveChanges && item.label != verb {
+            apply(label: verb, to: item)
+            updateShortcutDescription(verb, for: Self.saveChanges)
+            applyShortcutBinding(to: item)
         }
     }
 
@@ -287,45 +288,133 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
     }
 
+    // MARK: - Validation
+
+    /// The context a validation question is answered from: the running pass's when there is one,
+    /// and a fresh one otherwise.
+    ///
+    /// A pass asks once per visible item, and the context walks the coordinator for Add Row, Restore
+    /// Previous Values and both navigation directions, so building it per item paid that walk once
+    /// for every item on every pass AppKit runs. AppKit also asks outside a pass, measured on
+    /// macOS 27: an item is validated once as it joins the toolbar, before any pass, and those
+    /// questions take the fresh read.
+    internal func validationContext() -> ToolbarContext {
+        validationPassContext ?? currentContext()
+    }
+
+    /// Runs one validation pass over a context built once for all of it. A pass that starts inside
+    /// another reuses the outer one's, because nothing can move between two items of one pass.
+    internal func withinValidationPass(_ validate: () -> Void) {
+        guard validationPassContext == nil else {
+            validate()
+            return
+        }
+        validationPassContext = currentContext()
+        defer { validationPassContext = nil }
+        validate()
+    }
+
+    // MARK: - Visibility
+
+    /// Re-applies the titlebar's shape and the commit verb when the slow-moving half of the context
+    /// has moved, and otherwise returns after building the key and comparing it.
+    ///
+    /// No whole context is built here. Visibility is a function of the key alone, so the coordinator
+    /// walk the enablement questions need is never paid for a keystroke.
+    ///
+    /// `forcing` is for the moments the shape has to be re-established whatever the key says: a
+    /// repoint to a different connection, and the toolbar first reaching its window. Every launch
+    /// starts from an all-visible toolbar, measured, because `isHidden` is never persisted.
+    internal func refreshContext(forcing: Bool = false) {
+        let key = currentVisibilityKey()
+        guard forcing || key != appliedVisibilityKey else { return }
+        appliedVisibilityKey = key
+        refreshCommitVerb(for: key.tabKind)
+        apply(ToolbarContextResolver.visibility(for: key))
+    }
+
+    /// Writes the resolver's set onto the items the app placed, and never touches one the user
+    /// added from the palette.
+    ///
+    /// `isHidden` and nothing else. `insertItem` and `removeItem` write the saved arrangement to
+    /// disk on the spot, and every connection window shares this toolbar's identifier, so a context
+    /// expressed that way would reach every other window and outlive the app.
+    ///
+    /// The validation pass is not optional. Measured on macOS 27, the `isHidden` setter runs no
+    /// validation, and an item shown again keeps whatever `isEnabled` it had when it went away,
+    /// through the same run-loop turn, the next one and 1.5s later, until something asks.
+    ///
+    /// Below macOS 15 there is no `isHidden`, so the full set stands and the contextual items dim.
+    /// The record is left empty there, because it describes what the app hid and it hid nothing.
+    internal func apply(_ visibility: ToolbarVisibility) {
+        guard #available(macOS 15.0, *) else { return }
+        self.visibility = visibility
+        for item in managedToolbar.items where ToolbarContextResolver.hideableIdentifiers.contains(item.itemIdentifier) {
+            item.isHidden = visibility.hides(item.itemIdentifier)
+        }
+        managedToolbar.validateVisibleItems()
+    }
+
+    /// One pass on the next turn rather than now: the item AppKit announces is not in
+    /// `NSToolbar.items` until the notification returns. A burst of drops is still one pass.
+    ///
+    /// Only the item's own arrival needs it. A delegate that vends a fresh item every time hands
+    /// back one that is visible, so the failure this covers is a hideable item that should be
+    /// hidden staying visible until the next tab switch. With an instance cached across vends the
+    /// failure is worse, measured: the palette hands back the same instance still hidden, and it
+    /// takes a slot and draws nothing.
+    internal func scheduleVisibilityReapply() {
+        guard !isVisibilityReapplyScheduled else { return }
+        isVisibilityReapplyScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isVisibilityReapplyScheduled = false
+            self.apply(self.visibility)
+        }
+    }
+
     // MARK: - Identifiers
 
-    static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
-    static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
-    static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
-    static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
-    static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
-    static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
-    static let safeMode = NSToolbarItem.Identifier("com.TablePro.toolbar.safeMode")
-    static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
-    static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
-    static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
-    static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
+    /// `nonisolated` throughout: these are immutable strings that name a command, and
+    /// `ToolbarContextResolver` reads them from off the main actor to answer which items a context
+    /// shows. Isolating them to this class was incidental to the class being `@MainActor`.
+    nonisolated static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
+    nonisolated static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
+    nonisolated static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
+    nonisolated static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
+    nonisolated static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
+    nonisolated static let safeMode = NSToolbarItem.Identifier("com.TablePro.toolbar.safeMode")
+    nonisolated static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
+    nonisolated static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
+    nonisolated static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
+    nonisolated static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
     /// `.toggleInspector` is macOS 14. The identifier only has to be stable and unique, and
     /// AppKit's own inspector behaviour is not used here, so 13 gets an app-owned one.
-    static let inspector: NSToolbarItem.Identifier = {
+    nonisolated static let inspector: NSToolbarItem.Identifier = {
         if #available(macOS 14.0, *) {
             return .toggleInspector
         }
         return NSToolbarItem.Identifier("com.TablePro.toolbar.inspector")
     }()
-    static let assistant = NSToolbarItem.Identifier("com.TablePro.toolbar.assistant")
-    static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
-    static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
-    static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
-    static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
-    static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
-    static let editorGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.editorGroup")
-    static let restorePreviousValues = NSToolbarItem.Identifier("com.TablePro.toolbar.restorePreviousValues")
-    static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
-    static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
-    static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")
-    static let navigateBack = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateBack")
-    static let navigateForward = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateForward")
+    nonisolated static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
+    nonisolated static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
+    nonisolated static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
+    nonisolated static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
+    nonisolated static let restorePreviousValues = NSToolbarItem
+        .Identifier("com.TablePro.toolbar.restorePreviousValues")
+    nonisolated static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")
+    nonisolated static let navigateBack = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateBack")
+    nonisolated static let navigateForward = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateForward")
+    /// The pull-down that carries the long tail of a context's commands. One control whose menu
+    /// changes with the tab, instead of one permanent titlebar slot per command.
+    nonisolated static let actions = NSToolbarItem.Identifier("com.TablePro.toolbar.actions")
 
     // MARK: - NSToolbarDelegate
 
-    /// Items ahead of `.sidebarTrackingSeparator` lay out in the sidebar's own titlebar strip,
-    /// so the control that switches what the sidebar shows sits over the pane it drives.
+    /// Eight controls, and the zones are the panes. AppKit's own sidebar toggle stands alone ahead of
+    /// `.sidebarTrackingSeparator`, so it lays out in the sidebar's titlebar strip and follows the
+    /// divider; the connection and its container are centred; Refresh, the commit verb, the Actions
+    /// pull-down and Safe Mode are the content run; the trailing-pane toggle closes the row.
     ///
     /// A tracking separator divides the toolbar into pane-aligned sections; it does not align the
     /// items inside one. Everything after `.inspectorTrackingSeparator` therefore lays out from
@@ -335,53 +424,61 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// WWDC23 session 10054. Keep the toggle last: ahead of the separator it lands in the content
     /// section and is wrong in both states.
     ///
-    /// Four runs, and every item in one belongs to the same job, because adjacent items share one
-    /// background under Liquid Glass and a run of unrelated singletons reads as scatter. A
-    /// `NSToolbarItemGroup` is one control however many subitems it holds, so Table Actions and
-    /// the two editor commands are groups rather than five loose buttons.
-    ///
-    /// The centre is what the window is pointed at: the connection and the container, each a
-    /// titled control that opens its own chooser, which is the shape Xcode gives its scheme and
-    /// destination. It carries a title rather than a label, so it still reads as words with the
-    /// toolbar in icon-only mode. The centred item this replaces was an `NSHostingController`, and
-    /// that is the whole reason it used to disappear: measured, a native centred group is still
-    /// fully visible at 700pt where the hosted one was dropped at 1000pt, because AppKit can
-    /// compress a group it draws itself and can only drop a view it does not.
+    /// The centred pair are two top-level items, not two subitems of one group. Measured on macOS
+    /// 27, `NSPopover.show(relativeTo:)` on a subitem raised `NSInvalidArgumentException` ("view has
+    /// no window") whenever its group was hidden or clipped, which Swift cannot catch, while a
+    /// top-level item raised in none of 16 presentations across the same states and across a
+    /// Customize Toolbar visit: AppKit anchors it on the titlebar or on the clipped-items indicator
+    /// instead. As two items they still centre as one adjacent pair, 249pt wide in a 1200pt window
+    /// against the group's 257pt. Each carries a title rather than a label, so it still reads as
+    /// words with the toolbar in icon-only mode, which is the shape Xcode gives its scheme and
+    /// destination.
     ///
     /// Nothing here repeats the window title, which names the tab rather than the connection.
     /// `.inspectorTrackingSeparator` is macOS 14. Without it the divider does not track the
     /// inspector's edge; the items around it are unchanged.
-    internal static var defaultItemIdentifiers: [NSToolbarItem.Identifier] {
+    nonisolated internal static var defaultItemIdentifiers: [NSToolbarItem.Identifier] {
         var items: [NSToolbarItem.Identifier] = [
-            sidebarToggle,
+            .toggleSidebar,
             .sidebarTrackingSeparator,
-            contentModeItem,
-            backForwardGroup,
             .flexibleSpace,
-            connectionGroup,
-            TransportRateToolbarItem.identifier,
+            connection,
+            database,
             .flexibleSpace,
-            refreshSaveGroup,
-            editorGroup,
+            refresh,
+            saveChanges,
+            actions,
             safeMode,
         ]
         if #available(macOS 14.0, *) {
             items.append(.inspectorTrackingSeparator)
         }
-        items.append(contentsOf: [.flexibleSpace, assistant, inspector])
+        items.append(contentsOf: [.flexibleSpace, inspector])
         return items
     }
 
-    /// `addRow`, `restorePreviousValues`, `quickSwitcher` and `newTab` are absent on purpose: they
-    /// ride a group as subitems and the delegate vends no standalone item for any of them, so
-    /// listing one here would offer the customization palette a tile it cannot build.
+    /// A proper superset of the default list: the commands a user can drag in from Customize
+    /// Toolbar. Each one is also in the Actions pull-down or the menu bar, so the default set loses
+    /// nothing by leaving it out, and an item added from here is the user's, so no context hides it.
     ///
-    internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+    /// Back and Forward keep their group, because `isNavigational` is what gives the pair the
+    /// leading-edge placement Finder and Safari use and two loose items cannot have it.
+    ///
+    /// Every identifier here must be one the delegate can build. Asked for one it cannot, the
+    /// delegate answers nil, and with `autosavesConfiguration` on AppKit prunes it from the saved
+    /// arrangement.
+    nonisolated internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+        backForwardGroup,
         previewSQL,
         results,
-        exportImportGroup,
+        exportTables,
+        importTables,
         dashboard,
         history,
+        addRow,
+        restorePreviousValues,
+        newTab,
+        quickSwitcher,
     ]
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -390,89 +487,5 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         Self.allowedItemIdentifiers
-    }
-}
-
-// MARK: - Sidebar Toggle
-
-extension MainWindowToolbar {
-    private static let sidebarSegmentTabs: [SidebarTab] = [.tables, .favorites]
-
-    /// A one-of-N segmented toolbar control is `NSToolbarItemGroup` with `.selectOne`.
-    /// Hand-building two `NSButton`s meant faking selection with border tricks and a
-    /// deprecated bezel, and polling `@Observable` state to keep them in sync.
-    ///
-    /// The group must not be navigational. `isNavigational` lets AppKit lift an item out of its
-    /// declared slot and pin it to the leading edge of the content title area, the way Finder
-    /// places back and forward, which put this control past the sidebar divider no matter where
-    /// `defaultItemIdentifiers` listed it. Without the flag it lays out in the sidebar's own
-    /// titlebar strip, and follows the divider when the sidebar collapses.
-    internal static func makeSidebarSegmentGroup(target: AnyObject?, action: Selector) -> NSToolbarItemGroup {
-        /// Measured on macOS 27: an expanded `selectOne` group publishes a radio group whose buttons
-        /// take their name from each image's `accessibilityDescription` and never from `labels:`.
-        /// With nil, VoiceOver read the SF Symbol's own description, so these two announced as
-        /// "List" and "favorite".
-        let labels = [String(localized: "Tables"), String(localized: "Favorites")]
-        let images = zip(["list.bullet", "star"], labels).compactMap {
-            NSImage(systemSymbolName: $0, accessibilityDescription: $1)
-        }
-        let group = NSToolbarItemGroup(
-            itemIdentifier: sidebarToggle,
-            images: images,
-            selectionMode: .selectOne,
-            labels: labels,
-            target: target,
-            action: action
-        )
-        group.label = String(localized: "Sidebar")
-        group.paletteLabel = group.label
-        group.controlRepresentation = .expanded
-        return group
-    }
-
-    /// `sidebarGroup` is the one handle `syncSidebarSelection()` has on the live control, so only
-    /// the item actually going into the toolbar may claim it. A Customize Toolbar palette copy
-    /// that took the slot left every later sync writing into a discarded group, and the segments
-    /// stopped following the sidebar until the window was reopened.
-    internal func makeSidebarToggleItem(claimsSlot: Bool) -> NSToolbarItem {
-        let group = Self.makeSidebarSegmentGroup(target: self, action: #selector(sidebarSegmentChanged(_:)))
-        bindMenuForm(action: #selector(sidebarSegmentChanged(_:)), to: Self.sidebarToggle)
-        guard claimsSlot else { return group }
-        sidebarGroup = group
-        syncSidebarSelection()
-        return group
-    }
-
-    /// Reachable from the control and from its overflow menu, and the two send different senders:
-    /// the group itself, and an `NSMenuItem`. Reading `selectedIndex` off whatever arrived and
-    /// giving up when it was not a group meant choosing Tables or Favorites from the overflow did
-    /// nothing at all, which is every ordinary window width where the control lives there.
-    ///
-    /// The group is read from `sidebarGroup` rather than from the sender, so both routes resolve the
-    /// same selection, and a menu item carries its segment in `tag`.
-    @objc fileprivate func sidebarSegmentChanged(_ sender: Any?) {
-        guard let index = Self.segmentIndex(from: sender, group: sidebarGroup),
-              Self.sidebarSegmentTabs.indices.contains(index) else { return }
-        coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
-    }
-
-    /// Which segment a toolbar group's action is about, whichever route sent it.
-    internal static func segmentIndex(from sender: Any?, group: NSToolbarItemGroup?) -> Int? {
-        if let menuItem = sender as? NSMenuItem, menuItem.tag >= 0 {
-            return menuItem.tag
-        }
-        if let sent = sender as? NSToolbarItemGroup {
-            return sent.selectedIndex
-        }
-        return group?.selectedIndex
-    }
-
-    /// Pushed from the split view controller whenever the sidebar tab or its collapsed
-    /// state changes, instead of an observation loop watching for it.
-    internal func syncSidebarSelection() {
-        guard let group = sidebarGroup else { return }
-        let tab = coordinator?.splitViewController?.selectedSidebarTab
-        group.selectedIndex = tab.flatMap(Self.sidebarSegmentTabs.firstIndex(of:)) ?? -1
-        managedToolbar.validateVisibleItems()
     }
 }

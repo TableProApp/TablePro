@@ -31,6 +31,7 @@ struct MainContentView: View {
     // Shared state from parent
     @Binding var windowTitle: String
     @Binding var windowSubtitle: String
+    @Binding var windowRepresentedURL: URL?
     @ObservedObject var schemaService = SchemaService.shared
     @ObservedObject var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
@@ -71,6 +72,7 @@ struct MainContentView: View {
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
         windowSubtitle: Binding<String>,
+        windowRepresentedURL: Binding<URL?>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
@@ -85,6 +87,7 @@ struct MainContentView: View {
         self.payload = payload
         self._windowTitle = windowTitle
         self._windowSubtitle = windowSubtitle
+        self._windowRepresentedURL = windowRepresentedURL
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -308,7 +311,8 @@ struct MainContentView: View {
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
-            hasCreateTablePending: toolbarState.hasCreateTablePending
+            hasCreateTablePending: toolbarState.hasCreateTablePending,
+            hasPrincipalChanges: toolbarState.hasPrincipalChanges
         )
     }
 

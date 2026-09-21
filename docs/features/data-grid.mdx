@@ -95,7 +95,7 @@ A column of a foreign key that spans several columns keeps the text editor. The 
 
 The inspector's **JSON** view follows a key without leaving the row: see [Row as JSON](/features/json-viewer#row-as-json).
 
-Step back with the Back and Forward buttons at the leading edge of the toolbar, or **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`). Back restores the table you came from as you left it: same filters, sort, page, and selected row. Each tab keeps its own history and Back never closes a tab. With unsaved edits in the tab, Back asks to discard them first; with a staged structure edit it stands down, because that work cannot be discarded from here.
+Step back with **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`), or with the same pair under **Actions** in the toolbar. Add the buttons to the toolbar with [Customize Toolbar](/features/connection-window#add-a-control-back) to keep them in reach. Back restores the table you came from as you left it: same filters, sort, page, and selected row. Each tab keeps its own history and Back never closes a tab. With unsaved edits in the tab, Back asks to discard them first; with a staged structure edit it stands down, because that work cannot be discarded from here.
 
 <Frame caption="Foreign key lookup">
   <img className="block dark:hidden" src="/images/fk-lookup-popover.png" alt="Foreign key lookup" />
@@ -104,7 +104,7 @@ Step back with the Back and Forward buttons at the leading edge of the toolbar, 
 
 ## Inspector
 
-Press `Cmd+Option+I`, or click the button at the trailing end of the toolbar, to open the inspector beside the grid. Its header names the table and which row of how many is selected, and a **Fields** / **JSON** control switches between two renderings of that row. [Cell and Row Viewers](/features/json-viewer) covers both. Turn on **Auto-show inspector on row select** in [Settings > Data](/customization/data-settings) to open it whenever a row is picked, in a query result as well as a table.
+Press `Cmd+Option+I`, or click the button at the trailing end of the toolbar, to open the inspector beside the grid. The table and which row of how many is selected sit under the [pane's header](/features/connection-window#the-trailing-pane), and **Fields** and **JSON** are the two renderings of that row, picked from the header's ellipsis menu. [Cell and Row Viewers](/features/json-viewer) covers both. Turn on **Auto-show inspector on row select** in [Settings > Data](/customization/data-settings) to open it whenever a row is picked, in a query result as well as a table.
 
 Short values sit on one line, label leading and value trailing. Long text, JSON, PHP, binary and images take the full width. Long text and JSON carry a resize handle; PHP, binary and images draw at a fixed height. `Tab` and `Shift+Tab` move between fields; the menu at the trailing edge of each field carries **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions**, with `Ctrl+Option+N` and `Ctrl+Option+D` as shortcuts for the first two. Search filters the list by column name or stored value, and the pencil button narrows it to fields already edited.
 

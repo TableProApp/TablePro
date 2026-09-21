@@ -62,6 +62,18 @@ internal struct SafeModeFloor: Equatable, Sendable {
         allows(candidate) ? candidate : level
     }
 
+    /// The reason in a few words, for a line with no room for the sentence: the agent conversation's
+    /// context strip carries this beside the level's symbol and keeps `explanation` for its tooltip
+    /// and for VoiceOver. The menu and the toolbar have the room and print the sentence itself.
+    var summary: String {
+        switch reason {
+        case .readOnlyEngine: return String(localized: "Read-only database")
+        case .remoteDatabaseFile: return String(localized: "Read-only file copy")
+        case .managedPolicy: return String(localized: "Required by your organization")
+        case .agentMode: return String(localized: "Writes wait for you")
+        }
+    }
+
     var explanation: String {
         switch reason {
         case .readOnlyEngine:

@@ -344,13 +344,13 @@ struct ConnectionWindowPaneResolverTests {
 
     @Test("The tab strip band appears only for content with more than one tab")
     func tabStripBandFollowsContentAndTabCount() {
-        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 2))
-        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 9))
+        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 2, contentMode: .browse))
+        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 9, contentMode: .browse))
 
         /// A single tab is the window every connection opens with, and it gained no chrome
         /// before this band existed.
-        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 1))
-        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 0))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 1, contentMode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 0, contentMode: .browse))
     }
 
     @Test("A pane with no session behind it shows no tab strip, whatever the stale tab count says")
@@ -361,7 +361,46 @@ struct ConnectionWindowPaneResolverTests {
             .unavailable(.failed(Self.failure)),
             .empty,
         ] {
-            #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: pane, tabCount: 5))
+            #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: pane, tabCount: 5, contentMode: .browse))
+        }
+    }
+
+    /// The tabs belong to the browse content, and Agent mode puts the conversation in its place. A
+    /// band left over the conversation offered tabs a click selected with nothing on screen moving.
+    @Test("Agent mode shows no tab strip, whatever the pane or the tab count")
+    func tabStripBandHiddenInAgentMode() {
+        for pane in Self.everyPane {
+            for tabCount in [0, 1, 2, 9] {
+                #expect(
+                    !ConnectionWindowPaneResolver.showsTabStrip(for: pane, tabCount: tabCount, contentMode: .agent),
+                    "\(pane) with \(tabCount) tabs"
+                )
+            }
+        }
+    }
+
+    @Test("Browsing always draws the browse tree in the detail column")
+    func browsingDrawsTheBrowseTree() {
+        for pane in Self.everyPane {
+            #expect(ConnectionWindowPaneResolver.detailMode(for: pane, contentMode: .browse) == .browse, "\(pane)")
+        }
+    }
+
+    /// The conversation is drawn while connecting on purpose: the prompt the user typed is what
+    /// they are waiting with.
+    @Test("Agent mode draws the conversation over a connection that is up or coming up")
+    func agentModeDrawsTheConversation() {
+        #expect(ConnectionWindowPaneResolver.detailMode(for: .content, contentMode: .agent) == .agent)
+        #expect(ConnectionWindowPaneResolver.detailMode(for: .connecting, contentMode: .agent) == .agent)
+    }
+
+    /// The error, Retry, sign-in and Manage Connections live on the browse side's unavailable
+    /// screen, and a composer with none of them is a dead end.
+    @Test("Agent mode hands the detail column back over a connection that cannot be reached")
+    func agentModeYieldsToTheUnavailableScreen() {
+        let panes: [ConnectionWindowPane] = [.empty] + Self.everyUnavailableReason.map { .unavailable($0) }
+        for pane in panes {
+            #expect(ConnectionWindowPaneResolver.detailMode(for: pane, contentMode: .agent) == .browse, "\(pane)")
         }
     }
 }

@@ -23,7 +23,9 @@ import TableProPluginKit
 /// which is the two-font-domain defect), column separators that scale, an accessibility cell tree,
 /// selection and copy. None of that is worth reimplementing beside the real one.
 internal struct AgentResultRowsView: View {
-    @ObservedObject internal var session: AgentSession
+    internal let runs: [AgentQueryRun]
+    /// Decodes each run once. The pane owns it, so the answer survives a redraw and a sort.
+    internal let artifacts: AgentArtifactCache
     internal let connection: DatabaseConnection?
 
     @State private var changeManager = AnyChangeManager(DataChangeManager())
@@ -33,15 +35,10 @@ internal struct AgentResultRowsView: View {
     @State private var sortState = SortState()
     @StateObject private var gridDelegate = AgentResultGridDelegate()
 
-    private var runs: [AgentQueryRun] {
-        AgentArtifactProjection.build(from: session.viewModel.messages).runs
-    }
-
     var body: some View {
-        let runs = runs
         if runs.isEmpty {
             UnavailableStateView(
-                String(localized: "No results yet"),
+                String(localized: "No Results Yet"),
                 systemImage: "tablecells",
                 description: Text(String(localized: "Rows the session reads appear here."))
             )
@@ -51,7 +48,7 @@ internal struct AgentResultRowsView: View {
             VStack(spacing: 0) {
                 runPicker(runs: runs, current: run)
                 Divider()
-                grid(for: run)
+                result(for: run)
             }
             .onChange(of: run.id) { _ in
                 selectedRows = []
@@ -78,36 +75,76 @@ internal struct AgentResultRowsView: View {
         )
     }
 
+    /// Four answers where there used to be two, because "nothing to draw" was four different things
+    /// and the pane said the same sentence for each: a write that changed rows read as a query that
+    /// had matched none.
     @ViewBuilder
-    private func grid(for run: AgentQueryRun) -> some View {
-        if let decoded = AgentResultDecoder.tableRows(fromResultJSON: run.resultJSON) {
-            let rows = TableRowsSorting.sorted(decoded, by: sortState)
-            DataGridView(
-                tableRowsProvider: { rows },
-                changeManager: changeManager,
-                isEditable: false,
-                configuration: DataGridConfiguration(
-                    databaseType: connection?.type,
-                    showRowNumbers: true,
-                    supportsColumnCommands: false
-                ),
-                delegate: gridDelegate,
-                selectedRowIndices: $selectedRows,
-                sortState: $sortState,
-                columnLayout: $columnLayout,
-                contentRevision: contentRevision(for: run)
-            )
-            .onAppear {
-                gridDelegate.onSortStateChanged = { sortState = $0 }
-            }
-        } else {
-            UnavailableStateView(
-                String(localized: "Nothing to show"),
+    private func result(for run: AgentQueryRun) -> some View {
+        switch artifacts.payload(for: run) {
+        case .rows(let decoded):
+            grid(decoded, for: run)
+        case .noRows:
+            state(
+                title: String(localized: "No Rows"),
                 systemImage: "tablecells",
-                description: Text(String(localized: "This query returned no rows."))
+                description: String(localized: "The query returned no rows.")
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .completed(let rowsAffected):
+            state(
+                title: String(localized: "Statement Completed"),
+                systemImage: "checkmark.circle",
+                description: Self.changeSummary(rowsAffected)
+            )
+        case .unreadable:
+            state(
+                title: String(localized: "Can't Show This Result"),
+                systemImage: "text.bubble",
+                description: String(localized: "The reply is not rows the grid can draw. The conversation has it in full.")
+            )
         }
+    }
+
+    private func grid(_ decoded: TableRows, for run: AgentQueryRun) -> some View {
+        let rows = TableRowsSorting.sorted(decoded, by: sortState)
+        return DataGridView(
+            tableRowsProvider: { rows },
+            changeManager: changeManager,
+            isEditable: false,
+            configuration: DataGridConfiguration(
+                databaseType: connection?.type,
+                showRowNumbers: true,
+                supportsColumnCommands: false
+            ),
+            delegate: gridDelegate,
+            selectedRowIndices: $selectedRows,
+            sortState: $sortState,
+            columnLayout: $columnLayout,
+            contentRevision: contentRevision(for: run)
+        )
+        .onAppear {
+            gridDelegate.onSortStateChanged = { sortState = $0 }
+        }
+    }
+
+    private func state(title: String, systemImage: String, description: String) -> some View {
+        UnavailableStateView(title, systemImage: systemImage, description: Text(description))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Grouped, because a count is read at a glance and "1,204" is legible where "1204" has to be
+    /// counted. A statement that reports no count at all is one from a tool that answers in the
+    /// bridge's shape without sending one.
+    private static func changeSummary(_ rowsAffected: Int?) -> String {
+        guard let rowsAffected else {
+            return String(localized: "The statement returned no rows to show.")
+        }
+        guard rowsAffected > 0 else {
+            return String(localized: "No rows changed.")
+        }
+        let template = rowsAffected == 1
+            ? String(localized: "%@ row changed.")
+            : String(localized: "%@ rows changed.")
+        return String(format: template, rowsAffected.formatted(.number.grouping(.automatic)))
     }
 
     /// Moves whenever the rows the grid should be drawing move, which a sort does without changing

@@ -134,13 +134,14 @@ internal struct InspectorFieldRow: View {
     }
 
     /// The unsaved-edit marker sits at the trailing end rather than in front of the name, so
-    /// recording an edit cannot shift the name it belongs to.
+    /// recording an edit cannot shift the name it belongs to. It is the glyph the filter bar's
+    /// Show edited fields only toggle draws, so the two read as one idea, and not a coloured dot.
     @ViewBuilder
     private var modifiedGlyph: some View {
         if isModified {
-            Circle()
-                .fill(Color.accentColor)
-                .frame(width: 5, height: 5)
+            Image(systemName: "pencil.line")
+                .font(.caption2)
+                .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
         }
     }

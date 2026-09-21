@@ -40,7 +40,7 @@ internal final class RowInspectorState: ObservableObject {
     /// the reader's expansions and the rows already fetched for them.
     internal let jsonViewModel = JSONRowInspectorViewModel()
 
-    internal init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
+    internal init(connectionId: UUID? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.connectionId = connectionId
         self.defaults = defaults
         if let connectionId,

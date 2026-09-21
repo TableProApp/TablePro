@@ -33,7 +33,22 @@ internal final class AgentSessionRegistry: ObservableObject {
     /// Held explicitly rather than derived. Deriving it from `sessions(for:)` answered the oldest
     /// one every time, so New Session appended a row nothing switched to and Open Session moved a
     /// timestamp nothing read: both panes stayed bound to the first session for ever.
-    private var displayedSessionIds: [UUID: UUID] = [:]
+    ///
+    /// Showing nothing is a state of its own. Closing or deleting the session on screen with no other
+    /// live one to hand to used to fall back to the last session in the list, which was the one just
+    /// closed, so the column went on drawing a stopped session with a composer that still took
+    /// messages.
+    private var displayed: [UUID: DisplayedSession] = [:]
+
+    private enum DisplayedSession: Equatable {
+        case session(UUID)
+        case nothing
+    }
+
+    /// Going to work moves a session up the rail, and the rail observes this registry rather than
+    /// each session, so the registry has to say so, and write the new stamp so the order survives a
+    /// relaunch.
+    private var activityCancellables: [UUID: AnyCancellable] = [:]
 
     /// Restore runs here, synchronously, which is the whole point of the store being a plain struct.
     /// A window that opens while a load is suspended finds nothing, mints a session, and is then
@@ -58,6 +73,21 @@ internal final class AgentSessionRegistry: ObservableObject {
                 lastActiveAt: record.lastActiveAt
             )
         }
+        for session in sessions {
+            observeActivity(of: session)
+        }
+    }
+
+    /// `@Published` announces a change before it is stored, so the write waits for the next turn to
+    /// read the new stamp rather than the one it replaces.
+    private func observeActivity(of session: AgentSession) {
+        activityCancellables[session.id] = session.$lastActiveAt
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.objectWillChange.send()
+                Task { @MainActor [weak self] in self?.persist() }
+            }
     }
 
     private func makeViewModel(sessionId: UUID, conversationId: UUID?) -> AIChatViewModel {
@@ -66,10 +96,18 @@ internal final class AgentSessionRegistry: ObservableObject {
 
     // MARK: - Reading
 
+    /// A connection's sessions, the one that last went to work first, which is the order the rail
+    /// lists them in. Two stamped in the same instant keep the order they were added in, newest first.
     internal func sessions(for connectionId: UUID) -> [AgentSession] {
-        sessions
-            .filter { $0.connectionId == connectionId }
-            .sorted { $0.startedAt < $1.startedAt }
+        sessions.enumerated()
+            .filter { $0.element.connectionId == connectionId }
+            .sorted { lhs, rhs in
+                guard lhs.element.lastActiveAt != rhs.element.lastActiveAt else {
+                    return lhs.offset > rhs.offset
+                }
+                return lhs.element.lastActiveAt > rhs.element.lastActiveAt
+            }
+            .map(\.element)
     }
 
     internal func session(id: UUID) -> AgentSession? {
@@ -81,13 +119,23 @@ internal final class AgentSessionRegistry: ObservableObject {
     /// Both the trailing-pane chat and the agent-mode conversation column resolve through here, so
     /// they cannot end up rendering two different sessions of the same connection. Reading never
     /// creates: opening a connection window starts no session and loads no transcript.
+    ///
+    /// With nothing named it is the latest live session, then the latest of any, which is how a
+    /// window opened after a relaunch, where every session comes back stopped, carries on with the
+    /// last one rather than starting another.
     internal func currentSession(for connectionId: UUID) -> AgentSession? {
         let owned = sessions(for: connectionId)
-        if let displayed = displayedSessionIds[connectionId],
-           let match = owned.first(where: { $0.id == displayed }) {
-            return match
+        switch displayed[connectionId] {
+        case .session(let id)?:
+            if let match = owned.first(where: { $0.id == id }) {
+                return match
+            }
+        case .nothing?:
+            return nil
+        case nil:
+            break
         }
-        return owned.first { !$0.status.isEnded } ?? owned.last
+        return owned.first { !$0.status.isEnded } ?? owned.first
     }
 
     /// Names the session a connection's two panes render. The pane render key carries it, so a
@@ -96,11 +144,15 @@ internal final class AgentSessionRegistry: ObservableObject {
         guard sessions.contains(where: { $0.id == sessionId && $0.connectionId == connectionId }) else {
             return
         }
-        displayedSessionIds[connectionId] = sessionId
+        displayed[connectionId] = .session(sessionId)
     }
 
-    internal func displayedSessionId(for connectionId: UUID) -> UUID? {
-        currentSession(for: connectionId)?.id
+    /// Shows the latest live session in place of one that is ending or going away, and nothing when
+    /// no other live one is left. A stopped session is shown only once someone opens it, which
+    /// resumes it.
+    private func handOverDisplay(from session: AgentSession) {
+        let next = sessions(for: session.connectionId).first { $0.id != session.id && !$0.status.isEnded }
+        displayed[session.connectionId] = next.map { .session($0.id) } ?? .nothing
     }
 
     // MARK: - Writing
@@ -114,7 +166,8 @@ internal final class AgentSessionRegistry: ObservableObject {
             viewModel: makeViewModel(sessionId: id, conversationId: nil)
         )
         sessions.append(session)
-        displayedSessionIds[connectionId] = id
+        displayed[connectionId] = .session(id)
+        observeActivity(of: session)
         persist()
         attachRemoteTools(to: session)
         return session
@@ -132,11 +185,19 @@ internal final class AgentSessionRegistry: ObservableObject {
         return startSession(for: connectionId)
     }
 
-    /// Ends one session and keeps its transcript. The conversation stays in the history.
+    /// Ends one session and keeps its transcript. The conversation stays in the history and the
+    /// session stays in the rail, to be opened again.
+    ///
+    /// The session on screen is handed over as it stops, which is what Close Session means. Nothing
+    /// used to tell the panes, so they went on drawing a stopped session with a live composer.
     internal func stopSession(id: UUID) {
         guard let session = session(id: id) else { return }
+        let isShown = currentSession(for: session.connectionId) === session
         session.stop()
         detachRemoteTools(from: id)
+        if isShown {
+            handOverDisplay(from: session)
+        }
         persist()
     }
 
@@ -161,27 +222,25 @@ internal final class AgentSessionRegistry: ObservableObject {
         persist()
     }
 
-    /// Discards a session and the conversation behind it. Only an explicit user action reaches here.
+    /// Discards a session and the conversation behind it. Only an explicit user action reaches here,
+    /// and it has been asked to confirm by then.
     internal func removeSession(id: UUID) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let session = sessions[index]
+        let isShown = currentSession(for: session.connectionId) === session
         let conversationId = session.conversationId
         session.viewModel.cancelStream()
         detachRemoteTools(from: id)
         AIProviderFactory.resetCopilotConversation(sessionId: id)
+        activityCancellables[id] = nil
         sessions.remove(at: index)
-        if displayedSessionIds[session.connectionId] == id {
-            displayedSessionIds[session.connectionId] = sessions(for: session.connectionId).last?.id
+        if isShown {
+            handOverDisplay(from: session)
         }
         if let conversationId {
             let storage = services.aiChatStorage
             Task { await storage.delete(conversationId) }
         }
-        persist()
-    }
-
-    internal func markActive(id: UUID) {
-        session(id: id)?.markActive()
         persist()
     }
 

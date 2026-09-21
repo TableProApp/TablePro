@@ -52,7 +52,7 @@ Turn on **Use Password File** to read the password from `~/.pgpass` instead of t
 
 ## Databases and schemas
 
-Every database on the server is listed, `postgres` included; `template0` and `template1` are not. The sidebar shows every schema you have access to, and the toolbar carries the active database and schema side by side: click either to switch, or press `Cmd+K` for the database list.
+Every database on the server is listed, `postgres` included; `template0` and `template1` are not. The sidebar shows every schema you have access to. The toolbar's centred control names the active database: click it, or press `Cmd+K`, for the list. The active schema has a picker at the foot of the object list in the flat layout, and **Database > Schema** everywhere.
 
 Right-click a schema to drop it. The statement is `DROP SCHEMA … CASCADE`, so views and functions in *other* schemas that depend on it go too; the confirmation says so before it runs.
 

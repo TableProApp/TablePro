@@ -9,8 +9,10 @@ import Foundation
 ///
 /// The inspector and the assistant are peers, not facets of one another: an inspector shows the
 /// attributes of the current selection, and a chat is a separate task surface that no selection
-/// owns. They therefore get one command each rather than two segments of one control, and the
-/// pane's content follows whichever command was used last.
+/// owns. Each keeps a command of its own, and the pane's header offers the two as the segments of
+/// one picker. That picker chooses what the pane holds, the way Xcode's inspector bar does, rather
+/// than rendering the selection a second way, which is what the inspector's old three-way control
+/// conflated. The pane's content follows whichever of them the user chose last.
 ///
 /// Both share one `NSSplitViewItem` and so one autosaved width. Per-surface minimum thicknesses
 /// were measured and rejected: raising `minimumThickness` on a live item force-grows the pane past
@@ -29,6 +31,16 @@ internal enum TrailingPaneSurface: String, CaseIterable, Hashable {
         case .inspector: String(localized: "Inspector")
         case .assistant: String(localized: "Assistant")
         case .agentResult: String(localized: "Result")
+        }
+    }
+
+    /// The glyph the header's picker names a surface by. Not `sidebar.right`, which every surface
+    /// used to share: that names the pane, the one thing all three have in common.
+    internal var symbolName: String {
+        switch self {
+        case .inspector: "info.circle"
+        case .assistant: "sparkles"
+        case .agentResult: "checklist"
         }
     }
 

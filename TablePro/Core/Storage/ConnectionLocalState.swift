@@ -28,7 +28,8 @@ internal enum ConnectionLocalState {
         appSettings: AppSettingsStorage = .shared,
         tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores,
         sqlFavorites: SQLFavoriteManager = .shared,
-        queryHistory: QueryHistoryManager = .shared
+        queryHistory: QueryHistoryManager = .shared,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults
     ) {
         guard !connectionIds.isEmpty else { return }
 
@@ -43,6 +44,7 @@ internal enum ConnectionLocalState {
             QueryInsightsPreferencesStorage.remove(for: connectionId)
             MCPServerStore.shared.forgetConnection(connectionId)
         }
+        purgeTrailingPaneKeys(connectionIds, defaults: defaults)
 
         for store in tableScopedStores {
             store.purgeConnections(connectionIds, leavesTombstones: origin == .local)
@@ -91,6 +93,23 @@ internal enum ConnectionLocalState {
                     "Query history for a deleted connection could not be cleared: \(connectionId, privacy: .public)"
                 )
             }
+        }
+    }
+
+    /// The trailing pane's two keys, which are written straight onto the defaults object rather
+    /// than through a store with a `remove(for:)` of its own, so `purge`'s list of stores never
+    /// reached them. A deleted connection left the surface it was last showing and its inspector's
+    /// view mode behind, and a connection later given the same id inherited both.
+    ///
+    /// Separate from `purge` for the reason `purgeAsyncStores` is: `purge` reaches nine shared
+    /// singletons and a test cannot call it, while this takes the one thing it writes to.
+    internal static func purgeTrailingPaneKeys(
+        _ connectionIds: Set<UUID>,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+    ) {
+        for connectionId in connectionIds {
+            defaults.removeObject(forKey: TrailingPaneState.surfaceKey(connectionId))
+            defaults.removeObject(forKey: RowInspectorState.viewModeKey(connectionId))
         }
     }
 
