@@ -59,7 +59,7 @@ internal extension MainSplitViewController {
     /// Returns without touching the window when the workspace is not the one on screen, which is
     /// why `applySelectedWorkspace` calls it again: a connection put into Agent mode while another
     /// was selected reached the window with its columns still collapsed and nothing to reveal them.
-    internal func applyColumnVisibility(
+    func applyColumnVisibility(
         for connectionId: UUID,
         mode: ConnectionWorkspaceContentMode
     ) {
@@ -100,7 +100,7 @@ internal extension MainSplitViewController {
         showSelectedTrailingPane()
         applyPaneChrome()
         applyWindowTitle()
-        toolbarOwner?.refreshContentMode()
+        toolbarOwner?.refreshContext()
     }
 
     func startAgentSession(for connectionId: UUID) {

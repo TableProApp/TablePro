@@ -20,7 +20,9 @@ import SwiftUI
 /// Two surfaces, chosen by whether an anchor exists:
 /// - The item is in a visible toolbar: an `NSPopover` anchored to it, which is the macOS idiom for
 ///   a toolbar control that reveals a chooser. A clipped item still resolves, and AppKit presents it
-///   "from another appropriate affordance in the window" itself.
+///   "from another appropriate affordance in the window" itself: measured on macOS 27 at a 420pt
+///   window, both centred items anchored on the clipped-items indicator, a 36pt square, and neither
+///   raised.
 /// - No anchor: the same content in the floating panel Open Quickly already uses, which belongs to
 ///   the window rather than to the toolbar.
 @MainActor
@@ -60,9 +62,13 @@ internal final class ToolbarSwitcherPresenter {
     /// `subject` is what makes "the same command" answerable. One presenter serves the connection
     /// chooser and the container chooser, so an identity check on presentation alone would make
     /// either command close the other rather than replace it.
+    ///
+    /// `hiddenBy` is the toolbar's own record of what it took out of the titlebar, forwarded to
+    /// `anchor(in:_:hiddenBy:)`.
     internal func present(
         from window: NSWindow?,
         anchoredTo identifier: NSToolbarItem.Identifier,
+        hiddenBy visibility: ToolbarVisibility?,
         subject: Subject,
         contentSize: NSSize,
         @ViewBuilder content: (_ dismiss: @escaping () -> Void) -> some View
@@ -74,7 +80,7 @@ internal final class ToolbarSwitcherPresenter {
         }
         presentedSubject = subject
 
-        if let item = Self.anchor(in: window, identifier) {
+        if let item = Self.anchor(in: window, identifier, hiddenBy: visibility) {
             /// `.transient`, not `PopoverPresenter`'s `.semitransient` default: a semitransient
             /// popover ignores interaction outside its own window, so moving to another window or
             /// another app would leave the chooser floating over a window it no longer belongs to.
@@ -125,14 +131,36 @@ internal final class ToolbarSwitcherPresenter {
         popover = nil
     }
 
+    /// The toolbar item a chooser presents from, or nil for the floating panel.
+    ///
+    /// It asks AppKit nothing about what is on screen, because nothing AppKit answers is safe to
+    /// act on. Measured on macOS 27, one visit to Customize Toolbar leaves `NSToolbar.visibleItems`
+    /// and `NSToolbarItem.isVisible` over-reporting for good, the item's `view` is nil for every
+    /// native item, and the titlebar's view hierarchy keeps a stale run of item viewers behind. So
+    /// the question splits in two, and neither half is a visibility reading.
+    ///
+    /// Whether the item is reachable is the app's own record: an item the resolver hid answers nil,
+    /// and the chooser takes the floating panel rather than a popover anchored on nothing, which
+    /// AppKit would place at the centre of the window. Which instance to anchor on is
+    /// `NSToolbar.items`, measured correct through every palette visit, down to each item's
+    /// identity. An item the user removed is absent from it, and answers nil the same way.
+    ///
+    /// A clipped item is neither, and needs no answer: every item here is a top-level item, and
+    /// AppKit anchors a clipped top-level item on the clipped-items indicator by itself. Only a
+    /// subitem of a group that was off screen ever raised, and there are no subitems left to anchor
+    /// on.
+    ///
+    /// `hiddenBy` has no default. Nil is a real answer, a toolbar with no resolver that hides
+    /// nothing, and a caller has to say so rather than get it by omission.
+    ///
     /// A hidden toolbar is treated as no anchor at all. `toggleToolbarShown` only flips
     /// `NSToolbar.isVisible` and leaves the items in place, so the item still resolves and AppKit
-    /// documents nothing about what anchoring to it then does. Since the failure mode of guessing
-    /// wrong is an `NSInvalidArgumentException` that Swift cannot catch, this takes the branch it
-    /// can reason about instead of the one it would have to measure.
+    /// documents nothing about what anchoring to it then does. That property belongs to the toolbar
+    /// rather than to an item, and it is measured to read correctly after a palette visit.
     internal static func anchor(
         in window: NSWindow?,
-        _ identifier: NSToolbarItem.Identifier
+        _ identifier: NSToolbarItem.Identifier,
+        hiddenBy visibility: ToolbarVisibility?
     ) -> NSToolbarItem? {
         /// Anchoring a popover on a toolbar item is macOS 14, and an item whose view AppKit
         /// generates reports `view` as nil, so there is nothing to anchor on below it. Answering
@@ -140,37 +168,7 @@ internal final class ToolbarSwitcherPresenter {
         /// toolbar already takes.
         guard #available(macOS 14.0, *) else { return nil }
         guard let toolbar = window?.toolbar, toolbar.isVisible else { return nil }
-        return anchor(identifier, in: toolbar.items, visible: toolbar.visibleItems ?? [])
-    }
-
-    /// The anchor for an identifier that may name a subitem of a group rather than an item the
-    /// toolbar carries directly.
-    ///
-    /// The connection and the container are two subitems of one centred native group, and anchoring
-    /// both choosers to the group put each of them on the seam between the two capsules rather than
-    /// under the one it belongs to. Measured on a 1200pt window: the group's midpoint is 600.0, the
-    /// Connection capsule's is 543.2 and the Container capsule's is 671.8, and a popover anchored to
-    /// the group lands at 600.0 for both. A subitem does resolve as an anchor and lands on its own
-    /// capsule to within a point, even though `NSToolbar.items` lists groups only and a native
-    /// group's subitems carry no `view`.
-    ///
-    /// It resolves only while the group is on screen. Once AppKit clips the group into the overflow
-    /// menu its subitems have no view and `NSPopover.show(relativeTo:)` raises
-    /// `NSInvalidArgumentException` ("view has no window"), which Swift cannot catch; measured, that
-    /// is exactly the width at which `visibleItems` stops naming the group. The group keeps working
-    /// there, because AppKit presents a clipped item from another affordance in the window itself,
-    /// so an overflowed group is the fallback rather than the floating panel.
-    internal static func anchor(
-        _ identifier: NSToolbarItem.Identifier,
-        in items: [NSToolbarItem],
-        visible: [NSToolbarItem]
-    ) -> NSToolbarItem? {
-        if let item = items.first(where: { $0.itemIdentifier == identifier }) { return item }
-        let groups = items.compactMap { $0 as? NSToolbarItemGroup }
-        guard let group = groups.first(where: { group in
-            group.subitems.contains { $0.itemIdentifier == identifier }
-        }) else { return nil }
-        guard visible.contains(where: { $0.itemIdentifier == group.itemIdentifier }) else { return group }
-        return group.subitems.first { $0.itemIdentifier == identifier }
+        guard visibility?.hides(identifier) != true else { return nil }
+        return toolbar.items.first { $0.itemIdentifier == identifier }
     }
 }

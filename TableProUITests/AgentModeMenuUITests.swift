@@ -1,16 +1,11 @@
 import XCTest
 
-/// The mode is asserted through the menu bar, which is the only route that can be driven.
+/// The mode is asserted through the menu bar, which reaches it at any window width.
 ///
-/// Measured against a dumped accessibility tree: the toolbar control publishes as a radio group of
-/// radio buttons, the Agent segment reports `exists` and `isHittable`, and `click()` leaves
-/// `isSelected` false with the window unchanged. AppKit does not route a synthetic click to a
-/// segment inside an `NSToolbarItemGroup`, and at the runner's window width the control sits in the
-/// toolbar's overflow menu, where the segments do not exist at all. A suite built on clicking it
-/// would pass by skipping itself.
-///
-/// The menu command exists partly for that reason and mostly because the HIG asks that every
-/// toolbar item also be a menu-bar command.
+/// The toolbar has no mode control. Browse and Agent are chosen from View > Mode, from ⌥⇧⌘A, and
+/// from the Mode submenu of the toolbar's Actions pull-down, which is filled from the same enum as
+/// View > Mode so the two cannot offer different modes. The Actions pull-down can sit in the
+/// toolbar's overflow menu on a narrow window, the runner's included, and the menu bar cannot.
 final class AgentModeMenuUITests: UITestCase {
     private func openViewModeMenu(in app: XCUIApplication) -> XCUIElement {
         let menuBar = app.menuBars.firstMatch
@@ -36,8 +31,8 @@ final class AgentModeMenuUITests: UITestCase {
         )
     }
 
-    /// Every toolbar item is also a menu-bar command, so the mode is reachable with the toolbar
-    /// hidden, customized, or too narrow to show the control.
+    /// With no mode control in the toolbar, the chord is the one-step way to switch, so the menu has
+    /// to carry it where a user looking for it will find it.
     func testToggleAgentModeCarriesItsShortcut() throws {
         let app = try launchApp()
 

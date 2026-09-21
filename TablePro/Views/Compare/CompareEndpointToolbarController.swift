@@ -101,8 +101,10 @@ internal final class CompareEndpointToolbarController: NSObject {
             dismiss()
             return
         }
+        /// Nil, because the Compare window's toolbar has no context resolver and hides nothing.
         guard let identifier = identifiers[side],
-              let anchor = ToolbarSwitcherPresenter.anchor(in: windowProvider(), identifier) else { return }
+              let anchor = ToolbarSwitcherPresenter.anchor(in: windowProvider(), identifier, hiddenBy: nil)
+        else { return }
 
         let shown = PopoverPresenter.show(
             relativeTo: anchor,

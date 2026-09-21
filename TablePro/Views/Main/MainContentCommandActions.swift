@@ -936,7 +936,7 @@ final class MainContentCommandActions: ObservableObject {
 
     var supportsServerDashboard: Bool {
         guard let type = coordinator?.connection.type else { return false }
-        return ServerDashboardQueryProviderFactory.provider(for: type) != nil
+        return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
     }
 
     func showUsersAndRoles() {

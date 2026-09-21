@@ -27,6 +27,7 @@ struct ConnectionActionsMenuResolverTests {
         String(localized: "Export Results…"),
         String(localized: "Export Tables…"),
         String(localized: "Import Data…"),
+        String(localized: "Import Data From"),
         String(localized: "Show DDL"),
         String(localized: "Copy DDL"),
         String(localized: "Show Query History"),
@@ -88,6 +89,29 @@ struct ConnectionActionsMenuResolverTests {
         }
     }
 
+    /// The list above is only a claim until the menu bar is asked. Every title in it has to be one the
+    /// built menu bar draws, a submenu's own row included, or a pull-down entry could name a twin
+    /// that does not exist and the rule would pass on a typo.
+    @Test("Every twin the rule names is in the built menu bar")
+    @MainActor
+    func menuBarTitlesAreInTheMenuBar() {
+        var drawn: Set<String> = []
+        collectTitles(from: MainMenuBuilder.build(keyboard: KeyboardSettings()), into: &drawn)
+
+        #expect(drawn.count > 50, "Only \(drawn.count) titles collected; the walk missed the menus")
+        for title in Self.menuBarTitles {
+            #expect(drawn.contains(title), "\(title) is named as a twin but the menu bar has no such item")
+        }
+    }
+
+    @MainActor
+    private func collectTitles(from menu: NSMenu, into titles: inout Set<String>) {
+        for item in menu.items where !item.isSeparatorItem {
+            titles.insert(item.title)
+            if let submenu = item.submenu { collectTitles(from: submenu, into: &titles) }
+        }
+    }
+
     /// A section is a run drawn between two separators. Past about six entries a run stops reading
     /// as a group and becomes a list, which is what the pull-down exists to avoid.
     @Test("No section runs longer than six entries")
@@ -136,13 +160,52 @@ struct ConnectionActionsMenuResolverTests {
 
     // MARK: - Capability gates
 
-    @Test("The import submenu is offered only by an engine that has one")
-    func importSubmenuFollowsTheDriver() {
+    @Test("Import is offered only by an engine that has it")
+    func importFollowsTheDriver() {
         let withImport = Self.entries(Self.context(supportsImport: true))
         let without = Self.entries(Self.context(supportsImport: false))
 
         #expect(withImport.contains { $0.submenu == .importFormats })
+        #expect(withImport.contains { $0.selector == NSSelectorFromString("importData:") })
         #expect(without.contains { $0.submenu == .importFormats } == false)
+        #expect(without.contains { $0.selector == NSSelectorFromString("importData:") } == false)
+    }
+
+    /// The command ⇧⌘I runs is a leaf that says so, and the format list is a row of its own. A row
+    /// that owns a submenu can carry neither an action nor a chord, so folding the two into one row
+    /// drew a submenu with no command and no shortcut, and File > Import draws the same two rows.
+    @Test("Import Data… is a plain leaf beside a list of formats, the way File > Import draws them")
+    func importIsALeafBesideTheFormatList() throws {
+        let entries = Self.entries(Self.context(supportsImport: true))
+        let leaf = try #require(entries.first { $0.title == String(localized: "Import Data…") })
+        let list = try #require(entries.first { $0.submenu == .importFormats })
+
+        #expect(leaf.selector == NSSelectorFromString("importData:"))
+        #expect(leaf.shortcut == .importData)
+        #expect(leaf.submenu == nil)
+        #expect(list.title == String(localized: "Import Data From"))
+        #expect(list.title.hasSuffix("…") == false, "A submenu's row opens a menu, not a dialog, so it takes no ellipsis")
+        let leafIndex = try #require(entries.firstIndex(of: leaf))
+        #expect(entries.indices.contains(leafIndex + 1))
+        #expect(entries[leafIndex + 1] == list, "The format list sits right under the command it refines")
+    }
+
+    /// A submenu's row is wired by AppKit to its submenu the moment one is assigned, and AppKit
+    /// ignores a key equivalent on it, so a selector or a chord declared there is a promise the menu
+    /// never keeps.
+    @Test("No submenu row declares a selector or a shortcut")
+    func submenuRowsDeclareNoCommand() {
+        for tabKind in Self.tabKinds + [nil] {
+            for contentMode in ConnectionWorkspaceContentMode.allCases {
+                for isConnected in [true, false] {
+                    let context = Self.context(tabKind: tabKind, contentMode: contentMode, isConnected: isConnected)
+                    for entry in Self.entries(context) where entry.submenu != nil {
+                        #expect(entry.selector == nil, "\(entry.title)")
+                        #expect(entry.shortcut == nil, "\(entry.title)")
+                    }
+                }
+            }
+        }
     }
 
     @Test("Server Dashboard is offered only by an engine that has one")
@@ -251,13 +314,16 @@ struct ConnectionActionsMenuResolverTests {
         #expect(reconnect?.selector == NSSelectorFromString("retryConnection"))
     }
 
-    @Test("Every entry carries a selector and a title")
+    @Test("Every entry is a titled command with a selector, or a titled submenu row")
     func everyEntryIsComplete() {
         for tabKind in Self.tabKinds + [nil] {
             for contentMode in ConnectionWorkspaceContentMode.allCases {
                 for entry in Self.entries(Self.context(tabKind: tabKind, contentMode: contentMode)) {
                     #expect(entry.title.isEmpty == false)
-                    #expect(NSStringFromSelector(entry.selector).isEmpty == false)
+                    #expect((entry.selector == nil) == (entry.submenu != nil), "\(entry.title)")
+                    if let selector = entry.selector {
+                        #expect(NSStringFromSelector(selector).isEmpty == false)
+                    }
                 }
             }
         }

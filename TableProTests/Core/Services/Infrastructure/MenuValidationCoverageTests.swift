@@ -88,6 +88,52 @@ struct MenuValidationCoverageTests {
         }
     }
 
+    /// The toolbar's Actions pull-down carries no target, so each entry reaches the window's
+    /// controller through the responder chain and is validated there, the way the menu bar's own
+    /// commands are. An entry the controller does not implement reaches nothing and AppKit draws it
+    /// disabled, and one it implements with no arm stays lit over a window that cannot run it.
+    /// Every context the resolver can be asked about is walked, and so are the leaves its two
+    /// submenus fill when they open. A submenu's own row carries no selector, so it adds none.
+    @Test("Every Actions entry reaches the window and is decided there")
+    func everyActionsEntryIsAnsweredAndDecided() {
+        let tabKinds: [TabType?] = [
+            .query, .table, .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource, nil,
+        ]
+        var selectors: Set<Selector> = [ImportFormatMenuDelegate.action, ContentModeMenuDelegate.action]
+        for tabKind in tabKinds {
+            for contentMode in ConnectionWorkspaceContentMode.allCases {
+                for isConnected in [true, false] {
+                    let context = ToolbarContext(
+                        tabKind: tabKind,
+                        resultsMode: .data,
+                        contentMode: contentMode,
+                        pane: isConnected ? .content : .unavailable(.notConnected),
+                        isConnected: isConnected,
+                        hasSelectedWorkspace: true,
+                        supportsImport: true,
+                        supportsServerDashboard: true,
+                        isAIEnabled: true
+                    )
+                    for section in ConnectionActionsMenuResolver.sections(context) {
+                        selectors.formUnion(section.entries.compactMap(\.selector))
+                    }
+                }
+            }
+        }
+
+        let unanswered = selectors
+            .filter { !MainSplitViewController.instancesRespond(to: $0) }
+            .map(NSStringFromSelector)
+        let undecided = selectors
+            .filter { !liveValidatedSelectors.contains($0) }
+            .filter { MainSplitViewController.resolvedEnablement($0, context: MenuValidationContext()) == nil }
+            .map(NSStringFromSelector)
+
+        #expect(selectors.count > 20, "Only \(selectors.count) selectors collected; the walk missed contexts")
+        #expect(unanswered.isEmpty, "The window does not implement these, so AppKit draws them dead: \(unanswered)")
+        #expect(undecided.isEmpty, "No arm in resolvedEnablement, so these stay lit: \(undecided)")
+    }
+
     /// The fall-through still has to stand for everything the window does not own, or the system's
     /// own items would arrive disabled.
     @Test("A command the window does not own is left alone")

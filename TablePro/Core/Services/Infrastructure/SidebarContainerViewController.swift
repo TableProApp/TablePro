@@ -9,20 +9,70 @@ import SwiftUI
 
 @MainActor
 internal final class SidebarContainerViewController: NSViewController {
+    /// Which list the rows below show. Window chrome like the field under it, so it stands through
+    /// a connection switch and follows the connection on screen.
+    private let scopeControl = SidebarScopeControl()
     private let searchField = NSSearchField()
     /// Sidebar chrome, like the field it shares a row with, so it survives a connection switch and
     /// writes settings that are not scoped to one. Hidden on the Favorites tab, whose list draws
     /// none of what these options settle.
     private let viewOptionsButton = SidebarViewOptionsButton()
+    private lazy var filterRow = NSStackView(views: [searchField, viewOptionsButton])
     /// The filter field is window chrome and stays put; only the object list below it belongs to a
     /// connection, so that is the part the window swaps.
     private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
     private var observationTask: Task<Void, Never>?
     private var filterPopover: NSPopover?
+    /// Exactly one of these is active. A hidden view keeps its constraints, so hiding the two rows
+    /// alone would leave the list standing under their height.
+    private var listBelowChrome: NSLayoutConstraint?
+    private var listAtTop: NSLayoutConstraint?
+    private var chromeHidden = false
+
+    /// A list the user picked, reported to the window, which owns the sidebar and whether it is
+    /// open.
+    internal var onScopeSelection: ((SidebarTab) -> Void)?
 
     internal func show(_ controller: NSViewController?) {
         listHost.show(controller)
+    }
+
+    /// Which list the scope control has selected, for a caller that has to read the chrome back.
+    internal var selectedScope: SidebarTab? {
+        scopeControl.selectedTab
+    }
+
+    internal var isScopeEnabled: Bool {
+        scopeControl.isEnabled
+    }
+
+    internal var isChromeHidden: Bool {
+        chromeHidden
+    }
+
+    /// Agent mode puts its session rail where the object list goes, and neither row above it has
+    /// anything there to act on: the scope would switch a list that is not drawn, and the field
+    /// would filter one. Both go, and the rail takes their height.
+    internal func setChromeHidden(_ hidden: Bool) {
+        guard chromeHidden != hidden else { return }
+        chromeHidden = hidden
+        applyChromeVisibility()
+    }
+
+    /// Recorded before it is applied, so a mode that arrives before the view loads is still the
+    /// one the view comes up in.
+    private func applyChromeVisibility() {
+        guard isViewLoaded else { return }
+        scopeControl.isHidden = chromeHidden
+        filterRow.isHidden = chromeHidden
+        if chromeHidden {
+            listBelowChrome?.isActive = false
+            listAtTop?.isActive = true
+        } else {
+            listAtTop?.isActive = false
+            listBelowChrome?.isActive = true
+        }
     }
 
     /// Whether the filter field answers, and what it currently holds. The object list below it
@@ -48,6 +98,13 @@ internal final class SidebarContainerViewController: NSViewController {
     override func loadView() {
         view = NSView()
 
+        scopeControl.translatesAutoresizingMaskIntoConstraints = false
+        /// Standing and dimmed until a connection is up, for the reason the field below it is.
+        scopeControl.isEnabled = false
+        scopeControl.target = self
+        scopeControl.action = #selector(scopeChanged(_:))
+        view.addSubview(scopeControl)
+
         searchField.translatesAutoresizingMaskIntoConstraints = false
         /// Standing from the window's first frame, disabled until a connection is up. It used to
         /// be hidden until then, so the sidebar was a bare column for the length of a connect and
@@ -67,7 +124,6 @@ internal final class SidebarContainerViewController: NSViewController {
         /// A stack view rather than two anchored controls, so hiding the button on the Favorites
         /// tab takes its width with it: `detachesHiddenViews` removes a hidden arranged subview
         /// from the layout, where a hidden anchored one would keep its gap beside the field.
-        let filterRow = NSStackView(views: [searchField, viewOptionsButton])
         filterRow.translatesAutoresizingMaskIntoConstraints = false
         filterRow.orientation = .horizontal
         filterRow.alignment = .centerY
@@ -82,25 +138,35 @@ internal final class SidebarContainerViewController: NSViewController {
 
         /// The insets are a margin, not an invariant, so they yield rather than break when the
         /// window narrows the sidebar to the workspace rail and leaves this view no width at all.
-        let rowLeading = filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
-        let rowTrailing = filterRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10)
-        rowLeading.priority = .defaultHigh
-        rowTrailing.priority = .defaultHigh
+        let insets = [
+            scopeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            scopeControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+            filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            filterRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+        ]
+        for inset in insets {
+            inset.priority = .defaultHigh
+        }
+        let listBelowChrome = hostingView.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 5)
+        self.listBelowChrome = listBelowChrome
+        listAtTop = hostingView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
 
-        NSLayoutConstraint.activate([
-            filterRow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
-            rowLeading,
-            rowTrailing,
+        NSLayoutConstraint.activate(insets + [
+            scopeControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
+            filterRow.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 6),
 
-            hostingView.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 5),
+            listBelowChrome,
             hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hostingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        applyChromeVisibility()
     }
 
+    /// Asked of the field's ancestors too, because Agent mode hides the row it sits in rather
+    /// than the field itself, and focusing a field nobody can see puts the keyboard nowhere.
     func focusSearchField() {
-        guard !searchField.isHidden else { return }
+        guard !searchField.isHiddenOrHasHiddenAncestor else { return }
         view.window?.makeFirstResponder(searchField)
     }
 
@@ -126,7 +192,7 @@ internal final class SidebarContainerViewController: NSViewController {
     /// because that is what it scopes, and because the field is the one piece of sidebar chrome
     /// that outlives a workspace switch.
     func presentDatabaseFilter(connectionId: UUID, sidebarState: SharedSidebarState) {
-        guard !searchField.isHidden else { return }
+        guard !searchField.isHiddenOrHasHiddenAncestor else { return }
         filterPopover?.close()
         filterPopover = PopoverPresenter.show(
             relativeTo: searchField.bounds,
@@ -159,13 +225,18 @@ internal final class SidebarContainerViewController: NSViewController {
             searchField.placeholderString = String(localized: "Filter")
             searchField.setAccessibilityLabel(String(localized: "Filter"))
             viewOptionsButton.isHidden = true
+            scopeControl.isEnabled = false
+            scopeControl.selectedTab = nil
             return
         }
         searchField.isEnabled = true
+        scopeControl.isEnabled = true
         /// Set here rather than left to the observation task, which runs on the next main-actor
         /// turn: the button would show over the favorites filter for a turn on the way in, and
-        /// linger for a turn on the way out, with the stack view re-laying the row each time.
+        /// linger for a turn on the way out, with the stack view re-laying the row each time. The
+        /// scope follows for the same reason, or it would name the previous connection's list.
         viewOptionsButton.isHidden = state.selectedSidebarTab != .tables
+        scopeControl.selectedTab = state.selectedSidebarTab
         observationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -195,7 +266,10 @@ internal final class SidebarContainerViewController: NSViewController {
         observationTask?.cancel()
     }
 
+    /// Every later change to the list choice arrives here, so View > Show Tables and Show
+    /// Favorites, which write the same state the scope control does, move the control with them.
     private func syncFromState(_ state: SharedSidebarState) {
+        scopeControl.selectedTab = state.selectedSidebarTab
         let activeText: String
         let placeholder: String
         switch state.selectedSidebarTab {
@@ -214,6 +288,15 @@ internal final class SidebarContainerViewController: NSViewController {
         }
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
+    }
+
+    /// Only a change reaches the window. `NSSegmentedControl` sends its action for a click on the
+    /// segment that is already selected as well, measured on macOS 27, and the command it drives
+    /// collapses the sidebar on a second press of the list it is showing. From a control inside the
+    /// sidebar that would take the control away with the pane it sits in.
+    @objc private func scopeChanged(_ sender: SidebarScopeControl) {
+        guard let tab = sender.selectedTab, tab != sidebarState?.selectedSidebarTab else { return }
+        onScopeSelection?(tab)
     }
 }
 

@@ -137,6 +137,15 @@ extension MainSplitViewController {
         commandActions?.importTables(formatId: formatId)
     }
 
+    /// One named format, from a list `ImportFormatMenuDelegate` filled. Its own selector rather
+    /// than a second reading of `importData(_:)`, because that one is the menu bar's Import Data
+    /// and carries ⇧⌘I: AppKit ignores a key equivalent on an item that owns a submenu, so the
+    /// shortcut has to stay on a leaf that needs no format.
+    @objc func importDataFormat(_ sender: Any?) {
+        guard let formatId = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        commandActions?.importTables(formatId: formatId)
+    }
+
     @objc func backupDatabase(_ sender: Any?) {
         commandActions?.backupDatabase()
     }

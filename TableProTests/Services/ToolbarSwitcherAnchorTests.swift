@@ -12,24 +12,21 @@ import Testing
 /// when it is not. Getting that decision wrong is not a layout glitch: `NSPopover.show(relativeTo:)`
 /// throws `NSInvalidArgumentException` when it cannot locate the item, and Swift cannot catch it,
 /// so this is the guard that keeps a missing anchor from being a crash.
+///
+/// The decision reads the app's own record of what it hid and `NSToolbar.items`, and nothing
+/// AppKit reports about visibility, because one Customize Toolbar visit is measured to leave
+/// `visibleItems` and `NSToolbarItem.isVisible` over-reporting for good.
 @Suite("ToolbarSwitcherPresenter anchor resolution")
 @MainActor
 struct ToolbarSwitcherAnchorTests {
     private static let identifier = NSToolbarItem.Identifier("com.TablePro.tests.anchor")
+    private static let sibling = NSToolbarItem.Identifier("com.TablePro.tests.anchor.sibling")
 
     private final class Delegate: NSObject, NSToolbarDelegate {
         var identifiers: [NSToolbarItem.Identifier]
-        let groupIdentifier: NSToolbarItem.Identifier
-        let subitemIdentifiers: [NSToolbarItem.Identifier]
 
-        init(
-            identifiers: [NSToolbarItem.Identifier],
-            groupIdentifier: NSToolbarItem.Identifier,
-            subitemIdentifiers: [NSToolbarItem.Identifier]
-        ) {
+        init(identifiers: [NSToolbarItem.Identifier]) {
             self.identifiers = identifiers
-            self.groupIdentifier = groupIdentifier
-            self.subitemIdentifiers = subitemIdentifiers
         }
 
         func toolbar(
@@ -37,12 +34,7 @@ struct ToolbarSwitcherAnchorTests {
             itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
             willBeInsertedIntoToolbar flag: Bool
         ) -> NSToolbarItem? {
-            guard itemIdentifier == groupIdentifier else {
-                return NSToolbarItem(itemIdentifier: itemIdentifier)
-            }
-            let group = NSToolbarItemGroup(itemIdentifier: itemIdentifier)
-            group.subitems = subitemIdentifiers.map { NSToolbarItem(itemIdentifier: $0) }
-            return group
+            NSToolbarItem(itemIdentifier: itemIdentifier)
         }
 
         func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -57,18 +49,17 @@ struct ToolbarSwitcherAnchorTests {
     /// Returned so the caller can hold it with `withExtendedLifetime`: `NSToolbar` keeps its
     /// delegate weakly, and a deallocated one leaves a toolbar with no items, which would make every
     /// case here "pass" for the wrong reason.
-    private func makeWindow(containing identifiers: [NSToolbarItem.Identifier]) -> (NSWindow, Delegate) {
+    private func makeWindow(
+        containing identifiers: [NSToolbarItem.Identifier],
+        width: CGFloat = 800
+    ) -> (NSWindow, Delegate) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: 400),
             styleMask: [.titled],
             backing: .buffered,
             defer: true
         )
-        let delegate = Delegate(
-            identifiers: identifiers,
-            groupIdentifier: Self.groupIdentifier,
-            subitemIdentifiers: [Self.leadingIdentifier, Self.trailingIdentifier]
-        )
+        let delegate = Delegate(identifiers: identifiers)
         let toolbar = NSToolbar(identifier: "com.TablePro.tests.toolbar")
         toolbar.delegate = delegate
         window.toolbar = toolbar
@@ -83,19 +74,18 @@ struct ToolbarSwitcherAnchorTests {
     func resolvesItemInVisibleToolbar() {
         let (window, delegate) = makeWindow(containing: [Self.identifier])
         withExtendedLifetime(delegate) {
-            let item = ToolbarSwitcherPresenter.anchor(in: window, Self.identifier)
+            let item = ToolbarSwitcherPresenter.anchor(in: window, Self.identifier, hiddenBy: nil)
             #expect(item?.itemIdentifier == Self.identifier)
         }
     }
 
     /// What Customize Toolbar leaves behind. A clipped item is a different state and keeps its
-    /// place in `toolbar.items`, so it still resolves and still takes the popover branch; that one
-    /// needs a real overflowing toolbar and so is not reachable from a unit test.
+    /// place in `toolbar.items`, so it still resolves and still takes the popover branch.
     @Test("An item the toolbar does not carry has no anchor")
     func missingItemHasNoAnchor() {
         let (window, delegate) = makeWindow(containing: [])
         withExtendedLifetime(delegate) {
-            #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier) == nil)
+            #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier, hiddenBy: nil) == nil)
         }
     }
 
@@ -109,7 +99,7 @@ struct ToolbarSwitcherAnchorTests {
             window.toolbar?.isVisible = false
 
             #expect(window.toolbar?.items.contains { $0.itemIdentifier == Self.identifier } == true)
-            #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier) == nil)
+            #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier, hiddenBy: nil) == nil)
         }
     }
 
@@ -122,82 +112,63 @@ struct ToolbarSwitcherAnchorTests {
             defer: true
         )
 
-        #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier) == nil)
+        #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier, hiddenBy: nil) == nil)
     }
 
     @Test("No window has no anchor")
     func noWindowHasNoAnchor() {
-        #expect(ToolbarSwitcherPresenter.anchor(in: nil, Self.identifier) == nil)
+        #expect(ToolbarSwitcherPresenter.anchor(in: nil, Self.identifier, hiddenBy: nil) == nil)
     }
 
-    // MARK: - Group subitems
-
-    private static let groupIdentifier = NSToolbarItem.Identifier("com.TablePro.tests.anchor.group")
-    private static let leadingIdentifier = NSToolbarItem.Identifier("com.TablePro.tests.anchor.leading")
-    private static let trailingIdentifier = NSToolbarItem.Identifier("com.TablePro.tests.anchor.trailing")
-
-    private func makeGroup() -> NSToolbarItemGroup {
-        let group = NSToolbarItemGroup(itemIdentifier: Self.groupIdentifier)
-        group.subitems = [
-            NSToolbarItem(itemIdentifier: Self.leadingIdentifier),
-            NSToolbarItem(itemIdentifier: Self.trailingIdentifier),
-        ]
-        return group
-    }
-
-    /// The centred pair are subitems of one group, and the group is two capsules wide. Anchoring
-    /// both choosers to the group put each of them on the seam between the capsules: measured on a
-    /// 1200pt window, the group's midpoint is 600.0 while the two capsules sit at 543.2 and 671.8.
-    @Test("A subitem of a visible group is the anchor, not the group")
-    func resolvesSubitemOfVisibleGroup() {
-        let group = makeGroup()
-
-        let anchor = ToolbarSwitcherPresenter.anchor(Self.trailingIdentifier, in: [group], visible: [group])
-
-        #expect(anchor?.itemIdentifier == Self.trailingIdentifier)
-    }
-
-    /// A subitem of a clipped group has no view, and `NSPopover.show(relativeTo:)` raises
-    /// `NSInvalidArgumentException` for one, which Swift cannot catch. The group still resolves,
-    /// because AppKit presents a clipped item from another affordance in the window itself.
-    @Test("A subitem of an overflowed group falls back to the group")
-    func fallsBackToOverflowedGroup() {
-        let group = makeGroup()
-
-        let anchor = ToolbarSwitcherPresenter.anchor(Self.leadingIdentifier, in: [group], visible: [])
-
-        #expect(anchor?.itemIdentifier == Self.groupIdentifier)
-    }
-
-    /// What Customize Toolbar leaves behind for the centred pair: neither subitem is an allowed
-    /// identifier of its own, so removing the group takes both choosers' anchors with it.
-    @Test("A subitem of a group the toolbar does not carry has no anchor")
-    func missingGroupHasNoAnchor() {
-        #expect(ToolbarSwitcherPresenter.anchor(Self.leadingIdentifier, in: [], visible: []) == nil)
-    }
-
-    /// The toolbar's own item wins without consulting the visible list, which is what keeps a
-    /// clipped top-level item resolving.
-    @Test("A top-level item resolves even when it is not visible")
-    func resolvesOverflowedTopLevelItem() {
-        let item = NSToolbarItem(itemIdentifier: Self.identifier)
-
-        let anchor = ToolbarSwitcherPresenter.anchor(Self.identifier, in: [item], visible: [])
-
-        #expect(anchor?.itemIdentifier == Self.identifier)
-    }
-
-    /// The whole path both switchers take: an identifier that names no item of the toolbar still
-    /// reaches the capsule it belongs to.
-    @Test("The window lookup resolves a subitem of the toolbar's group")
-    func windowLookupResolvesSubitem() {
-        let (window, delegate) = makeWindow(containing: [Self.groupIdentifier])
+    /// An item the context took out of the titlebar is still in `toolbar.items`, because hiding is
+    /// how the context is expressed. A popover anchored on it lands at the window's centre, measured,
+    /// attached to nothing, so the record sends the chooser to the floating panel instead.
+    @Test("An item the context hid has no anchor, although the toolbar still carries it")
+    func hiddenItemHasNoAnchor() {
+        let (window, delegate) = makeWindow(containing: [Self.identifier, Self.sibling])
         withExtendedLifetime(delegate) {
-            #expect(window.toolbar?.items.contains { $0.itemIdentifier == Self.leadingIdentifier } == false)
+            let visibility = ToolbarVisibility(hidden: [Self.identifier])
 
-            let anchor = ToolbarSwitcherPresenter.anchor(in: window, Self.leadingIdentifier)
+            #expect(window.toolbar?.items.contains { $0.itemIdentifier == Self.identifier } == true)
+            #expect(ToolbarSwitcherPresenter.anchor(in: window, Self.identifier, hiddenBy: visibility) == nil)
+        }
+    }
 
-            #expect(anchor?.itemIdentifier == Self.leadingIdentifier)
+    /// Hiding one of the centred pair is the file-based case, and the other has to keep its anchor.
+    @Test("An item the context did not hide still anchors beside one it did")
+    func siblingOfAHiddenItemAnchors() {
+        let (window, delegate) = makeWindow(containing: [Self.identifier, Self.sibling])
+        withExtendedLifetime(delegate) {
+            let visibility = ToolbarVisibility(hidden: [Self.sibling])
+            let anchor = ToolbarSwitcherPresenter.anchor(in: window, Self.identifier, hiddenBy: visibility)
+            #expect(anchor?.itemIdentifier == Self.identifier)
+        }
+    }
+
+    /// Nil is a toolbar with no context resolver, which hides nothing, so everything the toolbar
+    /// carries resolves.
+    @Test("With no record, everything the toolbar carries resolves")
+    func noRecordHidesNothing() {
+        let (window, delegate) = makeWindow(containing: [Self.identifier, Self.sibling])
+        withExtendedLifetime(delegate) {
+            for identifier in [Self.identifier, Self.sibling] {
+                let anchor = ToolbarSwitcherPresenter.anchor(in: window, identifier, hiddenBy: nil)
+                #expect(anchor?.itemIdentifier == identifier)
+            }
+        }
+    }
+
+    /// A clipped top-level item still resolves, because the answer comes from `toolbar.items`
+    /// rather than from anything that reports what is laid out. AppKit anchors the popover on the
+    /// clipped-items indicator itself, measured on macOS 27 with no raise in any state.
+    @Test("An item resolves whether or not the window has room for it")
+    func resolvesWhateverTheWidth() {
+        let identifiers = (0..<12).map { NSToolbarItem.Identifier("com.TablePro.tests.anchor.\($0)") }
+        let (window, delegate) = makeWindow(containing: identifiers, width: 120)
+        withExtendedLifetime(delegate) {
+            let last = identifiers[identifiers.count - 1]
+            let anchor = ToolbarSwitcherPresenter.anchor(in: window, last, hiddenBy: ToolbarVisibility())
+            #expect(anchor?.itemIdentifier == last)
         }
     }
 }

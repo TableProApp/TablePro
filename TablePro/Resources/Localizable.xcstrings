@@ -3832,9 +3832,6 @@
         }
       }
     },
-    "%@ through this connection's transport" : {
-
-    },
     "%@ wants to access '%@' (%@)." : {
       "localizations" : {
         "en" : {
@@ -12744,6 +12741,9 @@
       }
     },
     "A view" : {
+
+    },
+    "Actions" : {
 
     },
     "about %@ row" : {
@@ -35943,6 +35943,9 @@
           }
         }
       }
+    },
+    "Commands for the current tab and connection" : {
+
     },
     "Comment Unavailable" : {
 
@@ -63183,6 +63186,7 @@
       }
     },
     "Export & Import" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -76438,6 +76442,9 @@
           }
         }
       }
+    },
+    "Import Data From" : {
+
     },
     "Import data" : {
       "extractionState" : "stale",
@@ -122088,9 +122095,6 @@
     "Received" : {
 
     },
-    "Receiving %@" : {
-
-    },
     "Recent" : {
       "localizations" : {
         "ko" : {
@@ -122744,6 +122748,9 @@
           }
         }
       }
+    },
+    "Redis Cluster serves database 0 only, so it cannot switch databases." : {
+
     },
     "Redis driver has no TLS fallback. Preferred and Required both force TLS. Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints." : {
       "localizations" : {
@@ -137970,9 +137977,6 @@
         }
       }
     },
-    "Sending %@" : {
-
-    },
     "Sent" : {
 
     },
@@ -152504,6 +152508,7 @@
       }
     },
     "Table Actions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -166924,9 +166929,6 @@
         }
       }
     },
-    "Throughput" : {
-
-    },
     "Throughput is measured for SSH tunnels and SOCKS proxies, the transports TablePro carries the bytes for itself." : {
 
     },
@@ -171960,6 +171962,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未知的 URL scheme：%@"
+          }
+        }
+      }
+    },
+    "Unknown explain variant '%@'." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알 수 없는 EXPLAIN 변형 '%@'입니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilinmeyen açıklama varyantı '%@'."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biến thể EXPLAIN không xác định '%@'."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 EXPLAIN 变体 '%@'。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 EXPLAIN 變體 '%@'。"
           }
         }
       }

@@ -167,13 +167,4 @@ struct PendingChangeKindTests {
             ) == nil
         )
     }
-
-    @Test("Each kind names the verb its tab commits with")
-    func commitTitles() {
-        #expect(PendingChangeKind.data.commitTitle == PendingChangeKind.structure.commitTitle)
-        #expect(PendingChangeKind.data.commitTitle == PendingChangeKind.file.commitTitle)
-        #expect(PendingChangeKind.createTable.commitTitle != PendingChangeKind.data.commitTitle)
-        #expect(PendingChangeKind.principals.commitTitle != PendingChangeKind.data.commitTitle)
-        #expect(PendingChangeKind.principals.commitTitle != PendingChangeKind.createTable.commitTitle)
-    }
 }

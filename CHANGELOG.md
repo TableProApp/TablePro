@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Numbered databases on Valkey 9 clusters with `cluster-databases` above 1.
 - `DB <index> <command>` in the Redis editor, running one command on another database.
 - Explain for Teradata.
+- **Actions** menu in the connection window's toolbar, with the commands for the tab you are on and every import format.
+- **File > Import > Import Data From**, for choosing the import format from the menu bar.
 
 ### Changed
 
@@ -43,16 +45,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iCloud sync and usage data on iPhone and iPad stay off until you turn them on.
 - Group rows in the iOS connection list take swipe actions and show even when no connection is saved.
 - Typed entry beside the stepper for number settings in the connection form.
+- Connection window toolbar trimmed to eight controls that follow the tab and the mode.
+- **Tables** and **Favorites** chooser moved from the toolbar to the top of the sidebar.
 
 ### Removed
 
 - **Refresh from iCloud**, **Sync Now** and the toolbar sync button on iPhone and iPad.
 - **Manage Groups**, the **Clear** button on **Recent**, and the **More** menu's tag filter on iPhone and iPad.
+- Throughput readout in the toolbar; the connection switcher still shows it.
+- Back, Forward, New Tab, Open Quickly, Add Row, Restore Previous Values and Assistant from the default toolbar; **Customize Toolbar** adds them back.
 
 ### Fixed
 
 - **Save Changes** and ⌘S dim on a Users & Roles tab with staged changes.
 - A deleted connection's inspector and assistant choice left behind, and inherited by a new connection with its id.
+- Toolbar **Results** button enabled on tabs that have no results pane.
+- Toolbar **History** button enabled over a window that never connected.
+- Toolbar **Inspector** button dim on macOS 13 over a pane left open when the connection dropped.
 - A column resized moments before its table was dropped saving the layout back over the clear.
 - A connection left pointing at a database that was dropped.
 - A dropped table's saved filters, column layout, highlight rules, value formats and label columns coming back on a table recreated with its name.

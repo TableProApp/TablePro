@@ -12,8 +12,9 @@ import TableProPluginKit
 ///
 /// It is a menu rather than a toolbar control because the set is dynamic: a driver may publish
 /// none, one or several, and `NSToolbar` needs a fixed identifier per item. As hosted SwiftUI
-/// inside the connection group these had no overflow entry, no menu command and no shortcut, so a
-/// window narrow enough to clip that group left no way to change warehouse or role at all.
+/// inside the toolbar group that once held the connection and its database, these had no overflow
+/// entry, no menu command and no shortcut, so a window narrow enough to clip that group left no way
+/// to change warehouse or role at all.
 @MainActor
 final class SessionContextMenuDelegate: NSObject, NSMenuDelegate {
     private static let action = #selector(MainSplitViewController.switchSessionContext(_:))

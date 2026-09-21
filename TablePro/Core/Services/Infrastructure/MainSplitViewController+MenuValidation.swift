@@ -7,7 +7,7 @@ import AppKit
 
 /// Everything the menu bar needs to decide whether a command applies, captured once
 /// per validation pass. Keeping it a plain value keeps `isEnabled` pure and testable,
-/// the same split `MainWindowToolbar+Validation` uses for the toolbar.
+/// the same split `ToolbarContextResolver` uses for the toolbar.
 struct MenuValidationContext: Equatable {
     /// Comes from the window's own `ConnectionWindowPhase`, never from the presence of a
     /// coordinator: the coordinator deliberately outlives a lost session so a reconnect keeps
@@ -189,7 +189,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(closeAllTabs(_:)):
             return context.canCloseAllTabs
 
-        case #selector(importData(_:)):
+        case #selector(importData(_:)), #selector(importDataFormat(_:)):
             return context.isConnected && !context.isReadOnly && context.hasImportFormats
         case #selector(backupDatabase(_:)):
             return context.isConnected && context.supportsBackup

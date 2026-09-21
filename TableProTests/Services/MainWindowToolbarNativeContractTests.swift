@@ -38,84 +38,16 @@ struct MainWindowToolbarNativeContractTests {
         }
     }
 
-    /// The one exception, and the reason it is safe. A view-less item would carry the figure in
-    /// `title`, and a title re-measures: written into one with `validateVisibleItems()` called, the
-    /// group went 219pt, 233pt, 232pt, 251pt across `0 kB/s`, `145 kB/s`, `1.2 MB/s` and
-    /// `888.8 MB/s`, walking its own midpoint 16pt and sliding the connection name beside it once a
-    /// second. A view pinned to a width holds still: the group and field frames were byte-identical
-    /// across the same four figures.
-    ///
-    /// What made the old hosted status item undroppable was that it had no width of its own to give
-    /// back. This one is pinned to a width measured from the widest figure it can ever draw, so it
-    /// never needs compressing, and it is only in the group at all for a connection whose bytes the
-    /// app carries.
-    @Test("The throughput readout is view-backed, and pinned to a width it cannot outgrow")
-    func throughputReadoutIsPinned() throws {
-        let owner = MainWindowToolbar()
-        let field = try #require(owner.transportRateItem.view as? NSTextField)
-        let pinned = field.constraints.filter { $0.firstAttribute == .width && $0.relation == .equal }
-        let constant = try #require(pinned.first?.constant)
-
-        #expect(pinned.count == 1, "The readout must carry exactly one width constraint")
-
-        let font = try #require(field.font)
-        for candidate in TransportRateLabel.widestCandidates {
-            let width = (candidate as NSString).size(withAttributes: [.font: font]).width
-            #expect(width <= constant, "\"\(candidate)\" needs \(width)pt but the field is \(constant)pt")
-        }
-    }
-
-    /// Bare text, no capsule, which is what Xcode does with the one comparable thing it ships: its
-    /// Window Title/Activity readout draws as plain text beside the Back/Forward capsule, measured
-    /// on a running Xcode. `isBordered` here would give the readout a platter of its own and make
-    /// the centre three capsules for two controls and one number.
-    @Test("The throughput readout wears no capsule")
-    func throughputReadoutIsUnbordered() {
-        #expect(!MainWindowToolbar().transportRateItem.isBordered)
-    }
-
-    /// Beside the centred pair, never inside it. A group is laid out around its own midpoint, so a
-    /// readout among the subitems pushes the connection and database capsules off centre by half its
-    /// width. Measured at 1400pt: as its own adjacent item the group sits at x=647.0 midX=772.8,
-    /// byte-identical to carrying no readout at all.
-    @Test("The readout sits beside the centred group, not inside it and not centred itself")
-    func readoutIsAdjacentToTheCentre() throws {
-        let owner = MainWindowToolbar()
-        let group = try #require(
-            owner.toolbar(
-                owner.managedToolbar,
-                itemForItemIdentifier: MainWindowToolbar.connectionGroup,
-                willBeInsertedIntoToolbar: true
-            ) as? NSToolbarItemGroup
-        )
-
-        #expect(!group.subitems.contains { $0 === owner.transportRateItem })
-        #expect(!owner.managedToolbar.centeredItemIdentifiers.contains(TransportRateToolbarItem.identifier))
-
-        let identifiers = MainWindowToolbar.defaultItemIdentifiers
-        let centre = try #require(identifiers.firstIndex(of: MainWindowToolbar.connectionGroup))
-        let readout = try #require(identifiers.firstIndex(of: TransportRateToolbarItem.identifier))
-        #expect(readout == centre + 1, "The readout must follow the centred group immediately")
-    }
-
-    /// Emptying the readout's own group is how it leaves the toolbar. Measured, nothing else hides
-    /// it cleanly: a hidden view keeps its 75pt and a zero-width constraint still leaves 24pt, and
-    /// `NSToolbarItem.isHidden` is macOS 15 against a macOS 14 floor.
-    @Test("A connection with no measurable transport shows no readout")
-    func unmeasuredConnectionsCarryNoReadout() {
-        #expect(MainWindowToolbar().transportRateGroup.subitems.isEmpty)
-    }
-
     /// Availability is `isEnabled`, never presence. Measured on three running Apple apps, Xcode,
     /// Finder in column view and System Settings all keep the 75pt Back/Forward capsule and dim the
     /// direction that has nowhere to go; the HIG says the same for the menu bar, "disable the action
     /// instead of hiding it".
     ///
     /// This asserts on the VENDED item and on a toolbar with no coordinator, which is the state a
-    /// hidden pair would report. Testing the pure `isEnabled(itemIdentifier:context:)` predicate
-    /// cannot catch the regression this replaces: four such cases in
-    /// `MainWindowToolbarValidationTests` stayed green for the whole life of the hiding commit,
-    /// because they never look at composition.
+    /// hidden pair would report. Testing the pure `ToolbarContextResolver.isEnabled` predicate
+    /// cannot catch the regression this replaces: four such cases stayed green for the whole life
+    /// of the hiding commit, because they never look at composition. The pair is offered by
+    /// Customize Toolbar rather than the default set, and a user who puts it back gets it whole.
     @Test("Back and forward are present and dimmed, never absent")
     func navigationIsPresentAndDimmed() throws {
         let owner = MainWindowToolbar()
@@ -130,7 +62,8 @@ struct MainWindowToolbarNativeContractTests {
         #expect(group.subitems.count == 2, "The pair is installed unconditionally")
         #expect(group.subitems.map(\.itemIdentifier) == [MainWindowToolbar.navigateBack, MainWindowToolbar.navigateForward])
         /// What puts the pair on the leading edge, where the HIG keeps items that return to the
-        /// previous document and where they are not customizable away.
+        /// previous document, once a user has dragged it in from Customize Toolbar. The default set
+        /// no longer carries it; ⌃⌘[ and ⌃⌘] and the Actions pull-down on a table tab do instead.
         #expect(group.isNavigational)
 
         for subitem in group.subitems {
@@ -157,49 +90,30 @@ struct MainWindowToolbarNativeContractTests {
         }
     }
 
-    /// The readout is a readout: it publishes no action, so AppKit never validates it and it has no
-    /// menu-bar command of its own. That is the trade the placement makes, and it is pinned here so
-    /// a later change that gives it an action has to say so.
-    ///
-    /// It still gets an overflow entry, because the centred group is the first region AppKit sheds
-    /// when the window narrows and the figure should not vanish with the controls beside it. The
-    /// entry is disabled: there is nothing to click.
-    @Test("The throughput readout claims no action but still reports in the overflow menu")
-    func throughputReadoutIsInertButVisible() throws {
-        let owner = MainWindowToolbar()
-        let item = owner.transportRateItem
-
-        #expect(item.action == nil)
-
-        let entry = try #require(item.menuFormRepresentation)
-        #expect(entry.action == nil)
-        #expect(!entry.isEnabled)
-        #expect(!entry.title.isEmpty)
-    }
-
-    /// An arrow glyph is what the field draws; it is not what the overflow entry or VoiceOver
-    /// should be handed, because neither reads it as a direction.
-    @Test("The overflow entry names the direction rather than drawing an arrow")
-    func overflowEntryNamesTheDirection() throws {
-        let owner = MainWindowToolbar()
-        owner.transportRateItem.apply(rate: TransportRate(receivedPerSecond: 145_408, sentPerSecond: 0))
-        let entry = try #require(owner.transportRateItem.menuFormRepresentation)
-
-        #expect(!entry.title.contains("\u{2193}"))
-        #expect(!entry.title.contains("\u{2191}"))
-    }
-
-    /// Finder ships 8 controls and Xcode 13. The default set was 17 plus a hosted status blob, and
-    /// the HIG asks that items be chosen "deliberately to avoid overcrowding". Spaces do not count,
-    /// because they cost no titlebar width of their own.
+    /// Finder ships 8 controls and Xcode 13. The default set was 17 hit targets behind 11
+    /// identifiers, and the guard that stood here counted identifiers, which is how a two-segment
+    /// control was added to a full titlebar and passed. So this counts what a pointer can hit, with
+    /// every group vended and expanded to the subitems it draws. Spaces and tracking separators take
+    /// no click and are not counted.
     @available(macOS 14.0, *)
-    @Test("The default set stays inside a titlebar")
+    @Test("The default set is at most eight things to click")
     func defaultSetIsNotCrowded() {
+        let owner = MainWindowToolbar()
         let spaces: Set<NSToolbarItem.Identifier> = [
             .flexibleSpace, .space, .sidebarTrackingSeparator, .inspectorTrackingSeparator,
         ]
-        let controls = MainWindowToolbar.defaultItemIdentifiers.filter { !spaces.contains($0) }
-        #expect(controls.count <= 12, "default set has \(controls.count) controls")
+        let targets = MainWindowToolbar.defaultItemIdentifiers
+            .filter { !spaces.contains($0) }
+            .map { identifier -> Int in
+                let item = owner.toolbar(
+                    owner.managedToolbar,
+                    itemForItemIdentifier: identifier,
+                    willBeInsertedIntoToolbar: true
+                )
+                return (item as? NSToolbarItemGroup).map { max($0.subitems.count, 1) } ?? 1
+            }
+            .reduce(0, +)
+        #expect(targets <= 8, "default set has \(targets) hit targets")
     }
 
     /// The HIG's centre area is for "common, useful controls", and SwiftUI's `principal` placement
@@ -208,10 +122,30 @@ struct MainWindowToolbarNativeContractTests {
     /// field, and both are controls that open a chooser. Xcode centres the same shape, measured
     /// through its accessibility tree: a list of role "path" holding Active Scheme and Active Run
     /// Destination.
-    @Test("The connection and container are the centred principal item")
-    func connectionGroupIsCentred() {
+    ///
+    /// Two top-level items, not a group. Measured on macOS 27, a popover anchored on a subitem
+    /// raised `NSInvalidArgumentException` whenever its group was hidden or clipped, and a
+    /// top-level item raised in none of 16 presentations across the same states.
+    @Test("The connection and container are the centred principal pair, as two top-level items")
+    func centredPairIsTwoTopLevelItems() throws {
         let owner = MainWindowToolbar()
-        #expect(owner.managedToolbar.centeredItemIdentifiers == [MainWindowToolbar.connectionGroup])
+        let pair: Set<NSToolbarItem.Identifier> = [MainWindowToolbar.connection, MainWindowToolbar.database]
+        #expect(owner.managedToolbar.centeredItemIdentifiers == pair)
+
+        let identifiers = MainWindowToolbar.defaultItemIdentifiers
+        let connection = try #require(identifiers.firstIndex(of: MainWindowToolbar.connection))
+        #expect(identifiers.indices.contains(connection + 1))
+        #expect(identifiers[connection + 1] == MainWindowToolbar.database, "The pair centres as one run")
+
+        for identifier in pair {
+            let item = owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: identifier,
+                willBeInsertedIntoToolbar: true
+            )
+            #expect(item != nil)
+            #expect(!(item is NSToolbarItemGroup), "\(identifier.rawValue) must not be a group")
+        }
     }
 
     /// The centre is the first region AppKit sheds, and the two names it carries have no length
@@ -228,8 +162,8 @@ struct MainWindowToolbarNativeContractTests {
                 itemForItemIdentifier: identifier,
                 willBeInsertedIntoToolbar: true
             ) else { continue }
-            let expected: NSToolbarItem.VisibilityPriority =
-                identifier == MainWindowToolbar.connectionGroup ? .standard : .high
+            let centred = identifier == MainWindowToolbar.connection || identifier == MainWindowToolbar.database
+            let expected: NSToolbarItem.VisibilityPriority = centred ? .standard : .high
             #expect(item.visibilityPriority == expected, "\(identifier.rawValue)")
         }
     }
@@ -238,19 +172,83 @@ struct MainWindowToolbarNativeContractTests {
     /// is what lets the centred pair read as words while every other item stays a glyph. A centred
     /// item with no title would be two anonymous glyphs in the middle of the window.
     @Test("The centred items carry a title, not just a label")
-    func centredItemsCarryTitles() throws {
+    func centredItemsCarryTitles() {
         let owner = MainWindowToolbar()
-        let group = try #require(
+        for identifier in [MainWindowToolbar.connection, MainWindowToolbar.database] {
+            let item = owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: identifier,
+                willBeInsertedIntoToolbar: true
+            )
+            #expect(item is StatefulToolbarItem, "\(identifier.rawValue)")
+            #expect((item as? StatefulToolbarItem)?.titleProvider != nil, "\(identifier.rawValue)")
+        }
+    }
+
+    /// The pull-down carries no action. Given one, AppKit splits the control into a body that sends
+    /// it and a chevron that opens the menu, so a click on the body would open nothing. Its overflow
+    /// entry is AppKit's: measured on macOS 27, an `NSMenuToolbarItem` answers with a fresh item over
+    /// its own menu whatever was assigned, so a narrow window's overflow offers what the control
+    /// would. If that ever changes, the overflow stops being filled, and this is where it shows.
+    @Test("The Actions item opens a menu its delegate fills, from the control and from the overflow")
+    func actionsItemIsAPullDown() throws {
+        let owner = MainWindowToolbar()
+        let item = try #require(
             owner.toolbar(
                 owner.managedToolbar,
-                itemForItemIdentifier: MainWindowToolbar.connectionGroup,
+                itemForItemIdentifier: MainWindowToolbar.actions,
                 willBeInsertedIntoToolbar: true
-            ) as? NSToolbarItemGroup
+            ) as? NSMenuToolbarItem
         )
-        #expect(group.subitems.count == 2)
-        for subitem in group.subitems {
-            #expect(subitem is StatefulToolbarItem, "\(subitem.itemIdentifier.rawValue)")
-        }
+
+        #expect(item.action == nil)
+        #expect(item.menu.delegate === owner.actionsMenuDelegate)
+        let overflow = try #require(item.menuFormRepresentation)
+        #expect(overflow.submenu === item.menu)
+        #expect(overflow.title == item.label)
+        #expect(!item.label.isEmpty)
+    }
+
+    /// The commit control says what its tab commits. The palette, the overflow entry and the
+    /// tooltip all read the label, so a Create Table tab offering to Save Changes is the defect.
+    ///
+    /// Vended with nothing staged on purpose: the label is the tab's, so a definition that does not
+    /// validate yet still reads Create Table, and an edit that makes it valid cannot relabel the
+    /// control and reflow a labelled titlebar.
+    @Test("The commit control is labelled with the verb its tab commits with")
+    func commitControlNamesItsVerb() throws {
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(database: "db_a"),
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        let owner = MainWindowToolbar()
+        coordinator.tabManager.addCreateTableTab()
+        #expect(coordinator.toolbarState.pendingChange == nil)
+        owner.repoint(to: coordinator)
+
+        let item = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.saveChanges,
+                willBeInsertedIntoToolbar: true
+            )
+        )
+        #expect(item.label == String(localized: "Create Table"))
+        #expect(item.menuFormRepresentation?.title == String(localized: "Create Table"))
+
+        coordinator.tabManager.addTab()
+        coordinator.toolbarState.pendingChange = .createTable
+        let query = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.saveChanges,
+                willBeInsertedIntoToolbar: true
+            )
+        )
+        #expect(query.label == String(localized: "Save Changes"), "A query tab saves, whatever is staged")
     }
 
     /// The Safe Mode glyph and its tooltip both name the level, because the glyph alone cannot:
@@ -283,15 +281,12 @@ struct MainWindowToolbarNativeContractTests {
     @Test("The connection glyph reaches the overflow entry too")
     func engineGlyphReachesTheMenuForm() throws {
         let owner = MainWindowToolbar()
-        let group = try #require(
+        let connection = try #require(
             owner.toolbar(
                 owner.managedToolbar,
-                itemForItemIdentifier: MainWindowToolbar.connectionGroup,
+                itemForItemIdentifier: MainWindowToolbar.connection,
                 willBeInsertedIntoToolbar: true
-            ) as? NSToolbarItemGroup
-        )
-        let connection = try #require(
-            group.subitems.first { $0.itemIdentifier == MainWindowToolbar.connection }
+            )
         )
 
         #expect(connection.image != nil)
@@ -311,8 +306,9 @@ struct MainWindowToolbarNativeContractTests {
     }
 
     /// The HIG's macOS rule: "Make every toolbar item available as a command in the menu bar." The
-    /// rewrite moved the sidebar's two lists out of the toolbar's segmented control, and a command
-    /// with no toolbar item and no menu item is unreachable.
+    /// rewrite moved the sidebar's two lists out of the toolbar's segmented control and into the
+    /// sidebar's own scope control, which a collapsed sidebar takes away with it, so the menu bar is
+    /// what keeps both lists reachable.
     ///
     /// The other relocated commands live in submenus their delegate fills on open, so they are
     /// checked where that is true of them: `safeModeSubmenuOffersEveryLevel` and
@@ -331,6 +327,23 @@ struct MainWindowToolbarNativeContractTests {
         for selector in relocated {
             #expect(found.contains(selector), "\(NSStringFromSelector(selector)) has no menu-bar command")
         }
+    }
+
+    /// Import Data… takes the driver's first format, and the per-format list used to live only in
+    /// the toolbar, which is not a menu-bar command. The Actions pull-down now offers the list under
+    /// this same title, so the menu bar carries its twin, filled by the same class.
+    @Test("File > Import offers the command and, right under it, the list of formats")
+    func fileImportOffersTheFormatList() throws {
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let file = try #require(menu.items.first { $0.submenu?.title == String(localized: "File") }?.submenu)
+        let importMenu = try #require(file.items.first { $0.title == String(localized: "Import") }?.submenu)
+        let leaf = try #require(importMenu.items.first { $0.title == String(localized: "Import Data…") })
+        let list = try #require(importMenu.items.first { $0.title == String(localized: "Import Data From") })
+
+        #expect(leaf.action == #selector(MainSplitViewController.importData(_:)))
+        #expect(leaf.submenu == nil)
+        #expect(list.submenu?.delegate is ImportFormatMenuDelegate)
+        #expect(importMenu.index(of: list) == importMenu.index(of: leaf) + 1)
     }
 
     /// Safe Mode's list does not depend on a session, so its delegate fills it every time and all

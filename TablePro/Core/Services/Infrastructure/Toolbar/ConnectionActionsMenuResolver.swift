@@ -126,16 +126,25 @@ internal enum ConnectionActionsMenuResolver {
             )
         )
         if context.supportsImport {
-            /// A submenu rather than a leaf, because the menu bar's own item always takes the first
-            /// format and the toolbar was until now the only route to any of the others. The leaves
-            /// are filled when it opens.
+            /// The command and the format list are two rows, as they are under File > Import. The
+            /// leaf is the one ⇧⌘I runs and says so, and it takes the driver's first format; a row
+            /// that owns a submenu can carry neither the action nor the chord. The list is how any
+            /// other format is reached, filled when it opens.
+            ///
+            /// Gated on the driver's capability, which is a registry read, and not on the formats it
+            /// actually has: counting those activates every lazily loaded import plugin, and retries
+            /// the load gate of one that failed it, on every ask. The window's validation answers
+            /// the rest, dimming the leaf when there is nothing to import, and the list says so in
+            /// its own placeholder.
             entries.append(
                 ActionsMenuEntry(
                     title: String(localized: "Import Data…"),
                     selector: NSSelectorFromString("importData:"),
-                    shortcut: .importData,
-                    submenu: .importFormats
+                    shortcut: .importData
                 )
+            )
+            entries.append(
+                ActionsMenuEntry(title: String(localized: "Import Data From"), submenu: .importFormats)
             )
         }
         return entries.isEmpty ? nil : ActionsMenuSection(entries)
@@ -205,11 +214,7 @@ internal enum ConnectionActionsMenuResolver {
     private static func modeSection(_ context: ToolbarContext) -> ActionsMenuSection? {
         guard context.isAIEnabled else { return nil }
         return ActionsMenuSection([
-            ActionsMenuEntry(
-                title: String(localized: "Mode"),
-                selector: NSSelectorFromString("setContentModeFromMenu:"),
-                submenu: .mode
-            ),
+            ActionsMenuEntry(title: String(localized: "Mode"), submenu: .mode),
         ])
     }
 

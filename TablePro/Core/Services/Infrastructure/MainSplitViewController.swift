@@ -280,6 +280,9 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             self?.navigationSidebar.applyRailWidth(animated: false)
             self?.recomputeWindowMinSize()
         }
+        navigationSidebar.objectBrowser.onScopeSelection = { [weak self] tab in
+            self?.setSidebarTab(tab)
+        }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = Self.sidebarMinThickness
@@ -327,13 +330,11 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         applyPaneChrome()
     }
 
-    /// A divider dragged all the way in collapses the sidebar without going through
-    /// `toggleSidebar(_:)`, so the toolbar has to be reconciled here too or its segment stays lit
-    /// over a sidebar that is no longer on screen.
+    /// A divider dragged all the way in collapses a pane without going through a command, so the
+    /// window's minimum width is settled here as well as on the commands that collapse one.
     override func splitViewDidResizeSubviews(_ notification: Notification) {
         super.splitViewDidResizeSubviews(notification)
         recomputeWindowMinSize()
-        toolbarOwner?.syncSidebarSelection()
     }
 
     override func viewWillAppear() {
@@ -437,6 +438,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         }
         guard repaint else { return }
         applyWindowTitle()
+        /// An edit can change the engine, and what the engine can do decides whether the container
+        /// capsule stands at all. Nothing else would reconsider it for a connection with no
+        /// session, whose toolbar state never publishes.
+        toolbarOwner?.refreshContext()
     }
 
     // MARK: - Toolbar
@@ -446,8 +451,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     ///
     /// Attaching it only once a coordinator existed is what made a dozen items arrive at once, a
     /// second and a half into a connect, over a window that had been on screen the whole time.
-    /// `MainWindowToolbar` already answers with no subject: `validationContext()` returns nil, so
-    /// every connection-scoped item validates to disabled and only the window's own commands stay
+    /// `MainWindowToolbar` already answers with no subject: its context says nothing is connected,
+    /// so every connection-scoped item validates to disabled and only the window's own commands stay
     /// live, which is the dimmed-not-absent state the HIG asks for.
     ///
     /// The subject is set before the toolbar reaches the window, so a window opening onto a live
@@ -462,6 +467,13 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         owner.repoint(to: coordinator)
         guard window.toolbar !== owner.managedToolbar else { return }
         window.toolbar = owner.managedToolbar
+        /// The item set every window starts from is the full one, because `isHidden` is never
+        /// persisted, so the context is applied the moment the items exist rather than on the first
+        /// change to it. Measured on macOS 27, that moment is this assignment: `NSToolbar.items` is
+        /// filled before it returns, with the window not yet shown, and a hide written here holds
+        /// when the window appears. A repoint cannot be relied on for this: a window opening with
+        /// no session repoints from nothing to nothing, which returns before it reaches the toolbar.
+        owner.refreshContext(forcing: true)
         /// The transparency decision reads `window.toolbar?.isVisible`, so a window that gains its
         /// toolbar after that decision was taken keeps the opaque titlebar chosen for a
         /// toolbar-less one, over content that is no longer inset below it.
@@ -482,7 +494,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// that loses its session still has to reach the right phase, or switching to it later
     /// would show content for a connection that is already gone.
     private func handleConnectionStatusChange() {
-        defer { toolbarOwner?.syncSidebarSelection() }
         for workspace in workspaces.workspaces {
             reconcileStatus(of: workspace)
         }
@@ -623,6 +634,14 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+
+        /// The toolbar's shape follows the workspace, not only its coordinator. Pointing the toolbar
+        /// reaches it through a repoint, and a switch between two workspaces that both have no
+        /// coordinator is a repoint from nothing to nothing, which returns before it looks. The
+        /// engine and the mode still differ between the two, so a down SQLite connection left the
+        /// container capsule hidden over a down PostgreSQL one. When nothing has moved this costs
+        /// building the key and one comparison.
+        toolbarOwner?.refreshContext()
     }
 
     private func applyPhase() {
@@ -756,9 +775,11 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         if let selected { bindSidebarChrome(to: selected) }
     }
 
-    /// The filter field lives above the object list and belongs to the window, so it follows the
-    /// connection on screen rather than being owned by one.
+    /// The scope control and the filter field live above the object list and belong to the window,
+    /// so they follow the connection on screen rather than being owned by one. Agent mode draws no
+    /// object list for either of them to act on, so both stand down while it is on.
     private func bindSidebarChrome(to workspace: ConnectionWorkspace) {
+        navigationSidebar.objectBrowser.setChromeHidden(workspace.resolvedContentMode == .agent)
         /// The pane decides, not the session. A reconnect keeps `sessionState` while the object
         /// list below the field is empty, and a filter that accepts typing for a list nobody can
         /// see is a control that answers for nothing.
@@ -1101,7 +1122,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         }
         showSelectedTrailingPane()
         applyPaneChrome()
-        toolbarOwner?.refreshContentMode()
+        toolbarOwner?.refreshContext()
         toolbarOwner?.managedToolbar.validateVisibleItems()
     }
 
@@ -1186,7 +1207,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     // MARK: - Sidebar
 
     /// Whether the object browser is off screen, which is the question every caller is really
-    /// asking: the toolbar's segment, the Show/Hide Sidebar title and the reveal actions.
+    /// asking: the Show/Hide Sidebar title, the list checkmarks in the View menu and the reveal
+    /// actions.
     var isSidebarCollapsed: Bool {
         sidebarSplitItem?.isCollapsed ?? true
     }
@@ -1201,15 +1223,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     var railAllowance: CGFloat {
         navigationSidebar?.railAllowance ?? 0
-    }
-
-    /// Every collapse route reaches AppKit's own `toggleSidebar(_:)`: the View menu sends the
-    /// selector down the responder chain, and so does the toolbar's sidebar button. Overriding
-    /// it is the one place that catches them all, so the toolbar's segment can never stay lit
-    /// over a collapsed sidebar.
-    override func toggleSidebar(_ sender: Any?) {
-        super.toggleSidebar(sender)
-        toolbarOwner?.syncSidebarSelection()
     }
 
     func focusSidebarSearch() {
@@ -1254,9 +1267,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         state.databaseFilterSelected = []
     }
 
-    /// Which list the sidebar is showing, or nil while it is collapsed. The segmented control and
-    /// the two View-menu items both read it, so neither can report a selection the sidebar is not
-    /// showing.
+    /// Which list the sidebar is showing, or nil while it is collapsed. The two View-menu items read
+    /// it for their checkmarks, so neither can report a selection the sidebar is not showing. The
+    /// scope control reads the connection's state directly, because it is only ever on screen with
+    /// the sidebar open.
     var selectedSidebarTab: SidebarTab? {
         guard sidebarSplitItem?.isCollapsed == false else { return nil }
         guard let connectionId = currentSession?.connection.id else { return nil }
@@ -1264,18 +1278,18 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     }
 
     /// Selects a list and leaves the sidebar open, which is what a command called "Show Tables"
-    /// has to do. `setSidebarTab` is a toggle, correctly so for the segmented control it serves:
-    /// pressing the segment already selected closes the sidebar. A menu item that did that would
-    /// be a Show command that hides.
+    /// has to do. `setSidebarTab` is a toggle: pressing the list already shown closes the sidebar.
+    /// A menu item that did that would be a Show command that hides.
     func revealSidebarTab(_ tab: SidebarTab) {
         guard let connectionId = currentSession?.connection.id else { return }
         SharedSidebarState.forConnection(connectionId).selectedSidebarTab = tab
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.animator().isCollapsed = false
         }
-        toolbarOwner?.syncSidebarSelection()
     }
 
+    /// What the sidebar's scope control drives. It writes the same state the View menu's two
+    /// commands write, and the control reads that state back, so the three cannot disagree.
     func setSidebarTab(_ tab: SidebarTab) {
         guard let connectionId = currentSession?.connection.id else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
@@ -1288,7 +1302,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         } else {
             sidebarState.selectedSidebarTab = tab
         }
-        toolbarOwner?.syncSidebarSelection()
     }
 
     // MARK: - Dynamic Window Minimum Size

@@ -24,9 +24,10 @@ final class SidebarFavoritesFirstEntryUITests: UITestCase {
         )
     }
 
-    /// `View > Show Favorites` rather than the toolbar's star segment. The segment is a toggle, so
-    /// pressing it again closes the sidebar instead of reselecting the tab, and this test is about
-    /// the very first entry. The menu item selects the tab and leaves the sidebar open.
+    /// `View > Show Favorites` rather than the Favorites segment of the sidebar's scope control. The
+    /// menu item is the route that does not depend on the sidebar being laid out, and this test is
+    /// about what the tab shows on its very first entry, not about how it was reached; the scope
+    /// control has its own case in `ConnectionWindowChromeUITests`.
     private func showFavorites(in app: XCUIApplication) {
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.waitToExist(timeout: 10))

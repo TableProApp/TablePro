@@ -34,12 +34,14 @@ enum PopoverPresenter {
     /// present at all once the item is clipped, and a clipped item survives only as its
     /// `menuFormRepresentation`.
     ///
-    /// The caller must have resolved `toolbarItem` out of a visible toolbar. AppKit throws
-    /// `NSInvalidArgumentException` when it cannot locate the item, which Swift cannot catch, so
-    /// the check belongs at the call site as a precondition rather than here as error handling.
-    /// `show(relativeTo: NSToolbarItem)` is macOS 14, and there is no stand-in: an item whose
-    /// view AppKit generates reports `view` as nil, so there is nothing to anchor on below it.
-    /// Callers resolve their anchor through `ToolbarSwitcherPresenter.anchor`, which answers nil
+    /// The caller must have resolved `toolbarItem` out of `NSToolbar.items` as a top-level item.
+    /// AppKit throws `NSInvalidArgumentException` when it cannot locate the item, which Swift cannot
+    /// catch, so the check belongs at the call site as a precondition rather than here as error
+    /// handling. Measured on macOS 27, the one case that raised was a subitem of a group that was
+    /// off screen; a clipped top-level item is supported, and anchors on the clipped-items
+    /// indicator. `show(relativeTo: NSToolbarItem)` is macOS 14, and there is no stand-in: an item
+    /// whose view AppKit generates reports `view` as nil, so there is nothing to anchor on below
+    /// it. Callers resolve their anchor through `ToolbarSwitcherPresenter.anchor`, which answers nil
     /// on macOS 13 so they take their own fallback instead.
     @available(macOS 14.0, *)
     @discardableResult

@@ -9,6 +9,7 @@ import AppKit
 enum FileMenuBuilder {
     /// Retained for the menu's lifetime, which is the app's: `NSMenu.delegate` is unowned.
     private static let closeTitleDelegate = CloseCommandMenuDelegate()
+    private static let importFormatDelegate = ImportFormatMenuDelegate()
 
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         let file = MenuItemFactory.menu(String(localized: "File"), items: [
@@ -152,6 +153,7 @@ enum FileMenuBuilder {
             )
         ])
         container.submenu?.insertItem(.separator(), at: 0)
+        container.submenu?.insertItem(importFormatsSubmenu(), at: 0)
         container.submenu?.insertItem(
             MenuItemFactory.item(
                 String(localized: "Import Data…"),
@@ -161,6 +163,16 @@ enum FileMenuBuilder {
             ),
             at: 0
         )
+        return container
+    }
+
+    /// Every format the connection imports from. Import Data… above it takes the first one, which
+    /// left the menu bar with no route to any other: the toolbar's Import item was the only one, and
+    /// a toolbar item is not a menu-bar command. The Actions pull-down offers the same list under the
+    /// same title, and the two are filled by the same class when they open.
+    private static func importFormatsSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Import Data From"), items: [])
+        container.submenu?.delegate = importFormatDelegate
         return container
     }
 

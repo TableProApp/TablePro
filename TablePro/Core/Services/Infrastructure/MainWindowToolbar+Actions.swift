@@ -74,9 +74,9 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.exportTables()
     }
 
-    @objc func performImportFormat(_ sender: Any?) {
-        guard let menuItem = sender as? NSMenuItem,
-              let formatId = menuItem.representedObject as? String else { return }
-        coordinator?.commandActions?.importTables(formatId: formatId)
+    /// The Inspector item on macOS 13, forwarded because the action belongs to the split controller
+    /// and a toolbar item's explicit target has to respond to its own selector to validate.
+    @objc func forwardToggleInspector(_ sender: Any?) {
+        host?.toggleInspector(sender)
     }
 }

@@ -24,6 +24,7 @@ extension MainSplitViewController {
         switcherPresenter.present(
             from: view.window,
             anchoredTo: MainWindowToolbar.connection,
+            hiddenBy: toolbarOwner?.visibility,
             subject: .connection,
             contentSize: ConnectionSwitcherPopover.contentSize
         ) { [selectedConnectionId] dismiss in

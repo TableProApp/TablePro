@@ -12,9 +12,11 @@ import Foundation
 /// the only lever anyone had was dimming. Every feature that arrived then had to buy a permanent
 /// slot in the titlebar.
 ///
-/// Nothing global is read inside this struct or inside the resolvers that take it. It is built once
-/// per change by the toolbar and passed down, so the resolvers stay pure and testable with no host
-/// app and no session.
+/// Nothing global is read inside this struct or inside the resolvers that take it. The toolbar
+/// builds it once per validation pass and once per Actions menu open and passes it down, so the
+/// resolvers stay pure and testable with no host app and no session.
+///
+/// Every field is one a resolver reads. A fact nothing reads is a fact every pass pays to look up.
 internal struct ToolbarContext: Equatable {
     /// What the window's detail pane is drawing. `nil` when no tab is selected, which is a real
     /// state on a window that has just opened.
@@ -29,7 +31,6 @@ internal struct ToolbarContext: Equatable {
     internal let isConnected: Bool
     /// A connection is on screen, whether or not it has finished connecting.
     internal let hasSelectedWorkspace: Bool
-    internal let isTrailingPaneOpen: Bool
     internal let canToggleTrailingPane: Bool
 
     internal let pendingChange: PendingChangeKind?
@@ -50,19 +51,17 @@ internal struct ToolbarContext: Equatable {
     internal let supportsServerDashboard: Bool
 
     internal let isAIEnabled: Bool
-    internal let hasAgentSession: Bool
 
-    /// What this engine calls the thing the centre's second capsule names, and what it calls its
-    /// query language. Both are words the Actions menu puts in front of the user.
-    internal let containerEntityName: String
-    internal let queryLanguageName: String
-
-    /// The subset of the context that may move an item in or out of the titlebar.
+    /// The subset of the context that may move an item in or out of the titlebar, or change what
+    /// one says.
     ///
-    /// This is the whole anti-reflow rule in one type. `isHidden` is written only from these
-    /// fields, so the item set can change on a tab switch, a mode switch or a connection switch and
-    /// on nothing else; everything transient rides `isEnabled` instead. A keystroke in a cell
-    /// editor therefore costs one struct comparison and writes nothing.
+    /// This is the whole anti-reflow rule in one type. `isHidden` and the commit control's label are
+    /// written only from these fields, so the titlebar can change shape on a tab switch, a mode
+    /// switch or a connection switch and on nothing else; everything transient rides `isEnabled`
+    /// instead. The toolbar computes this from its eight inputs directly rather than from a whole
+    /// context, so a keystroke costs the selected-tab lookup, four locked reads of the plugin
+    /// metadata registry, a switch over the engine for the dashboard and one comparison, and writes
+    /// nothing.
     internal struct VisibilityKey: Equatable {
         internal let tabKind: TabType?
         internal let resultsMode: ResultsViewMode?
@@ -94,7 +93,6 @@ internal struct ToolbarContext: Equatable {
         pane: ConnectionWindowPane = .empty,
         isConnected: Bool = false,
         hasSelectedWorkspace: Bool = false,
-        isTrailingPaneOpen: Bool = false,
         canToggleTrailingPane: Bool = false,
         pendingChange: PendingChangeKind? = nil,
         hasDataPendingChanges: Bool = false,
@@ -107,10 +105,7 @@ internal struct ToolbarContext: Equatable {
         supportsContainerSwitching: Bool = false,
         supportsImport: Bool = false,
         supportsServerDashboard: Bool = false,
-        isAIEnabled: Bool = false,
-        hasAgentSession: Bool = false,
-        containerEntityName: String = "",
-        queryLanguageName: String = ""
+        isAIEnabled: Bool = false
     ) {
         self.tabKind = tabKind
         self.resultsMode = resultsMode
@@ -118,7 +113,6 @@ internal struct ToolbarContext: Equatable {
         self.pane = pane
         self.isConnected = isConnected
         self.hasSelectedWorkspace = hasSelectedWorkspace
-        self.isTrailingPaneOpen = isTrailingPaneOpen
         self.canToggleTrailingPane = canToggleTrailingPane
         self.pendingChange = pendingChange
         self.hasDataPendingChanges = hasDataPendingChanges
@@ -132,8 +126,44 @@ internal struct ToolbarContext: Equatable {
         self.supportsImport = supportsImport
         self.supportsServerDashboard = supportsServerDashboard
         self.isAIEnabled = isAIEnabled
-        self.hasAgentSession = hasAgentSession
-        self.containerEntityName = containerEntityName
-        self.queryLanguageName = queryLanguageName
+    }
+
+    /// The whole context over a key the caller already computed, so the eight slow-moving facts
+    /// are read once per context rather than once for the key and again for the context.
+    internal init(
+        key: VisibilityKey,
+        pane: ConnectionWindowPane,
+        isConnected: Bool,
+        hasSelectedWorkspace: Bool,
+        canToggleTrailingPane: Bool,
+        pendingChange: PendingChangeKind?,
+        hasDataPendingChanges: Bool,
+        blocksAllWrites: Bool,
+        canAddRow: Bool,
+        canRestorePreviousValues: Bool,
+        canNavigateBack: Bool,
+        canNavigateForward: Bool
+    ) {
+        self.init(
+            tabKind: key.tabKind,
+            resultsMode: key.resultsMode,
+            contentMode: key.contentMode,
+            pane: pane,
+            isConnected: isConnected,
+            hasSelectedWorkspace: hasSelectedWorkspace,
+            canToggleTrailingPane: canToggleTrailingPane,
+            pendingChange: pendingChange,
+            hasDataPendingChanges: hasDataPendingChanges,
+            blocksAllWrites: blocksAllWrites,
+            canAddRow: canAddRow,
+            canRestorePreviousValues: canRestorePreviousValues,
+            canNavigateBack: canNavigateBack,
+            canNavigateForward: canNavigateForward,
+            isFileBased: key.isFileBased,
+            supportsContainerSwitching: key.supportsContainerSwitching,
+            supportsImport: key.supportsImport,
+            supportsServerDashboard: key.supportsServerDashboard,
+            isAIEnabled: key.isAIEnabled
+        )
     }
 }

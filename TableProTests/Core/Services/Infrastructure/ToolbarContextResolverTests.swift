@@ -56,9 +56,38 @@ struct ToolbarContextResolverTests {
         )
     }
 
+    private static func hidden(_ context: ToolbarContext) -> Set<NSToolbarItem.Identifier> {
+        ToolbarContextResolver.visibility(for: context.visibilityKey).hidden
+    }
+
+    /// Every context the window can reach, as far as the item set is concerned.
+    private static var everyContext: [ToolbarContext] {
+        var contexts: [ToolbarContext] = []
+        for tabKind in tabKinds + [nil] {
+            for contentMode in ConnectionWorkspaceContentMode.allCases {
+                for pane in panes {
+                    for isFileBased in [true, false] {
+                        for supportsContainerSwitching in [true, false] {
+                            contexts.append(
+                                context(
+                                    tabKind: tabKind,
+                                    contentMode: contentMode,
+                                    pane: pane,
+                                    isFileBased: isFileBased,
+                                    supportsContainerSwitching: supportsContainerSwitching
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        return contexts
+    }
+
     private static func visibleCount(_ context: ToolbarContext) -> Int {
-        let hidden = ToolbarContextResolver.hidden(context)
-        return defaultHitTargets.filter { !hidden.contains($0) }.count
+        let hiddenSet = Self.hidden(context)
+        return defaultHitTargets.filter { !hiddenSet.contains($0) }.count
     }
 
     // MARK: - The ceiling
@@ -101,28 +130,42 @@ struct ToolbarContextResolverTests {
     /// put it and dims. Only the default set may be taken off screen.
     @Test("The hidden set never reaches past the default set")
     func hiddenStaysInsideTheDefaultSet() {
-        for tabKind in Self.tabKinds + [nil] {
-            for contentMode in ConnectionWorkspaceContentMode.allCases {
-                for isFileBased in [true, false] {
-                    for supportsContainerSwitching in [true, false] {
-                        let hidden = ToolbarContextResolver.hidden(
-                            Self.context(
-                                tabKind: tabKind,
-                                contentMode: contentMode,
-                                isFileBased: isFileBased,
-                                supportsContainerSwitching: supportsContainerSwitching
-                            )
-                        )
-                        #expect(hidden.isSubset(of: ToolbarContextResolver.hideableIdentifiers))
-                    }
-                }
-            }
+        for context in Self.everyContext {
+            #expect(Self.hidden(context).isSubset(of: ToolbarContextResolver.hideableIdentifiers))
+        }
+    }
+
+    /// The other half of the same rule, stated against the list a user actually drags from. With
+    /// the intersection inside the resolver this holds for any context a later change invents,
+    /// not only for the three items the contexts name today.
+    @Test("An item only the palette offers is never hidden")
+    func paletteOnlyItemsAreNeverHidden() {
+        let paletteOnly = Set(MainWindowToolbar.allowedItemIdentifiers)
+            .subtracting(MainWindowToolbar.defaultItemIdentifiers)
+        #expect(!paletteOnly.isEmpty)
+        for context in Self.everyContext {
+            #expect(Self.hidden(context).isDisjoint(with: paletteOnly))
+        }
+    }
+
+    /// Spaces and tracking separators are in the hideable set, because it is the default list and
+    /// filtering them out by prefix would take the two pane toggles with them. A context has no
+    /// reason to name one, and hiding a tracking separator would unhook the titlebar from a pane.
+    @Test("No context hides a space or a tracking separator")
+    func spacesAreNeverHidden() {
+        var spaces: Set<NSToolbarItem.Identifier> = [.flexibleSpace, .space, .sidebarTrackingSeparator]
+        if #available(macOS 14.0, *) {
+            spaces.insert(.inspectorTrackingSeparator)
+        }
+        for context in Self.everyContext {
+            #expect(Self.hidden(context).isDisjoint(with: spaces))
         }
     }
 
     /// The window's own identity, the pull-down that carries everything displaced, the control that
     /// says whether a keystroke can reach a live table, and the two pane toggles. None of these has
-    /// a context in which it means nothing.
+    /// a context in which it means nothing, and the connection capsule is also what Switch
+    /// Connection presents from.
     @Test("The permanent controls are never hidden")
     func permanentControlsAreNeverHidden() {
         let permanent: Set<NSToolbarItem.Identifier> = [
@@ -132,33 +175,8 @@ struct ToolbarContextResolverTests {
             MainWindowToolbar.safeMode,
             MainWindowToolbar.inspector,
         ]
-        for tabKind in Self.tabKinds + [nil] {
-            for contentMode in ConnectionWorkspaceContentMode.allCases {
-                for pane in Self.panes {
-                    let hidden = ToolbarContextResolver.hidden(
-                        Self.context(tabKind: tabKind, contentMode: contentMode, pane: pane)
-                    )
-                    #expect(hidden.isDisjoint(with: permanent))
-                }
-            }
-        }
-    }
-
-    /// Measured on macOS 27: hiding both subitems makes the group vanish while `group.isHidden`
-    /// stays false, and a popover anchored on it then opens at the window's centre.
-    @Test("The centred group never loses both of its capsules")
-    func centredGroupKeepsACapsule() {
-        for tabKind in Self.tabKinds + [nil] {
-            for contentMode in ConnectionWorkspaceContentMode.allCases {
-                for isFileBased in [true, false] {
-                    let hidden = ToolbarContextResolver.hidden(
-                        Self.context(tabKind: tabKind, contentMode: contentMode, isFileBased: isFileBased)
-                    )
-                    let both = hidden.contains(MainWindowToolbar.connection)
-                        && hidden.contains(MainWindowToolbar.database)
-                    #expect(both == false)
-                }
-            }
+        for context in Self.everyContext {
+            #expect(Self.hidden(context).isDisjoint(with: permanent))
         }
     }
 
@@ -166,7 +184,7 @@ struct ToolbarContextResolverTests {
 
     /// `isHidden` is written only from the slow-moving subset, so the item set can change on a tab
     /// switch, a mode switch or a connection switch and on nothing else. A keystroke in a cell
-    /// editor costs one struct comparison and moves nothing.
+    /// editor builds the key, compares it and moves nothing.
     @Test("Visibility ignores everything transient")
     func visibilityIgnoresTransientState() {
         let quiet = ToolbarContext(
@@ -186,7 +204,6 @@ struct ToolbarContextResolverTests {
             pane: .connecting,
             isConnected: false,
             hasSelectedWorkspace: true,
-            isTrailingPaneOpen: true,
             canToggleTrailingPane: false,
             pendingChange: .data,
             hasDataPendingChanges: true,
@@ -195,19 +212,77 @@ struct ToolbarContextResolverTests {
             canRestorePreviousValues: true,
             canNavigateBack: true,
             canNavigateForward: true,
-            supportsContainerSwitching: true,
-            hasAgentSession: true
+            supportsContainerSwitching: true
         )
 
         #expect(quiet.visibilityKey == busy.visibilityKey)
-        #expect(ToolbarContextResolver.hidden(quiet) == ToolbarContextResolver.hidden(busy))
+        #expect(Self.hidden(quiet) == Self.hidden(busy))
+    }
+
+    /// The whole context and the key the toolbar builds on its own have to carry the same eight
+    /// facts, or a context built for enablement would disagree with the shape it is drawn over.
+    @Test("A context built over a key carries that key back")
+    func contextOverAKeyRoundTrips() {
+        let key = ToolbarContext.VisibilityKey(
+            tabKind: .createTable,
+            resultsMode: .structure,
+            contentMode: .agent,
+            isFileBased: true,
+            supportsContainerSwitching: false,
+            supportsImport: true,
+            supportsServerDashboard: true,
+            isAIEnabled: true
+        )
+        let context = ToolbarContext(
+            key: key,
+            pane: .content,
+            isConnected: true,
+            hasSelectedWorkspace: true,
+            canToggleTrailingPane: true,
+            pendingChange: .createTable,
+            hasDataPendingChanges: false,
+            blocksAllWrites: false,
+            canAddRow: false,
+            canRestorePreviousValues: false,
+            canNavigateBack: false,
+            canNavigateForward: false
+        )
+
+        #expect(context.visibilityKey == key)
+        #expect(context.pendingChange == .createTable)
+    }
+
+    // MARK: - The commit verb
+
+    /// The verb comes from the tab kind, never from what is staged, so an edit that makes a
+    /// definition valid or invalid cannot relabel the control and reflow a labelled titlebar.
+    @Test("The commit verb follows the tab kind", arguments: tabKinds + [nil])
+    func commitVerbFollowsTheTabKind(tabKind: TabType?) {
+        let expected: String
+        switch tabKind {
+        case .createTable:
+            expected = String(localized: "Create Table")
+        case .usersRoles:
+            expected = String(localized: "Apply Changes")
+        default:
+            expected = String(localized: "Save Changes")
+        }
+        #expect(ToolbarContextResolver.commitVerb(for: tabKind) == expected)
+    }
+
+    /// Three verbs for three different commits. Two kinds sharing one would have the control offer
+    /// to save a definition that is about to be created.
+    @Test("The three commit verbs are distinct")
+    func commitVerbsAreDistinct() {
+        let verbs = Set([TabType.table, .createTable, .usersRoles].map { ToolbarContextResolver.commitVerb(for: $0) })
+        #expect(verbs.count == 3)
     }
 
     // MARK: - Per-kind sets
 
     @Test("An unsaved definition has nothing to reload")
     func createTableHidesRefresh() {
-        let hidden = ToolbarContextResolver.hidden(Self.context(tabKind: .createTable))
+        let hidden = Self.hidden(Self.context(tabKind: .createTable))
         #expect(hidden.contains(MainWindowToolbar.refresh))
         #expect(hidden.contains(MainWindowToolbar.saveChanges) == false)
     }
@@ -217,7 +292,7 @@ struct ToolbarContextResolverTests {
         arguments: [TabType.erDiagram, .serverDashboard, .insights, .objectSource]
     )
     func readOnlyKindsHideSaveChanges(tabKind: TabType) {
-        let hidden = ToolbarContextResolver.hidden(Self.context(tabKind: tabKind))
+        let hidden = Self.hidden(Self.context(tabKind: tabKind))
         #expect(hidden.contains(MainWindowToolbar.saveChanges))
         #expect(hidden.contains(MainWindowToolbar.refresh) == false)
     }
@@ -226,43 +301,43 @@ struct ToolbarContextResolverTests {
         TabType.query, .table, .usersRoles,
     ])
     func editableKindsKeepBoth(tabKind: TabType) {
-        let hidden = ToolbarContextResolver.hidden(Self.context(tabKind: tabKind))
+        let hidden = Self.hidden(Self.context(tabKind: tabKind))
         #expect(hidden.contains(MainWindowToolbar.saveChanges) == false)
         #expect(hidden.contains(MainWindowToolbar.refresh) == false)
     }
 
     @Test("Agent mode has no grid to reload and nothing mounted to commit")
     func agentModeHidesBothContentCommands() {
-        let hidden = ToolbarContextResolver.hidden(Self.context(contentMode: .agent))
+        let hidden = Self.hidden(Self.context(contentMode: .agent))
         #expect(hidden.contains(MainWindowToolbar.refresh))
         #expect(hidden.contains(MainWindowToolbar.saveChanges))
     }
 
     @Test("A window with no selected tab keeps the full set")
     func noSelectedTabKeepsEverything() {
-        #expect(ToolbarContextResolver.hidden(Self.context(tabKind: nil)).isEmpty)
+        #expect(Self.hidden(Self.context(tabKind: nil)).isEmpty)
     }
 
     @Test("The results mode never moves an item", arguments: ResultsViewMode.allCases)
     func resultsModeNeverMovesAnything(mode: ResultsViewMode) {
         #expect(
-            ToolbarContextResolver.hidden(Self.context(resultsMode: mode))
-                == ToolbarContextResolver.hidden(Self.context(resultsMode: .data))
+            Self.hidden(Self.context(resultsMode: mode))
+                == Self.hidden(Self.context(resultsMode: .data))
         )
     }
 
     @Test("The container capsule goes when the engine has nothing to switch to")
     func containerCapsuleVisibility() {
         #expect(
-            ToolbarContextResolver.hidden(Self.context(isFileBased: false, supportsContainerSwitching: true))
+            Self.hidden(Self.context(isFileBased: false, supportsContainerSwitching: true))
                 .contains(MainWindowToolbar.database) == false
         )
         #expect(
-            ToolbarContextResolver.hidden(Self.context(isFileBased: true, supportsContainerSwitching: true))
+            Self.hidden(Self.context(isFileBased: true, supportsContainerSwitching: true))
                 .contains(MainWindowToolbar.database)
         )
         #expect(
-            ToolbarContextResolver.hidden(Self.context(isFileBased: false, supportsContainerSwitching: false))
+            Self.hidden(Self.context(isFileBased: false, supportsContainerSwitching: false))
                 .contains(MainWindowToolbar.database)
         )
     }
@@ -333,7 +408,6 @@ struct ToolbarContextResolverTests {
             pane: .unavailable(.notConnected),
             isConnected: false,
             hasSelectedWorkspace: true,
-            isTrailingPaneOpen: true,
             canToggleTrailingPane: true
         )
         #expect(ToolbarContextResolver.isEnabled(MainWindowToolbar.inspector, context: context))

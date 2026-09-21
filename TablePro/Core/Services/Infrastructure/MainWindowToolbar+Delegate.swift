@@ -7,6 +7,13 @@ import AppKit
 import os
 
 extension MainWindowToolbar {
+    /// Builds a new item on every call and keeps none of them.
+    ///
+    /// Customize Toolbar asks again for every allowed identifier, and a delegate that handed back
+    /// a cached instance handed back the one the context had hidden: measured on macOS 27, a
+    /// dragged-in item that was the same instance arrived with `isHidden` still true, took its slot
+    /// and drew nothing. The palette's stale visibility state rides the item instance as well, so
+    /// an instance shared across vends would carry it into every later arrangement.
     internal func toolbar(
         _ toolbar: NSToolbar,
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
@@ -15,15 +22,19 @@ extension MainWindowToolbar {
         Self.lifecycleLogger.info(
             "[open] toolbar delegate buildItem id=\(itemIdentifier.rawValue, privacy: .public) hasCoordinator=\(self.coordinator != nil)"
         )
-        guard let item = buildItem(itemIdentifier, willBeInsertedIntoToolbar: flag) else { return nil }
+        guard let item = buildItem(itemIdentifier) else { return nil }
         applyVisibilityPriority(to: item)
         return item
     }
 
-    private func buildItem(
-        _ itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
+    /// An item the palette is about to drop in has to take the context the window is in, and the
+    /// hideable ones are the ones that care. Measured, opening and closing the palette without a
+    /// change posts nothing, so this costs nothing when the user only looks.
+    internal func toolbarWillAddItem(_ notification: Notification) {
+        scheduleVisibilityReapply()
+    }
+
+    private func buildItem(_ itemIdentifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
         switch itemIdentifier {
         case Self.inspector:
             /// AppKit builds `.toggleInspector` itself and never asks the delegate for it, so this
@@ -43,10 +54,18 @@ extension MainWindowToolbar {
                 shortcut: .toggleInspector,
                 description: String(localized: "Toggle Inspector")
             )
-        case Self.sidebarToggle:
-            return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
-        case Self.contentModeItem:
-            return makeContentModeToolbarItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
+        case Self.connection:
+            return makeConnectionItem()
+        case Self.database:
+            return makeDatabaseItem()
+        case Self.refresh:
+            return makeRefreshItem()
+        case Self.saveChanges:
+            return makeSaveChangesItem()
+        case Self.actions:
+            return makeActionsItem()
+        case Self.safeMode:
+            return makeSafeModeItem()
         case Self.backForwardGroup:
             /// `isNavigational` is what puts back and forward on the leading edge of the content
             /// title area, where Finder and Safari keep them, instead of in the slot the identifier
@@ -55,44 +74,14 @@ extension MainWindowToolbar {
             /// Both subitems are installed unconditionally and stay installed. Availability is
             /// `isEnabled`, written by `validateToolbarItem(_:)`, never presence: measured on three
             /// running Apple apps, Xcode, Finder in column view and System Settings all keep the
-            /// 75pt capsule and dim the direction that has nowhere to go. Emptying the group
-            /// instead put the pair behind state that is `@ObservationIgnored`, so once hidden it
-            /// did not come back until the user switched tabs.
+            /// 75pt capsule and dim the direction that has nowhere to go.
             let group = makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Navigation"),
-                subitems: [subitemNavigateBack(), subitemNavigateForward()]
+                subitems: [makeNavigateBackItem(), makeNavigateForwardItem()]
             )
             group.isNavigational = true
             return group
-        case Self.connectionGroup:
-            /// Native, like every other group here. As a view-backed group it drew a hosted SwiftUI
-            /// row and its subitems were inert: the header is explicit that a property set on the
-            /// parent, "such as label or view, apply to the entire item", so neither subitem
-            /// reached the overflow menu, the customization palette or `validate()`.
-            ///
-            /// Not navigational, unlike back and forward. `isNavigational` asks AppKit to lift an
-            /// item to the leading edge of the content area, which is the opposite of what
-            /// `centeredItemIdentifiers` asks for, and this group is the centred one.
-            return makeNativeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Connection"),
-                subitems: [subitemConnection(), subitemDatabase()]
-            )
-        case TransportRateToolbarItem.identifier:
-            /// Beside the centred pair, never inside it. A group is laid out around its own
-            /// midpoint, so a readout inside this one pushed the two capsules off centre by half
-            /// the readout's width; measured as its own adjacent item, the group sits where it
-            /// sits with no readout at all and the figure lands 6.0pt past its trailing edge.
-            return transportRateGroup
-        case Self.safeMode:
-            return subitemSafeMode()
-        case Self.editorGroup:
-            return makeNativeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Editor"),
-                subitems: [subitemNewTab(), subitemQuickSwitcher()]
-            )
         case Self.previewSQL:
             return menuOnlyItem(
                 id: itemIdentifier,
@@ -142,21 +131,18 @@ extension MainWindowToolbar {
                 shortcut: .toggleHistory,
                 description: String(localized: "Toggle Query History")
             )
-        case Self.refreshSaveGroup:
-            return makeNativeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Table Actions"),
-                subitems: [
-                    subitemRefresh(), subitemSaveChanges(), subitemAddRow(),
-                    subitemRestorePreviousValues(),
-                ]
-            )
-        case Self.exportImportGroup:
-            return makeNativeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Export & Import"),
-                subitems: [subitemExport(), subitemImport()]
-            )
+        case Self.exportTables:
+            return makeExportItem()
+        case Self.importTables:
+            return makeImportItem()
+        case Self.addRow:
+            return makeAddRowItem()
+        case Self.restorePreviousValues:
+            return makeRestorePreviousValuesItem()
+        case Self.newTab:
+            return makeNewTabItem()
+        case Self.quickSwitcher:
+            return makeQuickSwitcherItem()
         default:
             return nil
         }

@@ -5,15 +5,17 @@
 
 import Foundation
 
-/// What the window's Save command would commit, and the verb it says.
+/// What the window's Save command would commit, which is also whether it can commit at all.
 ///
 /// One value rather than five booleans read in five places. `updateToolbarPendingState()` folded
 /// four of the five sources into `hasPendingChanges` and never read the fifth, so a Users & Roles
 /// tab with staged principals left both the toolbar's commit button and Cmd+S dim while
 /// `saveChanges()` already carried the branch that would have applied them.
 ///
-/// The tab decides the verb, because two kinds can be staged at once and only one of them is the
-/// one the user is looking at.
+/// The tab decides the kind, because two kinds can be staged at once and only one of them is the
+/// one the user is looking at. It decides nothing the user reads: the commit control's label is
+/// `ToolbarContextResolver.commitVerb(for:)`, from the tab kind alone, because this value comes and
+/// goes with every edit and a label that followed it moved the titlebar while the user typed.
 internal enum PendingChangeKind: Equatable, Hashable, Sendable {
     case data
     case structure
@@ -63,16 +65,5 @@ internal enum PendingChangeKind: Equatable, Hashable, Sendable {
         if hasStructureChanges { return .structure }
         if hasDataChanges { return .data }
         return isFileDirty ? .file : nil
-    }
-
-    internal var commitTitle: String {
-        switch self {
-        case .data, .structure, .file:
-            String(localized: "Save Changes")
-        case .createTable:
-            String(localized: "Create Table")
-        case .principals:
-            String(localized: "Apply Changes")
-        }
     }
 }
