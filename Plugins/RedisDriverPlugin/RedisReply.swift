@@ -47,6 +47,20 @@ enum RedisReply {
         return items
     }
 
+    /// An error element is marked the way `redis-cli` marks one, because `EXEC` answers with the
+    /// failures of the block inline among its values: an unmarked `WRONGTYPE Operation against a
+    /// key holding the wrong kind of value` in a result row reads as a stored string.
+    var displayText: String {
+        switch self {
+        case .string(let text), .status(let text): return text
+        case .error(let message): return "(error) \(message)"
+        case .integer(let value): return String(value)
+        case .data(let bytes): return String(data: bytes, encoding: .utf8) ?? bytes.base64EncodedString()
+        case .array(let items): return "[\(items.map(\.displayText).joined(separator: ", "))]"
+        case .null: return "(nil)"
+        }
+    }
+
     var isError: Bool {
         if case .error = self { return true }
         return false
