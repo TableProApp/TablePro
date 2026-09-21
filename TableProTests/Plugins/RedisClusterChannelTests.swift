@@ -40,6 +40,22 @@ struct RedisClusterDispatchTests {
         #expect(cluster.second.sentCommands == [["CONFIG", "SET", "maxmemory", "0"]])
     }
 
+    /// `CONFIG SET` has no `write` flag, so keying the report on that flag alone left a setting
+    /// applied on one node and refused on the other reading as if nothing had changed.
+    @Test("A CONFIG SET one node refused names the node it already changed")
+    func refusedAdminBroadcast() async throws {
+        let cluster = try await StubRedisCluster.connect(
+            first: [.success(.status("OK"))],
+            second: [.success(.error("NOPERM User limited has no permissions to run the 'config|set' command"))]
+        )
+        do {
+            _ = try await cluster.channel.executeCommand(["CONFIG", "SET", "maxmemory", "0"], scope: .session)
+            Issue.record("expected a partial write")
+        } catch let partial as RedisPartialClusterWrite {
+            #expect(partial.pluginErrorDetail?.hasSuffix("Nodes it ran on: 127.0.0.1:7000") == true)
+        }
+    }
+
     @Test("DBSIZE goes to every primary and the counts add up")
     func dbsizeSums() async throws {
         let cluster = try await StubRedisCluster.connect(first: [.success(.integer(2))], second: [.success(.integer(3))])
@@ -250,6 +266,21 @@ struct RedisClusterDatabaseSelectionTests {
         #expect(cluster.channel.homeDatabase() == 0)
     }
 
+    /// On a cluster the visit is taken per command, so this is the node's own check. Queued, the
+    /// write would run on the home database when EXEC runs.
+    @Test("A write on another database is refused on a primary holding an open block")
+    func visitRefusedInsideBlock() async throws {
+        let cluster = try await StubRedisCluster.connect(clusterDatabases: Self.sixteen)
+        cluster.second.observeOpenBlock()
+        await #expect(throws: RedisHeldBackCommand(command: "HSET", held: .openBlock)) {
+            try await cluster.channel.withDatabase(3) {
+                try await cluster.channel.executeCommand(["HSET", "a", "f", "v"], scope: .session)
+            }
+        }
+        #expect(cluster.second.sentCommands.isEmpty)
+        #expect(cluster.channel.homeDatabase() == 0)
+    }
+
     @Test("A read on another database visits it on every primary and leaves the cluster home")
     func visitReachesEveryPrimary() async throws {
         let emptyPage = RedisReply.array([.string("0"), .array([])])
@@ -266,21 +297,6 @@ struct RedisClusterDatabaseSelectionTests {
                 let page = try await cluster.channel.scanKeyspace(
                     cursor: cursor, pattern: nil, type: nil, count: 10, scope: .outsideBlock
                 )
-    /// On a cluster the visit is taken per command, so this is the node's own check. Queued, the
-    /// write would run on the home database when EXEC runs.
-    @Test("A write on another database is refused on a primary holding an open block")
-    func visitRefusedInsideBlock() async throws {
-        let cluster = try await StubRedisCluster.connect(clusterDatabases: Self.sixteen)
-        cluster.second.observeOpenBlock()
-        await #expect(throws: RedisHeldBackCommand(command: "HSET", held: .openBlock)) {
-            try await cluster.channel.withDatabase(3) {
-                try await cluster.channel.executeCommand(["HSET", "a", "f", "v"], scope: .session)
-            }
-        }
-        #expect(cluster.second.sentCommands.isEmpty)
-        #expect(cluster.channel.homeDatabase() == 0)
-    }
-
                 keys += page.keys
                 cursor = page.cursor
             } while cursor != RedisClusterCursor.start

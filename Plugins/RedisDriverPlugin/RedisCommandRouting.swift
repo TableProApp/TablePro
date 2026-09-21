@@ -47,6 +47,10 @@ struct RedisCommandSpec: Sendable, Equatable {
 
     var declaresKeys: Bool { firstKey > 0 && step > 0 }
 
+    var changesEveryNodeItReaches: Bool {
+        isWrite || (!isReadOnly && responsePolicy == .allSucceeded)
+    }
+
     func fillingPoliciesFrom(_ fallback: RedisCommandSpec?) -> RedisCommandSpec {
         guard let fallback, requestPolicy == nil, responsePolicy == nil else { return self }
         return RedisCommandSpec(

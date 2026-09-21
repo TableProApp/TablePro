@@ -375,7 +375,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             to: targets,
             carrying: [],
             of: args,
-            isWrite: spec?.isWrite ?? false,
+            isWrite: spec?.changesEveryNodeItReaches ?? false,
             followRedirects: false,
             scope: scope
         )

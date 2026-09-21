@@ -111,6 +111,14 @@ struct RedisCommandRoutingPolicyTests {
         #expect(spec?.responsePolicy == .allSucceeded)
     }
 
+    @Test("A fan-out that is no read and wants every node to succeed changes what it reaches")
+    func changesEveryNodeItReaches() {
+        #expect(routing.spec(for: args("FLUSHDB"))?.changesEveryNodeItReaches == true)
+        #expect(routing.spec(for: args("CONFIG", "SET", "maxmemory", "0"))?.changesEveryNodeItReaches == true)
+        #expect(routing.spec(for: args("DBSIZE"))?.changesEveryNodeItReaches == false)
+        #expect(routing.spec(for: args("KEYS", "*"))?.changesEveryNodeItReaches == false)
+    }
+
     @Test("INFO is special, so it goes to one node rather than being merged")
     func info() {
         #expect(routing.spec(for: args("INFO"))?.responsePolicy == .special)
