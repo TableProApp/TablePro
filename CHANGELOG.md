@@ -231,7 +231,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No wrong-mode error when a Standalone Redis connection points at a Valkey 8 or later Sentinel or cluster node.
 - Redis `MULTI` blocks aborted, or padded with extra replies, by the sidebar, the key browser and the connection check.
 - A Redis `MULTI` block or `WATCH` lost without notice when the connection dropped.
-- Redis row counts, statistics, DDL preview and export reading the session's current database instead of the one selected.
+- Redis row counts, statistics, DDL preview, export and grid edits using the session's current database instead of the row's own.
 - Refreshing a Redis database tab after a refused switch showing another database's keys.
 - Redis key grid showing type UNKNOWN, TTL -1 and empty collections for keys an ACL user cannot read.
 - Redis Cluster deletes and key counts reported as complete when a shard refused them, and `SCRIPT EXISTS` answering 0.

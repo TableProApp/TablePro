@@ -17,7 +17,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     private(set) var sentScopes: [RedisCommandScope] = []
     private(set) var footprint = RedisSessionFootprint()
     let supportsDatabaseSelection: Bool
-    private var database: Int
+    private(set) var sessionDatabase: RedisSessionDatabase
 
     convenience init(_ replies: [RedisReply], supportsDatabaseSelection: Bool = true, currentDatabase: Int = 0) {
         self.init(
@@ -30,7 +30,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     init(outcomes: [Result<RedisReply, Error>], supportsDatabaseSelection: Bool = true, currentDatabase: Int = 0) {
         self.outcomes = outcomes
         self.supportsDatabaseSelection = supportsDatabaseSelection
-        database = currentDatabase
+        sessionDatabase = RedisSessionDatabase(currentDatabase)
     }
 
     var isConnected: Bool { true }
@@ -39,19 +39,37 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func disconnect() {}
     func cancelCurrentQuery() {}
     func serverVersion() -> String? { "8.10.1" }
-    func currentDatabase() -> Int { database }
-    func databaseForNextCommand() -> Int { footprint.pendingDatabase ?? database }
+    func currentDatabase() -> Int { sessionDatabase.current }
+    func databaseForNextCommand() -> Int { footprint.pendingDatabase ?? sessionDatabase.current }
+    func homeDatabase() -> Int { sessionDatabase.home }
 
     func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
-        let reply = try await executeCommand(["SELECT", String(index)].map { Data($0.utf8) }, scope: scope)
+        try moveSession(to: index, scope: scope) { $0.selected(index) }
+    }
+
+    func visitDatabase(_ index: Int) async throws {
+        try moveSession(to: index, scope: .outsideBlock) { $0.visited(index) }
+    }
+
+    /// Mirrors the hiredis connection: a SELECT queued in an open block moves nothing yet and
+    /// answers queued, and a move records itself only once the server accepted it.
+    private func moveSession(
+        to index: Int,
+        scope: RedisCommandScope,
+        recording move: (inout RedisSessionDatabase) -> Void
+    ) throws {
+        let command = ["SELECT", String(index)]
+        try admit(scope, command: command)
+        let reply = try send(command, scope: scope) ?? .status("OK")
+        _ = footprint.observe(command: "SELECT", reply: reply)
         if case .error(let message) = reply {
             throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(message)")
         }
         if reply.isQueued {
             footprint.queueDatabase(index)
-        } else {
-            database = index
+            throw RedisQueuedCommand(command: "SELECT")
         }
+        move(&sessionDatabase)
     }
 
     func observeOpenBlock() {
@@ -65,8 +83,9 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         let command = decoded(args)
         try admit(scope, command: command)
+        try returnHomeIfAway()
         guard let reply = try send(command, scope: scope) else { return .null }
-        _ = footprint.observe(command: command.first, reply: reply)
+        observe(command: command.first, reply: reply)
         return reply
     }
 
@@ -75,12 +94,24 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         let pipeline = commands.map(decoded)
         try admit(scope, command: pipeline.first ?? [])
+        try returnHomeIfAway()
         let replies = try pipeline.map { try send($0, scope: scope) }
         for (command, reply) in zip(pipeline, replies) {
             guard let reply else { continue }
-            _ = footprint.observe(command: command.first, reply: reply)
+            observe(command: command.first, reply: reply)
         }
         return replies.map { $0 ?? .null }
+    }
+
+    private func returnHomeIfAway() throws {
+        guard RedisDatabaseVisit.database == nil, !footprint.hasOpenBlock,
+              let home = sessionDatabase.awayFromHome else { return }
+        try moveSession(to: home, scope: .outsideBlock) { $0.visited(home) }
+    }
+
+    private func observe(command: String?, reply: RedisReply) {
+        guard let moved = footprint.observe(command: command, reply: reply) else { return }
+        sessionDatabase.selected(moved)
     }
 
     private func decoded(_ args: [Data]) -> [String] {

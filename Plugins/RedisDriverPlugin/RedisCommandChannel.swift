@@ -36,6 +36,10 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     /// The database the next command runs on: a SELECT queued in an open block has not moved the
     /// session yet, but everything after it in the block runs there.
     func databaseForNextCommand() -> Int
+    /// Where the session belongs: the database the user or the app's navigation last selected.
+    func homeDatabase() -> Int
+    /// Moves the session for one read the app makes, without moving where it belongs.
+    func visitDatabase(_ index: Int) async throws
 
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply]
@@ -60,6 +64,12 @@ extension RedisCommandChannel {
     var supportsTransactions: Bool { true }
 
     func databaseForNextCommand() -> Int { currentDatabase() }
+
+    func homeDatabase() -> Int { currentDatabase() }
+
+    func visitDatabase(_ index: Int) async throws {
+        try await selectDatabase(index, scope: .outsideBlock)
+    }
 
     func connect() async throws {
         try await connect(reportingStage: { _ in })

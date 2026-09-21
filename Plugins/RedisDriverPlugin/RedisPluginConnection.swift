@@ -67,7 +67,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _currentDatabase: Int
+    private var _database: RedisSessionDatabase
     private var _footprint = RedisSessionFootprint()
 
     var isConnected: Bool {
@@ -107,7 +107,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.connectTimeout = connectTimeout
-        self._currentDatabase = database
+        self._database = RedisSessionDatabase(database)
     }
 
     deinit {
@@ -145,7 +145,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             stateLock.lock()
             _cachedServerVersion = versionString
             _isConnected = true
-            _currentDatabase = database
+            _database = RedisSessionDatabase(database)
             stateLock.unlock()
 
             logger.info("Connected to Redis \(versionString ?? "unknown")")
@@ -167,7 +167,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #endif
         _isConnected = false
         _cachedServerVersion = nil
-        _currentDatabase = database
+        _database = RedisSessionDatabase(database)
         _footprint = RedisSessionFootprint()
         stateLock.unlock()
 
@@ -208,13 +208,19 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     func currentDatabase() -> Int {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return _currentDatabase
+        return _database.current
     }
 
     func databaseForNextCommand() -> Int {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return _footprint.pendingDatabase ?? _currentDatabase
+        return _footprint.pendingDatabase ?? _database.current
+    }
+
+    func homeDatabase() -> Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _database.home
     }
 
     // MARK: - Command Execution
@@ -223,6 +229,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     /// already queued ahead of this command is what it is checked against.
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         #if canImport(CRedis)
+        let visiting = RedisDatabaseVisit.database
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
@@ -234,6 +241,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             }
             stateLock.unlock()
             try admit(scope, command: args.first)
+            if visiting == nil { try returnHomeIfAway() }
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
             let result = try executeCommandSyncRetrying(args, scope: scope)
@@ -247,6 +255,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
 
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         #if canImport(CRedis)
+        let visiting = RedisDatabaseVisit.database
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
@@ -258,6 +267,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             }
             stateLock.unlock()
             try admit(scope, command: commands.first?.first)
+            if visiting == nil { try returnHomeIfAway() }
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
             let results = try executePipelineSyncRetrying(commands, scope: scope)
@@ -283,6 +293,32 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.unlock()
     }
 
+    /// A read the app abandoned part way can leave the session on the database it was visiting,
+    /// so anything that is not part of a visit goes home before it runs. An open block cannot be
+    /// away from home, because a visit is held back from one.
+    private func returnHomeIfAway() throws {
+        stateLock.lock()
+        let home = _footprint.hasOpenBlock ? nil : _database.awayFromHome
+        stateLock.unlock()
+        guard let home else { return }
+        try select(home, scope: .outsideBlock)
+        stateLock.lock()
+        _database.visited(home)
+        stateLock.unlock()
+    }
+
+    private func select(_ index: Int, scope: RedisCommandScope) throws {
+        let reply = try executeCommandSyncRetrying(["SELECT", String(index)].map { Data($0.utf8) }, scope: scope)
+        if case .error(let msg) = reply {
+            throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(msg)")
+        }
+        guard reply.isQueued else { return }
+        stateLock.lock()
+        _footprint.queueDatabase(index)
+        stateLock.unlock()
+        throw RedisQueuedCommand(command: "SELECT")
+    }
+
     private func admit(_ scope: RedisCommandScope, command: Data?) throws {
         let name = command.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         stateLock.lock()
@@ -298,10 +334,23 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     // MARK: - Database Selection
 
     /// A `SELECT` the server queued into an open `MULTI` block has not moved the session, so the
-    /// index is held aside until the block resolves rather than recorded now. Recording it now is
-    /// right only if `EXEC` follows: after a `DISCARD` the session is still on the old database,
-    /// and a `FLUSHDB` staged against the row the app believed it was on would empty that one.
+    /// index is held aside until the block resolves rather than recorded now, and the caller hears
+    /// it was queued. Recording it now is right only if `EXEC` follows: after a `DISCARD` the
+    /// session is still on the old database, and a `FLUSHDB` staged against the row the app
+    /// believed it was on would empty that one.
     func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
+        try await moveSession(to: index, scope: scope) { $0.selected(index) }
+    }
+
+    func visitDatabase(_ index: Int) async throws {
+        try await moveSession(to: index, scope: .outsideBlock) { $0.visited(index) }
+    }
+
+    private func moveSession(
+        to index: Int,
+        scope: RedisCommandScope,
+        recording move: @escaping @Sendable (inout RedisSessionDatabase) -> Void
+    ) async throws {
         #if canImport(CRedis)
         try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
@@ -313,20 +362,12 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            let command = ["SELECT", String(index)].map { Data($0.utf8) }
-            try admit(scope, command: command.first)
+            try admit(scope, command: Data("SELECT".utf8))
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
-            let reply = try executeCommandSyncRetrying(command, scope: scope)
-            if case .error(let msg) = reply {
-                throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(msg)")
-            }
+            try select(index, scope: scope)
             stateLock.lock()
-            if reply.isQueued {
-                _footprint.queueDatabase(index)
-            } else {
-                _currentDatabase = index
-            }
+            move(&_database)
             stateLock.unlock()
         }
         #else
@@ -575,7 +616,7 @@ private extension RedisPluginConnection {
         let name = command.flatMap { String(data: $0, encoding: .utf8) }
         stateLock.lock()
         if let selected = _footprint.observe(command: name, reply: reply) {
-            _currentDatabase = selected
+            _database.selected(selected)
         }
         stateLock.unlock()
     }

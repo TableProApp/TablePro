@@ -117,6 +117,42 @@ struct RedisSessionFootprint: Equatable, Sendable {
     }
 }
 
+/// Which numbered database the session is on, and which one it belongs on.
+///
+/// A read the app makes for one row visits that row's database and returns, and every other
+/// command runs where the session belongs. The return is a second command, so a read abandoned
+/// part way, such as a cancelled stream, can release the driver before its return reaches the
+/// server; the next command then goes home first rather than running on the visited database.
+struct RedisSessionDatabase: Equatable, Sendable {
+    private(set) var current: Int
+    private(set) var home: Int
+
+    init(_ index: Int) {
+        current = index
+        home = index
+    }
+
+    /// A SELECT the user typed, or a move the app made on their behalf.
+    mutating func selected(_ index: Int) {
+        current = index
+        home = index
+    }
+
+    mutating func visited(_ index: Int) {
+        current = index
+    }
+
+    /// The database a command has to return to before it runs, when the session is away from it.
+    var awayFromHome: Int? {
+        current == home ? nil : home
+    }
+}
+
+/// The database a read the app makes for one row is visiting, for the length of that read.
+enum RedisDatabaseVisit {
+    @TaskLocal static var database: Int?
+}
+
 /// A command the app did not send because the user's session holds state it would disturb.
 struct RedisHeldBackCommand: Error, Equatable {
     let command: String

@@ -84,14 +84,25 @@ struct RedisMoveToDatabaseTests {
         #expect(channel.currentDatabase() == 4)
     }
 
-    @Test("A SELECT still queued in a block counts as where the session is going")
-    func queuedSelectCounts() async throws {
+    /// A SELECT typed into an open block is queued like any other command, so the block's `EXEC`
+    /// reply pairs with it, and it moves nothing until `EXEC` runs it.
+    @Test("A SELECT queued in a block answers queued and moves nothing yet")
+    func queuedSelectMovesNothing() async throws {
         let channel = StubRedisChannel([.status("QUEUED")])
         channel.observeOpenBlock()
-        try await channel.selectDatabase(6)
+        await #expect(throws: RedisQueuedCommand(command: "SELECT")) {
+            try await channel.selectDatabase(6)
+        }
         #expect(channel.databaseForNextCommand() == 6)
-        try await channel.moveToDatabase(6)
-        #expect(channel.sentCommands == [["SELECT", "6"]])
+        #expect(channel.currentDatabase() == 0)
+        #expect(channel.homeDatabase() == 0)
+    }
+
+    @Test("A move sets where the session belongs, not only where it is")
+    func moveSetsHome() async throws {
+        let channel = StubRedisChannel([.status("OK")])
+        try await channel.moveToDatabase(4)
+        #expect(channel.homeDatabase() == 4)
     }
 
     @Test("A refused SELECT is reported")
@@ -197,5 +208,104 @@ struct RedisKeyCountTests {
         let other = StubRedisChannel([], supportsDatabaseSelection: false)
         #expect(try await other.keyCount(inDatabase: 3) == nil)
         #expect(other.sentCommands.isEmpty)
+    }
+}
+
+@Suite("Redis session database - where the session is and where it belongs")
+struct RedisSessionDatabaseTests {
+    @Test("A selection moves both, a visit moves only where the session is")
+    func selectedAndVisited() {
+        var database = RedisSessionDatabase(0)
+        database.visited(7)
+        #expect(database.current == 7)
+        #expect(database.home == 0)
+        #expect(database.awayFromHome == 0)
+
+        database.selected(3)
+        #expect(database.current == 3)
+        #expect(database.home == 3)
+        #expect(database.awayFromHome == nil)
+    }
+}
+
+@Suite("Redis command channel - a visit the app abandoned")
+struct RedisAbandonedVisitTests {
+    /// A cancelled stream lets go of the driver before its return SELECT reaches the server, so
+    /// the next command could have run on the database the stream was reading.
+    @Test("A command outside a visit goes home before it runs")
+    func returnsHomeFirst() async throws {
+        let channel = StubRedisChannel([.status("OK"), .status("OK"), .string("v")])
+        try await channel.visitDatabase(7)
+        let reply = try await channel.executeCommand(["GET", "k"])
+        #expect(reply.stringValue == "v")
+        #expect(channel.sentCommands == [["SELECT", "7"], ["SELECT", "0"], ["GET", "k"]])
+        #expect(channel.currentDatabase() == 0)
+    }
+
+    @Test("A command that is part of the visit stays on the visited database")
+    func visitStaysAway() async throws {
+        let channel = StubRedisChannel([.status("OK"), .integer(3)])
+        try await channel.visitDatabase(7)
+        let count = try await RedisDatabaseVisit.$database.withValue(7) {
+            try await channel.executeCommand(["DBSIZE"]).intValue
+        }
+        #expect(count == 3)
+        #expect(channel.sentCommands == [["SELECT", "7"], ["DBSIZE"]])
+    }
+
+    @Test("A read on the database a stale visit left the session on sends no SELECT")
+    func staleVisitMatchingIndex() async throws {
+        let channel = StubRedisChannel([.status("OK"), .integer(5)])
+        try await channel.visitDatabase(7)
+        let count = try await channel.withDatabase(7) { try await channel.executeCommand(["DBSIZE"]).intValue }
+        #expect(count == 5)
+        #expect(channel.sentCommands == [["SELECT", "7"], ["DBSIZE"]])
+    }
+
+    @Test("A count for the database the session belongs on is exact even after a stale visit")
+    func keyCountAtHome() async throws {
+        let channel = StubRedisChannel([.status("OK"), .status("OK"), .integer(11)])
+        try await channel.visitDatabase(7)
+        #expect(try await channel.keyCount(inDatabase: 0) == 11)
+        #expect(channel.sentCommands == [["SELECT", "7"], ["SELECT", "0"], ["DBSIZE"]])
+    }
+}
+
+@Suite("Redis grid writes - the database they belong to")
+struct RedisWriteAddressingTests {
+    private static let writes: [RedisDatabaseTarget.Statement] = [
+        (statement: "SET \"k\" \"v\"", parameters: []),
+        (statement: "DEL \"old\"", parameters: []),
+    ]
+
+    @Test("Writes for the database the session belongs on are unchanged")
+    func sameDatabase() {
+        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 3)
+        #expect(addressed.map(\.statement) == Self.writes.map(\.statement))
+    }
+
+    @Test("Writes for another database select it first and return afterwards")
+    func otherDatabase() {
+        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5)
+        #expect(addressed.map(\.statement) == ["SELECT 3", "SET \"k\" \"v\"", "DEL \"old\"", "SELECT 5"])
+    }
+
+    @Test("A table that names no database, or no writes, is left alone")
+    func nothingToAddress() {
+        #expect(RedisDatabaseTarget.addressing(Self.writes, toDatabase: nil, from: 5).count == 2)
+        #expect(RedisDatabaseTarget.addressing([], toDatabase: 3, from: 5).isEmpty)
+    }
+
+    /// The SELECTs go through the parser a save runs every statement through.
+    @Test("Every addressing statement parses as a SELECT")
+    func selectsParse() throws {
+        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5)
+        guard case .select(let first) = try RedisCommandParser.parse(addressed[0].statement),
+              case .select(let last) = try RedisCommandParser.parse(addressed[3].statement) else {
+            Issue.record("Expected SELECT operations")
+            return
+        }
+        #expect(first == 3)
+        #expect(last == 5)
     }
 }

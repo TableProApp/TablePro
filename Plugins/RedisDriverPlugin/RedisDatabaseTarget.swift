@@ -10,35 +10,53 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisDatabaseTarget")
 
+enum RedisDatabaseTarget {
+    typealias Statement = (statement: String, parameters: [PluginCellValue])
+
+    /// A grid's writes belong to the database its rows came from, which the session is not on
+    /// when the user moved it elsewhere. Run inside the save's `MULTI`, the SELECTs are queued
+    /// with the writes and applied together by `EXEC`, which leaves the session where it was.
+    static func addressing(_ statements: [Statement], toDatabase index: Int?, from home: Int) -> [Statement] {
+        guard let index, index != home, !statements.isEmpty else { return statements }
+        return [(statement: "SELECT \(index)", parameters: [])]
+            + statements
+            + [(statement: "SELECT \(home)", parameters: [])]
+    }
+}
+
 extension RedisCommandChannel {
     func moveToDatabase(_ index: Int) async throws {
-        guard databaseForNextCommand() != index else { return }
+        guard databaseForNextCommand() != index || homeDatabase() != index else { return }
         try await selectDatabase(index, scope: .outsideBlock)
     }
 
-    /// The session is put back even when the body throws, so a failed read never leaves the
-    /// sidebar and the key tree reading another database. A refused SELECT throws before the body.
+    /// Everything the body sends runs on `index`, and the session returns to where it belongs
+    /// afterwards, even when the body throws. A refused SELECT throws before the body runs.
     func withDatabase<T>(_ index: Int?, _ body: () async throws -> T) async throws -> T {
-        let origin = databaseForNextCommand()
-        guard let index, index != origin else { return try await body() }
-        try await selectDatabase(index, scope: .outsideBlock)
-        do {
-            let value = try await body()
-            await returnToDatabase(origin)
-            return value
-        } catch {
-            await returnToDatabase(origin)
-            throw error
+        guard let index else { return try await body() }
+        let home = homeDatabase()
+        return try await RedisDatabaseVisit.$database.withValue(index) {
+            guard index != databaseForNextCommand() else { return try await body() }
+            try await visitDatabase(index)
+            do {
+                let value = try await body()
+                await returnToDatabase(home)
+                return value
+            } catch {
+                await returnToDatabase(home)
+                throw error
+            }
         }
     }
 
-    /// Exact for the database the session is on. Any other comes from `INFO keyspace`, which is
-    /// nil when the server declines it and zero for a database it does not list.
+    /// Exact for the database the session belongs on. Any other comes from `INFO keyspace`, which
+    /// is nil when the server declines it and zero for a database it does not list.
     func keyCount(inDatabase index: Int) async throws -> Int? {
-        if index == databaseForNextCommand() {
+        if index == homeDatabase() {
             return try await runMetadataRead(["DBSIZE"])?.intValue
         }
         guard supportsDatabaseSelection, let counts = try await keyCountsByDatabase() else { return nil }
@@ -47,7 +65,7 @@ extension RedisCommandChannel {
 
     private func returnToDatabase(_ origin: Int) async {
         do {
-            try await selectDatabase(origin, scope: .outsideBlock)
+            try await visitDatabase(origin)
         } catch {
             logger.warning("Could not return the session to database \(origin, privacy: .public)")
         }

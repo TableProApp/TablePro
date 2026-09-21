@@ -420,7 +420,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard conn.supportsDatabaseSelection else {
             return table == Self.clusterDatabaseName ? ["FLUSHDB"] : nil
         }
-        guard let index = RedisDatabaseIndex.parse(table), index == conn.currentDatabase() else { return nil }
+        guard let index = RedisDatabaseIndex.parse(table), index == conn.homeDatabase() else { return nil }
         return ["FLUSHDB"]
     }
 
@@ -581,9 +581,15 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = RedisStatementGenerator(namespaceName: table, columns: columns)
-        return generator.generateStatements(
+        let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+        guard let conn = redisConnection, conn.supportsDatabaseSelection else { return statements }
+        return RedisDatabaseTarget.addressing(
+            statements,
+            toDatabase: RedisDatabaseIndex.parse(table),
+            from: conn.homeDatabase()
         )
     }
 }
