@@ -52,28 +52,28 @@ struct RedisReplyValueGuardTests {
 
 @Suite("Redis SCAN page")
 struct RedisScanPageTests {
-    @Test("a cursor and its keys parse")
+    @Test("a cursor and its elements parse")
     func parsesCursorAndKeys() throws {
-        let page = try RedisScanPage(reply: scanReply(cursor: "0", keys: ["b", "a"]))
-        #expect(page == RedisScanPage(cursor: "0", keys: ["b", "a"]))
+        let page = try RedisScanPage(reply: scanReply(cursor: "0", keys: ["b", "a"]), command: "SCAN")
+        #expect(page == RedisScanPage(cursor: "0", elements: ["b", "a"]))
     }
 
     @Test("a status or integer cursor is accepted")
     func acceptsStatusAndIntegerCursors() throws {
-        let status = try RedisScanPage(reply: .array([.status("17"), .array([.status("k")])]))
-        #expect(status == RedisScanPage(cursor: "17", keys: ["k"]))
-        let integer = try RedisScanPage(reply: .array([.integer(42), .array([])]))
-        #expect(integer == RedisScanPage(cursor: "42", keys: []))
+        let status = try RedisScanPage(reply: .array([.status("17"), .array([.status("k")])]), command: "SCAN")
+        #expect(status == RedisScanPage(cursor: "17", elements: ["k"]))
+        let integer = try RedisScanPage(reply: .array([.integer(42), .array([])]), command: "SCAN")
+        #expect(integer == RedisScanPage(cursor: "42", elements: []))
     }
 
-    @Test("a reply of any other shape ends the walk with no keys", arguments: [
+    @Test("a reply of any other shape ends the walk with no elements", arguments: [
         RedisReplyValue.null,
         .string("5"),
         .array([.string("5")])
     ])
     func otherShapesEndTheWalk(reply: RedisReplyValue) throws {
-        let page = try RedisScanPage(reply: reply)
-        #expect(page == RedisScanPage(cursor: RedisScanPage.startCursor, keys: []))
+        let page = try RedisScanPage(reply: reply, command: "SCAN")
+        #expect(page == RedisScanPage(cursor: RedisScanPage.startCursor, elements: []))
     }
 
     @Test("a refused SCAN throws the server's message", arguments: [
@@ -82,21 +82,28 @@ struct RedisScanPageTests {
     ])
     func refusedScanThrows(message: String) {
         #expect(throws: RedisError.queryFailed(message)) {
-            try RedisScanPage(reply: .error(message))
+            try RedisScanPage(reply: .error(message), command: "SCAN")
         }
     }
 
     @Test("a queued SCAN throws instead of reading as an empty keyspace")
     func queuedScanThrows() {
         #expect(throws: RedisError.commandQueued("SCAN")) {
-            try RedisScanPage(reply: .status("QUEUED"))
+            try RedisScanPage(reply: .status("QUEUED"), command: "SCAN")
+        }
+    }
+
+    @Test("a queued HSCAN names the command it held")
+    func queuedCollectionScanNamesItsCommand() {
+        #expect(throws: RedisError.commandQueued("HSCAN")) {
+            try RedisScanPage(reply: .status("QUEUED"), command: "HSCAN")
         }
     }
 
     @Test("a key named QUEUED stays a key")
     func keyNamedQueuedIsAKey() throws {
-        let page = try RedisScanPage(reply: scanReply(cursor: "0", keys: ["QUEUED"]))
-        #expect(page.keys == ["QUEUED"])
+        let page = try RedisScanPage(reply: scanReply(cursor: "0", keys: ["QUEUED"]), command: "SCAN")
+        #expect(page.elements == ["QUEUED"])
     }
 }
 

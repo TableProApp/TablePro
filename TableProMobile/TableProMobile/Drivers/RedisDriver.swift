@@ -4,7 +4,7 @@ import os
 import TableProDatabase
 import TableProModels
 
-nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unchecked Sendable {
     private let actor = RedisActor()
     private let host: String
     private let port: Int
@@ -113,6 +113,10 @@ nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
                 ordinalPosition: 1
             )
         ]
+    }
+
+    func keyContentsPage(ofKey key: String, limit: Int, offset: Int) async throws -> KeyContentsPage {
+        try await RedisKeyBrowse.page(ofKey: key, limit: limit, offset: offset, sending: send)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
@@ -452,6 +456,8 @@ nonisolated enum RedisError: Error, LocalizedError, Equatable {
     case notConnected
     case queryFailed(String)
     case commandQueued(String)
+    case keyNotFound(String)
+    case keyTypeNotBrowsable(String)
     case unsupported(String)
 
     var errorDescription: String? {
@@ -478,6 +484,10 @@ nonisolated enum RedisError: Error, LocalizedError, Equatable {
                 localized: "A MULTI block is open on this connection. Run EXEC to apply it, or DISCARD to drop it."
             )
             return "\(message) \(hint)"
+        case .keyNotFound(let key):
+            return String(format: String(localized: "The key %@ no longer exists."), key)
+        case .keyTypeNotBrowsable(let typeName):
+            return String(format: String(localized: "Keys of type %@ cannot be opened here."), typeName)
         case .unsupported(let msg): return msg
         }
     }

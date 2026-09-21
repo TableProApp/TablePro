@@ -19,6 +19,18 @@ nonisolated internal enum RedisReplyValue: Sendable, Equatable {
         }
     }
 
+    var stringElements: [String] {
+        guard case .array(let items) = self else { return [] }
+        return items.compactMap { item in
+            switch item {
+            case .string(let value), .status(let value):
+                return value
+            default:
+                return nil
+            }
+        }
+    }
+
     var errorMessage: String? {
         guard case .error(let message) = self else { return nil }
         return message

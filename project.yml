@@ -641,6 +641,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseListing.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseTarget.swift
+      - Plugins/RedisDriverPlugin/RedisKeyContentsRead.swift
       - Plugins/RedisDriverPlugin/RedisKeySlot.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
       - Plugins/RedisDriverPlugin/RedisMetadataRead.swift
