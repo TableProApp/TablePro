@@ -28,10 +28,11 @@ enum RedisMetadataRead {
 
 extension RedisCommandChannel {
     /// Nil when the server declines the read. Everything else behaves exactly as `run`: a
-    /// transport failure, a `-BUSY` and a `+QUEUED` from an open `MULTI` block all throw.
+    /// transport failure and a `-BUSY` throw, and so does an open `MULTI` block, which the read
+    /// is held back from rather than sent into.
     func runMetadataRead(_ args: [String]) async throws -> RedisReply? {
         let name = args.first ?? ""
-        let reply = try await executeCommand(args)
+        let reply = try await executeCommand(args, scope: .outsideBlock)
         if let declinedClass = RedisMetadataRead.declinedClass(of: reply) {
             logger.notice("\(name, privacy: .public) declined with \(declinedClass, privacy: .public); continuing without it")
             return nil

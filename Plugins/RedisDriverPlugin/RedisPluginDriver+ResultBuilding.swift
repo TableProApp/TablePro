@@ -26,7 +26,7 @@ extension RedisPluginDriver {
     ) async throws -> PluginQueryResult {
         var rows: [PluginRow] = []
         if !keys.isEmpty {
-            let typeReplies = try await conn.executePipeline(keys.map { ["TYPE", $0] })
+            let typeReplies = try await conn.executePipeline(keys.map { ["TYPE", $0] }, scope: .outsideBlock)
             rows.reserveCapacity(keys.count)
             for (i, key) in keys.enumerated() {
                 rows.append([.text(key), .text((typeReplies[i].stringValue ?? "unknown").uppercased())])
@@ -76,7 +76,7 @@ extension RedisPluginDriver {
             typeAndTtlCommands.append(["TYPE", key])
             typeAndTtlCommands.append(["TTL", key])
         }
-        let typeAndTtlReplies = try await conn.executePipeline(typeAndTtlCommands)
+        let typeAndTtlReplies = try await conn.executePipeline(typeAndTtlCommands, scope: .outsideBlock)
 
         var typeNames: [String] = []
         typeNames.reserveCapacity(keys.count)
@@ -106,7 +106,7 @@ extension RedisPluginDriver {
 
         var probeReplies: [RedisReply] = []
         if !probeCommands.isEmpty {
-            probeReplies = try await conn.executePipeline(probeCommands)
+            probeReplies = try await conn.executePipeline(probeCommands, scope: .outsideBlock)
         }
 
         var rows: [PluginRow] = []

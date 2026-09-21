@@ -647,6 +647,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisQueuedDatabase.swift
       - Plugins/RedisDriverPlugin/RedisReply.swift
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
+      - Plugins/RedisDriverPlugin/RedisSessionFootprint.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/RedisDriverPlugin/RedisTransactionOutcome.swift

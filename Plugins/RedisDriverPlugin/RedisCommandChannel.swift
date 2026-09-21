@@ -34,11 +34,17 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     func serverVersion() -> String?
     func currentDatabase() -> Int
 
-    func executeCommand(_ args: [Data]) async throws -> RedisReply
-    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply]
-    func selectDatabase(_ index: Int) async throws
+    func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply
+    func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply]
+    func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws
 
-    func scanKeyspace(cursor: String, pattern: String?, type: String?, count: Int) async throws -> RedisKeyspacePage
+    func scanKeyspace(
+        cursor: String,
+        pattern: String?,
+        type: String?,
+        count: Int,
+        scope: RedisCommandScope
+    ) async throws -> RedisKeyspacePage
 
     /// Confirms the channel still points at a node that accepts writes, re-pointing it if not.
     /// Sentinel needs this because a demoted primary keeps answering `role:master` and keeps
@@ -54,12 +60,28 @@ extension RedisCommandChannel {
         try await connect(reportingStage: { _ in })
     }
 
-    func executeCommand(_ args: [String]) async throws -> RedisReply {
-        try await executeCommand(args.map { Data($0.utf8) })
+    func executeCommand(_ args: [Data]) async throws -> RedisReply {
+        try await executeCommand(args, scope: .session)
     }
 
-    func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
-        try await executePipeline(commands.map { $0.map { Data($0.utf8) } })
+    func executeCommand(_ args: [String], scope: RedisCommandScope = .session) async throws -> RedisReply {
+        try await executeCommand(args.map { Data($0.utf8) }, scope: scope)
+    }
+
+    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
+        try await executePipeline(commands, scope: .session)
+    }
+
+    func executePipeline(_ commands: [[String]], scope: RedisCommandScope = .session) async throws -> [RedisReply] {
+        try await executePipeline(commands.map { $0.map { Data($0.utf8) } }, scope: scope)
+    }
+
+    func selectDatabase(_ index: Int) async throws {
+        try await selectDatabase(index, scope: .session)
+    }
+
+    func scanKeyspace(cursor: String, pattern: String?, type: String?, count: Int) async throws -> RedisKeyspacePage {
+        try await scanKeyspace(cursor: cursor, pattern: pattern, type: type, count: count, scope: .session)
     }
 
     func verifyStillPrimary() async throws {}
@@ -73,25 +95,49 @@ extension RedisCommandChannel {
     /// "QUEUED" as a stored value. Every command site goes through here rather than reading the
     /// reply straight.
     @discardableResult
-    func run(_ args: [String]) async throws -> RedisReply {
+    func run(_ args: [String], scope: RedisCommandScope = .session) async throws -> RedisReply {
         let name = args.first ?? ""
-        return try await executeCommand(args).throwIfError(name).throwIfQueued(name)
+        return try await executeCommand(args, scope: scope).throwIfError(name).throwIfQueued(name)
     }
 
     @discardableResult
-    func run(_ args: [Data]) async throws -> RedisReply {
+    func run(_ args: [Data], scope: RedisCommandScope = .session) async throws -> RedisReply {
         let name = args.first.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        return try await executeCommand(args).throwIfError(name).throwIfQueued(name)
+        return try await executeCommand(args, scope: scope).throwIfError(name).throwIfQueued(name)
+    }
+
+    /// The health monitor's question. Only a session with no identity fails it, because a
+    /// reconnect is what the monitor does with a no. A user's open block holds the probe back
+    /// rather than queueing a PING into it, which for a user without `+ping` would abort the block.
+    func probeHealth() async throws {
+        let reply: RedisReply
+        do {
+            reply = try await executeCommand(RedisConnectProbe.command, scope: .outsideBlock)
+        } catch is RedisHeldBackCommand {
+            return
+        }
+        guard RedisConnectProbe.outcome(errorMessage: reply.errorMessage) == .unauthenticated else { return }
+        throw RedisPluginError(
+            code: 3,
+            message: RedisConnectProbe.unauthenticatedMessage,
+            detail: RedisConnectProbe.unauthenticatedHint
+        )
     }
 
     /// The single-node walk. A cluster channel replaces this with one that visits every master.
-    func scanKeyspace(cursor: String, pattern: String?, type: String?, count: Int) async throws -> RedisKeyspacePage {
+    func scanKeyspace(
+        cursor: String,
+        pattern: String?,
+        type: String?,
+        count: Int,
+        scope: RedisCommandScope
+    ) async throws -> RedisKeyspacePage {
         var args = ["SCAN", cursor == RedisClusterCursor.start ? "0" : cursor]
         if let pattern { args += ["MATCH", pattern] }
         args += ["COUNT", String(count)]
         if let type { args += ["TYPE", type] }
 
-        let reply = try await executeCommand(args).throwIfError().throwIfQueued("SCAN")
+        let reply = try await executeCommand(args, scope: scope).throwIfError().throwIfQueued("SCAN")
         let page = RedisScanReply.parse(reply)
         return RedisKeyspacePage(cursor: page.cursor, keys: page.keys, isIncomplete: false)
     }

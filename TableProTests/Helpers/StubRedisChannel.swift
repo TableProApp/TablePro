@@ -3,7 +3,8 @@
 //  TableProTests
 //
 //  A Redis command channel that answers from a script, for driving the channel-level logic
-//  without hiredis or a server.
+//  without hiredis or a server. It admits and observes through the same footprint the hiredis
+//  connection keeps, so a test sees a held-back command exactly as the app would.
 //
 
 import Foundation
@@ -13,6 +14,8 @@ import TableProPluginKit
 final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     private var outcomes: [Result<RedisReply, Error>]
     private(set) var sentCommands: [[String]] = []
+    private(set) var sentScopes: [RedisCommandScope] = []
+    private(set) var footprint = RedisSessionFootprint()
     let supportsDatabaseSelection: Bool
     private let database: Int
 
@@ -37,18 +40,35 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func cancelCurrentQuery() {}
     func serverVersion() -> String? { "8.10.1" }
     func currentDatabase() -> Int { database }
-    func selectDatabase(_ index: Int) async throws {}
-
-    func executeCommand(_ args: [Data]) async throws -> RedisReply {
-        sentCommands.append(args.map { String(data: $0, encoding: .utf8) ?? "" })
-        guard !outcomes.isEmpty else { return .null }
-        return try outcomes.removeFirst().get()
+    func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
+        _ = try await executeCommand(["SELECT", String(index)].map { Data($0.utf8) }, scope: scope)
     }
 
-    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
+    func observeOpenBlock() {
+        _ = footprint.observe(command: "MULTI", reply: .status("OK"))
+    }
+
+    func observeWatch() {
+        _ = footprint.observe(command: "WATCH", reply: .status("OK"))
+    }
+
+    func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
+        let command = args.map { String(data: $0, encoding: .utf8) ?? "" }
+        if let held = footprint.heldBack(scope) {
+            throw RedisHeldBackCommand(command: command.first ?? "", held: held)
+        }
+        sentCommands.append(command)
+        sentScopes.append(scope)
+        guard !outcomes.isEmpty else { return .null }
+        let reply = try outcomes.removeFirst().get()
+        _ = footprint.observe(command: command.first, reply: reply)
+        return reply
+    }
+
+    func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         var replies: [RedisReply] = []
         for command in commands {
-            replies.append(try await executeCommand(command))
+            replies.append(try await executeCommand(command, scope: scope))
         }
         return replies
     }

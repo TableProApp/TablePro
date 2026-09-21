@@ -82,24 +82,24 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
 
     func currentDatabase() -> Int { current?.currentDatabase() ?? database }
 
-    func executeCommand(_ args: [Data]) async throws -> RedisReply {
+    func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         try await withFailoverRetry(isReplayable: { replayable($0, ifReadOnly: args) }) {
-            try await $0.executeCommand(args)
+            try await $0.executeCommand(args, scope: scope)
         }
     }
 
-    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
+    func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         try await withFailoverRetry(
             isReplayable: { failure in
                 !failure.wasDelivered || commands.allSatisfy { replayable(failure, ifReadOnly: $0) }
             }
         ) {
-            try await $0.executePipeline(commands)
+            try await $0.executePipeline(commands, scope: scope)
         }
     }
 
-    func selectDatabase(_ index: Int) async throws {
-        try await withFailoverRetry(isReplayable: { _ in true }) { try await $0.selectDatabase(index) }
+    func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
+        try await withFailoverRetry(isReplayable: { _ in true }) { try await $0.selectDatabase(index, scope: scope) }
     }
 
     /// Re-asks the quorum and re-points the connection when the primary has moved. Called from the
@@ -154,6 +154,7 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
         )
         try await opened.connect(reportingStage: report)
 
+        opened.adoptLostSessionState(current?.sessionStateForHandOver())
         guard let previous = adopt(opened, at: address) else {
             opened.disconnect()
             throw RedisPluginError.notConnected
