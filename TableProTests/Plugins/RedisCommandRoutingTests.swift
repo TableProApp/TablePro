@@ -2,7 +2,9 @@
 //  RedisCommandRoutingTests.swift
 //  TableProTests
 //
-//  Key positions and policies here match what `COMMAND INFO` reports on Redis 8.10.1.
+//  Key positions and policies here match what `COMMAND INFO` reports on Redis 8.10.1, and the
+//  entries are shaped the way its RESP2 reply is: a bulk name, which for a subcommand already
+//  carries the container (`config|set`), and flags as simple strings.
 //
 
 import Foundation
@@ -22,7 +24,7 @@ private func commandEntry(
     .array([
         .string(name),
         .integer(-1),
-        .array(flags.map { RedisReply.string($0) }),
+        .array(flags.map { RedisReply.status($0) }),
         .integer(Int64(firstKey)),
         .integer(Int64(lastKey)),
         .integer(Int64(step)),
@@ -191,16 +193,66 @@ struct RedisCommandRoutingParsingTests {
         #expect(spec.isReadOnly)
     }
 
+    /// Redis already names a subcommand `function|load`. Prefixing the container again keyed it as
+    /// `function|function|load`, which no lookup ever reaches, so the command ran on one node.
     @Test("Reads a policy that only exists on a subcommand entry")
     func parsesSubcommandPolicy() throws {
+        let reply = RedisReply.array([
+            commandEntry(name: "function", subcommands: [
+                commandEntry(
+                    name: "function|load",
+                    flags: ["write", "denyoom", "noscript"],
+                    tips: ["request_policy:all_shards", "response_policy:all_succeeded"]
+                ),
+            ]),
+        ])
+        let routing = try #require(RedisCommandRouting.parse(commandReply: reply))
+        let spec = try #require(routing.spec(for: args("FUNCTION", "LOAD", "#!lua name=lib")))
+        #expect(spec.name == "function|load")
+        #expect(spec.requestPolicy == .allShards)
+        #expect(spec.responsePolicy == .allSucceeded)
+    }
+
+    @Test("Reads the key positions of a subcommand entry")
+    func parsesSubcommandKeyPositions() throws {
+        let reply = RedisReply.array([
+            commandEntry(name: "xinfo", subcommands: [
+                commandEntry(name: "xinfo|stream", flags: ["readonly"], firstKey: 2, lastKey: 2, step: 1),
+            ]),
+        ])
+        let routing = try #require(RedisCommandRouting.parse(commandReply: reply))
+        let keys = routing.keys(in: args("XINFO", "STREAM", "orders")).compactMap { String(data: $0, encoding: .utf8) }
+        #expect(keys == ["orders"])
+        #expect(routing.isReadOnly(args("XINFO", "STREAM", "orders")))
+    }
+
+    /// The curated `config|set` says all_nodes. A server that tips it differently is the one that
+    /// knows, and its entry could only win once it was keyed by the name the lookup uses.
+    @Test("A server's subcommand entry overrides the curated one")
+    func serverSubcommandOverridesCurated() throws {
+        let reply = RedisReply.array([
+            commandEntry(name: "config", subcommands: [
+                commandEntry(name: "config|set", tips: ["request_policy:all_shards", "response_policy:all_succeeded"]),
+            ]),
+        ])
+        let routing = try #require(RedisCommandRouting.parse(commandReply: reply))
+        #expect(routing.spec(for: args("CONFIG", "SET", "maxmemory", "0"))?.requestPolicy == .allShards)
+    }
+
+    /// A nested entry keyed by its bare name would replace the top-level SET with a keyless
+    /// entry, and every SET would then go to an arbitrary master instead of the key's owner.
+    @Test("A nested entry not named under its container cannot replace a top-level command")
+    func nestedEntryCannotReplaceTopLevelCommand() throws {
         let reply = RedisReply.array([
             commandEntry(name: "config", subcommands: [
                 commandEntry(name: "set", tips: ["request_policy:all_nodes", "response_policy:all_succeeded"]),
             ]),
         ])
         let routing = try #require(RedisCommandRouting.parse(commandReply: reply))
+        let keys = routing.keys(in: args("SET", "k", "v")).compactMap { String(data: $0, encoding: .utf8) }
+        #expect(keys == ["k"])
+        #expect(routing.spec(for: args("SET", "k", "v"))?.requestPolicy == nil)
         #expect(routing.spec(for: args("CONFIG", "SET", "a", "b"))?.requestPolicy == .allNodes)
-        #expect(routing.spec(for: args("CONFIG", "SET", "a", "b"))?.responsePolicy == .allSucceeded)
     }
 
     @Test("Reads the movablekeys flag")
@@ -262,6 +314,37 @@ struct RedisCommandRoutingParsingTests {
         #expect(RedisCommandRouting.parse(commandReply: .array([])) == nil)
         #expect(RedisCommandRouting.parse(commandReply: .error("NOPERM")) == nil)
         #expect(RedisCommandRouting().spec(for: args("DBSIZE"))?.responsePolicy == .aggSum)
+    }
+}
+
+@Suite("Redis command routing - how far a command fans out on a cluster")
+struct RedisClusterFanOutTests {
+    let routing = RedisCommandRouting()
+
+    /// LATENCY DOCTOR is tipped all_nodes with a special response, measured on Redis 8.10.1.
+    @Test("A special response goes to one node whatever the request policy")
+    func specialResponseGoesToOneNode() throws {
+        let reply = RedisReply.array([
+            commandEntry(name: "latency", subcommands: [
+                commandEntry(
+                    name: "latency|doctor",
+                    flags: ["admin", "noscript", "loading", "stale"],
+                    tips: ["nondeterministic_output", "request_policy:all_nodes", "response_policy:special"]
+                ),
+            ]),
+        ])
+        let parsed = try #require(RedisCommandRouting.parse(commandReply: reply))
+        #expect(parsed.spec(for: args("LATENCY", "DOCTOR"))?.clusterFanOut == .single)
+        #expect(routing.spec(for: args("INFO"))?.clusterFanOut == .single)
+    }
+
+    @Test("Each policy maps to how far the command goes")
+    func policies() {
+        #expect(routing.spec(for: args("CONFIG", "SET", "maxmemory", "0"))?.clusterFanOut == .everyNode)
+        #expect(routing.spec(for: args("DBSIZE"))?.clusterFanOut == .everyPrimary)
+        #expect(routing.spec(for: args("DEL", "a", "b"))?.clusterFanOut == .keyedShards)
+        #expect(routing.spec(for: args("GET", "k"))?.clusterFanOut == .single)
+        #expect(routing.spec(for: args("SCAN", "0"))?.clusterFanOut == .single)
     }
 }
 

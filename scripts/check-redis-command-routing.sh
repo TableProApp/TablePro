@@ -135,12 +135,19 @@ if not curated:
     sys.exit("could not parse any curated entries")
 
 server = {}
+misnamed = []
 
 
+# Read every entry exactly as RedisCommandRouting.parse does: a subcommand is keyed by the name the
+# server reports, which already carries its container, and a nested entry named anything else is
+# skipped there, so it fails the check here rather than passing unnoticed.
 def collect(entry, container=None):
     if not isinstance(entry, list) or len(entry) < 6 or not isinstance(entry[0], str):
         return
-    name = f"{container}|{entry[0].lower().split('|')[-1]}" if container else entry[0].lower()
+    name = entry[0].lower()
+    if container and not name.startswith(f"{container}|"):
+        misnamed.append(f"{container} > {name}")
+        return
     flags = {str(f).lower() for f in (entry[2] or [])}
     tips = [str(t) for t in (entry[7] or [])] if len(entry) > 7 else []
     server[name] = {
@@ -176,11 +183,17 @@ print(f"compared {checked} commands")
 missing = sorted(n for n in curated if n not in server)
 if missing:
     print(f"not on this server, so unchecked: {', '.join(missing)}")
+if misnamed:
+    print()
+    for line in misnamed:
+        print(f"  subcommand not named under its container: {line}")
+    print(f"\n{len(misnamed)} subcommand entry(ies) the driver would skip")
 if mismatches:
     print()
     for line in mismatches:
         print(f"  {line}")
     print(f"\n{len(mismatches)} disagreement(s)")
+if misnamed or mismatches:
     sys.exit(1)
 print("the curated table matches the server")
 PY

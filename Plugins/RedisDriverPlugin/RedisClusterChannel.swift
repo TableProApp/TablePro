@@ -129,17 +129,14 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         let snapshot = snapshotState()
         let spec = snapshot.routing.spec(for: args)
 
-        switch spec?.requestPolicy {
-        case .allNodes:
+        switch spec?.clusterFanOut ?? .single {
+        case .everyNode:
             return try await broadcast(args, to: snapshot.topology.allNodes, policy: spec?.responsePolicy, scope: scope)
-        case .allShards:
-            guard spec?.responsePolicy != .special else {
-                return try await routeToAnyMaster(args, snapshot: snapshot, scope: scope)
-            }
+        case .everyPrimary:
             return try await broadcast(args, to: snapshot.topology.masters, policy: spec?.responsePolicy, scope: scope)
-        case .multiShard:
+        case .keyedShards:
             return try await runMultiShard(args, spec: spec, snapshot: snapshot, scope: scope)
-        case .special, .none:
+        case .single:
             return try await routeSingle(args, spec: spec, snapshot: snapshot, scope: scope)
         }
     }

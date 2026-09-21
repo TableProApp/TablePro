@@ -66,6 +66,29 @@ struct RedisCommandSpec: Sendable, Equatable {
         guard last >= firstKey else { return [] }
         return Array(stride(from: firstKey, through: last, by: step))
     }
+
+    /// A `special` response has no rule for combining several nodes' answers, so a command that
+    /// carries one goes to a single node whatever its request policy says: `LATENCY DOCTOR` is
+    /// tipped `all_nodes`, and gluing each node's report together would label none of them.
+    var clusterFanOut: RedisClusterFanOut {
+        switch requestPolicy {
+        case .allNodes where responsePolicy != .special:
+            return .everyNode
+        case .allShards where responsePolicy != .special:
+            return .everyPrimary
+        case .multiShard:
+            return .keyedShards
+        default:
+            return .single
+        }
+    }
+}
+
+enum RedisClusterFanOut: Sendable, Equatable {
+    case everyNode
+    case everyPrimary
+    case keyedShards
+    case single
 }
 
 struct RedisCommandRouting: Sendable {
@@ -124,9 +147,13 @@ struct RedisCommandRouting: Sendable {
         return RedisCommandRouting(specs: merged)
     }
 
+    /// Redis names a subcommand entry with its container already in front (`config|set`), so the
+    /// entry is keyed by the name the server reports. A nested entry named anything else is not
+    /// one of its container's subcommands and would overwrite a top-level command of that name.
     private static func collect(_ entry: RedisReply, container: String?, into specs: inout [String: RedisCommandSpec]) {
-        guard case .array(let fields) = entry, fields.count >= 6, let rawName = fields[0].stringValue else { return }
-        let name = container.map { "\($0)|\(rawName.lowercased())" } ?? rawName.lowercased()
+        guard case .array(let fields) = entry, fields.count >= 6,
+              let name = fields[0].stringValue?.lowercased(),
+              isNamed(name, under: container) else { return }
 
         let flags = Set((fields[2].stringArrayValue ?? []).map { $0.lowercased() })
         let tips = fields.count >= 8 ? (fields[7].stringArrayValue ?? []) : []
@@ -157,6 +184,11 @@ struct RedisCommandRouting: Sendable {
         for subcommand in subcommands {
             collect(subcommand, container: name, into: &specs)
         }
+    }
+
+    private static func isNamed(_ name: String, under container: String?) -> Bool {
+        guard let container else { return true }
+        return name.hasPrefix("\(container)|")
     }
 
     // MARK: - Curated fallback
