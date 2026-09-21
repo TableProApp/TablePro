@@ -107,6 +107,9 @@ struct MenuValidationContext: Equatable {
     var supportsServerDashboard = false
     var supportsUserManagement = false
     var supportsSchemaSwitching = false
+    /// Whether the engine declares an EXPLAIN variant. Read through the same rule the editor bar
+    /// uses, so the menu item cannot run a statement the bar's button refuses to.
+    var supportsExplain = false
     var hasSessionContexts = false
     var canFilterDatabases = false
     var canFavoriteActiveDatabase = false
@@ -133,6 +136,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// nothing to clear. `MenuValidationCoverageTests` reads the nil to say so.
     static func resolvedEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         if let find = isFindCommandEnabled(selector, context: context) { return find }
+        if let query = isQueryCommandEnabled(selector, context: context) { return query }
 
         switch selector {
         case #selector(exportTables(_:)),
@@ -196,42 +200,14 @@ extension MainSplitViewController: NSMenuItemValidation {
             /// Safe Mode has to stop it the same way Restore is stopped.
             return context.isConnected && context.supportsServerSideExport && !context.isReadOnly
 
-        case #selector(executeQuery(_:)),
-             #selector(executeAllStatements(_:)),
-             #selector(executeQueryWithoutLimit(_:)),
-             #selector(explainQuery(_:)),
-             #selector(formatQuery(_:)):
-            return context.isConnected && context.hasQueryText
-        /// Both hand their statement to the assistant, which will not open with the feature off.
-        /// They validated on the query alone, so with AI off the item stayed enabled, the shortcut
-        /// fired and nothing happened at all: no pane, no alert, nothing.
-        case #selector(explainQueryWithAI(_:)),
-             #selector(optimizeQueryWithAI(_:)):
-            return context.isConnected && context.hasQueryText && AppSettingsManager.shared.ai.enabled
         /// Reachable while the connection is still dialling: agent mode draws the prompt the user
         /// typed, which is exactly what they are waiting with, so gating on `isConnected` would make
         /// the command dead in the one state it is most wanted.
         case #selector(setContentModeFromMenu(_:)),
              #selector(toggleContentModeFromMenu(_:)):
             return context.hasSelectedWorkspace && AppSettingsManager.shared.ai.enabled
-        case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
-            return context.hasEditorForFind
-        case #selector(removeInvisibleCharacters(_:)):
-            return context.hasEditorForFind && context.hasQueryText
-        case #selector(goToPreviousStatement(_:)), #selector(goToNextStatement(_:)):
-            return context.isQueryTab
-        case #selector(runStatementAndAdvance(_:)):
-            return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
-        case #selector(cancelQuery(_:)):
-            return context.isQueryExecuting && context.isQueryStoppable
-        case #selector(clearQuery(_:)):
-            return context.canClearQuery
-        case #selector(clearResults(_:)):
-            return context.canClearResults
         case #selector(previewSQL(_:)):
             return context.isConnected && context.hasDataPendingChanges
-        case #selector(saveAsFavorite(_:)):
-            return context.canSaveAsFavorite
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
             return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
@@ -374,6 +350,48 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    /// The commands that act on the selected tab's editor and the statements in it.
+    private static func isQueryCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        switch selector {
+        case #selector(executeQuery(_:)),
+             #selector(executeAllStatements(_:)),
+             #selector(executeQueryWithoutLimit(_:)),
+             #selector(formatQuery(_:)):
+            return context.isConnected && context.hasQueryText
+        case #selector(explainQuery(_:)):
+            return QueryCommandAvailability.canExplain(
+                isConnected: context.isConnected,
+                hasQueryText: context.hasQueryText,
+                isExecuting: context.isQueryExecuting,
+                supportsExplain: context.supportsExplain
+            )
+        /// Both hand their statement to the assistant, which will not open with the feature off.
+        /// They validated on the query alone, so with AI off the item stayed enabled, the shortcut
+        /// fired and nothing happened at all: no pane, no alert, nothing.
+        case #selector(explainQueryWithAI(_:)),
+             #selector(optimizeQueryWithAI(_:)):
+            return context.isConnected && context.hasQueryText && AppSettingsManager.shared.ai.enabled
+        case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
+            return context.hasEditorForFind
+        case #selector(removeInvisibleCharacters(_:)):
+            return context.hasEditorForFind && context.hasQueryText
+        case #selector(goToPreviousStatement(_:)), #selector(goToNextStatement(_:)):
+            return context.isQueryTab
+        case #selector(runStatementAndAdvance(_:)):
+            return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
+        case #selector(cancelQuery(_:)):
+            return context.isQueryExecuting && context.isQueryStoppable
+        case #selector(clearQuery(_:)):
+            return context.canClearQuery
+        case #selector(clearResults(_:)):
+            return context.canClearResults
+        case #selector(saveAsFavorite(_:)):
+            return context.canSaveAsFavorite
+        default:
+            return nil
+        }
+    }
+
     /// The commands that act on the object selected in the sidebar. They answer on the same facts
     /// the sidebar's own contextual menu reads, so a command the sidebar omits is dimmed here rather
     /// than enabled over an object it cannot act on.
@@ -469,6 +487,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
+            supportsExplain: actions.supportsExplain,
             hasSessionContexts: actions.hasSessionContexts,
             canFilterDatabases: actions.canFilterDatabases,
             canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,

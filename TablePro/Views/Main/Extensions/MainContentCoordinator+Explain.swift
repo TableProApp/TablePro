@@ -21,7 +21,12 @@ extension MainContentCoordinator {
         }
         guard let statement = explainStatement(in: tab) else { return }
         let anchor = tab.tabType == .table ? nil : StatementAnchor(statement)
-        guard let request = explainRequest(variant: variant, statement: statement.sql) else {
+        guard let request = ExplainRequest.make(
+            variant: variant,
+            declaredVariants: connection.type.explainVariants,
+            databaseType: connection.type,
+            statement: statement.sql
+        ) else {
             tabManager.mutate(at: index) {
                 $0.execution.errorMessage = String(
                     localized: "EXPLAIN is not supported for this database type."
@@ -32,7 +37,7 @@ extension MainContentCoordinator {
 
         let level = safeModeLevel
         guard level.appliesToAllQueries, level.requiresConfirmation else {
-            run(request, anchor: anchor)
+            executeExplain(request, anchor: anchor)
             return
         }
 
@@ -49,7 +54,7 @@ extension MainContentCoordinator {
                 )
             )
             guard case .authorized = decision else { return }
-            run(request, anchor: anchor)
+            executeExplain(request, anchor: anchor)
         }
     }
 
@@ -92,36 +97,7 @@ extension MainContentCoordinator {
             .offset(by: sourceOffset)
     }
 
-    private func explainRequest(variant: ExplainVariant?, statement: String) -> ExplainRequest? {
-        if let request = ExplainRequest.make(
-            variant: variant,
-            declaredVariants: connection.type.explainVariants,
-            databaseType: connection.type,
-            statement: statement
-        ) {
-            return request
-        }
-
-        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
-              let fallbackSQL = adapter.buildExplainQuery(statement)
-        else { return nil }
-
-        return ExplainRequest.driverBuilt(
-            sql: fallbackSQL,
-            databaseType: connection.type,
-            subjectSQL: statement
-        )
-    }
-
     // MARK: - Execution
-
-    private func run(_ request: ExplainRequest, anchor: StatementAnchor?) {
-        guard !request.isDriverBuilt else {
-            executeQueryInternal(request.sql, anchor: anchor)
-            return
-        }
-        executeExplain(request, anchor: anchor)
-    }
 
     private func executeExplain(_ request: ExplainRequest, anchor: StatementAnchor?) {
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return }

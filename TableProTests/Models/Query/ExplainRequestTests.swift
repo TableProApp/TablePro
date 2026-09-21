@@ -81,51 +81,6 @@ struct ExplainRequestTests {
         #expect(request.format == .sqliteQueryPlan)
     }
 
-    @Test("A driver-built statement still resolves the database default format")
-    func driverBuiltUsesDatabaseDefault() {
-        let request = ExplainRequest.driverBuilt(sql: "EXPLAIN SELECT 1", databaseType: .duckdb)
-
-        #expect(request.sql == "EXPLAIN SELECT 1")
-        #expect(request.subjectSQL == "EXPLAIN SELECT 1")
-        #expect(request.format == .indentedText)
-        #expect(request.variantKey == .driverBuilt)
-    }
-
-    @Test("A driver-built statement retains a separately known subject")
-    func driverBuiltRetainsSubject() {
-        let request = ExplainRequest.driverBuilt(
-            sql: "EXPLAIN SELECT 1",
-            databaseType: .duckdb,
-            subjectSQL: "SELECT 1"
-        )
-
-        #expect(request.subjectSQL == "SELECT 1")
-    }
-
-    @Test("A driver-built statement is marked so it keeps the ordinary result grid")
-    func driverBuiltIsFlagged() {
-        #expect(ExplainRequest.driverBuilt(sql: "DEBUG OBJECT key", databaseType: .redis).isDriverBuilt)
-    }
-
-    @Test("A declared variant is not driver-built")
-    func declaredVariantIsNotDriverBuilt() throws {
-        let request = try #require(
-            ExplainRequest.make(
-                variant: nil,
-                declaredVariants: postgresVariants,
-                databaseType: .postgresql,
-                statement: "SELECT 1"
-            )
-        )
-        #expect(!request.isDriverBuilt)
-    }
-
-    @Test("A driver-built statement on an unknown engine stays plain text")
-    func driverBuiltOnUnknownEngineStaysPlainText() {
-        let request = ExplainRequest.driverBuilt(sql: "DEBUG OBJECT key", databaseType: .redis)
-        #expect(request.format == .plainText)
-    }
-
     @Test("The result factory retains the run's plan-history provenance")
     @MainActor
     func resultFactoryRetainsPlanContext() {

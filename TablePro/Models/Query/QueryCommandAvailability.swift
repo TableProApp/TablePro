@@ -49,7 +49,12 @@ struct QueryCommandAvailability {
         self.explainVariants = explainVariants
         canRun = isConnected && hasQueryText && !isExecuting
         canStop = isExecuting && isStoppable
-        canExplain = isConnected && hasQueryText && !isExecuting && !explainVariants.isEmpty
+        canExplain = Self.canExplain(
+            isConnected: isConnected,
+            hasQueryText: hasQueryText,
+            isExecuting: isExecuting,
+            supportsExplain: !explainVariants.isEmpty
+        )
         /// Formatting rewrites text the reader already has, so it does not wait for a server.
         canFormat = hasQueryText
         canSaveAsFavorite = hasQueryText
@@ -81,6 +86,12 @@ struct QueryCommandAvailability {
             base: shortcutHint(String(localized: "Save as Favorite"), .saveAsFavorite),
             reason: hasQueryText ? nil : String(localized: "There is nothing to save yet.")
         )
+    }
+
+    /// The one rule for Explain, shared by the editor bar and the Query menu so the button and the
+    /// menu item's shortcut cannot disagree. An engine explains only through a variant it declares.
+    static func canExplain(isConnected: Bool, hasQueryText: Bool, isExecuting: Bool, supportsExplain: Bool) -> Bool {
+        isConnected && hasQueryText && !isExecuting && supportsExplain
     }
 
     private static func blockedReason(isConnected: Bool, hasQueryText: Bool, isExecuting: Bool) -> String? {

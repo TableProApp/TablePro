@@ -10,6 +10,7 @@
 
 import AppKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -309,6 +310,57 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.executeQuery(_:)), context))
     }
 
+    /// Redis declares no plan, and the menu item used to validate on the query text alone, so
+    /// `Cmd+Option+E` ran a `DEBUG OBJECT` the server refuses while the bar's button was dimmed.
+    @Test("Explain Query needs an engine that declares a plan")
+    func explainNeedsADeclaredPlan() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasQueryText = true
+        #expect(!enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
+        context.supportsExplain = true
+        #expect(enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
+    }
+
+    /// `runExplain` returns at its first guard while the tab runs, so a lit item did nothing.
+    @Test("Explain Query dims while the tab is running a query")
+    func explainDimsWhileExecuting() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasQueryText = true
+        context.supportsExplain = true
+        context.isQueryExecuting = true
+        #expect(!enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
+    }
+
+    @Test("Explain Query answers exactly what the editor bar's Explain answers")
+    func explainAgreesWithTheEditorBar() {
+        let variant = ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")
+        for isConnected in [true, false] {
+            for hasQueryText in [true, false] {
+                for isExecuting in [true, false] {
+                    for supportsExplain in [true, false] {
+                        var context = MenuValidationContext()
+                        context.isConnected = isConnected
+                        context.hasQueryText = hasQueryText
+                        context.isQueryExecuting = isExecuting
+                        context.supportsExplain = supportsExplain
+                        let bar = QueryCommandAvailability(
+                            isConnected: isConnected,
+                            hasQueryText: hasQueryText,
+                            isExecuting: isExecuting,
+                            isStoppable: true,
+                            hasResults: false,
+                            explainVariants: supportsExplain ? [variant] : [],
+                            shortcutHint: { label, _ in label }
+                        )
+                        #expect(enabled(#selector(MainSplitViewController.explainQuery(_:)), context) == bar.canExplain)
+                    }
+                }
+            }
+        }
+    }
+
     /// #2172: `paste:` had no window-level implementation at all, so with focus anywhere that does
     /// not paste, AppKit disabled the item, and a disabled item still owns its key equivalent, so
     /// Command+V was swallowed for the whole window. Adding the handler without an explicit arm
@@ -478,6 +530,7 @@ struct MainMenuValidationTests {
         context.isQueryTab = true
         context.hasResultRows = true
         context.hasQueryText = true
+        context.supportsExplain = true
         context.hasPendingChanges = true
         context.hasDataPendingChanges = true
         context.hasImportFormats = true
@@ -516,6 +569,7 @@ struct MainMenuValidationTests {
             #selector(MainSplitViewController.backupDatabase(_:)),
             #selector(MainSplitViewController.restoreDatabase(_:)),
             #selector(MainSplitViewController.executeQuery(_:)),
+            #selector(MainSplitViewController.explainQuery(_:)),
             #selector(MainSplitViewController.previewSQL(_:)),
             #selector(MainSplitViewController.createNewTable(_:)),
             #selector(MainSplitViewController.openContainerSwitcher(_:)),
