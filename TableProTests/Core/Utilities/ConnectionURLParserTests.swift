@@ -743,6 +743,79 @@ struct ConnectionURLParserTests {
         #expect(parsed.database == "")
     }
 
+    @Test("Redis URL with a negative database index is refused")
+    func redisURLWithNegativeIndexIsRefused() {
+        let result = ConnectionURLParser.parse("redis://localhost:6379/-1")
+        guard case .failure(let error) = result else {
+            Issue.record("Expected failure"); return
+        }
+        #expect(error == .invalidRedisDatabaseIndex("-1"))
+        #expect(
+            error.localizedDescription
+                == String(format: String(localized: "%@ is not a Redis database index."), "-1")
+        )
+    }
+
+    @Test(
+        "Redis URL whose path is not a database index is refused",
+        arguments: ["1.5", "abc", "2147483647", "3/"]
+    )
+    func redisURLWithInvalidIndexIsRefused(path: String) {
+        guard case .failure(let error) = ConnectionURLParser.parse("redis://localhost/\(path)") else {
+            Issue.record("Expected failure"); return
+        }
+        #expect(error == .invalidRedisDatabaseIndex(path))
+    }
+
+    @Test("Redis URL accepts the highest selectable database index")
+    func redisURLAcceptsHighestIndex() {
+        let result = ConnectionURLParser.parse("redis://localhost/2147483646")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == 2_147_483_646)
+    }
+
+    @Test("Redis URL reads a db-prefixed path as the database index")
+    func redisURLReadsDbPrefixedPath() {
+        let result = ConnectionURLParser.parse("redis://localhost/db4")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == 4)
+        #expect(parsed.database == "")
+    }
+
+    @Test("Redis URL with an empty path names no database index")
+    func redisURLWithEmptyPath() {
+        let result = ConnectionURLParser.parse("redis://localhost/")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == nil)
+        #expect(parsed.database == "")
+    }
+
+    @Test("Redis over SSH reads the database index from the path")
+    func redisOverSSHReadsDatabaseIndex() {
+        let result = ConnectionURLParser.parse("redis+ssh://user@bastion:22/localhost:6379/3")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == 3)
+        #expect(parsed.database == "")
+        #expect(parsed.sshHost == "bastion")
+    }
+
+    @Test("Redis over SSH refuses a negative database index")
+    func redisOverSSHRefusesNegativeIndex() {
+        let result = ConnectionURLParser.parse("redis+ssh://user@bastion:22/localhost:6379/-1")
+        guard case .failure(let error) = result else {
+            Issue.record("Expected failure"); return
+        }
+        #expect(error == .invalidRedisDatabaseIndex("-1"))
+    }
+
     // MARK: - TablePlus Query Parameters
 
     @Test("Parse statusColor parameter")
