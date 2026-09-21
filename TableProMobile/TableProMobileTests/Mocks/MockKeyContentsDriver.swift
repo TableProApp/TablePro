@@ -11,6 +11,22 @@ final class MockKeyContentsDriver: KeyContentsBrowsing, @unchecked Sendable {
     }
 
     var scriptedPages: [Result<KeyContentsPage, Error>] = []
+    var holdsFirstRequest = false
+
+    private let holdLock = NSLock()
+    private var heldRequest: CheckedContinuation<Void, Never>?
+
+    var isHoldingRequest: Bool {
+        holdLock.withLock { heldRequest != nil }
+    }
+
+    func releaseHeldRequest() {
+        let held = holdLock.withLock {
+            defer { heldRequest = nil }
+            return heldRequest
+        }
+        held?.resume()
+    }
 
     private(set) var pageRequests: [PageRequest] = []
     private(set) var executedQueries: [String] = []
@@ -24,13 +40,18 @@ final class MockKeyContentsDriver: KeyContentsBrowsing, @unchecked Sendable {
 
     func keyContentsPage(ofKey key: String, limit: Int, offset: Int) async throws -> KeyContentsPage {
         pageRequests.append(PageRequest(key: key, limit: limit, offset: offset))
-        guard !scriptedPages.isEmpty else {
-            return KeyContentsPage(
+        let answer: Result<KeyContentsPage, Error> = scriptedPages.isEmpty
+            ? .success(KeyContentsPage(
                 result: QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0),
                 totalCount: 0
-            )
+            ))
+            : scriptedPages.removeFirst()
+        if holdsFirstRequest, pageRequests.count == 1 {
+            await withCheckedContinuation { continuation in
+                holdLock.withLock { heldRequest = continuation }
+            }
         }
-        return try scriptedPages.removeFirst().get()
+        return try answer.get()
     }
 
     func connect() async throws {}

@@ -51,6 +51,7 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var host: String = ""
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
 
     init(windowCapacity: Int = 1_000) {
         self.buffer = StreamingResultBuffer(capacity: windowCapacity)
@@ -173,12 +174,14 @@ final class DataBrowserViewModel {
 
     private func loadKeyContents(reader: any KeyContentsBrowsing, key: String) async {
         let start = Date()
+        let limit = pagination.pageSize
+        let offset = pagination.currentOffset
+        keyReadTask?.cancel()
+        let read = Task { try await reader.keyContentsPage(ofKey: key, limit: limit, offset: offset) }
+        keyReadTask = read
         do {
-            let page = try await reader.keyContentsPage(
-                ofKey: key,
-                limit: pagination.pageSize,
-                offset: pagination.currentOffset
-            )
+            let page = try await read.value
+            guard keyReadTask == read, !read.isCancelled else { return }
             columnDetails = page.result.columns
             foreignKeys = []
             pagination.totalRows = page.totalCount
@@ -194,6 +197,7 @@ final class DataBrowserViewModel {
             }
             settleTotalRowsFromShortPage()
         } catch {
+            guard keyReadTask == read, !read.isCancelled else { return }
             loadError = ErrorClassifier.classify(
                 error,
                 context: ErrorContext(operation: "loadKeyContents", databaseType: databaseType, host: host)
@@ -502,6 +506,7 @@ final class DataBrowserViewModel {
     }
 
     func cancel() {
+        keyReadTask?.cancel()
         fetchTask?.cancel()
         buffer.cancelFlush()
         searchTask?.cancel()

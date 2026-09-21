@@ -414,6 +414,33 @@ struct DataBrowserViewModelTests {
         #expect(vm.isLoading == false)
     }
 
+    @Test("a key read overtaken by a newer one leaves the newer page on screen")
+    func overtakenKeyReadIsDropped() async {
+        let driver = MockKeyContentsDriver()
+        let vm = DataBrowserViewModel()
+        let pageSize = vm.pagination.pageSize
+        driver.scriptedPages = [
+            .success(keyPage(from: 0, count: pageSize, total: pageSize * 3)),
+            .success(keyPage(from: pageSize, count: pageSize, total: pageSize * 3))
+        ]
+        driver.holdsFirstRequest = true
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "queue"), databaseType: .redis, host: "localhost")
+
+        let overtaken = Task { await vm.load(isInitial: true) }
+        while !driver.isHoldingRequest {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        await vm.load()
+        driver.releaseHeldRequest()
+        await overtaken.value
+
+        #expect(driver.pageRequests.count == 2)
+        #expect(vm.legacyRows.first == [String(pageSize), "e\(pageSize)"])
+        #expect(vm.loadError == nil)
+        #expect(vm.isLoading == false)
+    }
+
     @Test("a short key page with no count settles the total from what arrived")
     func shortKeyPageSettlesTotal() async {
         let driver = MockKeyContentsDriver()
