@@ -59,7 +59,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func quoteIdentifier(_ name: String) -> String { name }
 
     func defaultExportQuery(table: String) -> String? {
-        "SCAN 0 MATCH \"*\" COUNT 10000"
+        RedisQueryBuilder().buildExportQuery(database: RedisDatabaseIndex.parse(table))
     }
 
     init(config: DriverConnectionConfig) {
@@ -246,6 +246,14 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let clusterDatabaseName = "db0"
 
+    static func databaseIndex(of name: String) throws -> Int {
+        guard let index = RedisDatabaseIndex.parse(name), index >= 0 else {
+            let template = String(localized: "%@ is not a Redis database index.")
+            throw RedisPluginError(code: 0, message: String(format: template, name))
+        }
+        return index
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         [
             PluginColumnInfo(name: "Key", dataType: "String", isNullable: false, isPrimaryKey: true),
@@ -278,8 +286,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        let result = try await conn.run(["DBSIZE"], scope: .outsideBlock)
-        return result.intValue
+        guard let index = RedisDatabaseIndex.parse(table) else { return nil }
+        return try await conn.keyCount(inDatabase: index)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
@@ -287,33 +295,32 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let result = try await conn.run(["DBSIZE"], scope: .outsideBlock)
-        let keyCount = result.intValue ?? 0
+        let index = try Self.databaseIndex(of: table)
+        let keyCount = try await conn.keyCount(inDatabase: index)
 
         var lines: [String] = [
             "// Redis database: \(table)",
-            "// Keys: \(keyCount)",
+            "// Keys: \(keyCount.map(String.init) ?? "unknown")",
             "// Use SCAN 0 MATCH * COUNT 200 to browse keys",
         ]
 
-        let keys = try await scanAllKeys(connection: conn, pattern: nil, maxKeys: 100)
-        if !keys.isEmpty {
-            let typeCommands = keys.map { ["TYPE", $0] }
-            let replies = try await conn.executePipeline(typeCommands, scope: .outsideBlock)
-
-            var typeCounts: [String: Int] = [:]
-            for reply in replies {
-                if let typeName = reply.stringValue {
-                    typeCounts[typeName, default: 0] += 1
-                }
+        let (keys, replies) = try await conn.withDatabase(index) {
+            let keys = try await scanAllKeys(connection: conn, pattern: nil, maxKeys: 100)
+            let replies = try await conn.executePipeline(keys.map { ["TYPE", $0] }, scope: .outsideBlock)
+            return (keys, replies)
+        }
+        var typeCounts: [String: Int] = [:]
+        for reply in replies {
+            if let typeName = reply.stringValue {
+                typeCounts[typeName, default: 0] += 1
             }
+        }
 
-            if !typeCounts.isEmpty {
-                lines.append("//")
-                lines.append("// Type distribution (sampled \(keys.count) keys):")
-                for (type, count) in typeCounts.sorted(by: { $0.key < $1.key }) {
-                    lines.append("//   \(type): \(count)")
-                }
+        if !typeCounts.isEmpty {
+            lines.append("//")
+            lines.append("// Type distribution (sampled \(keys.count) keys):")
+            for (type, count) in typeCounts.sorted(by: { $0.key < $1.key }) {
+                lines.append("//   \(type): \(count)")
             }
         }
 
@@ -329,12 +336,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let result = try await conn.run(["DBSIZE"], scope: .outsideBlock)
-        let keyCount = result.intValue ?? 0
-
+        let keyCount = try await conn.keyCount(inDatabase: Self.databaseIndex(of: table))
         return PluginTableMetadata(
             tableName: table,
-            rowCount: Int64(keyCount),
+            rowCount: keyCount.map(Int64.init),
             engine: "Redis"
         )
     }
@@ -413,11 +418,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func switchDatabase(to database: String) async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        guard let dbIndex = RedisDatabaseIndex.parse(database) else {
-            let template = String(localized: "%@ is not a Redis database index.")
-            throw RedisPluginError(code: 0, message: String(format: template, database))
-        }
-        try await conn.selectDatabase(dbIndex, scope: .outsideBlock)
+        try await conn.moveToDatabase(Self.databaseIndex(of: database))
     }
 
     // MARK: - Table Operations
@@ -526,14 +527,16 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch operation {
         case .scan(_, let pattern, _):
             try await streamScanRows(connection: conn, pattern: pattern, scope: .session, continuation: continuation)
-        case .keyBrowse(let pattern, let typeScope, _, _):
-            try await streamScanRows(
-                connection: conn,
-                pattern: pattern,
-                typeFilter: typeScope,
-                scope: .outsideBlock,
-                continuation: continuation
-            )
+        case .keyBrowse(let pattern, let typeScope, _, _, let database):
+            try await conn.withDatabase(database) {
+                try await streamScanRows(
+                    connection: conn,
+                    pattern: pattern,
+                    typeFilter: typeScope,
+                    scope: .outsideBlock,
+                    continuation: continuation
+                )
+            }
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
@@ -600,7 +603,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> String? {
         let builder = RedisQueryBuilder()
         return builder.buildBaseQuery(
-            namespace: "", sortColumns: sortColumns,
+            namespace: "", database: RedisDatabaseIndex.parse(table), sortColumns: sortColumns,
             columns: columns, limit: limit, offset: offset
         )
     }
@@ -616,7 +619,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> String? {
         let builder = RedisQueryBuilder()
         return builder.buildFilteredQuery(
-            namespace: "", filters: filters,
+            namespace: "", database: RedisDatabaseIndex.parse(table), filters: filters,
             logicMode: logicMode, limit: limit, offset: offset
         )
     }

@@ -82,6 +82,8 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
 
     func currentDatabase() -> Int { current?.currentDatabase() ?? database }
 
+    func databaseForNextCommand() -> Int { current?.databaseForNextCommand() ?? database }
+
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         try await withFailoverRetry(isReplayable: { replayable($0, ifReadOnly: args) }) {
             try await $0.executeCommand(args, scope: scope)

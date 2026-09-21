@@ -17,7 +17,7 @@ enum RedisOperation {
     case del(keys: [String])
     case keys(pattern: String)
     case scan(cursor: String, pattern: String?, count: Int?)
-    case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int)
+    case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int, database: Int? = nil)
     case keyTree(pattern: String?, limit: Int)
     case type(key: String)
     case ttl(key: String)
@@ -177,7 +177,7 @@ struct RedisCommandParser {
             return try parseServerCommand(command, args: args, tokens: tokens)
 
         case "KEYBROWSE":
-            return parseKeyBrowse(args)
+            return try parseKeyBrowse(args)
 
         case "KEYTREE":
             return parseKeyTree(args)
@@ -187,14 +187,29 @@ struct RedisCommandParser {
         }
     }
 
-    private static func parseKeyBrowse(_ args: [RedisArgument]) -> RedisOperation {
+    /// `DB` names the database the browse reads, so a table's own query reaches it whichever
+    /// database the session is on: a refresh, a later page and an export all read the database
+    /// the row names rather than the one the session last moved to.
+    private static func parseKeyBrowse(_ args: [RedisArgument]) throws -> RedisOperation {
         var pattern: String?
         var typeScope: String?
         var limit = 200
         var offset = 0
+        var database: Int?
         var i = 0
         while i < args.count {
             switch args[i].text.uppercased() {
+            case "DB":
+                guard i + 1 < args.count else {
+                    throw RedisParseError.missingArgument(String(localized: "KEYBROWSE DB requires a database index"))
+                }
+                guard let index = RedisDatabaseIndex.parse(args[i + 1].text), index >= 0 else {
+                    throw RedisParseError.invalidArgument(
+                        String(format: String(localized: "%@ is not a Redis database index."), args[i + 1].text)
+                    )
+                }
+                database = index
+                i += 1
             case "MATCH":
                 if i + 1 < args.count {
                     pattern = args[i + 1].text
@@ -220,7 +235,7 @@ struct RedisCommandParser {
             }
             i += 1
         }
-        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
+        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset, database: database)
     }
 
     private static func parseKeyTree(_ args: [RedisArgument]) -> RedisOperation {

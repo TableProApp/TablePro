@@ -16,13 +16,14 @@ struct RedisQueryBuilder {
     /// to completion (bounded) and honors LIMIT/OFFSET, so paging returns every key.
     func buildBaseQuery(
         namespace: String,
+        database: Int? = nil,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
         columns: [String] = [],
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
         let pattern = namespace.isEmpty ? nil : "\(namespace)*"
-        return buildKeyBrowseQuery(pattern: pattern, typeScope: nil, limit: limit, offset: offset)
+        return buildKeyBrowseQuery(pattern: pattern, typeScope: nil, database: database, limit: limit, offset: offset)
     }
 
     /// Build a key-browse command from filter tuples.
@@ -31,6 +32,7 @@ struct RedisQueryBuilder {
     /// Legacy Key operators (CONTAINS, STARTS WITH, ...) still resolve to an escaped glob.
     func buildFilteredQuery(
         namespace: String,
+        database: Int? = nil,
         filters: [(column: String, op: String, value: String)],
         logicMode: String = "and",
         limit: Int = 200,
@@ -40,14 +42,31 @@ struct RedisQueryBuilder {
         let typeScope = extractTypeScope(from: filters)
 
         guard pattern != nil || typeScope != nil else {
-            return buildBaseQuery(namespace: namespace, limit: limit, offset: offset)
+            return buildBaseQuery(namespace: namespace, database: database, limit: limit, offset: offset)
         }
 
-        return buildKeyBrowseQuery(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
+        return buildKeyBrowseQuery(
+            pattern: pattern, typeScope: typeScope, database: database, limit: limit, offset: offset
+        )
     }
 
-    func buildKeyBrowseQuery(pattern: String?, typeScope: String?, limit: Int, offset: Int) -> String {
+    /// Streamed, so the whole database is read and `LIMIT` is never consulted.
+    func buildExportQuery(database: Int?) -> String {
+        guard let database else { return "KEYBROWSE" }
+        return "KEYBROWSE DB \(database)"
+    }
+
+    func buildKeyBrowseQuery(
+        pattern: String?,
+        typeScope: String?,
+        database: Int? = nil,
+        limit: Int,
+        offset: Int
+    ) -> String {
         var command = "KEYBROWSE"
+        if let database {
+            command += " DB \(database)"
+        }
         if let pattern, !pattern.isEmpty {
             command += " MATCH \"\(quoteForCommand(pattern))\""
         }

@@ -17,7 +17,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     private(set) var sentScopes: [RedisCommandScope] = []
     private(set) var footprint = RedisSessionFootprint()
     let supportsDatabaseSelection: Bool
-    private let database: Int
+    private var database: Int
 
     convenience init(_ replies: [RedisReply], supportsDatabaseSelection: Bool = true, currentDatabase: Int = 0) {
         self.init(
@@ -40,8 +40,18 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func cancelCurrentQuery() {}
     func serverVersion() -> String? { "8.10.1" }
     func currentDatabase() -> Int { database }
+    func databaseForNextCommand() -> Int { footprint.pendingDatabase ?? database }
+
     func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
-        _ = try await executeCommand(["SELECT", String(index)].map { Data($0.utf8) }, scope: scope)
+        let reply = try await executeCommand(["SELECT", String(index)].map { Data($0.utf8) }, scope: scope)
+        if case .error(let message) = reply {
+            throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(message)")
+        }
+        if reply.isQueued {
+            footprint.queueDatabase(index)
+        } else {
+            database = index
+        }
     }
 
     func observeOpenBlock() {

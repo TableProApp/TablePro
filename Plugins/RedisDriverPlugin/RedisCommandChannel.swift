@@ -33,6 +33,9 @@ protocol RedisCommandChannel: AnyObject, Sendable {
 
     func serverVersion() -> String?
     func currentDatabase() -> Int
+    /// The database the next command runs on: a SELECT queued in an open block has not moved the
+    /// session yet, but everything after it in the block runs there.
+    func databaseForNextCommand() -> Int
 
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply]
@@ -55,6 +58,8 @@ protocol RedisCommandChannel: AnyObject, Sendable {
 extension RedisCommandChannel {
     var supportsDatabaseSelection: Bool { true }
     var supportsTransactions: Bool { true }
+
+    func databaseForNextCommand() -> Int { currentDatabase() }
 
     func connect() async throws {
         try await connect(reportingStage: { _ in })

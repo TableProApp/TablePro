@@ -211,6 +211,12 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         return _currentDatabase
     }
 
+    func databaseForNextCommand() -> Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _footprint.pendingDatabase ?? _currentDatabase
+    }
+
     // MARK: - Command Execution
 
     /// The session's held state is read on the serial queue, right before the send, so a `MULTI`

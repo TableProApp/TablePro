@@ -39,6 +39,8 @@ struct RedisSessionFootprint: Equatable, Sendable {
     private(set) var pendingLoss: RedisHeldState?
     private var queuedDatabase = RedisQueuedDatabase()
 
+    var pendingDatabase: Int? { queuedDatabase.pending }
+
     var heldState: RedisHeldState? {
         if hasOpenBlock { return .openBlock }
         return isWatching ? .watchedKeys : nil

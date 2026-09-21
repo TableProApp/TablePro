@@ -39,7 +39,7 @@ struct RedisKeyTreeCommandTests {
 
     @Test("KEYBROWSE still parses to a key browse operation")
     func keyBrowseUnaffected() throws {
-        guard case .keyBrowse(let pattern, let typeScope, let limit, let offset) =
+        guard case .keyBrowse(let pattern, let typeScope, let limit, let offset, _) =
             try RedisCommandParser.parse("KEYBROWSE MATCH session:* TYPE hash LIMIT 100 OFFSET 50") else {
             Issue.record("Expected a keyBrowse operation")
             return
