@@ -55,15 +55,23 @@ nonisolated internal enum RedisKeyspaceReads {
         ["SCAN", cursor, "MATCH", "*", "COUNT", String(scanPageSize)]
     }
 
+    /// SCAN may return a key more than once, for example when the keyspace shrinks during the walk,
+    /// so each key is kept at its first sighting. The limit counts every key the server sent,
+    /// repeats included, because it bounds the round trips rather than the size of the list.
     static func keys(sending send: Send) async throws -> [String] {
         var keys: [String] = []
+        var seen = Set<String>()
+        var received = 0
         var cursor = RedisScanPage.startCursor
         repeat {
             let reply = try await send(scanArguments(cursor: cursor))
             let page = try RedisScanPage(reply: reply)
             cursor = page.cursor
-            keys.append(contentsOf: page.keys)
-        } while cursor != RedisScanPage.startCursor && keys.count < keyLimit
+            received += page.keys.count
+            for key in page.keys where seen.insert(key).inserted {
+                keys.append(key)
+            }
+        } while cursor != RedisScanPage.startCursor && received < keyLimit
         return keys
     }
 

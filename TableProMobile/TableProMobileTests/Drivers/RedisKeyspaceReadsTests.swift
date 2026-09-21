@@ -2,32 +2,6 @@ import Foundation
 @testable import TableProMobile
 import Testing
 
-private actor ScriptedRedisServer {
-    private var replies: [RedisReplyValue]
-    private let repeatsLastReply: Bool
-    private(set) var sent: [[String]] = []
-
-    init(replies: [RedisReplyValue], repeatsLastReply: Bool = false) {
-        self.replies = replies
-        self.repeatsLastReply = repeatsLastReply
-    }
-
-    func reply(to arguments: [String]) throws -> RedisReplyValue {
-        sent.append(arguments)
-        guard let next = replies.first else { throw ScriptExhausted() }
-        if replies.count > 1 || !repeatsLastReply {
-            replies.removeFirst()
-        }
-        return next
-    }
-
-    struct ScriptExhausted: Error {}
-}
-
-private func scanReply(cursor: String, keys: [String]) -> RedisReplyValue {
-    .array([.string(cursor), .array(keys.map { .string($0) })])
-}
-
 @Suite("Redis reply guards")
 struct RedisReplyValueGuardTests {
     @Test("an error reply throws the server's message")
@@ -161,12 +135,42 @@ struct RedisKeyspaceReadsTests {
         #expect(await server.sent.count == 2)
     }
 
-    @Test("the walk stops at the key limit")
-    func stopsAtTheKeyLimit() async throws {
+    @Test("a key two pages return is listed once")
+    func repeatedKeyIsListedOnce() async throws {
+        let server = ScriptedRedisServer(replies: [
+            scanReply(cursor: "17", keys: ["a", "b"]),
+            scanReply(cursor: "0", keys: ["b", "c"])
+        ])
+        let keys = try await RedisKeyspaceReads.keys { try await server.reply(to: $0) }
+        #expect(keys == ["a", "b", "c"])
+        #expect(await server.sent.count == 2)
+    }
+
+    @Test("a key repeated within one page is listed once")
+    func repeatedKeyWithinAPageIsListedOnce() async throws {
+        let server = ScriptedRedisServer(replies: [scanReply(cursor: "0", keys: ["a", "a", "b"])])
+        let keys = try await RedisKeyspaceReads.keys { try await server.reply(to: $0) }
+        #expect(keys == ["a", "b"])
+    }
+
+    @Test("distinct keys stop at the key limit")
+    func distinctKeysStopAtTheKeyLimit() async throws {
+        let pageSize = RedisKeyspaceReads.scanPageSize
+        let server = ScriptedRedisServer { page in
+            scanReply(cursor: "7", keys: (0 ..< pageSize).map { "key:\(page):\($0)" })
+        }
+        let keys = try await RedisKeyspaceReads.keys { try await server.reply(to: $0) }
+        #expect(keys.count == RedisKeyspaceReads.keyLimit)
+        #expect(Set(keys).count == RedisKeyspaceReads.keyLimit)
+        #expect(await server.sent.count == RedisKeyspaceReads.keyLimit / pageSize)
+    }
+
+    @Test("a server repeating one page ends at the work limit with each key once")
+    func repeatingServerEndsAtTheWorkLimit() async throws {
         let pageKeys = (0 ..< RedisKeyspaceReads.scanPageSize).map { "key:\($0)" }
         let server = ScriptedRedisServer(replies: [scanReply(cursor: "7", keys: pageKeys)], repeatsLastReply: true)
         let keys = try await RedisKeyspaceReads.keys { try await server.reply(to: $0) }
-        #expect(keys.count == RedisKeyspaceReads.keyLimit)
+        #expect(keys == pageKeys)
         #expect(await server.sent.count == RedisKeyspaceReads.keyLimit / RedisKeyspaceReads.scanPageSize)
     }
 
