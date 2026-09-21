@@ -13,6 +13,8 @@ final class OpenAICompatibleProvider: ChatTransport {
     )
 
     private let endpoint: String
+    private let style: AIEndpointStyle
+    private let resolvedEndpoint: AIEndpoint?
     private let apiKey: String?
     private let providerType: AIProviderType
     private let model: String
@@ -30,12 +32,22 @@ final class OpenAICompatibleProvider: ChatTransport {
         maxOutputTokens: Int? = nil,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.normalizedEndpoint()
+        let style = providerType.endpointStyle
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.style = style
+        self.resolvedEndpoint = AIEndpoint(endpoint, style: style)
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providerType = providerType
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.session = session
+    }
+
+    private func requestURL(_ resource: String) throws -> URL {
+        guard let url = resolvedEndpoint?.url(appending: resource) else {
+            throw AIProviderError.invalidEndpoint(endpoint)
+        }
+        return url
     }
 
     func streamChat(
@@ -232,9 +244,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                 )
             }
         default:
-            guard let url = URL(string: endpoint.openAIPath("chat/completions")) else {
-                throw AIProviderError.invalidEndpoint(endpoint)
-            }
+            let url = try requestURL(style.chatResource(model: testConnectionModel))
 
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -261,32 +271,36 @@ final class OpenAICompatibleProvider: ChatTransport {
                 return false
             }
 
-            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
-            let isJSON = contentType.contains("application/json")
-                || (try? JSONSerialization.jsonObject(with: data)) != nil
+            let statusCode = httpResponse.statusCode
 
-            if httpResponse.statusCode == 401 {
+            if statusCode == 401 {
                 throw AIProviderError.authenticationFailed("")
             }
 
-            if !isJSON {
-                return false
+            if statusCode == 200 || statusCode == 400 {
+                return Self.looksLikeAnAPIResponse(data: data, response: httpResponse)
             }
 
+            let errorBody = String(data: data, encoding: .utf8) ?? ""
+            throw AIProviderError.mapHTTPError(statusCode: statusCode, body: errorBody, requestURL: url)
+        }
+    }
+
+    /// A wrong Base URL often lands on a reverse proxy's login page or a single-page app's
+    /// fallback route, both of which answer 200 with HTML that the chat stream cannot read.
+    private static func looksLikeAnAPIResponse(data: Data, response: HTTPURLResponse) -> Bool {
+        let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        if contentType.contains("application/json") || contentType.contains("text/event-stream") {
             return true
         }
+        return (try? JSONSerialization.jsonObject(with: data)) != nil
     }
 
     private func buildChatCompletionRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
-        let urlString = providerType == .ollama
-            ? "\(endpoint)/api/chat"
-            : endpoint.openAIPath("chat/completions")
-        guard let url = URL(string: urlString) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(style.chatResource(model: options.model))
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -457,9 +471,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     private func fetchOpenAIModels() async throws -> [String] {
-        guard let url = URL(string: endpoint.openAIPath("models")) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(style.modelsResource)
 
         var request = URLRequest(url: url)
         request.timeoutInterval = AIProvider.modelListTimeout
@@ -476,13 +488,24 @@ final class OpenAICompatibleProvider: ChatTransport {
             (data, response) = try await session.data(for: request)
         } catch {
             Self.logger.warning("OpenAI-compatible model fetch failed: \(error.publicLogShape, privacy: .public)")
-            throw AIProviderError.networkError("Failed to fetch models")
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
         }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200
-        else {
-            throw AIProviderError.networkError("Failed to fetch models")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIProviderError.mapHTTPError(
+                statusCode: httpResponse.statusCode,
+                body: body,
+                requestURL: url
+            )
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data)
@@ -496,9 +519,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     private func fetchOllamaModels() async throws -> [String] {
-        guard let url = URL(string: "\(endpoint)/api/tags") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(style.modelsResource)
 
         var request = URLRequest(url: url)
         request.timeoutInterval = AIProvider.modelListTimeout

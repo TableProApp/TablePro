@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Endpoint** is now **Base URL** in an AI provider's settings, with the URL requests resolve to shown under it. (#3040)
 - 537 driver and import/export strings are now translatable, having only ever shown in English.
 - Middle-dot separators dropped from the assistant transcript, slash command list and model picker.
 - Every plugin bundle compiled under the same concurrency settings as the app that loads it.
@@ -68,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No Base URL reaching an OpenAI-compatible server whose version segment is not `/v1`, such as Z.ai's `/v4`. (#3040)
+- Doubled version segment on Claude, OpenAI, xAI and Gemini when the Base URL already carried one.
+- **Connection successful** on a custom provider whose Base URL answered 404.
+- "unsupported URL" instead of TablePro's own message when the Base URL had no `https://`.
+- Claude and Gemini filling the model picker from a built-in list when the server had rejected the request.
+- A wrong Base URL reported as **Model not found**.
+- Editing a saved provider in Settings replacing the transport of a conversation already streaming through it.
 - **Save Changes** and ⌘S dim on a Users & Roles tab with staged changes.
 - A deleted connection's inspector and assistant choice left behind, and inherited by a new connection with its id.
 - **Show Results** enabled on tabs that have no results pane.

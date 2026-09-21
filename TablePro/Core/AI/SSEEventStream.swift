@@ -19,7 +19,8 @@ enum SSEEventStream {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    var (bytes, response) = try await session.bytes(for: buildRequest())
+                    let request = try await buildRequest()
+                    var (bytes, response) = try await session.bytes(for: request)
                     if (response as? HTTPURLResponse)?.statusCode == 401,
                        let refreshOnUnauthorized {
                         try await refreshOnUnauthorized()
@@ -34,7 +35,8 @@ enum SSEEventStream {
                         throw AIProviderError.mapHTTPError(
                             statusCode: httpResponse.statusCode,
                             body: body,
-                            treatForbiddenAsAuthFailure: treatForbiddenAsAuthFailure
+                            treatForbiddenAsAuthFailure: treatForbiddenAsAuthFailure,
+                            requestURL: request.url
                         )
                     }
 

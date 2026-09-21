@@ -22,6 +22,7 @@ final class OpenAIResponsesProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "OpenAIResponsesProvider")
 
     private let endpoint: String
+    private let resolvedEndpoint: AIEndpoint?
     private let apiKey: String?
     private let model: String
     private let maxOutputTokens: Int?
@@ -36,12 +37,20 @@ final class OpenAIResponsesProvider: ChatTransport {
         dialect: ResponsesDialect = .openAI,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.normalizedEndpoint()
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.resolvedEndpoint = AIEndpoint(endpoint, style: .responses)
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.dialect = dialect
         self.session = session
+    }
+
+    private func requestURL(_ resource: String) throws -> URL {
+        guard let url = resolvedEndpoint?.url(appending: resource) else {
+            throw AIProviderError.invalidEndpoint(endpoint)
+        }
+        return url
     }
 
     func streamChat(
@@ -59,9 +68,7 @@ final class OpenAIResponsesProvider: ChatTransport {
     }
 
     private func fetchModelIDs() async throws -> [String] {
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(AIEndpointStyle.responses.modelsResource)
         var request = URLRequest(url: url)
         request.timeoutInterval = AIProvider.modelListTimeout
         if let apiKey, !apiKey.isEmpty {
@@ -99,7 +106,11 @@ final class OpenAIResponsesProvider: ChatTransport {
             throw AIProviderError.authenticationFailed("")
         }
         let body = String(data: data, encoding: .utf8) ?? ""
-        throw AIProviderError.mapHTTPError(statusCode: httpResponse.statusCode, body: body)
+        throw AIProviderError.mapHTTPError(
+            statusCode: httpResponse.statusCode,
+            body: body,
+            requestURL: request.url
+        )
     }
 
     private func buildRequest(
@@ -107,9 +118,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         options: ChatTransportOptions,
         stream: Bool
     ) throws -> URLRequest {
-        guard let url = URL(string: "\(endpoint)/v1/responses") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(AIEndpointStyle.responses.chatResource(model: options.model))
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

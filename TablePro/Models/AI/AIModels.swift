@@ -84,6 +84,18 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// How the configured endpoint is turned into a request URL. Providers that reach a fixed
+    /// host ignore it, so the fall-through matches `AIProviderFactory`'s own fallback transport.
+    var endpointStyle: AIEndpointStyle {
+        switch self {
+        case .claude:            return .messages
+        case .openAI, .xai:      return .responses
+        case .gemini:            return .gemini
+        case .ollama:            return .ollama
+        default:                 return .chatCompletions
+        }
+    }
+
     var symbolName: String {
         switch self {
         case .copilot:      return "chevron.left.forwardslash.chevron.right"
