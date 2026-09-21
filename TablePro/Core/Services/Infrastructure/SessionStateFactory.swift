@@ -79,10 +79,6 @@ enum SessionStateFactory {
 
         if let session = DatabaseManager.shared.session(for: connection.id) {
             toolbarSt.updateConnectionState(from: session.reportedStatus)
-            if let driver = session.driver {
-            }
-        } else if let driver = DatabaseManager.shared.driver(for: connection.id) {
-            toolbarSt.connectionState = .connected
         }
 
         if connection.type.pluginTypeId == "Redis" {

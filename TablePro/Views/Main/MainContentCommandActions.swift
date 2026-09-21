@@ -1476,8 +1476,6 @@ final class MainContentCommandActions: ObservableObject {
     private func handleDatabaseDidConnect() {
         Task { [weak coordinator] in
             guard let coordinator, !coordinator.isTearingDown else { return }
-            if let driver = DatabaseManager.shared.driver(for: coordinator.connection.id) {
-            }
             if case .loading = SchemaService.shared.state(for: coordinator.connection.id) {
                 coordinator.initRedisKeyTreeIfNeeded()
                 return
