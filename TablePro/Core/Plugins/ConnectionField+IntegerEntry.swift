@@ -42,8 +42,8 @@ extension ConnectionField {
               let number = Int(value.trimmingCharacters(in: .whitespaces)),
               range.clamping(number) != number else { return nil }
         return String(
-            format: String(localized: "%1$@ must be between %2$lld and %3$lld"),
-            label, range.lowerBound, range.upperBound
+            format: String(localized: "%@ must be between %@ and %@"),
+            label, String(range.lowerBound), String(range.upperBound)
         )
     }
 }

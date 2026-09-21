@@ -182378,6 +182378,42 @@
     },
     "%@ takes nothing after it, and %@ was given." : {
 
+    },
+    "KEYBROWSE DB requires a database index" : {
+
+    },
+    "%@ was not sent because a MULTI block is open on this connection." : {
+
+    },
+    "%@ was not sent because this connection is watching keys." : {
+
+    },
+    "Run EXEC to apply the block, or DISCARD to drop it." : {
+
+    },
+    "Run EXEC, DISCARD or UNWATCH first." : {
+
+    },
+    "The command" : {
+
+    },
+    "The connection to Redis dropped after EXEC was sent, so whether the block ran is unknown." : {
+
+    },
+    "The connection to Redis dropped, so the open MULTI block was lost and nothing in it ran." : {
+
+    },
+    "The connection to Redis dropped, so the keys this session was watching are no longer watched." : {
+
+    },
+    "Check the keys the block writes before running it again." : {
+
+    },
+    "Start the block again with MULTI." : {
+
+    },
+    "Run WATCH again before starting the block." : {
+
     }
   },
   "version" : "1.1"
