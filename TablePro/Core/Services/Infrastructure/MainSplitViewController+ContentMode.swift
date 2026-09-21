@@ -26,10 +26,6 @@ internal extension MainSplitViewController {
         setContentMode(mode, for: workspace.connectionId)
     }
 
-    /// What Browse had collapsed, so entering Agent mode can reveal its columns and leaving can put
-    /// the window back the way the user had it.
-    private static var browseCollapseState: [UUID: (sidebar: Bool, inspector: Bool)] = [:]
-
     func setContentMode(_ mode: ConnectionWorkspaceContentMode, for connectionId: UUID) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let resolved = ConnectionWorkspaceContentMode.resolved(
@@ -57,22 +53,33 @@ internal extension MainSplitViewController {
     ///
     /// A fresh window starts with the inspector collapsed, and the user may have collapsed the
     /// sidebar, so swapping the hosted roots alone gave a first-time Agent mode with no Result
-    /// column and sometimes no Sessions column either. What Browse had is remembered and put back.
-    private func applyColumnVisibility(
+    /// column and sometimes no Sessions column either. What Browse had is remembered on the
+    /// workspace and put back.
+    ///
+    /// Returns without touching the window when the workspace is not the one on screen, which is
+    /// why `applySelectedWorkspace` calls it again: a connection put into Agent mode while another
+    /// was selected reached the window with its columns still collapsed and nothing to reveal them.
+    internal func applyColumnVisibility(
         for connectionId: UUID,
         mode: ConnectionWorkspaceContentMode
     ) {
-        guard workspaces.selectedConnectionId == connectionId else { return }
+        guard workspaces.selectedConnectionId == connectionId,
+              let workspace = workspaces.workspace(for: connectionId) else { return }
         switch mode {
         case .agent:
-            Self.browseCollapseState[connectionId] = (
-                sidebar: sidebarSplitItem.isCollapsed,
-                inspector: inspectorSplitItem.isCollapsed
-            )
+            /// Recorded once per entry into the mode. Recording again on a later selection would
+            /// save the mode's own revealed columns as the layout to go back to.
+            if workspace.browseCollapseState == nil {
+                workspace.browseCollapseState = (
+                    sidebar: sidebarSplitItem.isCollapsed,
+                    inspector: inspectorSplitItem.isCollapsed
+                )
+            }
             sidebarSplitItem.animator().isCollapsed = false
             inspectorSplitItem.animator().isCollapsed = false
         case .browse:
-            guard let previous = Self.browseCollapseState.removeValue(forKey: connectionId) else { return }
+            guard let previous = workspace.browseCollapseState else { return }
+            workspace.browseCollapseState = nil
             sidebarSplitItem.animator().isCollapsed = previous.sidebar
             inspectorSplitItem.animator().isCollapsed = previous.inspector
         }

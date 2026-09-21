@@ -47,6 +47,15 @@ internal final class ConnectionWorkspace {
     /// on a table.
     internal var contentMode: ConnectionWorkspaceContentMode = .browse
 
+    /// What Browse had collapsed, so entering Agent mode can reveal its three columns and leaving
+    /// can put the window back the way the user had it.
+    ///
+    /// On the workspace rather than in a static keyed by connection id, because two windows can
+    /// host the same connection and each has its own collapsed sidebar and inspector. Shared, the
+    /// second window to enter Agent mode overwrote what the first had recorded, and the first then
+    /// left the mode with the second window's layout.
+    internal var browseCollapseState: (sidebar: Bool, inspector: Bool)?
+
     /// Each workspace owns its undo stack. Routing through `NSWindow.undoManager` was correct
     /// while a window meant one connection; sharing one window between several would let an
     /// undo in one connection roll back an edit made in another.

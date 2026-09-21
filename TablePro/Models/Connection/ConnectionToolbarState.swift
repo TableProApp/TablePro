@@ -114,6 +114,11 @@ final class ConnectionToolbarState: ObservableObject {
     /// Whether there are pending changes (data grid or file)
     @Published var hasPendingChanges: Bool = false
 
+    /// What the commit would commit, which is what decides the verb it says. `hasPendingChanges`
+    /// stays as the answer to "is anything staged" that its thirty-odd readers already ask; this is
+    /// the same question answered with the kind attached, written by the same one function.
+    @Published var pendingChange: PendingChangeKind?
+
     /// Whether there are pending data grid changes (for SQL preview button)
     @Published var hasDataPendingChanges: Bool = false
 

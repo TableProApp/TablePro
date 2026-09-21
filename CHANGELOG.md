@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Save Changes** and ⌘S dim on a Users & Roles tab with staged changes.
+- A deleted connection's inspector and assistant choice left behind, and inherited by a new connection with its id.
 - A column resized moments before its table was dropped saving the layout back over the clear.
 - A connection left pointing at a database that was dropped.
 - A dropped table's saved filters, column layout, highlight rules, value formats and label columns coming back on a table recreated with its name.

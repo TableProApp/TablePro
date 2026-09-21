@@ -201,20 +201,24 @@ extension MainContentView {
 
     // MARK: - Command Actions Setup
 
+    /// One resolution of what is staged, so the commit control, its verb and Preview SQL's gate
+    /// cannot disagree. The arm this replaces never read `hasPrincipalChanges`, so a Users & Roles
+    /// tab with staged principals left both the toolbar's commit button and Cmd+S dim over work
+    /// `saveChanges()` already knew how to apply.
     func updateToolbarPendingState() {
-        if tabManager.selectedTab?.tabType == .createTable {
-            toolbarState.hasDataPendingChanges = false
-            toolbarState.hasPendingChanges = toolbarState.hasCreateTablePending
-            return
-        }
-        let hasDataChanges =
-            changeManager.hasChanges
-            || !pendingTruncates.isEmpty
-            || !pendingDeletes.isEmpty
-            || toolbarState.hasStructureChanges
-        let hasFileChanges = tabManager.selectedTab?.content.isFileDirty ?? false
-        toolbarState.hasDataPendingChanges = hasDataChanges
-        toolbarState.hasPendingChanges = hasDataChanges || hasFileChanges
+        let kind = PendingChangeKind.resolve(
+            tabType: tabManager.selectedTab?.tabType,
+            hasDataChanges: changeManager.hasChanges || !pendingTruncates.isEmpty || !pendingDeletes.isEmpty,
+            hasStructureChanges: toolbarState.hasStructureChanges,
+            hasCreateTablePending: toolbarState.hasCreateTablePending,
+            hasPrincipalChanges: toolbarState.hasPrincipalChanges,
+            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false
+        )
+        toolbarState.pendingChange = kind
+        toolbarState.hasPendingChanges = kind != nil
+        /// Preview SQL asks a narrower question than the commit control: a dirty query file and
+        /// staged principals both raise the commit and neither has grid SQL to show.
+        toolbarState.hasDataPendingChanges = kind == .data || kind == .structure
     }
 
     /// Update window title, proxy icon, and dirty dot based on the selected tab.

@@ -308,7 +308,8 @@ struct MainContentView: View {
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
-            hasCreateTablePending: toolbarState.hasCreateTablePending
+            hasCreateTablePending: toolbarState.hasCreateTablePending,
+            hasPrincipalChanges: toolbarState.hasPrincipalChanges
         )
     }
 

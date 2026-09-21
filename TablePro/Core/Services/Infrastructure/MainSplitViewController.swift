@@ -608,6 +608,14 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// costs a key comparison when nothing has moved, which is what the record is for.
         syncSelectedPanes()
         showSelectedPanes()
+
+        /// A workspace put into Agent mode while another connection was on screen never reached
+        /// the branch that reveals its columns, because that branch only ever touched the selected
+        /// one. Selection is where it gets them, which is the same repair-on-selection shape the
+        /// pane render key already relies on.
+        if let selected = workspaces.selected {
+            applyColumnVisibility(for: selected.connectionId, mode: selected.resolvedContentMode)
+        }
         applyDetailMinimumThicknessForSelection()
         applyPaneChrome()
         applyWindowTitle()
