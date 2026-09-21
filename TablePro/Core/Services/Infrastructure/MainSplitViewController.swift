@@ -100,6 +100,12 @@ internal final class MainSplitViewController: NSSplitViewController {
     weak var observedAgentSession: AgentSession?
     var agentTitleCancellable: AnyCancellable?
 
+    /// How a session command asks before it runs: a sheet on this window. Replaced under test, where
+    /// a modal alert holds the whole run with nobody there to answer it.
+    var confirmAgentSessionCommand: AgentSessionConfirming = { confirmation, window in
+        await MainSplitViewController.presentAgentSessionConfirmation(confirmation, in: window)
+    }
+
     /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
     /// owned here but installed on the window, and it follows the selected workspace the same way
     /// the two hosts above do.

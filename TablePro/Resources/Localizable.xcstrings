@@ -182611,6 +182611,105 @@
     },
     "What the session runs appears once the connection is up" : {
 
+    },
+    "Sessions" : {
+
+    },
+    "Open Session" : {
+
+    },
+    "Close Session" : {
+
+    },
+    "Delete Session…" : {
+
+    },
+    "Delete Session" : {
+
+    },
+    "New Session" : {
+
+    },
+    "No Sessions Yet" : {
+
+    },
+    "Start one to ask about this connection." : {
+
+    },
+    "%@, open in this window" : {
+
+    },
+    "Close “%@”?" : {
+
+    },
+    "Delete “%@”?" : {
+
+    },
+    "The session is still working. Closing it stops the reply, and its conversation stays in the list." : {
+
+    },
+    "The session is waiting on your answer about a statement. Closing it cancels the statement, and its conversation stays in the list." : {
+
+    },
+    "The session is still working. Deleting it stops the reply and deletes its conversation, which can't be restored." : {
+
+    },
+    "The session is waiting on your answer about a statement. Deleting it cancels the statement and deletes its conversation, which can't be restored." : {
+
+    },
+    "The session and its conversation are deleted, and can't be restored." : {
+
+    },
+    "Read-only database" : {
+
+    },
+    "Read-only file copy" : {
+
+    },
+    "Required by your organization" : {
+
+    },
+    "Writes wait for you" : {
+
+    },
+    "No Results Yet" : {
+
+    },
+    "Rows the session reads appear here." : {
+
+    },
+    "No Rows" : {
+
+    },
+    "The query returned no rows." : {
+
+    },
+    "Statement Completed" : {
+
+    },
+    "The statement returned no rows to show." : {
+
+    },
+    "No rows changed." : {
+
+    },
+    "%@ row changed." : {
+
+    },
+    "%@ rows changed." : {
+
+    },
+    "Can't Show This Result" : {
+
+    },
+    "The reply is not rows the grid can draw. The conversation has it in full." : {
+
+    },
+    "No Statements Yet" : {
+
+    },
+    "SQL the session proposes appears here before it runs." : {
+
     }
   },
   "version" : "1.1"

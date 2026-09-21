@@ -16,6 +16,12 @@ struct MenuValidationContext: Equatable {
     /// failed to dial can still be dismissed.
     var hasSelectedWorkspace = false
     var isConnected = false
+    /// Whether the connection on screen is showing its agent rather than its objects. The session
+    /// commands are the rail's, and the rail is only there in Agent mode.
+    var isAgentMode = false
+    /// The session a session command acts on: the one its menu item names, or the one the rail has
+    /// highlighted. Nil when there is none, which is what dims Open, Close and Delete Session.
+    var agentSessionTarget: AgentSessionStatus?
     var isReadOnly = false
     var canUseTableResultCommands = false
     var canUseGridFindCommands = false
@@ -299,7 +305,8 @@ extension MainSplitViewController: NSMenuItemValidation {
     ///
     /// Each Focus command follows the pane it names, so one that would focus nothing is dimmed
     /// rather than silently doing nothing: `makeFirstResponder` accepts a view that cannot take the
-    /// keyboard and reports success.
+    /// keyboard and reports success. Agent mode's session commands are the window's own too, and are
+    /// answered by the helper below rather than inline, because this switch is at its length limit.
     private static func isWindowCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         switch selector {
         case #selector(toggleWorkspaceRail(_:)),
@@ -322,7 +329,26 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// size, which is an app setting and needs no session. A focused diagram claims them first.
         case #selector(zoomIn(_:)), #selector(zoomOut(_:)): return true
 
-        default: return nil
+        default: return isAgentSessionCommandEnabled(selector, context: context)
+        }
+    }
+
+    /// Agent mode's session commands, which need the rail on screen and, New Session apart, a session
+    /// to act on. None of them needs a live connection: the rail stands in every phase, a session
+    /// outlives the connection's, and a conversation is worth reading with the database down.
+    private static func isAgentSessionCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        switch selector {
+        case #selector(newAgentSession(_:)):
+            return context.isAgentMode
+        case #selector(openAgentSession(_:)), #selector(deleteAgentSession(_:)):
+            return context.isAgentMode && context.agentSessionTarget != nil
+        case #selector(closeAgentSession(_:)):
+            return context.isAgentMode && context.agentSessionTarget?.isEnded == false
+        default:
+            return nil
         }
     }
 
@@ -424,6 +450,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
+                isAgentMode: contentMode == .agent,
+                agentSessionTarget: agentSessionTarget(for: nil)?.status,
                 canFocusAssistant: canFocusAssistant,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
@@ -431,6 +459,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         return MenuValidationContext(
             hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
             isConnected: isConnected,
+            isAgentMode: contentMode == .agent,
+            agentSessionTarget: agentSessionTarget(for: nil)?.status,
             isReadOnly: actions.isReadOnly,
             canUseTableResultCommands: actions.canUseTableResultCommands,
             canUseGridFindCommands: actions.canUseGridFindCommands,
@@ -514,7 +544,17 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
-        return Self.isEnabled(action, context: menuValidationContext)
+        return Self.isEnabled(action, context: menuValidationContext(naming: menuItem))
+    }
+
+    /// The window's context, with the session a session command acts on taken from the item rather
+    /// than from the rail: a menu that lists a connection's sessions names one in each of its items,
+    /// and every other route acts on the one the rail has highlighted.
+    private func menuValidationContext(naming menuItem: NSMenuItem) -> MenuValidationContext {
+        var context = menuValidationContext
+        guard menuItem.representedObject is UUID else { return context }
+        context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status
+        return context
     }
 
     private func isCurrentContentMode(_ menuItem: NSMenuItem) -> Bool {

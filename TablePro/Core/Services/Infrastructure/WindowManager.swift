@@ -503,6 +503,17 @@ internal final class WindowManager {
         workspaces(for: connectionId).compactMap { $0.sessionState?.coordinator }
     }
 
+    /// Every window's controller hosting this connection, for a command whose result the other
+    /// windows have to be told about rather than discover.
+    ///
+    /// A workspace nobody selected repairs itself on selection through its pane render key, but a
+    /// second window showing the same connection has that workspace selected already, so nothing
+    /// there is about to ask. Closing or deleting an agent session from one window is exactly that
+    /// case: the other window's assistant is pointed at a session that has gone.
+    internal func hostControllers(for connectionId: UUID) -> [MainSplitViewController] {
+        hosts().filter { $0.workspaces.workspace(for: connectionId) != nil }
+    }
+
     /// The window hosting this connection, whatever state it is in.
     ///
     /// Visibility is not the test: a miniaturized window still hosts its connections, so filtering

@@ -133,6 +133,38 @@ struct ContentModeTests {
         }
     }
 
+    /// The result column is one hosting controller per window, drawing whichever session is open, so
+    /// a view holding the choice handed one session's view to the next. Nothing stores it: a session
+    /// is opened on its statements.
+    @Test("Which result view is showing belongs to the session")
+    func resultSegmentBelongsToTheSession() {
+        AIFeatureScope.enabled {
+            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let connectionId = UUID()
+            let first = registry.startSession(for: connectionId)
+            let second = registry.startSession(for: connectionId)
+
+            first.resultSegment = .results
+
+            #expect(second.resultSegment == .sql)
+        }
+    }
+
+    /// Nothing stores the choice, so a session comes back from disk on its statements.
+    @Test("The result view is not carried across a relaunch")
+    func resultSegmentIsNotPersisted() throws {
+        let store = AgentSessionStore(directory: Self.temporaryDirectory())
+        let registry = AgentSessionRegistry(store: store)
+        let session = registry.startSession(for: UUID())
+        session.resultSegment = .results
+        registry.persistNow()
+
+        let reopened = AgentSessionRegistry(store: store)
+        let restored = try #require(reopened.session(id: session.id))
+
+        #expect(restored.resultSegment == .sql)
+    }
+
     private static func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("ContentModeTests-\(UUID().uuidString)", isDirectory: true)

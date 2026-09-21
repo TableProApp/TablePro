@@ -25,6 +25,9 @@ struct TrailingPaneHouseRuleTests {
         "TablePro/Views/RowInspector",
         "TablePro/Views/Inspector",
         "TablePro/Views/AIChat",
+        /// Agent mode's result column is the third trailing surface, and its rail and conversation
+        /// answer to the same rule: the session on screen is marked with a glyph, not with a dot.
+        "TablePro/Views/Agent",
     ]
 
     /// `Circle()` is the dot itself. The middle dot is banned both as the character and as its

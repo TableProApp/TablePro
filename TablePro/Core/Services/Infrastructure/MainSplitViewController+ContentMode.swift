@@ -116,19 +116,4 @@ internal extension MainSplitViewController {
         applyWindowTitle()
         toolbarOwner?.refreshContext()
     }
-
-    func startAgentSession(for connectionId: UUID) {
-        guard let workspace = workspaces.workspace(for: connectionId) else { return }
-        workspace.agentSessions.startSession(for: connectionId)
-        applyContentMode(for: workspace)
-    }
-
-    func selectAgentSession(_ sessionId: UUID, for connectionId: UUID) {
-        guard let workspace = workspaces.workspace(for: connectionId),
-              let session = workspace.agentSessions.session(id: sessionId) else { return }
-        session.resume()
-        workspace.agentSessions.setDisplayedSession(sessionId, for: connectionId)
-        workspace.agentSessions.markActive(id: sessionId)
-        applyContentMode(for: workspace)
-    }
 }

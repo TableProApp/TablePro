@@ -72,6 +72,10 @@ internal final class ConnectionWorkspace {
     /// keeps the assistant and Agent mode on one set of sessions.
     internal let agentSessions: AgentSessionRegistry
 
+    /// The session rail's highlight, per window rather than per connection like the sessions
+    /// themselves: two windows showing one connection each have a rail of their own to move through.
+    internal let agentRail = AgentSessionRailState()
+
     /// The containers this connection has open, one connections-strip entry each.
     ///
     /// A container is open from the moment the user browses to it until they close its entry, which

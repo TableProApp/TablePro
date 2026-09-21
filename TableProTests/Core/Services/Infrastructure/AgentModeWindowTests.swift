@@ -393,10 +393,195 @@ struct AgentModeWindowTests {
         }
     }
 
+    // MARK: - Session commands
+
+    /// Close used to go from the rail straight to the registry, which stopped the session and told
+    /// no pane: the conversation column went on drawing it, with a composer that still took messages.
+    @Test("Close Session stops the session and takes it off the window")
+    func closeSessionTakesTheSessionOffTheWindow() async throws {
+        try await AIFeatureScope.enabled {
+            let harness = try Harness(startsAgentSession: true)
+            defer { harness.tearDown() }
+            try harness.requireContent()
+            harness.controller.setContentMode(.agent)
+            let session = try #require(harness.selected.displayedAgentSession)
+            let asked = ConfirmationRecorder()
+            harness.controller.confirmAgentSessionCommand = asked.answer(true)
+
+            harness.controller.closeAgentSession(Self.sessionItem(Self.closeSession, session: session.id))
+
+            #expect(await harness.suspend { harness.selected.displayedAgentSession == nil })
+            #expect(session.status == .stopped)
+            #expect(asked.confirmations.isEmpty, "An idle session loses nothing by stopping, so nothing is asked")
+            #expect(
+                harness.agentSessions.sessions(for: harness.connection.id).count == 1,
+                "Closing keeps the transcript, so the session stays in the rail"
+            )
+            #expect(
+                harness.selected.panes.renderedKey?.agentSessionId == nil,
+                "The panes were not rebuilt for a window with no session open"
+            )
+        }
+    }
+
+    @Test("Delete Session asks first, and discards the session once it is answered")
+    func deleteSessionAsksAndDiscards() async throws {
+        try await AIFeatureScope.enabled {
+            let harness = try Harness(startsAgentSession: true)
+            defer { harness.tearDown() }
+            try harness.requireContent()
+            harness.controller.setContentMode(.agent)
+            let session = try #require(harness.selected.displayedAgentSession)
+            let asked = ConfirmationRecorder()
+            harness.controller.confirmAgentSessionCommand = asked.answer(true)
+
+            harness.controller.deleteAgentSession(Self.sessionItem(Self.deleteSession, session: session.id))
+
+            #expect(await harness.suspend { harness.agentSessions.session(id: session.id) == nil })
+            #expect(asked.confirmations.count == 1)
+            #expect(asked.confirmations.first?.isDestructive == true)
+            #expect(asked.confirmations.first?.title.contains(session.displayTitle) == true)
+            #expect(harness.selected.displayedAgentSession == nil)
+        }
+    }
+
+    @Test("A refused question leaves the session where it was")
+    func deleteSessionRefused() async throws {
+        try await AIFeatureScope.enabled {
+            let harness = try Harness(startsAgentSession: true)
+            defer { harness.tearDown() }
+            try harness.requireContent()
+            harness.controller.setContentMode(.agent)
+            let session = try #require(harness.selected.displayedAgentSession)
+            let asked = ConfirmationRecorder()
+            harness.controller.confirmAgentSessionCommand = asked.answer(false)
+
+            harness.controller.deleteAgentSession(Self.sessionItem(Self.deleteSession, session: session.id))
+
+            #expect(await harness.suspend { asked.confirmations.count == 1 })
+            #expect(harness.agentSessions.session(id: session.id) === session)
+            #expect(harness.selected.displayedAgentSession === session)
+        }
+    }
+
+    @Test("New Session starts one and puts it on screen")
+    func newSessionStartsAndShowsIt() throws {
+        try AIFeatureScope.enabled {
+            let harness = try Harness(startsAgentSession: true)
+            defer { harness.tearDown() }
+            try harness.requireContent()
+            harness.controller.setContentMode(.agent)
+            let first = try #require(harness.selected.displayedAgentSession)
+
+            harness.controller.newAgentSession(nil)
+
+            let started = try #require(harness.selected.displayedAgentSession)
+            #expect(started !== first)
+            #expect(harness.agentSessions.sessions(for: harness.connection.id).count == 2)
+            #expect(harness.selected.panes.renderedKey?.agentSessionId == started.id)
+        }
+    }
+
+    /// A menu that lists sessions names one in each item; every other route acts on the rail's
+    /// highlight, which is the window's rather than the rail view's for exactly this reason.
+    @Test("Open Session takes its session from the item, and from the rail when the item names none")
+    func openSessionResolvesItsTarget() throws {
+        try AIFeatureScope.enabled {
+            let harness = try Harness(startsAgentSession: true)
+            defer { harness.tearDown() }
+            try harness.requireContent()
+            harness.controller.setContentMode(.agent)
+            let first = try #require(harness.selected.displayedAgentSession)
+            harness.controller.newAgentSession(nil)
+            let second = try #require(harness.selected.displayedAgentSession)
+
+            harness.controller.openAgentSession(Self.sessionItem(Self.openSession, session: first.id))
+            #expect(harness.selected.displayedAgentSession === first)
+
+            harness.selected.agentRail.highlightedSessionId = second.id
+            harness.controller.openAgentSession(nil)
+            #expect(harness.selected.displayedAgentSession === second)
+        }
+    }
+
+    @Test("The session commands follow the mode and the session they would act on")
+    func sessionCommandsValidateAgainstTheirTarget() throws {
+        try AIFeatureScope.enabled {
+            let harness = try Harness(startsAgentSession: true)
+            defer { harness.tearDown() }
+            try harness.requireContent()
+
+            for selector in [Self.newSession, Self.openSession, Self.closeSession, Self.deleteSession] {
+                #expect(
+                    !harness.controller.validateMenuItem(Self.menuItem(selector)),
+                    "Browsing draws no rail, so \(selector) has nothing to act on"
+                )
+            }
+
+            harness.controller.setContentMode(.agent)
+            let session = try #require(harness.selected.displayedAgentSession)
+            #expect(harness.controller.validateMenuItem(Self.menuItem(Self.newSession)))
+
+            /// The rail highlights the session on screen as it appears, so a rail with nothing
+            /// highlighted is asked for here rather than waited for.
+            harness.selected.agentRail.highlightedSessionId = nil
+            for selector in [Self.openSession, Self.closeSession, Self.deleteSession] {
+                #expect(
+                    !harness.controller.validateMenuItem(Self.menuItem(selector)),
+                    "With no row highlighted there is no session for \(selector)"
+                )
+            }
+
+            harness.selected.agentRail.highlightedSessionId = session.id
+            for selector in [Self.openSession, Self.closeSession, Self.deleteSession] {
+                #expect(harness.controller.validateMenuItem(Self.menuItem(selector)), "\(selector)")
+            }
+            #expect(
+                !harness.controller.validateMenuItem(Self.sessionItem(Self.openSession, session: UUID())),
+                "An item naming a session that is gone is answered by the item, not by the highlight"
+            )
+
+            harness.agentSessions.stopSession(id: session.id)
+            #expect(
+                !harness.controller.validateMenuItem(Self.menuItem(Self.closeSession)),
+                "A session that has already ended cannot be closed again"
+            )
+            #expect(
+                harness.controller.validateMenuItem(Self.menuItem(Self.deleteSession)),
+                "A stopped session keeps its transcript, so it is still there to delete"
+            )
+        }
+    }
+
+    private static let newSession = #selector(MainSplitViewController.newAgentSession(_:))
+    private static let openSession = #selector(MainSplitViewController.openAgentSession(_:))
+    private static let closeSession = #selector(MainSplitViewController.closeAgentSession(_:))
+    private static let deleteSession = #selector(MainSplitViewController.deleteAgentSession(_:))
+
+    /// Answers the window's question without raising an alert. A modal one in a test holds the whole
+    /// run: nothing on a test runner dismisses it.
+    @MainActor
+    private final class ConfirmationRecorder {
+        private(set) var confirmations: [AgentSessionConfirmation] = []
+
+        func answer(_ reply: Bool) -> AgentSessionConfirming {
+            { [self] confirmation, _ in
+                confirmations.append(confirmation)
+                return reply
+            }
+        }
+    }
+
     private static func safeModeItem(_ level: SafeModeLevel) -> NSMenuItem {
         let item = menuItem(#selector(MainSplitViewController.setSafeModeLevel(_:)))
         item.title = level.displayName
         item.representedObject = level.rawValue
+        return item
+    }
+
+    private static func sessionItem(_ action: Selector, session: UUID) -> NSMenuItem {
+        let item = menuItem(action)
+        item.representedObject = session
         return item
     }
 

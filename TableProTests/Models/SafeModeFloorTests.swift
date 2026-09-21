@@ -64,6 +64,22 @@ struct SafeModeFloorTests {
         #expect(floor.explanation.contains(SafeModeLevel.safeModeFull.displayName))
     }
 
+    /// The agent conversation's context strip has one line for all of this, so it carries the short
+    /// form beside the level's symbol and keeps the sentence for its tooltip. Each reason answers for
+    /// itself, or the strip would say the same thing whatever is holding the connection.
+    @Test("Every reason has a short form of its own, and it is shorter than the sentence")
+    func everyReasonSummarisesItself() {
+        let reasons: [SafeModeFloor.Reason] = [.readOnlyEngine, .remoteDatabaseFile, .managedPolicy, .agentMode]
+        let summaries = reasons.map { SafeModeFloor(level: .alert, reason: $0).summary }
+
+        #expect(Set(summaries).count == reasons.count)
+        for (reason, summary) in zip(reasons, summaries) {
+            let floor = SafeModeFloor(level: .alert, reason: reason)
+            #expect(!summary.isEmpty, "\(reason)")
+            #expect(summary.count < floor.explanation.count, "\(reason)")
+        }
+    }
+
     @Test("A read-only engine reads as Read-Only and keeps the user's own level", arguments: [
         DatabaseType.cloudflareR2SQL, DatabaseType.beancount
     ])

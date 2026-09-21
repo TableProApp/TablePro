@@ -134,6 +134,56 @@ struct MenuValidationCoverageTests {
         #expect(undecided.isEmpty, "No arm in resolvedEnablement, so these stay lit: \(undecided)")
     }
 
+    /// The session commands reach the window from the rail today and from the menu bar next, and a
+    /// selector with no arm here is enabled over a window that cannot run it. Each of them needs the
+    /// rail on screen, and all but New Session need a session to act on.
+    @Test("Each session command is decided by the mode and by the session it would act on")
+    func sessionCommandsAreDecided() {
+        let commands: [(selector: Selector, needsTarget: Bool)] = [
+            (#selector(MainSplitViewController.newAgentSession(_:)), false),
+            (#selector(MainSplitViewController.openAgentSession(_:)), true),
+            (#selector(MainSplitViewController.closeAgentSession(_:)), true),
+            (#selector(MainSplitViewController.deleteAgentSession(_:)), true),
+        ]
+
+        for command in commands {
+            let name = NSStringFromSelector(command.selector)
+            var browsing = MenuValidationContext()
+            browsing.agentSessionTarget = .ready
+            #expect(
+                MainSplitViewController.resolvedEnablement(command.selector, context: browsing) == false,
+                "\(name) is a command of the rail, which browsing does not draw"
+            )
+
+            var agent = MenuValidationContext()
+            agent.isAgentMode = true
+            #expect(
+                MainSplitViewController.resolvedEnablement(command.selector, context: agent) == !command.needsTarget,
+                "\(name) with no session highlighted"
+            )
+
+            agent.agentSessionTarget = .ready
+            #expect(MainSplitViewController.resolvedEnablement(command.selector, context: agent) == true, "\(name)")
+        }
+    }
+
+    /// Closing is the one that cares what the session is doing: a session that has already ended
+    /// cannot be closed again, and a stopped one is still there to open or delete.
+    @Test("Close Session dims over a session that has already ended")
+    func closeSessionFollowsTheSessionsState() {
+        var context = MenuValidationContext()
+        context.isAgentMode = true
+        context.agentSessionTarget = .stopped
+
+        #expect(MainSplitViewController.resolvedEnablement(Self.closeSession, context: context) == false)
+        #expect(MainSplitViewController.resolvedEnablement(Self.openSession, context: context) == true)
+        #expect(MainSplitViewController.resolvedEnablement(Self.deleteSession, context: context) == true)
+    }
+
+    private static let openSession = #selector(MainSplitViewController.openAgentSession(_:))
+    private static let closeSession = #selector(MainSplitViewController.closeAgentSession(_:))
+    private static let deleteSession = #selector(MainSplitViewController.deleteAgentSession(_:))
+
     /// The fall-through still has to stand for everything the window does not own, or the system's
     /// own items would arrive disabled.
     @Test("A command the window does not own is left alone")

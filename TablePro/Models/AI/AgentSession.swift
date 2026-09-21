@@ -27,9 +27,23 @@ internal final class AgentSession: ObservableObject, Identifiable {
     @Published internal private(set) var status: AgentSessionStatus
     @Published internal private(set) var title: String
 
-    /// When the session was first opened, which is what the rail orders by.
     internal let startedAt: Date
-    internal private(set) var lastActiveAt: Date
+
+    /// When the session last went to work: the start of the reply it last began, or its own start.
+    /// The rail lists the latest first.
+    ///
+    /// Opening a session is not work, so it does not move one. It used to, and the rail was ordered
+    /// by start time while it did, so the stamp changed nothing anyone could see; ordered by this, a
+    /// session double-clicked in the middle of the list would have jumped to the top from under the
+    /// pointer that opened it.
+    @Published internal private(set) var lastActiveAt: Date
+
+    /// Which of the result column's views this session is showing.
+    ///
+    /// On the session rather than in the column: the column is one hosting controller per window,
+    /// drawing whichever session is open, so view state there carried one session's choice into the
+    /// next. Not stored, so a relaunch opens on the statements.
+    @Published internal var resultSegment: AgentResultSegment = .sql
 
     /// Text typed before the session could send it, which a connect long enough to notice a typo in
     /// needs. Cleared before it is dispatched so three flush sites still send once.
@@ -73,6 +87,13 @@ internal final class AgentSession: ObservableObject, Identifiable {
         viewModel.activeConversationID
     }
 
+    /// What the rail, the conversation and the delete confirmation call the session. A session names
+    /// itself from its first question, so one that has not been asked anything goes by the command
+    /// that made it.
+    internal var displayTitle: String {
+        title.isEmpty ? String(localized: "New Session") : title
+    }
+
     /// Republishes the engine's changes as the session's own, so a rail row bound to the session
     /// redraws when the transcript moves. `AIChatViewModel` is an `ObservableObject` of its own and
     /// nothing else forwards it.
@@ -111,17 +132,20 @@ internal final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
-    /// Status follows the engine while the session is live. A session the user stopped, or one that
-    /// failed, keeps the state it ended on: the engine underneath it is idle either way, and idle
-    /// is not the same answer as stopped.
     /// A stopped session keeps the state it ended on; a failed one does not.
     ///
     /// Retry is offered on a failure and moves the engine back through idle, loading and streaming,
     /// so freezing on `.failed` left the rail reporting Failed for the whole of a successful retry
     /// and session resolution still treating it as ended.
+    ///
+    /// Going to work is what makes a session the latest, so the rail moves it up as a reply starts
+    /// rather than as someone looks at it.
     private func refreshDerivedState() {
         let engineStatus = derivedStatus()
         if status != .stopped, status != engineStatus {
+            if engineStatus == .working {
+                markActive()
+            }
             status = engineStatus
         }
         let derivedTitle = derivedTitle()
@@ -180,10 +204,12 @@ internal final class AgentSession: ObservableObject, Identifiable {
     /// Puts a stopped session back to work. Nothing is replayed: a statement that was waiting for an
     /// answer when the window closed was cancelled by the stop, and the model is asked again rather
     /// than the call being re-issued behind the user's back.
+    ///
+    /// Resuming is opening, not working, so the session keeps its place in the rail until it is
+    /// asked something.
     internal func resume() {
         guard status.isEnded else { return }
         mark(.ready)
-        markActive()
     }
 
     /// Settles a card that is still waiting before the transcript is written.
