@@ -107,12 +107,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         catalogPresence?.hasSequences ?? versionedCapabilities.hasSequencesCatalog
     }
 
-    // MARK: - EXPLAIN
-
-    func buildExplainQuery(_ sql: String) -> String? {
-        "EXPLAIN \(sql)"
-    }
-
     // MARK: - Foreign Keys
 
     func foreignKeyDisableStatements() -> [String]? {

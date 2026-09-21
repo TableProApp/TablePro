@@ -37,13 +37,18 @@ struct DataBrowserView: View {
     /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
     /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
     private var allowsRowEditing: Bool { table.type.allowsRowEditing }
-    private var isRedis: Bool { connection.type == .redis }
+    private var browseMode: TableBrowseMode { TableBrowseMode(driver: session?.driver) }
+    private var browsesSQLRows: Bool { browseMode == .sql }
 
-    /// Both entry points ask this. Redis takes no `INSERT`, and the form cannot be filled in before
-    /// the column list has arrived.
+    /// Both entry points ask this. A key's contents take no `INSERT`, and the form cannot be filled
+    /// in before the column list has arrived.
     private var canInsertRow: Bool {
-        allowsRowEditing && !isRedis
+        allowsRowEditing && browsesSQLRows
             && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
+    }
+
+    private var canDeleteRows: Bool {
+        allowsRowEditing && browsesSQLRows && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites
     }
 
     private var columns: [ColumnInfo] { viewModel.columns }
@@ -196,7 +201,7 @@ struct DataBrowserView: View {
 
     @ViewBuilder
     private var searchableContent: some View {
-        if isRedis {
+        if !browsesSQLRows {
             content
                 .navigationTitle(table.name)
                 .navigationBarTitleDisplayMode(.inline)
@@ -298,21 +303,25 @@ struct DataBrowserView: View {
         .hoverEffect()
         .contextMenu { rowContextMenu(row: row) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if allowsRowEditing && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
+            if canDeleteRows {
                 Button {
-                    deleteTarget = viewModel.primaryKeyValues(for: row)
-                    showDeleteConfirmation = true
+                    confirmDelete(row)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
                 .tint(.red)
             }
         }
-        .accessibilityAction(named: Text("Delete row")) {
-            guard allowsRowEditing, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
-            deleteTarget = viewModel.primaryKeyValues(for: row)
-            showDeleteConfirmation = true
+        .accessibilityActions {
+            if canDeleteRows {
+                Button("Delete row") { confirmDelete(row) }
+            }
         }
+    }
+
+    private func confirmDelete(_ row: [String?]) {
+        deleteTarget = viewModel.primaryKeyValues(for: row)
+        showDeleteConfirmation = true
     }
 
     @ViewBuilder
@@ -365,6 +374,46 @@ struct DataBrowserView: View {
 
     @ToolbarContentBuilder
     private var topToolbar: some ToolbarContent {
+        if browsesSQLRows {
+            sortAndFilterItems
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if browsesSQLRows {
+                    Button { showStructure = true } label: {
+                        Label("Table Structure", systemImage: "info.circle")
+                    }
+                    Divider()
+                }
+                Section("Export") {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button {
+                            let text = ClipboardExporter.exportRows(
+                                columns: columns, rows: rows,
+                                format: format, tableName: table.name,
+                                databaseType: connection.type, driver: session?.driver
+                            )
+                            ClipboardExporter.copyToClipboard(text)
+                        } label: {
+                            Label(format.rawValue, systemImage: "doc.on.clipboard")
+                        }
+                    }
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+        }
+        if canInsertRow {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showInsertSheet = true } label: {
+                    Label("Insert Row", systemImage: "plus")
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sortAndFilterItems: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Picker("Sort By", selection: sortColumnBinding) {
@@ -396,37 +445,6 @@ struct DataBrowserView: View {
                     : "line.3.horizontal.decrease.circle")
             }
             .badge(viewModel.activeFilterCount)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button { showStructure = true } label: {
-                    Label("Table Structure", systemImage: "info.circle")
-                }
-                Divider()
-                Section("Export") {
-                    ForEach(ExportFormat.allCases) { format in
-                        Button {
-                            let text = ClipboardExporter.exportRows(
-                                columns: columns, rows: rows,
-                                format: format, tableName: table.name,
-                                databaseType: connection.type, driver: session?.driver
-                            )
-                            ClipboardExporter.copyToClipboard(text)
-                        } label: {
-                            Label(format.rawValue, systemImage: "doc.on.clipboard")
-                        }
-                    }
-                }
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
-            }
-        }
-        if canInsertRow {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showInsertSheet = true } label: {
-                    Label("Insert Row", systemImage: "plus")
-                }
-            }
         }
     }
 

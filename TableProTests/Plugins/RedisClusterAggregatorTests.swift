@@ -13,6 +13,24 @@ private func intValue(_ reply: RedisReply) -> Int64? {
     return value
 }
 
+@Suite("Redis cluster aggregation - keyspace across primaries")
+struct RedisClusterAggregatorKeyspaceTests {
+    @Test("Each database's key counts add up across the primaries")
+    func sumsPerDatabase() {
+        #expect(RedisClusterAggregator.keyspace([[0: 2, 3: 1], [3: 4]]) == [0: 2, 3: 5])
+    }
+
+    @Test("A primary with no keys adds nothing")
+    func emptyPrimaryAddsNothing() {
+        #expect(RedisClusterAggregator.keyspace([[0: 2], [:]]) == [0: 2])
+    }
+
+    @Test("A primary that declined leaves every count unknown")
+    func declinedPrimaryIsUnknown() {
+        #expect(RedisClusterAggregator.keyspace([[0: 2], nil]) == nil)
+    }
+}
+
 @Suite("Redis cluster aggregation - numeric policies")
 struct RedisClusterAggregatorNumericTests {
     @Test("agg_sum adds every shard's count, which is what DBSIZE needs")

@@ -10,11 +10,22 @@ import Foundation
 import os
 import TableProPluginKit
 
+/// How the grid's deleted keys become `DEL` statements.
+enum RedisDeleteBatching: Sendable {
+    /// One `DEL` for every key, which a server holding the whole keyspace applies all at once.
+    case singleCommand
+    /// One `DEL` per hash slot. A cluster splits a `DEL` by slot anyway and one slot can refuse
+    /// after another ran, while a single-slot `DEL` is checked against every key before it runs,
+    /// so each statement is all or nothing and a save can say how many of them went through.
+    case perHashSlot
+}
+
 struct RedisStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "RedisStatementGenerator")
 
     let namespaceName: String
     let columns: [String]
+    var deleteBatching: RedisDeleteBatching = .singleCommand
 
     /// Index of the "Key" column (used as primary identifier, like MongoDB's "_id")
     var keyColumnIndex: Int? {
@@ -65,13 +76,20 @@ struct RedisStatementGenerator {
             }
         }
 
-        if !deleteKeys.isEmpty {
-            let keyList = deleteKeys.map { RedisArgumentCodec.quote($0) }.joined(separator: " ")
-            let cmd = "DEL \(keyList)"
-            statements.append((statement: cmd, parameters: []))
-        }
+        return statements + deleteStatements(for: deleteKeys)
+    }
 
-        return statements
+    private func deleteStatements(for keys: [String]) -> [(statement: String, parameters: [PluginCellValue])] {
+        guard !keys.isEmpty else { return [] }
+        let batches: [[String]]
+        switch deleteBatching {
+        case .singleCommand: batches = [keys]
+        case .perHashSlot: batches = RedisKeySlot.groupedBySlot(keys)
+        }
+        return batches.map { batch in
+            let keyList = batch.map { RedisArgumentCodec.quote($0) }.joined(separator: " ")
+            return (statement: "DEL \(keyList)", parameters: [])
+        }
     }
 
     // MARK: - INSERT

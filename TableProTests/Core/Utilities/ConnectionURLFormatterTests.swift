@@ -440,6 +440,30 @@ struct ConnectionURLFormatterTests {
         #expect(url == "redis://localhost/")
     }
 
+    @Test("Redis URL carries the Database Index field when no older index was saved")
+    func redisURLCarriesTheDatabaseIndexField() {
+        let conn = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "",
+            username: "", type: .redis, additionalFields: ["redisDatabase": "4"]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "redis://localhost/4")
+    }
+
+    @Test("Redis URL writes an index, never a database name the parser would refuse")
+    func redisURLNeverWritesADatabaseName() {
+        let named = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "cache",
+            username: "", type: .redis
+        )
+        let prefixed = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "db4",
+            username: "", type: .redis
+        )
+        #expect(ConnectionURLFormatter.format(named, password: nil, sshPassword: nil) == "redis://localhost/")
+        #expect(ConnectionURLFormatter.format(prefixed, password: nil, sshPassword: nil) == "redis://localhost/4")
+    }
+
     // MARK: - MongoDB Auth Params
 
     @Test("MongoDB URL includes authSource")

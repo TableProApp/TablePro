@@ -11,7 +11,8 @@ import Foundation
 import TableProPluginKit
 
 /// Driven by one task at a time, so the outcomes are handed out in order with no synchronisation.
-final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
+/// It also stands in for one node of a cluster, which hands it the cluster's database.
+final class StubRedisChannel: RedisClusterNodeConnection, @unchecked Sendable {
     private var outcomes: [Result<RedisReply, Error>]
     private(set) var sentCommands: [[String]] = []
     private(set) var sentScopes: [RedisCommandScope] = []
@@ -51,6 +52,17 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
         try moveSession(to: index, scope: .outsideBlock) { $0.visited(index) }
     }
 
+    func adoptRouting(_ newRouting: RedisCommandRouting) {}
+
+    func adoptHomeDatabase(_ index: Int) {
+        sessionDatabase.rehomed(index)
+    }
+
+    func forgetSentCommands() {
+        sentCommands = []
+        sentScopes = []
+    }
+
     /// Mirrors the hiredis connection: a SELECT queued in an open block moves nothing yet and
     /// answers queued, and a move records itself only once the server accepted it.
     private func moveSession(
@@ -83,7 +95,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         let command = decoded(args)
         try admit(scope, command: command)
-        try moveToCommandDatabase()
+        try moveToCommandDatabase(command: command.first)
         guard let reply = try send(command, scope: scope) else { return .null }
         observe(command: command.first, reply: reply)
         return reply
@@ -94,7 +106,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         let pipeline = commands.map(decoded)
         try admit(scope, command: pipeline.first ?? [])
-        try moveToCommandDatabase()
+        try moveToCommandDatabase(command: pipeline.first?.first)
         let replies = try pipeline.map { try send($0, scope: scope) }
         for (command, reply) in zip(pipeline, replies) {
             guard let reply else { continue }
@@ -103,10 +115,19 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
         return replies.map { $0 ?? .null }
     }
 
-    private func moveToCommandDatabase() throws {
-        guard !footprint.hasOpenBlock,
-              let target = sessionDatabase.databaseToMoveTo(visiting: RedisDatabaseVisit.database) else { return }
-        try moveSession(to: target, scope: .outsideBlock) { $0.visited(target) }
+    private func moveToCommandDatabase(command: String?) throws {
+        let move = sessionDatabase.move(
+            beforeCommandVisiting: RedisDatabaseVisit.database,
+            blockOpen: footprint.hasOpenBlock
+        )
+        switch move {
+        case .stay:
+            return
+        case .refuse:
+            throw RedisHeldBackCommand(command: command ?? "", held: .openBlock)
+        case .select(let target):
+            try moveSession(to: target, scope: .outsideBlock) { $0.visited(target) }
+        }
     }
 
     private func observe(command: String?, reply: RedisReply) {

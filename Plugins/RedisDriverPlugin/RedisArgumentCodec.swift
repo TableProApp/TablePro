@@ -153,7 +153,7 @@ enum RedisArgumentCodec {
         }
     }
 
-    private static func quotedText(_ text: String) -> String {
+    static func quotedText(_ text: String) -> String {
         var result = "\""
         for scalar in text.unicodeScalars {
             switch scalar {

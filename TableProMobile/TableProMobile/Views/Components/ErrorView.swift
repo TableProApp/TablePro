@@ -30,6 +30,7 @@ struct ErrorView: View {
         switch error.category {
         case .network: return "wifi.exclamationmark"
         case .auth: return "lock.trianglebadge.exclamationmark"
+        case .permission: return "hand.raised"
         case .config: return "gear.badge.xmark"
         case .query: return "exclamationmark.triangle"
         case .ssh: return "terminal"

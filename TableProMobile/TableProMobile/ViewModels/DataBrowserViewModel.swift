@@ -51,6 +51,7 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var host: String = ""
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
 
     init(windowCapacity: Int = 1_000) {
         self.buffer = StreamingResultBuffer(capacity: windowCapacity)
@@ -122,6 +123,16 @@ final class DataBrowserViewModel {
         }
         loadError = nil
 
+        if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
+            await loadKeyContents(reader: reader, key: table.name)
+        } else {
+            await loadRows(session: session, table: table, isInitial: isInitial)
+        }
+        isLoading = false
+        isPageLoading = false
+    }
+
+    private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool) async {
         do {
             if columnDetails.isEmpty || isInitial {
                 columnDetails = try await session.driver.fetchColumns(table: table.name, schema: nil)
@@ -130,24 +141,17 @@ final class DataBrowserViewModel {
             let pkColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
             let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
             let query = buildSelectQuery(table: table)
+            let driver = session.driver
 
-            await loadPage(
-                driver: session.driver,
-                query: query,
-                lazyContext: lazyContext,
-                pageSize: pagination.pageSize
-            )
+            await loadPage(options: pageOptions(lazyContext: lazyContext), startedAt: Date()) { options in
+                driver.executeStreaming(query: query, options: options)
+            }
 
             if case .error(let err) = phase {
                 loadError = err
-                isLoading = false
-                isPageLoading = false
                 return
             }
-
-            if legacyRows.count < pagination.pageSize, pagination.totalRows == nil {
-                pagination.totalRows = pagination.currentOffset + legacyRows.count
-            }
+            settleTotalRowsFromShortPage()
 
             if foreignKeys.isEmpty || isInitial {
                 do {
@@ -160,17 +164,59 @@ final class DataBrowserViewModel {
             if pagination.totalRows == nil {
                 await fetchTotalRows(session: session, table: table)
             }
-
-            isLoading = false
-            isPageLoading = false
         } catch {
             loadError = ErrorClassifier.classify(
                 error,
                 context: ErrorContext(operation: "loadData", databaseType: databaseType, host: host)
             )
-            isLoading = false
-            isPageLoading = false
         }
+    }
+
+    private func loadKeyContents(reader: any KeyContentsBrowsing, key: String) async {
+        let start = Date()
+        let limit = pagination.pageSize
+        let offset = pagination.currentOffset
+        keyReadTask?.cancel()
+        let read = Task { try await reader.keyContentsPage(ofKey: key, limit: limit, offset: offset) }
+        keyReadTask = read
+        do {
+            let page = try await read.value
+            guard keyReadTask == read, !read.isCancelled else { return }
+            columnDetails = page.result.columns
+            foreignKeys = []
+            pagination.totalRows = page.totalCount
+
+            let result = page.result
+            await loadPage(options: pageOptions(lazyContext: nil), startedAt: start) { options in
+                QueryResultStreaming.stream(options: options) { result }
+            }
+
+            if case .error(let err) = phase {
+                loadError = err
+                return
+            }
+            settleTotalRowsFromShortPage()
+        } catch {
+            guard keyReadTask == read, !read.isCancelled else { return }
+            loadError = ErrorClassifier.classify(
+                error,
+                context: ErrorContext(operation: "loadKeyContents", databaseType: databaseType, host: host)
+            )
+        }
+    }
+
+    private func settleTotalRowsFromShortPage() {
+        guard legacyRows.count < pagination.pageSize, pagination.totalRows == nil else { return }
+        pagination.totalRows = pagination.currentOffset + legacyRows.count
+    }
+
+    private func pageOptions(lazyContext: LazyContext?) -> StreamOptions {
+        StreamOptions(
+            textTruncationBytes: 4_096,
+            inlineBinary: false,
+            maxRows: pagination.pageSize,
+            lazyContext: lazyContext
+        )
     }
 
     private func buildSelectQuery(table: TableInfo) -> String {
@@ -428,26 +474,18 @@ final class DataBrowserViewModel {
     // MARK: - Streaming (Internal)
 
     private func loadPage(
-        driver: DatabaseDriver,
-        query: String,
-        lazyContext: LazyContext?,
-        pageSize: Int
+        options: StreamOptions,
+        startedAt start: Date,
+        stream makeStream: @escaping @Sendable (StreamOptions) -> AsyncThrowingStream<StreamElement, Error>
     ) async {
         fetchTask?.cancel()
-        let options = StreamOptions(
-            textTruncationBytes: 4_096,
-            inlineBinary: false,
-            maxRows: pageSize,
-            lazyContext: lazyContext
-        )
         phase = .loading
         buffer.reset()
 
-        let start = Date()
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await element in driver.executeStreaming(query: query, options: options) {
+                for try await element in makeStream(options) {
                     if Task.isCancelled { break }
                     self.buffer.apply(element)
                 }
@@ -468,6 +506,7 @@ final class DataBrowserViewModel {
     }
 
     func cancel() {
+        keyReadTask?.cancel()
         fetchTask?.cancel()
         buffer.cancelFlush()
         searchTask?.cancel()

@@ -88,9 +88,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func makeChannel(for mode: RedisConnectionMode) throws -> any RedisCommandChannel {
         let username = config.username.isEmpty ? nil : config.username
         let password = config.password.isEmpty ? nil : config.password
-        let database = mode.supportsDatabaseSelection
-            ? RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
-            : 0
+        let database = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
 
         switch mode {
         case .standalone:
@@ -127,12 +125,18 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 config.additionalFields[RedisClusterFieldKey.hosts] ?? "",
                 defaultPort: RedisClusterFieldKey.defaultPort
             )
-            return RedisClusterChannel(
-                seeds: seeds,
-                username: username,
-                password: password,
-                sslConfig: config.ssl
-            )
+            let sslConfig = config.ssl
+            return RedisClusterChannel(seeds: seeds) { address in
+                RedisPluginConnection(
+                    host: address.host,
+                    port: address.port,
+                    username: username,
+                    password: password,
+                    database: 0,
+                    sslConfig: sslConfig,
+                    connectTimeout: 5
+                )
+            }
         }
     }
 
@@ -472,8 +476,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let operation = try RedisCommandParser.parse(trimmed)
 
         switch operation {
-        case .scan(_, let pattern, _):
-            try await streamScanRows(connection: conn, pattern: pattern, scope: .session, continuation: continuation)
+        case .scan(_, let pattern, _, let type):
+            try await streamScanRows(
+                connection: conn, pattern: pattern, typeFilter: type, scope: .session, continuation: continuation
+            )
         case .keyBrowse(let pattern, let typeScope, _, _, let database):
             try await conn.withDatabase(database) {
                 try await streamScanRows(
@@ -580,7 +586,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = RedisStatementGenerator(namespaceName: table, columns: columns)
+        let generator = RedisStatementGenerator(
+            namespaceName: table,
+            columns: columns,
+            deleteBatching: redisConnection?.partitionsKeyspace == true ? .perHashSlot : .singleCommand
+        )
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
@@ -589,7 +599,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return RedisDatabaseTarget.addressing(
             statements,
             toDatabase: RedisDatabaseIndex.parse(table),
-            from: conn.homeDatabase()
+            from: conn.homeDatabase(),
+            insideTransaction: conn.supportsTransactions
         )
     }
 }

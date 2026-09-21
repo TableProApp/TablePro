@@ -20,7 +20,7 @@ public enum StatementBlank {
     }
 
     public static func hasContent(_ text: String) -> Bool {
-        text.contains { !isBlank($0) }
+        text.unicodeScalars.contains { !isBlank($0) }
     }
 
     public static func blankLength(in text: NSString, at offset: Int) -> Int {

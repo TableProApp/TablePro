@@ -1,8 +1,9 @@
 import Foundation
+import TableProSQLGrammar
 
 extension QueryTab {
     var hasQueryText: Bool {
-        !content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        StatementBlank.hasContent(content.query)
     }
 
     var hasExecutedQuery: Bool {

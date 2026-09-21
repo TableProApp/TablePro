@@ -289,26 +289,18 @@ extension DatabaseManager {
                     }
                 }
             case .selectDatabaseFromConnectionField(let fieldId):
-                let initialDb: Int
-                if let fieldValue = resolvedConnection.additionalFields[fieldId], let parsed = Int(fieldValue) {
-                    initialDb = parsed
-                } else if fieldId == "redisDatabase", let legacy = resolvedConnection.redisDatabase {
-                    initialDb = legacy
-                } else if let fallback = Int(resolvedConnection.database) {
-                    initialDb = fallback
-                } else {
-                    initialDb = 0
-                }
+                let initialDb = resolvedConnection.databaseIndex(selectedBy: fieldId)
                 if initialDb != 0 {
                     do {
                         try await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
-                        activeSessions[connection.id]?.browseDatabase = String(initialDb)
                     } catch {
-                        Self.logger.error("Failed to switch to database \(initialDb): \(error.localizedDescription)")
+                        Self.logger.error(
+                            "Failed to switch to database \(initialDb): \(error.publicLogShape, privacy: .public)"
+                        )
+                        continue
                     }
-                } else {
-                    activeSessions[connection.id]?.browseDatabase = "0"
                 }
+                activeSessions[connection.id]?.browseDatabase = String(initialDb)
             case .selectSchemaFromLastSession:
                 if let schemaDriver = driver as? SchemaSwitchable,
                    let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id) {

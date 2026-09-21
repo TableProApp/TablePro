@@ -4,20 +4,20 @@ nonisolated internal struct RedisScanPage: Equatable, Sendable {
     static let startCursor = "0"
 
     let cursor: String
-    let keys: [String]
+    let elements: [String]
 
-    init(cursor: String, keys: [String]) {
+    init(cursor: String, elements: [String]) {
         self.cursor = cursor
-        self.keys = keys
+        self.elements = elements
     }
 
-    init(reply: RedisReplyValue) throws {
-        try reply.throwIfError().throwIfQueued("SCAN")
+    init(reply: RedisReplyValue, command: String) throws {
+        try reply.throwIfError().throwIfQueued(command)
         guard case .array(let parts) = reply, parts.count == 2 else {
-            self.init(cursor: Self.startCursor, keys: [])
+            self.init(cursor: Self.startCursor, elements: [])
             return
         }
-        self.init(cursor: Self.cursor(from: parts[0]), keys: Self.keys(from: parts[1]))
+        self.init(cursor: Self.cursor(from: parts[0]), elements: parts[1].stringElements)
     }
 
     private static func cursor(from reply: RedisReplyValue) -> String {
@@ -28,18 +28,6 @@ nonisolated internal struct RedisScanPage: Equatable, Sendable {
             return String(value)
         default:
             return startCursor
-        }
-    }
-
-    private static func keys(from reply: RedisReplyValue) -> [String] {
-        guard case .array(let items) = reply else { return [] }
-        return items.compactMap { item in
-            switch item {
-            case .string(let key), .status(let key):
-                return key
-            default:
-                return nil
-            }
         }
     }
 }
@@ -55,15 +43,23 @@ nonisolated internal enum RedisKeyspaceReads {
         ["SCAN", cursor, "MATCH", "*", "COUNT", String(scanPageSize)]
     }
 
+    /// SCAN may return a key more than once, for example when the keyspace shrinks during the walk,
+    /// so each key is kept at its first sighting. The limit counts every key the server sent,
+    /// repeats included, because it bounds the round trips rather than the size of the list.
     static func keys(sending send: Send) async throws -> [String] {
         var keys: [String] = []
+        var seen = Set<String>()
+        var received = 0
         var cursor = RedisScanPage.startCursor
         repeat {
             let reply = try await send(scanArguments(cursor: cursor))
-            let page = try RedisScanPage(reply: reply)
+            let page = try RedisScanPage(reply: reply, command: "SCAN")
             cursor = page.cursor
-            keys.append(contentsOf: page.keys)
-        } while cursor != RedisScanPage.startCursor && keys.count < keyLimit
+            received += page.elements.count
+            for key in page.elements where seen.insert(key).inserted {
+                keys.append(key)
+            }
+        } while cursor != RedisScanPage.startCursor && received < keyLimit
         return keys
     }
 

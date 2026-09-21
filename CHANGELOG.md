@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
 - **Saved Filters** in the filter bar's **Filter Settings**, for restoring a table's filter without running it, or not saving it at all. (#3006)
 - **Always Show Filter Bar** in **Filter Settings**, split out from the option that also decided what happened to the saved filter.
+- Numbered databases on Valkey 9 clusters with `cluster-databases` above 1.
+- `DB <index> <command>` in the Redis editor, running one command on another database.
+- Explain for Teradata.
 
 ### Changed
 
@@ -231,14 +234,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No wrong-mode error when a Standalone Redis connection points at a Valkey 8 or later Sentinel or cluster node.
 - Redis `MULTI` blocks aborted, or padded with extra replies, by the sidebar, the key browser and the connection check.
 - A Redis `MULTI` block or `WATCH` lost without notice when the connection dropped.
-- Redis row counts, statistics, DDL preview, export and grid edits using the session's current database instead of the row's own.
+- Redis row counts, statistics, DDL preview, export, grid edits and key tree using the session's database, not the row's.
 - Refreshing a Redis database tab after a refused switch showing another database's keys.
 - Redis key grid showing type UNKNOWN, TTL -1 and empty collections for keys an ACL user cannot read.
-- Redis Cluster deletes and key counts reported as complete when a shard refused them, and `SCRIPT EXISTS` answering 0.
+- Redis Cluster writes and key counts reported as complete when a shard refused them, and `SCRIPT EXISTS` answering 0.
 - Database Index in the Redis connection form stopping at 15.
 - Empty Redis key list on iPhone and iPad when the server refuses the scan or a `MULTI` block is open.
 - Explain Query failing on Redis with a `DEBUG` command error, and enabled for databases with no query plan.
 - Redis key tree showing "No items" when the server refuses the key scan or a `MULTI` block is open.
+- Redis commands losing arguments such as `SCAN … TYPE` or `FLUSHDB ASYNC`, and valid `XGROUP` or `OBJECT` commands refused.
+- Redis Cluster running `FUNCTION LOAD`, `ACL SETUSER`, `CONFIG REWRITE` and other subcommands on a single node.
+- Redis connections whose database is written `db4` opening database 0 on the Mac.
+- Negative or non-numeric database index in a Redis connection URL accepted without an error.
+- Redis command errors on iPhone and iPad reported as a successful result.
+- Redis keys listed twice on iPhone and iPad.
+- Redis keys on iPhone and iPad failing to open with `ERR wrong number of arguments for 'select' command`.
+- Redis permission errors on iPhone and iPad reported as a failed sign-in.
+- Run and Explain Query in the Query menu enabled for an editor holding only whitespace.
+- `explain_query` sending an invented `EXPLAIN` to databases without one, and an estimate when `analyze` was asked for.
+- Explain on Redshift failing on PostgreSQL's `FORMAT JSON` and `ANALYZE` options.
+- Decimal points and minus signs accepted in DuckDB Port and BigQuery Max Bytes Billed.
+- Wrong Redis database in the toolbar of a second window opened on the same connection.
 
 ### Security
 
@@ -260,6 +276,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Statements hidden behind an engine's own literal or comment forms, such as `E'\''`, `'''` or `--1`, skipped Safe Mode.
 - Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
 - Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
+- A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
 
 ## [0.75.0] - 2026-09-18
 

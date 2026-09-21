@@ -72,6 +72,14 @@ extension PluginMetadataRegistry {
         )
     }
 
+    static func adoptCuratedExplainVariants(
+        _ snapshot: inout PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) {
+        guard snapshot.explainVariants.isEmpty, !registryDefault.explainVariants.isEmpty else { return }
+        snapshot = snapshot.withExplainVariants(registryDefault.explainVariants)
+    }
+
     /// A name is a system database or schema when either the plugin or the app's curated entry lists it. An installed
     /// plugin can predate the app's list or report none at all: every published Oracle plugin lists no system
     /// schemas, which left `SYS` and `XDB` among the user schemas whichever plugin version was installed.

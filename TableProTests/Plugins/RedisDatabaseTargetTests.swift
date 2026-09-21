@@ -228,6 +228,32 @@ struct RedisSessionDatabaseTests {
         #expect(database.home == 3)
         #expect(database.databaseToMoveTo(visiting: nil) == nil)
     }
+
+    /// A cluster moves every node's home at once, and each node goes there on its next command.
+    @Test("A new home moves only where the session belongs")
+    func rehomed() {
+        var database = RedisSessionDatabase(0)
+        database.rehomed(3)
+        #expect(database.current == 0)
+        #expect(database.home == 3)
+        #expect(database.databaseToMoveTo(visiting: nil) == 3)
+        #expect(database.databaseToMoveTo(visiting: 5) == 5)
+        #expect(database.databaseToMoveTo(visiting: 0) == nil)
+    }
+
+    @Test("A visit that needs a move inside an open block is refused, and nothing else moves one")
+    func moveInsideABlock() {
+        let home = RedisSessionDatabase(0)
+        #expect(home.move(beforeCommandVisiting: 3, blockOpen: false) == .select(3))
+        #expect(home.move(beforeCommandVisiting: 3, blockOpen: true) == .refuse)
+        #expect(home.move(beforeCommandVisiting: 0, blockOpen: true) == .stay)
+        #expect(home.move(beforeCommandVisiting: nil, blockOpen: true) == .stay)
+
+        var away = RedisSessionDatabase(0)
+        away.visited(3)
+        #expect(away.move(beforeCommandVisiting: nil, blockOpen: false) == .select(0))
+        #expect(away.move(beforeCommandVisiting: nil, blockOpen: true) == .stay)
+    }
 }
 
 @Suite("Redis command channel - a visit the app abandoned")
@@ -296,26 +322,26 @@ struct RedisWriteAddressingTests {
 
     @Test("Writes for the database the session belongs on are unchanged")
     func sameDatabase() {
-        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 3)
+        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 3, insideTransaction: true)
         #expect(addressed.map(\.statement) == Self.writes.map(\.statement))
     }
 
     @Test("Writes for another database select it first and return afterwards")
     func otherDatabase() {
-        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5)
+        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5, insideTransaction: true)
         #expect(addressed.map(\.statement) == ["SELECT 3", "SET \"k\" \"v\"", "DEL \"old\"", "SELECT 5"])
     }
 
     @Test("A table that names no database, or no writes, is left alone")
     func nothingToAddress() {
-        #expect(RedisDatabaseTarget.addressing(Self.writes, toDatabase: nil, from: 5).count == 2)
-        #expect(RedisDatabaseTarget.addressing([], toDatabase: 3, from: 5).isEmpty)
+        #expect(RedisDatabaseTarget.addressing(Self.writes, toDatabase: nil, from: 5, insideTransaction: true).count == 2)
+        #expect(RedisDatabaseTarget.addressing([], toDatabase: 3, from: 5, insideTransaction: true).isEmpty)
     }
 
     /// The SELECTs go through the parser a save runs every statement through.
     @Test("Every addressing statement parses as a SELECT")
     func selectsParse() throws {
-        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5)
+        let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5, insideTransaction: true)
         guard case .select(let first) = try RedisCommandParser.parse(addressed[0].statement),
               case .select(let last) = try RedisCommandParser.parse(addressed[3].statement) else {
             Issue.record("Expected SELECT operations")
@@ -323,5 +349,36 @@ struct RedisWriteAddressingTests {
         }
         #expect(first == 3)
         #expect(last == 5)
+    }
+}
+
+@Suite("Redis key tree - the database it lists")
+struct RedisKeyTreeDatabaseTests {
+    /// The tree's read is a walk of the keyspace plus one TYPE per key, run inside the database the
+    /// tree names. A typed SELECT moves where the session belongs, which the read has to leave alone.
+    @Test("The tree's read visits its own database and returns to the one a typed SELECT chose")
+    func readVisitsAndReturns() async throws {
+        let channel = StubRedisChannel([
+            .status("OK"),
+            .status("OK"),
+            .array([.string("0"), .array([.string("a")])]),
+            .status("string"),
+            .status("OK")
+        ])
+        try await channel.selectDatabase(5)
+
+        let types = try await channel.withDatabase(0) {
+            let page = try await channel.scanKeyspace(
+                cursor: RedisClusterCursor.start, pattern: nil, type: nil, count: 1_000, scope: .outsideBlock
+            )
+            return try await channel.keyTypeNames(page.keys)
+        }
+
+        #expect(types == ["string"])
+        #expect(channel.sentCommands == [
+            ["SELECT", "5"], ["SELECT", "0"], ["SCAN", "0", "COUNT", "1000"], ["TYPE", "a"], ["SELECT", "5"]
+        ])
+        #expect(channel.homeDatabase() == 5)
+        #expect(channel.currentDatabase() == 5)
     }
 }

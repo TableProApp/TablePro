@@ -72,6 +72,29 @@ struct CommandActionsDispatchTests {
         return (actions, coordinator)
     }
 
+    // MARK: - Query text
+
+    /// The Query menu used to test the text for emptiness while the editor bar trimmed it, so
+    /// Run and Explain Query stayed enabled over an editor holding only whitespace.
+    @Test("An editor holding only whitespace or invisible characters has no query text for the menu")
+    func blankEditorHasNoQueryText() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addTab(initialQuery: "  \n\t\u{200B}\u{FEFF}", databaseName: "testdb")
+
+        #expect(!actions.hasQueryText)
+        #expect(!actions.canSaveAsFavorite)
+        #expect(actions.canClearQuery)
+    }
+
+    @Test("An editor with a statement has query text for the menu")
+    func editorWithStatementHasQueryText() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addTab(initialQuery: "  SELECT 1 ", databaseName: "testdb")
+
+        #expect(actions.hasQueryText)
+        #expect(actions.canSaveAsFavorite)
+    }
+
     // MARK: - loadQueryIntoEditor
 
     @Test("loadQueryIntoEditor forwards query to coordinator and updates tab")

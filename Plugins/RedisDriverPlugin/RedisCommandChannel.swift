@@ -26,6 +26,9 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     var isConnected: Bool { get }
     var supportsDatabaseSelection: Bool { get }
     var supportsTransactions: Bool { get }
+    /// True when keys live on different nodes by hash slot, so one command over several keys can
+    /// be applied on some nodes and refused on others.
+    var partitionsKeyspace: Bool { get }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws
     func disconnect()
@@ -40,6 +43,10 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     func homeDatabase() -> Int
     /// Moves the session for one read the app makes, without moving where it belongs.
     func visitDatabase(_ index: Int) async throws
+    /// How many numbered databases the server says it has, or nil when it would not say.
+    func reportedDatabaseCount() async throws -> Int?
+    /// Keys per database, or nil when the server declined to count them.
+    func keyCountsByDatabase() async throws -> [Int: Int]?
 
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply]
@@ -62,6 +69,7 @@ protocol RedisCommandChannel: AnyObject, Sendable {
 extension RedisCommandChannel {
     var supportsDatabaseSelection: Bool { true }
     var supportsTransactions: Bool { true }
+    var partitionsKeyspace: Bool { false }
 
     func databaseForNextCommand() -> Int { currentDatabase() }
 

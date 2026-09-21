@@ -9,7 +9,8 @@ import TableProPluginKit
 /// What the app knows about a database type before its plugin loads.
 ///
 /// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
-/// registers, so these are the pre-load answer for those. For a variant id they are the whole
+/// registers, so these are the pre-load answer for those, apart from an explain list the plugin
+/// leaves empty, which keeps the one here. For a variant id they are the whole
 /// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
 /// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
 /// the plugin that drives them.
@@ -448,7 +449,7 @@ extension PluginMetadataRegistry {
                 displayName: "Redshift", iconName: "redshift-icon", defaultPort: 5_439,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
                 isDownloadable: false, primaryUrlScheme: "redshift", parameterStyle: .dollar,
-                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                navigationModel: .standard, explainVariants: redshiftExplainVariants, pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["redshift"],
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#205B8E",

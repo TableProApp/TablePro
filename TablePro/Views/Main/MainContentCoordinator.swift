@@ -1025,10 +1025,6 @@ final class MainContentCoordinator: ObservableObject {
 
         if let session = services.databaseManager.session(for: connectionId) {
             toolbarState.updateConnectionState(from: session.reportedStatus)
-            if let driver = session.driver {
-            }
-        } else if let driver = services.databaseManager.driver(for: connectionId) {
-            toolbarState.connectionState = .connected
         }
     }
 

@@ -13,9 +13,21 @@ nonisolated internal enum RedisReplyValue: Sendable, Equatable {
         case .string(let s): return s
         case .integer(let i): return String(i)
         case .status(let s): return s
-        case .error(let s): return s
+        case .error(let s): return "(error) \(s)"
         case .null: return nil
         case .array(let items): return "[\(items.compactMap(\.stringRepresentation).joined(separator: ", "))]"
+        }
+    }
+
+    var stringElements: [String] {
+        guard case .array(let items) = self else { return [] }
+        return items.compactMap { item in
+            switch item {
+            case .string(let value), .status(let value):
+                return value
+            default:
+                return nil
+            }
         }
     }
 

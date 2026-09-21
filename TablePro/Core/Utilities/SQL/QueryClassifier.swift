@@ -706,15 +706,17 @@ private extension QueryClassifier {
         databaseType: DatabaseType
     ) -> QueryClassification? {
         guard databaseType == .redis else { return nil }
-        let command = trimmed.prefix { !$0.isWhitespace }.uppercased()
-        guard !command.isEmpty else { return .safe }
+        guard let arguments = RedisArgumentCodec.split(trimmed) else {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+        let statement = redisCommandPastDatabasePrefix(arguments.map { String(bytes: $0, encoding: .utf8) ?? "" })
+        guard let command = statement.first?.uppercased() else { return .safe }
 
         let touchesUnsafeSurface = redisCodeExecutionCommands.contains(command)
             || redisFilesystemCommands.contains(command)
 
         if command == "CONFIG" {
-            let rest = trimmed.dropFirst(command.count).trimmingCharacters(in: .whitespaces).uppercased()
-            let tier: QueryTier = rest.hasPrefix("GET") ? .safe : .destructive
+            let tier: QueryTier = statement.dropFirst().first?.uppercased() == "GET" ? .safe : .destructive
             return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
         }
 
@@ -730,6 +732,18 @@ private extension QueryClassifier {
         }
 
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    /// `DB <index> <command>` runs the command on the database it names, so the command decides
+    /// the tier: read as the bare `DB`, `DB 0 FLUSHDB` would pass as an ordinary write. A prefix
+    /// with nothing after its index is left whole, which classifies as a write. The words are read
+    /// the way the driver reads them, so a quoted `"FLUSHALL"` is the command it runs.
+    static func redisCommandPastDatabasePrefix(_ words: [String]) -> ArraySlice<String> {
+        var rest = words[...]
+        while rest.first?.uppercased() == "DB", rest.count > 2 {
+            rest = rest.dropFirst(2)
+        }
+        return rest
     }
 
     static let mongoReadMethods: Set<String> = [

@@ -77,17 +77,13 @@ enum SessionStateFactory {
         changeMgr.databaseType = connection.type
         let toolbarSt = ConnectionToolbarState(connection: connection)
 
-        if let session = DatabaseManager.shared.session(for: connection.id) {
+        let session = DatabaseManager.shared.session(for: connection.id)
+        if let session {
             toolbarSt.updateConnectionState(from: session.reportedStatus)
-            if let driver = session.driver {
-            }
-        } else if let driver = DatabaseManager.shared.driver(for: connection.id) {
-            toolbarSt.connectionState = .connected
         }
 
         if connection.type.pluginTypeId == "Redis" {
-            let dbIndex = connection.redisDatabase ?? Int(connection.database) ?? 0
-            toolbarSt.currentDatabase = String(dbIndex)
+            toolbarSt.currentDatabase = session?.browseDatabase ?? String(connection.redisDatabaseIndex)
         }
 
         if let payload {

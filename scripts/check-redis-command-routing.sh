@@ -100,7 +100,8 @@ for match in re.finditer(r'spec\(\s*"([^"]+)",\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)([
     request, response = policies(rest)
     curated[name] = {
         "firstKey": int(first), "lastKey": int(last), "step": int(step),
-        "readOnly": "readOnly: true" in rest, "movable": "movable: true" in rest,
+        "readOnly": "readOnly: true" in rest, "write": "write: true" in rest,
+        "movable": "movable: true" in rest,
         "request": request, "response": response,
     }
 
@@ -127,7 +128,8 @@ for block, values in blocks:
     for name in re.findall(r'"([^"]+)"', block):
         curated.setdefault(name, {
             "firstKey": positions[0], "lastKey": positions[1], "step": positions[2],
-            "readOnly": "readOnly: true" in rest, "movable": "movable: true" in rest,
+            "readOnly": "readOnly: true" in rest, "write": "write: true" in rest,
+            "movable": "movable: true" in rest,
             "request": request, "response": response,
         })
 
@@ -135,17 +137,24 @@ if not curated:
     sys.exit("could not parse any curated entries")
 
 server = {}
+misnamed = []
 
 
+# Read every entry exactly as RedisCommandRouting.parse does: a subcommand is keyed by the name the
+# server reports, which already carries its container, and a nested entry named anything else is
+# skipped there, so it fails the check here rather than passing unnoticed.
 def collect(entry, container=None):
     if not isinstance(entry, list) or len(entry) < 6 or not isinstance(entry[0], str):
         return
-    name = f"{container}|{entry[0].lower().split('|')[-1]}" if container else entry[0].lower()
+    name = entry[0].lower()
+    if container and not name.startswith(f"{container}|"):
+        misnamed.append(f"{container} > {name}")
+        return
     flags = {str(f).lower() for f in (entry[2] or [])}
     tips = [str(t) for t in (entry[7] or [])] if len(entry) > 7 else []
     server[name] = {
         "firstKey": entry[3], "lastKey": entry[4], "step": entry[5],
-        "readOnly": "readonly" in flags, "movable": "movablekeys" in flags,
+        "readOnly": "readonly" in flags, "write": "write" in flags, "movable": "movablekeys" in flags,
         "request": next((t.split(":", 1)[1] for t in tips if t.startswith("request_policy:")), None),
         "response": next((t.split(":", 1)[1] for t in tips if t.startswith("response_policy:")), None),
     }
@@ -166,7 +175,7 @@ for name in sorted(curated):
     expected = curated[name]
     for field, label in [
         ("firstKey", "first key"), ("lastKey", "last key"), ("step", "key step"),
-        ("readOnly", "readonly"), ("movable", "movablekeys"),
+        ("readOnly", "readonly"), ("write", "write"), ("movable", "movablekeys"),
         ("request", "request_policy"), ("response", "response_policy"),
     ]:
         if expected[field] != actual[field]:
@@ -176,11 +185,17 @@ print(f"compared {checked} commands")
 missing = sorted(n for n in curated if n not in server)
 if missing:
     print(f"not on this server, so unchecked: {', '.join(missing)}")
+if misnamed:
+    print()
+    for line in misnamed:
+        print(f"  subcommand not named under its container: {line}")
+    print(f"\n{len(misnamed)} subcommand entry(ies) the driver would skip")
 if mismatches:
     print()
     for line in mismatches:
         print(f"  {line}")
     print(f"\n{len(mismatches)} disagreement(s)")
+if misnamed or mismatches:
     sys.exit(1)
 print("the curated table matches the server")
 PY

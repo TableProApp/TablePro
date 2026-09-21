@@ -47,4 +47,14 @@ struct RedisDatabaseIndexTests {
         #expect(RedisDatabaseIndex.parse("cache") == nil)
         #expect(RedisDatabaseIndex.parse("dbx") == nil)
     }
+
+    @Test("selectableIndex accepts only an index a server can select")
+    func selectableIndexHonoursTheRange() {
+        #expect(RedisDatabaseIndex.selectableIndex("0") == 0)
+        #expect(RedisDatabaseIndex.selectableIndex("db4") == 4)
+        #expect(RedisDatabaseIndex.selectableIndex("2147483646") == 2_147_483_646)
+        #expect(RedisDatabaseIndex.selectableIndex("-1") == nil)
+        #expect(RedisDatabaseIndex.selectableIndex("2147483647") == nil)
+        #expect(RedisDatabaseIndex.selectableIndex("abc") == nil)
+    }
 }

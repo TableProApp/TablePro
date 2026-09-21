@@ -127,6 +127,10 @@ targets:
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
+      # The Redis plugin's own readings of a database index and of redis-cli quoting, so the
+      # app classifies, quotes and resolves a Redis statement exactly as the driver will.
+      - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -628,9 +632,11 @@ targets:
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
+      - Plugins/RedisDriverPlugin/RedisClusterChannel.swift
       - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
       - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
       - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
+      - Plugins/RedisDriverPlugin/RedisClusterWriteOutcome.swift
       - Plugins/RedisDriverPlugin/RedisCommandChannel.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
       - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
@@ -639,6 +645,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseListing.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseTarget.swift
+      - Plugins/RedisDriverPlugin/RedisKeyContentsRead.swift
       - Plugins/RedisDriverPlugin/RedisKeySlot.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
       - Plugins/RedisDriverPlugin/RedisMetadataRead.swift
@@ -647,6 +654,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisQueuedCommandPolicy.swift
       - Plugins/RedisDriverPlugin/RedisQueuedDatabase.swift
       - Plugins/RedisDriverPlugin/RedisReply.swift
+      - Plugins/RedisDriverPlugin/RedisReplyGrid.swift
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisSessionFootprint.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift

@@ -86,7 +86,7 @@ struct RedisQueryBuilder {
         if namespace.isEmpty {
             return "DBSIZE"
         }
-        return "SCAN 0 MATCH \"\(namespace)*\" COUNT 10000"
+        return "SCAN 0 MATCH \"\(quoteForCommand(escapeGlobChars(namespace)))*\" COUNT 10000"
     }
 
     // MARK: - Private Helpers

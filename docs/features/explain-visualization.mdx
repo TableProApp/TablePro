@@ -135,7 +135,8 @@ Properties the driver reported as false or zero are left out of **Details**.
 
 | Database | Variants | Diagram and tree |
 |---|---|---|
-| PostgreSQL, PGlite, Redshift | EXPLAIN, EXPLAIN ANALYZE | From `EXPLAIN (FORMAT JSON)` |
+| PostgreSQL, PGlite | EXPLAIN, EXPLAIN ANALYZE | From `EXPLAIN (FORMAT JSON)` |
+| Redshift | EXPLAIN, EXPLAIN VERBOSE | Raw text only |
 | CockroachDB | EXPLAIN, EXPLAIN ANALYZE | From the text plan |
 | MySQL | EXPLAIN, EXPLAIN (JSON) | From JSON, and from a typed `EXPLAIN FORMAT=TREE` or `EXPLAIN ANALYZE`. Plain EXPLAIN stays in the results grid |
 | MariaDB | EXPLAIN, EXPLAIN (JSON) | From JSON, including a typed `ANALYZE FORMAT=JSON`. Plain EXPLAIN stays in the results grid |
@@ -148,6 +149,7 @@ Properties the driver reported as false or zero are left out of **Details**.
 | Cloudflare R2 SQL | Explain, Explain (JSON) | Raw text only |
 | BigQuery | Dry Run (Cost) | A dry run cost estimate, no plan |
 | Spanner | Plan | From the indented text |
+| Teradata | EXPLAIN | Raw text only |
 
 An engine missing from the table has no plan to show, and **Query > Explain Query** is dimmed for it. On MongoDB, call `.explain()` on the query in the editor instead.
 

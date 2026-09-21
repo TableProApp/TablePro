@@ -76,7 +76,7 @@ For a sharded [Redis Cluster](https://redis.io/docs/latest/operate/oss_and_stack
 |-------|-------|
 | **Cluster Seed Nodes** | One or more `host:port` entries. Any reachable member is enough, the rest are discovered. Port defaults to `6379` |
 
-`DBSIZE` is summed across shards, browsing merges their keys into one tree, and `MGET`, `MSET`, `DEL`, `EXISTS`, `TOUCH` and `UNLINK` are split per shard and recombined. When one shard refuses its part, or cannot answer because it is loading or busy running a script, the command reports that shard's error instead of a partial total; a split `DEL` has already run on the shards that accepted it. A shard that denies `DBSIZE` leaves the sidebar key count blank. A `MOVED` re-points the slot and retries, an `ASK` retries against the importing node, and one command follows at most five redirects. What Cluster mode cannot do is under [Limitations](#limitations).
+`DBSIZE` is summed across shards, browsing merges their keys into one tree, and `MGET`, `MSET`, `DEL`, `EXISTS`, `TOUCH` and `UNLINK` are split per shard and recombined. When one shard refuses its part, or cannot answer because it is loading or busy running a script, the command reports that shard's error instead of a partial total. Redis cannot undo the part of a split write that already ran, so the error lists the keys it changed, or for `FLUSHDB` the nodes. A shard that denies `DBSIZE` leaves the sidebar key count blank, and on a cluster with more than one database each count is `INFO keyspace` summed across primaries. A `MOVED` re-points the slot and retries, an `ASK` retries against the importing node, and one command follows at most five redirects. What Cluster mode cannot do is under [Limitations](#limitations).
 
 The wrong mode is caught at connect, on Valkey as on Redis: Standalone against a cluster member, or any data mode against a Sentinel port, names the field to change.
 
@@ -120,13 +120,17 @@ Toggle the filter bar to search keys by pattern. Patterns are Redis glob (`*` an
 
 ## Redis CLI
 
-Each statement is one command; separate several with `;`. Commands the driver does not recognize go through too, and only the result formatting is type-aware. Arguments are quoted the way `redis-cli` quotes them, so `"` and `'` both work and `\xHH` writes a raw byte; unbalanced quotes are rejected rather than guessed at. Redis has no comment syntax and none is stripped, so a `--` or `#` line is sent to the server and fails.
+Each statement is one command; separate several with `;`. Commands the driver does not recognize go through too, and only the result formatting is type-aware. A recognized command with arguments its result view does not model, such as `FLUSHDB ASYNC` or `CONFIG SET a 1 b 2`, is also sent exactly as typed, so the server answers it as `redis-cli` would. Arguments are quoted the way `redis-cli` quotes them, so `"` and `'` both work and `\xHH` writes a raw byte; unbalanced quotes are rejected rather than guessed at. Redis has no comment syntax and none is stripped, so a `--` or `#` line is sent to the server and fails.
 
 ```redis
 SET mykey "hello" EX 60
 HGETALL myhash; LRANGE mylist 0 -1
 SCAN 0 MATCH user:* COUNT 100
 ```
+
+`SELECT` moves the editor's session only. The commands after it run on that database, while the sidebar, the key tree and the database tab stay on the database you clicked. Clicking a database moves the editor to that database.
+
+`DB 3 GET key` runs one command on database 3 and leaves the session where it was. A key opened from the tree is read this way, and so are grid saves on a cluster.
 
 ### MULTI blocks
 
@@ -153,10 +157,10 @@ New connections default to **Disabled**. SNI is sent in every TLS mode.
 ## Limitations
 
 - A command that fails while `EXEC` is running cannot be taken back. Standalone and Sentinel wrap a grid save in `MULTI`/`EXEC`, so the rest of the block stays applied and the error names the one that failed; check the keys it touched. A command refused before it runs, for a missing ACL permission, a full `maxmemory` or wrong arity, aborts the block and writes nothing.
-- No transactions in Cluster mode. Grid saves run their commands one at a time, so a failure leaves the earlier ones applied. Group keys under one hash tag if they must move together.
+- No transactions in Cluster mode. Grid saves run their commands one at a time, so a failure leaves the earlier ones applied. Deleting grid rows sends one `DEL` per hash slot, and **Save Incomplete** counts how many ran. Group keys under one hash tag if they must move together.
 - A `SELECT` typed inside a `MULTI` block waits for `EXEC`, and never happens at all after a `DISCARD`. Clicking a database in the sidebar while a block is open is refused; close the block first.
 - A service with one database, such as Upstash or Redis Cloud, refuses `CONFIG`, so the sidebar lists 16. Every database but `db0` shows the server's error when you click it.
-- Cluster mode serves database 0 only. The Database Index field is hidden and the sidebar shows a single `db0`.
+- Redis Cluster serves database 0 only, and so does Valkey unless `cluster-databases` is above 1, in which case the sidebar lists each database. A cluster whose primaries refuse `CONFIG` shows `db0` alone. The Database Index field is hidden in Cluster mode, and a cluster connection always opens on `db0`.
 - A command whose keys span hash slots, such as `RENAME`, `SMOVE`, or the `*STORE` commands, is refused in Cluster mode before it is sent. Give the keys a shared hash tag, like `{user}:1` and `{user}:2`.
 - A key that is not valid UTF-8 never appears in the grid or the tree. Reach it from the CLI; values have no such limit.
 - Pub/Sub has no grid support. `PUBLISH` runs in the CLI, and there is no subscriber view.
@@ -169,6 +173,8 @@ New connections default to **Disabled**. SNI is sent in every TLS mode.
 ### NOPERM … has no permissions to run the 'scan' command
 
 The ACL user cannot run `SCAN`, which the key tree and the key browser read keys with, and key types need `TYPE`. Grant both with `ACL SETUSER <user> +scan +type`, then right-click **Keys** and choose **Refresh**.
+
+On iPhone and iPad the key list reads `SCAN` and `TYPE` too, and opening a key reads it by type: `GET`, `LLEN` and `LRANGE`, `HLEN` and `HSCAN`, `SCARD` and `SSCAN`, `ZCARD` and `ZRANGE … WITHSCORES`, or `XLEN` and `XRANGE`. A refusal there reads **Permission Denied**.
 
 ### SELECT … failed: ERR DB index is out of range
 

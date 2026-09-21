@@ -20992,6 +20992,30 @@
           }
         }
       }
+    },
+    "The key %@ no longer exists." : {
+
+    },
+    "Keys of type %@ cannot be opened here." : {
+
+    },
+    "Permission Denied" : {
+
+    },
+    "This connection's Redis user is not allowed to run this command or reach this key. Ask an administrator to grant it in the user's ACL." : {
+
+    },
+    "Key Not Found" : {
+
+    },
+    "Pull down on the key list to refresh it." : {
+
+    },
+    "Unsupported Key Type" : {
+
+    },
+    "Read it with a command in Query." : {
+
     }
   },
   "version" : "1.0"

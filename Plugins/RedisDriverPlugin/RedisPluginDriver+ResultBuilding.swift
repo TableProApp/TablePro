@@ -83,13 +83,13 @@ extension RedisPluginDriver {
         case .string:
             return stringCell(from: reply)
         case .hash:
-            return .fromOptional(RedisKeySummary.jsonObject(flatPairs: scanElements(from: reply).map(redisReplyToString)))
+            return .fromOptional(RedisKeySummary.jsonObject(flatPairs: scanElements(from: reply).map(\.displayText)))
         case .list:
-            return .fromOptional(RedisKeySummary.jsonArray(elements: (reply.arrayValue ?? []).map(redisReplyToString)))
+            return .fromOptional(RedisKeySummary.jsonArray(elements: (reply.arrayValue ?? []).map(\.displayText)))
         case .set:
-            return .fromOptional(RedisKeySummary.jsonArray(elements: scanElements(from: reply).map(redisReplyToString)))
+            return .fromOptional(RedisKeySummary.jsonArray(elements: scanElements(from: reply).map(\.displayText)))
         case .zset:
-            return .fromOptional(RedisKeySummary.jsonScorePairs(flatPairs: (reply.arrayValue ?? []).map(redisReplyToString)))
+            return .fromOptional(RedisKeySummary.jsonScorePairs(flatPairs: (reply.arrayValue ?? []).map(\.displayText)))
         case .stream:
             return .fromOptional(RedisKeySummary.jsonStreamEntries(streamEntries(from: reply)))
         }
@@ -102,7 +102,7 @@ extension RedisPluginDriver {
         case .data(let bytes):
             return .bytes(bytes)
         default:
-            return .text(redisReplyToString(reply))
+            return .text(reply.displayText)
         }
     }
 
@@ -120,7 +120,7 @@ extension RedisPluginDriver {
                   let fields = parts[1].arrayValue else {
                 return nil
             }
-            return (id: redisReplyToString(parts[0]), flatFields: fields.map(redisReplyToString))
+            return (id: parts[0].displayText, flatFields: fields.map(\.displayText))
         }
     }
 
@@ -139,254 +139,6 @@ extension RedisPluginDriver {
             columns: ["status"],
             columnTypeNames: ["String"],
             rows: [[message].asCells],
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    func buildGenericResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        switch result {
-        case .string(let s), .status(let s):
-            return PluginQueryResult(
-                columns: ["result"],
-                columnTypeNames: ["String"],
-                rows: [[s].asCells],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .integer(let i):
-            return PluginQueryResult(
-                columns: ["result"],
-                columnTypeNames: ["Int64"],
-                rows: [[String(i)].asCells],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .data(let d):
-            let str = String(data: d, encoding: .utf8) ?? d.base64EncodedString()
-            return PluginQueryResult(
-                columns: ["result"],
-                columnTypeNames: ["String"],
-                rows: [[str].asCells],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .array(let items):
-            let rows = items.map { ([redisReplyToString($0)] as [String?]).asCells }
-            return PluginQueryResult(
-                columns: ["result"],
-                columnTypeNames: ["String"],
-                rows: rows,
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .error(let e):
-            return PluginQueryResult(
-                columns: ["result"],
-                columnTypeNames: ["String"],
-                rows: [[e].asCells],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .null:
-            return PluginQueryResult(
-                columns: ["result"],
-                columnTypeNames: ["String"],
-                rows: [["(nil)"].asCells],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-    }
-
-    /// An error element is marked the way `redis-cli` marks one, because `EXEC` answers with the
-    /// failures of the block inline among its values: an unmarked `WRONGTYPE Operation against a
-    /// key holding the wrong kind of value` in a result row reads as a stored string.
-    func redisReplyToString(_ reply: RedisReply) -> String {
-        switch reply {
-        case .string(let s), .status(let s): return s
-        case .error(let message): return "(error) \(message)"
-        case .integer(let i): return String(i)
-        case .data(let d): return String(data: d, encoding: .utf8) ?? d.base64EncodedString()
-        case .array(let items): return "[\(items.map { redisReplyToString($0) }.joined(separator: ", "))]"
-        case .null: return "(nil)"
-        }
-    }
-
-    func buildHashResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let items = result.arrayValue, !items.isEmpty else {
-            return PluginQueryResult(
-                columns: ["Field", "Value"],
-                columnTypeNames: ["String", "String"],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        var rows: [[PluginCellValue]] = []
-        var i = 0
-        while i + 1 < items.count {
-            rows.append([redisReplyToString(items[i]), redisReplyToString(items[i + 1])].asCells)
-            i += 2
-        }
-
-        return PluginQueryResult(
-            columns: ["Field", "Value"],
-            columnTypeNames: ["String", "String"],
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    func buildListResult(_ result: RedisReply, startOffset: Int = 0, startTime: Date) -> PluginQueryResult {
-        guard let items = result.arrayValue else {
-            return PluginQueryResult(
-                columns: ["Index", "Value"],
-                columnTypeNames: ["Int64", "String"],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        let rows = items.enumerated().map { index, item -> [PluginCellValue] in
-            ([String(startOffset + index), redisReplyToString(item)] as [String?]).asCells
-        }
-
-        return PluginQueryResult(
-            columns: ["Index", "Value"],
-            columnTypeNames: ["Int64", "String"],
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    func buildSetResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let items = result.arrayValue else {
-            return PluginQueryResult(
-                columns: ["Member"],
-                columnTypeNames: ["String"],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        let rows = items.map { ([redisReplyToString($0)] as [String?]).asCells }
-
-        return PluginQueryResult(
-            columns: ["Member"],
-            columnTypeNames: ["String"],
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    func buildSortedSetResult(_ result: RedisReply, withScores: Bool, startTime: Date) -> PluginQueryResult {
-        guard let items = result.arrayValue else {
-            return PluginQueryResult(
-                columns: withScores ? ["Member", "Score"] : ["Member"],
-                columnTypeNames: withScores ? ["String", "Double"] : ["String"],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        if withScores {
-            var rows: [[PluginCellValue]] = []
-            var i = 0
-            while i + 1 < items.count {
-                rows.append([redisReplyToString(items[i]), redisReplyToString(items[i + 1])].asCells)
-                i += 2
-            }
-            return PluginQueryResult(
-                columns: ["Member", "Score"],
-                columnTypeNames: ["String", "Double"],
-                rows: rows,
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        } else {
-            let rows = items.map { ([redisReplyToString($0)] as [String?]).asCells }
-            return PluginQueryResult(
-                columns: ["Member"],
-                columnTypeNames: ["String"],
-                rows: rows,
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-    }
-
-    func buildStreamResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let entries = result.arrayValue else {
-            return PluginQueryResult(
-                columns: ["ID", "Fields"],
-                columnTypeNames: ["String", "String"],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        var rows: [[PluginCellValue]] = []
-        for entry in entries {
-            guard let entryParts = entry.arrayValue, entryParts.count >= 2,
-                  let fields = entryParts[1].arrayValue else {
-                continue
-            }
-            let entryId = redisReplyToString(entryParts[0])
-
-            var fieldPairs: [String] = []
-            var i = 0
-            while i + 1 < fields.count {
-                fieldPairs.append("\(redisReplyToString(fields[i]))=\(redisReplyToString(fields[i + 1]))")
-                i += 2
-            }
-            rows.append([entryId, fieldPairs.joined(separator: ", ")].asCells)
-        }
-
-        return PluginQueryResult(
-            columns: ["ID", "Fields"],
-            columnTypeNames: ["String", "String"],
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
-
-    func buildConfigResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let items = result.arrayValue, !items.isEmpty else {
-            return PluginQueryResult(
-                columns: ["Parameter", "Value"],
-                columnTypeNames: ["String", "String"],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
-        var rows: [[PluginCellValue]] = []
-        var i = 0
-        while i + 1 < items.count {
-            rows.append([redisReplyToString(items[i]), redisReplyToString(items[i + 1])].asCells)
-            i += 2
-        }
-
-        return PluginQueryResult(
-            columns: ["Parameter", "Value"],
-            columnTypeNames: ["String", "String"],
-            rows: rows,
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )

@@ -64,10 +64,8 @@ final class AdvancedPaneViewModel: ObservableObject {
                 values[field.id] = defaultValue
             }
         }
-        if connection.additionalFields["redisDatabase"] == nil,
-           let rdb = connection.redisDatabase
-        {
-            values["redisDatabase"] = String(rdb)
+        if allFields.contains(where: { $0.id == RedisDatabaseIndex.fieldName && $0.section == .advanced }) {
+            values[RedisDatabaseIndex.fieldName] = String(connection.configuredRedisDatabaseIndex)
         }
         additionalFieldValues = values
         startupCommands = connection.startupCommands ?? ""

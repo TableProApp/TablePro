@@ -371,4 +371,113 @@ struct DataBrowserViewModelTests {
         #expect(vm.canGoToPreviousPage)
         #expect(vm.canGoToNextPage == false)
     }
+
+    private func keyPage(from start: Int, count: Int, total: Int) -> KeyContentsPage {
+        let columns = [
+            ColumnInfo(name: "index", typeName: "integer", ordinalPosition: 0),
+            ColumnInfo(name: "element", typeName: "string", ordinalPosition: 1)
+        ]
+        let rows: [[String?]] = (start ..< start + count).map { [String($0), "e\($0)"] }
+        return KeyContentsPage(
+            result: QueryResult(columns: columns, rows: rows, rowsAffected: 0, executionTime: 0),
+            totalCount: total
+        )
+    }
+
+    @Test("a key browse sends no SQL and pages by offset")
+    func keyBrowsePagesByOffset() async {
+        let driver = MockKeyContentsDriver()
+        let vm = DataBrowserViewModel()
+        let pageSize = vm.pagination.pageSize
+        driver.scriptedPages = [
+            .success(keyPage(from: 0, count: pageSize, total: pageSize * 3)),
+            .success(keyPage(from: pageSize, count: pageSize, total: pageSize * 3))
+        ]
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "queue"), databaseType: .redis, host: "localhost")
+
+        await vm.load(isInitial: true)
+        await vm.goToNextPage()
+
+        #expect(driver.pageRequests == [
+            MockKeyContentsDriver.PageRequest(key: "queue", limit: pageSize, offset: 0),
+            MockKeyContentsDriver.PageRequest(key: "queue", limit: pageSize, offset: pageSize)
+        ])
+        #expect(driver.executedQueries.isEmpty)
+        #expect(driver.fetchColumnsCalls == 0)
+        #expect(driver.fetchForeignKeysCalls == 0)
+        #expect(vm.pagination.totalRows == pageSize * 3)
+        #expect(vm.columnDetails.map(\.name) == ["index", "element"])
+        #expect(vm.hasPrimaryKeys == false)
+        #expect(vm.legacyRows.first == [String(pageSize), "e\(pageSize)"])
+        #expect(vm.loadError == nil)
+        #expect(vm.isLoading == false)
+    }
+
+    @Test("a key read overtaken by a newer one leaves the newer page on screen")
+    func overtakenKeyReadIsDropped() async {
+        let driver = MockKeyContentsDriver()
+        let vm = DataBrowserViewModel()
+        let pageSize = vm.pagination.pageSize
+        driver.scriptedPages = [
+            .success(keyPage(from: 0, count: pageSize, total: pageSize * 3)),
+            .success(keyPage(from: pageSize, count: pageSize, total: pageSize * 3))
+        ]
+        driver.holdsFirstRequest = true
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "queue"), databaseType: .redis, host: "localhost")
+
+        let overtaken = Task { await vm.load(isInitial: true) }
+        while !driver.isHoldingRequest {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        await vm.load()
+        driver.releaseHeldRequest()
+        await overtaken.value
+
+        #expect(driver.pageRequests.count == 2)
+        #expect(vm.legacyRows.first == [String(pageSize), "e\(pageSize)"])
+        #expect(vm.loadError == nil)
+        #expect(vm.isLoading == false)
+    }
+
+    @Test("a short key page with no count settles the total from what arrived")
+    func shortKeyPageSettlesTotal() async {
+        let driver = MockKeyContentsDriver()
+        driver.scriptedPages = [
+            .success(KeyContentsPage(
+                result: QueryResult(
+                    columns: [ColumnInfo(name: "member", typeName: "string", ordinalPosition: 0)],
+                    rows: [["x"], ["y"]],
+                    rowsAffected: 0,
+                    executionTime: 0
+                ),
+                totalCount: nil
+            ))
+        ]
+        let vm = DataBrowserViewModel()
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "tags"), databaseType: .redis, host: "localhost")
+
+        await vm.load(isInitial: true)
+
+        #expect(vm.pagination.totalRows == 2)
+        #expect(vm.canGoToNextPage == false)
+    }
+
+    @Test("a key that cannot be read shows the error instead of rows")
+    func unreadableKeyShowsError() async {
+        let driver = MockKeyContentsDriver()
+        driver.scriptedPages = [.failure(RedisError.keyNotFound("gone"))]
+        let vm = DataBrowserViewModel()
+        let session = ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "db0", tables: [])
+        vm.attach(session: session, table: TableInfo(name: "gone"), databaseType: .redis, host: "localhost")
+
+        await vm.load(isInitial: true)
+
+        #expect(vm.loadError?.title == String(localized: "Key Not Found"))
+        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.isLoading == false)
+        #expect(driver.executedQueries.isEmpty)
+    }
 }

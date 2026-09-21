@@ -48,16 +48,14 @@ struct ConnectionFieldRow: View {
         case .number:
             TextField(
                 field.label,
-                text: Binding(
-                    get: { value },
-                    set: { newValue in
-                        value = String(newValue.unicodeScalars.filter {
-                            CharacterSet.decimalDigits.contains($0) || $0 == "-" || $0 == "."
-                        })
-                    }
-                ),
+                text: $value,
                 prompt: field.placeholder.isEmpty ? nil : Text(field.placeholder)
             )
+            .onChange(of: value) { newValue in
+                let sanitized = ConnectionField.IntRange.wholeNumbers.fieldText(sanitizing: newValue)
+                guard sanitized != newValue else { return }
+                value = sanitized
+            }
         case .toggle:
             Toggle(
                 field.label,

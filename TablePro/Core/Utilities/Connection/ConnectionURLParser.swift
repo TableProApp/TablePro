@@ -62,6 +62,7 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
     case invalidURL
     case unsupportedScheme(String)
     case missingHost
+    case invalidRedisDatabaseIndex(String)
 
     var errorDescription: String? {
         switch self {
@@ -73,6 +74,8 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
             return String(format: String(localized: "Unsupported database scheme: %@"), scheme)
         case .missingHost:
             return String(localized: "Connection URL must include a host")
+        case .invalidRedisDatabaseIndex(let path):
+            return String(format: String(localized: "%@ is not a Redis database index."), path)
         }
     }
 }
@@ -186,9 +189,12 @@ struct ConnectionURLParser {
         // Redis-specific: parse database index from path and handle TLS scheme
         var redisDatabase: Int?
         if dbType == .redis {
-            if !database.isEmpty {
-                redisDatabase = Int(database)
+            switch redisDatabaseIndex(fromPath: database) {
+            case .success(let index):
+                redisDatabase = index
                 database = ""
+            case .failure(let error):
+                return .failure(error)
             }
             if scheme == "rediss" {
                 sslMode = sslMode ?? .required
@@ -396,6 +402,17 @@ struct ConnectionURLParser {
             database = ""
         }
 
+        var redisDatabase: Int?
+        if dbType == .redis {
+            switch redisDatabaseIndex(fromPath: database) {
+            case .success(let index):
+                redisDatabase = index
+                database = ""
+            case .failure(let error):
+                return .failure(error)
+            }
+        }
+
         return .success(ParsedConnectionURL(
             type: dbType,
             host: host,
@@ -414,7 +431,7 @@ struct ConnectionURLParser {
             sshNoAuth: ext.sshNoAuth,
             agentSocket: ext.agentSocket,
             connectionName: ext.connectionName,
-            redisDatabase: nil,
+            redisDatabase: redisDatabase,
             statusColor: ext.statusColor,
             envTag: ext.envTag,
             schema: ext.schema,
@@ -651,6 +668,14 @@ struct ConnectionURLParser {
     }
 
     // MARK: - Host/Port Parsing
+
+    private static func redisDatabaseIndex(fromPath path: String) -> Result<Int?, ConnectionURLParseError> {
+        guard !path.isEmpty else { return .success(nil) }
+        guard let index = RedisDatabaseIndex.selectableIndex(path) else {
+            return .failure(.invalidRedisDatabaseIndex(path))
+        }
+        return .success(index)
+    }
 
     /// Parse a host:port string, handling IPv6 bracket notation ([::1]:port).
     /// Returns nil if the string is empty or contains only a bare host with no port.

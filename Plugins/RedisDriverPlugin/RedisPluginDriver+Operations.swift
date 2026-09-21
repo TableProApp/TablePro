@@ -46,10 +46,12 @@ extension RedisPluginDriver {
                 )
             }
 
-        case .keyTree(let pattern, let limit):
-            return try await executeKeyTree(
-                pattern: pattern, limit: limit, connection: conn, startTime: startTime
-            )
+        case .keyTree(let pattern, let limit, let database):
+            return try await conn.withDatabase(database) {
+                try await executeKeyTree(
+                    pattern: pattern, limit: limit, connection: conn, startTime: startTime
+                )
+            }
 
         case .hget, .hset, .hgetall, .hdel:
             return try await executeHashOperation(operation, connection: conn, startTime: startTime)
@@ -68,6 +70,11 @@ extension RedisPluginDriver {
 
         case .ping, .info, .dbsize, .flushdb, .select, .configGet, .configSet, .command, .multi, .exec, .discard:
             return try await executeServerOperation(operation, connection: conn, startTime: startTime)
+
+        case .inDatabase(let database, let operation):
+            return try await conn.withDatabase(database) {
+                try await runOperation(operation, connection: conn, startTime: startTime)
+            }
         }
     }
 
@@ -120,16 +127,16 @@ extension RedisPluginDriver {
             guard let items = result.arrayValue else {
                 return buildEmptyKeyResult(startTime: startTime)
             }
-            let keys = items.map { redisReplyToString($0) }
+            let keys = items.map(\.displayText)
             let capped = Array(keys.prefix(PluginRowLimits.emergencyMax))
             let keysTruncated = keys.count > PluginRowLimits.emergencyMax
             return try await buildKeyBrowseResult(
                 keys: capped, connection: conn, startTime: startTime, isTruncated: keysTruncated
             )
 
-        case .scan(let cursor, let pattern, let count):
+        case .scan(let cursor, let pattern, let count, let type):
             let page = try await conn.scanKeyspace(
-                cursor: cursor, pattern: pattern, type: nil, count: count ?? 200
+                cursor: cursor, pattern: pattern, type: type, count: count ?? 200
             )
             return try await buildScanPageResult(page, connection: conn, startTime: startTime)
 
@@ -236,7 +243,7 @@ extension RedisPluginDriver {
 
         case .hgetall(let key):
             let result = try await conn.run(["HGETALL", key])
-            return buildHashResult(result, startTime: startTime)
+            return RedisReplyGrid.hash(result).queryResult(startTime: startTime)
 
         case .hdel(let key, let fields):
             let args = ["HDEL", key] + fields
@@ -265,7 +272,7 @@ extension RedisPluginDriver {
         switch operation {
         case .lrange(let key, let start, let stop):
             let result = try await conn.run(["LRANGE", key, String(start), String(stop)])
-            return buildListResult(result, startOffset: start, startTime: startTime)
+            return RedisReplyGrid.list(result, startOffset: start).queryResult(startTime: startTime)
 
         case .lpush(let key, let values):
             let args = ["LPUSH", key].asRedisArguments + values
@@ -317,7 +324,7 @@ extension RedisPluginDriver {
         switch operation {
         case .smembers(let key):
             let result = try await conn.run(["SMEMBERS", key])
-            return buildSetResult(result, startTime: startTime)
+            return RedisReplyGrid.set(result).queryResult(startTime: startTime)
 
         case .sadd(let key, let members):
             let args = ["SADD", key].asRedisArguments + members
@@ -372,7 +379,7 @@ extension RedisPluginDriver {
             args += flags
             let withScores = flags.contains("WITHSCORES")
             let result = try await conn.run(args)
-            return buildSortedSetResult(result, withScores: withScores, startTime: startTime)
+            return RedisReplyGrid.sortedSet(result, withScores: withScores).queryResult(startTime: startTime)
 
         case .zadd(let key, let flags, let scoreMembers):
             var args = ["ZADD", key].asRedisArguments
@@ -442,7 +449,7 @@ extension RedisPluginDriver {
             var args = ["XRANGE", key, start, end]
             if let c = count { args += ["COUNT", String(c)] }
             let result = try await conn.run(args)
-            return buildStreamResult(result, startTime: startTime)
+            return RedisReplyGrid.stream(result).queryResult(startTime: startTime)
 
         case .xlen(let key):
             let result = try await conn.run(["XLEN", key])
@@ -478,10 +485,8 @@ extension RedisPluginDriver {
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
-        case .info(let section):
-            var args = ["INFO"]
-            if let s = section { args.append(s) }
-            let result = try await conn.run(args)
+        case .info(let sections):
+            let result = try await conn.run(["INFO"] + sections)
             let infoText = result.stringValue ?? String(describing: result)
             return PluginQueryResult(
                 columns: ["info"],
@@ -510,9 +515,9 @@ extension RedisPluginDriver {
             try await conn.selectDatabase(database)
             return buildStatusResult("OK", startTime: startTime)
 
-        case .configGet(let parameter):
-            let result = try await conn.run(["CONFIG", "GET", parameter])
-            return buildConfigResult(result, startTime: startTime)
+        case .configGet(let parameters):
+            let result = try await conn.run(["CONFIG", "GET"] + parameters)
+            return RedisReplyGrid.config(result).queryResult(startTime: startTime)
 
         case .configSet(let parameter, let value):
             try await conn.run(["CONFIG", "SET", parameter, value])
@@ -520,7 +525,7 @@ extension RedisPluginDriver {
 
         case .command(let args):
             let result = try await conn.run(args.asRedisArguments)
-            return buildGenericResult(result, startTime: startTime)
+            return RedisReplyGrid.generic(result).queryResult(startTime: startTime)
 
         case .multi:
             try await conn.run(["MULTI"])
@@ -528,7 +533,7 @@ extension RedisPluginDriver {
 
         case .exec:
             let result = try await conn.run(["EXEC"])
-            return buildGenericResult(result, startTime: startTime)
+            return RedisReplyGrid.generic(result).queryResult(startTime: startTime)
 
         case .discard:
             try await conn.run(["DISCARD"])

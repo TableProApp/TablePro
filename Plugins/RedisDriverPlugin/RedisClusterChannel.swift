@@ -9,6 +9,10 @@
 //  errors. A MOVED or ASK arrives as an ordinary error reply with the context still usable, so a
 //  redirect costs a re-dispatch and never a reconnect.
 //
+//  Redis Cluster serves database 0 alone. Valkey 9 serves numbered databases in cluster mode when
+//  `cluster-databases` is above 1, each node keeping its own selected database, so the channel
+//  owns where the whole cluster belongs and every node moves there before its next command.
+//
 
 import Foundation
 import os
@@ -16,6 +20,16 @@ import OSLog
 import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisClusterChannel")
+
+/// One node's connection, as the cluster channel drives it.
+protocol RedisClusterNodeConnection: RedisCommandChannel {
+    func adoptRouting(_ newRouting: RedisCommandRouting)
+    /// Where the node's session belongs, which the cluster sets for every node at once. The node
+    /// moves there before its next command that is not part of a visit.
+    func adoptHomeDatabase(_ index: Int)
+}
+
+typealias RedisClusterNodeFactory = @Sendable (RedisNodeAddress) -> any RedisClusterNodeConnection
 
 final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     private enum Limits {
@@ -26,31 +40,21 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     }
 
     private let seeds: [RedisNodeAddress]
-    private let username: String?
-    private let password: String?
-    private let sslConfig: SSLConfiguration
-    private let connectTimeout: TimeInterval
+    private let openNode: RedisClusterNodeFactory
 
     private let lock = NSLock()
-    private var connections: [String: RedisPluginConnection] = [:]
+    private var connections: [String: any RedisClusterNodeConnection] = [:]
     private var topology = RedisClusterTopology(shards: [])
     private var routing = RedisCommandRouting()
     private var redirectsSinceReload = 0
     private var isShuttingDown = false
     private var cachedVersion: String?
+    private var home = 0
+    private var servedDatabases = 1
 
-    init(
-        seeds: [RedisNodeAddress],
-        username: String?,
-        password: String?,
-        sslConfig: SSLConfiguration,
-        connectTimeout: TimeInterval = 5
-    ) {
+    init(seeds: [RedisNodeAddress], openNode: @escaping RedisClusterNodeFactory) {
         self.seeds = seeds
-        self.username = username
-        self.password = password
-        self.sslConfig = sslConfig
-        self.connectTimeout = connectTimeout
+        self.openNode = openNode
     }
 
     var isConnected: Bool {
@@ -59,13 +63,21 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         return !connections.isEmpty
     }
 
-    var supportsDatabaseSelection: Bool { false }
+    var supportsDatabaseSelection: Bool { servedDatabaseCount > 1 }
+
+    private var servedDatabaseCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return servedDatabases
+    }
 
     /// Redis refuses MULTI's queued commands with MOVED whenever they hash outside the node the
     /// transaction opened on, and the driver has to pick that node before it has seen a key. On a
     /// three-shard cluster that aborts most single-slot transactions, so the honest answer is that
     /// the grid saves its rows one statement at a time instead.
     var supportsTransactions: Bool { false }
+
+    var partitionsKeyspace: Bool { true }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         guard !seeds.isEmpty else {
@@ -94,6 +106,8 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         let open = Array(connections.values)
         connections.removeAll()
         topology = RedisClusterTopology(shards: [])
+        home = 0
+        servedDatabases = 1
         lock.unlock()
         open.forEach { $0.disconnect() }
     }
@@ -111,15 +125,56 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         return cachedVersion
     }
 
-    func currentDatabase() -> Int { 0 }
+    func currentDatabase() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return home
+    }
 
+    /// The first primary answers for the cluster, since every primary serves the same databases,
+    /// and the rest follow before their next command. A block open on it holds the SELECT back:
+    /// queued there it would move that one primary when EXEC runs and leave the others behind.
     func selectDatabase(_ index: Int, scope: RedisCommandScope) async throws {
-        guard index == 0 else {
-            throw RedisPluginError(
-                code: 0,
-                message: String(localized: "Redis Cluster serves database 0 only, so it cannot switch databases.")
-            )
+        guard supportsDatabaseSelection else {
+            guard index == 0 else { throw Self.singleDatabaseRefusal }
+            return
         }
+        guard let primary = snapshotState().topology.orderedMasters.first else {
+            throw RedisPluginError.notConnected
+        }
+        try await connection(to: primary.address).selectDatabase(index, scope: .outsideBlock)
+        adoptHome(index)
+    }
+
+    /// Every node reads the visit before each command it sends, so there is nothing to move here.
+    func visitDatabase(_ index: Int) async throws {
+        guard supportsDatabaseSelection || index == 0 else { throw Self.singleDatabaseRefusal }
+    }
+
+    func reportedDatabaseCount() async throws -> Int? {
+        servedDatabaseCount
+    }
+
+    /// `INFO keyspace` describes the node that answers it, so each primary's is read and added up.
+    func keyCountsByDatabase() async throws -> [Int: Int]? {
+        guard supportsDatabaseSelection else { return try await databaseZeroKeyCounts() }
+        var perPrimary: [[Int: Int]?] = []
+        for primary in snapshotState().topology.orderedMasters {
+            perPrimary.append(try await connection(to: primary.address).keyspaceKeyCounts())
+        }
+        return RedisClusterAggregator.keyspace(perPrimary)
+    }
+
+    private func adoptHome(_ index: Int) {
+        lock.lock()
+        home = index
+        lock.unlock()
+    }
+
+    private func adoptServedDatabases(_ count: Int) {
+        lock.lock()
+        servedDatabases = count
+        lock.unlock()
     }
 
     // MARK: - Command dispatch
@@ -129,17 +184,14 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         let snapshot = snapshotState()
         let spec = snapshot.routing.spec(for: args)
 
-        switch spec?.requestPolicy {
-        case .allNodes:
-            return try await broadcast(args, to: snapshot.topology.allNodes, policy: spec?.responsePolicy, scope: scope)
-        case .allShards:
-            guard spec?.responsePolicy != .special else {
-                return try await routeToAnyMaster(args, snapshot: snapshot, scope: scope)
-            }
-            return try await broadcast(args, to: snapshot.topology.masters, policy: spec?.responsePolicy, scope: scope)
-        case .multiShard:
+        switch spec?.clusterFanOut ?? .single {
+        case .everyNode:
+            return try await broadcast(args, to: snapshot.topology.allNodes, spec: spec, scope: scope)
+        case .everyPrimary:
+            return try await broadcast(args, to: snapshot.topology.masters, spec: spec, scope: scope)
+        case .keyedShards:
             return try await runMultiShard(args, spec: spec, snapshot: snapshot, scope: scope)
-        case .special, .none:
+        case .single:
             return try await routeSingle(args, spec: spec, snapshot: snapshot, scope: scope)
         }
     }
@@ -284,67 +336,113 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             return try await routeSingle(args, spec: spec, snapshot: snapshot, scope: scope)
         }
 
-        var replies: [RedisReply] = []
-        var nodes: [RedisNodeAddress] = []
-        replies.reserveCapacity(groups.count)
-        nodes.reserveCapacity(groups.count)
-        for group in groups {
+        let targets = try groups.map { group in
             guard let node = snapshot.topology.master(forSlot: group.slot) else {
                 throw RedisPluginError.notConnected
             }
-            replies.append(try await send(group.arguments, to: node.address, scope: scope))
-            nodes.append(node.address)
+            return node.address
         }
+        let replies = try await sendParts(
+            groups.map(\.arguments),
+            to: targets,
+            carrying: groups.map { group in group.keyIndices.map { args[$0] } },
+            of: args,
+            isWrite: spec.isWrite,
+            followRedirects: true,
+            scope: scope
+        )
 
-        let combined: RedisReply
-        if let policy = spec.responsePolicy {
-            combined = RedisClusterAggregator.combine(replies, policy: policy)
-        } else {
-            combined = RedisMultiShardPlanner.scatterInKeyOrder(
+        guard let policy = spec.responsePolicy else {
+            return RedisMultiShardPlanner.scatterInKeyOrder(
                 groups: groups,
                 replies: replies,
                 keyIndices: spec.keyIndices(forArgumentCount: args.count)
             )
         }
-        noteShardFailures(of: args, combined: combined, replies: replies, nodes: nodes)
-        return combined
+        return RedisClusterAggregator.combine(replies, policy: policy)
     }
 
     private func broadcast(
         _ args: [Data],
         to nodes: [RedisClusterNode],
-        policy: RedisResponsePolicy?,
+        spec: RedisCommandSpec?,
         scope: RedisCommandScope
     ) async throws -> RedisReply {
-        let targets = nodes.isEmpty ? snapshotState().topology.masters : nodes
+        let targets = (nodes.isEmpty ? snapshotState().topology.masters : nodes).map(\.address)
         guard !targets.isEmpty else { throw RedisPluginError.notConnected }
-        var replies: [RedisReply] = []
-        replies.reserveCapacity(targets.count)
-        for node in targets {
-            replies.append(try await send(args, to: node.address, followRedirects: false, scope: scope))
-        }
-        let combined = RedisClusterAggregator.combine(replies, policy: policy)
-        noteShardFailures(of: args, combined: combined, replies: replies, nodes: targets.map(\.address))
-        return combined
+        let replies = try await sendParts(
+            Array(repeating: args, count: targets.count),
+            to: targets,
+            carrying: [],
+            of: args,
+            isWrite: spec?.changesEveryNodeItReaches ?? false,
+            followRedirects: false,
+            scope: scope
+        )
+        return RedisClusterAggregator.combine(replies, policy: spec?.responsePolicy)
     }
 
-    /// The reply the user sees is the refusing shard's own, which names neither the node nor the
-    /// fact that the other shards ran their part, so the log keeps both. The class only, because
-    /// the rest of an error message can quote a key.
-    private func noteShardFailures(
+    /// Nothing ties the parts of a split command together, so each runs on its own node and one
+    /// can be refused after another has already run. A write whose parts disagree is reported
+    /// with what ran, because the refusing part's reply alone reads as if nothing did. Every
+    /// owner is known before this is called, so a part is never stranded by a slot with no owner.
+    private func sendParts(
+        _ parts: [[Data]],
+        to targets: [RedisNodeAddress],
+        carrying keys: [[Data]],
         of args: [Data],
-        combined: RedisReply,
-        replies: [RedisReply],
-        nodes: [RedisNodeAddress]
-    ) {
-        guard combined.isError else { return }
-        let name = args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? ""
+        isWrite: Bool,
+        followRedirects: Bool,
+        scope: RedisCommandScope
+    ) async throws -> [RedisReply] {
+        let command = Self.commandName(of: args)
+        let nodes = targets.map(\.identifier)
+        var replies: [RedisReply] = []
+        replies.reserveCapacity(parts.count)
+        for (part, target) in zip(parts, targets) {
+            do {
+                replies.append(try await send(part, to: target, followRedirects: followRedirects, scope: scope))
+            } catch where !(error is CancellationError) {
+                noteShardFailures(of: command, replies: replies, nodes: targets)
+                guard let partial = RedisPartialClusterWrite.assemble(
+                    command: command, isWrite: isWrite, nodes: nodes, keys: keys,
+                    replies: replies, interruption: error
+                ) else { throw error }
+                throw notePartialWrite(partial)
+            }
+        }
+        noteShardFailures(of: command, replies: replies, nodes: targets)
+        if let partial = RedisPartialClusterWrite.assemble(
+            command: command, isWrite: isWrite, nodes: nodes, keys: keys,
+            replies: replies, interruption: nil
+        ) {
+            throw notePartialWrite(partial)
+        }
+        return replies
+    }
+
+    /// The reply the user sees is one shard's own, which names neither the node nor the other
+    /// shards, so the log keeps both. The class only, because the rest of an error message can
+    /// quote a key.
+    private func noteShardFailures(of command: String, replies: [RedisReply], nodes: [RedisNodeAddress]) {
         for (position, (reply, node)) in zip(replies, nodes).enumerated() {
             guard let message = reply.errorMessage else { continue }
             let errorClass = RedisConnectProbe.errorClass(of: message)
-            let part = "\(node.identifier), part \(position + 1) of \(replies.count)"
-            logger.notice("\(name, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
+            let part = "\(node.identifier), part \(position + 1) of \(nodes.count)"
+            logger.notice("\(command, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
         }
+    }
+
+    private func notePartialWrite(_ partial: RedisPartialClusterWrite) -> RedisPartialClusterWrite {
+        let applied = partial.appliedParts.count
+        logger.notice(
+            "\(partial.command, privacy: .public) partly applied: \(applied, privacy: .public) of \(partial.parts.count, privacy: .public)"
+        )
+        return partial
+    }
+
+    private static func commandName(of args: [Data]) -> String {
+        args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? ""
     }
 
     private func serverResolvedKeys(for args: [Data], snapshot: Snapshot) async throws -> [Data] {
@@ -461,7 +559,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         lock.unlock()
     }
 
-    private func adoptRoutingTable(_ table: RedisCommandRouting) -> [RedisPluginConnection] {
+    private func adoptRoutingTable(_ table: RedisCommandRouting) -> [any RedisClusterNodeConnection] {
         lock.lock()
         routing = table
         let open = Array(connections.values)
@@ -482,21 +580,20 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             ?? RedisClusterRedirect.parseEndpoint(identifier, fallbackHost: identifier)
     }
 
-    private func connection(to address: RedisNodeAddress) async throws -> RedisPluginConnection {
+    /// Every node is handed the cluster's database each time it is handed out, so a node that has
+    /// not run a command since the cluster moved, or one opened afterwards, catches up before it
+    /// sends anything. Connecting starts a session on database 0, so the database follows it.
+    private func connection(to address: RedisNodeAddress) async throws -> any RedisClusterNodeConnection {
         let existing = try reusableConnection(to: address)
-        if let connection = existing.connection { return connection }
+        if let connection = existing.connection {
+            connection.adoptHomeDatabase(existing.home)
+            return connection
+        }
 
-        let opened = RedisPluginConnection(
-            host: address.host,
-            port: address.port,
-            username: username,
-            password: password,
-            database: 0,
-            sslConfig: sslConfig,
-            connectTimeout: connectTimeout
-        )
+        let opened = openNode(address)
         opened.adoptRouting(existing.routing)
         try await opened.connect()
+        opened.adoptHomeDatabase(existing.home)
 
         guard let replaced = store(opened, at: address) else {
             opened.disconnect()
@@ -508,20 +605,20 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     private func reusableConnection(
         to address: RedisNodeAddress
-    ) throws -> (connection: RedisPluginConnection?, routing: RedisCommandRouting) {
+    ) throws -> (connection: (any RedisClusterNodeConnection)?, routing: RedisCommandRouting, home: Int) {
         lock.lock()
         defer { lock.unlock() }
         guard !isShuttingDown else { throw RedisPluginError.notConnected }
         if let existing = connections[address.identifier], existing.isConnected {
-            return (existing, routing)
+            return (existing, routing, home)
         }
-        return (nil, routing)
+        return (nil, routing, home)
     }
 
     private func store(
-        _ connection: RedisPluginConnection,
+        _ connection: any RedisClusterNodeConnection,
         at address: RedisNodeAddress
-    ) -> (previous: RedisPluginConnection?, Void)? {
+    ) -> (previous: (any RedisClusterNodeConnection)?, Void)? {
         lock.lock()
         defer { lock.unlock() }
         guard !isShuttingDown else { return nil }
@@ -576,6 +673,24 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             let info = (try? await connection.executeCommand(["INFO", "server"], scope: .outsideBlock))?.stringValue
             adoptVersion(info.flatMap(RedisServerInfo.version(from:)))
         }
+
+        let served = await databasesServed(by: discovered.orderedMasters)
+        adoptServedDatabases(served)
+        logger.info("Cluster serves \(served, privacy: .public) database(s)")
+    }
+
+    /// Measured on Valkey 9.1.2, `cluster-databases` answers the count each node serves and cannot
+    /// change at runtime, while Redis 8.10.1 answers an empty list for a setting it does not have.
+    /// The fewest any primary serves is the count, because a database one primary lacks cannot
+    /// hold the keys that hash to it. A primary that declines CONFIG says nothing either way.
+    private func databasesServed(by primaries: [RedisClusterNode]) async -> Int {
+        var replies: [RedisReply?] = []
+        for primary in primaries {
+            let reply = try? await connection(to: primary.address)
+                .runMetadataRead(["CONFIG", "GET", "cluster-databases"])
+            replies.append(reply)
+        }
+        return RedisDatabaseCount.servedByCluster(primaryReplies: replies)
     }
 
     /// One COMMAND at connect rather than a lookup per unknown command. The full answer is about
@@ -592,6 +707,13 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     }
 
     // MARK: - Messages
+
+    private static var singleDatabaseRefusal: RedisPluginError {
+        RedisPluginError(
+            code: 0,
+            message: String(localized: "This cluster serves database 0 only, so it cannot switch databases.")
+        )
+    }
 
     private static func crossSlotMessage(for args: [Data]) -> String {
         let name = args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? "This command"
