@@ -5,11 +5,11 @@
 
 import Foundation
 
-/// What the inspector is currently inspecting, and the two lines its header draws for it.
+/// What the inspector is currently inspecting, and the two lines it draws for it above its content.
 ///
 /// The pane had no subject at all before: it multiplexed three unrelated tabs, so there was nothing
 /// one title could name and the header carried a picker instead. Naming the subject is what lets
-/// the header say which row of which table is on screen, which is the first thing a reader of an
+/// the inspector say which row of which table is on screen, which is the first thing a reader of an
 /// inspector needs and the thing the old pane never showed.
 ///
 /// A schema grid is a first-class case rather than an afterthought. The structure and create-table

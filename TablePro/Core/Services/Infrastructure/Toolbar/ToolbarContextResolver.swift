@@ -161,7 +161,11 @@ internal enum ToolbarContextResolver {
         case MainWindowToolbar.importTables:
             return context.isConnected && !context.blocksAllWrites && context.supportsImport
         case MainWindowToolbar.assistant:
-            return context.isConnected && context.isAIEnabled
+            /// The View menu's Show Assistant, read from the same answer rather than rebuilt here.
+            /// Agent mode dims it, because the mode draws the conversation as the content column and
+            /// the result in the pane, and a connection that drops with the assistant open still lets
+            /// it close, as the inspector's button does.
+            return context.canToggleAssistant
         default:
             return false
         }

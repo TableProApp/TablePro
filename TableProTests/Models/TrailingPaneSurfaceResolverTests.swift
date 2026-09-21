@@ -90,6 +90,30 @@ struct TrailingPaneSurfaceResolverTests {
         }
     }
 
+    /// A command that revealed the pane for a surface it will not draw opened it on another one.
+    @Test("Only the surface a mode and setting allow is drawn when asked for")
+    func drawsOnlyWhatTheModeAllows() {
+        for mode in ConnectionWorkspaceContentMode.allCases {
+            for aiEnabled in [true, false] {
+                for surface in TrailingPaneSurface.allCases {
+                    let drawn = TrailingPaneSurfaceResolver.resolve(
+                        stored: surface,
+                        contentMode: mode,
+                        isAIEnabled: aiEnabled
+                    )
+                    #expect(
+                        TrailingPaneSurfaceResolver.draws(surface, contentMode: mode, isAIEnabled: aiEnabled)
+                            == (drawn == surface),
+                        "\(mode) ai=\(aiEnabled) \(surface)"
+                    )
+                }
+            }
+        }
+        #expect(TrailingPaneSurfaceResolver.draws(.agentResult, contentMode: .agent, isAIEnabled: true))
+        #expect(!TrailingPaneSurfaceResolver.draws(.inspector, contentMode: .agent, isAIEnabled: true))
+        #expect(!TrailingPaneSurfaceResolver.draws(.assistant, contentMode: .browse, isAIEnabled: false))
+    }
+
     /// The result pane belongs to a mode rather than to a command, so it never reaches the stored
     /// per-connection preference and never appears in the header's choices.
     @Test("The result surface is never user selectable")

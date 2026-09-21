@@ -39870,6 +39870,7 @@
       }
     },
     "Conversation history" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -39904,7 +39905,6 @@
       }
     },
     "Conversation History" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -81799,9 +81799,6 @@
           }
         }
       }
-    },
-    "JSON view options" : {
-
     },
     "JSON Viewer" : {
       "localizations" : {
@@ -182583,6 +182580,36 @@
 
     },
     "The '%1$@' variant does not run the statement. Leave 'analyze' off, or pass one that does: %2$@." : {
+
+    },
+    "Hide Result" : {
+
+    },
+    "Show Result" : {
+
+    },
+    "Inspector Options" : {
+
+    },
+    "Assistant Options" : {
+
+    },
+    "Result Options" : {
+
+    },
+    "Pane" : {
+
+    },
+    "Result view" : {
+
+    },
+    "No Session Open" : {
+
+    },
+    "What a session proposes and runs appears here" : {
+
+    },
+    "What the session runs appears once the connection is up" : {
 
     }
   },

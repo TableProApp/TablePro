@@ -416,10 +416,15 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// The workspace-rail facts come from the window in both branches. They are true of the window,
     /// not of the connection it happens to be showing, and reading them off a connection that has
     /// no coordinator left disabled the only menu route to the window's other connections.
+    ///
+    /// Focus Assistant is the window's too. A window opened straight into Agent mode draws the
+    /// conversation in its content column and never mounts the browse content that sets up the
+    /// command actions, so read from them, the one command that reaches its composer was dimmed.
     var menuValidationContext: MenuValidationContext {
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
+                canFocusAssistant: canFocusAssistant,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
         }
@@ -504,9 +509,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// surfaces need a session to open and none to close.
         if action == #selector(toggleSidebar(_:)) { return true }
         if action == #selector(toggleInspector(_:)) { return canToggleTrailingPane }
-        /// The assistant is the one surface a setting can take away, so its command goes with it
-        /// rather than staying enabled over a pane that would refuse to open.
-        if action == #selector(toggleAssistant(_:)) { return canRevealAssistant }
+        if action == #selector(toggleAssistant(_:)) { return canToggleAssistant }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
@@ -529,10 +532,12 @@ extension MainSplitViewController: NSMenuItemValidation {
         switch action {
         case #selector(toggleSidebar(_:)):
             setTitle(isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", on: menuItem)
+        /// Both read the surface the pane is drawing, so in Agent mode the pane toggle names the
+        /// result column it opens and closes instead of offering to hide an inspector nobody sees.
         case #selector(toggleInspector(_:)):
-            setTitle(isInspectorVisible ? "Hide Inspector" : "Show Inspector", on: menuItem)
+            setResolvedTitle(TrailingPaneCommandResolver.paneToggleTitle(trailingPaneCommandContext), on: menuItem)
         case #selector(toggleAssistant(_:)):
-            setTitle(isAssistantVisible ? "Hide Assistant" : "Show Assistant", on: menuItem)
+            setResolvedTitle(TrailingPaneCommandResolver.assistantToggleTitle(trailingPaneCommandContext), on: menuItem)
         case #selector(toggleWorkspaceRail(_:)):
             setTitle(isWorkspaceRailEnabled ? "Hide Connections" : "Show Connections", on: menuItem)
         case #selector(undo(_:)):

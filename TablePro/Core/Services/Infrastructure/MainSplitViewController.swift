@@ -14,7 +14,7 @@ import os
 import SwiftUI
 
 @MainActor
-internal final class MainSplitViewController: NSSplitViewController, TrailingPaneProxy {
+internal final class MainSplitViewController: NSSplitViewController {
     nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Payload & Session
@@ -40,11 +40,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     private var sessionState: SessionStateFactory.SessionState? {
         get { workspaces.selected?.sessionState }
         set { workspaces.selected?.sessionState = newValue }
-    }
-
-    private var trailingPaneState: TrailingPaneState? {
-        get { workspaces.selected?.trailingPaneState }
-        set { workspaces.selected?.trailingPaneState = newValue }
     }
 
     var autoConnect: Bool { workspaces.selected?.autoConnect ?? false }
@@ -86,7 +81,13 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// Stable containers, one per split item. The pane they show is the selected workspace's own,
     /// so switching connection is a view swap and every other connection's tree stays built.
     internal private(set) var detailPaneHost: WorkspacePaneHost!
-    private var inspectorPaneHost: WorkspacePaneHost!
+    internal private(set) var inspectorPaneHost: WorkspacePaneHost!
+
+    /// The pane state whose surface the window is following, and the subscription that follows it.
+    /// It is the selected connection's, re-armed whenever the trailing pane is parented, so a choice
+    /// made in the pane header's picker reaches the split item without the picker knowing the window.
+    weak var observedTrailingPaneState: TrailingPaneState?
+    var trailingSurfaceCancellable: AnyCancellable?
 
     /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
     /// owned here but installed on the window, and it follows the selected workspace the same way
@@ -924,18 +925,27 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// moves off `.content`. Reading the session alone left the inspector mounted over the rows of
     /// a connection that had stopped answering, which only went unseen while the pane was being
     /// force-collapsed in exactly that state.
+    ///
+    /// The raw mode rather than the resolved one goes to the header, which resolves it against the AI
+    /// setting as it draws: turning the setting off repaints nothing this builder would be asked for.
     @ViewBuilder
     private func buildInspectorView(for workspace: ConnectionWorkspace) -> some View {
         if workspace.resolvedPane == .content,
            let session = workspace.session,
            let paneState = workspace.trailingPaneState {
             RowInspectorView(
-                state: paneState.inspector,
+                paneState: paneState,
+                contentMode: workspace.contentMode,
                 connection: session.connection
             )
             .environment(\.commandActions, workspace.sessionState?.coordinator.commandActions)
         } else {
-            TrailingPaneUnavailableView(surface: .inspector)
+            TrailingPaneUnavailableView(
+                surface: .inspector,
+                reason: .notConnected,
+                contentMode: workspace.contentMode,
+                paneState: workspace.trailingPaneState
+            )
         }
     }
 
@@ -946,11 +956,17 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
            let paneState = workspace.trailingPaneState {
             AssistantPaneView(
                 connection: session.connection,
-                state: paneState.assistant
+                paneState: paneState,
+                contentMode: workspace.contentMode
             )
             .environment(\.commandActions, workspace.sessionState?.coordinator.commandActions)
         } else {
-            TrailingPaneUnavailableView(surface: .assistant)
+            TrailingPaneUnavailableView(
+                surface: .assistant,
+                reason: .notConnected,
+                contentMode: workspace.contentMode,
+                paneState: workspace.trailingPaneState
+            )
         }
     }
 
@@ -970,35 +986,15 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         if workspace.resolvedContentMode == .agent,
            let connection = workspace.connection,
            let session = AgentSessionRegistry.shared.currentSession(for: connection.id) {
-            AgentResultPaneView(session: session, connection: connection)
+            AgentResultPaneView(session: session, connection: connection, contentMode: workspace.contentMode)
         } else {
-            TrailingPaneUnavailableView(surface: .agentResult)
-        }
-    }
-
-    /// Parents whichever surface the selected workspace is showing.
-    ///
-    /// Measured: swapping the hosted child of an inspector split item leaves its width exactly as
-    /// the user dragged it, so a surface change costs a view swap and nothing else. Assigning
-    /// `viewController` on the item itself instead would throw, which is why the pane is a
-    /// container in the first place.
-    func showSelectedTrailingPane() {
-        guard let selected = workspaces.selected else {
-            inspectorPaneHost.show(nil)
-            return
-        }
-        /// Agent mode owns the trailing pane for as long as it is on, and never writes that over
-        /// the surface the user chose for browsing: coming back to Browse puts their choice back.
-        let surface: TrailingPaneSurface
-        if selected.resolvedContentMode == .agent {
-            surface = .agentResult
-        } else {
-            surface = TrailingPaneSurface.resolved(
-                selected.trailingPaneState?.surface ?? .inspector,
-                isAIEnabled: AppSettingsManager.shared.ai.enabled
+            TrailingPaneUnavailableView(
+                surface: .agentResult,
+                reason: .agentResult(pane: workspace.resolvedPane),
+                contentMode: workspace.contentMode,
+                paneState: nil
             )
         }
-        inspectorPaneHost.show(selected.panes.trailingPane(for: surface))
     }
 
     // MARK: - Session Bindings
@@ -1057,57 +1053,12 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspaces.selectedConnectionId == workspace.connectionId
     }
 
-    // MARK: - TrailingPaneProxy
-
-    /// Which surface the selected workspace shows, with the assistant resolved away when the
-    /// setting has taken it: a connection last left on the assistant must not come back to a
-    /// surface the settings no longer offer, and no notification reaches that restore.
-    private var resolvedTrailingSurface: TrailingPaneSurface {
-        TrailingPaneSurface.resolved(
-            trailingPaneState?.surface ?? .inspector,
-            isAIEnabled: AppSettingsManager.shared.ai.enabled
-        )
-    }
-
-    internal var isTrailingPaneOpen: Bool {
-        guard let inspectorSplitItem else { return false }
-        return !inspectorSplitItem.isCollapsed
-    }
-
-    var isInspectorVisible: Bool {
-        isTrailingPaneOpen && resolvedTrailingSurface == .inspector
-    }
-
-    var isAssistantVisible: Bool {
-        isTrailingPaneOpen && resolvedTrailingSurface == .assistant
-    }
-
-    func showInspector() {
-        reveal(.inspector)
-    }
-
-    func showAssistant() {
-        guard AppSettingsManager.shared.ai.enabled else { return }
-        reveal(.assistant)
-    }
-
-    /// Auto-show follows a grid click, which is not a request for a different surface. Revealing
-    /// the inspector unconditionally swapped the assistant out from under a half-typed question and
-    /// persisted the inspector as that connection's surface, on every row the user clicked.
-    func revealInspectorForSelection() {
-        guard !isAssistantVisible else { return }
-        showInspector()
-    }
-
-    func hideTrailingPane() {
-        inspectorSplitItem?.animator().isCollapsed = true
-        recomputeWindowMinSize()
-    }
+    // MARK: - Trailing Pane
 
     /// Puts the hosted child back in step with what the settings now allow.
     ///
     /// The stored surface is left alone: a user who turns the assistant off and on again gets it
-    /// back, because `TrailingPaneSurface.resolved` is what hides it in the meantime rather than
+    /// back, because `TrailingPaneSurfaceResolver` is what hides it in the meantime rather than
     /// anything overwriting their choice.
     /// Turning AI off takes Agent mode with it, and that is every pane rather than the trailing one.
     ///
@@ -1126,14 +1077,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         toolbarOwner?.managedToolbar.validateVisibleItems()
     }
 
-    private func reveal(_ surface: TrailingPaneSurface) {
-        trailingPaneState?.surface = surface
-        rebuildTrailingPanes()
-        showSelectedTrailingPane()
-        inspectorSplitItem?.animator().isCollapsed = false
-        recomputeWindowMinSize()
-    }
-
+    /// AppKit's own inspector toolbar item sends this as well as the menu, so it is the window's one
+    /// trailing-pane toggle, and what it toggles is decided in `MainSplitViewController+TrailingPane`.
     @objc override func toggleInspector(_ sender: Any?) {
         toggleInspector()
     }
@@ -1379,7 +1324,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         sidebarSplitItem.minimumThickness = resolved
     }
 
-    private func recomputeWindowMinSize() {
+    func recomputeWindowMinSize() {
         applySidebarMinimumThickness()
         guard let window = view.window else { return }
         let sidebarVisible = !(sidebarSplitItem?.isCollapsed ?? true)
@@ -1437,14 +1382,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             return canToggleTrailingPane
         }
         return super.validateUserInterfaceItem(item)
-    }
-
-    /// Opening a trailing surface needs a session to put in it. Closing one the user already has
-    /// open does not, and the window no longer takes it down on their behalf, so a connection that
-    /// drops with the inspector open would otherwise leave an empty column with no command to
-    /// close it.
-    internal var canToggleTrailingPane: Bool {
-        currentPane == .content || isTrailingPaneOpen
     }
 }
 

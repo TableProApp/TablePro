@@ -35,9 +35,10 @@ final class InspectorFieldAffordanceUITests: UITestCase {
         )
     }
 
-    /// The header names what is being inspected. The pane carried no title at all before, because
-    /// it multiplexed three unrelated surfaces behind a picker.
-    func testTheHeaderNamesTheTableAndTheRow() throws {
+    /// The inspector names what it is inspecting, above its fields and under the pane's shared
+    /// header. The pane carried no title at all before, because it multiplexed three unrelated
+    /// surfaces behind a picker.
+    func testTheInspectorNamesTheTableAndTheRow() throws {
         let app = try launchWithSampleDatabase()
         let window = try mainWindow(of: app)
         _ = try openFirstTableRow(in: app, window: window)
@@ -45,7 +46,7 @@ final class InspectorFieldAffordanceUITests: UITestCase {
         let subtitle = window.staticTexts["inspector-subject-subtitle"]
         XCTAssertTrue(
             subtitle.waitToExist(timeout: 30),
-            "The inspector header reports which row of how many is selected."
+            "The inspector reports which row of how many is selected, above its fields."
         )
     }
 

@@ -198,6 +198,32 @@ struct ConnectionWindowChromeTests {
         #expect(harness.controller.validateMenuItem(item))
     }
 
+    /// The same rule for the assistant, read through the toolbar's own context rather than one built
+    /// by hand, since that context is where the toolbar's button learns what the menu command knows.
+    /// It used to check for a live session instead, which dimmed the button beside a Hide Assistant
+    /// the menu still offered.
+    @available(macOS 14.0, *)
+    @Test("An assistant the user left open can still be closed from the toolbar with the session gone")
+    func openAssistantStaysClosableFromTheToolbar() throws {
+        try AIFeatureScope.enabled {
+            let harness = try Harness()
+            defer { harness.tearDown() }
+
+            harness.attachRenderableSession()
+            harness.controller.transition(to: .connected, for: harness.selected.connectionId)
+            harness.controller.showAssistant()
+            #expect(harness.controller.isAssistantVisible)
+
+            harness.controller.transition(to: .unavailable(.disconnected(nil)), for: harness.selected.connectionId)
+
+            let owner = try #require(harness.controller.toolbarOwner)
+            #expect(owner.validateToolbarItem(NSToolbarItem(itemIdentifier: MainWindowToolbar.assistant)))
+            #expect(harness.controller.validateMenuItem(
+                Self.item(for: #selector(MainSplitViewController.toggleAssistant(_:)))
+            ))
+        }
+    }
+
     /// The other half of the same rule: a pane the user never opened offers nothing to open.
     @available(macOS 14.0, *)
     @Test("A closed trailing pane stays unavailable without a session")
@@ -376,12 +402,16 @@ struct ConnectionWindowChromeTests {
             selected.sessionState = SessionStateFactory.create(connection: connection, payload: nil)
         }
 
+        /// The pane state is built on the app's own defaults, which a unit test does not redirect, so
+        /// a case that reveals a surface writes a key under this run's random connection id. It is
+        /// removed here rather than left to pile up in the domain of whoever ran the suite.
         func tearDown() {
             resetPaneLayout()
             window.orderOut(nil)
             window.contentViewController = nil
             sibling.teardown()
             selected.teardown()
+            ConnectionLocalState.purgeTrailingPaneKeys([connection.id, sibling.connectionId])
         }
 
         private static func makeWorkspace(

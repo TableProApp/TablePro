@@ -596,7 +596,7 @@ struct AIChatPanelView: View {
     }
 
     /// Hide system turns and user turns that exist only to carry tool-result
-    /// blocks back to the model — those are protocol plumbing, not user input.
+    /// blocks back to the model: those are protocol plumbing, not user input.
     private func isVisibleInMessageList(_ message: ChatTurn) -> Bool {
         guard message.role != .system else { return false }
         if message.role == .user {

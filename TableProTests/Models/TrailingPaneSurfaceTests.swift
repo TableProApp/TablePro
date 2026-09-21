@@ -39,12 +39,20 @@ struct TrailingPaneSurfaceTests {
             #expect(!surface.localizedTitle.isEmpty)
         }
     }
+
+    /// The header's picker is icon-only, so a surface without a glyph would be a blank segment.
+    @Test("Every surface has a glyph")
+    func everySurfaceHasAGlyph() {
+        for surface in TrailingPaneSurface.allCases {
+            #expect(!surface.symbolName.isEmpty)
+        }
+    }
 }
 
 @Suite("Inspector view mode")
 struct InspectorViewModeTests {
-    /// Both modes are renderings of one selection, which is what makes a segmented control the
-    /// right control for them. The assistant used to be a third case here.
+    /// Both modes are renderings of one selection, which is what makes them one exclusive choice in
+    /// the pane header's menu rather than two commands. The assistant used to be a third case here.
     @Test("The inspector offers exactly its two renderings of the selected row")
     func offersTwoRenderings() {
         #expect(InspectorViewMode.allCases == [.fields, .json])

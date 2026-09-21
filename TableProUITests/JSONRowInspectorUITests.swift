@@ -103,10 +103,10 @@ final class JSONRowInspectorUITests: UITestCase {
         item.click()
     }
 
-    /// The inspector's view-mode control is a segmented control, which AppKit publishes as radio
-    /// buttons. It selects between two renderings of the same row; the assistant used to be a third
-    /// segment here and is its own surface now.
+    /// The JSON rendering's own filter field, which only that rendering draws. The Fields / JSON
+    /// choice moved into the pane header's menu, where it is not on screen to be found, so the test
+    /// asks for the rendering it selects rather than for the control that selected it.
     private func jsonTab(in window: XCUIElement) -> XCUIElement {
-        window.radioButtons["JSON"]
+        window.searchFields["json-row-filter"]
     }
 }

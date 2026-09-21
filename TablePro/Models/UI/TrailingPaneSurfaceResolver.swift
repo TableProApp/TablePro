@@ -31,6 +31,17 @@ internal enum TrailingPaneSurfaceResolver {
         }
     }
 
+    /// Whether asking for this surface would put it on screen. A surface the mode or the settings
+    /// rule out resolves to a different one, and a command that revealed the pane for it anyway would
+    /// open a column showing something the user did not ask for.
+    internal static func draws(
+        _ surface: TrailingPaneSurface,
+        contentMode: ConnectionWorkspaceContentMode,
+        isAIEnabled: Bool
+    ) -> Bool {
+        resolve(stored: surface, contentMode: contentMode, isAIEnabled: isAIEnabled) == surface
+    }
+
     /// What the pane's header offers. Empty in Agent mode, where the mode chose for the user, which
     /// is what makes the header draw a plain title rather than a picker with one segment in it.
     internal static func selectable(

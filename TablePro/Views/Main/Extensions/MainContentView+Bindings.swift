@@ -39,7 +39,7 @@ extension MainContentView {
         }
     }
 
-    /// What the inspector's header names.
+    /// What the inspector names above its fields.
     ///
     /// A schema grid's selection is a column definition, not a row of a result: it has no position
     /// and no identity, so it gets its own case rather than being rendered as "Row 0 of 0".

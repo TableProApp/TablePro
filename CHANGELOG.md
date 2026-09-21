@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typed entry beside the stepper for number settings in the connection form.
 - Connection window toolbar trimmed to eight controls that follow the tab and the mode.
 - **Tables** and **Favorites** chooser moved from the toolbar to the top of the sidebar.
+- One header for the Inspector and the Assistant, with a picker between them and their commands in its menu.
+- **Fields** / **JSON** and the JSON view's options moved into the Inspector's header menu.
+- Pencil for the Inspector's unsaved-edit marker and a spinner for the AI chat's typing indicator.
+- Middle-dot separators dropped from the CSV inspector's status bar.
 
 ### Removed
 
@@ -62,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toolbar **Results** button enabled on tabs that have no results pane.
 - Toolbar **History** button enabled over a window that never connected.
 - Toolbar **Inspector** button dim on macOS 13 over a pane left open when the connection dropped.
+- Toolbar **Assistant** button dim over an Assistant left open when the connection dropped.
+- **Auto-show inspector on row select** replacing the Assistant you left the pane on.
+- Current conversation in the Assistant's history not announced by VoiceOver.
+- No tooltip on the Inspector's **Choose Type** and **Choose Value** buttons.
 - A column resized moments before its table was dropped saving the layout back over the clear.
 - A connection left pointing at a database that was dropped.
 - A dropped table's saved filters, column layout, highlight rules, value formats and label columns coming back on a table recreated with its name.

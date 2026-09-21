@@ -17,33 +17,46 @@ import SwiftUI
 internal struct AgentResultPaneView: View {
     @ObservedObject internal var session: AgentSession
     internal let connection: DatabaseConnection?
+    internal let contentMode: ConnectionWorkspaceContentMode
 
     @State private var segment: AgentResultSegment = .sql
 
     var body: some View {
         VStack(spacing: 0) {
-            picker
-            Divider()
+            TrailingPaneHeaderView(
+                surface: .agentResult,
+                contentMode: contentMode,
+                paneState: nil
+            ) { section in
+                menuSection(section)
+            }
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// Icon-only segments with a name each. Four localized titles truncate in German and French at
-    /// the trailing pane's 270pt minimum, which is exactly the width this sits at.
-    private var picker: some View {
+    @ViewBuilder
+    private func menuSection(_ section: TrailingPaneMenuSection) -> some View {
+        switch section {
+        case .resultView:
+            segmentPicker
+        case .inspectorRendering, .jsonReading, .conversations, .clearRecents:
+            EmptyView()
+        }
+    }
+
+    /// In the pane header's menu, where every surface keeps its commands, so the column's top edge
+    /// lines up with the inspector's and the assistant's. It used to be an icon-only segmented control
+    /// that was the whole top of the pane, the one surface of three with no title.
+    private var segmentPicker: some View {
         Picker(String(localized: "Result view"), selection: $segment) {
             ForEach(AgentResultSegment.allCases, id: \.self) { item in
-                Image(systemName: item.symbolName)
-                    .help(item.title)
-                    .accessibilityLabel(item.title)
+                Label(item.title, systemImage: item.symbolName)
                     .tag(item)
             }
         }
-        .pickerStyle(.segmented)
+        .pickerStyle(.inline)
         .labelsHidden()
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
     }
 
     @ViewBuilder

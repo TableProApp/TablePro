@@ -81,7 +81,7 @@ internal struct AgentConversationView: View {
 
     private var emptyState: some View {
         UnavailableStateView {
-            Label(String(localized: "No session open"), systemImage: "sparkles")
+            Label(String(localized: "No Session Open"), systemImage: "sparkles")
         } description: {
             Text(String(localized: "Start one to ask about this connection."))
         } actions: {

@@ -1318,10 +1318,6 @@ final class MainContentCommandActions: ObservableObject {
         state.isVisible.toggle()
     }
 
-    func toggleRightSidebar() {
-        coordinator?.trailingPaneProxy?.toggleInspector()
-    }
-
     func goToPreviousPage() {
         coordinator?.goToPreviousPage()
     }
