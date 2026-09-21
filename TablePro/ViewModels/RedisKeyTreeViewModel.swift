@@ -6,83 +6,89 @@
 import Combine
 import Foundation
 import os
-import TableProPluginKit
 
+/// The sidebar's Redis key tree for one connection.
+///
+/// A load owns its outcome only while it is the latest one: selecting another database supersedes
+/// it, and a superseded load commits nothing, whatever it came back with. A load that fails with no
+/// keys of its database on screen is kept as a failure rather than folded into an empty tree, so a
+/// refused `SCAN` reads as the refusal it is. A failed refresh keeps the keys it was refreshing.
 @MainActor
 internal final class RedisKeyTreeViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RedisKeyTree")
-    internal static let maxKeys = 50_000
+    nonisolated internal static let maxKeys = 50_000
 
-    @Published var rootNodes: [RedisKeyNode] = []
-    @Published var isLoading = false
-    @Published var isTruncated = false
-    @Published var separator: String = ":"
+    @Published private(set) var state: MetadataLoadState<RedisKeyTreeContent> = .idle
 
-    @Published private(set) var allKeys: [(key: String, type: String?)] = []
+    private let metadataProvider: any ScopedMetadataProviding
+    private var loadTask: Task<Void, Never>?
+    private var loadFence = CommitFence<UUID>()
+    private var lastRequest: LoadRequest?
 
-    /// Test-only setter for allKeys
-    var allKeysForTesting: [(key: String, type: String?)] {
-        get { allKeys }
-        set { allKeys = newValue }
+    private struct LoadRequest: Sendable {
+        let connectionId: UUID
+        let database: String
+        let separator: String
     }
 
-    func loadKeys(connectionId: UUID, database: String, separator: String) async {
-        self.separator = separator
-        isLoading = true
-        isTruncated = false
-        defer { isLoading = false }
+    init(metadataProvider: any ScopedMetadataProviding = DatabaseManager.shared) {
+        self.metadataProvider = metadataProvider
+    }
 
-        guard DatabaseManager.shared.driver(for: connectionId) != nil else {
-            clear()
-            return
+    @discardableResult
+    func loadKeys(connectionId: UUID, database: String, separator: String) -> Task<Void, Never> {
+        load(LoadRequest(connectionId: connectionId, database: database, separator: separator))
+    }
+
+    /// Runs the most recent load again. Nil when nothing has been asked for yet, since there is no
+    /// database to reload.
+    @discardableResult
+    func reload() -> Task<Void, Never>? {
+        guard let lastRequest else { return nil }
+        return load(lastRequest)
+    }
+
+    private func load(_ request: LoadRequest) -> Task<Void, Never> {
+        lastRequest = request
+        loadTask?.cancel()
+        let token = loadFence.supersede(request.connectionId)
+        state = state.value?.database == request.database ? state.enteringLoad : .loading
+
+        let provider = metadataProvider
+        let task = Task { [weak self] in
+            let outcome = await Self.fetch(request, from: provider)
+            self?.commit(outcome, of: request, token: token)
         }
+        loadTask = task
+        return task
+    }
 
-        let scope = DatabaseScope(connectionId: connectionId, database: database, schema: nil)
-        let limit = Self.maxKeys
+    private func commit(_ outcome: MetadataFetchOutcome<RedisKeyTreeContent>, of request: LoadRequest, token: Int) {
+        guard loadFence.isCurrent(token, for: request.connectionId) else { return }
+        state = state.settled(by: outcome, discardingValue: state.value?.database != request.database)
+    }
+
+    private static func fetch(
+        _ request: LoadRequest,
+        from provider: any ScopedMetadataProviding
+    ) async -> MetadataFetchOutcome<RedisKeyTreeContent> {
+        let scope = DatabaseScope(connectionId: request.connectionId, database: request.database, schema: nil)
+        let limit = maxKeys
         do {
-            let result = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            let result = try await provider.withMetadataDriver(scope: scope) { driver in
                 try await driver.execute(query: "KEYTREE LIMIT \(limit)")
             }
-
-            let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
-            let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1
-
-            var keys: [(key: String, type: String?)] = []
-            for row in result.rows {
-                guard keyColumnIndex < row.count,
-                      let keyName = row[keyColumnIndex].asText else { continue }
-                let keyType = typeColumnIndex < row.count ? row[typeColumnIndex].asText : nil
-                keys.append((key: keyName, type: keyType))
-                if keys.count >= Self.maxKeys { break }
-            }
-
-            isTruncated = keys.count >= Self.maxKeys
-            allKeys = keys
-            rootNodes = Self.buildTree(keys: keys, separator: separator)
+            return .fetched(RedisKeyTreeContent(result: result, database: request.database, separator: request.separator))
         } catch {
-            Self.logger.error("Failed to load Redis keys: \(error.publicLogShape, privacy: .public)")
-            clear()
+            if DatabaseCancellationDiagnosis.isCancellation(error) { return .cancelled }
+            logger.error("Failed to load Redis keys: \(error.publicLogShape, privacy: .public)")
+            return .failed(error.localizedDescription)
         }
-    }
-
-    func clear() {
-        rootNodes = []
-        allKeys = []
-        isTruncated = false
-    }
-
-    func displayNodes(searchText: String) -> [RedisKeyNode] {
-        guard !searchText.isEmpty else { return rootNodes }
-
-        let filtered = allKeys.filter { $0.key.localizedCaseInsensitiveContains(searchText) }
-        if filtered.isEmpty { return [] }
-
-        return Self.buildTree(keys: filtered, separator: separator)
     }
 
     // MARK: - Tree Building (Pure Function)
 
-    static func buildTree(keys: [(key: String, type: String?)], separator: String) -> [RedisKeyNode] {
+    nonisolated static func buildTree(keys: [(key: String, type: String?)], separator: String) -> [RedisKeyNode] {
         guard !separator.isEmpty else {
             return keys.sorted { $0.key < $1.key }
                 .map { .key(name: $0.key, fullKey: $0.key, keyType: $0.type) }

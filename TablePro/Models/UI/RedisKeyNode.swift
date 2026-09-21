@@ -5,7 +5,7 @@
 
 import Foundation
 
-internal enum RedisKeyNode: Identifiable, Hashable {
+internal enum RedisKeyNode: Identifiable, Hashable, Sendable {
     case namespace(name: String, fullPrefix: String, children: [RedisKeyNode], keyCount: Int)
     case key(name: String, fullKey: String, keyType: String?)
 

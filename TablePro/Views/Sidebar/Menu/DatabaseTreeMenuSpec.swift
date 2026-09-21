@@ -58,7 +58,9 @@ internal enum DatabaseTreeMenuSpec {
             return hierarchicalSchemaSections(schema, context: context)
         case .redisNode(let node):
             return redisSections(node)
-        case .status, .recentSection, .redisKeysSection:
+        case .redisKeysSection:
+            return [DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshRedisKeys)])]
+        case .status, .recentSection:
             return backgroundSections(context)
         }
     }

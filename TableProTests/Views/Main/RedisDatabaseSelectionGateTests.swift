@@ -259,7 +259,7 @@ struct RedisDatabaseSelectionGateTests {
 
         let retargeted = try #require(coordinator.tabManager.tabs.first { $0.id == retargetedTabId })
         #expect(recorder.switchedDatabases == ["3"])
-        #expect(recorder.executedQueries.isEmpty)
+        #expect(recorder.executedQueries.allSatisfy { $0.hasPrefix("KEYTREE") })
         #expect(retargeted.pagination.isLoading == false)
     }
 
@@ -271,19 +271,19 @@ struct RedisDatabaseSelectionGateTests {
         let holder = await holdDriver(connection.id, until: release)
 
         let viewModel = RedisKeyTreeViewModel()
-        let load = Task { @MainActor in
-            await viewModel.loadKeys(connectionId: connection.id, database: "2", separator: ":")
-        }
+        let load = viewModel.loadKeys(connectionId: connection.id, database: "2", separator: ":")
         await waitForQueuedCallers(1, on: connection.id)
 
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
         #expect(recorder.executedQueries.isEmpty)
+        #expect(viewModel.state.erased == .loading)
 
         release.open()
         try await holder.value
         await load.value
 
         #expect(recorder.executedQueries == ["KEYTREE LIMIT \(RedisKeyTreeViewModel.maxKeys)"])
+        #expect(viewModel.state.value?.database == "2")
     }
 }
 

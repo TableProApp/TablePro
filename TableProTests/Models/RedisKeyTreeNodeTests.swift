@@ -281,27 +281,24 @@ struct RedisKeyNodeTests {
 
 // MARK: - DisplayNodes Tests
 
-@Suite("RedisKeyTreeViewModel displayNodes")
-@MainActor
+@Suite("RedisKeyTreeContent displayNodes")
 struct RedisKeyTreeDisplayTests {
-    @Test("displayNodes returns rootNodes when search is empty")
+    @Test("displayNodes returns the whole tree when search is empty")
     func emptySearch() {
-        let vm = RedisKeyTreeViewModel()
-        let nodes = [RedisKeyNode.key(name: "test", fullKey: "test", keyType: "string")]
-        vm.rootNodes = nodes
-        let result = vm.displayNodes(searchText: "")
+        let content = RedisKeyTreeContent(database: "0", separator: ":", keys: [(key: "test", type: "string")])
+        let result = content.displayNodes(searchText: "")
         #expect(result.count == 1)
+        #expect(result == content.rootNodes)
     }
 
     @Test("displayNodes filters by search text")
     func searchFilters() {
-        let vm = RedisKeyTreeViewModel()
-        vm.allKeysForTesting = [
-            (key: "user:1", type: "string"),
-            (key: "session:abc", type: "string")
-        ]
-        vm.separator = ":"
-        let result = vm.displayNodes(searchText: "user")
+        let content = RedisKeyTreeContent(
+            database: "0",
+            separator: ":",
+            keys: [(key: "user:1", type: "string"), (key: "session:abc", type: "string")]
+        )
+        let result = content.displayNodes(searchText: "user")
         #expect(result.count == 1)
         if case .namespace(let name, _, _, _) = result[0] {
             #expect(name == "user")
@@ -310,10 +307,86 @@ struct RedisKeyTreeDisplayTests {
 
     @Test("displayNodes returns empty for no match")
     func noMatch() {
-        let vm = RedisKeyTreeViewModel()
-        vm.allKeysForTesting = [(key: "user:1", type: "string")]
-        vm.separator = ":"
-        let result = vm.displayNodes(searchText: "xyz")
-        #expect(result.isEmpty)
+        let content = RedisKeyTreeContent(database: "0", separator: ":", keys: [(key: "user:1", type: "string")])
+        #expect(content.displayNodes(searchText: "xyz").isEmpty)
+    }
+
+    @Test("A load that reaches the key limit is marked truncated, and one below it is not")
+    func truncationFollowsTheKeyLimit() {
+        let full = (0..<RedisKeyTreeViewModel.maxKeys).map { (key: "k\($0)", type: "string") }
+        #expect(RedisKeyTreeContent(database: "0", separator: ":", keys: full).isTruncated)
+        #expect(!RedisKeyTreeContent(database: "0", separator: ":", keys: Array(full.dropLast())).isTruncated)
+    }
+
+    @Test("A KEYTREE result is read by its Key and Type columns")
+    func readsTheKeyTreeResult() {
+        let result = QueryResult(
+            columns: ["Type", "Key"],
+            columnTypes: [],
+            rows: [[.text("hash"), .text("user:1")], [.text("string"), .text("counter")]],
+            rowsAffected: 0,
+            executionTime: 0,
+            error: nil
+        )
+        let content = RedisKeyTreeContent(result: result, database: "3", separator: ":")
+        #expect(content.database == "3")
+        #expect(content.keys.map(\.key) == ["user:1", "counter"])
+        #expect(content.keys.map(\.type) == ["hash", "string"])
+    }
+}
+
+// MARK: - Rows
+
+@Suite("RedisKeyTreeRows")
+struct RedisKeyTreeRowsTests {
+    private let content = RedisKeyTreeContent(
+        database: "0",
+        separator: ":",
+        keys: [(key: "user:1", type: "string"), (key: "counter", type: "string")]
+    )
+
+    @Test("Nothing asked for yet lists nothing")
+    func idleListsNothing() {
+        #expect(RedisKeyTreeRows.rows(for: .idle, searchText: "").isEmpty)
+    }
+
+    @Test("A load in flight lists the loading row")
+    func loadingListsTheSpinner() {
+        #expect(RedisKeyTreeRows.rows(for: .loading, searchText: "") == [.status(.loading)])
+    }
+
+    /// A refused `SCAN` used to read as "No items", which says the database is empty when the
+    /// server only declined to say.
+    @Test("A failed load lists its error, never the empty row, whatever the search")
+    func failureListsTheError() {
+        let message = "NOPERM User noscan has no permissions to run the 'scan' command"
+        #expect(RedisKeyTreeRows.rows(for: .failed(message), searchText: "") == [.status(.error(message))])
+        #expect(RedisKeyTreeRows.rows(for: .failed(message), searchText: "user") == [.status(.error(message))])
+    }
+
+    @Test("A loaded tree lists its nodes")
+    func loadedListsTheNodes() {
+        let expected = content.rootNodes.map(RedisKeyTreeRows.Row.node)
+        #expect(RedisKeyTreeRows.rows(for: .loaded(content), searchText: "") == expected)
+    }
+
+    @Test("A loaded tree that matches nothing lists the empty row")
+    func noMatchListsTheEmptyRow() {
+        #expect(RedisKeyTreeRows.rows(for: .loaded(content), searchText: "xyz") == [.status(.empty)])
+    }
+
+    @Test("A database with no keys lists the empty row")
+    func noKeysListsTheEmptyRow() {
+        let empty = RedisKeyTreeContent(database: "0", separator: ":", keys: [])
+        #expect(RedisKeyTreeRows.rows(for: .loaded(empty), searchText: "") == [.status(.empty)])
+    }
+
+    @Test("A truncated tree lists its nodes and then the truncation row")
+    func truncatedTreeEndsWithTheTruncationRow() {
+        let keys = (0..<RedisKeyTreeViewModel.maxKeys).map { (key: "k\($0)", type: "string") }
+        let truncated = RedisKeyTreeContent(database: "0", separator: ":", keys: keys)
+        let rows = RedisKeyTreeRows.rows(for: .loaded(truncated), searchText: "")
+        #expect(rows.count == truncated.rootNodes.count + 1)
+        #expect(rows.last == .status(.truncated(RedisKeyTreeTruncation.message(limit: RedisKeyTreeViewModel.maxKeys))))
     }
 }

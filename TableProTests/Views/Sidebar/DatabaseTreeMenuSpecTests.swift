@@ -842,6 +842,25 @@ struct DatabaseTreeMenuSpecTests {
         .status(.loading)
     ]
 
+    /// The Keys section's error row said what went wrong but left nothing to do about it, since the
+    /// tree only loaded again on a database switch.
+    @Test("The Keys section offers Refresh and nothing scoped to the connection")
+    func redisKeysSectionOffersRefresh() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .redisKeysSection)))
+
+        #expect(issued == [.refreshRedisKeys])
+        #expect(SidebarMenuCommand.refreshRedisKeys.shortcutAction == nil)
+    }
+
+    @Test("A status row keeps the background menu")
+    func statusRowKeepsTheBackgroundMenu() {
+        let status = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .status(.error("NOPERM")))))
+        let background = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
+
+        #expect(status == background)
+        #expect(!status.contains(.refreshRedisKeys))
+    }
+
     @Test("Every menu produces at least one item, so none opens as an empty frame")
     func everyMenuHasContent() {
         let kinds: [DatabaseTreeNode.Kind?] = [

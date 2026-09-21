@@ -758,38 +758,32 @@ extension MainContentCoordinator {
                 executeTableTabQueryDirectly(viewport: .firstRow)
             }
 
-            let separator = connection.additionalFields["redisSeparator"] ?? ":"
-            if sidebarViewModel?.redisKeyTreeViewModel == nil {
-                let vm = RedisKeyTreeViewModel()
-                sidebarViewModel?.redisKeyTreeViewModel = vm
-                let sidebarState = SharedSidebarState.forConnection(connId)
-                sidebarState.redisKeyTreeViewModel = vm
-            }
-            Task {
-                await self.sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
-                    connectionId: connId,
-                    database: database,
-                    separator: separator
-                )
-            }
+            loadRedisKeyTree(database: database)
         }
     }
 
     func initRedisKeyTreeIfNeeded() {
         guard connection.type == .redis else { return }
+        guard SharedSidebarState.forConnection(connectionId).redisKeyTreeViewModel == nil else { return }
+        loadRedisKeyTree(database: toolbarState.currentDatabase)
+    }
+
+    /// The tree belongs to the connection's shared sidebar state rather than to this window's sidebar
+    /// view model, which may not exist yet, so the load never depends on which window asked for it.
+    private func loadRedisKeyTree(database: String) {
         let sidebarState = SharedSidebarState.forConnection(connectionId)
-        guard sidebarState.redisKeyTreeViewModel == nil else { return }
+        let keyTree = sidebarState.redisKeyTreeViewModel ?? makeRedisKeyTree(in: sidebarState)
+        keyTree.loadKeys(
+            connectionId: connectionId,
+            database: database,
+            separator: connection.additionalFields["redisSeparator"] ?? ":"
+        )
+    }
 
-        let vm = RedisKeyTreeViewModel()
-        sidebarState.redisKeyTreeViewModel = vm
-        sidebarViewModel?.redisKeyTreeViewModel = vm
-
-        let connId = connectionId
-        let database = toolbarState.currentDatabase
-        let separator = connection.additionalFields["redisSeparator"] ?? ":"
-        Task {
-            await vm.loadKeys(connectionId: connId, database: database, separator: separator)
-        }
+    private func makeRedisKeyTree(in sidebarState: SharedSidebarState) -> RedisKeyTreeViewModel {
+        let keyTree = RedisKeyTreeViewModel()
+        sidebarState.redisKeyTreeViewModel = keyTree
+        return keyTree
     }
 
     // MARK: - Redis Key Tree Navigation
