@@ -345,9 +345,6 @@ extension MCPConnectionBridge {
         return .object(payload)
     }
 
-    /// Only a variant the engine declares is sent, which is the editor's own rule. Making up an
-    /// `EXPLAIN` for an engine without one sent `EXPLAIN GET k` to Redis, and answering `analyze`
-    /// with the first variant returned an estimate to a caller who asked for a measured run.
     static func explainStatement(
         for query: String,
         databaseType: DatabaseType,
@@ -374,16 +371,20 @@ extension MCPConnectionBridge {
         first: ExplainVariant
     ) throws -> ExplainVariant {
         let offered = variants.map(\.id).joined(separator: ", ")
+        let running = variants.filter { $0.sqlPrefix.uppercased().contains("ANALYZE") }
+        let chosen: ExplainVariant
         if let id {
             guard let variant = variants.first(where: { $0.id == id }) else {
                 throw DatabaseAccessError.invalidArgument(
                     String(format: String(localized: "Unknown explain variant '%@'. This database offers: %@."), id, offered)
                 )
             }
-            return variant
+            chosen = variant
+        } else {
+            chosen = analyze ? running.first ?? first : first
         }
-        guard analyze else { return first }
-        guard let variant = variants.first(where: { $0.sqlPrefix.uppercased().contains("ANALYZE") }) else {
+        guard analyze, !running.contains(where: { $0.id == chosen.id }) else { return chosen }
+        guard !running.isEmpty else {
             throw DatabaseAccessError.invalidArgument(
                 String(
                     format: String(
@@ -393,7 +394,15 @@ extension MCPConnectionBridge {
                 )
             )
         }
-        return variant
+        throw DatabaseAccessError.invalidArgument(
+            String(
+                format: String(
+                    localized: "The '%1$@' variant does not run the statement. Leave 'analyze' off, or pass one that does: %2$@."
+                ),
+                chosen.id,
+                running.map(\.id).joined(separator: ", ")
+            )
+        )
     }
 
     static func explainVariants(for databaseType: DatabaseType) -> JsonValue {

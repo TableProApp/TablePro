@@ -115,7 +115,7 @@ One statement, 100 KB at most. `DROP` and `TRUNCATE` are refused here; use `conf
 
 ### `explain_query`
 
-Pass the query with no `EXPLAIN` prefix. Without `variant` the engine's first variant runs, and every result lists them in `available_variants[]`. `analyze: true` picks the variant that runs the statement, so an analyzed write needs `tools:write` and Safe Mode approval, and an engine with no such variant refuses it. An engine missing from the [support table](/features/explain-visualization#database-support) is refused.
+Pass the query with no `EXPLAIN` prefix. Without `variant` the engine's first variant runs, and every result lists them in `available_variants[]`. `analyze: true` picks the variant that runs the statement, so an analyzed write needs `tools:write` and Safe Mode approval, and it is refused when the engine has no such variant or the `variant` you pass only estimates. An engine missing from the [support table](/features/explain-visualization#database-support) is refused.
 
 ### `export_data`
 

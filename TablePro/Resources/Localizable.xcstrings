@@ -182545,6 +182545,9 @@
     },
     "A renamed column's foreign key is rewritten, so its MATCH and DEFERRABLE clauses are not carried over." : {
 
+    },
+    "The '%1$@' variant does not run the statement. Leave 'analyze' off, or pass one that does: %2$@." : {
+
     }
   },
   "version" : "1.1"

@@ -49,7 +49,22 @@ struct MCPExplainStatementTests {
     func analyzeWithoutRunningVariantIsRefused() throws {
         let refusal = message { try statement("SELECT 1", .redshift, analyze: true) }
         #expect(refusal?.contains("explain, verbose") == true)
-        #expect(try statement("SELECT 1", .redshift, variant: "verbose", analyze: true) == "EXPLAIN VERBOSE SELECT 1")
+        #expect(message { try statement("SELECT 1", .redshift, variant: "verbose", analyze: true) } == refusal)
+        #expect(try statement("SELECT 1", .redshift, variant: "verbose") == "EXPLAIN VERBOSE SELECT 1")
+    }
+
+    @Test("A variant that only estimates cannot answer analyze, and the refusal names the ones that run")
+    func estimatingVariantRefusesAnalyze() throws {
+        let refusal = message { try statement("SELECT 1", .cockroachdb, variant: "explain", analyze: true) }
+        #expect(refusal == String(
+            format: String(
+                localized: "The '%1$@' variant does not run the statement. Leave 'analyze' off, or pass one that does: %2$@."
+            ),
+            "explain",
+            "analyze"
+        ))
+        #expect(try statement("SELECT 1", .cockroachdb, variant: "analyze", analyze: true) == "EXPLAIN ANALYZE SELECT 1")
+        #expect(try statement("SELECT 1", .cockroachdb, variant: "analyze") == "EXPLAIN ANALYZE SELECT 1")
     }
 
     @Test("An unknown variant names the ones the engine offers")
