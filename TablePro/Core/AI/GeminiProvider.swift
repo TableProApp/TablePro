@@ -10,15 +10,29 @@ final class GeminiProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "GeminiProvider")
 
     private let endpoint: String
+    private let resolvedEndpoint: AIEndpoint?
     private let apiKey: String
     private let maxOutputTokens: Int
     private let session: URLSession
 
-    init(endpoint: String, apiKey: String, maxOutputTokens: Int = 8_192) {
-        self.endpoint = endpoint.normalizedEndpoint()
+    init(
+        endpoint: String,
+        apiKey: String,
+        maxOutputTokens: Int = 8_192,
+        session: URLSession = URLSession(configuration: .ephemeral)
+    ) {
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.resolvedEndpoint = AIEndpoint(endpoint, style: .gemini)
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
-        self.session = URLSession(configuration: .ephemeral)
+        self.session = session
+    }
+
+    private func requestURL(_ resource: String, query: [URLQueryItem] = []) throws -> URL {
+        guard let url = resolvedEndpoint?.url(appending: resource, query: query) else {
+            throw AIProviderError.invalidEndpoint(endpoint)
+        }
+        return url
     }
 
     func streamChat(
@@ -52,9 +66,7 @@ final class GeminiProvider: ChatTransport {
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        guard let url = URL(string: "\(endpoint)/v1beta/models") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(AIEndpointStyle.gemini.modelsResource)
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -70,9 +82,22 @@ final class GeminiProvider: ChatTransport {
             return Self.offlineModels
         }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.warning("Gemini model fetch returned no HTTP response; using known models")
+            return Self.offlineModels
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIProviderError.mapHTTPError(
+                statusCode: httpResponse.statusCode,
+                body: body,
+                treatForbiddenAsAuthFailure: true,
+                requestURL: url
+            )
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = json["models"] as? [[String: Any]]
         else {
             Self.logger.warning("Gemini model fetch returned unexpected response; using known models")
@@ -105,9 +130,7 @@ final class GeminiProvider: ChatTransport {
     }
 
     func testConnection() async throws -> Bool {
-        guard let url = URL(string: "\(endpoint)/v1beta/models") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(AIEndpointStyle.gemini.modelsResource)
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -130,7 +153,8 @@ final class GeminiProvider: ChatTransport {
             throw AIProviderError.mapHTTPError(
                 statusCode: statusCode,
                 body: body,
-                treatForbiddenAsAuthFailure: true
+                treatForbiddenAsAuthFailure: true,
+                requestURL: url
             )
         }
 
@@ -141,12 +165,8 @@ final class GeminiProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
-        guard let encodedModel = options.model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(
-            string: "\(endpoint)/v1beta/models/\(encodedModel):streamGenerateContent?alt=sse"
-        ) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let style = AIEndpointStyle.gemini
+        let url = try requestURL(style.chatResource(model: options.model), query: style.chatQuery)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

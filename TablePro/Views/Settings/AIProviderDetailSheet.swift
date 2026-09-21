@@ -665,11 +665,16 @@ struct AIProviderDetailSheet: View {
                     TextField(String(localized: "Name"), text: $draft.name)
                 }
                 if allowsEndpointField {
-                    TextField(String(localized: "Endpoint"), text: $draft.endpoint)
-                        .onChange(of: draft.endpoint) { _ in
-                            scheduleFetchModels()
-                            testResult = nil
-                        }
+                    TextField(
+                        String(localized: "Base URL"),
+                        text: $draft.endpoint,
+                        prompt: Text(draft.type.defaultEndpoint)
+                    )
+                    .onChange(of: draft.endpoint) { _ in
+                        scheduleFetchModels()
+                        testResult = nil
+                    }
+                    endpointFootnote
                 }
             } header: {
                 Text("Connection")
@@ -677,12 +682,44 @@ struct AIProviderDetailSheet: View {
         }
     }
 
+    /// Placeholder text disappears as soon as the field is typed in, so the rule the server's own
+    /// documentation follows is spelled out beside the field, and the URL it resolves to is shown
+    /// back rather than left to be inferred.
+    @ViewBuilder
+    private var endpointFootnote: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Include the version segment your server uses, such as /v1 or /v4.")
+            if let resolvedChatURL {
+                Text(resolvedChatURL)
+                    .textSelection(.enabled)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private var resolvedChatURL: String? {
+        let style = draft.type.endpointStyle
+        guard let endpoint = AIEndpoint(draft.endpoint, style: style),
+              let url = endpoint.chatURL(model: draft.model, style: style)
+        else { return nil }
+        return url.absoluteString
+    }
+
     private var allowsNameField: Bool {
         descriptor?.allowsNameConfiguration == true
     }
 
     private var allowsEndpointField: Bool {
-        descriptor?.allowsEndpointConfiguration == true
+        descriptor?.allowsEndpointConfiguration == true && endpointDrivesRequests
+    }
+
+    /// xAI reaches its own proxy rather than the configured base while it is running on a
+    /// subscription sign-in, so the field and the URL under it would both describe a request the
+    /// app is not going to make.
+    private var endpointDrivesRequests: Bool {
+        guard draft.type == .xai else { return true }
+        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var shouldShowConnectionSection: Bool {
@@ -950,7 +987,7 @@ struct AIProviderDetailSheet: View {
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
+        let provider = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
         isFetchingModels = true
         modelFetchError = nil
 
@@ -980,7 +1017,7 @@ struct AIProviderDetailSheet: View {
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
+        let provider = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
         isTesting = true
         testResult = nil
 

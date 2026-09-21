@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("AIProviderError.isRetryable")
 struct AIProviderErrorTests {
@@ -20,8 +21,25 @@ struct AIProviderErrorTests {
 
     @Test("Configuration errors are not retryable")
     func configurationErrorsAreNotRetryable() {
-        #expect(!AIProviderError.modelNotFound("gemini-2.0-flash-lite").isRetryable)
+        #expect(!AIProviderError.notFound(url: nil, detail: "").isRetryable)
         #expect(!AIProviderError.authenticationFailed("invalid key").isRetryable)
         #expect(!AIProviderError.invalidEndpoint("https://broken").isRetryable)
+    }
+
+    @Test("A 404 names the URL it called rather than blaming the model")
+    func notFoundNamesTheRequestURL() throws {
+        let url = try #require(URL(string: "https://api.z.ai/api/paas/v4/v1/chat/completions"))
+        let error = AIProviderError.mapHTTPError(statusCode: 404, body: "", requestURL: url)
+        let description = try #require(error.errorDescription)
+        #expect(description.contains("https://api.z.ai/api/paas/v4/v1/chat/completions"))
+        #expect(!description.contains("Model not found"))
+    }
+
+    @Test("A 404 keeps the server's own message")
+    func notFoundKeepsServerDetail() throws {
+        let body = #"{"error":{"message":"no such model"}}"#
+        let error = AIProviderError.mapHTTPError(statusCode: 404, body: body)
+        let description = try #require(error.errorDescription)
+        #expect(description.contains("no such model"))
     }
 }
