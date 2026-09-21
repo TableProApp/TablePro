@@ -1068,4 +1068,14 @@ struct RedisCommandParserAppStatementTests {
             #expect(try !isVerbatim(query), "\(query)")
         }
     }
+
+    @Test("A namespace is matched literally, quotes and glob characters included")
+    func countQueryEscapesTheNamespace() throws {
+        let query = RedisQueryBuilder().buildCountQuery(namespace: "a\"b*c\\")
+        #expect(query == #"SCAN 0 MATCH "a\"b\\*c\\\\*" COUNT 10000"#)
+        guard case .scan(_, let pattern, _, _) = try RedisCommandParser.parse(query) else {
+            Issue.record("Expected SCAN"); return
+        }
+        #expect(pattern == #"a"b\*c\\*"#)
+    }
 }
