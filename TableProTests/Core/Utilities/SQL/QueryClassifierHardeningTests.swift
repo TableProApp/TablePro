@@ -431,6 +431,19 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("DB 3", databaseType: .redis))
     }
 
+    /// The driver strips redis-cli quoting before it sends, so a quoted command runs as the bare
+    /// one. Read as written, `"FLUSHALL"` matched no set and passed as an ordinary write.
+    @Test("A quoted Redis command is classified as the command the driver runs")
+    func redisQuotedCommand() {
+        #expect(QueryClassifier.classifyTier("\"FLUSHALL\"", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("'FLUSHDB' ASYNC", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("DB 0 \"FLUSHALL\"", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("'DB' 0 FLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("\"\\x46LUSHALL\"", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("CONFIG \"SET\" maxmemory 1", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("\"GET\" key", databaseType: .redis) == .safe)
+    }
+
     @Test("etcd verbs separate reads, writes, deletes and snapshots")
     func etcdTiers() {
         #expect(!QueryClassifier.isWriteQuery("get /keys", databaseType: .etcd))

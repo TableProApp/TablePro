@@ -276,6 +276,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
 - Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 
+- A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
 ## [0.75.0] - 2026-09-18
 
 Runs on macOS 13 Ventura and later.
