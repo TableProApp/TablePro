@@ -128,9 +128,9 @@ HGETALL myhash; LRANGE mylist 0 -1
 SCAN 0 MATCH user:* COUNT 100
 ```
 
-`SELECT` moves the editor's session only. The commands after it run on that database, while the sidebar, the key tree and the database tab stay on the database you clicked. Clicking a database, or opening a key from the tree, moves the editor to that database.
+`SELECT` moves the editor's session only. The commands after it run on that database, while the sidebar, the key tree and the database tab stay on the database you clicked. Clicking a database moves the editor to that database.
 
-`DB 3 GET key` runs one command on database 3 and leaves the session where it was. Grid saves on a cluster write this way.
+`DB 3 GET key` runs one command on database 3 and leaves the session where it was. A key opened from the tree is read this way, and so are grid saves on a cluster.
 
 ### MULTI blocks
 
