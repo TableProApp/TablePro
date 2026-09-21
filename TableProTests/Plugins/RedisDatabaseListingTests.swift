@@ -144,6 +144,28 @@ struct RedisDatabaseCountTests {
         #expect(RedisDatabaseCount.resolve(reported: nil, keyspace: [:], currentDatabase: 40) == 41)
     }
 
+    /// Measured: Valkey 9.1.2 answers `cluster-databases 16` when the setting is 16, Redis 8.10.1
+    /// answers an empty list for a setting it does not have.
+    @Test("A cluster serves the fewest databases any primary reports")
+    func servedByClusterTakesTheFewest() {
+        let sixteen = RedisReply.array([.string("cluster-databases"), .string("16")])
+        let eight = RedisReply.array([.string("cluster-databases"), .string("8")])
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: [sixteen, eight]) == 8)
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: [sixteen, sixteen]) == 16)
+    }
+
+    @Test("A cluster no primary vouches for serves database 0 alone")
+    func servedByClusterDefaultsToOne() {
+        let four = RedisReply.array([.string("cluster-databases"), .string("4")])
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: [.array([]), .array([])]) == 1)
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: [nil, four]) == 4)
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: [nil, nil]) == 1)
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: []) == 1)
+        let zero = RedisReply.array([.string("cluster-databases"), .string("0")])
+        let word = RedisReply.array([.string("cluster-databases"), .string("many")])
+        #expect(RedisDatabaseCount.servedByCluster(primaryReplies: [zero, word, four]) == 4)
+    }
+
     @Test("An index past Int32 cannot overflow the count")
     func boundsHugeIndices() {
         let huge = Int(Int32.max)

@@ -706,14 +706,15 @@ private extension QueryClassifier {
         databaseType: DatabaseType
     ) -> QueryClassification? {
         guard databaseType == .redis else { return nil }
-        let command = trimmed.prefix { !$0.isWhitespace }.uppercased()
+        let statement = redisCommandPastDatabasePrefix(trimmed)
+        let command = statement.prefix { !$0.isWhitespace }.uppercased()
         guard !command.isEmpty else { return .safe }
 
         let touchesUnsafeSurface = redisCodeExecutionCommands.contains(command)
             || redisFilesystemCommands.contains(command)
 
         if command == "CONFIG" {
-            let rest = trimmed.dropFirst(command.count).trimmingCharacters(in: .whitespaces).uppercased()
+            let rest = statement.dropFirst(command.count).trimmingCharacters(in: .whitespaces).uppercased()
             let tier: QueryTier = rest.hasPrefix("GET") ? .safe : .destructive
             return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
         }
@@ -730,6 +731,20 @@ private extension QueryClassifier {
         }
 
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    /// `DB <index> <command>` runs the command on the database it names, so the command decides
+    /// the tier: read as the bare `DB`, `DB 0 FLUSHDB` would pass as an ordinary write. A prefix
+    /// with nothing after its index is left whole, which classifies as a write.
+    static func redisCommandPastDatabasePrefix(_ statement: String) -> Substring {
+        var rest = Substring(statement)
+        while rest.prefix(while: { !$0.isWhitespace }).uppercased() == "DB" {
+            let afterKeyword: Substring = rest.dropFirst(2).drop(while: \.isWhitespace)
+            let afterIndex: Substring = afterKeyword.drop(while: { !$0.isWhitespace }).drop(while: \.isWhitespace)
+            guard !afterIndex.isEmpty else { return rest }
+            rest = afterIndex
+        }
+        return rest
     }
 
     static let mongoReadMethods: Set<String> = [

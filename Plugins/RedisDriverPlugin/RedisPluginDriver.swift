@@ -88,9 +88,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func makeChannel(for mode: RedisConnectionMode) throws -> any RedisCommandChannel {
         let username = config.username.isEmpty ? nil : config.username
         let password = config.password.isEmpty ? nil : config.password
-        let database = mode.supportsDatabaseSelection
-            ? RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
-            : 0
+        let database = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
 
         switch mode {
         case .standalone:
@@ -127,12 +125,18 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 config.additionalFields[RedisClusterFieldKey.hosts] ?? "",
                 defaultPort: RedisClusterFieldKey.defaultPort
             )
-            return RedisClusterChannel(
-                seeds: seeds,
-                username: username,
-                password: password,
-                sslConfig: config.ssl
-            )
+            let sslConfig = config.ssl
+            return RedisClusterChannel(seeds: seeds) { address in
+                RedisPluginConnection(
+                    host: address.host,
+                    port: address.port,
+                    username: username,
+                    password: password,
+                    database: 0,
+                    sslConfig: sslConfig,
+                    connectTimeout: 5
+                )
+            }
         }
     }
 
@@ -595,7 +599,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return RedisDatabaseTarget.addressing(
             statements,
             toDatabase: RedisDatabaseIndex.parse(table),
-            from: conn.homeDatabase()
+            from: conn.homeDatabase(),
+            insideTransaction: conn.supportsTransactions
         )
     }
 }

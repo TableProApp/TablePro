@@ -143,6 +143,12 @@ struct RedisSessionDatabase: Equatable, Sendable {
         current = index
     }
 
+    /// Where the session belongs moved without a command on this session: a cluster moves every
+    /// node at once, and each goes there on its next command.
+    mutating func rehomed(_ index: Int) {
+        home = index
+    }
+
     /// The database a command has to move to before it runs, or nil when the session is already
     /// there: the one being visited for a command that is part of a visit, home for any other.
     func databaseToMoveTo(visiting: Int?) -> Int? {

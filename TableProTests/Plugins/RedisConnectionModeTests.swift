@@ -26,13 +26,6 @@ struct RedisConnectionModeTests {
         #expect(RedisConnectionMode.resolve(additionalFields: ["redisMode": "galaxy"]) == .standalone)
     }
 
-    @Test("Only cluster gives up database selection")
-    func databaseSelection() {
-        #expect(RedisConnectionMode.standalone.supportsDatabaseSelection)
-        #expect(RedisConnectionMode.sentinel.supportsDatabaseSelection)
-        #expect(!RedisConnectionMode.cluster.supportsDatabaseSelection)
-    }
-
     @Test("Only standalone uses the plain Host and Port fields")
     func hostListUsage() {
         #expect(!RedisConnectionMode.standalone.usesHostList)

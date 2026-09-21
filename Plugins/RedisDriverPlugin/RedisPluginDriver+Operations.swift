@@ -70,6 +70,11 @@ extension RedisPluginDriver {
 
         case .ping, .info, .dbsize, .flushdb, .select, .configGet, .configSet, .command, .multi, .exec, .discard:
             return try await executeServerOperation(operation, connection: conn, startTime: startTime)
+
+        case .inDatabase(let database, let operation):
+            return try await conn.withDatabase(database) {
+                try await runOperation(operation, connection: conn, startTime: startTime)
+            }
         }
     }
 

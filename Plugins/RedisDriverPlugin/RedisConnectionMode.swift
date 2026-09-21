@@ -22,9 +22,6 @@ enum RedisConnectionMode: String, Sendable, CaseIterable {
     }
 
     var usesHostList: Bool { self != .standalone }
-
-    /// Redis Cluster serves database 0 only, and refuses SELECT with any other index.
-    var supportsDatabaseSelection: Bool { self != .cluster }
 }
 
 enum RedisSentinelFieldKey {

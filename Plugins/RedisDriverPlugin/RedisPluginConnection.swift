@@ -62,6 +62,12 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         routingLock.unlock()
     }
 
+    func adoptHomeDatabase(_ index: Int) {
+        stateLock.lock()
+        _database.rehomed(index)
+        stateLock.unlock()
+    }
+
     private let stateLock = NSLock()
     private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
@@ -375,6 +381,8 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #endif
     }
 }
+
+extension RedisPluginConnection: RedisClusterNodeConnection {}
 
 // MARK: - Synchronous Helpers (must be called on the serial queue)
 

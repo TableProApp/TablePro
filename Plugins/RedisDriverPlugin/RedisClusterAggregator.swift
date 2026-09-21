@@ -40,6 +40,17 @@ enum RedisClusterAggregator {
         }
     }
 
+    /// Each primary's `INFO keyspace` added up per database. Nil when any primary declined, the
+    /// same rule `DBSIZE` follows, because a count missing one primary is short, not zero.
+    static func keyspace(_ perShard: [[Int: Int]?]) -> [Int: Int]? {
+        var merged: [Int: Int] = [:]
+        for shard in perShard {
+            guard let shard else { return nil }
+            merged.merge(shard, uniquingKeysWith: +)
+        }
+        return merged
+    }
+
     /// The first shard error in the order the shards were asked, else the first `+QUEUED`.
     static func firstNonAnswer(in replies: [RedisReply]) -> RedisReply? {
         replies.first(where: \.isError) ?? replies.first(where: \.isQueued)

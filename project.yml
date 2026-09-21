@@ -630,6 +630,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
+      - Plugins/RedisDriverPlugin/RedisClusterChannel.swift
       - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
       - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
       - Plugins/RedisDriverPlugin/RedisClusterTopology.swift

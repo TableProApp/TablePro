@@ -419,6 +419,18 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("CONFIG SET maxmemory 100", databaseType: .redis) == .destructive)
     }
 
+    /// Read as the bare word `DB`, `DB 0 FLUSHDB` passed as an ordinary write and skipped the
+    /// confirmation a destructive statement asks for.
+    @Test("A Redis DB prefix is classified by the command it wraps")
+    func redisDatabasePrefix() {
+        #expect(QueryClassifier.classifyTier("DB 0 FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("db db2 CONFIG SET maxmemory 1", databaseType: .redis) == .destructive)
+        #expect(!QueryClassifier.isWriteQuery("DB 3 GET key", databaseType: .redis))
+        #expect(QueryClassifier.isWriteQuery("DB 3 SET key value", databaseType: .redis))
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("DB 1 EVAL \"return 1\" 0", databaseType: .redis))
+        #expect(QueryClassifier.isWriteQuery("DB 3", databaseType: .redis))
+    }
+
     @Test("etcd verbs separate reads, writes, deletes and snapshots")
     func etcdTiers() {
         #expect(!QueryClassifier.isWriteQuery("get /keys", databaseType: .etcd))

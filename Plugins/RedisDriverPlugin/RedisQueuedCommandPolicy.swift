@@ -28,6 +28,7 @@ extension RedisOperation {
     var queuedCommandAnswer: RedisQueuedCommandAnswer {
         switch self {
         case .keyBrowse, .keyTree: return .refuse
+        case .inDatabase(_, let operation): return operation.queuedCommandAnswer
         default: return .reportQueued
         }
     }

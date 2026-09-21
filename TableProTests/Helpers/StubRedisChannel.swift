@@ -11,7 +11,8 @@ import Foundation
 import TableProPluginKit
 
 /// Driven by one task at a time, so the outcomes are handed out in order with no synchronisation.
-final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
+/// It also stands in for one node of a cluster, which hands it the cluster's database.
+final class StubRedisChannel: RedisClusterNodeConnection, @unchecked Sendable {
     private var outcomes: [Result<RedisReply, Error>]
     private(set) var sentCommands: [[String]] = []
     private(set) var sentScopes: [RedisCommandScope] = []
@@ -49,6 +50,17 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
 
     func visitDatabase(_ index: Int) async throws {
         try moveSession(to: index, scope: .outsideBlock) { $0.visited(index) }
+    }
+
+    func adoptRouting(_ newRouting: RedisCommandRouting) {}
+
+    func adoptHomeDatabase(_ index: Int) {
+        sessionDatabase.rehomed(index)
+    }
+
+    func forgetSentCommands() {
+        sentCommands = []
+        sentScopes = []
     }
 
     /// Mirrors the hiredis connection: a SELECT queued in an open block moves nothing yet and

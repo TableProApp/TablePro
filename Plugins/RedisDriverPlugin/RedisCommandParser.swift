@@ -69,6 +69,10 @@ enum RedisOperation {
     case multi
     case exec
     case discard
+
+    /// One command run on the database it names, after which the session goes back to the one it
+    /// belongs on.
+    indirect case inDatabase(database: Int, operation: RedisOperation)
 }
 
 /// Options for SET command
@@ -141,11 +145,15 @@ struct RedisCommandParser {
         guard let split = RedisArgumentCodec.split(trimmed) else {
             throw RedisParseError.invalidArgument(String(localized: "unbalanced quotes"))
         }
-        let tokens = split.map { RedisArgument($0) }
+        return try parse(tokens: split.map { RedisArgument($0) })
+    }
+
+    private static func parse(tokens: [RedisArgument]) throws -> RedisOperation {
         guard let first = tokens.first else { throw RedisParseError.emptySyntax }
 
         let command = first.text.uppercased()
         let args = Array(tokens.dropFirst())
+        if command == "DB" { return try parseInDatabase(args) }
 
         if let typedCount = typedArgumentCount[command], args.count > typedCount {
             return .command(args: tokens)
@@ -201,6 +209,20 @@ struct RedisCommandParser {
         }
     }
 
+    /// `DB` names the database one command runs on, the way `KEYBROWSE DB` names the one a browse
+    /// reads, and leaves where the session belongs alone. A grid save on a cluster writes this way:
+    /// with no `MULTI` across shards, a `SELECT` sent ahead of the writes stayed in force when one
+    /// of them failed, and every command after it ran on the row's database.
+    private static func parseInDatabase(_ args: [RedisArgument]) throws -> RedisOperation {
+        guard let indexArgument = args.first, args.count > 1 else {
+            throw RedisParseError.missingArgument(String(localized: "DB needs a database index and a command"))
+        }
+        return .inDatabase(
+            database: try databaseIndex(indexArgument),
+            operation: try parse(tokens: Array(args.dropFirst()))
+        )
+    }
+
     /// `DB` names the database the read reaches whichever database the session is on: a refresh,
     /// a later page and an export all read the database the row names rather than the one the
     /// session last moved to, and the key tree lists the database the sidebar shows.
@@ -212,12 +234,16 @@ struct RedisCommandParser {
                 String(format: String(localized: "%@ DB requires a database index"), command)
             )
         }
-        guard let database = RedisDatabaseIndex.parse(args[index + 1].text), database >= 0 else {
+        return try databaseIndex(args[index + 1])
+    }
+
+    private static func databaseIndex(_ argument: RedisArgument) throws -> Int {
+        guard let index = RedisDatabaseIndex.parse(argument.text), index >= 0 else {
             throw RedisParseError.invalidArgument(
-                String(format: String(localized: "%@ is not a Redis database index."), args[index + 1].text)
+                String(format: String(localized: "%@ is not a Redis database index."), argument.text)
             )
         }
-        return database
+        return index
     }
 
     private static func parseKeyBrowse(_ args: [RedisArgument]) throws -> RedisOperation {

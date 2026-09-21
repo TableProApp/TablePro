@@ -43,6 +43,10 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     func homeDatabase() -> Int
     /// Moves the session for one read the app makes, without moving where it belongs.
     func visitDatabase(_ index: Int) async throws
+    /// How many numbered databases the server says it has, or nil when it would not say.
+    func reportedDatabaseCount() async throws -> Int?
+    /// Keys per database, or nil when the server declined to count them.
+    func keyCountsByDatabase() async throws -> [Int: Int]?
 
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply]

@@ -28,6 +28,14 @@ enum RedisDatabaseCount {
         let highest = known.filter { (0 ..< limit).contains($0) }.max() ?? 0
         return max(assumed, highest + 1)
     }
+
+    /// The databases a cluster serves, from each primary's `CONFIG GET cluster-databases`: the
+    /// fewest any primary reports, since a database one primary lacks cannot hold the keys that
+    /// hash to it. Redis answers an empty list and a declined read answers nil, neither of which
+    /// says anything, so a cluster no primary vouches for serves database 0 alone.
+    static func servedByCluster(primaryReplies: [RedisReply?]) -> Int {
+        primaryReplies.compactMap { $0.flatMap(reported(by:)) }.min() ?? 1
+    }
 }
 
 struct RedisDatabaseListing: Equatable, Sendable {
@@ -52,8 +60,7 @@ extension RedisCommandChannel {
                 keyCounts: includingKeyCounts ? try await keyCountsByDatabase() : nil
             )
         }
-        let reported = try await runMetadataRead(["CONFIG", "GET", "databases"])
-            .flatMap(RedisDatabaseCount.reported(by:))
+        let reported = try await reportedDatabaseCount()
         let keyCounts = includingKeyCounts || reported == nil ? try await keyCountsByDatabase() : nil
         let count = RedisDatabaseCount.resolve(
             reported: reported,
@@ -63,13 +70,24 @@ extension RedisCommandChannel {
         return RedisDatabaseListing(databaseCount: count, keyCounts: includingKeyCounts ? keyCounts : nil)
     }
 
-    /// Nil when the server declines `INFO`, which an ACL user outside `@dangerous` is. A cluster
-    /// answers `INFO` from one master, so its single keyspace is counted with `DBSIZE`, which
-    /// every master answers and which is nil when any of them declines.
+    func reportedDatabaseCount() async throws -> Int? {
+        try await runMetadataRead(["CONFIG", "GET", "databases"]).flatMap(RedisDatabaseCount.reported(by:))
+    }
+
+    /// Nil when the server declines, which an ACL user outside `@dangerous` is for `INFO`. A
+    /// server with one database counts it with `DBSIZE`, which a cluster sends to every primary
+    /// and adds up, and which is nil when any of them declines.
     func keyCountsByDatabase() async throws -> [Int: Int]? {
-        guard supportsDatabaseSelection else {
-            return try await runMetadataRead(["DBSIZE"])?.intValue.map { [0: $0] }
-        }
+        guard supportsDatabaseSelection else { return try await databaseZeroKeyCounts() }
+        return try await keyspaceKeyCounts()
+    }
+
+    func databaseZeroKeyCounts() async throws -> [Int: Int]? {
+        try await runMetadataRead(["DBSIZE"])?.intValue.map { [0: $0] }
+    }
+
+    /// `INFO keyspace` describes the server that answers it, one line per database holding keys.
+    func keyspaceKeyCounts() async throws -> [Int: Int]? {
         guard let reply = try await runMetadataRead(["INFO", "keyspace"]) else { return nil }
         return RedisServerInfo.keyspace(from: reply.stringValue ?? "")
     }
