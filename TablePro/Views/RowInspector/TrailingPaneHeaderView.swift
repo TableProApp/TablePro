@@ -91,8 +91,18 @@ internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
         }
     }
 
-    /// The label is a `Label` with its title hidden, not an image with an accessibility label on the
-    /// menu: `.accessibilityLabel` on a `Menu` replaces the name its label provides with nothing.
+    /// The ellipsis draws no text, so the only name VoiceOver has for this control is the one the
+    /// accessibility modifiers give it, and it takes all three of them.
+    ///
+    /// Measured on macOS 27, naming it through the label does not work in any arrangement. A `Label`
+    /// whose title `.labelStyle(.iconOnly)` has resolved away carries no name, whichever view the
+    /// style sits on, and `.accessibilityLabel` inside the label closure, which is how
+    /// `ResultSetMenu` names a pull-down that also draws text, does not reach this one either.
+    /// `.accessibilityLabel` on the `Menu` alone is likewise ignored. In all three the control falls
+    /// back to AppKit's own name for an unnamed pull-down, which reads "More" locally and the empty
+    /// string on the CI runner. Only `.accessibilityElement` publishes the name, and it has to be
+    /// `.contain`: `.ignore` names the button and then takes the menu's own items out of the tree
+    /// with it, so nothing can reach Fields, JSON or any other command in it.
     private func menu(_ model: TrailingPaneHeaderModel) -> some View {
         Menu {
             ForEach(Array(model.menuSections.enumerated()), id: \.element) { index, section in
@@ -115,6 +125,9 @@ internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
         .menuIndicator(.hidden)
         .frame(width: 24, height: 22)
         .help(model.menuLabel)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.menuLabel)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("trailing-pane-menu")
     }
 }
