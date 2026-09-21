@@ -120,9 +120,10 @@ struct RedisSessionFootprint: Equatable, Sendable {
 /// Which numbered database the session is on, and which one it belongs on.
 ///
 /// A read the app makes for one row visits that row's database and returns, and every other
-/// command runs where the session belongs. The return is a second command, so a read abandoned
-/// part way, such as a cancelled stream, can release the driver before its return reaches the
-/// server; the next command then goes home first rather than running on the visited database.
+/// command runs where the session belongs. Each command checks right before it is sent, because
+/// neither the move nor the return is atomic with the commands around it: a cancelled stream can
+/// release the driver before its return reaches the server, and the health monitor's PING is not
+/// held back by the session gate, so it can arrive in the middle of a visit.
 struct RedisSessionDatabase: Equatable, Sendable {
     private(set) var current: Int
     private(set) var home: Int
@@ -142,9 +143,11 @@ struct RedisSessionDatabase: Equatable, Sendable {
         current = index
     }
 
-    /// The database a command has to return to before it runs, when the session is away from it.
-    var awayFromHome: Int? {
-        current == home ? nil : home
+    /// The database a command has to move to before it runs, or nil when the session is already
+    /// there: the one being visited for a command that is part of a visit, home for any other.
+    func databaseToMoveTo(visiting: Int?) -> Int? {
+        let target = visiting ?? home
+        return current == target ? nil : target
     }
 }
 

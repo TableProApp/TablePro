@@ -241,7 +241,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             }
             stateLock.unlock()
             try admit(scope, command: args.first)
-            if visiting == nil { try returnHomeIfAway() }
+            try moveToCommandDatabase(visiting: visiting)
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
             let result = try executeCommandSyncRetrying(args, scope: scope)
@@ -267,7 +267,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             }
             stateLock.unlock()
             try admit(scope, command: commands.first?.first)
-            if visiting == nil { try returnHomeIfAway() }
+            try moveToCommandDatabase(visiting: visiting)
             let generation = cancellationGate.beginQuery()
             defer { cancellationGate.endQuery(generation) }
             let results = try executePipelineSyncRetrying(commands, scope: scope)
@@ -293,17 +293,17 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.unlock()
     }
 
-    /// A read the app abandoned part way can leave the session on the database it was visiting,
-    /// so anything that is not part of a visit goes home before it runs. An open block cannot be
-    /// away from home, because a visit is held back from one.
-    private func returnHomeIfAway() throws {
+    /// Runs on the serial queue right before the send, so no other command can land between the
+    /// move and the command it is for. An open block is left alone: a visit is held back from one,
+    /// so the session cannot be away from home while it is open.
+    private func moveToCommandDatabase(visiting: Int?) throws {
         stateLock.lock()
-        let home = _footprint.hasOpenBlock ? nil : _database.awayFromHome
+        let target = _footprint.hasOpenBlock ? nil : _database.databaseToMoveTo(visiting: visiting)
         stateLock.unlock()
-        guard let home else { return }
-        try select(home, scope: .outsideBlock)
+        guard let target else { return }
+        try select(target, scope: .outsideBlock)
         stateLock.lock()
-        _database.visited(home)
+        _database.visited(target)
         stateLock.unlock()
     }
 

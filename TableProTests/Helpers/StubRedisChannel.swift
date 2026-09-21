@@ -83,7 +83,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func executeCommand(_ args: [Data], scope: RedisCommandScope) async throws -> RedisReply {
         let command = decoded(args)
         try admit(scope, command: command)
-        try returnHomeIfAway()
+        try moveToCommandDatabase()
         guard let reply = try send(command, scope: scope) else { return .null }
         observe(command: command.first, reply: reply)
         return reply
@@ -94,7 +94,7 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
     func executePipeline(_ commands: [[Data]], scope: RedisCommandScope) async throws -> [RedisReply] {
         let pipeline = commands.map(decoded)
         try admit(scope, command: pipeline.first ?? [])
-        try returnHomeIfAway()
+        try moveToCommandDatabase()
         let replies = try pipeline.map { try send($0, scope: scope) }
         for (command, reply) in zip(pipeline, replies) {
             guard let reply else { continue }
@@ -103,10 +103,10 @@ final class StubRedisChannel: RedisCommandChannel, @unchecked Sendable {
         return replies.map { $0 ?? .null }
     }
 
-    private func returnHomeIfAway() throws {
-        guard RedisDatabaseVisit.database == nil, !footprint.hasOpenBlock,
-              let home = sessionDatabase.awayFromHome else { return }
-        try moveSession(to: home, scope: .outsideBlock) { $0.visited(home) }
+    private func moveToCommandDatabase() throws {
+        guard !footprint.hasOpenBlock,
+              let target = sessionDatabase.databaseToMoveTo(visiting: RedisDatabaseVisit.database) else { return }
+        try moveSession(to: target, scope: .outsideBlock) { $0.visited(target) }
     }
 
     private func observe(command: String?, reply: RedisReply) {

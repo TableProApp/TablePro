@@ -219,12 +219,14 @@ struct RedisSessionDatabaseTests {
         database.visited(7)
         #expect(database.current == 7)
         #expect(database.home == 0)
-        #expect(database.awayFromHome == 0)
+        #expect(database.databaseToMoveTo(visiting: nil) == 0)
+        #expect(database.databaseToMoveTo(visiting: 7) == nil)
+        #expect(database.databaseToMoveTo(visiting: 4) == 4)
 
         database.selected(3)
         #expect(database.current == 3)
         #expect(database.home == 3)
-        #expect(database.awayFromHome == nil)
+        #expect(database.databaseToMoveTo(visiting: nil) == nil)
     }
 }
 
@@ -251,6 +253,20 @@ struct RedisAbandonedVisitTests {
         }
         #expect(count == 3)
         #expect(channel.sentCommands == [["SELECT", "7"], ["DBSIZE"]])
+    }
+
+    /// The health monitor's PING does not wait for the session gate, so it can go home in the
+    /// middle of a visit; the visit's next command has to go back before it reads.
+    @Test("A visit's command returns to the visited database after an outside command went home")
+    func visitReturnsAfterInterruption() async throws {
+        let channel = StubRedisChannel([.status("OK"), .status("OK"), .status("PONG"), .status("OK"), .integer(4)])
+        try await channel.visitDatabase(7)
+        _ = try await channel.executeCommand(["PING"])
+        let count = try await RedisDatabaseVisit.$database.withValue(7) {
+            try await channel.executeCommand(["DBSIZE"]).intValue
+        }
+        #expect(count == 4)
+        #expect(channel.sentCommands == [["SELECT", "7"], ["SELECT", "0"], ["PING"], ["SELECT", "7"], ["DBSIZE"]])
     }
 
     @Test("A read on the database a stale visit left the session on sends no SELECT")
