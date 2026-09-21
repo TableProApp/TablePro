@@ -327,43 +327,28 @@ struct RedisDatabaseSelectionGateTests {
         #expect(recorder.executedQueries == [listing])
     }
 
-    @Test("Opening a key moves the session to the key's database before it reads the key")
-    func openingAKeyMovesFirst() async throws {
+    /// The key stays quoted even when it needs no quoting: left bare, the editor reads the `:x` in
+    /// `five:x` as a query parameter, opens the parameter panel and runs nothing.
+    @Test("Opening a key reads it in the key's database and leaves the session where it was")
+    func openingAKeyLeavesTheSessionAlone() async throws {
         let (connection, recorder) = makeSession()
         defer { cleanUp(connection.id) }
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
+        coordinator.toolbarState.currentDatabase = "2"
 
-        coordinator.openRedisKey("zero:a", keyType: "string", inDatabase: 0)
-        await coordinator.redisDatabaseSwitchTask?.value
-        let read = RedisKeyTreeCommand.openKey("zero:a", keyType: "string")
+        coordinator.openRedisKey("five:x", keyType: "string", inDatabase: 5)
+        let read = RedisKeyTreeCommand.openKey("five:x", keyType: "string", inDatabase: 5)
         await waitForExecution(of: read, on: recorder)
 
-        #expect(recorder.events == ["switch:0", "execute:\(read)"])
-        #expect(coordinator.toolbarState.currentDatabase == "0")
-        #expect(coordinator.tabManager.selectedTab?.title == "zero:a")
-    }
-
-    @Test("A key whose database the server refuses reports it on the key's tab and reads nothing")
-    func refusedKeyDatabaseIsReportedOnTheKeyTab() async throws {
-        let (connection, recorder) = makeSession()
-        defer { cleanUp(connection.id) }
-        recorder.refuseSelections(with: RefusedSelection())
-        let coordinator = makeCoordinator(for: connection)
-        defer { coordinator.teardown() }
-
-        coordinator.openRedisKey("five:x", keyType: nil, inDatabase: 5)
-        await coordinator.redisDatabaseSwitchTask?.value
-
-        let tab = try #require(coordinator.tabManager.selectedTab)
-        #expect(tab.title == "five:x")
-        #expect(tab.execution.errorMessage == RefusedSelection.message)
-        #expect(recorder.executedQueries.isEmpty)
+        #expect(read == #"DB 5 GET "five:x""#)
+        #expect(recorder.events == ["execute:\(read)"])
+        #expect(coordinator.redisDatabaseSwitchTask == nil)
+        #expect(coordinator.toolbarState.currentDatabase == "2")
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "0")
+        #expect(coordinator.tabManager.selectedTab?.title == "five:x")
     }
 
-    /// Cancelling the click instead would leave its retargeted tab loading with nothing coming to
-    /// finish it.
     @Test("Opening a key while a database click waits leaves no tab loading")
     func keyOpenedBehindAPendingClickLeavesNoSpinner() async throws {
         let (connection, recorder) = makeSession()
@@ -381,12 +366,12 @@ struct RedisDatabaseSelectionGateTests {
         release.open()
         try await holder.value
         await coordinator.redisDatabaseSwitchTask?.value
-        let read = RedisKeyTreeCommand.openKey("three:a", keyType: "hash")
+        let read = RedisKeyTreeCommand.openKey("three:a", keyType: "hash", inDatabase: 3)
         await waitForExecution(of: read, on: recorder)
 
         let clicked = try #require(coordinator.tabManager.tabs.first { $0.id == clickedTabId })
         #expect(clicked.pagination.isLoading == false)
-        #expect(recorder.switchedDatabases == ["3", "3"])
+        #expect(recorder.switchedDatabases == ["3"])
         #expect(recorder.executedQueries.contains(read))
     }
 }

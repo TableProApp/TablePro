@@ -119,7 +119,12 @@ struct RedisKeyTreeAppCommandTests {
     ]
 
     private func opened(_ key: String, as keyType: String?) throws -> RedisOperation {
-        try RedisCommandParser.parse(RedisKeyTreeCommand.openKey(key, keyType: keyType))
+        let command = RedisKeyTreeCommand.openKey(key, keyType: keyType, inDatabase: 4)
+        guard case .inDatabase(4, let operation) = try RedisCommandParser.parse(command) else {
+            Issue.record("Expected a read in database 4 for \(key)")
+            return .command(args: [])
+        }
+        return operation
     }
 
     @Test("Opening a key reads exactly that key, whatever it holds", arguments: keys)

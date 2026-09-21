@@ -804,38 +804,11 @@ extension MainContentCoordinator {
         openRedisKey(keyName, keyType: keyType, inDatabase: databaseIndex)
     }
 
-    /// A key is read from the database the tree listed it in, not from wherever a typed `SELECT`
-    /// left the session, so the session moves there first. The move waits behind a database click
-    /// still in flight instead of cancelling it, which would leave that click's tab loading, and a
-    /// later click cancels both.
     func openRedisKey(_ keyName: String, keyType: String?, inDatabase databaseIndex: Int) {
-        tabManager.addTab(initialQuery: RedisKeyTreeCommand.openKey(keyName, keyType: keyType), title: keyName)
-        guard let tabId = tabManager.selectedTabId else { return }
-
-        let connId = connectionId
-        let database = String(databaseIndex)
-        let inFlight = redisDatabaseSwitchTask
-        redisDatabaseSwitchTask = Task { [weak self] in
-            await withTaskCancellationHandler {
-                await inFlight?.value
-            } onCancel: {
-                inFlight?.cancel()
-            }
-            guard let self, !Task.isCancelled else { return }
-            do {
-                try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
-            } catch {
-                guard !Task.isCancelled else { return }
-                navigationLogger.error(
-                    "Failed to SELECT Redis db\(databaseIndex) for a key: \(error.publicLogShape, privacy: .public)"
-                )
-                reportRedisSelectionFailure(error, onTab: tabId)
-                return
-            }
-            guard !Task.isCancelled else { return }
-            toolbarState.currentDatabase = database
-            guard tabManager.selectedTabId == tabId else { return }
-            runQuery(viewport: .firstRow)
-        }
+        tabManager.addTab(
+            initialQuery: RedisKeyTreeCommand.openKey(keyName, keyType: keyType, inDatabase: databaseIndex),
+            title: keyName
+        )
+        runQuery(viewport: .firstRow)
     }
 }
