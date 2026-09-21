@@ -139,6 +139,24 @@ struct AIEndpointTests {
         #expect(AIEndpoint("https://user@host/v1", style: .chatCompletions) == nil)
     }
 
+    /// An Authorization header on a cleartext request to another machine is readable in transit.
+    /// Reaching a server on this machine over http is an ordinary local setup.
+    @Test("Plaintext to a remote host is flagged, and to this machine is not")
+    func flagsPlaintextToARemoteHost() {
+        for base in ["http://gateway.internal.example.com/v1", "http://192.168.1.10:8000/v1", "http://0.0.0.0:8080/v1"] {
+            #expect(AIEndpoint(base, style: .chatCompletions)?.isPlaintextToRemoteHost == true, "\(base)")
+        }
+        for base in [
+            "http://localhost:11434",
+            "http://127.0.0.1:1234/v1",
+            "http://127.0.0.2:8080/v1",
+            "https://gateway.internal.example.com/v1",
+            "https://api.openai.com/v1",
+        ] {
+            #expect(AIEndpoint(base, style: .chatCompletions)?.isPlaintextToRemoteHost == false, "\(base)")
+        }
+    }
+
     @Test("Every style resolves the provider's own default endpoint")
     func resolvesEveryDefaultEndpoint() {
         for type in AIProviderType.allCases where !type.defaultEndpoint.isEmpty {
