@@ -73,8 +73,8 @@ extension MainWindowToolbar {
     }
 
     /// A one-of-six chooser that also has to report which one is current, which is
-    /// `NSMenuToolbarItem` plus a glyph that follows the level. `StatefulToolbarItem.validate()`
-    /// re-reads `symbolProvider` on every validation pass, and `observeItemState` puts
+    /// `NSMenuToolbarItem` plus a glyph that follows the level. `SafeModeToolbarItem.validate()`
+    /// re-reads `statusProvider` on every validation pass, and `observeItemState` puts
     /// `safeModeLevel` on the list of things that trigger one.
     func makeSafeModeItem() -> NSToolbarItem {
         let label = String(localized: "Safe Mode")
@@ -82,7 +82,9 @@ extension MainWindowToolbar {
         item.label = label
         item.paletteLabel = label
         item.isBordered = true
-        item.levelProvider = { [weak self] in self?.coordinator?.toolbarState.safeModeLevel ?? .silent }
+        item.statusProvider = { [weak self] in
+            self?.coordinator?.safeModeStatus ?? SafeModeStatus(level: .silent, floor: nil)
+        }
         item.isEnabledProvider = enablement(of: Self.safeMode)
         /// The same class the Database menu's submenu uses, so the two lists cannot describe
         /// different levels, and the checkmark is resolved when the menu opens rather than when
@@ -94,9 +96,9 @@ extension MainWindowToolbar {
         let menuItem = NSMenuItem(title: String(localized: "Safe Mode Level"), action: nil, keyEquivalent: "")
         menuItem.submenu = menu(delegate: safeModeMenuDelegate)
         item.menuFormRepresentation = menuItem
-        /// No `toolTip` here. `levelProvider` already wrote one naming the current level, and
-        /// overwriting it with the bare label was permanent: `applyLevel` returns early once the
-        /// level it applied has not changed, so nothing would ever put the level back.
+        /// No `toolTip` here. `statusProvider` already wrote one naming the current level, and
+        /// overwriting it with the bare label was permanent: `applyStatus` returns early once the
+        /// status it applied has not changed, so nothing would ever put the level back.
         return item
     }
 

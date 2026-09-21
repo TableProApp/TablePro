@@ -77,4 +77,82 @@ struct ContentModeTests {
         let agent = ToolbarContext(tabKind: .table, contentMode: .agent, isAIEnabled: true)
         #expect(browse.visibilityKey != agent.visibilityKey)
     }
+
+    /// Nothing on screen draws a session while browsing, so nothing may be rebuilt after one: a
+    /// session started or switched then would otherwise repaint panes nobody is looking at.
+    @Test("The displayed agent session, and the render key, name a session only in Agent mode")
+    func agentSessionIsNamedOnlyInAgentMode() {
+        AIFeatureScope.enabled {
+            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let workspace = Self.makeWorkspace(phase: .idle, agentSessions: registry)
+            let session = registry.startSession(for: workspace.connectionId)
+
+            #expect(workspace.displayedAgentSession == nil)
+            #expect(workspace.paneRenderKey.agentSessionId == nil)
+
+            workspace.contentMode = .agent
+
+            #expect(workspace.displayedAgentSession === session)
+            #expect(workspace.paneRenderKey.agentSessionId == session.id)
+        }
+    }
+
+    @Test("A workspace reads its sessions from the registry it was given")
+    func workspaceReadsItsOwnRegistry() {
+        AIFeatureScope.enabled {
+            let mine = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let other = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let workspace = Self.makeWorkspace(phase: .idle, agentSessions: mine)
+            workspace.contentMode = .agent
+            other.startSession(for: workspace.connectionId)
+
+            #expect(workspace.displayedAgentSession == nil)
+
+            let session = mine.startSession(for: workspace.connectionId)
+            #expect(workspace.displayedAgentSession === session)
+        }
+    }
+
+    /// The conversation is what Agent mode draws while the connection is up or coming up, and the
+    /// unavailable screen, with its Retry, is what it draws over one that cannot be reached.
+    @Test("The detail column follows the mode, except over a connection that cannot be reached")
+    func detailModeFollowsTheModeAndThePane() {
+        AIFeatureScope.enabled {
+            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+            let connecting = Self.makeWorkspace(phase: .connecting, agentSessions: registry)
+            let failed = Self.makeWorkspace(
+                phase: .unavailable(.failed(ConnectionFailureInfo(message: "refused"))),
+                agentSessions: registry
+            )
+
+            #expect(connecting.detailMode == .browse)
+            connecting.contentMode = .agent
+            failed.contentMode = .agent
+            #expect(connecting.detailMode == .agent)
+            #expect(failed.detailMode == .browse)
+        }
+    }
+
+    private static func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("ContentModeTests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private static func makeWorkspace(
+        phase: ConnectionWindowPhase,
+        agentSessions: AgentSessionRegistry
+    ) -> ConnectionWorkspace {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        return ConnectionWorkspace(
+            connectionId: connection.id,
+            payload: nil,
+            autoConnect: false,
+            payloadConnection: connection,
+            session: nil,
+            sessionState: nil,
+            trailingPaneState: nil,
+            phase: phase,
+            agentSessions: agentSessions
+        )
+    }
 }

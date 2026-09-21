@@ -58,8 +58,7 @@ internal struct AgentConversationView: View {
     }
 
     private func sendPendingPromptIfReady(_ session: AgentSession) {
-        guard !isConnecting, let prompt = session.pendingPrompt else { return }
-        session.pendingPrompt = nil
+        guard let prompt = session.takePendingPrompt(isConnecting: isConnecting) else { return }
         session.viewModel.inputText = prompt
         session.viewModel.sendMessage()
     }

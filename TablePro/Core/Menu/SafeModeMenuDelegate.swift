@@ -17,16 +17,26 @@ final class SafeModeMenuDelegate: NSObject, NSMenuDelegate {
     private static let action = #selector(MainSplitViewController.setSafeModeLevel(_:))
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
         let controller = NSApp.target(forAction: Self.action, to: nil, from: nil) as? MainSplitViewController
-        let current = controller?.commandActions?.coordinator?.toolbarState.safeModeLevel
-        for level in SafeModeLevel.allCases {
-            menu.addItem(item(for: level, current: current))
-        }
+        Self.populate(menu, with: controller?.safeModeStatus)
     }
 
-    private func item(for level: SafeModeLevel, current: SafeModeLevel?) -> NSMenuItem {
-        let item = NSMenuItem(title: level.displayName, action: Self.action, keyEquivalent: "")
+    /// The levels the floor allows and, under them, why the rest are not there. Agent mode raising
+    /// the floor used to be silent here: every level was listed, a weaker one could be picked, and
+    /// the level on screen did not move. With no status, which is a window with no session, every
+    /// level is listed and validation dims them.
+    internal static func populate(_ menu: NSMenu, with status: SafeModeStatus?) {
+        menu.removeAllItems()
+        for level in status?.offeredLevels ?? SafeModeLevel.allCases {
+            menu.addItem(item(for: level, current: status?.level))
+        }
+        guard let explanation = status?.floor?.explanation else { return }
+        menu.addItem(.separator())
+        menu.addItem(MenuFootnote.item(explanation))
+    }
+
+    private static func item(for level: SafeModeLevel, current: SafeModeLevel?) -> NSMenuItem {
+        let item = NSMenuItem(title: level.displayName, action: action, keyEquivalent: "")
         item.target = nil
         item.representedObject = level.rawValue
         item.state = level == current ? .on : .off

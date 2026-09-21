@@ -38,6 +38,12 @@ internal final class SidebarContainerViewController: NSViewController {
         listHost.show(controller)
     }
 
+    /// The pane below the chrome, for a caller that has to read back which one is drawn: the
+    /// object browser, or Agent mode's session rail in its place.
+    internal var shownPane: NSViewController? {
+        listHost.shown
+    }
+
     /// Which list the scope control has selected, for a caller that has to read the chrome back.
     internal var selectedScope: SidebarTab? {
         scopeControl.selectedTab

@@ -253,8 +253,8 @@ struct MainWindowToolbarNativeContractTests {
 
     /// The Safe Mode glyph and its tooltip both name the level, because the glyph alone cannot:
     /// `lock` and `lock.open` differ by a few pixels and VoiceOver reads no image at all. Writing a
-    /// bare `toolTip` after `levelProvider` used to overwrite it permanently, since the item only
-    /// rewrites the tooltip when the level it applied changes.
+    /// bare `toolTip` after `statusProvider` used to overwrite it permanently, since the item only
+    /// rewrites the tooltip when the status it applied changes.
     @Test("The Safe Mode item's tooltip names the level, not just the control")
     func safeModeTooltipNamesTheLevel() throws {
         let owner = MainWindowToolbar()
@@ -268,6 +268,29 @@ struct MainWindowToolbarNativeContractTests {
         let tooltip = try #require(item.toolTip)
         #expect(tooltip.contains(SafeModeLevel.silent.displayName))
         #expect(item.image != nil)
+    }
+
+    /// Agent mode raises the floor to Alert, and a connection the user already set stricter keeps
+    /// its level, so the floor arrives and leaves without the level moving. The tooltip is rewritten
+    /// only when what it says changes, and it has to count the floor as part of that or the reason
+    /// would never appear, or never go.
+    @Test("The Safe Mode item's tooltip says why a floor holds the level, and drops it when the floor lifts")
+    func safeModeTooltipCarriesTheFloor() {
+        let item = SafeModeToolbarItem(itemIdentifier: MainWindowToolbar.safeMode)
+        let floor = SafeModeFloor(level: .alert, reason: .agentMode)
+        let source = SafeModeStatusSource(SafeModeStatus(level: .safeMode, floor: nil))
+        item.statusProvider = { source.status }
+        #expect(item.toolTip?.contains(floor.explanation) == false)
+
+        source.status = SafeModeStatus(level: .safeMode, floor: floor)
+        item.validate()
+        #expect(item.toolTip?.contains(SafeModeLevel.safeMode.displayName) == true)
+        #expect(item.toolTip?.contains(floor.explanation) == true)
+
+        source.status = SafeModeStatus(level: .safeMode, floor: nil)
+        item.validate()
+        #expect(item.toolTip?.contains(floor.explanation) == false)
+        #expect(item.toolTip?.contains(SafeModeLevel.safeMode.displayName) == true)
     }
 
     /// An overflowed item survives only as its `menuFormRepresentation`, and AppKit writes that
@@ -440,6 +463,8 @@ struct MainWindowToolbarSingleSourceTests {
     func windowCarriesNoSubtitle() {
         let resolved = WindowTitleResolver.resolveWindow(
             pane: .content,
+            contentMode: .browse,
+            agentSessionTitle: nil,
             connection: TestFixtures.makeConnection(database: "myapp", type: .postgresql),
             tab: nil,
             hasTabs: true,
@@ -462,5 +487,16 @@ struct MainWindowToolbarSingleSourceTests {
         for label in labels {
             #expect(!label.isEmpty, "every item needs a palette-visible label")
         }
+    }
+}
+
+/// What a toolbar item's status provider reads, changed between validation passes the way a
+/// connection's level and floor change under a live item.
+@MainActor
+private final class SafeModeStatusSource {
+    var status: SafeModeStatus
+
+    init(_ status: SafeModeStatus) {
+        self.status = status
     }
 }

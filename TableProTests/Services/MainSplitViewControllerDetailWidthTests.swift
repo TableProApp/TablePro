@@ -34,13 +34,13 @@ struct SplitPaneHoldingPriorityTests {
 struct MainSplitViewControllerDetailWidthTests {
     @Test("Nil tab type falls back to the default detail minimum")
     func nilTabTypeUsesDefault() {
-        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: nil)
+        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: nil, contentMode: .browse)
         #expect(resolved == MainSplitViewController.defaultDetailMinThickness)
     }
 
     @Test("Users & Roles declares the width its panes actually need")
     func usersRolesDeclaresItsOwnMinimum() {
-        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: .usersRoles)
+        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: .usersRoles, contentMode: .browse)
         #expect(resolved == UsersRolesLayoutMetrics.tabMinimumWidth)
         #expect(resolved == 560)
     }
@@ -50,9 +50,21 @@ struct MainSplitViewControllerDetailWidthTests {
         arguments: [TabType.query, .table, .createTable, .erDiagram, .serverDashboard]
     )
     func otherTabTypesUseDefault(tabType: TabType) {
-        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: tabType)
+        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: tabType, contentMode: .browse)
         #expect(resolved == MainSplitViewController.defaultDetailMinThickness)
         #expect(resolved == 400)
+    }
+
+    /// A tab's minimum describes the tab's own content, and in Agent mode the conversation fills the
+    /// detail column instead. A Users & Roles tab left selected behind it set the conversation's
+    /// floor to the privilege editor's 560pt.
+    @Test(
+        "Agent mode keeps the default detail minimum, whatever tab is behind the conversation",
+        arguments: [nil, TabType.usersRoles, .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource]
+    )
+    func agentModeUsesTheDefault(tabType: TabType?) {
+        let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: tabType, contentMode: .agent)
+        #expect(resolved == MainSplitViewController.defaultDetailMinThickness)
     }
 
     @Test("Users & Roles fits its privilege editor once the principal list collapses")
@@ -89,7 +101,7 @@ struct MainSplitViewControllerDetailWidthTests {
     @Test("A Users & Roles tab widens the window minimum instead of pinning the inspector")
     func usersRolesWidensWindowMinimum() {
         let width = MainSplitViewController.resolveWindowMinWidth(
-            detailMinimum: MainSplitViewController.resolveDetailMinimumThickness(for: .usersRoles),
+            detailMinimum: MainSplitViewController.resolveDetailMinimumThickness(for: .usersRoles, contentMode: .browse),
             sidebarVisible: true,
             inspectorVisible: true,
             sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: 0),

@@ -93,29 +93,32 @@ internal class StatefulMenuToolbarItem: NSMenuToolbarItem {
 /// tracks the level through the validation pass `MainWindowToolbar.observeItemState` triggers.
 @MainActor
 internal final class SafeModeToolbarItem: StatefulMenuToolbarItem {
-    internal var levelProvider: (@MainActor () -> SafeModeLevel)? {
-        didSet { applyLevel() }
+    /// The level and the floor under it, read on the same validation pass as the enablement, which
+    /// is also the one pass measured to keep reaching an item while it is hidden. A floor that
+    /// comes and goes without moving the level, Agent mode over a connection the user already set
+    /// stricter than Alert, still changes the tooltip.
+    internal var statusProvider: (@MainActor () -> SafeModeStatus)? {
+        didSet { applyStatus() }
     }
 
     private var symbolSource = ToolbarSymbolSource()
-    private var appliedLevel: SafeModeLevel?
+    private var appliedStatus: SafeModeStatus?
 
     override internal func validate() {
         super.validate()
-        applyLevel()
+        applyStatus()
     }
 
-    /// The tooltip carries the level's name because the glyph alone cannot: `lock` and
-    /// `lock.open` differ by a few pixels, and VoiceOver reads no image at all.
-    private func applyLevel() {
-        guard let level = levelProvider?() else { return }
+    private func applyStatus() {
+        guard let status = statusProvider?() else { return }
+        let level = status.level
         symbolSource.provider = { level.iconName }
         symbolSource.accessibilityDescription = level.displayName
         if let pending = symbolSource.pendingImage() {
             image = pending
         }
-        guard level != appliedLevel else { return }
-        appliedLevel = level
-        toolTip = String(format: String(localized: "Safe Mode: %@"), level.displayName)
+        guard status != appliedStatus else { return }
+        appliedStatus = status
+        toolTip = status.toolTip
     }
 }

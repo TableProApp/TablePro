@@ -65,6 +65,13 @@ internal final class ConnectionWorkspace {
     /// at a time by swapping which of these is the split items' child.
     internal let panes = WorkspacePanes()
 
+    /// Where this connection's agent sessions live. The app has one registry and every workspace it
+    /// builds names it; the seam is here, beside the panes that draw the sessions, so a workspace
+    /// handed a registry of its own renders and starts sessions in that one and in nothing else.
+    /// The trailing pane state the window builds for it takes the same registry, which is what
+    /// keeps the assistant and Agent mode on one set of sessions.
+    internal let agentSessions: AgentSessionRegistry
+
     /// The containers this connection has open, one connections-strip entry each.
     ///
     /// A container is open from the moment the user browses to it until they close its entry, which
@@ -105,7 +112,8 @@ internal final class ConnectionWorkspace {
         session: ConnectionSession?,
         sessionState: SessionStateFactory.SessionState?,
         trailingPaneState: TrailingPaneState?,
-        phase: ConnectionWindowPhase
+        phase: ConnectionWindowPhase,
+        agentSessions: AgentSessionRegistry = .shared
     ) {
         self.connectionId = connectionId
         self.payload = payload
@@ -115,6 +123,7 @@ internal final class ConnectionWorkspace {
         self.sessionState = sessionState
         self.trailingPaneState = trailingPaneState
         self.phase = phase
+        self.agentSessions = agentSessions
         self.undoManager = UndoManager()
         observeBrowsedContainer()
         recordBrowsedContainer()
@@ -241,6 +250,19 @@ internal final class ConnectionWorkspace {
         )
     }
 
+    /// Which tree the detail column draws, which is the mode's own except over a connection that
+    /// cannot be reached. `ConnectionWindowPaneResolver.detailMode` says why.
+    internal var detailMode: ConnectionWorkspaceContentMode {
+        ConnectionWindowPaneResolver.detailMode(for: resolvedPane, contentMode: resolvedContentMode)
+    }
+
+    /// The session the agent panes draw, and nil whenever the connection is browsing: nothing on
+    /// screen shows a session then, so nothing may be named or rebuilt after one.
+    internal var displayedAgentSession: AgentSession? {
+        guard resolvedContentMode == .agent else { return nil }
+        return agentSessions.currentSession(for: connectionId)
+    }
+
     /// Everything the panes are built from, compared against `panes.renderedKey` to decide whether
     /// they have to be built at all.
     internal var paneRenderKey: WorkspacePaneRenderKey {
@@ -249,9 +271,7 @@ internal final class ConnectionWorkspace {
             connection: connection,
             sessionRevision: sessionRevision,
             contentMode: resolvedContentMode,
-            agentSessionId: resolvedContentMode == .agent
-                ? AgentSessionRegistry.shared.displayedSessionId(for: connectionId)
-                : nil
+            agentSessionId: displayedAgentSession?.id
         )
     }
 
@@ -330,8 +350,9 @@ internal final class ConnectionWorkspace {
         /// loop or a card waiting for an answer would otherwise keep running with nothing on screen.
         /// Deferred so this workspace has already left the window's registry when the check runs.
         let connectionId = self.connectionId
+        let agentSessions = self.agentSessions
         Task { @MainActor in
-            AgentSessionRegistry.shared.stopSessionsIfUnhosted(for: connectionId)
+            agentSessions.stopSessionsIfUnhosted(for: connectionId)
         }
     }
 }

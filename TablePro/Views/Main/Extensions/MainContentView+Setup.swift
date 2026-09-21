@@ -222,10 +222,18 @@ extension MainContentView {
     }
 
     /// Update window title, proxy icon, and dirty dot based on the selected tab.
+    ///
+    /// This tree is the browse content, so it names the window as the browse content: `.content`
+    /// and `.browse` are what it is, not guesses. Whether it is the tree on screen is the window's
+    /// question, and its bindings drop a name or a file written from behind an agent conversation.
+    /// The edited dot is still written directly, because the unsaved work it reports is still in
+    /// the window while the conversation is drawn over it.
     func updateWindowTitleAndFileState() {
         let selectedTab = tabManager.selectedTab
         let resolved = WindowTitleResolver.resolveWindow(
             pane: .content,
+            contentMode: .browse,
+            agentSessionTitle: nil,
             connection: connection,
             tab: selectedTab,
             hasTabs: !tabManager.tabs.isEmpty,
@@ -233,11 +241,11 @@ extension MainContentView {
         )
         windowTitle = resolved.title
         windowSubtitle = resolved.subtitle
+        windowRepresentedURL = resolved.representedURL
         coordinator.splitViewController?.updateDetailMinimumThickness(
             for: selectedTab?.tabType,
             connectionId: connection.id
         )
-        viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
     }
 
@@ -262,7 +270,7 @@ extension MainContentView {
         coordinator.isKeyWindow = window.isKeyWindow
 
         // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
-        window.representedURL = tabManager.selectedTab?.content.sourceFileURL
+        windowRepresentedURL = tabManager.selectedTab?.content.sourceFileURL
         window.isDocumentEdited = tabManager.selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
 
         commandActions?.window = window

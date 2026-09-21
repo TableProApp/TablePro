@@ -53,8 +53,16 @@ internal enum AgentModeSafeModeFloor {
 
     /// The level this connection should run at right now.
     internal static func level(for connection: DatabaseConnection) -> SafeModeLevel {
-        effectiveFloor(for: connection)?.raising(connection.preferredSafeModeLevel)
-            ?? connection.preferredSafeModeLevel
+        status(for: connection).level
+    }
+
+    /// The level in force and the floor under it, which is what a choice of level is judged against.
+    internal static func status(for connection: DatabaseConnection) -> SafeModeStatus {
+        let floor = effectiveFloor(for: connection)
+        return SafeModeStatus(
+            level: floor?.raising(connection.preferredSafeModeLevel) ?? connection.preferredSafeModeLevel,
+            floor: floor
+        )
     }
 
     /// Recomputes the live session's level after a mode change.

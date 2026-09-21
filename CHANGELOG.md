@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fields** / **JSON** and the JSON view's options moved into the Inspector's header menu.
 - Pencil for the Inspector's unsaved-edit marker and a spinner for the AI chat's typing indicator.
 - Middle-dot separators dropped from the CSV inspector's status bar.
+- Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
 
 ### Removed
 
@@ -69,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toolbar **Assistant** button dim over an Assistant left open when the connection dropped.
 - **Auto-show inspector on row select** replacing the Assistant you left the pane on.
 - Current conversation in the Assistant's history not announced by VoiceOver.
+- Lines an AI walkthrough step highlighted staying highlighted for good when switched away from before they cleared.
+- Titlebar file icon left over from a query tab the window was no longer showing.
 - No tooltip on the Inspector's **Choose Type** and **Choose Value** buttons.
 - A column resized moments before its table was dropped saving the layout back over the clear.
 - A connection left pointing at a database that was dropped.

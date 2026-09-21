@@ -177,20 +177,37 @@ struct TrailingPaneHeaderModelTests {
     }
 }
 
-/// The result column with no agent session behind it. A connection that is down is the reason no
-/// session can start, so it is named as such rather than reported as an empty session list.
+/// The result column's answer to what it can draw. A connection that is down is the reason no
+/// session can run, so it is named as such rather than reported as an empty session list, and a
+/// session that exists is drawn only over a connection that is up.
 @Suite("Trailing pane unavailable reason")
 struct TrailingPaneUnavailableReasonTests {
     @Test("A live connection with no session says no session is open")
     func liveConnectionHasNoSession() {
-        #expect(TrailingPaneUnavailableView.Reason.agentResult(pane: .content) == .noSession)
+        #expect(TrailingPaneUnavailableView.Reason.agentResult(pane: .content, hasSession: false) == .noSession)
     }
 
-    @Test("A connection that is not up says so")
-    func downConnectionIsNamed() {
-        let panes: [ConnectionWindowPane] = [.connecting, .unavailable(.notConnected), .empty]
+    @Test("A live connection with a session draws it")
+    func liveConnectionDrawsItsSession() {
+        #expect(TrailingPaneUnavailableView.Reason.agentResult(pane: .content, hasSession: true) == nil)
+    }
+
+    /// The column used to keep a session's SQL and Results over a dropped connection, statements and
+    /// rows that could no longer run or be refreshed, beside a detail column already showing the
+    /// unavailable screen.
+    @Test("A connection that is not up says so, with or without a session", arguments: [false, true])
+    func downConnectionIsNamed(hasSession: Bool) {
+        let panes: [ConnectionWindowPane] = [
+            .connecting,
+            .unavailable(.notConnected),
+            .unavailable(.disconnected(nil)),
+            .empty,
+        ]
         for pane in panes {
-            #expect(TrailingPaneUnavailableView.Reason.agentResult(pane: pane) == .notConnected, "\(pane)")
+            #expect(
+                TrailingPaneUnavailableView.Reason.agentResult(pane: pane, hasSession: hasSession) == .notConnected,
+                "\(pane)"
+            )
         }
     }
 }

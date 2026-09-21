@@ -25,11 +25,16 @@ internal struct TrailingPaneUnavailableView: View {
         case notConnected
         case noSession
 
-        /// Why the result column has no session to draw. A connection that is not up is named as
-        /// the reason, because no session can start until it is; only a live connection with nothing
-        /// started is an empty session list.
-        internal static func agentResult(pane: ConnectionWindowPane) -> Reason {
-            pane.hasContent ? .noSession : .notConnected
+        /// Why the result column cannot draw a session, or nil when it can.
+        ///
+        /// The connection is asked first, the way the inspector and the assistant ask it. A dropped
+        /// connection with a session used to keep its SQL and Results in the column, statements
+        /// and rows that could no longer run or be refreshed, beside a detail column that had
+        /// already moved to the unavailable screen. Only a live connection with nothing started is
+        /// an empty session list.
+        internal static func agentResult(pane: ConnectionWindowPane, hasSession: Bool) -> Reason? {
+            guard pane.hasContent else { return .notConnected }
+            return hasSession ? nil : .noSession
         }
     }
 

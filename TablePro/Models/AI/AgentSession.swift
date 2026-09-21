@@ -35,6 +35,18 @@ internal final class AgentSession: ObservableObject, Identifiable {
     /// needs. Cleared before it is dispatched so three flush sites still send once.
     internal var pendingPrompt: String?
 
+    /// Hands the pending prompt over once the connection is up, and clears it as it goes.
+    ///
+    /// The conversation asks from a `task` keyed on the session, the connect and the prompt, and a
+    /// reparent re-runs every such task on the same view: a mode toggle and a connection switch are
+    /// both one. Taking rather than reading is what keeps each of those re-runs from sending the
+    /// prompt a second time.
+    internal func takePendingPrompt(isConnecting: Bool) -> String? {
+        guard !isConnecting, let prompt = pendingPrompt else { return nil }
+        pendingPrompt = nil
+        return prompt
+    }
+
     private var cancellables: Set<AnyCancellable> = []
 
     internal init(

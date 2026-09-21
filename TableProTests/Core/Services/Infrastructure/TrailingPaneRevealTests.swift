@@ -149,9 +149,11 @@ struct TrailingPaneRevealTests {
                 "The browse content mounted, so this is not the window the welcome route opens"
             )
             /// Stands in for the composer the conversation draws once a session has a provider to
-            /// answer it, which a unit test has no way to configure.
+            /// answer it, which a unit test has no way to configure. The conversation is a pane of
+            /// its own, parented in place of the browse content, so that is where it goes.
             let composer = ChatComposerNSTextView.make()
-            harness.selected.panes.detail.view.addSubview(composer)
+            try #require(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
+            harness.selected.panes.agentConversation.view.addSubview(composer)
 
             let item = Harness.menuItem(#selector(MainSplitViewController.focusAssistant(_:)))
             #expect(harness.controller.validateMenuItem(item))

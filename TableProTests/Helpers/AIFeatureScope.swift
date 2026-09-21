@@ -23,4 +23,16 @@ enum AIFeatureScope {
         defer { AppSettingsManager.shared.ai = previous }
         return try body()
     }
+
+    /// The same scope for a case that has to suspend, which is how it lets another main-actor task
+    /// run: a synchronous spin of the run loop from inside the case does not.
+    static func enabled<T>(_ body: () async throws -> T) async rethrows -> T {
+        let previous = AppSettingsManager.shared.ai
+        guard !previous.enabled else { return try await body() }
+        var enabled = previous
+        enabled.enabled = true
+        AppSettingsManager.shared.ai = enabled
+        defer { AppSettingsManager.shared.ai = previous }
+        return try await body()
+    }
 }

@@ -249,4 +249,118 @@ struct SafeModeFloorTests {
             isAgentModeActive: false
         ) == nil)
     }
+
+    // MARK: - What the Safe Mode list offers and takes
+
+    private static let agentFloor = SafeModeFloor(level: .alert, reason: .agentMode)
+
+    /// The defect this closes: a connection set to Silent is held at Alert in Agent mode, and picking
+    /// Silent from the list was stored as the user's level while the session stayed at Alert. The
+    /// pick changed nothing on screen and came back as their level once the mode ended.
+    @Test("Under Agent mode's floor, Silent is neither offered nor taken")
+    func agentFloorRefusesALevelBelowIt() {
+        let status = SafeModeStatus(level: .alert, floor: Self.agentFloor)
+
+        #expect(!status.offeredLevels.contains(.silent))
+        #expect(!status.offers(.silent))
+        #expect(!status.accepts(.silent))
+    }
+
+    /// Under a floor the level in force can be the floor's rather than the user's. Writing it would
+    /// replace the level they chose, with nothing on screen moving.
+    @Test("The level in force is offered, and choosing it again is not taken")
+    func levelInForceIsNotTakenAgain() {
+        let status = SafeModeStatus(level: .alert, floor: Self.agentFloor)
+
+        #expect(status.offers(.alert))
+        #expect(!status.accepts(.alert))
+    }
+
+    @Test("A stricter level than the one in force is taken under Agent mode's floor")
+    func stricterLevelIsTaken() {
+        let status = SafeModeStatus(level: .alert, floor: Self.agentFloor)
+
+        for level in [SafeModeLevel.alertFull, .safeMode, .safeModeFull, .readOnly] {
+            #expect(status.accepts(level), "\(level)")
+        }
+    }
+
+    /// The rule the list and the write share: whatever is accepted is a level the floor lets stand,
+    /// so storing it moves the level on screen to exactly what was picked.
+    @Test("Every choice that is taken moves the level in force to what was picked")
+    func everyTakenChoiceMovesTheLevel() {
+        let floors: [SafeModeFloor?] = [
+            nil,
+            Self.agentFloor,
+            SafeModeFloor(level: .safeMode, reason: .managedPolicy),
+            SafeModeFloor(level: .readOnly, reason: .readOnlyEngine),
+        ]
+        for floor in floors {
+            for preferred in SafeModeLevel.allCases {
+                let inForce = floor?.raising(preferred) ?? preferred
+                let status = SafeModeStatus(level: inForce, floor: floor)
+                for candidate in SafeModeLevel.allCases where status.accepts(candidate) {
+                    let after = floor?.raising(candidate) ?? candidate
+                    #expect(after == candidate, "\(String(describing: floor)) \(preferred) -> \(candidate)")
+                    #expect(after != inForce, "\(String(describing: floor)) \(preferred) -> \(candidate)")
+                }
+            }
+        }
+    }
+
+    @Test("With no floor every level is offered")
+    func noFloorOffersEveryLevel() {
+        let status = SafeModeStatus(level: .silent, floor: nil)
+
+        #expect(status.offeredLevels == SafeModeLevel.allCases)
+        #expect(status.accepts(.readOnly))
+        #expect(!status.accepts(.silent))
+    }
+
+    @Test("The offered levels are the ones the floor allows", arguments: [
+        SafeModeFloor(level: .alert, reason: .agentMode),
+        SafeModeFloor(level: .alertFull, reason: .managedPolicy),
+        SafeModeFloor(level: .readOnly, reason: .remoteDatabaseFile),
+    ])
+    func offeredLevelsFollowTheFloor(floor: SafeModeFloor) {
+        let status = SafeModeStatus(level: floor.level, floor: floor)
+        #expect(status.offeredLevels == SafeModeFloor.levels(allowedBy: floor))
+    }
+
+    @Test("The toolbar tooltip names the level, and the floor's reason when one holds it")
+    func toolTipCarriesTheReason() {
+        let free = SafeModeStatus(level: .alertFull, floor: nil)
+        let held = SafeModeStatus(level: .alert, floor: Self.agentFloor)
+
+        #expect(free.toolTip == String(format: String(localized: "Safe Mode: %@"), SafeModeLevel.alertFull.displayName))
+        #expect(held.toolTip.hasPrefix(String(format: String(localized: "Safe Mode: %@"), SafeModeLevel.alert.displayName)))
+        #expect(held.toolTip.hasSuffix(Self.agentFloor.explanation))
+    }
+
+    /// Nothing is in Agent mode unless a window shows it so, which no window in a unit test does, so
+    /// the status is the connection's own: its floor, and its own level raised to it.
+    @Test("A connection no window shows in Agent mode is judged against its own floor")
+    func statusWithoutAgentModeIsTheConnectionsOwn() {
+        let engine = DatabaseConnection(name: "R2", type: .cloudflareR2SQL, safeModeLevel: .alert)
+        let plain = DatabaseConnection(name: "PG", type: .postgresql, safeModeLevel: .alert)
+
+        #expect(AgentModeSafeModeFloor.status(for: engine) == SafeModeStatus(
+            level: .readOnly,
+            floor: SafeModeFloor(level: .readOnly, reason: .readOnlyEngine)
+        ))
+        #expect(AgentModeSafeModeFloor.status(for: plain) == SafeModeStatus(level: .alert, floor: nil))
+    }
+
+    @Test("Picking the level already in force on an ordinary connection writes nothing")
+    func chooseCurrentLevelOnOrdinaryConnectionWritesNothing() {
+        let connection = DatabaseConnection(name: "PG", type: .postgresql, safeModeLevel: .alert)
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let versionBefore = DatabaseManager.shared.connectionStatusVersions[connection.id]
+
+        DatabaseManager.shared.chooseSafeModeLevel(.alert, for: connection.id)
+
+        #expect(DatabaseManager.shared.connectionStatusVersions[connection.id] == versionBefore)
+        #expect(DatabaseManager.shared.session(for: connection.id)?.connection.preferredSafeModeLevel == .alert)
+    }
 }

@@ -58,9 +58,14 @@ struct AIChatWalkthroughBlockView: View {
             .padding(10)
         }
         .onAppear { autoExpandFirstStep(walkthrough.envelope.steps) }
+        /// The highlight goes with the task that would have cleared it. A reparent, which a mode
+        /// toggle and a connection switch both are, fires this and then `onAppear` on the same
+        /// view with its state intact, and nothing re-arms the timer there, so cancelling it alone
+        /// left the anchored lines highlighted for good.
         .onDisappear {
             highlightClearTask?.cancel()
             highlightClearTask = nil
+            activeAnchor = nil
         }
     }
 

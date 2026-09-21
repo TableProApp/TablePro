@@ -73,7 +73,7 @@ internal extension MainSplitViewController {
     func focusAssistantPane() -> Bool {
         switch TrailingPaneCommandResolver.assistantFocus(trailingPaneCommandContext) {
         case .conversation?:
-            return focusComposer(in: workspaces.selected?.panes.detail.view)
+            return focusComposer(in: shownConversation)
         case .trailingPane?:
             showAssistant()
             return focusComposer(in: workspaces.selected?.panes.assistant.view)
@@ -87,7 +87,7 @@ internal extension MainSplitViewController {
     var canFocusAssistant: Bool {
         switch TrailingPaneCommandResolver.assistantFocus(trailingPaneCommandContext) {
         case .conversation?:
-            return workspaces.selected?.panes.detail.view.firstDescendant(of: ChatComposerNSTextView.self) != nil
+            return shownConversation?.firstDescendant(of: ChatComposerNSTextView.self) != nil
         case .trailingPane?:
             return true
         case nil:
@@ -95,8 +95,22 @@ internal extension MainSplitViewController {
         }
     }
 
+    /// Asked only while the conversation is the tree in the detail column. A connection that drops
+    /// in Agent mode hands the column to the unavailable screen and keeps the conversation built
+    /// behind it, detached, and a search of the pane alone still found its composer there: the
+    /// command stayed enabled, and `makeFirstResponder` on a view in no window reported success
+    /// while it moved focus off Retry and onto the window itself.
+    private var shownConversation: NSView? {
+        guard let selected = workspaces.selected, selected.detailMode == .agent else { return nil }
+        return selected.panes.agentConversation.view
+    }
+
+    /// Asked only of browse content the window is showing. Agent mode keeps the editor mounted
+    /// behind the conversation, detached, and a search of the tree alone would find it there and
+    /// offer to focus a view that is in no window.
     private var mountedQueryEditor: TextView? {
-        workspaces.selected?.panes.detail.view.firstDescendant(of: TextView.self)
+        guard let selected = workspaces.selected, selected.detailMode == .browse else { return nil }
+        return selected.panes.detail.view.firstDescendant(of: TextView.self)
     }
 
     /// Revealing a pane parents its views on the next layout pass, so the search has to run after

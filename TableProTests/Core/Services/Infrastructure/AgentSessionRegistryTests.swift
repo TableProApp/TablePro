@@ -49,6 +49,23 @@ struct AgentSessionRegistryTests {
         #expect(session.viewModel.sessionId == session.id)
     }
 
+    /// The conversation flushes a held prompt from a `task`, and a reparent re-runs that task on the
+    /// same view: a mode toggle and a connection switch are both one. Taking the prompt rather than
+    /// reading it is what keeps each re-run from sending it again.
+    @Test("A held prompt is handed over once, and only once the connection is up")
+    func heldPromptIsTakenOnce() throws {
+        let registry = AgentSessionRegistry(store: makeStore())
+        let session = try #require(registry.resolveSession(for: UUID(), startingIfNeeded: true))
+        session.pendingPrompt = "Which orders shipped late?"
+
+        #expect(session.takePendingPrompt(isConnecting: true) == nil)
+        #expect(session.pendingPrompt == "Which orders shipped late?")
+
+        #expect(session.takePendingPrompt(isConnecting: false) == "Which orders shipped late?")
+        #expect(session.takePendingPrompt(isConnecting: false) == nil)
+        #expect(session.pendingPrompt == nil)
+    }
+
     /// Stopping keeps the transcript. Window close, disconnect and a lost session all reach it, and
     /// none of them is the user throwing a conversation away.
     @Test("Stopping a session keeps it and its transcript")

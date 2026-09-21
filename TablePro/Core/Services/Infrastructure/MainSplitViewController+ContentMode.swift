@@ -11,6 +11,12 @@ import AppKit
 /// own: the sidebar, detail and trailing items already carry `sizingOptions = []`, the detail item's
 /// `holdingPriority` and the trailing item's explicit macOS 13 thicknesses, and a nested split view
 /// inside the detail pane would re-raise all three of the split-view bugs those exist for.
+///
+/// What it swaps is which of the workspace's hosting controllers each item parents, never what one
+/// of them draws. That is what lets a toggle keep the browse content's grid scroll, cell selection,
+/// find panel, undo stack and unsaved Create Table definition, and it is why a reparented view sees
+/// `onDisappear` then `onAppear` on the same identity: everything a view releases on the first has
+/// to come back on the second.
 internal extension MainSplitViewController {
     /// Whether a connection is on screen, whether or not it has finished connecting.
     var hasSelectedWorkspace: Bool {
@@ -38,7 +44,7 @@ internal extension MainSplitViewController {
         /// Agent mode opens a session so the window has something to draw. Browsing does not stop
         /// one: leaving the mode is not the user ending a conversation, and coming back continues it.
         if resolved == .agent {
-            AgentSessionRegistry.shared.resolveSession(for: connectionId, startingIfNeeded: true)
+            workspace.agentSessions.resolveSession(for: connectionId, startingIfNeeded: true)
         }
 
         applyColumnVisibility(for: connectionId, mode: resolved)
@@ -89,32 +95,40 @@ internal extension MainSplitViewController {
         setContentMode(contentMode.toggled)
     }
 
-    /// Repaints one workspace for its current mode, selected or not.
+    /// Repaints one workspace for its current mode, selected or not, and parents it only if it is
+    /// the one on screen.
     ///
     /// A background workspace owns panes that outlive every switch, so one built for a mode it has
     /// since left stays wrong until something builds it again. That is the same reason
-    /// `transition(to:for:)` ends in a sync rather than repainting only what is on screen.
+    /// `transition(to:for:)` ends in a sync rather than repainting only what is on screen. Parenting
+    /// is the other half, and a background workspace gets it from `applySelectedWorkspace` when it
+    /// is selected.
+    ///
+    /// The tab strip, the detail column's minimum and the title each describe the tree in the detail
+    /// column, so all three follow the swap rather than whichever tab is selected behind it.
     func applyContentMode(for workspace: ConnectionWorkspace) {
         syncPanes(of: workspace)
         guard workspaces.selectedConnectionId == workspace.connectionId else { return }
+        showSelectedContentPanes()
         showSelectedTrailingPane()
+        applyDetailMinimumThicknessForSelection()
         applyPaneChrome()
         applyWindowTitle()
         toolbarOwner?.refreshContext()
     }
 
     func startAgentSession(for connectionId: UUID) {
-        AgentSessionRegistry.shared.startSession(for: connectionId)
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
+        workspace.agentSessions.startSession(for: connectionId)
         applyContentMode(for: workspace)
     }
 
     func selectAgentSession(_ sessionId: UUID, for connectionId: UUID) {
-        guard let session = AgentSessionRegistry.shared.session(id: sessionId) else { return }
+        guard let workspace = workspaces.workspace(for: connectionId),
+              let session = workspace.agentSessions.session(id: sessionId) else { return }
         session.resume()
-        AgentSessionRegistry.shared.setDisplayedSession(sessionId, for: connectionId)
-        AgentSessionRegistry.shared.markActive(id: sessionId)
-        guard let workspace = workspaces.workspace(for: connectionId) else { return }
+        workspace.agentSessions.setDisplayedSession(sessionId, for: connectionId)
+        workspace.agentSessions.markActive(id: sessionId)
         applyContentMode(for: workspace)
     }
 }

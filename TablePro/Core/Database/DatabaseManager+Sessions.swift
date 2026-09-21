@@ -634,13 +634,14 @@ extension DatabaseManager {
 
     /// The user picking a level from the toolbar or the Database menu.
     ///
-    /// A level below the connection's floor is not on offer, and picking the level already in
-    /// force changes nothing: writing it would replace the level the user saved, which is the one
-    /// that comes back once the floor lifts.
+    /// Judged against the floor Agent mode raises as well as the connection's own, which the menu
+    /// offers from. The connection's own floor cannot see the mode, so a weaker level picked in Agent
+    /// mode used to be stored while the session was held at Alert: the pick changed nothing on
+    /// screen and came back as the user's level once the mode ended. `SafeModeStatus.accepts` is
+    /// the rule, and every choice it takes moves the level in force.
     func chooseSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
         guard let connection = activeSessions[connectionId]?.connection,
-              level != connection.safeModeLevel,
-              connection.safeModeFloor?.allows(level) ?? true
+              AgentModeSafeModeFloor.status(for: connection).accepts(level)
         else { return }
         setSafeModeLevel(level, for: connectionId)
     }

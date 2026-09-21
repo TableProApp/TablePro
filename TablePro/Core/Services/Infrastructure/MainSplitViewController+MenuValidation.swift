@@ -600,11 +600,15 @@ extension MainSplitViewController: NSMenuItemValidation {
         return commandActions?.availableResultsViewModes.contains(mode) ?? false
     }
 
+    /// Read through the same status the list is built from, so an entry the floor rules out cannot
+    /// validate as a choice. The connection's own floor is blind to Agent mode, and asking it enabled
+    /// a weaker level the write would then hold at Alert.
     private func canChooseSafeModeLevel(_ menuItem: NSMenuItem) -> Bool {
         guard isConnected,
               let raw = menuItem.representedObject as? String,
-              let level = SafeModeLevel(rawValue: raw) else { return false }
-        return commandActions?.coordinator?.connection.safeModeFloor?.allows(level) ?? true
+              let level = SafeModeLevel(rawValue: raw),
+              let status = safeModeStatus else { return false }
+        return status.offers(level)
     }
 
     private func isCurrentResultView(_ menuItem: NSMenuItem) -> Bool {

@@ -146,6 +146,11 @@ final class MainContentCoordinator: ObservableObject {
         services.databaseManager.browseDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
+    /// The level the toolbar shows, and the floor under it with Agent mode's included, which is what
+    /// the Safe Mode list offers from and what the toolbar's tooltip explains.
+    var safeModeStatus: SafeModeStatus {
+        SafeModeStatus(level: safeModeLevel, floor: AgentModeSafeModeFloor.effectiveFloor(for: connection))
+    }
     func setSafeModeLevel(_ level: SafeModeLevel) {
         services.databaseManager.chooseSafeModeLevel(level, for: connectionId)
         toolbarState.safeModeLevel = services.databaseManager.session(for: connectionId)?.safeModeLevel ?? level
