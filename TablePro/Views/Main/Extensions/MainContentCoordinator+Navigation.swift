@@ -737,6 +737,7 @@ extension MainContentCoordinator {
 
         let connId = connectionId
         let database = String(dbIndex)
+        let tabId = tabManager.selectedTabId
         redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -744,14 +745,18 @@ extension MainContentCoordinator {
             } catch {
                 guard !Task.isCancelled else { return }
                 navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.publicLogShape, privacy: .public)")
-                if let tabId = tabManager.selectedTab?.id {
-                    declineTableLoad(for: tabId)
+                if let tabId {
+                    reportRedisSelectionFailure(error, onTab: tabId)
                 }
                 return
             }
             guard !Task.isCancelled else { return }
             toolbarState.currentDatabase = database
-            executeTableTabQueryDirectly(viewport: .firstRow)
+            if let tabId, tabManager.selectedTabId != tabId {
+                declineTableLoad(for: tabId)
+            } else {
+                executeTableTabQueryDirectly(viewport: .firstRow)
+            }
 
             let separator = connection.additionalFields["redisSeparator"] ?? ":"
             if sidebarViewModel?.redisKeyTreeViewModel == nil {

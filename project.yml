@@ -637,8 +637,10 @@ targets:
       - Plugins/RedisDriverPlugin/RedisConnectProbe.swift
       - Plugins/RedisDriverPlugin/RedisConnectionMode.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      - Plugins/RedisDriverPlugin/RedisDatabaseListing.swift
       - Plugins/RedisDriverPlugin/RedisKeySlot.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
+      - Plugins/RedisDriverPlugin/RedisMetadataRead.swift
       - Plugins/RedisDriverPlugin/RedisMultiShardPlanner.swift
       - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
       - Plugins/RedisDriverPlugin/RedisQueuedCommandPolicy.swift

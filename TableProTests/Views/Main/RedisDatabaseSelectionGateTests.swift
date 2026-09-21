@@ -188,6 +188,81 @@ struct RedisDatabaseSelectionGateTests {
         #expect(original.switchedDatabases.isEmpty)
     }
 
+    @Test("A database the server refuses is reported on the tab the click retargeted")
+    func refusedSelectionIsReportedOnTheTab() async throws {
+        let (connection, recorder) = makeSession()
+        defer { cleanUp(connection.id) }
+        recorder.refuseSelections(with: RefusedSelection())
+        let coordinator = makeCoordinator(for: connection)
+        defer { coordinator.teardown() }
+
+        coordinator.openTableTab("db3")
+        await coordinator.redisDatabaseSwitchTask?.value
+
+        let tab = try #require(coordinator.tabManager.selectedTab)
+        #expect(tab.execution.errorMessage == RefusedSelection.message)
+        #expect(tab.execution.errorQuery == nil)
+        #expect(tab.execution.lastExecutedAt == nil)
+        #expect(tab.pagination.isLoading == false)
+        #expect(recorder.executedQueries.isEmpty)
+        #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "0")
+    }
+
+    /// Changing tab does not cancel the selection, so the answer has to find the tab it was for
+    /// rather than whichever one is in front when the server replies.
+    @Test("A refusal that arrives after a tab change lands on the retargeted tab")
+    func refusalFindsItsOwnTab() async throws {
+        let (connection, recorder) = makeSession()
+        defer { cleanUp(connection.id) }
+        recorder.refuseSelections(with: RefusedSelection())
+        let coordinator = makeCoordinator(for: connection)
+        defer { coordinator.teardown() }
+        let release = Latch()
+        let holder = await holdDriver(connection.id, until: release)
+
+        coordinator.openTableTab("db3")
+        await waitForQueuedCallers(1, on: connection.id)
+        let retargetedTabId = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.tabManager.addTab(initialQuery: "PING")
+        let frontTabId = try #require(coordinator.tabManager.selectedTabId)
+        #expect(frontTabId != retargetedTabId)
+
+        release.open()
+        try await holder.value
+        await coordinator.redisDatabaseSwitchTask?.value
+
+        let retargeted = try #require(coordinator.tabManager.tabs.first { $0.id == retargetedTabId })
+        let front = try #require(coordinator.tabManager.tabs.first { $0.id == frontTabId })
+        #expect(retargeted.execution.errorMessage == RefusedSelection.message)
+        #expect(front.execution.errorMessage == nil)
+    }
+
+    /// The session moved, but the query belongs to the retargeted tab, which loads when it is
+    /// shown again. Running it on the tab in front would put another tab's query on this database.
+    @Test("A selection that lands after a tab change does not run the front tab's query")
+    func landedSelectionLeavesTheFrontTabAlone() async throws {
+        let (connection, recorder) = makeSession()
+        defer { cleanUp(connection.id) }
+        let coordinator = makeCoordinator(for: connection)
+        defer { coordinator.teardown() }
+        let release = Latch()
+        let holder = await holdDriver(connection.id, until: release)
+
+        coordinator.openTableTab("db3")
+        await waitForQueuedCallers(1, on: connection.id)
+        let retargetedTabId = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.tabManager.addTab(initialQuery: "PING")
+
+        release.open()
+        try await holder.value
+        await coordinator.redisDatabaseSwitchTask?.value
+
+        let retargeted = try #require(coordinator.tabManager.tabs.first { $0.id == retargetedTabId })
+        #expect(recorder.switchedDatabases == ["3"])
+        #expect(recorder.executedQueries.isEmpty)
+        #expect(retargeted.pagination.isLoading == false)
+    }
+
     @Test("Loading the key tree waits for the driver")
     func keyTreeLoadWaitsForTheDriver() async throws {
         let (connection, recorder) = makeSession()
@@ -212,12 +287,23 @@ struct RedisDatabaseSelectionGateTests {
     }
 }
 
+private struct RefusedSelection: LocalizedError {
+    static let message = "ERR DB index is out of range"
+
+    var errorDescription: String? { Self.message }
+}
+
 /// Records the calls that move or read the connection. The ping answers, because Redis declares a
 /// health monitor and a check before use would otherwise fail the session.
 private final class RecordingRedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var switched: [String] = []
     private var executed: [String] = []
+    private var selectionRefusal: Error?
+
+    func refuseSelections(with error: Error) {
+        lock.withLock { selectionRefusal = error }
+    }
 
     var switchedDatabases: [String] {
         lock.withLock { switched }
@@ -230,6 +316,8 @@ private final class RecordingRedisPluginDriver: PluginDatabaseDriver, @unchecked
     func ping() async throws {}
 
     func switchDatabase(to database: String) async throws {
+        let refusal = lock.withLock { selectionRefusal }
+        if let refusal { throw refusal }
         lock.withLock { switched.append(database) }
     }
 

@@ -225,6 +225,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
+- Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)
+- Empty tab after clicking a Redis database the server refuses to switch to.
+- No wrong-mode error when a Standalone Redis connection points at a Valkey 8 or later Sentinel or cluster node.
 
 ### Security
 

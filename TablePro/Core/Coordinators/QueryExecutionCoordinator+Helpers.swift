@@ -794,25 +794,10 @@ extension QueryExecutionCoordinator {
         helpersLogger.error(
             "Query failed on tab \(tabId, privacy: .public): \(error.publicLogShape, privacy: .public)"
         )
-        parent.tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.errorMessage = message
+        presentTabFailure(message, announcing: diagnosis, onTab: tabId) { tab in
             tab.execution.errorQuery = sql
             tab.execution.lastExecutedAt = Date()
             tab.execution.executionTime = nil
-            tab.pagination.isLoading = false
-
-            // The banner lives at the top of the results pane, so a collapsed pane hides the only
-            // thing telling the user their query failed. Every success path opens it the same way.
-            if tab.display.isResultsCollapsed {
-                tab.display.isResultsCollapsed = false
-            }
-        }
-        // The toolbar mirrors the selected tab, so a failure on a tab in the background describes
-        // itself on its own tab and leaves the window chrome to whatever is actually on screen.
-        if parent.tabManager.selectedTabId == tabId {
-            parent.toolbarState.isResultsCollapsed = false
-            parent.toolbarState.clearQueryTiming(forTab: tabId)
-            parent.announceQueryError(diagnosis)
         }
 
         recordHistory(
@@ -829,6 +814,37 @@ extension QueryExecutionCoordinator {
                 errorMessage: error.localizedDescription
             )
         )
+    }
+}
+
+extension QueryExecutionCoordinator {
+    /// Shows a failure on the tab it belongs to without recording a statement that never ran, so a
+    /// step that fails before the tab's query, such as the database switch in front of it, leaves
+    /// no history row and nothing for Fix with AI to rewrite.
+    func presentTabFailure(
+        _ message: String,
+        announcing diagnosis: String,
+        onTab tabId: UUID,
+        recordingExecution: (inout QueryTab) -> Void = { _ in }
+    ) {
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            tab.execution.errorMessage = message
+            tab.pagination.isLoading = false
+            recordingExecution(&tab)
+
+            // The banner lives at the top of the results pane, so a collapsed pane hides the only
+            // thing telling the user their query failed. Every success path opens it the same way.
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
+        }
+        // The toolbar mirrors the selected tab, so a failure on a tab in the background describes
+        // itself on its own tab and leaves the window chrome to whatever is actually on screen.
+        if parent.tabManager.selectedTabId == tabId {
+            parent.toolbarState.isResultsCollapsed = false
+            parent.toolbarState.clearQueryTiming(forTab: tabId)
+            parent.announceQueryError(diagnosis)
+        }
     }
 }
 
