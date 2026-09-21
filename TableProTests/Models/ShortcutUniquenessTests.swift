@@ -49,4 +49,38 @@ struct ShortcutUniquenessTests {
             #expect(ShortcutAction.allCases.contains(action))
         }
     }
+
+    /// Fourteen actions ship with nothing bound: the six that always did, and the eight the connection
+    /// window's revamp made rebindable for the first time. Counted rather than listed, because the
+    /// number is the claim: adding a default to one of them is a decision about a combo that is
+    /// already taken, and it has to be made on purpose.
+    @Test("Fourteen actions ship unbound")
+    func unboundActionsAreCounted() {
+        let unbound = ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil }
+        #expect(unbound.count == 14, "Unbound: \(unbound.map(\.rawValue).sorted())")
+        for action in unbound {
+            #expect(KeyboardSettings.default.shortcut(for: action) == nil, "\(action.rawValue)")
+        }
+    }
+
+    /// The eight are new rows in Settings, so each needs a category to be listed under and a name to
+    /// be listed by. Both switches are exhaustive, so the compiler already forces an arm; what this
+    /// holds is that the arm is not an empty string nobody would recognise.
+    @Test("Each newly rebindable command is listed under a category with a name", arguments: [
+        ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
+        .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
+    ])
+    func newlyRebindableCommandsAreListable(action: ShortcutAction) {
+        #expect(!action.displayName.isEmpty)
+        #expect(ShortcutCategory.allCases.contains(action.category))
+    }
+
+    /// It reverses rows the grid is showing, so it belongs in the grid's context the way Add Row and
+    /// Delete do. Left to the `context` switch's `default:` it would be `.global`, and the recorder
+    /// would then call a grid combo free for it.
+    @Test("Restore Previous Values is a data-grid command")
+    func restorePreviousValuesIsAGridCommand() {
+        #expect(ShortcutAction.restorePreviousValues.context == .dataGrid)
+        #expect(ShortcutAction.restorePreviousValues.category == .dataGrid)
+    }
 }

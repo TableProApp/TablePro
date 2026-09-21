@@ -18,6 +18,11 @@ struct ConnectionActionsMenuResolverTests {
     /// never a place for commands that exist nowhere else: a menu nobody can find from the menu bar
     /// is a menu that cannot be searched, rebound or discovered.
     private static let menuBarTitles: Set<String> = [
+        String(localized: "New Session"),
+        String(localized: "Open Session"),
+        String(localized: "Close Session"),
+        String(localized: "Delete Session…"),
+        String(localized: "New Conversation"),
         String(localized: "Add Row"),
         String(localized: "Restore Previous Values…"),
         String(localized: "Back"),

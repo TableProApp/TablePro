@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain for Teradata.
 - **Actions** menu in the connection window's toolbar, with the commands for the tab you are on and every import format.
 - **File > Import > Import Data From**, for choosing the import format from the menu bar.
+- **File > Session**, with the commands for starting, opening, closing and deleting an agent session, and for the assistant's conversations.
+- Eight more commands you can bind a shortcut to in **Settings > Keyboard**, among them the sidebar's two lists and the agent session commands.
 
 ### Changed
 
@@ -64,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Save Changes** and ⌘S dim on a Users & Roles tab with staged changes.
 - A deleted connection's inspector and assistant choice left behind, and inherited by a new connection with its id.
-- Toolbar **Results** button enabled on tabs that have no results pane.
+- **Show Results** enabled on tabs that have no results pane.
+- **Restore Previous Values…** missing from **Settings > Keyboard**, with no shortcut to bind.
 - Toolbar **History** button enabled over a window that never connected.
 - Toolbar **Inspector** button dim on macOS 13 over a pane left open when the connection dropped.
 - Toolbar **Assistant** button dim over an Assistant left open when the connection dropped.

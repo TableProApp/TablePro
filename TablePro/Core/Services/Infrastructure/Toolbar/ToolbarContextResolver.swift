@@ -101,6 +101,36 @@ internal enum ToolbarContextResolver {
         }
     }
 
+    /// The items that act on the browse content, which Agent mode does not mount.
+    ///
+    /// Two of them leave the titlebar there; the rest are opt-in from the customization palette, so a
+    /// user who put one back would otherwise have a live button over a surface that is not on screen:
+    /// Refresh with no grid to reload, Query History flipping a persisted flag for a drawer that is
+    /// not mounted and that then sprang open on the way back to browsing, New Tab opening a tab
+    /// behind the conversation, and the commit control over a gate frozen at the moment the mode
+    /// changed.
+    ///
+    /// Stated once rather than as a term in fourteen arms, because it is one rule. The menu bar's
+    /// `browseContentSelectors` is the same list in its own vocabulary, and
+    /// `MenuContentModeParityTests` derives this one back out of the toolbar and holds the two
+    /// together, so an item added here without a menu twin fails rather than ships.
+    private static let browseContentIdentifiers: Set<NSToolbarItem.Identifier> = [
+        MainWindowToolbar.refresh,
+        MainWindowToolbar.saveChanges,
+        MainWindowToolbar.addRow,
+        MainWindowToolbar.restorePreviousValues,
+        MainWindowToolbar.previewSQL,
+        MainWindowToolbar.results,
+        MainWindowToolbar.history,
+        MainWindowToolbar.newTab,
+        MainWindowToolbar.quickSwitcher,
+        MainWindowToolbar.exportTables,
+        MainWindowToolbar.importTables,
+        MainWindowToolbar.dashboard,
+        MainWindowToolbar.navigateBack,
+        MainWindowToolbar.navigateForward,
+    ]
+
     /// Whether an item answers in this context.
     ///
     /// Every command the toolbar vends has an arm. The Back and Forward group has none because it is
@@ -112,6 +142,7 @@ internal enum ToolbarContextResolver {
         _ identifier: NSToolbarItem.Identifier,
         context: ToolbarContext
     ) -> Bool {
+        if context.contentMode == .agent, browseContentIdentifiers.contains(identifier) { return false }
         switch identifier {
         case MainWindowToolbar.connection:
             /// Switch Connection is the window's command, so it answers before a session exists.
@@ -124,7 +155,7 @@ internal enum ToolbarContextResolver {
             /// the window having something to be about at all. A closing window opens no menu.
             return context.hasSelectedWorkspace && context.pane != .empty
         case MainWindowToolbar.refresh:
-            return context.isConnected && context.contentMode == .browse
+            return context.isConnected
         case MainWindowToolbar.saveChanges:
             return context.pendingChange != nil && context.isConnected && !context.blocksAllWrites
         case MainWindowToolbar.safeMode:
@@ -151,9 +182,7 @@ internal enum ToolbarContextResolver {
             /// collapse flag with no tab-kind guard behind it.
             return context.isConnected && context.tabKind == .query
         case MainWindowToolbar.history:
-            /// The drawer is not mounted in Agent mode, and toggling it there flipped a persisted
-            /// flag that sprang the drawer open on the way back to browsing.
-            return context.isConnected && context.contentMode == .browse
+            return context.isConnected
         case MainWindowToolbar.dashboard:
             return context.isConnected && context.supportsServerDashboard
         case MainWindowToolbar.exportTables, MainWindowToolbar.newTab, MainWindowToolbar.quickSwitcher:

@@ -32,7 +32,7 @@ internal final class ImportFormatMenuDelegate: NSObject, NSMenuDelegate {
         let controller = NSApp.target(forAction: Self.action, to: nil, from: nil) as? MainSplitViewController
         let formats = controller?.commandActions?.availableImportFormats ?? []
         guard !formats.isEmpty else {
-            menu.addItem(Self.placeholder())
+            menu.addItem(MenuPlaceholder.item())
             return
         }
         for format in formats {
@@ -44,17 +44,6 @@ internal final class ImportFormatMenuDelegate: NSObject, NSMenuDelegate {
         let item = NSMenuItem(title: format.formatLabel, action: action, keyEquivalent: "")
         item.target = nil
         item.representedObject = format.id
-        return item
-    }
-
-    /// A list with nothing in it opens as a sliver with no text, which reads as a broken command.
-    /// The row that opens it cannot be dimmed through the responder chain, because AppKit gives a
-    /// submenu's row its own action, so the list says why it is empty instead, the way Database >
-    /// Session Context does. That happens with no connection window in front, and with a driver
-    /// whose import plugins are missing or failed to load.
-    internal static func placeholder() -> NSMenuItem {
-        let item = NSMenuItem(title: String(localized: "None Available"), action: nil, keyEquivalent: "")
-        item.isEnabled = false
         return item
     }
 

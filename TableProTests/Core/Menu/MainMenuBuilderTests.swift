@@ -256,6 +256,52 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
 
+    /// The eight commands the revamp made rebindable. Each was reachable only by pointer before:
+    /// two segments of a toolbar control, an Edit menu item with no action identifier at all, and
+    /// five buttons inside Agent mode's rail and the assistant pane's header menu.
+    private static let displacedCommands: [(action: ShortcutAction, title: String)] = [
+        (.showTablesList, String(localized: "Show Tables")),
+        (.showFavoritesList, String(localized: "Show Favorites")),
+        (.restorePreviousValues, String(localized: "Restore Previous Values…")),
+        (.newAgentSession, String(localized: "New Session")),
+        (.openAgentSession, String(localized: "Open Session")),
+        (.closeAgentSession, String(localized: "Close Session")),
+        (.deleteAgentSession, String(localized: "Delete Session…")),
+        (.newAIConversation, String(localized: "New Conversation")),
+    ]
+
+    @Test("Each newly rebindable command is stamped on the menu item that runs it")
+    func displacedCommandsReachTheirMenuItem() {
+        let items = flatten(buildMenu())
+        for command in Self.displacedCommands {
+            let matches = items.filter { $0.identifier == MenuItemFactory.identifier(for: command.action) }
+            #expect(matches.count == 1, "\(command.action.rawValue) is on \(matches.count) items, expected 1")
+            #expect(matches.first?.title == command.title, "\(command.action.rawValue) is on the wrong item")
+        }
+    }
+
+    /// Shipped unbound on purpose. Every combo a reasonable person would reach for is taken, and a
+    /// default that displaced a shipped one would be a worse trade than an unassigned row in
+    /// Settings, which is where these are now visible for the first time.
+    @Test("Each newly rebindable command ships with no key equivalent of its own")
+    func displacedCommandsShipUnbound() {
+        let items = flatten(buildMenu())
+        for command in Self.displacedCommands {
+            #expect(KeyboardSettings.defaultShortcuts[command.action] == nil, "\(command.action.rawValue)")
+            let item = items.first { $0.identifier == MenuItemFactory.identifier(for: command.action) }
+            #expect(item?.keyEquivalent.isEmpty == true, "\(command.action.rawValue) arrived with a binding")
+        }
+    }
+
+    /// Settings lists every action by this name, so two sharing one would offer the user two
+    /// identical rows and no way to tell which command they were rebinding.
+    @Test("No two actions share a display name")
+    func displayNamesAreUnique() {
+        let names = ShortcutAction.allCases.map(\.displayName)
+        let duplicates = Dictionary(grouping: names, by: { $0 }).filter { $0.value.count > 1 }.keys
+        #expect(duplicates.isEmpty, "Two shortcut actions share a name in Settings: \(duplicates)")
+    }
+
     @Test("Jump to Column… sits in the Edit menu's Find submenu on Cmd+Shift+J")
     func jumpToColumnLivesUnderFind() {
         let edit = buildMenu().items.first { $0.title == String(localized: "Edit") }?.submenu
@@ -266,6 +312,88 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.action == #selector(MainSplitViewController.jumpToColumn(_:)))
         #expect(item?.keyEquivalent == "j")
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
+    }
+}
+
+/// Agent mode's sessions and the assistant's conversations had no menu-bar home at all: the rail's
+/// buttons and the trailing pane's header menu were the only routes, so none of the seven commands
+/// could be found by search, rebound, or reached with the rail collapsed or the pane closed.
+@Suite("File > Session")
+@MainActor
+struct FileSessionMenuTests {
+    private func sessionMenu() -> NSMenu? {
+        buildMenu().items.first { $0.title == String(localized: "File") }?
+            .submenu?.items.first { $0.title == String(localized: "Session") }?
+            .submenu
+    }
+
+    @Test("The submenu carries the session lifecycle and the conversation commands, in that order")
+    func sessionMenuOrder() throws {
+        let titles = try #require(sessionMenu()).items.map(\.title)
+        #expect(titles == [
+            String(localized: "New Session"),
+            String(localized: "Open Session"),
+            String(localized: "Recent Sessions"),
+            String(localized: "Close Session"),
+            String(localized: "Delete Session…"),
+            "",
+            String(localized: "New Conversation"),
+            String(localized: "Conversation History"),
+            String(localized: "Clear Recents…"),
+        ])
+    }
+
+    /// The two list rows are exempt: AppKit points a submenu container at its own `submenuAction:`,
+    /// and the rows inside are built by the delegate when the list opens.
+    @Test("Every leaf carries an action and leaves its target nil")
+    func everyLeafIsACommand() throws {
+        let leaves = try #require(sessionMenu()).items.filter { !$0.isSeparatorItem && $0.submenu == nil }
+        #expect(leaves.count == 6)
+        for leaf in leaves {
+            #expect(leaf.action != nil, "\(leaf.title) can never enable")
+            #expect(leaf.target == nil, "\(leaf.title) bypasses responder-chain validation")
+        }
+    }
+
+    /// AppKit ignores a key equivalent on an item that owns a submenu, so the command a user can
+    /// rebind has to be a leaf. Open Session acts on the session the rail has highlighted, and the
+    /// list beside it is how any other session is reached, exactly as Import Data… and Import Data
+    /// From are split.
+    @Test("Open Session is a leaf, so a binding it is given can fire")
+    func openSessionIsALeaf() throws {
+        let item = try #require(
+            sessionMenu()?.items.first { $0.title == String(localized: "Open Session") }
+        )
+        #expect(item.submenu == nil)
+        #expect(item.action == #selector(MainSplitViewController.openAgentSession(_:)))
+        #expect(item.identifier == MenuItemFactory.identifier(for: .openAgentSession))
+    }
+
+    @Test("Both lists fill themselves when they open", arguments: [
+        String(localized: "Recent Sessions"), String(localized: "Conversation History"),
+    ])
+    func listsAreDelegateDriven(title: String) throws {
+        let submenu = try #require(sessionMenu()?.items.first { $0.title == title }?.submenu)
+        #expect(submenu.delegate != nil, "The set changes while the menu is closed, so it is built on open")
+        #expect(submenu.items.isEmpty, "The list is filled when it opens, not at build time")
+    }
+
+    /// `AIChatViewModel` is a plain `ObservableObject` and `AgentSessionRegistry` is not a responder,
+    /// so a command named on either would reach nothing and AppKit would draw it dead. Every one of
+    /// these names a window selector instead, including the two lists' rows.
+    @Test("Each command reaches the window rather than a view model nothing can resolve")
+    func everyCommandIsAWindowSelector() throws {
+        var actions = try #require(sessionMenu()).items
+            .filter { $0.submenu == nil }
+            .compactMap(\.action)
+        #expect(actions.count == 6)
+        actions.append(contentsOf: [AgentSessionMenuDelegate.action, ConversationHistoryMenuDelegate.action])
+        for action in actions {
+            #expect(
+                MainSplitViewController.instancesRespond(to: action),
+                "\(NSStringFromSelector(action)) reaches nothing, so AppKit draws it dead"
+            )
+        }
     }
 }
 

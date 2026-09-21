@@ -184,6 +184,58 @@ struct MenuValidationCoverageTests {
     private static let closeSession = #selector(MainSplitViewController.closeAgentSession(_:))
     private static let deleteSession = #selector(MainSplitViewController.deleteAgentSession(_:))
 
+    /// The two delegate-filled lists under File > Session build their rows when they open, so the
+    /// menu walk above never sees them. Each row's selector still has to reach the window and be
+    /// decided there, which is the whole reason they carry no target.
+    @Test("Every delegate-filled row reaches the window and is decided there")
+    func delegateFilledRowsAreAnsweredAndDecided() {
+        let selectors: [Selector] = [
+            AgentSessionMenuDelegate.action,
+            ConversationHistoryMenuDelegate.action,
+            ImportFormatMenuDelegate.action,
+            ContentModeMenuDelegate.action,
+        ]
+        for selector in selectors {
+            let name = NSStringFromSelector(selector)
+            #expect(MainSplitViewController.instancesRespond(to: selector), "\(name) reaches nothing")
+            guard !liveValidatedSelectors.contains(selector) else { continue }
+            #expect(
+                MainSplitViewController.resolvedEnablement(selector, context: MenuValidationContext()) != nil,
+                "\(name) has no arm, so it stays lit over a window that cannot run it"
+            )
+        }
+    }
+
+    /// The assistant's conversation commands, which had no selector at all before: the pane header's
+    /// buttons reached `AIChatViewModel` from inside SwiftUI, so the menu bar could not carry them.
+    /// They answer in both content modes, because the conversation is one thing shown two ways.
+    @Test("The conversation commands follow the assistant rather than the mode")
+    func conversationCommandsFollowTheAssistant() {
+        let newConversation = #selector(MainSplitViewController.newAIConversation(_:))
+        let switchConversation = #selector(MainSplitViewController.switchAIConversation(_:))
+        let clearConversations = #selector(MainSplitViewController.clearAIConversations(_:))
+
+        var context = MenuValidationContext()
+        #expect(MainSplitViewController.resolvedEnablement(newConversation, context: context) == false)
+        #expect(MainSplitViewController.resolvedEnablement(switchConversation, context: context) == false)
+        #expect(MainSplitViewController.resolvedEnablement(clearConversations, context: context) == false)
+
+        context.hasAssistantConversation = true
+        #expect(MainSplitViewController.resolvedEnablement(newConversation, context: context) == true)
+        #expect(
+            MainSplitViewController.resolvedEnablement(clearConversations, context: context) == false,
+            "Nothing stored is nothing to clear"
+        )
+
+        context.hasStoredConversations = true
+        #expect(MainSplitViewController.resolvedEnablement(switchConversation, context: context) == true)
+        #expect(MainSplitViewController.resolvedEnablement(clearConversations, context: context) == true)
+
+        context.isAgentMode = true
+        #expect(MainSplitViewController.resolvedEnablement(newConversation, context: context) == true)
+        #expect(MainSplitViewController.resolvedEnablement(clearConversations, context: context) == true)
+    }
+
     /// The fall-through still has to stand for everything the window does not own, or the system's
     /// own items would arrive disabled.
     @Test("A command the window does not own is left alone")

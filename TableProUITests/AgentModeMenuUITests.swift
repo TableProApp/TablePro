@@ -63,4 +63,62 @@ final class AgentModeMenuUITests: UITestCase {
             .count
         XCTAssertLessThanOrEqual(ticked, 1, "Two arms of a radio pair cannot both carry the tick")
     }
+
+    /// The session lifecycle's only routes used to be the rail's two buttons and its context menu, so
+    /// a user with the rail collapsed had none at all, and none of the four could be found by search
+    /// or rebound. They are asserted on a fresh launch, where they are present and dim: the menu bar
+    /// is built once at launch and carries every command the app has, whatever window is in front.
+    func testFileSessionCarriesTheSessionLifecycle() throws {
+        let app = try launchApp()
+        let menuBar = app.menuBars.firstMatch
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
+
+        menuBar.menuBarItems["File"].click()
+        menuBar.menuItems["Session"].click()
+
+        for title in ["New Session", "Open Session", "Close Session", "Delete Session…"] {
+            XCTAssertTrue(
+                menuBar.menuItems[title].waitToExist(timeout: 10),
+                "File > Session must offer \(title)"
+            )
+        }
+    }
+
+    /// The assistant's three conversation commands lived in the trailing pane's header menu, which
+    /// Agent mode replaces with the result column, so entering the mode took them away outright.
+    func testFileSessionCarriesTheConversationCommands() throws {
+        let app = try launchApp()
+        let menuBar = app.menuBars.firstMatch
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
+
+        menuBar.menuBarItems["File"].click()
+        menuBar.menuItems["Session"].click()
+
+        for title in ["New Conversation", "Conversation History", "Clear Recents…"] {
+            XCTAssertTrue(
+                menuBar.menuItems[title].waitToExist(timeout: 10),
+                "File > Session must offer \(title)"
+            )
+        }
+    }
+
+    /// With no connection window in front there is no rail and no session, so every one of them is
+    /// present and dim. A command lit over a window that cannot run it is the defect these items
+    /// would otherwise introduce, since the menu bar is built once at launch for the whole app.
+    func testTheSessionCommandsAreDimWithNoConnectionWindow() throws {
+        let app = try launchApp()
+        let menuBar = app.menuBars.firstMatch
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
+
+        menuBar.menuBarItems["File"].click()
+        menuBar.menuItems["Session"].click()
+        XCTAssertTrue(menuBar.menuItems["New Session"].waitToExist(timeout: 10))
+
+        for title in ["New Session", "Open Session", "Close Session", "Delete Session…"] {
+            XCTAssertFalse(
+                menuBar.menuItems[title].isEnabled,
+                "\(title) acts on a rail that no window is drawing"
+            )
+        }
+    }
 }

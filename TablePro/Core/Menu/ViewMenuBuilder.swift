@@ -44,11 +44,15 @@ enum ViewMenuBuilder {
             /// one step, and they write the state the control reads, so the two move together.
             MenuItemFactory.item(
                 String(localized: "Show Tables"),
-                action: #selector(MainSplitViewController.showTablesSidebarTab(_:))
+                action: #selector(MainSplitViewController.showTablesSidebarTab(_:)),
+                shortcut: .showTablesList,
+                keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Show Favorites"),
-                action: #selector(MainSplitViewController.showFavoritesSidebarTab(_:))
+                action: #selector(MainSplitViewController.showFavoritesSidebarTab(_:)),
+                shortcut: .showFavoritesList,
+                keyboard: keyboard
             ),
             connectionSortSubmenu(),
             MenuItemFactory.separator,

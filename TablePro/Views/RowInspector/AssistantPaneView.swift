@@ -21,8 +21,6 @@ internal struct AssistantPaneView: View {
     private let paneState: TrailingPaneState
     private let contentMode: ConnectionWorkspaceContentMode
 
-    @State private var showsClearConfirmation = false
-
     internal init(
         connection: DatabaseConnection,
         paneState: TrailingPaneState,
@@ -62,34 +60,27 @@ internal struct AssistantPaneView: View {
         .task(id: connection.id) {
             state.activate(connection: connection)
         }
-        .alert(
-            String(localized: "Clear All Conversations?"),
-            isPresented: $showsClearConfirmation
-        ) {
-            Button(String(localized: "Clear"), role: .destructive) {
-                state.viewModelIfActivated?.clearConversation()
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "This will permanently delete all conversation history."))
-        }
     }
 
+    /// Every command here is sent to the window through the responder chain, exactly as File >
+    /// Session sends it, rather than reaching into the view model this pane is holding. One place
+    /// decides what New Conversation does and one place asks before Clear Recents throws anything
+    /// away; the alert used to live in this view, so the menu bar had no way to carry the command at
+    /// all without asking the question a second time in its own words.
     @ViewBuilder
     private func menuSection(_ section: TrailingPaneMenuSection) -> some View {
         switch section {
         case .conversations:
             Button {
-                state.viewModelIfActivated?.startNewConversation()
+                NSApp.sendAction(#selector(MainSplitViewController.newAIConversation(_:)), to: nil, from: nil)
             } label: {
                 Label(String(localized: "New Conversation"), systemImage: "square.and.pencil")
             }
             .disabled(state.viewModelIfActivated == nil)
             conversationHistory
         case .clearRecents:
-            /// Asks first: the alert is what stands between this item and every stored conversation.
             Button(role: .destructive) {
-                showsClearConfirmation = true
+                NSApp.sendAction(#selector(MainSplitViewController.clearAIConversations(_:)), to: nil, from: nil)
             } label: {
                 Label(String(localized: "Clear Recents"), systemImage: "trash")
             }
@@ -123,12 +114,17 @@ internal struct AssistantPaneView: View {
         state.viewModelIfActivated?.conversations ?? []
     }
 
+    /// The chosen conversation travels on an `NSMenuItem` because that is how the command names one:
+    /// `switchAIConversation(_:)` reads `representedObject`, and the item is built by the same class
+    /// that builds the menu bar's rows, so there is one answer to how a conversation is named to the
+    /// window rather than one per surface.
     private var activeConversation: Binding<UUID?> {
         Binding(
             get: { state.viewModelIfActivated?.activeConversationID },
             set: { id in
-                guard let id else { return }
-                state.viewModelIfActivated?.switchConversation(to: id)
+                guard let id, let conversation = conversations.first(where: { $0.id == id }) else { return }
+                let sender = ConversationHistoryMenuDelegate.item(for: conversation, isActive: false)
+                NSApp.sendAction(ConversationHistoryMenuDelegate.action, to: nil, from: sender)
             }
         )
     }

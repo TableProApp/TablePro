@@ -40,6 +40,24 @@ internal extension MainSplitViewController {
         Task { await requestDeleteAgentSession(id: session.id, connectionId: session.connectionId) }
     }
 
+    /// The sessions a menu lists: the ones the connection on screen owns, the one that last went to
+    /// work first, which is the order the rail lists them in.
+    ///
+    /// Listed in both modes on purpose. The sessions exist either way, and a list that reported
+    /// nothing over five live ones would be describing the mode rather than the connection. What
+    /// browsing takes away is the ability to act on one, and `isAgentSessionCommandEnabled` says so
+    /// by dimming every entry.
+    var listedAgentSessions: [AgentSession] {
+        guard let workspace = workspaces.selected else { return [] }
+        return workspace.agentSessions.sessions(for: workspace.connectionId)
+    }
+
+    /// The session this window is drawing, which a menu ticks. Nil while browsing, where the window
+    /// draws none, so nothing in the list claims to be open.
+    var displayedAgentSessionId: UUID? {
+        workspaces.selected?.displayedAgentSession?.id
+    }
+
     /// The session a command acts on: the one its menu item names, or the one highlighted in the rail
     /// of the connection on screen. Nil outside Agent mode, where no rail is showing to act on, and
     /// for a session that belongs to another connection.

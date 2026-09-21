@@ -22,6 +22,14 @@ struct MenuValidationContext: Equatable {
     /// The session a session command acts on: the one its menu item names, or the one the rail has
     /// highlighted. Nil when there is none, which is what dims Open, Close and Delete Session.
     var agentSessionTarget: AgentSessionStatus?
+    /// Whether the connection on screen has an assistant conversation for its three commands to act
+    /// on. False until something opens the assistant, and false with the AI feature off, which is
+    /// what the pane's own menu already says by dimming the same three.
+    var hasAssistantConversation = false
+    /// Whether any conversation has been stored, which is what Conversation History lists and what
+    /// Clear Recents throws away. Separate from the one above: a conversation started and never sent
+    /// in has a model and nothing to switch to.
+    var hasStoredConversations = false
     var isReadOnly = false
     var canUseTableResultCommands = false
     var canUseGridFindCommands = false
@@ -141,15 +149,16 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// green either way: that shipped as Clear Selection, lit on a window with nothing selected and
     /// nothing to clear. `MenuValidationCoverageTests` reads the nil to say so.
     static func resolvedEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        if context.isAgentMode, browseContentSelectors.contains(selector) { return false }
         if let find = isFindCommandEnabled(selector, context: context) { return find }
         if let query = isQueryCommandEnabled(selector, context: context) { return query }
+        if let chooser = isContainerCommandEnabled(selector, context: context) { return chooser }
 
         switch selector {
         case #selector(exportTables(_:)),
              #selector(refreshDatabase(_:)),
              #selector(openQuickSwitcher(_:)),
              #selector(toggleQueryHistory(_:)),
-             #selector(toggleResults(_:)),
              #selector(showPreviousResult(_:)),
              #selector(showNextResult(_:)),
              #selector(closeResultTab(_:)),
@@ -214,6 +223,12 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.hasSelectedWorkspace && AppSettingsManager.shared.ai.enabled
         case #selector(previewSQL(_:)):
             return context.isConnected && context.hasDataPendingChanges
+        /// The results pane belongs to the query editor. The shipped rule was `isConnected` alone,
+        /// so the command was lit on the seven kinds that have no results pane and `toggleResults`
+        /// then wrote a collapse flag with no tab-kind guard behind it. This is the rule the
+        /// toolbar's own item answers by.
+        case #selector(toggleResults(_:)):
+            return context.isConnected && context.isQueryTab
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
             return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
@@ -257,24 +272,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return objectCommandIsEnabled(selector, context: context)
         case #selector(runMaintenanceOperation(_:)):
             return context.isConnected && context.hasMaintenanceOperations
-        case #selector(switchToSchema(_:)):
-            return context.isConnected && context.supportsSchemaSwitching
-        case #selector(setFavoriteDatabaseEnvironment(_:)), #selector(removeFavoriteDatabase(_:)):
-            return context.isConnected && context.canFavoriteActiveDatabase
-        case #selector(filterDatabases(_:)):
-            return context.isConnected && context.canFilterDatabases
-        case #selector(showAllDatabases(_:)):
-            return context.isConnected && context.canFilterDatabases && context.hasDatabaseFilter
-        case #selector(openContainerSwitcher(_:)):
-            return context.isConnected && context.supportsContainerSwitching
-        case #selector(openSchemaSwitcher(_:)):
-            return context.isConnected && context.supportsSchemaSwitching
         case #selector(setSafeModeLevel(_:)):
             return context.isConnected
         case #selector(releaseFileLock(_:)):
             return context.isConnected && context.canReleaseFileLock
-        case #selector(switchSessionContext(_:)):
-            return context.isConnected && context.hasSessionContexts
         case #selector(showServerDashboard(_:)):
             return context.isConnected && context.supportsServerDashboard
         case #selector(showUsersAndRoles(_:)):
@@ -298,6 +299,34 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected
         default:
             return isWindowCommandEnabled(selector, context: context)
+        }
+    }
+
+    /// What the window is pointed at inside the connection: which database, which schema, which
+    /// session context, and which databases the tree shows at all. Each is a chooser the driver may
+    /// not offer, so each follows its own capability rather than the session alone.
+    ///
+    /// Answered before the main switch rather than inside it, because that switch is at its length
+    /// limit and this is a domain of its own.
+    private static func isContainerCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        switch selector {
+        case #selector(openContainerSwitcher(_:)):
+            return context.isConnected && context.supportsContainerSwitching
+        case #selector(switchToSchema(_:)), #selector(openSchemaSwitcher(_:)):
+            return context.isConnected && context.supportsSchemaSwitching
+        case #selector(switchSessionContext(_:)):
+            return context.isConnected && context.hasSessionContexts
+        case #selector(setFavoriteDatabaseEnvironment(_:)), #selector(removeFavoriteDatabase(_:)):
+            return context.isConnected && context.canFavoriteActiveDatabase
+        case #selector(filterDatabases(_:)):
+            return context.isConnected && context.canFilterDatabases
+        case #selector(showAllDatabases(_:)):
+            return context.isConnected && context.canFilterDatabases && context.hasDatabaseFilter
+        default:
+            return nil
         }
     }
 
@@ -348,9 +377,66 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(closeAgentSession(_:)):
             return context.isAgentMode && context.agentSessionTarget?.isEnded == false
         default:
+            return isConversationCommandEnabled(selector, context: context)
+        }
+    }
+
+    /// The assistant's three conversation commands, which answer in both modes: the conversation is
+    /// one thing shown two ways, in the trailing pane while browsing and in the content column in
+    /// Agent mode, so a command that acts on it applies wherever it is drawn.
+    ///
+    /// Each needs the assistant to have been opened, because that is what creates the model they
+    /// write to. Switching and clearing need a stored conversation on top of that, which is the same
+    /// pair of conditions the pane header's own menu is dimmed by.
+    private static func isConversationCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        switch selector {
+        case #selector(newAIConversation(_:)):
+            return context.hasAssistantConversation
+        case #selector(switchAIConversation(_:)), #selector(clearAIConversations(_:)):
+            return context.hasAssistantConversation && context.hasStoredConversations
+        default:
             return nil
         }
     }
+
+    /// The commands that act on the browse content, which Agent mode does not mount.
+    ///
+    /// Every one of them has a toolbar twin whose `ToolbarContextResolver` arm answers no in Agent
+    /// mode, and the menu bar is where most of them now live, so leaving them lit here would be the
+    /// same defect one surface deeper: Refresh over a grid that is not there, Save over a commit gate
+    /// frozen at the moment the mode changed, Command Y flipping a persisted flag for a drawer that
+    /// is not mounted, and New Tab opening a tab behind the conversation.
+    ///
+    /// A set rather than an arm each, because the rule is one rule. `MenuContentModeParityTests`
+    /// holds the two surfaces' answers together and derives this list back out of the toolbar, so a
+    /// browse-only item added there without an entry here fails rather than ships enabled.
+    ///
+    /// What is deliberately not here: Switch Connection, Close Connection, Safe Mode, the two mode
+    /// commands, the session commands and the conversation commands. Each of those acts on the
+    /// window or on the session, both of which Agent mode still has.
+    private static let browseContentSelectors: Set<Selector> = [
+        #selector(refreshDatabase(_:)),
+        #selector(saveDocument(_:)),
+        #selector(addRow(_:)),
+        #selector(restorePreviousValues(_:)),
+        #selector(previewSQL(_:)),
+        #selector(toggleResults(_:)),
+        #selector(toggleQueryHistory(_:)),
+        #selector(newEditorTab(_:)),
+        #selector(openQuickSwitcher(_:)),
+        #selector(exportTables(_:)),
+        /// Both spellings of one command: the leaf that takes the driver's first format, and the
+        /// row of the list that names another. One without the other would leave the list live over
+        /// a leaf that is dim.
+        #selector(importData(_:)),
+        #selector(importDataFormat(_:)),
+        #selector(showServerDashboard(_:)),
+        #selector(navigateBack(_:)),
+        #selector(navigateForward(_:)),
+    ]
 
     /// What AppKit is told. A command this window does not own is left enabled, which is what keeps
     /// `performClose:` and the rest of the system's own items working.
@@ -447,11 +533,14 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// conversation in its content column and never mounts the browse content that sets up the
     /// command actions, so read from them, the one command that reaches its composer was dimmed.
     var menuValidationContext: MenuValidationContext {
+        let conversations = assistantConversationModel
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
                 isAgentMode: contentMode == .agent,
                 agentSessionTarget: agentSessionTarget(for: nil)?.status,
+                hasAssistantConversation: conversations != nil,
+                hasStoredConversations: conversations?.conversations.isEmpty == false,
                 canFocusAssistant: canFocusAssistant,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
@@ -461,6 +550,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             isConnected: isConnected,
             isAgentMode: contentMode == .agent,
             agentSessionTarget: agentSessionTarget(for: nil)?.status,
+            hasAssistantConversation: conversations != nil,
+            hasStoredConversations: conversations?.conversations.isEmpty == false,
             isReadOnly: actions.isReadOnly,
             canUseTableResultCommands: actions.canUseTableResultCommands,
             canUseGridFindCommands: actions.canUseGridFindCommands,
@@ -550,12 +641,25 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// The window's context, with the session a session command acts on taken from the item rather
     /// than from the rail: a menu that lists a connection's sessions names one in each of its items,
     /// and every other route acts on the one the rail has highlighted.
+    ///
+    /// Keyed on the action rather than on the type in `representedObject`. A conversation row carries
+    /// a `UUID` too, and reading that one as a session id resolved a session that does not exist and
+    /// wrote its absence over the rail's own highlight, so a conversation row in an open menu decided
+    /// what the session commands beside it reported.
     private func menuValidationContext(naming menuItem: NSMenuItem) -> MenuValidationContext {
         var context = menuValidationContext
-        guard menuItem.representedObject is UUID else { return context }
+        guard let action = menuItem.action, Self.agentSessionSelectors.contains(action) else { return context }
         context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status
         return context
     }
+
+    /// The commands whose subject is a session, and the only ones that may read a session id out of
+    /// a menu item.
+    private static let agentSessionSelectors: Set<Selector> = [
+        #selector(openAgentSession(_:)),
+        #selector(closeAgentSession(_:)),
+        #selector(deleteAgentSession(_:)),
+    ]
 
     private func isCurrentContentMode(_ menuItem: NSMenuItem) -> Bool {
         guard let raw = menuItem.representedObject as? String,

@@ -21,10 +21,45 @@ internal enum ConnectionActionsMenuResolver {
     internal static func sections(_ context: ToolbarContext) -> [ActionsMenuSection] {
         switch context.contentMode {
         case .agent:
-            return [modeSection(context), connectionSection(context)].compactMap(\.self)
+            return [sessionSection(context), modeSection(context), connectionSection(context)]
+                .compactMap(\.self)
         case .browse:
             return browseSections(context)
         }
+    }
+
+    /// What Agent mode has instead of a tab's verbs. The rail carries these too, but the rail is in
+    /// a pane the user can collapse, and a command reachable only from a collapsible pane is a
+    /// command with no route when it is closed.
+    private static func sessionSection(_ context: ToolbarContext) -> ActionsMenuSection? {
+        guard context.isAIEnabled else { return nil }
+        return ActionsMenuSection([
+            ActionsMenuEntry(
+                title: String(localized: "New Session"),
+                selector: NSSelectorFromString("newAgentSession:"),
+                shortcut: .newAgentSession
+            ),
+            ActionsMenuEntry(
+                title: String(localized: "Open Session"),
+                selector: NSSelectorFromString("openAgentSession:"),
+                shortcut: .openAgentSession
+            ),
+            ActionsMenuEntry(
+                title: String(localized: "Close Session"),
+                selector: NSSelectorFromString("closeAgentSession:"),
+                shortcut: .closeAgentSession
+            ),
+            ActionsMenuEntry(
+                title: String(localized: "Delete Session…"),
+                selector: NSSelectorFromString("deleteAgentSession:"),
+                shortcut: .deleteAgentSession
+            ),
+            ActionsMenuEntry(
+                title: String(localized: "New Conversation"),
+                selector: NSSelectorFromString("newAIConversation:"),
+                shortcut: .newAIConversation
+            ),
+        ])
     }
 
     private static func browseSections(_ context: ToolbarContext) -> [ActionsMenuSection] {

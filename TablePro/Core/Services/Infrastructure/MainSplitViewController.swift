@@ -106,6 +106,18 @@ internal final class MainSplitViewController: NSSplitViewController {
         await MainSplitViewController.presentAgentSessionConfirmation(confirmation, in: window)
     }
 
+    /// The same door for Clear Recents, which is the one conversation command that destroys
+    /// something. The question is the pane header's own, moved here with the command so the menu bar
+    /// and the pane ask it once and in the same words.
+    var confirmClearConversations: @MainActor (NSWindow?) async -> Bool = { window in
+        await AlertHelper.confirmDestructive(
+            title: String(localized: "Clear All Conversations?"),
+            message: String(localized: "This will permanently delete all conversation history."),
+            confirmButton: String(localized: "Clear"),
+            window: window
+        )
+    }
+
     /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
     /// owned here but installed on the window, and it follows the selected workspace the same way
     /// the two hosts above do.

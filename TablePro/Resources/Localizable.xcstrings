@@ -182710,6 +182710,15 @@
     },
     "SQL the session proposes appears here before it runs." : {
 
+    },
+    "Session" : {
+
+    },
+    "Recent Sessions" : {
+
+    },
+    "Clear Recents…" : {
+
     }
   },
   "version" : "1.1"
