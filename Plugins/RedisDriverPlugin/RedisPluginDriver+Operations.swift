@@ -127,9 +127,9 @@ extension RedisPluginDriver {
                 keys: capped, connection: conn, startTime: startTime, isTruncated: keysTruncated
             )
 
-        case .scan(let cursor, let pattern, let count):
+        case .scan(let cursor, let pattern, let count, let type):
             let page = try await conn.scanKeyspace(
-                cursor: cursor, pattern: pattern, type: nil, count: count ?? 200
+                cursor: cursor, pattern: pattern, type: type, count: count ?? 200
             )
             return try await buildScanPageResult(page, connection: conn, startTime: startTime)
 
@@ -478,10 +478,8 @@ extension RedisPluginDriver {
                 executionTime: Date().timeIntervalSince(startTime)
             )
 
-        case .info(let section):
-            var args = ["INFO"]
-            if let s = section { args.append(s) }
-            let result = try await conn.run(args)
+        case .info(let sections):
+            let result = try await conn.run(["INFO"] + sections)
             let infoText = result.stringValue ?? String(describing: result)
             return PluginQueryResult(
                 columns: ["info"],
@@ -510,8 +508,8 @@ extension RedisPluginDriver {
             try await conn.selectDatabase(database)
             return buildStatusResult("OK", startTime: startTime)
 
-        case .configGet(let parameter):
-            let result = try await conn.run(["CONFIG", "GET", parameter])
+        case .configGet(let parameters):
+            let result = try await conn.run(["CONFIG", "GET"] + parameters)
             return RedisReplyGrid.config(result).queryResult(startTime: startTime)
 
         case .configSet(let parameter, let value):

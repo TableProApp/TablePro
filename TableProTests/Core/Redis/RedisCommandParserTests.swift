@@ -107,25 +107,27 @@ struct RedisCommandParserKeyCommandTests {
     @Test("SCAN parses cursor with MATCH and COUNT")
     func scanWithOptions() throws {
         let op = try RedisCommandParser.parse("SCAN 0 MATCH user:* COUNT 100")
-        guard case .scan(let cursor, let pattern, let count) = op else {
+        guard case .scan(let cursor, let pattern, let count, let type) = op else {
             Issue.record("Expected .scan")
             return
         }
         #expect(cursor == "0")
         #expect(pattern == "user:*")
         #expect(count == 100)
+        #expect(type == nil)
     }
 
     @Test("SCAN without options")
     func scanBasic() throws {
         let op = try RedisCommandParser.parse("SCAN 0")
-        guard case .scan(let cursor, let pattern, let count) = op else {
+        guard case .scan(let cursor, let pattern, let count, let type) = op else {
             Issue.record("Expected .scan")
             return
         }
         #expect(cursor == "0")
         #expect(pattern == nil)
         #expect(count == nil)
+        #expect(type == nil)
     }
 
     @Test("TYPE parses key")
@@ -232,7 +234,7 @@ struct RedisCommandParserKeyCommandTests {
     @Test("A SCAN cursor above Int.max keeps its text")
     func scanCursorAboveIntMax() throws {
         let op = try RedisCommandParser.parse("SCAN 18446744073709551615")
-        guard case .scan(let cursor, _, _) = op else {
+        guard case .scan(let cursor, _, _, _) = op else {
             Issue.record("Expected .scan, got \(op)")
             return
         }
@@ -244,6 +246,30 @@ struct RedisCommandParserKeyCommandTests {
         #expect(throws: RedisParseError.self) {
             try RedisCommandParser.parse("SCAN 0 COUNT abc")
         }
+    }
+
+    @Test("SCAN carries its TYPE along with MATCH and COUNT")
+    func scanWithType() throws {
+        let op = try RedisCommandParser.parse("SCAN 0 MATCH u:* TYPE hash COUNT 5")
+        guard case .scan(let cursor, let pattern, let count, let type) = op else {
+            Issue.record("Expected .scan, got \(op)")
+            return
+        }
+        #expect(cursor == "0")
+        #expect(pattern == "u:*")
+        #expect(count == 5)
+        #expect(type == "hash")
+    }
+
+    @Test("A SCAN option the typed scan cannot carry goes out verbatim", arguments: ["SCAN 0 NOVALUES", "SCAN 0 MATCH"])
+    func scanWithUnmodelledOptionIsVerbatim(input: String) throws {
+        let op = try RedisCommandParser.parse(input)
+        guard case .command(let args) = op else {
+            Issue.record("Expected .command, got \(op)")
+            return
+        }
+        let texts = args.map(\.text)
+        #expect(texts == input.split(separator: " ").map(String.init))
     }
 }
 
@@ -573,21 +599,31 @@ struct RedisCommandParserServerTests {
     @Test("INFO without section")
     func infoCommand() throws {
         let op = try RedisCommandParser.parse("INFO")
-        guard case .info(let section) = op else {
+        guard case .info(let sections) = op else {
             Issue.record("Expected .info")
             return
         }
-        #expect(section == nil)
+        #expect(sections.isEmpty)
     }
 
     @Test("INFO with section")
     func infoWithSection() throws {
         let op = try RedisCommandParser.parse("INFO memory")
-        guard case .info(let section) = op else {
+        guard case .info(let sections) = op else {
             Issue.record("Expected .info")
             return
         }
-        #expect(section == "memory")
+        #expect(sections == ["memory"])
+    }
+
+    @Test("INFO carries every section it names")
+    func infoWithSeveralSections() throws {
+        let op = try RedisCommandParser.parse("INFO server clients")
+        guard case .info(let sections) = op else {
+            Issue.record("Expected .info, got \(op)")
+            return
+        }
+        #expect(sections == ["server", "clients"])
     }
 
     @Test("DBSIZE")
@@ -619,11 +655,30 @@ struct RedisCommandParserServerTests {
     @Test("CONFIG GET parses parameter")
     func configGetCommand() throws {
         let op = try RedisCommandParser.parse("CONFIG GET maxmemory")
-        guard case .configGet(let parameter) = op else {
+        guard case .configGet(let parameters) = op else {
             Issue.record("Expected .configGet")
             return
         }
-        #expect(parameter == "maxmemory")
+        #expect(parameters == ["maxmemory"])
+    }
+
+    @Test("CONFIG GET carries every parameter it names")
+    func configGetSeveralParameters() throws {
+        let op = try RedisCommandParser.parse("CONFIG GET maxmemory maxclients")
+        guard case .configGet(let parameters) = op else {
+            Issue.record("Expected .configGet, got \(op)")
+            return
+        }
+        #expect(parameters == ["maxmemory", "maxclients"])
+    }
+
+    @Test("FLUSHDB with no argument stays typed")
+    func flushdbCommand() throws {
+        let op = try RedisCommandParser.parse("FLUSHDB")
+        guard case .flushdb = op else {
+            Issue.record("Expected .flushdb, got \(op)")
+            return
+        }
     }
 
     @Test("CONFIG SET parses parameter and value")
@@ -869,5 +924,148 @@ struct RedisKeyBrowseRoundTripTests {
         }
         #expect(pattern == nil)
         #expect(typeScope == "stream")
+    }
+}
+
+@Suite("RedisCommandParser - arguments a typed case cannot carry")
+struct RedisCommandParserVerbatimTests {
+    @Test(
+        "A recognised command with arguments its typed case cannot carry goes out exactly as typed",
+        arguments: [
+            "GET a b",
+            "PING hello",
+            "FLUSHDB ASYNC",
+            "MULTI x",
+            "SELECT 1 2",
+            "XRANGE s - + COUNT abc",
+            "ZRANGE z 0 -1 FOO",
+            "CONFIG SET a 1 b 2",
+            "CONFIG RESETSTAT",
+            "CONFIG GET",
+            "HGET h f extra",
+            "LRANGE l 0 -1 extra",
+            "RENAME a b c"
+        ]
+    )
+    func extraArgumentsGoOutVerbatim(input: String) throws {
+        let op = try RedisCommandParser.parse(input)
+        guard case .command(let args) = op else {
+            Issue.record("Expected .command, got \(op)")
+            return
+        }
+        let expected = RedisArgumentCodec.split(input)?.map { RedisArgument($0).text }
+        let texts = args.map(\.text)
+        #expect(texts == expected)
+    }
+
+    @Test(
+        "A subcommand the parser never modelled is left for the server to judge",
+        arguments: ["XGROUP CREATECONSUMER s g c1", "XGROUP HELP", "XINFO HELP", "OBJECT HELP"]
+    )
+    func unmodelledSubcommandsParse(input: String) throws {
+        let op = try RedisCommandParser.parse(input)
+        guard case .command(let args) = op else {
+            Issue.record("Expected .command, got \(op)")
+            return
+        }
+        let texts = args.map(\.text)
+        #expect(texts == input.split(separator: " ").map(String.init))
+    }
+
+    @Test("XRANGE with a COUNT stays typed")
+    func xrangeWithCountStaysTyped() throws {
+        let op = try RedisCommandParser.parse("XRANGE s - + COUNT 5")
+        guard case .xrange(let key, let start, let end, let count) = op else {
+            Issue.record("Expected .xrange, got \(op)")
+            return
+        }
+        #expect(key == "s")
+        #expect(start == "-")
+        #expect(end == "+")
+        #expect(count == 5)
+    }
+
+    @Test("A too-short command still throws before it reaches the server")
+    func tooFewArgumentsStillThrow() {
+        #expect(throws: RedisParseError.self) {
+            try RedisCommandParser.parse("HGET h")
+        }
+    }
+}
+
+@Suite("RedisCommandParser - statements the app builds stay typed")
+struct RedisCommandParserAppStatementTests {
+    private static let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]
+
+    private func isVerbatim(_ statement: String) throws -> Bool {
+        if case .command = try RedisCommandParser.parse(statement) { return true }
+        return false
+    }
+
+    private func insertStatements(key: String, type: String, value: String) -> [String] {
+        let generator = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let row: [PluginCellValue] = [.text(key), .text(type), "60", .null, .text(value)]
+        return generator.generateStatements(
+            from: [change], insertedRowData: [0: row], deletedRowIndices: [], insertedRowIndices: [0]
+        ).map(\.statement)
+    }
+
+    @Test(
+        "Every insert the grid builds parses to its typed case",
+        arguments: ["string", "hash", "list", "set", "zset"]
+    )
+    func insertsStayTyped(type: String) throws {
+        let value = type == "hash" ? #"{"f":"v w"}"# : "a \"quoted\" value"
+        let statements = insertStatements(key: "user:1 x", type: type, value: value)
+        #expect(statements.count == 2)
+        for statement in statements {
+            #expect(try !isVerbatim(statement), "\(statement)")
+        }
+    }
+
+    @Test("A grid update, rename, TTL change and delete parse to their typed cases")
+    func updatesAndDeletesStayTyped() throws {
+        let generator = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        let original: [PluginCellValue] = [.text("old key"), .text("STRING"), "-1", "3", .text("old")]
+        let update = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 0, columnName: "Key", oldValue: .text("old key"), newValue: .text("new key")),
+                (columnIndex: 4, columnName: "Value", oldValue: .text("old"), newValue: .text("new value")),
+                (columnIndex: 2, columnName: "TTL", oldValue: "-1", newValue: "30")
+            ],
+            originalRow: original
+        )
+        let persist = PluginRowChange(
+            rowIndex: 1,
+            type: .update,
+            cellChanges: [(columnIndex: 2, columnName: "TTL", oldValue: "30", newValue: "-1")],
+            originalRow: original
+        )
+        let delete = PluginRowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: original)
+        let statements = generator.generateStatements(
+            from: [update, persist, delete], insertedRowData: [:], deletedRowIndices: [2], insertedRowIndices: []
+        ).map(\.statement)
+
+        #expect(statements.count == 5)
+        for statement in statements {
+            #expect(try !isVerbatim(statement), "\(statement)")
+        }
+    }
+
+    @Test("The count and browse queries parse to their typed cases")
+    func browseQueriesStayTyped() throws {
+        let builder = RedisQueryBuilder()
+        let queries = [
+            builder.buildCountQuery(namespace: ""),
+            builder.buildCountQuery(namespace: "user:"),
+            builder.buildKeyBrowseQuery(pattern: "a*", typeScope: "hash", database: 3, limit: 50, offset: 0),
+            builder.buildExportQuery(database: 2)
+        ]
+        for query in queries {
+            #expect(try !isVerbatim(query), "\(query)")
+        }
     }
 }

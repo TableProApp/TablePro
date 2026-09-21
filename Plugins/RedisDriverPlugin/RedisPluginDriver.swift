@@ -472,8 +472,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let operation = try RedisCommandParser.parse(trimmed)
 
         switch operation {
-        case .scan(_, let pattern, _):
-            try await streamScanRows(connection: conn, pattern: pattern, scope: .session, continuation: continuation)
+        case .scan(_, let pattern, _, let type):
+            try await streamScanRows(
+                connection: conn, pattern: pattern, typeFilter: type, scope: .session, continuation: continuation
+            )
         case .keyBrowse(let pattern, let typeScope, _, _, let database):
             try await conn.withDatabase(database) {
                 try await streamScanRows(
