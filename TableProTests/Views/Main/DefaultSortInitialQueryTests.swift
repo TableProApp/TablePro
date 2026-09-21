@@ -83,28 +83,32 @@ struct DefaultSortInitialQueryTests {
             SchemaColumnStore.Entry(columns: ["message", "level"], primaryKeys: [], columnTypes: [:]),
             for: coordinator.schemaColumnsKey("logs", scope: coordinator.selectedTabScope)
         )
-        let originalQuery = tabManager.tabs[index].content.query
 
         await withDefaultSortBehavior(.primaryKey) {
             let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
             #expect(ready)
         }
 
-        #expect(tabManager.tabs[index].content.query == originalQuery)
+        let query = tabManager.tabs[index].content.query
+        #expect(!query.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(query.contains("`logs`"))
+        #expect(query.contains("LIMIT \(tabManager.tabs[index].pagination.pageSize)"))
         #expect(!tabManager.tabs[index].sortState.isSorting)
     }
 
     @Test("Schema fetch failure dispatches unsorted instead of blocking the first load")
     func schemaFetchFailureStillDispatches() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        let originalQuery = tabManager.tabs[index].content.query
 
         await withDefaultSortBehavior(.primaryKey) {
             let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
             #expect(ready)
         }
 
-        #expect(tabManager.tabs[index].content.query == originalQuery)
+        let query = tabManager.tabs[index].content.query
+        #expect(!query.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(query.contains("`users`"))
+        #expect(!tabManager.tabs[index].sortState.isSorting)
     }
 
     @Test("None behavior takes the fast path and regenerates the browse query from current state")
