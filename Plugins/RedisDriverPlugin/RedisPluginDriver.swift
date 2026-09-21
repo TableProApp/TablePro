@@ -582,7 +582,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = RedisStatementGenerator(namespaceName: table, columns: columns)
+        let generator = RedisStatementGenerator(
+            namespaceName: table,
+            columns: columns,
+            deleteBatching: redisConnection?.partitionsKeyspace == true ? .perHashSlot : .singleCommand
+        )
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices

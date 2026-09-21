@@ -11,7 +11,7 @@ private func args(_ tokens: String...) -> [Data] { tokens.map { Data($0.utf8) } 
 private func spec(first: Int, last: Int, step: Int, response: RedisResponsePolicy? = nil) -> RedisCommandSpec {
     RedisCommandSpec(
         name: "test", firstKey: first, lastKey: last, step: step,
-        isReadOnly: false, hasMovableKeys: false, requestPolicy: .multiShard, responsePolicy: response
+        isReadOnly: false, isWrite: false, hasMovableKeys: false, requestPolicy: .multiShard, responsePolicy: response
     )
 }
 

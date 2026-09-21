@@ -100,7 +100,8 @@ for match in re.finditer(r'spec\(\s*"([^"]+)",\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)([
     request, response = policies(rest)
     curated[name] = {
         "firstKey": int(first), "lastKey": int(last), "step": int(step),
-        "readOnly": "readOnly: true" in rest, "movable": "movable: true" in rest,
+        "readOnly": "readOnly: true" in rest, "write": "write: true" in rest,
+        "movable": "movable: true" in rest,
         "request": request, "response": response,
     }
 
@@ -127,7 +128,8 @@ for block, values in blocks:
     for name in re.findall(r'"([^"]+)"', block):
         curated.setdefault(name, {
             "firstKey": positions[0], "lastKey": positions[1], "step": positions[2],
-            "readOnly": "readOnly: true" in rest, "movable": "movable: true" in rest,
+            "readOnly": "readOnly: true" in rest, "write": "write: true" in rest,
+            "movable": "movable: true" in rest,
             "request": request, "response": response,
         })
 
@@ -152,7 +154,7 @@ def collect(entry, container=None):
     tips = [str(t) for t in (entry[7] or [])] if len(entry) > 7 else []
     server[name] = {
         "firstKey": entry[3], "lastKey": entry[4], "step": entry[5],
-        "readOnly": "readonly" in flags, "movable": "movablekeys" in flags,
+        "readOnly": "readonly" in flags, "write": "write" in flags, "movable": "movablekeys" in flags,
         "request": next((t.split(":", 1)[1] for t in tips if t.startswith("request_policy:")), None),
         "response": next((t.split(":", 1)[1] for t in tips if t.startswith("response_policy:")), None),
     }
@@ -173,7 +175,7 @@ for name in sorted(curated):
     expected = curated[name]
     for field, label in [
         ("firstKey", "first key"), ("lastKey", "last key"), ("step", "key step"),
-        ("readOnly", "readonly"), ("movable", "movablekeys"),
+        ("readOnly", "readonly"), ("write", "write"), ("movable", "movablekeys"),
         ("request", "request_policy"), ("response", "response_policy"),
     ]:
         if expected[field] != actual[field]:

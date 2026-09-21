@@ -633,6 +633,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
       - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
       - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
+      - Plugins/RedisDriverPlugin/RedisClusterWriteOutcome.swift
       - Plugins/RedisDriverPlugin/RedisCommandChannel.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
       - Plugins/RedisDriverPlugin/RedisCommandRouting.swift

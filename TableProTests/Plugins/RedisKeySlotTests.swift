@@ -100,3 +100,22 @@ struct RedisKeySlotCrossSlotTests {
         #expect(RedisKeySlot.slotsAreEqual(for: []))
     }
 }
+
+@Suite("Redis key slot - grouping keys by slot")
+struct RedisKeySlotGroupingTests {
+    @Test("Keys group by slot in the order each slot first appears")
+    func firstSeenOrder() {
+        let groups = RedisKeySlot.groupedBySlot(["allowed:1", "{u}a", "forbidden:1", "{u}b"])
+        #expect(groups == [["allowed:1"], ["{u}a", "{u}b"], ["forbidden:1"]])
+    }
+
+    @Test("A duplicate key stays in its group")
+    func keepsDuplicates() {
+        #expect(RedisKeySlot.groupedBySlot(["a", "a", "b"]) == [["a", "a"], ["b"]])
+    }
+
+    @Test("No keys make no groups")
+    func empty() {
+        #expect(RedisKeySlot.groupedBySlot([]).isEmpty)
+    }
+}

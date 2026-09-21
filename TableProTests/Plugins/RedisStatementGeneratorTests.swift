@@ -506,6 +506,50 @@ struct RedisStatementGeneratorTests {
         #expect(results[0].statement == "DEL key1 key2 key3")
     }
 
+    /// A cluster splits a DEL by slot, and one slot can refuse after another ran. Deleting a slot
+    /// per statement makes each one all or nothing, so a save can say how many went through.
+    @Test("On a partitioned keyspace each hash slot gets its own DEL")
+    func deletePerHashSlot() {
+        let gen = RedisStatementGenerator(
+            namespaceName: "",
+            columns: ["Key", "Value", "TTL"],
+            deleteBatching: .perHashSlot
+        )
+        let changes = ["allowed:1", "forbidden:1", "{u}a", "{u}b"].enumerated().map { index, key in
+            PluginRowChange(rowIndex: index, type: .delete, cellChanges: [], originalRow: [.text(key), "v", "-1"])
+        }
+
+        let results = gen.generateStatements(
+            from: changes,
+            insertedRowData: [:],
+            deletedRowIndices: [0, 1, 2, 3],
+            insertedRowIndices: []
+        )
+
+        #expect(results.map(\.statement) == ["DEL allowed:1", "DEL forbidden:1", "DEL {u}a {u}b"])
+    }
+
+    @Test("Per-slot deletes quote each key the way a single DEL does")
+    func deletePerHashSlotQuotes() {
+        let gen = RedisStatementGenerator(
+            namespaceName: "",
+            columns: ["Key", "Value", "TTL"],
+            deleteBatching: .perHashSlot
+        )
+        let changes = ["{s} one", "{s}\"two\""].enumerated().map { index, key in
+            PluginRowChange(rowIndex: index, type: .delete, cellChanges: [], originalRow: [.text(key), "v", "-1"])
+        }
+
+        let results = gen.generateStatements(
+            from: changes,
+            insertedRowData: [:],
+            deletedRowIndices: [0, 1],
+            insertedRowIndices: []
+        )
+
+        #expect(results.map(\.statement) == ["DEL \"{s} one\" \"{s}\\\"two\\\"\""])
+    }
+
     @Test("Delete not in deletedRowIndices is skipped")
     func deleteNotInIndices() {
         let gen = RedisStatementGenerator(

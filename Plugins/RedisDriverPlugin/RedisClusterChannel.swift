@@ -67,6 +67,8 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     /// the grid saves its rows one statement at a time instead.
     var supportsTransactions: Bool { false }
 
+    var partitionsKeyspace: Bool { true }
+
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         guard !seeds.isEmpty else {
             throw RedisPluginError(code: 0, message: String(localized: "Cluster mode needs at least one seed node."))
@@ -131,9 +133,9 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
         switch spec?.clusterFanOut ?? .single {
         case .everyNode:
-            return try await broadcast(args, to: snapshot.topology.allNodes, policy: spec?.responsePolicy, scope: scope)
+            return try await broadcast(args, to: snapshot.topology.allNodes, spec: spec, scope: scope)
         case .everyPrimary:
-            return try await broadcast(args, to: snapshot.topology.masters, policy: spec?.responsePolicy, scope: scope)
+            return try await broadcast(args, to: snapshot.topology.masters, spec: spec, scope: scope)
         case .keyedShards:
             return try await runMultiShard(args, spec: spec, snapshot: snapshot, scope: scope)
         case .single:
@@ -281,67 +283,113 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             return try await routeSingle(args, spec: spec, snapshot: snapshot, scope: scope)
         }
 
-        var replies: [RedisReply] = []
-        var nodes: [RedisNodeAddress] = []
-        replies.reserveCapacity(groups.count)
-        nodes.reserveCapacity(groups.count)
-        for group in groups {
+        let targets = try groups.map { group in
             guard let node = snapshot.topology.master(forSlot: group.slot) else {
                 throw RedisPluginError.notConnected
             }
-            replies.append(try await send(group.arguments, to: node.address, scope: scope))
-            nodes.append(node.address)
+            return node.address
         }
+        let replies = try await sendParts(
+            groups.map(\.arguments),
+            to: targets,
+            carrying: groups.map { group in group.keyIndices.map { args[$0] } },
+            of: args,
+            isWrite: spec.isWrite,
+            followRedirects: true,
+            scope: scope
+        )
 
-        let combined: RedisReply
-        if let policy = spec.responsePolicy {
-            combined = RedisClusterAggregator.combine(replies, policy: policy)
-        } else {
-            combined = RedisMultiShardPlanner.scatterInKeyOrder(
+        guard let policy = spec.responsePolicy else {
+            return RedisMultiShardPlanner.scatterInKeyOrder(
                 groups: groups,
                 replies: replies,
                 keyIndices: spec.keyIndices(forArgumentCount: args.count)
             )
         }
-        noteShardFailures(of: args, combined: combined, replies: replies, nodes: nodes)
-        return combined
+        return RedisClusterAggregator.combine(replies, policy: policy)
     }
 
     private func broadcast(
         _ args: [Data],
         to nodes: [RedisClusterNode],
-        policy: RedisResponsePolicy?,
+        spec: RedisCommandSpec?,
         scope: RedisCommandScope
     ) async throws -> RedisReply {
-        let targets = nodes.isEmpty ? snapshotState().topology.masters : nodes
+        let targets = (nodes.isEmpty ? snapshotState().topology.masters : nodes).map(\.address)
         guard !targets.isEmpty else { throw RedisPluginError.notConnected }
-        var replies: [RedisReply] = []
-        replies.reserveCapacity(targets.count)
-        for node in targets {
-            replies.append(try await send(args, to: node.address, followRedirects: false, scope: scope))
-        }
-        let combined = RedisClusterAggregator.combine(replies, policy: policy)
-        noteShardFailures(of: args, combined: combined, replies: replies, nodes: targets.map(\.address))
-        return combined
+        let replies = try await sendParts(
+            Array(repeating: args, count: targets.count),
+            to: targets,
+            carrying: [],
+            of: args,
+            isWrite: spec?.isWrite ?? false,
+            followRedirects: false,
+            scope: scope
+        )
+        return RedisClusterAggregator.combine(replies, policy: spec?.responsePolicy)
     }
 
-    /// The reply the user sees is the refusing shard's own, which names neither the node nor the
-    /// fact that the other shards ran their part, so the log keeps both. The class only, because
-    /// the rest of an error message can quote a key.
-    private func noteShardFailures(
+    /// Nothing ties the parts of a split command together, so each runs on its own node and one
+    /// can be refused after another has already run. A write whose parts disagree is reported
+    /// with what ran, because the refusing part's reply alone reads as if nothing did. Every
+    /// owner is known before this is called, so a part is never stranded by a slot with no owner.
+    private func sendParts(
+        _ parts: [[Data]],
+        to targets: [RedisNodeAddress],
+        carrying keys: [[Data]],
         of args: [Data],
-        combined: RedisReply,
-        replies: [RedisReply],
-        nodes: [RedisNodeAddress]
-    ) {
-        guard combined.isError else { return }
-        let name = args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? ""
+        isWrite: Bool,
+        followRedirects: Bool,
+        scope: RedisCommandScope
+    ) async throws -> [RedisReply] {
+        let command = Self.commandName(of: args)
+        let nodes = targets.map(\.identifier)
+        var replies: [RedisReply] = []
+        replies.reserveCapacity(parts.count)
+        for (part, target) in zip(parts, targets) {
+            do {
+                replies.append(try await send(part, to: target, followRedirects: followRedirects, scope: scope))
+            } catch where !(error is CancellationError) {
+                noteShardFailures(of: command, replies: replies, nodes: targets)
+                guard let partial = RedisPartialClusterWrite.assemble(
+                    command: command, isWrite: isWrite, nodes: nodes, keys: keys,
+                    replies: replies, interruption: error
+                ) else { throw error }
+                throw notePartialWrite(partial)
+            }
+        }
+        noteShardFailures(of: command, replies: replies, nodes: targets)
+        if let partial = RedisPartialClusterWrite.assemble(
+            command: command, isWrite: isWrite, nodes: nodes, keys: keys,
+            replies: replies, interruption: nil
+        ) {
+            throw notePartialWrite(partial)
+        }
+        return replies
+    }
+
+    /// The reply the user sees is one shard's own, which names neither the node nor the other
+    /// shards, so the log keeps both. The class only, because the rest of an error message can
+    /// quote a key.
+    private func noteShardFailures(of command: String, replies: [RedisReply], nodes: [RedisNodeAddress]) {
         for (position, (reply, node)) in zip(replies, nodes).enumerated() {
             guard let message = reply.errorMessage else { continue }
             let errorClass = RedisConnectProbe.errorClass(of: message)
-            let part = "\(node.identifier), part \(position + 1) of \(replies.count)"
-            logger.notice("\(name, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
+            let part = "\(node.identifier), part \(position + 1) of \(nodes.count)"
+            logger.notice("\(command, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
         }
+    }
+
+    private func notePartialWrite(_ partial: RedisPartialClusterWrite) -> RedisPartialClusterWrite {
+        let applied = partial.appliedParts.count
+        logger.notice(
+            "\(partial.command, privacy: .public) partly applied: \(applied, privacy: .public) of \(partial.parts.count, privacy: .public)"
+        )
+        return partial
+    }
+
+    private static func commandName(of args: [Data]) -> String {
+        args.first.flatMap { String(data: $0, encoding: .utf8) }?.uppercased() ?? ""
     }
 
     private func serverResolvedKeys(for args: [Data], snapshot: Snapshot) async throws -> [Data] {

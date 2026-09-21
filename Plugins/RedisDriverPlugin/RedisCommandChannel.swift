@@ -26,6 +26,9 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     var isConnected: Bool { get }
     var supportsDatabaseSelection: Bool { get }
     var supportsTransactions: Bool { get }
+    /// True when keys live on different nodes by hash slot, so one command over several keys can
+    /// be applied on some nodes and refused on others.
+    var partitionsKeyspace: Bool { get }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws
     func disconnect()
@@ -62,6 +65,7 @@ protocol RedisCommandChannel: AnyObject, Sendable {
 extension RedisCommandChannel {
     var supportsDatabaseSelection: Bool { true }
     var supportsTransactions: Bool { true }
+    var partitionsKeyspace: Bool { false }
 
     func databaseForNextCommand() -> Int { currentDatabase() }
 

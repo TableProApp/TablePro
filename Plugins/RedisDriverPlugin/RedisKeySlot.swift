@@ -32,6 +32,18 @@ enum RedisKeySlot {
         return keys.allSatisfy { slot(for: $0) == reference }
     }
 
+    /// Keys that share a slot, in the order each slot first appears, with duplicates kept.
+    static func groupedBySlot(_ keys: [String]) -> [[String]] {
+        var order: [Int] = []
+        var groups: [Int: [String]] = [:]
+        for key in keys {
+            let keySlot = slot(for: key)
+            if groups[keySlot] == nil { order.append(keySlot) }
+            groups[keySlot, default: []].append(key)
+        }
+        return order.compactMap { groups[$0] }
+    }
+
     private static func hashedRegion(of key: Data) -> Data {
         hashTag(of: key) ?? key
     }

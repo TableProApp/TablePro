@@ -136,6 +136,19 @@ struct RedisCommandRoutingPolicyTests {
         #expect(!routing.isReadOnly(args("GETEX", "k")))
     }
 
+    /// Only a write can leave a cluster half changed, so this flag decides whether a split command
+    /// one shard refused is reported as partly applied.
+    @Test("Writes are recognised, and neither a read nor PING or CONFIG SET is one")
+    func writeClassification() {
+        for name in ["DEL", "UNLINK", "MSET", "FLUSHDB", "FLUSHALL", "SET", "LMPOP", "SORT"] {
+            #expect(routing.spec(for: args(name, "k"))?.isWrite == true, "\(name) should be a write")
+        }
+        for name in ["PING", "EXISTS", "DBSIZE", "GET", "EVAL", "MGET"] {
+            #expect(routing.spec(for: args(name, "k"))?.isWrite == false, "\(name) should not be a write")
+        }
+        #expect(routing.spec(for: args("CONFIG", "SET", "maxmemory", "0"))?.isWrite == false)
+    }
+
     @Test("Commands whose keys only COMMAND GETKEYS knows are flagged")
     func movableKeys() {
         for name in ["EVAL", "SORT", "GEORADIUS", "LMPOP", "XREAD", "ZUNIONSTORE"] {
@@ -255,6 +268,38 @@ struct RedisCommandRoutingParsingTests {
         #expect(routing.spec(for: args("CONFIG", "SET", "a", "b"))?.requestPolicy == .allNodes)
     }
 
+    @Test("Reads the write flag")
+    func parsesWriteFlag() throws {
+        let reply = RedisReply.array([
+            commandEntry(name: "del", flags: ["write"], firstKey: 1, lastKey: -1, step: 1,
+                         tips: ["request_policy:multi_shard", "response_policy:agg_sum"]),
+            commandEntry(name: "ping", flags: ["fast", "sentinel"],
+                         tips: ["request_policy:all_shards", "response_policy:all_succeeded"]),
+            commandEntry(name: "config", subcommands: [
+                commandEntry(name: "config|set", flags: ["admin", "noscript", "loading", "stale"],
+                             tips: ["request_policy:all_nodes", "response_policy:all_succeeded"]),
+            ]),
+        ])
+        let routing = try #require(RedisCommandRouting.parse(commandReply: reply))
+        #expect(routing.spec(for: args("DEL", "a"))?.isWrite == true)
+        #expect(routing.spec(for: args("PING"))?.isWrite == false)
+        #expect(routing.spec(for: args("CONFIG", "SET", "a", "b"))?.isWrite == false)
+    }
+
+    /// A Redis 6 entry carries its flags but no tips, so the curated policy fills in; the write
+    /// flag has to survive that merge from either side.
+    @Test("A merged entry keeps the write flag")
+    func mergeKeepsWriteFlag() throws {
+        let sixElementEntry = RedisReply.array([
+            .string("flushdb"), .integer(-1), .array([.status("write")]),
+            .integer(0), .integer(0), .integer(0),
+        ])
+        let routing = try #require(RedisCommandRouting.parse(commandReply: .array([sixElementEntry])))
+        let spec = try #require(routing.spec(for: args("FLUSHDB")))
+        #expect(spec.isWrite)
+        #expect(spec.requestPolicy == .allShards)
+    }
+
     @Test("Reads the movablekeys flag")
     func parsesMovableKeys() throws {
         let reply = RedisReply.array([commandEntry(name: "eval", flags: ["movablekeys"])])
@@ -353,7 +398,7 @@ struct RedisCommandSpecIndexTests {
     private func spec(first: Int, last: Int, step: Int) -> RedisCommandSpec {
         RedisCommandSpec(
             name: "x", firstKey: first, lastKey: last, step: step,
-            isReadOnly: false, hasMovableKeys: false, requestPolicy: nil, responsePolicy: nil
+            isReadOnly: false, isWrite: false, hasMovableKeys: false, requestPolicy: nil, responsePolicy: nil
         )
     }
 

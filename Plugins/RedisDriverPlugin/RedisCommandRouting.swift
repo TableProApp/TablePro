@@ -38,6 +38,9 @@ struct RedisCommandSpec: Sendable, Equatable {
     let lastKey: Int
     let step: Int
     let isReadOnly: Bool
+    /// COMMAND's own `write` flag. A split write whose parts disagree has changed some shards and
+    /// not others, which a split read never has.
+    let isWrite: Bool
     let hasMovableKeys: Bool
     let requestPolicy: RedisRequestPolicy?
     let responsePolicy: RedisResponsePolicy?
@@ -52,6 +55,7 @@ struct RedisCommandSpec: Sendable, Equatable {
             lastKey: lastKey,
             step: step,
             isReadOnly: isReadOnly || fallback.isReadOnly,
+            isWrite: isWrite || fallback.isWrite,
             hasMovableKeys: hasMovableKeys || fallback.hasMovableKeys,
             requestPolicy: fallback.requestPolicy,
             responsePolicy: fallback.responsePolicy
@@ -175,6 +179,7 @@ struct RedisCommandRouting: Sendable {
             lastKey: fields[4].intValue ?? 0,
             step: fields[5].intValue ?? 0,
             isReadOnly: flags.contains("readonly"),
+            isWrite: flags.contains("write"),
             hasMovableKeys: flags.contains("movablekeys"),
             requestPolicy: request,
             responsePolicy: response
@@ -199,13 +204,14 @@ struct RedisCommandRouting: Sendable {
         _ lastKey: Int,
         _ step: Int,
         readOnly: Bool = false,
+        write: Bool = false,
         movable: Bool = false,
         request: RedisRequestPolicy? = nil,
         response: RedisResponsePolicy? = nil
     ) -> RedisCommandSpec {
         RedisCommandSpec(
             name: name, firstKey: firstKey, lastKey: lastKey, step: step,
-            isReadOnly: readOnly, hasMovableKeys: movable,
+            isReadOnly: readOnly, isWrite: write, hasMovableKeys: movable,
             requestPolicy: request, responsePolicy: response
         )
     }
@@ -229,16 +235,16 @@ struct RedisCommandRouting: Sendable {
                      "rpushx", "lpop", "rpop", "lset", "linsert", "lrem", "ltrim", "sadd", "srem",
                      "spop", "zadd", "zrem", "zincrby", "zpopmin", "zpopmax", "xadd", "xdel", "xtrim",
                      "setex", "psetex", "setnx", "restore"] {
-            add(spec(name, 1, 1, 1))
+            add(spec(name, 1, 1, 1, write: true))
         }
         for name in ["rename", "renamenx", "smove", "lmove", "rpoplpush", "copy"] {
-            add(spec(name, 1, 2, 1))
+            add(spec(name, 1, 2, 1, write: true))
         }
         add(spec("mget", 1, -1, 1, readOnly: true, request: .multiShard))
-        add(spec("mset", 1, -1, 2, request: .multiShard, response: .allSucceeded))
-        add(spec("msetnx", 1, -1, 2))
+        add(spec("mset", 1, -1, 2, write: true, request: .multiShard, response: .allSucceeded))
+        add(spec("msetnx", 1, -1, 2, write: true))
         for name in ["del", "unlink"] {
-            add(spec(name, 1, -1, 1, request: .multiShard, response: .aggSum))
+            add(spec(name, 1, -1, 1, write: true, request: .multiShard, response: .aggSum))
         }
         for name in ["exists", "touch"] {
             add(spec(name, 1, -1, 1, readOnly: true, request: .multiShard, response: .aggSum))
@@ -247,27 +253,30 @@ struct RedisCommandRouting: Sendable {
             add(spec(name, 1, -1, 1, readOnly: true))
         }
         for name in ["sunionstore", "sinterstore", "sdiffstore"] {
-            add(spec(name, 1, -1, 1))
+            add(spec(name, 1, -1, 1, write: true))
         }
         for name in ["zunionstore", "zinterstore"] {
-            add(spec(name, 1, 1, 1, movable: true))
+            add(spec(name, 1, 1, 1, write: true, movable: true))
         }
-        for name in ["eval", "evalsha", "fcall", "lmpop", "zmpop", "xreadgroup"] {
+        for name in ["eval", "evalsha", "fcall"] {
             add(spec(name, 0, 0, 0, movable: true))
+        }
+        for name in ["lmpop", "zmpop", "xreadgroup"] {
+            add(spec(name, 0, 0, 0, write: true, movable: true))
         }
         for name in ["fcall_ro", "xread", "zdiff", "zunion", "zinter", "sintercard"] {
             add(spec(name, 0, 0, 0, readOnly: true, movable: true))
         }
-        add(spec("sort", 1, 1, 1, movable: true))
+        add(spec("sort", 1, 1, 1, write: true, movable: true))
         add(spec("sort_ro", 1, 1, 1, readOnly: true, movable: true))
         for name in ["georadius", "georadiusbymember"] {
-            add(spec(name, 1, 1, 1, movable: true))
+            add(spec(name, 1, 1, 1, write: true, movable: true))
         }
 
         add(spec("keys", 0, 0, 0, readOnly: true, request: .allShards))
         add(spec("dbsize", 0, 0, 0, readOnly: true, request: .allShards, response: .aggSum))
-        add(spec("flushdb", 0, 0, 0, request: .allShards, response: .allSucceeded))
-        add(spec("flushall", 0, 0, 0, request: .allShards, response: .allSucceeded))
+        add(spec("flushdb", 0, 0, 0, write: true, request: .allShards, response: .allSucceeded))
+        add(spec("flushall", 0, 0, 0, write: true, request: .allShards, response: .allSucceeded))
         add(spec("info", 0, 0, 0, request: .allShards, response: .special))
         add(spec("randomkey", 0, 0, 0, readOnly: true, request: .allShards, response: .special))
         add(spec("scan", 0, 0, 0, readOnly: true, request: .special, response: .special))
