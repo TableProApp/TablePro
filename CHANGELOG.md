@@ -63,7 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refresh from iCloud**, **Sync Now** and the toolbar sync button on iPhone and iPad.
 - **Manage Groups**, the **Clear** button on **Recent**, and the **More** menu's tag filter on iPhone and iPad.
 - Throughput readout in the toolbar; the connection switcher still shows it.
-- Back, Forward, New Tab, Open Quickly, Add Row, Restore Previous Values and Assistant from the default toolbar.
+- Back, Forward, New Tab, Open Quickly, Add Row and Restore Previous Values from the default toolbar.
+- Toolbar **Assistant** button; the trailing pane's own picker chooses between the inspector and the assistant.
 
 ### Fixed
 
@@ -73,7 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Restore Previous Values…** missing from **Settings > Keyboard**, with no shortcut to bind.
 - Toolbar **History** button enabled over a window that never connected.
 - Toolbar **Inspector** button dim on macOS 13 over a pane left open when the connection dropped.
-- Toolbar **Assistant** button dim over an Assistant left open when the connection dropped.
 - **Auto-show inspector on row select** replacing the Assistant you left the pane on.
 - Current conversation in the Assistant's history not announced by VoiceOver.
 - Lines an AI walkthrough step highlighted staying highlighted for good when switched away from before they cleared.

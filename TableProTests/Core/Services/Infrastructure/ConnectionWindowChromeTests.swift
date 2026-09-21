@@ -216,8 +216,6 @@ struct ConnectionWindowChromeTests {
 
             harness.controller.transition(to: .unavailable(.disconnected(nil)), for: harness.selected.connectionId)
 
-            let owner = try #require(harness.controller.toolbarOwner)
-            #expect(owner.validateToolbarItem(NSToolbarItem(itemIdentifier: MainWindowToolbar.assistant)))
             #expect(harness.controller.validateMenuItem(
                 Self.item(for: #selector(MainSplitViewController.toggleAssistant(_:)))
             ))

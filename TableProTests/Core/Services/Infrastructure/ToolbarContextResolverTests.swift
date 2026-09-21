@@ -239,7 +239,6 @@ struct ToolbarContextResolverTests {
             isConnected: true,
             hasSelectedWorkspace: true,
             canToggleTrailingPane: true,
-            canToggleAssistant: false,
             pendingChange: .createTable,
             hasDataPendingChanges: false,
             blocksAllWrites: false,

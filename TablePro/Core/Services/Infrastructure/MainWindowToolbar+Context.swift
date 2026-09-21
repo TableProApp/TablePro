@@ -63,7 +63,6 @@ internal extension MainWindowToolbar {
             isConnected: state.map { Self.hasLiveSession($0.connectionState) } ?? false,
             hasSelectedWorkspace: host?.hasSelectedWorkspace ?? false,
             canToggleTrailingPane: host?.canToggleTrailingPane ?? false,
-            canToggleAssistant: host?.canToggleAssistant ?? false,
             pendingChange: state?.pendingChange,
             hasDataPendingChanges: state?.hasDataPendingChanges ?? false,
             blocksAllWrites: state?.safeModeLevel.blocksAllWrites ?? false,

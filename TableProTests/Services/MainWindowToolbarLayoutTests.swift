@@ -66,10 +66,19 @@ struct MainWindowToolbarInspectorPlacementTests {
 
     /// The assistant left the default set with the trailing run's second button, and stays one drag
     /// away in Customize Toolbar for a user who wants a button that goes straight to it.
-    @Test("The assistant toggle is offered by the palette, not the default set")
-    func assistantIsPaletteOnly() {
-        #expect(!MainWindowToolbar.defaultItemIdentifiers.contains(MainWindowToolbar.assistant))
-        #expect(MainWindowToolbar.allowedItemIdentifiers.contains(MainWindowToolbar.assistant))
+    /// The assistant has no toolbar item at all any more, in either list.
+    ///
+    /// One command, one control: the trailing-pane toggle says whether the pane is open and the
+    /// picker in the pane's header says which surface it draws. A second button that did both at
+    /// once was the shape this revamp took the Tables and Favorites control out of the titlebar
+    /// for, and offering it in Customize Toolbar kept it reachable. View > Show Assistant and
+    /// ⌥⌘A are the command, and `TrailingPaneCommandTitleTests` is what pins their behaviour.
+    @Test("No toolbar item opens the assistant")
+    func assistantHasNoToolbarItem() {
+        let identifiers = Set(MainWindowToolbar.allowedItemIdentifiers).union(
+            MainWindowToolbar.defaultItemIdentifiers
+        )
+        #expect(!identifiers.contains { $0.rawValue.hasSuffix(".assistant") })
     }
 
     /// Ahead of the separator the toggle lands in the content section, which measured wrong in both

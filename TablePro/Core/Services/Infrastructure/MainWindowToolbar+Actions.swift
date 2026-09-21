@@ -62,9 +62,6 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.showServerDashboard()
     }
 
-    @objc func performToggleAssistant(_ sender: Any?) {
-        coordinator?.trailingPaneProxy?.toggleAssistant()
-    }
 
     @objc func performToggleHistory(_ sender: Any?) {
         coordinator?.commandActions?.toggleHistoryPanel()

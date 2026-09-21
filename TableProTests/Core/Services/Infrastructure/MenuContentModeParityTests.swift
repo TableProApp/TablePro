@@ -100,7 +100,6 @@ struct MenuContentModeParityTests {
             isConnected: true,
             hasSelectedWorkspace: true,
             canToggleTrailingPane: true,
-            canToggleAssistant: true,
             pendingChange: .data,
             hasDataPendingChanges: true,
             canAddRow: true,

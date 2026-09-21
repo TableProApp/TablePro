@@ -32,9 +32,6 @@ internal struct ToolbarContext: Equatable {
     /// A connection is on screen, whether or not it has finished connecting.
     internal let hasSelectedWorkspace: Bool
     internal let canToggleTrailingPane: Bool
-    /// The View menu's own answer, carried rather than rebuilt from `isConnected`: an assistant left
-    /// open over a connection that dropped can still be closed, which a session check would dim.
-    internal let canToggleAssistant: Bool
 
     internal let pendingChange: PendingChangeKind?
     /// Not a projection of `pendingChange`. The two are computed from different inputs: a dirty
@@ -97,7 +94,6 @@ internal struct ToolbarContext: Equatable {
         isConnected: Bool = false,
         hasSelectedWorkspace: Bool = false,
         canToggleTrailingPane: Bool = false,
-        canToggleAssistant: Bool = false,
         pendingChange: PendingChangeKind? = nil,
         hasDataPendingChanges: Bool = false,
         blocksAllWrites: Bool = false,
@@ -118,7 +114,6 @@ internal struct ToolbarContext: Equatable {
         self.isConnected = isConnected
         self.hasSelectedWorkspace = hasSelectedWorkspace
         self.canToggleTrailingPane = canToggleTrailingPane
-        self.canToggleAssistant = canToggleAssistant
         self.pendingChange = pendingChange
         self.hasDataPendingChanges = hasDataPendingChanges
         self.blocksAllWrites = blocksAllWrites
@@ -141,7 +136,6 @@ internal struct ToolbarContext: Equatable {
         isConnected: Bool,
         hasSelectedWorkspace: Bool,
         canToggleTrailingPane: Bool,
-        canToggleAssistant: Bool,
         pendingChange: PendingChangeKind?,
         hasDataPendingChanges: Bool,
         blocksAllWrites: Bool,
@@ -158,7 +152,6 @@ internal struct ToolbarContext: Equatable {
             isConnected: isConnected,
             hasSelectedWorkspace: hasSelectedWorkspace,
             canToggleTrailingPane: canToggleTrailingPane,
-            canToggleAssistant: canToggleAssistant,
             pendingChange: pendingChange,
             hasDataPendingChanges: hasDataPendingChanges,
             blocksAllWrites: blocksAllWrites,
