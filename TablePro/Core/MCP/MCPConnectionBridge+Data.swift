@@ -345,37 +345,55 @@ extension MCPConnectionBridge {
         return .object(payload)
     }
 
+    /// Only a variant the engine declares is sent, which is the editor's own rule. Making up an
+    /// `EXPLAIN` for an engine without one sent `EXPLAIN GET k` to Redis, and answering `analyze`
+    /// with the first variant returned an estimate to a caller who asked for a measured run.
     static func explainStatement(
         for query: String,
         databaseType: DatabaseType,
         variantId: String?,
         analyze: Bool
     ) throws -> String {
-        let variants = databaseType.explainVariants
-        let prefix: String
-        if let variantId {
-            guard let variant = variants.first(where: { $0.id == variantId }) else {
-                throw DatabaseAccessError.invalidArgument(
-                    String(
-                        format: String(localized: "Unknown explain variant '%@'."),
-                        variantId
-                    )
-                )
-            }
-            prefix = variant.sqlPrefix
-        } else if analyze, let variant = variants.first(where: { $0.sqlPrefix.uppercased().contains("ANALYZE") }) {
-            prefix = variant.sqlPrefix
-        } else if let variant = variants.first {
-            prefix = variant.sqlPrefix
-        } else {
-            prefix = analyze ? "EXPLAIN ANALYZE" : "EXPLAIN"
-        }
         let trimmed = statementText(query, databaseType: databaseType)
         guard !trimmed.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         guard !QueryClassifier.isExplainStatement(trimmed) else { return trimmed }
-        return "\(prefix) \(trimmed)"
+        let variants = databaseType.explainVariants
+        guard let first = variants.first else {
+            throw DatabaseAccessError.invalidArgument(String(localized: "This database does not explain statements."))
+        }
+        let variant = try explainVariant(id: variantId, analyze: analyze, in: variants, first: first)
+        return "\(variant.sqlPrefix) \(trimmed)"
+    }
+
+    private static func explainVariant(
+        id: String?,
+        analyze: Bool,
+        in variants: [ExplainVariant],
+        first: ExplainVariant
+    ) throws -> ExplainVariant {
+        let offered = variants.map(\.id).joined(separator: ", ")
+        if let id {
+            guard let variant = variants.first(where: { $0.id == id }) else {
+                throw DatabaseAccessError.invalidArgument(
+                    String(format: String(localized: "Unknown explain variant '%@'. This database offers: %@."), id, offered)
+                )
+            }
+            return variant
+        }
+        guard analyze else { return first }
+        guard let variant = variants.first(where: { $0.sqlPrefix.uppercased().contains("ANALYZE") }) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(
+                    format: String(
+                        localized: "This database has no explain variant that runs the statement. Leave 'analyze' off, or pass one of these as 'variant': %@."
+                    ),
+                    offered
+                )
+            )
+        }
+        return variant
     }
 
     static func explainVariants(for databaseType: DatabaseType) -> JsonValue {
