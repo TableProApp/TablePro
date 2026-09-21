@@ -111,4 +111,66 @@ struct ConnectionFieldIntegerEntryTests {
         #expect(stepper.rangeIssue(in: " 120 ") == nil)
         #expect(field(.text).rangeIssue(in: "0") == nil)
     }
+
+    @Test("Stepper text that is not a number is an issue, not a silent default")
+    func unparseableStepperTextIsAnIssue() {
+        let stepper = field(.stepper(range: timeout))
+        #expect(stepper.rangeIssue(in: "abc") != nil)
+        #expect(stepper.rangeIssue(in: "-") != nil)
+    }
+
+    @Test("A number field keeps ASCII digits only, with no sign or decimal point")
+    func wholeNumbersKeepDigits() {
+        let cases: [(typed: String, expected: String)] = [
+            ("1.5", "15"),
+            ("-3", "3"),
+            ("9494", "9494"),
+            ("\u{0663}", ""),
+            ("\u{FF13}", ""),
+            ("1,000,000", "1000000"),
+            ("99999999999999999999", String(Int.max)),
+            ("", ""),
+        ]
+        for entry in cases {
+            #expect(
+                ConnectionField.IntRange.wholeNumbers.fieldText(sanitizing: entry.typed) == entry.expected,
+                "\(entry.typed)"
+            )
+        }
+    }
+
+    @Test("Only a stepper or number field takes integer entry")
+    func integerEntryRangeByFieldType() {
+        #expect(ConnectionField.FieldType.number.integerEntryRange == .wholeNumbers)
+        #expect(ConnectionField.FieldType.stepper(range: timeout).integerEntryRange == timeout)
+        #expect(ConnectionField.FieldType.text.integerEntryRange == nil)
+        #expect(ConnectionField.FieldType.secure.integerEntryRange == nil)
+        #expect(ConnectionField.FieldType.dropdown(options: []).integerEntryRange == nil)
+        #expect(ConnectionField.FieldType.toggle.integerEntryRange == nil)
+        #expect(ConnectionField.FieldType.hostList.integerEntryRange == nil)
+    }
+
+    @Test("A number field that does not hold a whole number is an issue", arguments: [
+        "1.5", "-1", "abc", "99999999999999999999",
+    ])
+    func numberFieldRejectsNonWholeNumbers(value: String) {
+        let port = ConnectionField(id: "duckdbPort", label: "Port", defaultValue: "9494", fieldType: .number)
+        #expect(port.rangeIssue(in: value) == String(format: String(localized: "%@ must be a whole number"), "Port"))
+    }
+
+    @Test("A number field that is empty or a whole number is not an issue", arguments: ["", "0", " 9494 "])
+    func numberFieldAcceptsWholeNumbers(value: String) {
+        let port = ConnectionField(id: "duckdbPort", label: "Port", defaultValue: "9494", fieldType: .number)
+        #expect(port.rangeIssue(in: value) == nil)
+    }
+
+    @Test("Every shipped integer field's default passes its own check")
+    func shippedDefaultsPassTheirOwnCheck() {
+        for entry in PluginMetadataRegistry.shared.builtInDefaults() {
+            for field in entry.snapshot.connection.additionalConnectionFields {
+                guard let defaultValue = field.defaultValue else { continue }
+                #expect(field.rangeIssue(in: defaultValue) == nil, "\(entry.typeId).\(field.id)")
+            }
+        }
+    }
 }

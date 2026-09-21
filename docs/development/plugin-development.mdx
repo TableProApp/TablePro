@@ -44,6 +44,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 `DriverConnectionConfig` carries host, port, username, password, database, SSL settings, and an `additionalFields` dictionary filled from whatever `additionalConnectionFields` you declared.
 
+A `.number` field takes a whole number of 0 or more. The form keeps ASCII digits only and will not save anything else. Use `.stepper(range:)` for a bounded or signed integer, and `.text` for a value with a decimal point.
+
 The remaining fifty-odd statics all have defaults: connection mode, URL schemes, brand color, editor language, `sqlDialect` (keywords, functions, completions), navigation model, system database names, and two dozen `supports*` capability flags. Override the ones that differ. `Plugins/TableProPluginKit/DriverPlugin.swift` is the full list.
 
 ## Implementing PluginDatabaseDriver

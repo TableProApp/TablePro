@@ -7,6 +7,8 @@ import Foundation
 import TableProPluginKit
 
 extension ConnectionField.IntRange {
+    static let wholeNumbers = ConnectionField.IntRange(0...Int.max)
+
     func clamping(_ value: Int) -> Int {
         min(max(value, lowerBound), upperBound)
     }
@@ -33,14 +35,32 @@ extension ConnectionField.IntRange {
     }
 }
 
+extension ConnectionField.FieldType {
+    var integerEntryRange: ConnectionField.IntRange? {
+        switch self {
+        case .stepper(let range):
+            return range
+        case .number:
+            return .wholeNumbers
+        case .text, .secure, .dropdown, .toggle, .hostList:
+            return nil
+        }
+    }
+}
+
 extension ConnectionField {
-    /// A stepper field keeps the text as typed so a value can be entered digit by digit, which
-    /// leaves one below the range possible when the user stops typing. Saving it would hand the
-    /// driver a number the field says it never accepts.
+    /// An integer field keeps the text as typed so a value can be entered digit by digit, which
+    /// leaves one below the range possible when the user stops typing, and an imported or synced
+    /// value never went through the keystroke filter at all. Saving either would hand the driver
+    /// a number the field says it never accepts.
     func rangeIssue(in value: String) -> String? {
-        guard case .stepper(let range) = fieldType,
-              let number = Int(value.trimmingCharacters(in: .whitespaces)),
-              range.clamping(number) != number else { return nil }
+        guard let range = fieldType.integerEntryRange else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        if let number = Int(trimmed), range.clamping(number) == number { return nil }
+        guard case .stepper = fieldType else {
+            return String(format: String(localized: "%@ must be a whole number"), label)
+        }
         return String(
             format: String(localized: "%@ must be between %@ and %@"),
             label, String(range.lowerBound), String(range.upperBound)
