@@ -2,8 +2,6 @@ import Foundation
 import TableProSQLGrammar
 
 extension QueryTab {
-    /// The run path's own rule, so a command is offered exactly when running it would send
-    /// something: whitespace, control and zero-width characters alone run nothing.
     var hasQueryText: Bool {
         StatementBlank.hasContent(content.query)
     }
