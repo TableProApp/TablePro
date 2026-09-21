@@ -27,17 +27,28 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
 
     private struct LoadRequest: Sendable {
         let connectionId: UUID
-        let database: String
+        let databaseIndex: Int
         let separator: String
+
+        var database: String {
+            String(databaseIndex)
+        }
     }
 
     init(metadataProvider: any ScopedMetadataProviding = DatabaseManager.shared) {
         self.metadataProvider = metadataProvider
     }
 
+    /// The database whose keys the tree shows, which is the one a key opened from it is read from.
+    /// Nil while the tree shows no database's keys: before its first load, while it moves to
+    /// another database, and after a load that failed with nothing to keep.
+    var shownDatabaseIndex: Int? {
+        state.value.flatMap { Int($0.database) }
+    }
+
     @discardableResult
-    func loadKeys(connectionId: UUID, database: String, separator: String) -> Task<Void, Never> {
-        load(LoadRequest(connectionId: connectionId, database: database, separator: separator))
+    func loadKeys(connectionId: UUID, databaseIndex: Int, separator: String) -> Task<Void, Never> {
+        load(LoadRequest(connectionId: connectionId, databaseIndex: databaseIndex, separator: separator))
     }
 
     /// Runs the most recent load again. Nil when nothing has been asked for yet, since there is no
@@ -73,10 +84,10 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
         from provider: any ScopedMetadataProviding
     ) async -> MetadataFetchOutcome<RedisKeyTreeContent> {
         let scope = DatabaseScope(connectionId: request.connectionId, database: request.database, schema: nil)
-        let limit = maxKeys
+        let query = RedisKeyTreeCommand.listKeys(inDatabase: request.databaseIndex, limit: maxKeys)
         do {
             let result = try await provider.withMetadataDriver(scope: scope) { driver in
-                try await driver.execute(query: "KEYTREE LIMIT \(limit)")
+                try await driver.execute(query: query)
             }
             return .fetched(RedisKeyTreeContent(result: result, database: request.database, separator: request.separator))
         } catch {

@@ -125,8 +125,8 @@ struct RedisKeyTreeViewModelLoadTests {
         return (RedisKeyTreeViewModel(metadataProvider: provider), provider)
     }
 
-    private func load(_ viewModel: RedisKeyTreeViewModel, database: String) async {
-        await viewModel.loadKeys(connectionId: connection.id, database: database, separator: ":").value
+    private func load(_ viewModel: RedisKeyTreeViewModel, databaseIndex: Int) async {
+        await viewModel.loadKeys(connectionId: connection.id, databaseIndex: databaseIndex, separator: ":").value
     }
 
     @Test("A load commits the keys the server listed, for the database it asked about")
@@ -134,7 +134,7 @@ struct RedisKeyTreeViewModelLoadTests {
         let (viewModel, provider) = makeViewModel()
         provider.answer("3", with: .keys(["user:1", "user:2", "counter"]))
 
-        await load(viewModel, database: "3")
+        await load(viewModel, databaseIndex: 3)
 
         let content = try #require(viewModel.state.value)
         #expect(content.database == "3")
@@ -142,7 +142,7 @@ struct RedisKeyTreeViewModelLoadTests {
         #expect(content.rootNodes.count == 2)
         #expect(!content.isTruncated)
         #expect(provider.requestedDatabases == ["3"])
-        #expect(provider.executedQueries == ["KEYTREE LIMIT \(RedisKeyTreeViewModel.maxKeys)"])
+        #expect(provider.executedQueries == ["KEYTREE DB 3 LIMIT \(RedisKeyTreeViewModel.maxKeys)"])
     }
 
     /// Each of these used to become an empty tree, which the section drew as "No items".
@@ -157,7 +157,7 @@ struct RedisKeyTreeViewModelLoadTests {
             let (viewModel, provider) = makeViewModel()
             provider.answer("0", with: .failure(error))
 
-            await load(viewModel, database: "0")
+            await load(viewModel, databaseIndex: 0)
 
             #expect(viewModel.state.erased == .failed(error.localizedDescription), "\(error)")
         }
@@ -168,9 +168,9 @@ struct RedisKeyTreeViewModelLoadTests {
         let (viewModel, provider) = makeViewModel()
         provider.answer("0", with: .keys(["a"]))
         provider.answer("2", with: .keys(["b"]))
-        await load(viewModel, database: "0")
+        await load(viewModel, databaseIndex: 0)
 
-        let move = viewModel.loadKeys(connectionId: connection.id, database: "2", separator: ":")
+        let move = viewModel.loadKeys(connectionId: connection.id, databaseIndex: 2, separator: ":")
         #expect(viewModel.state.erased == .loading)
         await move.value
 
@@ -191,9 +191,9 @@ struct RedisKeyTreeViewModelLoadTests {
             let (reached, release) = provider.hold("1")
             provider.answer("2", with: .keys(["fresh:1"]))
 
-            let stale = viewModel.loadKeys(connectionId: connection.id, database: "1", separator: ":")
+            let stale = viewModel.loadKeys(connectionId: connection.id, databaseIndex: 1, separator: ":")
             await reached.wait()
-            await load(viewModel, database: "2")
+            await load(viewModel, databaseIndex: 2)
             #expect(viewModel.state.value?.database == "2")
 
             provider.answer("1", with: outcome)
@@ -212,9 +212,9 @@ struct RedisKeyTreeViewModelLoadTests {
         let (viewModel, provider) = makeViewModel()
         provider.answer("0", with: .keys(["a"]))
         provider.answer("1", with: .failure(CancellationError()))
-        await load(viewModel, database: "0")
+        await load(viewModel, databaseIndex: 0)
 
-        await load(viewModel, database: "1")
+        await load(viewModel, databaseIndex: 1)
 
         #expect(viewModel.state.erased == .idle)
     }
@@ -223,7 +223,7 @@ struct RedisKeyTreeViewModelLoadTests {
     func cancelledRefreshKeepsTheRows() async {
         let (viewModel, provider) = makeViewModel()
         provider.answer("0", with: .keys(["a"]))
-        await load(viewModel, database: "0")
+        await load(viewModel, databaseIndex: 0)
 
         provider.answer("0", with: .failure(CancellationError()))
         await viewModel.reload()?.value
@@ -237,7 +237,7 @@ struct RedisKeyTreeViewModelLoadTests {
     func refreshKeepsItsRows() async throws {
         let (viewModel, provider) = makeViewModel()
         provider.answer("0", with: .keys(["a"]))
-        await load(viewModel, database: "0")
+        await load(viewModel, databaseIndex: 0)
 
         provider.answer("0", with: .failure(RedisPluginError(code: 0, message: "ERR refused")))
         let refresh = try #require(viewModel.reload())
@@ -248,11 +248,53 @@ struct RedisKeyTreeViewModelLoadTests {
         #expect(provider.requestedDatabases == ["0", "0"])
     }
 
+    /// A typed `SELECT` moves the session, and a refresh that named no database listed wherever it
+    /// had moved.
+    @Test("Refresh names the database it lists, the same one each time")
+    func refreshNamesItsDatabase() async throws {
+        let (viewModel, provider) = makeViewModel()
+        provider.answer("0", with: .keys(["zero:a"]))
+        await load(viewModel, databaseIndex: 0)
+
+        try await #require(viewModel.reload()).value
+
+        let listing = "KEYTREE DB 0 LIMIT \(RedisKeyTreeViewModel.maxKeys)"
+        #expect(provider.executedQueries == [listing, listing])
+        #expect(viewModel.state.value?.database == "0")
+    }
+
+    @Test("The shown database is the one whose keys are on screen, and none while none are")
+    func shownDatabaseIndexFollowsTheKeysOnScreen() async throws {
+        let (viewModel, provider) = makeViewModel()
+        #expect(viewModel.shownDatabaseIndex == nil)
+
+        provider.answer("4", with: .keys(["a"]))
+        await load(viewModel, databaseIndex: 4)
+        #expect(viewModel.shownDatabaseIndex == 4)
+
+        let (refreshReached, refreshRelease) = provider.hold("4")
+        let refresh = try #require(viewModel.reload())
+        await refreshReached.wait()
+        #expect(viewModel.shownDatabaseIndex == 4)
+        await refreshRelease.open()
+        await refresh.value
+
+        let (moveReached, moveRelease) = provider.hold("6")
+        provider.answer("6", with: .failure(RedisPluginError(code: 0, message: "ERR refused")))
+        let move = viewModel.loadKeys(connectionId: connection.id, databaseIndex: 6, separator: ":")
+        await moveReached.wait()
+        #expect(viewModel.shownDatabaseIndex == nil)
+        await moveRelease.open()
+        await move.value
+
+        #expect(viewModel.shownDatabaseIndex == nil)
+    }
+
     @Test("Refresh after a failed load retries it and shows the keys it gets")
     func refreshRecoversAFailedLoad() async throws {
         let (viewModel, provider) = makeViewModel()
         provider.answer("0", with: .failure(RedisQueuedCommand(command: "SCAN")))
-        await load(viewModel, database: "0")
+        await load(viewModel, databaseIndex: 0)
         #expect(viewModel.state.value == nil)
 
         provider.answer("0", with: .keys(["a", "b"]))

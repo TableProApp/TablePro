@@ -46,10 +46,12 @@ extension RedisPluginDriver {
                 )
             }
 
-        case .keyTree(let pattern, let limit):
-            return try await executeKeyTree(
-                pattern: pattern, limit: limit, connection: conn, startTime: startTime
-            )
+        case .keyTree(let pattern, let limit, let database):
+            return try await conn.withDatabase(database) {
+                try await executeKeyTree(
+                    pattern: pattern, limit: limit, connection: conn, startTime: startTime
+                )
+            }
 
         case .hget, .hset, .hgetall, .hdel:
             return try await executeHashOperation(operation, connection: conn, startTime: startTime)

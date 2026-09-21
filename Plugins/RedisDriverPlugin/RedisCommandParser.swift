@@ -18,7 +18,7 @@ enum RedisOperation {
     case keys(pattern: String)
     case scan(cursor: String, pattern: String?, count: Int?, type: String?)
     case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int, database: Int? = nil)
-    case keyTree(pattern: String?, limit: Int)
+    case keyTree(pattern: String?, limit: Int, database: Int? = nil)
     case type(key: String)
     case ttl(key: String)
     case pttl(key: String)
@@ -194,16 +194,32 @@ struct RedisCommandParser {
             return try parseKeyBrowse(args)
 
         case "KEYTREE":
-            return parseKeyTree(args)
+            return try parseKeyTree(args)
 
         default:
             return .command(args: tokens)
         }
     }
 
-    /// `DB` names the database the browse reads, so a table's own query reaches it whichever
-    /// database the session is on: a refresh, a later page and an export all read the database
-    /// the row names rather than the one the session last moved to.
+    /// `DB` names the database the read reaches whichever database the session is on: a refresh,
+    /// a later page and an export all read the database the row names rather than the one the
+    /// session last moved to, and the key tree lists the database the sidebar shows.
+    private static func parseDatabaseArgument(
+        _ args: [RedisArgument], after index: Int, command: String
+    ) throws -> Int {
+        guard index + 1 < args.count else {
+            throw RedisParseError.missingArgument(
+                String(format: String(localized: "%@ DB requires a database index"), command)
+            )
+        }
+        guard let database = RedisDatabaseIndex.parse(args[index + 1].text), database >= 0 else {
+            throw RedisParseError.invalidArgument(
+                String(format: String(localized: "%@ is not a Redis database index."), args[index + 1].text)
+            )
+        }
+        return database
+    }
+
     private static func parseKeyBrowse(_ args: [RedisArgument]) throws -> RedisOperation {
         var pattern: String?
         var typeScope: String?
@@ -214,15 +230,7 @@ struct RedisCommandParser {
         while i < args.count {
             switch args[i].text.uppercased() {
             case "DB":
-                guard i + 1 < args.count else {
-                    throw RedisParseError.missingArgument(String(localized: "KEYBROWSE DB requires a database index"))
-                }
-                guard let index = RedisDatabaseIndex.parse(args[i + 1].text), index >= 0 else {
-                    throw RedisParseError.invalidArgument(
-                        String(format: String(localized: "%@ is not a Redis database index."), args[i + 1].text)
-                    )
-                }
-                database = index
+                database = try parseDatabaseArgument(args, after: i, command: "KEYBROWSE")
                 i += 1
             case "MATCH":
                 if i + 1 < args.count {
@@ -252,12 +260,16 @@ struct RedisCommandParser {
         return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset, database: database)
     }
 
-    private static func parseKeyTree(_ args: [RedisArgument]) -> RedisOperation {
+    private static func parseKeyTree(_ args: [RedisArgument]) throws -> RedisOperation {
         var pattern: String?
         var limit = PluginRowLimits.emergencyMax
+        var database: Int?
         var i = 0
         while i < args.count {
             switch args[i].text.uppercased() {
+            case "DB":
+                database = try parseDatabaseArgument(args, after: i, command: "KEYTREE")
+                i += 1
             case "MATCH":
                 if i + 1 < args.count {
                     pattern = args[i + 1].text
@@ -273,7 +285,7 @@ struct RedisCommandParser {
             }
             i += 1
         }
-        return .keyTree(pattern: pattern, limit: limit)
+        return .keyTree(pattern: pattern, limit: limit, database: database)
     }
 
     // MARK: - Key Commands

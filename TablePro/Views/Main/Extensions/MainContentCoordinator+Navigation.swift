@@ -758,24 +758,27 @@ extension MainContentCoordinator {
                 executeTableTabQueryDirectly(viewport: .firstRow)
             }
 
-            loadRedisKeyTree(database: database)
+            loadRedisKeyTree(databaseIndex: dbIndex)
         }
     }
 
+    /// The session's own database rather than the connection's saved index: a Cluster serves
+    /// database 0 only and records no other, and neither does a server that refused the saved one.
     func initRedisKeyTreeIfNeeded() {
         guard connection.type == .redis else { return }
         guard SharedSidebarState.forConnection(connectionId).redisKeyTreeViewModel == nil else { return }
-        loadRedisKeyTree(database: toolbarState.currentDatabase)
+        let browsed = DatabaseManager.shared.session(for: connectionId)?.browseDatabase
+        loadRedisKeyTree(databaseIndex: browsed.flatMap { Int($0) } ?? 0)
     }
 
     /// The tree belongs to the connection's shared sidebar state rather than to this window's sidebar
     /// view model, which may not exist yet, so the load never depends on which window asked for it.
-    private func loadRedisKeyTree(database: String) {
+    private func loadRedisKeyTree(databaseIndex: Int) {
         let sidebarState = SharedSidebarState.forConnection(connectionId)
         let keyTree = sidebarState.redisKeyTreeViewModel ?? makeRedisKeyTree(in: sidebarState)
         keyTree.loadKeys(
             connectionId: connectionId,
-            database: database,
+            databaseIndex: databaseIndex,
             separator: connection.additionalFields["redisSeparator"] ?? ":"
         )
     }
@@ -793,23 +796,46 @@ extension MainContentCoordinator {
     }
 
     func openRedisKey(_ keyName: String, keyType: String?) {
-        let escapedKey = keyName.replacingOccurrences(of: "\"", with: "\\\"")
-        let query: String
-        switch keyType?.lowercased() {
-        case "hash"?:
-            query = "HGETALL \"\(escapedKey)\""
-        case "list"?:
-            query = "LRANGE \"\(escapedKey)\" 0 -1"
-        case "set"?:
-            query = "SMEMBERS \"\(escapedKey)\""
-        case "zset"?:
-            query = "ZRANGE \"\(escapedKey)\" 0 -1 WITHSCORES"
-        case "stream"?:
-            query = "XRANGE \"\(escapedKey)\" - +"
-        default:
-            query = "GET \"\(escapedKey)\""
+        let keyTree = SharedSidebarState.forConnection(connectionId).redisKeyTreeViewModel
+        guard let databaseIndex = keyTree?.shownDatabaseIndex else {
+            navigationLogger.warning("Not opening a Redis key: the key tree shows no database")
+            return
         }
-        tabManager.addTab(initialQuery: query, title: keyName)
-        runQuery(viewport: .firstRow)
+        openRedisKey(keyName, keyType: keyType, inDatabase: databaseIndex)
+    }
+
+    /// A key is read from the database the tree listed it in, not from wherever a typed `SELECT`
+    /// left the session, so the session moves there first. The move waits behind a database click
+    /// still in flight instead of cancelling it, which would leave that click's tab loading, and a
+    /// later click cancels both.
+    func openRedisKey(_ keyName: String, keyType: String?, inDatabase databaseIndex: Int) {
+        tabManager.addTab(initialQuery: RedisKeyTreeCommand.openKey(keyName, keyType: keyType), title: keyName)
+        guard let tabId = tabManager.selectedTabId else { return }
+
+        let connId = connectionId
+        let database = String(databaseIndex)
+        let inFlight = redisDatabaseSwitchTask
+        redisDatabaseSwitchTask = Task { [weak self] in
+            await withTaskCancellationHandler {
+                await inFlight?.value
+            } onCancel: {
+                inFlight?.cancel()
+            }
+            guard let self, !Task.isCancelled else { return }
+            do {
+                try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
+            } catch {
+                guard !Task.isCancelled else { return }
+                navigationLogger.error(
+                    "Failed to SELECT Redis db\(databaseIndex) for a key: \(error.publicLogShape, privacy: .public)"
+                )
+                reportRedisSelectionFailure(error, onTab: tabId)
+                return
+            }
+            guard !Task.isCancelled else { return }
+            toolbarState.currentDatabase = database
+            guard tabManager.selectedTabId == tabId else { return }
+            runQuery(viewport: .firstRow)
+        }
     }
 }

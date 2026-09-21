@@ -325,3 +325,34 @@ struct RedisWriteAddressingTests {
         #expect(last == 5)
     }
 }
+
+@Suite("Redis key tree - the database it lists")
+struct RedisKeyTreeDatabaseTests {
+    /// The tree's read is a walk of the keyspace plus one TYPE per key, run inside the database the
+    /// tree names. A typed SELECT moves where the session belongs, which the read has to leave alone.
+    @Test("The tree's read visits its own database and returns to the one a typed SELECT chose")
+    func readVisitsAndReturns() async throws {
+        let channel = StubRedisChannel([
+            .status("OK"),
+            .status("OK"),
+            .array([.string("0"), .array([.string("a")])]),
+            .status("string"),
+            .status("OK")
+        ])
+        try await channel.selectDatabase(5)
+
+        let types = try await channel.withDatabase(0) {
+            let page = try await channel.scanKeyspace(
+                cursor: RedisClusterCursor.start, pattern: nil, type: nil, count: 1_000, scope: .outsideBlock
+            )
+            return try await channel.keyTypeNames(page.keys)
+        }
+
+        #expect(types == ["string"])
+        #expect(channel.sentCommands == [
+            ["SELECT", "5"], ["SELECT", "0"], ["SCAN", "0", "COUNT", "1000"], ["TYPE", "a"], ["SELECT", "5"]
+        ])
+        #expect(channel.homeDatabase() == 5)
+        #expect(channel.currentDatabase() == 5)
+    }
+}
