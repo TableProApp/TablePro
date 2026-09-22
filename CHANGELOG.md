@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
+- Model list not reloading when the API key changes, leaving the picker empty with no way to retry.
+- Empty model picker, with nothing said, for a local or OpenAI-compatible server answering 200 with an unexpected shape.
+- No caution when an API key is sent unencrypted over `http` to another machine.
 - No Base URL reaching an OpenAI-compatible server whose version segment is not `/v1`, such as Z.ai's `/v4`. (#3040)
 - Doubled version segment on Claude, OpenAI, xAI and Gemini when the Base URL already carried one.
 - **Connection successful** on a custom provider whose Base URL answered 404.
