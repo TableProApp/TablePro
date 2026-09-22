@@ -296,6 +296,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Partial MySQL dump of a MariaDB or MySQL 5.7 server, from the column statistics `mysqldump` 8 reads.
 - A database whose name starts with a dash backed up as a different database, reported as a success.
 - Cancel ignored while TablePro was locating the backup tool, and the dump running anyway.
+- Destination folder and the first database reading as one path in the backup result sheet. (#3046)
+- Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
+- Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
 
 ### Security
 
