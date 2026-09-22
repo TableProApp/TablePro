@@ -340,18 +340,20 @@ extension DatabaseManager {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
             let sessionStartedAt = session(for: connectionId)?.connectedAt
             let adapter = try await sessionDriverGate.withExclusiveAccess(connectionId) {
-                try Task.checkCancellation()
-                guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
-                    throw CancellationError()
+                try await trackOperation(sessionId: connectionId) {
+                    try Task.checkCancellation()
+                    guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                        throw CancellationError()
+                    }
+                    guard let adapter = self.driver(for: connectionId) as? PluginDriverAdapter else {
+                        throw DatabaseError.notConnected
+                    }
+                    try await adapter.switchDatabase(to: database)
+                    if grouping == .bySchema {
+                        await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
+                    }
+                    return adapter
                 }
-                guard let adapter = self.driver(for: connectionId) as? PluginDriverAdapter else {
-                    throw DatabaseError.notConnected
-                }
-                try await adapter.switchDatabase(to: database)
-                if grouping == .bySchema {
-                    await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
-                }
-                return adapter
             }
             updateSession(connectionId) { session in
                 session.browseDatabase = database
@@ -457,15 +459,21 @@ extension DatabaseManager {
             throw DatabaseError.unsupportedOperation
         }
 
+        /// Counted as an operation, like every other turn on the session driver, so a scheduled
+        /// ping skips at its `queriesInFlight` guard instead of entering a driver that is not
+        /// thread-safe alongside this. Holding `sessionDriverGate` is not enough on its own: the
+        /// ping never asks for that gate.
         try await sessionDriverGate.withExclusiveAccess(connectionId) {
-            try Task.checkCancellation()
-            guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
-                throw CancellationError()
+            try await trackOperation(sessionId: connectionId) {
+                try Task.checkCancellation()
+                guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                    throw CancellationError()
+                }
+                guard let schemaDriver = driver(for: connectionId) as? SchemaSwitchable else {
+                    throw DatabaseError.notConnected
+                }
+                try await schemaDriver.switchSchema(to: schema)
             }
-            guard let schemaDriver = driver(for: connectionId) as? SchemaSwitchable else {
-                throw DatabaseError.notConnected
-            }
-            try await schemaDriver.switchSchema(to: schema)
         }
         updateSession(connectionId) { session in
             session.browseSchema = schema

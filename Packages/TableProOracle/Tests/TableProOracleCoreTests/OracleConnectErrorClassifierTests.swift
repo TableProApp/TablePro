@@ -90,6 +90,51 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
         XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("statementError"))
     }
 
+    /// The table mirrors OracleNIO's own `ConnectionStateMachine.shouldCloseConnection(reason:)`,
+    /// which is internal and so cannot be called. Every case it names is pinned here.
+    func testChannelFatalTableMirrorsOracleNIO() {
+        for code in [
+            "clientClosesConnection",
+            "clientClosedConnection",
+            "failedToAddSSLHandler",
+            "failedToVerifyTLSCertificates",
+            "connectionError",
+            "messageDecodingFailure",
+            "missingParameter",
+            "unexpectedBackendMessage",
+            "serverVersionNotSupported",
+            "sidNotSupported",
+            "uncleanShutdown",
+            "unsupportedDataType",
+            "unsupportedVerifierType(0x939)",
+            "advancedNegotiationFailed",
+            "advancedNegotiationRequired",
+            "loginHandshakeTimedOut"
+        ] {
+            XCTAssertTrue(OracleChannelFatalCode.isChannelFatal(code), code)
+        }
+
+        for code in ["statementCancelled", "nationalCharsetNotSupported", "missingStatement", "malformedStatement"] {
+            XCTAssertFalse(OracleChannelFatalCode.isChannelFatal(code), code)
+        }
+    }
+
+    /// ORA-28 is the session being killed and ORA-600 an internal error; OracleNIO closes the
+    /// channel on both and on no other server error.
+    func testServerErrorsAreFatalOnlyForKilledSessions() {
+        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 28))
+        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 600))
+        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 942))
+        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server"))
+    }
+
+    func testClientClosesAreToldApartFromProtocolFailures() {
+        XCTAssertTrue(OracleChannelFatalCode.isClientClose("clientClosedConnection"))
+        XCTAssertTrue(OracleChannelFatalCode.isClientClose("clientClosesConnection"))
+        XCTAssertFalse(OracleChannelFatalCode.isClientClose("connectionError"))
+        XCTAssertFalse(OracleChannelFatalCode.isClientClose("uncleanShutdown"))
+    }
+
     func testTLSClassifierRecognizesOracleWalletAndCipherErrors() {
         XCTAssertEqual(OracleSSLClassifier.classifyTLSFailure("ORA-28759: failure to open file"), .clientCertRequired)
         XCTAssertEqual(OracleSSLClassifier.classifyTLSFailure("ORA-29024: Certificate validation failure"), .cipherMismatch)

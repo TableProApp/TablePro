@@ -41,6 +41,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var pingDelaySeconds: Double = 0
     var connectDelaySeconds: Double = 0
     var switchSchemaDelaySeconds: Double = 0
+    var onSwitchSchema: (@Sendable () async -> Void)?
     var executeDelaySeconds: Double = 0
     var hangsUntilDisconnect = false
     var schemasToReturn: [String] = []
@@ -199,6 +200,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     func rollbackTransaction() async throws {}
 
     func switchSchema(to schema: String) async throws {
+        await onSwitchSchema?()
         if switchSchemaDelaySeconds > 0 {
             try await Task.sleep(nanoseconds: UInt64(switchSchemaDelaySeconds * 1_000_000_000))
         }

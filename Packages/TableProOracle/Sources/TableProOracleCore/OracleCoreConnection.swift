@@ -7,26 +7,65 @@ import OSLog
 
 private let osLogger = Logger(subsystem: "com.TablePro", category: "OracleCoreConnection")
 
+/// Whether the caller now owns the channel, or how long somebody else has held it.
+internal enum QueryGateTurn: Sendable, Equatable {
+    case acquired
+    case busy(for: Duration)
+}
+
+/// What a health check should do with the turn it was given.
+internal enum OraclePingDecision: Sendable, Equatable {
+    /// The probe owns the channel and may run, and may close it if it gets no answer.
+    case probe
+    /// Somebody else is using the channel, which answers the question better than a probe could.
+    case reportAlive
+    /// Nothing has moved on the channel for longer than any statement is allowed to run.
+    case reportWedged
+
+    static func of(_ turn: QueryGateTurn, wedgedAfter: Duration) -> OraclePingDecision {
+        switch turn {
+        case .acquired:
+            return .probe
+        case .busy(let held):
+            return held > wedgedAfter ? .reportWedged : .reportAlive
+        }
+    }
+}
+
 /// OracleNIO does not support concurrent queries on a single connection.
 /// Sending a second statement while the first stream is active corrupts the
 /// state machine. This actor serializes all executeQuery calls.
-private actor QueryGate {
-    private var busy = false
+///
+/// Holding the gate is what gives a task the right to close the channel, so the gate also
+/// records when the channel last went from idle to busy. A probe that cannot take a turn can
+/// then tell "somebody is using this, which answers the question better than I could" from
+/// "somebody has been stuck on this for longer than any statement is allowed to run".
+internal actor QueryGate {
+    private var heldSince: ContinuousClock.Instant?
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
     func acquire() async {
-        if !busy {
-            busy = true
+        if heldSince == nil {
+            heldSince = .now
             return
         }
         await withCheckedContinuation { waiters.append($0) }
     }
 
+    func takeTurnIfFree() -> QueryGateTurn {
+        guard let heldSince else {
+            self.heldSince = .now
+            return .acquired
+        }
+        return .busy(for: .now - heldSince)
+    }
+
     func release() {
         if !waiters.isEmpty {
+            heldSince = .now
             waiters.removeFirst().resume()
         } else {
-            busy = false
+            heldSince = nil
         }
     }
 }
@@ -128,6 +167,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 // own socket rather than leaking one per abandoned attempt.
                 guard !attempt.withLock({ $0 }) else {
                     try? await connection.close()
+                    osLogger.notice(
+                        "Closed the Oracle connection: \(OracleDisconnectReason.abandonedLoginAttempt.logDescription, privacy: .public)"
+                    )
                     throw OracleCoreError.loginTimedOut
                 }
                 return connection
@@ -235,10 +277,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
         if let underlying = error.underlying {
             return String(describing: underlying)
         }
-        return error.description
+        return String(format: OracleCoreError.driverErrorFormat, error.code.description)
     }
 
-    public func disconnect() {
+    public func disconnect(reason: OracleDisconnectReason = .userRequested) {
         let connection = state.withLock { current -> OracleNIO.OracleConnection? in
             guard current.isConnected else { return nil }
             current.isConnected = false
@@ -251,7 +293,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
         Task {
             try? await connection.close()
-            osLogger.debug("Disconnected from Oracle")
+            osLogger.notice("Closed the Oracle connection: \(reason.logDescription, privacy: .public)")
         }
     }
 
@@ -259,7 +301,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     /// way to abort an in-flight statement. The next query redials and restores
     /// the session schema, which is the same recovery a query timeout uses.
     public func cancelCurrentQuery() {
-        disconnect()
+        disconnect(reason: .queryCancelled)
     }
 
     public func applyQueryTimeout(_ seconds: Int) {
@@ -270,15 +312,75 @@ public final class OracleCoreConnection: @unchecked Sendable {
         state.withLock { $0.sessionSchema = schema }
     }
 
-    /// A health check must never inherit the user's query timeout, which is
-    /// unlimited by default. Without its own deadline a dead socket can leave
-    /// the caller waiting forever instead of triggering a reconnect.
+    /// How long a statement may hold the channel before a probe that cannot get a turn treats it
+    /// as wedged rather than as evidence the connection is alive. It is the app's own
+    /// `max(queryTimeout, 300)` staleness rule, read from the timeout the app already told the
+    /// driver about, so the two cannot drift. An unlimited query timeout is the user saying a
+    /// statement may run for as long as it runs, and the floor still catches a socket that died
+    /// without closing.
+    private var wedgedStatementSeconds: Double {
+        max(Double(state.withLock { $0.queryTimeoutSeconds }), 300)
+    }
+
+    /// Answers whether this connection still works, without ever taking the channel away from
+    /// whoever is using it.
+    ///
+    /// A probe may close a channel only while it owns it. The old shape wrapped `executeQuery` in
+    /// a ten second deadline, and `executeQuery` opens by waiting on the query gate, so the
+    /// deadline covered the queue rather than the round trip: a probe that never got a turn fired
+    /// `disconnect()` into a healthy statement, which OracleNIO reports to that statement as
+    /// `clientClosedConnection` (#3053).
+    ///
+    /// A statement already in flight answers the question better than a probe could, so a busy
+    /// channel reads as alive. Past ``wedgedStatementSeconds`` it reads as wedged instead, which
+    /// is what keeps the app's own stale-query escape valve working.
+    ///
+    /// It asks OracleNIO directly rather than running `SELECT 1` through the app's statement path:
+    /// there is no transaction role to admit, no autocommit flag to choose, and no silent redial,
+    /// so a connection that has gone away reports that it has gone away instead of reporting the
+    /// health of a replacement nobody asked for.
     public func ping() async throws {
-        _ = try await withOracleTimeout(
-            seconds: Self.pingTimeoutSeconds,
-            onTimeout: { [self] in disconnect() },
-            operation: { [self] in try await executeQuery(OracleSchemaQueries.ping) }
-        )
+        let turn = await queryGate.takeTurnIfFree()
+        switch OraclePingDecision.of(turn, wedgedAfter: .seconds(wedgedStatementSeconds)) {
+        case .reportAlive:
+            return
+        case .reportWedged:
+            osLogger.error(
+                "An Oracle statement has held the connection past the staleness limit; treating it as wedged"
+            )
+            disconnect(reason: .wedgedStatement)
+            throw OracleCoreError.connectionClosed
+        case .probe:
+            break
+        }
+
+        /// Read after the turn is taken, so the handle pinged is the one the channel holds now
+        /// rather than one a reconnect replaced while this was deciding.
+        guard let connection = state.withLock({ $0.isConnected ? $0.nioConnection : nil }) else {
+            await queryGate.release()
+            throw OracleCoreError.notConnected
+        }
+        guard !connection.isClosed else {
+            markConnectionDead(reason: .channelAlreadyClosed)
+            await queryGate.release()
+            throw OracleCoreError.connectionClosed
+        }
+
+        do {
+            try await withOracleTimeout(
+                seconds: Self.pingTimeoutSeconds,
+                onTimeout: { [self] in disconnect(reason: .pingTimedOut) },
+                operation: { try await connection.ping() }
+            )
+            await queryGate.release()
+        } catch is OracleTimeoutError {
+            await queryGate.release()
+            throw OracleCoreError.connectionClosed
+        } catch {
+            let mapped = mapExecutionError(error)
+            await queryGate.release()
+            throw mapped
+        }
     }
 
     // MARK: - Query Execution
@@ -296,7 +398,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     /// connection is marked dead, so a channel abandoned here would stay open on the server for the life
     /// of the process. Extracted in the same single `withLock` `disconnect()` uses, so two racing closers
     /// cannot both reach `close()`.
-    private func markConnectionDead() {
+    private func markConnectionDead(reason: OracleDisconnectReason) {
         let connection = state.withLock { current -> OracleNIO.OracleConnection? in
             current.isConnected = false
             let connection = current.nioConnection
@@ -308,7 +410,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
         Task {
             try? await connection.close()
-            osLogger.debug("Closed the Oracle connection after it was marked dead")
+            osLogger.notice(
+                "Closed the Oracle connection after it was marked dead: \(reason.logDescription, privacy: .public)"
+            )
         }
     }
 
@@ -472,18 +576,41 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
         return try await withOracleTimeout(
             seconds: Double(timeoutSeconds),
-            onTimeout: { [self] in disconnect() },
+            onTimeout: { [self] in disconnect(reason: .queryTimedOut) },
             operation: operation
         )
     }
 
+    /// `OracleSQLError.description` never reaches the user. OracleNIO's own documentation says these
+    /// errors "should not be forwareded to the end user, as they may leak sensitive information",
+    /// and forwarding one is how a closed channel came out as
+    /// `OracleSQLError(code: clientClosedConnection, ...)` in an alert (#3053). The server's own
+    /// message is the one worth showing; without it the code's name says more than its struct dump,
+    /// and the full description goes to the log instead.
     private func mapQueryError(_ sqlError: OracleSQLError) -> OracleCoreError {
-        guard OracleChannelFatalCode.isChannelFatal(sqlError.code.description) else {
-            return .queryFailed(sqlError.serverInfo?.message ?? sqlError.description)
+        let code = sqlError.code.description
+        guard OracleChannelFatalCode.isChannelFatal(
+            code, serverErrorNumber: sqlError.serverInfo.map { Int($0.number) }
+        ) else {
+            guard let serverMessage = sqlError.serverInfo?.message else {
+                osLogger.error("Oracle statement failed: \(String(describing: sqlError), privacy: .public)")
+                return .queryFailed(String(format: OracleCoreError.driverErrorFormat, code))
+            }
+            return .queryFailed(serverMessage)
         }
-        markConnectionDead()
-        osLogger.error("Oracle connection reset after fatal protocol error: \(sqlError.code.description, privacy: .public)")
-        return .protocolError
+
+        if OracleChannelFatalCode.isClientClose(code) {
+            markConnectionDead(reason: .channelAlreadyClosed)
+            osLogger.error("Oracle statement failed because this side had closed the channel: \(code, privacy: .public)")
+            return .connectionClosed
+        }
+
+        markConnectionDead(reason: .fatalProtocolError)
+        osLogger.error("Oracle connection reset after a fatal error: \(code, privacy: .public)")
+        /// ORA-00028 and ORA-00600 end the session, and the server says why better than any
+        /// wording here could. Everything else that reaches this point is the protocol failing.
+        guard let serverMessage = sqlError.serverInfo?.message else { return .protocolError }
+        return .queryFailed(serverMessage)
     }
 
     /// A socket the system reclaimed while the app was suspended surfaces as a
@@ -502,7 +629,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         case is CancellationError:
             return error
         default:
-            markConnectionDead()
+            markConnectionDead(reason: .transportError)
             let detail = String(describing: error)
             osLogger.error("Oracle connection reset after a transport error: \(detail, privacy: .public)")
             return OracleCoreError.queryFailed(detail)
@@ -530,6 +657,25 @@ public final class OracleCoreConnection: @unchecked Sendable {
             await recordFailure(of: role)
             await queryGate.release()
             throw mapped
+        }
+    }
+
+    /// Runs a statement that only configures the session, retrying it once across a channel this
+    /// side closed.
+    ///
+    /// Replaying an arbitrary statement across a reconnect is never safe, because the new session
+    /// holds none of the old one's state. A session-setup statement is the exception by
+    /// construction: it is one of the statements ``reconnectedConnection()`` already replays for
+    /// itself on every reconnect, so running it again is what the connection would have done
+    /// anyway. The retry redials through that same path, and a transaction bound to the closed
+    /// session still fails at ``OracleSessionTransaction/admit(_:on:)`` rather than carrying on in
+    /// a session that holds none of its work.
+    public func executeSessionSetup(_ query: String) async throws -> OracleRawResult {
+        do {
+            return try await executeQuery(query)
+        } catch OracleCoreError.connectionClosed {
+            osLogger.notice("Retrying an Oracle session setup statement on a fresh connection")
+            return try await executeQuery(query)
         }
     }
 

@@ -48,14 +48,48 @@ public enum OracleConnectErrorClassifier {
     }
 }
 
+/// Which OracleNIO failures leave the channel unusable.
+///
+/// It mirrors OracleNIO's own `ConnectionStateMachine.shouldCloseConnection(reason:)`, which is
+/// internal and so cannot be called. Disagreeing with it means the app keeps a channel OracleNIO
+/// has already torn down, and the next statement on it fails for a reason nobody can act on. The
+/// old three-code list did exactly that for a client-side close (#3053).
+///
+/// `clientClosesConnection` and `clientClosedConnection` are the two OracleNIO refuses to classify
+/// at all, because it raises them only from `OracleConnection.close()`: by the time one exists the
+/// channel is gone, so they are unambiguously fatal here.
 public enum OracleChannelFatalCode {
-    public static func isChannelFatal(_ codeDescription: String) -> Bool {
-        switch codeDescription {
-        case "connectionError", "messageDecodingFailure", "unexpectedBackendMessage":
+    public static func isChannelFatal(_ codeDescription: String, serverErrorNumber: Int? = nil) -> Bool {
+        if codeDescription.hasPrefix("unsupportedVerifierType") {
             return true
+        }
+        switch codeDescription {
+        case "clientClosesConnection",
+             "clientClosedConnection",
+             "failedToAddSSLHandler",
+             "failedToVerifyTLSCertificates",
+             "connectionError",
+             "messageDecodingFailure",
+             "missingParameter",
+             "unexpectedBackendMessage",
+             "serverVersionNotSupported",
+             "sidNotSupported",
+             "uncleanShutdown",
+             "unsupportedDataType",
+             "advancedNegotiationFailed",
+             "advancedNegotiationRequired",
+             "loginHandshakeTimedOut":
+            return true
+        case "server":
+            return serverErrorNumber == 28 || serverErrorNumber == 600
         default:
             return false
         }
+    }
+
+    /// Whether this side closed the channel, rather than the server or the protocol failing.
+    public static func isClientClose(_ codeDescription: String) -> Bool {
+        codeDescription == "clientClosesConnection" || codeDescription == "clientClosedConnection"
     }
 }
 
