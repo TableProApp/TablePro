@@ -985,6 +985,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLImportPlugin
+        # Above plugin-sqlimport-v1.0.5, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so at the template's 1.0 a retained user copy would keep
+        # offering SQL on MongoDB.
+        MARKETING_VERSION: "1.0.6"
 
   JSONImport:
     templates: [DriverPlugin]

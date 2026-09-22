@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **File > Import > Import Data…** importing every file as SQL. (#3047)
+- A file the import panel dimmed still opening, and reaching the wrong importer.
+- Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
+- **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
 - Model list not reloading when the API key changes, leaving the picker empty with no way to retry.
 - Empty model picker, with nothing said, for a local or OpenAI-compatible server answering 200 with an unexpected shape.

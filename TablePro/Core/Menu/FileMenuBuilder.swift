@@ -241,10 +241,9 @@ enum FileMenuBuilder {
         return container
     }
 
-    /// Every format the connection imports from. Import Data… above it takes the first one, which
-    /// left the menu bar with no route to any other: the toolbar's Import item was the only one, and
-    /// a toolbar item is not a menu-bar command. The Actions pull-down offers the same list under the
-    /// same title, and the two are filled by the same class when they open.
+    /// Every format the connection imports from, for naming one a file's extension does not.
+    /// Import Data… above it reads the format off the file instead. The Actions pull-down offers
+    /// the same list under the same title, and the two are filled by the same class when they open.
     private static func importFormatsSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Import Data From"), items: [])
         container.submenu?.delegate = importFormatDelegate

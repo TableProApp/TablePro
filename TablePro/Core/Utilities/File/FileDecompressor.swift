@@ -25,8 +25,14 @@ enum DecompressionError: LocalizedError {
 enum FileDecompressor {
     /// Derive the inner extension from a .gz filename (e.g., "dump.sql.gz" -> "sql")
     private static func innerExtension(for url: URL) -> String {
-        let name = url.deletingPathExtension().pathExtension
+        let name = url.deletingPathExtension().pathExtension.lowercased()
         return name.isEmpty ? "sql" : name
+    }
+
+    /// Case-folded, because the file panel accepts `DUMP.SQL.GZ` as readily as `dump.sql.gz` and a
+    /// compressed file that slips past this reaches the statement parser still gzipped.
+    static func isCompressed(_ url: URL) -> Bool {
+        url.pathExtension.lowercased() == ImportFileFormatResolver.compressedFileExtension
     }
 
     /// Decompress a .gz file to a temporary location
@@ -39,7 +45,7 @@ enum FileDecompressor {
         _ url: URL,
         fileSystemPath: (URL) -> String
     ) async throws -> URL {
-        guard url.pathExtension == "gz" else { return url }
+        guard isCompressed(url) else { return url }
 
         let ext = innerExtension(for: url)
         let tempURL = FileManager.default.temporaryDirectory

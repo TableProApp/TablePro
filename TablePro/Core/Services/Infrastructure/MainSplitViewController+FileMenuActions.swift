@@ -133,8 +133,7 @@ extension MainSplitViewController {
     }
 
     @objc func importData(_ sender: Any?) {
-        guard let formatId = commandActions?.availableImportFormats.first?.id else { return }
-        commandActions?.importTables(formatId: formatId)
+        commandActions?.importData()
     }
 
     /// One named format, from a list `ImportFormatMenuDelegate` filled. Its own selector rather

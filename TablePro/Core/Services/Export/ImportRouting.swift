@@ -9,6 +9,17 @@ struct ImportFormatOption: Identifiable, Equatable {
     let id: String
     let name: String
 
+    /// The plugin's own `acceptedFileExtensions`, carried so a file panel and
+    /// `ImportFileFormatResolver` can be built from the option alone rather than reaching back into
+    /// `PluginManager` for the plugin type.
+    let acceptedFileExtensions: [String]
+
+    init(id: String, name: String, acceptedFileExtensions: [String] = []) {
+        self.id = id
+        self.name = name
+        self.acceptedFileExtensions = acceptedFileExtensions
+    }
+
     var submenuLabel: String {
         String(format: String(localized: "From %@\u{2026}"), name)
     }

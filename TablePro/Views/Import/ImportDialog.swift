@@ -10,7 +10,6 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
-import UniformTypeIdentifiers
 
 struct ImportDialog: View {
     @ObservedObject private var pluginManager = PluginManager.shared
@@ -350,6 +349,9 @@ struct ImportDialog: View {
         settingsSnapshot = nil
     }
 
+    /// This dialog runs a file of statements, so Change File… offers the statement formats and no
+    /// others. It goes through `ImportFilePanel` for the validation `allowedContentTypes` cannot
+    /// give: a file it dims can still be double-clicked through (#3047).
     @MainActor
     private func selectFile() async {
         guard let window = hostWindow else {
@@ -357,17 +359,23 @@ struct ImportDialog: View {
             return
         }
 
-        let panel = NSOpenPanel()
+        let options = availableFormats.map {
+            ImportFormatOption(
+                id: type(of: $0).formatId,
+                name: type(of: $0).formatDisplayName,
+                acceptedFileExtensions: type(of: $0).acceptedFileExtensions
+            )
+        }
+        guard !options.isEmpty else { return }
 
-        let extensions = currentPlugin.map { type(of: $0).acceptedFileExtensions } ?? ["sql", "gz"]
-        let allowedTypes = extensions.compactMap { UTType(filenameExtension: $0) }
-        panel.allowedContentTypes = allowedTypes.isEmpty ? [.data] : allowedTypes
-        panel.allowsMultipleSelection = false
-        panel.message = "Select file to import"
+        let url = await ImportFilePanel.present(
+            matching: options,
+            message: String(localized: "Select a file to import"),
+            in: window
+        )
+        guard let url, case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
 
-        let response = await panel.presentAsSheet(for: window)
-        guard response == .OK, let url = panel.url else { return }
-
+        selectedFormatId = formatId
         self.loadFileTask = Task {
             await self.loadFile(url)
         }
