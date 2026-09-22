@@ -70,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
 - Global saved query inside a folder missing from every other connection. (#3045)
 - Saved query and folder drawn nowhere when the folder holding it was gone.
 - Keyword accepted for a global saved query while another connection already held it.

@@ -10,7 +10,7 @@ internal struct JsonEditorView: View {
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
 
-    @State private var displayText: String
+    @State private var model: JsonFieldEditingModel
     @AppStorage(PreferenceKeys.rowInspectorJsonFieldHeight.name, store: AppStorageEnvironment.shared.defaults) private var fieldHeight = ResizableFieldMetrics
         .defaultJsonHeight
 
@@ -18,7 +18,20 @@ internal struct JsonEditorView: View {
         self.context = context
         self.onPopOut = onPopOut
         self.isExpanded = isExpanded
-        self._displayText = State(wrappedValue: JsonReindenter.reindent(context.value.wrappedValue))
+        self._model = State(wrappedValue: JsonFieldEditingModel(storedValue: context.value.wrappedValue))
+    }
+
+    /// The editor writes through the model, which decides whether the text is worth publishing.
+    /// Binding `$model.displayText` straight to the editor would publish the model's own
+    /// corrections back into the store.
+    private var editorText: Binding<String> {
+        Binding(
+            get: { model.displayText },
+            set: { typed in
+                guard !context.isReadOnly, let value = model.typed(typed) else { return }
+                context.value.wrappedValue = value
+            }
+        )
     }
 
     var body: some View {
@@ -27,19 +40,26 @@ internal struct JsonEditorView: View {
             range: ResizableFieldMetrics.jsonHeightRange,
             expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
         ) {
-            JSONCodeEditor(text: $displayText, isEditable: !context.isReadOnly)
+            JSONCodeEditor(text: editorText, isEditable: !context.isReadOnly)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
                 .overlay(alignment: .bottomTrailing) { actionButtons }
+                .accessibilityIdentifier("inspector-json-field")
         }
-        .onChange(of: displayText) { _ in propagateEdit() }
-        .onChange(of: context.value.wrappedValue) { _ in syncFromBinding() }
+        /// `newValue`, never a re-read of `context.value.wrappedValue`. An `onChange` action
+        /// closure belongs to the render that registered it, so its captured context is a render
+        /// behind and answers with the value this edit has just replaced. Re-reading it made the
+        /// editor undo every keystroke and push the undone text back, at 75 rounds a second and
+        /// without ever settling (#3051).
+        .onChange(of: context.value.wrappedValue) { newValue in
+            _ = model.received(newValue)
+        }
     }
 
     private var actionButtons: some View {
         HStack(spacing: 2) {
             if let onPopOut {
-                Button { onPopOut(displayText) } label: {
+                Button { onPopOut(model.displayText) } label: {
                     Image(systemName: "arrow.up.forward.app")
                         .font(.caption2)
                         .padding(4)
@@ -51,16 +71,5 @@ internal struct JsonEditorView: View {
             }
         }
         .padding(4)
-    }
-
-    private func propagateEdit() {
-        guard !context.isReadOnly,
-              JsonReindenter.normalize(displayText) != JsonReindenter.normalize(context.value.wrappedValue) else { return }
-        context.value.wrappedValue = displayText
-    }
-
-    private func syncFromBinding() {
-        guard JsonReindenter.normalize(context.value.wrappedValue) != JsonReindenter.normalize(displayText) else { return }
-        displayText = JsonReindenter.reindent(context.value.wrappedValue)
     }
 }
