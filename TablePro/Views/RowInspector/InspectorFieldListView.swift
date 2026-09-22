@@ -167,14 +167,20 @@ internal struct InspectorFieldListView: View {
         isEditable: Bool
     ) -> FieldEditorContext {
         let state = FieldValueState.resolve(field)
+        let columnIndex = field.columnIndex
         return FieldEditorContext(
             columnName: field.columnName,
             columnType: field.columnTypeEnum,
             isLongText: field.isLongText,
+            /// The getter reads the store, not the `state` resolved above. That value is a copy
+            /// taken when this context was built, so a getter closing over it answers whatever the
+            /// field held during that render, and an `onChange` action, which belongs to the
+            /// render that registered it, is a render behind again. An editor comparing its text
+            /// against that answer sees the value it had just replaced and puts it back (#3051).
             value: isEditable
                 ? Binding(
-                    get: { state.editableText },
-                    set: { editState.updateField(at: field.columnIndex, value: $0) }
+                    get: { editState.currentText(at: columnIndex) },
+                    set: { editState.updateField(at: columnIndex, value: $0) }
                 )
                 : .constant(state.editableText),
             originalValue: field.originalValue,

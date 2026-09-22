@@ -253,6 +253,13 @@ final class MultiRowEditState: ObservableObject {
         }
     }
 
+    /// What a field's editor is showing right now, read from the store rather than from a copy an
+    /// earlier render captured. This is what a field's value binding answers.
+    func currentText(at index: Int) -> String {
+        guard fields.indices.contains(index) else { return "" }
+        return FieldValueState.resolve(fields[index]).editableText
+    }
+
     /// Update a field's pending value
     func updateField(at index: Int, value: String?) {
         guard index < fields.count else { return }

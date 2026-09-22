@@ -85,6 +85,7 @@ internal final class SampleDatabaseService {
         }
 
         if fileManager.fileExists(atPath: installed.path) {
+            seedUITestFixturesIfRequested(at: installed)
             return
         }
 
@@ -96,6 +97,15 @@ internal final class SampleDatabaseService {
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }
+        seedUITestFixturesIfRequested(at: installed)
+    }
+
+    /// Chinook carries nothing a JSON editor will open, so a UI test that needs one asks for a
+    /// fixture table at launch. Seeded on every install, including the one that finds the file
+    /// already there, so a case that edited the row does not hand it to the next case.
+    private func seedUITestFixturesIfRequested(at installed: URL) {
+        guard UITestJsonFixture.isRequested else { return }
+        UITestJsonFixture.seed(into: installed)
     }
 
     internal func resetToBundled() throws {
@@ -123,6 +133,7 @@ internal final class SampleDatabaseService {
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }
+        seedUITestFixturesIfRequested(at: installed)
     }
 
     private func removeInstalledDatabaseFiles() throws {
