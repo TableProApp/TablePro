@@ -44,11 +44,6 @@ internal enum PostLaunchWork {
         /// call. A sandboxed run has no user plugins directory to install into anyway.
         Task { await RegistryClient.shared.ensureManifest(.ifStale) }
 
-        Task { @MainActor in
-            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
-            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
-        }
-
         /// The retired per-tab split name left one permanent defaults record per query tab ever
         /// opened, and AppKit offers no way to forget one. Here rather than in the delegate because
         /// removing thousands is measurably slow and nothing observes them before the first frame.

@@ -347,7 +347,10 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 7, favorite.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 8, favorite.id.uuidString, -1, SQLITE_TRANSIENT)
 
-        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write favorite: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
         return .updatedExisting(previousConnectionId: previousConnectionId)
     }
 
@@ -397,7 +400,10 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 8, favorite.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(statement, 9, favorite.updatedAt.timeIntervalSince1970)
 
-        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write favorite: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
         return existingScope.write
     }
 
@@ -507,41 +513,6 @@ internal actor SQLFavoriteStorage {
             result.append(id)
         }
         return result
-    }
-
-    @discardableResult
-    func pruneOrphaned(retaining activeConnectionIds: Set<UUID>) -> Int {
-        guard !activeConnectionIds.isEmpty else { return 0 }
-
-        let ids = activeConnectionIds.map(\.uuidString)
-        let placeholders = ids.map { _ in "?" }.joined(separator: ",")
-        let orphanCondition = "connection_id IS NOT NULL AND connection_id NOT IN (\(placeholders))"
-
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return 0 }
-
-        guard run("DELETE FROM favorites WHERE \(orphanCondition);", bindings: ids) else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return 0
-        }
-        let prunedFavorites = Int(sqlite3_changes(db))
-
-        guard run("DELETE FROM folders WHERE \(orphanCondition);", bindings: ids) else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return 0
-        }
-        let prunedFolders = Int(sqlite3_changes(db))
-
-        guard run(Self.detachDanglingFolderReferencesSQL) else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return 0
-        }
-
-        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return 0 }
-
-        if prunedFavorites > 0 || prunedFolders > 0 {
-            Self.logger.info("Pruned \(prunedFavorites) favorites and \(prunedFolders) folders scoped to deleted connections")
-        }
-        return prunedFavorites
     }
 
     private func run(_ sql: String, bindings: [String] = []) -> Bool {
@@ -800,7 +771,10 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 5, folder.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 6, folder.id.uuidString, -1, SQLITE_TRANSIENT)
 
-        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write folder: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
         return .updatedExisting(previousConnectionId: previousConnectionId)
     }
 
@@ -843,16 +817,28 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 6, folder.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(statement, 7, folder.updatedAt.timeIntervalSince1970)
 
-        guard sqlite3_step(statement) == SQLITE_DONE else { return .failed }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write folder: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
         return existingScope.write
     }
 
-    func deleteFolder(id: UUID) -> Bool {
+    /// Reports the records it moved up a level, not just whether it worked.
+    ///
+    /// Deleting a folder reparents what was inside it, which is a write to each of those rows, and
+    /// the caller has to mark every one of them dirty or the next push carries a `folderId` naming
+    /// a folder that no longer exists. Nothing can ask afterwards: the ids are read inside the same
+    /// transaction as the move, so nothing can be added between the two and travel unmarked.
+    func deleteFolder(id: UUID) -> FolderDeletion? {
         let idString = id.uuidString
 
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
-            return false
+            return nil
         }
+
+        let movedFavorites = ids(from: "SELECT id FROM favorites WHERE folder_id = ?;", bindings: [idString])
+        let movedFolders = ids(from: "SELECT id FROM folders WHERE parent_id = ?;", bindings: [idString])
 
         let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -860,7 +846,7 @@ internal actor SQLFavoriteStorage {
         var findStatement: OpaquePointer?
         guard sqlite3_prepare_v2(db, findParentSQL, -1, &findStatement, nil) == SQLITE_OK else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         sqlite3_bind_text(findStatement, 1, idString, -1, SQLITE_TRANSIENT)
@@ -884,12 +870,12 @@ internal actor SQLFavoriteStorage {
             sqlite3_finalize(moveFavStatement)
             if moveFavResult != SQLITE_DONE {
                 sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-                return false
+                return nil
             }
         } else {
             sqlite3_finalize(moveFavStatement)
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         let moveSubfoldersSQL = "UPDATE folders SET parent_id = ? WHERE parent_id = ?;"
@@ -905,32 +891,32 @@ internal actor SQLFavoriteStorage {
             sqlite3_finalize(moveSubStatement)
             if moveSubResult != SQLITE_DONE {
                 sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-                return false
+                return nil
             }
         } else {
             sqlite3_finalize(moveSubStatement)
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         let deleteSQL = "DELETE FROM folders WHERE id = ?;"
         var deleteStatement: OpaquePointer?
         guard sqlite3_prepare_v2(db, deleteSQL, -1, &deleteStatement, nil) == SQLITE_OK else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         sqlite3_bind_text(deleteStatement, 1, idString, -1, SQLITE_TRANSIENT)
         let result = sqlite3_step(deleteStatement)
         sqlite3_finalize(deleteStatement)
 
-        if result == SQLITE_DONE {
-            sqlite3_exec(db, "COMMIT;", nil, nil, nil)
-        } else {
+        guard result == SQLITE_DONE else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return nil
         }
 
-        return result == SQLITE_DONE
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return nil }
+        return FolderDeletion(movedFavorites: movedFavorites, movedFolders: movedFolders)
     }
 
     func fetchFolders(connectionId: UUID? = nil) -> [SQLFavoriteFolder] {
@@ -985,7 +971,14 @@ internal actor SQLFavoriteStorage {
             sql += " AND connection_id IS NULL"
         }
 
-        sql += ";"
+        /// This reads the connection's own favorites and every global one at once, and nothing
+        /// stops two of them holding the same keyword: the unique index is on
+        /// (keyword, connection_id) and SQLite counts each NULL connection_id as distinct. Without
+        /// an order the winner was whichever row the scan reached last, so the keyword could expand
+        /// different SQL on two machines holding identical data. The connection's own favorite wins
+        /// over a global one, which is the precedence `fetchKeywordMap`'s caller already applies to
+        /// linked folders, and age settles the rest.
+        sql += " ORDER BY (connection_id IS NULL) ASC, created_at ASC, id ASC;"
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -1003,7 +996,8 @@ internal actor SQLFavoriteStorage {
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let keyword = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
                   let name = sqlite3_column_text(statement, 1).map({ String(cString: $0) }),
-                  let query = sqlite3_column_text(statement, 2).map({ String(cString: $0) })
+                  let query = sqlite3_column_text(statement, 2).map({ String(cString: $0) }),
+                  map[keyword] == nil
             else {
                 continue
             }
@@ -1167,6 +1161,12 @@ enum FavoriteScopeRead: Equatable {
         case .found(let previousConnectionId): return .updatedExisting(previousConnectionId: previousConnectionId)
         }
     }
+}
+
+/// What deleting one folder moved up to its parent, so the caller can mark those records dirty.
+struct FolderDeletion: Equatable {
+    let movedFavorites: [UUID]
+    let movedFolders: [UUID]
 }
 
 struct DeletedFavoriteRecords {

@@ -133,4 +133,55 @@ struct SQLFavoriteDeletionSyncTests {
         #expect(tombstonedIds(.favorite).isEmpty)
         #expect(tombstonedIds(.favoriteFolder).isEmpty)
     }
+
+    // MARK: - Deleting a folder moves what was inside it
+
+    /// The rows a folder delete reparents are written, so they have to be pushed. Only the folder
+    /// used to be told to sync, and the moved records kept the deleted folder's id on the wire.
+    @Test("Deleting a folder marks the records it moved up a level")
+    func deletingAFolderMarksWhatItMoved() async {
+        let connectionId = UUID()
+        let folder = SQLFavoriteFolder(name: "Reports", connectionId: connectionId)
+        let subfolder = SQLFavoriteFolder(name: "Weekly", parentId: folder.id, connectionId: connectionId)
+        let favorite = SQLFavorite(
+            name: "Active users",
+            query: "SELECT * FROM users",
+            folderId: folder.id,
+            connectionId: connectionId
+        )
+        #expect(await manager.addFolder(folder))
+        #expect(await manager.addFolder(subfolder))
+        #expect(await manager.addFavorite(favorite))
+        metadata.clearDirty(type: .favorite)
+        metadata.clearDirty(type: .favoriteFolder)
+
+        #expect(await manager.deleteFolder(id: folder.id))
+
+        #expect(tombstonedIds(.favoriteFolder).contains(folder.id.uuidString))
+        #expect(metadata.dirtyIds(for: .favorite).contains(favorite.id.uuidString))
+        #expect(metadata.dirtyIds(for: .favoriteFolder).contains(subfolder.id.uuidString))
+    }
+
+    /// The other device already made this move and pushed it, so marking the moved rows here would
+    /// send its own change back to it.
+    @Test("A remote folder delete marks nothing it moved")
+    func aRemoteFolderDeleteMarksNothing() async {
+        let connectionId = UUID()
+        let folder = SQLFavoriteFolder(name: "Reports", connectionId: connectionId)
+        let favorite = SQLFavorite(
+            name: "Active users",
+            query: "SELECT * FROM users",
+            folderId: folder.id,
+            connectionId: connectionId
+        )
+        #expect(await manager.addFolder(folder))
+        #expect(await manager.addFavorite(favorite))
+        metadata.clearDirty(type: .favorite)
+        metadata.clearDirty(type: .favoriteFolder)
+
+        await manager.applyRemoteDeleteFolder(id: folder.id)
+
+        #expect(metadata.dirtyIds(for: .favorite).isEmpty)
+        #expect(tombstonedIds(.favoriteFolder).isEmpty)
+    }
 }
