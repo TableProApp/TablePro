@@ -11,7 +11,6 @@ import Testing
 
 @Suite("Native dump object scope")
 struct NativeDumpScopeTests {
-
     private func connection(type: DatabaseType, database: String = "sales") -> DatabaseConnection {
         DatabaseConnection(
             name: "Test",
@@ -41,7 +40,11 @@ struct NativeDumpScopeTests {
             scope: scope,
             localFilePath: localFilePath
         )
-        return tool.arguments(for: kind, request: request)
+        return try tool.arguments(
+            for: kind,
+            request: request,
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/tool", flavor: .mysql)
+        )
     }
 
     // MARK: - PostgreSQL
@@ -121,32 +124,39 @@ struct NativeDumpScopeTests {
             .mysql,
             scope: .objects([NativeDumpObject(name: "orders"), NativeDumpObject(name: "line_items")])
         )
-        let databaseIndex = try #require(narrowed.firstIndex(of: "sales"))
-        #expect(Array(narrowed[databaseIndex...]) == ["sales", "--", "orders", "line_items"])
+        let separator = try #require(narrowed.firstIndex(of: "--"))
+        #expect(Array(narrowed[separator...]) == ["--", "sales", "orders", "line_items"])
         #expect(!narrowed.contains("--wildcards"))
     }
 
-    /// `my_getopt` does not stop parsing options at the first positional argument. Measured with
-    /// mysqldump 12.3.2: a table named `--no-data` passed bare was read as the option and the dump
-    /// came back with zero rows at exit 0, which the result sheet reports as a success. `--` in
-    /// front makes it a table name again.
-    @Test("A hostile MySQL table name cannot become an option")
-    func mysqlSeparatesItsTableList() throws {
+    /// `my_getopt` does not stop parsing options at the first positional argument, so the database
+    /// is as exposed as the tables. Measured with mysqldump 8.4.11 and 12.3.2: a database named
+    /// `--no-data` passed bare was read as the option, and a narrowed dump of it wrote the *first
+    /// table name* as the database, with no rows and exit 0, which the result sheet reports as a
+    /// success. `--` in front of the database makes every name after it a name again.
+    @Test("A hostile MySQL name cannot become an option, database or table")
+    func mysqlSeparatesEveryName() throws {
         let narrowed = try arguments(
             .mysql,
             scope: .objects([
                 NativeDumpObject(name: "orders"),
                 NativeDumpObject(name: "--no-data")
-            ])
+            ]),
+            database: "--skip-lock-tables"
         )
         let separator = try #require(narrowed.firstIndex(of: "--"))
-        let hostile = try #require(narrowed.firstIndex(of: "--no-data"))
-        #expect(separator < hostile, "every table name must sit after the end-of-options marker")
+        let hostileDatabase = try #require(narrowed.firstIndex(of: "--skip-lock-tables"))
+        let hostileTable = try #require(narrowed.firstIndex(of: "--no-data"))
+        #expect(separator < hostileDatabase)
+        #expect(separator < hostileTable)
     }
 
-    @Test("A whole-database MySQL dump passes no separator")
-    func mysqlWholeDatabaseHasNoSeparator() throws {
-        #expect(!(try arguments(.mysql, scope: .wholeDatabase)).contains("--"))
+    /// The terminator is not a table-list marker, so a whole-database dump carries it too.
+    @Test("A whole-database MySQL dump keeps the separator in front of the database")
+    func mysqlWholeDatabaseKeepsTheSeparator() throws {
+        let whole = try arguments(.mysql, scope: .wholeDatabase)
+        let separator = try #require(whole.firstIndex(of: "--"))
+        #expect(Array(whole[separator...]) == ["--", "sales"])
     }
 
     // MARK: - MongoDB
@@ -274,7 +284,6 @@ struct NativeDumpScopeTests {
 
 @Suite("DuckDB in-engine dump statements")
 struct DuckDBDumpStatementTests {
-
     private func connection() -> DatabaseConnection {
         var connection = DatabaseConnection(
             name: "Local",

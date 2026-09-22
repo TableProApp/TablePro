@@ -104,7 +104,11 @@ DuckDB writes one of two things. A `.duckdb` file carries tables, views, indexes
 
 ## SSH tunnels and SSL
 
-Both flows reuse the connection's active SSH tunnel, with no second port forward. SSL mode reaches PostgreSQL through `PGSSLMODE` and MySQL through `--ssl-mode`, `verify-ca` and `verify-full` included. SQLite and DuckDB open a file, so neither applies.
+Both flows reuse the connection's active SSH tunnel, with no second port forward. The whole of the connection's SSL configuration reaches the tool, the CA certificate and the client certificate and key included: PostgreSQL takes them in `PGSSLMODE`, `PGSSLROOTCERT`, `PGSSLCERT` and `PGSSLKEY`, and MySQL and MariaDB in their client's own flags. SQLite and DuckDB open a file, so neither applies.
+
+MySQL's clients and MariaDB's no longer take the same flags. MySQL's take `--ssl-mode`, with `VERIFY_CA` and `VERIFY_IDENTITY` included. MariaDB's take `--ssl`, `--skip-ssl` and `--ssl-verify-server-cert`, and reject `--ssl-mode`. Which family a tool belongs to comes from its `--version` rather than its name: Homebrew's `mariadb` formula installs MariaDB's dump tool as `mysqldump`. A tool that answers no version is used for **Disabled** and **Preferred**, and refused for **Required**, **Verify CA** and **Verify Identity**.
+
+MariaDB's clients have no flag for encrypting without verifying, so **Required** reaches them as `--ssl --ssl-verify-server-cert`. That refuses a server offering no TLS. With no CA certificate set it checks the encryption rather than the server's identity.
 
 ## Server-side export
 
@@ -138,6 +142,7 @@ A non-zero exit shows the last 64 KB of the tool's stderr in a scrollable monosp
 |---|---|
 | *"… was not found on this system"* followed by an install command | Run that command so the binaries land on `PATH`. The message names the tool and the package for your engine |
 | An authentication failure | The password goes through the environment or a config file rather than a prompt, so this is the account or the database. Check that the role can log in |
+| *"could not tell whether … is MySQL's client or MariaDB's"* | The tool on `PATH` did not answer `--version`, and the two families take different SSL flags. Reinstall `mysql-client` or `mariadb` |
 | Objects that conflict with the dump | Restore into a fresh database, or drop the conflicting objects first |
 | *"a single transaction can only write to a single attached database"* | A DuckDB query tab has an open transaction that has already written. Commit or roll it back, then run the backup again |
 

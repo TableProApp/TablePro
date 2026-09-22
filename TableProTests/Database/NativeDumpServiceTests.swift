@@ -58,7 +58,7 @@ struct NativeDumpServiceCommandTests {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(),
                 fileURL: URL(fileURLWithPath: "/tmp/sales.dump"),
@@ -81,7 +81,7 @@ struct NativeDumpServiceCommandTests {
         let command = try NativeDumpService.buildCommand(
             kind: .restore,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_restore"),
             request: request(
                 connection: connection(),
                 fileURL: URL(fileURLWithPath: "/tmp/sales.dump"),
@@ -103,13 +103,13 @@ struct NativeDumpServiceCommandTests {
         let restore = try NativeDumpService.buildCommand(
             kind: .restore,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_restore"),
             request: request(connection: connection(), fileURL: URL(fileURLWithPath: "/tmp/sales.dump"))
         )
         let backup = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(connection: connection(), fileURL: URL(fileURLWithPath: "/tmp/sales.dump"))
         )
         #expect(restore.exitPolicy == .toleratesUnrecognizedSessionSettings)
@@ -143,7 +143,7 @@ struct NativeDumpServiceCommandTests {
             let command = try NativeDumpService.buildCommand(
                 kind: kind,
                 tool: postgresTool,
-                executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
+                resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_restore"),
                 request: request(connection: connection(), fileURL: URL(fileURLWithPath: "/tmp/sales.dump"))
             )
             #expect(command.environment["LC_MESSAGES"] == "C")
@@ -189,7 +189,7 @@ struct NativeDumpServiceCommandTests {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(host: ""),
                 fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
@@ -204,7 +204,7 @@ struct NativeDumpServiceCommandTests {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(username: ""),
                 fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
@@ -219,7 +219,7 @@ struct NativeDumpServiceCommandTests {
         let nilPw = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(),
                 fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
@@ -229,7 +229,7 @@ struct NativeDumpServiceCommandTests {
         let emptyPw = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(),
                 fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
@@ -254,7 +254,7 @@ struct NativeDumpServiceCommandTests {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(sslMode: mode),
                 fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
@@ -269,7 +269,7 @@ struct NativeDumpServiceCommandTests {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
             tool: postgresTool,
-            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            resolved: NativeDumpResolvedTool(name: "tool", path: "/usr/bin/pg_dump"),
             request: request(
                 connection: connection(sslMode: .required),
                 fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
@@ -445,6 +445,32 @@ struct NativeDumpServiceStateMachineTests {
             runner.startedJob = job
             return runner
         })
+    }
+
+    /// `start` finds the binary and asks it what it is before there is anything to cancel, and both
+    /// steps spawn a process. A Cancel taken in that window used to be dropped, and on a restore
+    /// the tool then launched and wrote to the database the user had just said to leave alone.
+    @Test("A cancel taken before the tool runs stops it from running at all")
+    func cancelBeforeRunNeverStartsTheTool() async throws {
+        let runner = FakeDumpRunner()
+        let service = service(kind: .restore, runner: runner)
+        let updates = service.stateUpdates()
+
+        service.cancel()
+        try service.run(
+            job: fakeJob(),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/test-cancel-before-run.dump")
+        )
+
+        #expect(runner.startCount == 0, "the tool must not launch after a cancel")
+        let finalState = try await firstMatching(updates) {
+            switch $0 {
+            case .cancelled, .running, .finished, .failed: return true
+            default: return false
+            }
+        }
+        #expect(finalState == .cancelled)
     }
 
     @Test("successful run transitions idle -> running -> finished")
