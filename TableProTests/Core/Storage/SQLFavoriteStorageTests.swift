@@ -273,45 +273,24 @@ struct SQLFavoriteStorageTests {
         #expect(survivor?.folderId == nil, "Its dangling folder reference is cleared")
     }
 
-    @Test("Orphan prune removes favorites and folders of dead connections only")
-    func pruneOrphanedFavorites() async {
-        let liveConnectionId = UUID()
-        let deadConnectionId = UUID()
-        let live = makeFavorite(name: "Live", keyword: "live", connectionId: liveConnectionId)
-        let dead = makeFavorite(name: "Dead", keyword: "dead", connectionId: deadConnectionId)
-        let global = makeFavorite(name: "Global", keyword: "glob")
-        let deadFolder = makeFolder(name: "Dead Folder", connectionId: deadConnectionId)
-        let liveFolder = makeFolder(name: "Live Folder", connectionId: liveConnectionId)
-
-        _ = await storage.addFavorite(live)
-        _ = await storage.addFavorite(dead)
-        _ = await storage.addFavorite(global)
-        _ = await storage.addFolder(deadFolder)
-        _ = await storage.addFolder(liveFolder)
-
-        let pruned = await storage.pruneOrphaned(retaining: [liveConnectionId])
-        #expect(pruned == 1)
-
-        let remaining = await storage.fetchFavorites()
-        #expect(remaining.contains { $0.id == live.id })
-        #expect(!remaining.contains { $0.id == dead.id })
-        #expect(remaining.contains { $0.id == global.id })
-
-        let folders = await storage.fetchFolders()
-        #expect(!folders.contains { $0.id == deadFolder.id })
-        #expect(folders.contains { $0.id == liveFolder.id })
-    }
-
-    @Test("Orphan prune is skipped when no active connections are known")
-    func pruneSkippedWithoutActiveConnections() async {
-        let scoped = makeFavorite(name: "Scoped", connectionId: UUID())
+    /// A connection absent from the local list is not a connection the user deleted. Saved Queries
+    /// and Connections are separate sync categories, so a device that syncs the first and not the
+    /// second holds queries whose connection will never be local, and the launch-time prune that
+    /// used to run here destroyed them permanently on every launch. Deleting a connection still
+    /// takes its queries with it, through `ConnectionLocalState`.
+    @Test("A saved query whose connection this device has never seen is kept")
+    func aQueryForAnUnknownConnectionSurvives() async {
+        let absentConnectionId = UUID()
+        let scoped = makeFavorite(name: "Scoped", connectionId: absentConnectionId)
+        let folder = makeFolder(name: "Scoped Folder", connectionId: absentConnectionId)
         _ = await storage.addFavorite(scoped)
-
-        let pruned = await storage.pruneOrphaned(retaining: [])
-        #expect(pruned == 0)
+        _ = await storage.addFolder(folder)
 
         let remaining = await storage.fetchFavorites()
+        let folders = await storage.fetchFolders()
+
         #expect(remaining.contains { $0.id == scoped.id })
+        #expect(folders.contains { $0.id == folder.id })
     }
 
     @Test("hasFavorites reflects scoped favorites only")

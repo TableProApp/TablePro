@@ -91,6 +91,7 @@ final class AIChatViewModel: ObservableObject {
     var chatStorage: AIChatStorage { services.aiChatStorage }
     @Published var sessionApprovedConnections: Set<UUID> = []
     var cachedSavedQueries: [UUID: SQLFavorite] = [:]
+    private var savedQueryCancellables: Set<AnyCancellable> = []
 
     static let maxMessageCount = 200
 
@@ -149,6 +150,7 @@ final class AIChatViewModel: ObservableObject {
         self.services = services
         self.sessionId = sessionId
         self.conversationToRestore = conversationId
+        observeSavedQueryUpdates()
     }
 
     deinit {
@@ -402,12 +404,32 @@ final class AIChatViewModel: ObservableObject {
         }
     }
 
+    /// The list is read once per connection and then kept current from the app-wide favorites
+    /// event, the same signal the sidebar, the Quick Switcher and the editor's keyword expansion
+    /// already follow. Without it a query saved from the editor during a session was offered by
+    /// every one of those and by nothing in the assistant, for as long as the window stayed open.
+    ///
+    /// A nil payload means a global record moved, which is every connection's business.
+    internal func observeSavedQueryUpdates() {
+        AppEvents.shared.sqlFavoritesDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] payload in
+                guard let self else { return }
+                guard payload == nil || payload == self.connection?.id else { return }
+                Task { await self.loadSavedQueries() }
+            }
+            .store(in: &savedQueryCancellables)
+    }
+
     func loadSavedQueries() async {
         guard let connectionId = connection?.id else {
             savedQueries = []
             return
         }
         let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
+        /// The connection can be switched while the read is in flight, and the list belongs to the
+        /// connection that is on screen now, not the one that asked.
+        guard connection?.id == connectionId else { return }
         savedQueries = favorites
         for favorite in favorites {
             cachedSavedQueries[favorite.id] = favorite
