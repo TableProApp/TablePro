@@ -295,6 +295,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain on Redshift failing on PostgreSQL's `FORMAT JSON` and `ANALYZE` options.
 - Decimal points and minus signs accepted in DuckDB Port and BigQuery Max Bytes Billed.
 - Wrong Redis database in the toolbar of a second window opened on the same connection.
+- Backup Dump failing with `unknown variable 'ssl-mode=PREFERRED'` when the `mysqldump` on `PATH` is MariaDB's. (#3046)
+- Verify CA and Verify Identity connections unable to back up or restore on MySQL, MariaDB and PostgreSQL.
+- Partial MySQL dump of a MariaDB or MySQL 5.7 server, from the column statistics `mysqldump` 8 reads.
+- A database whose name starts with a dash backed up as a different database, reported as a success.
+- Cancel ignored while TablePro was locating the backup tool, and the dump running anyway.
+- Destination folder and the first database reading as one path in the backup result sheet. (#3046)
+- Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
+- Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
 
 ### Security
 

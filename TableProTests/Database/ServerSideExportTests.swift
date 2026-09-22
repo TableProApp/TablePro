@@ -11,7 +11,6 @@ import Testing
 
 @Suite("Server-side export")
 struct ServerSideExportTests {
-
     private func statement(
         _ type: DatabaseType,
         destination: ServerSideExport.Destination,
@@ -210,7 +209,6 @@ struct ServerSideExportTests {
 
 @Suite("SQL Server dump")
 struct SQLServerDumpTests {
-
     private func command(kind: NativeDumpKind, username: String = "sa") throws -> NativeDumpCommand {
         var sslConfig = SSLConfiguration()
         sslConfig.mode = .disabled
@@ -223,7 +221,7 @@ struct SQLServerDumpTests {
         return try NativeDumpService.buildCommand(
             kind: kind,
             tool: tool,
-            executable: URL(fileURLWithPath: "/usr/local/bin/sqlpackage"),
+            resolved: NativeDumpResolvedTool(name: "sqlpackage", path: "/usr/local/bin/sqlpackage"),
             request: NativeDumpDescriptor.Request(
                 connection: connection,
                 database: "sales",

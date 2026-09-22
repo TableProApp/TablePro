@@ -11,7 +11,6 @@ import Testing
 
 @Suite("Native dump registry")
 struct NativeDumpRegistryTests {
-
     private func connection(
         type: DatabaseType,
         host: String = "db.example.com",
@@ -43,21 +42,30 @@ struct NativeDumpRegistryTests {
         password: String? = "s3cret",
         fileURL: URL = URL(fileURLWithPath: "/tmp/out.bin"),
         scope: NativeDumpScope = .wholeDatabase,
-        localFilePath: String? = nil
+        localFilePath: String? = nil,
+        flavor: NativeDumpToolFlavor = .mysql,
+        toolVersionText: String? = nil,
+        serverVersion: String? = nil
     ) throws -> NativeDumpCommand {
         let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
         let effective = overrideConnection ?? connection(type: type)
         return try NativeDumpService.buildCommand(
             kind: kind,
             tool: tool,
-            executable: URL(fileURLWithPath: "/usr/bin/tool"),
+            resolved: NativeDumpResolvedTool(
+                name: "tool",
+                path: "/usr/bin/tool",
+                flavor: flavor,
+                versionText: toolVersionText
+            ),
             request: NativeDumpDescriptor.Request(
                 connection: effective,
                 database: "sales",
                 fileURL: fileURL,
                 password: password,
                 scope: scope,
-                localFilePath: localFilePath ?? effective.database
+                localFilePath: localFilePath ?? effective.database,
+                serverVersion: serverVersion
             )
         )
     }
@@ -225,13 +233,161 @@ struct NativeDumpRegistryTests {
         #expect(mongo.arguments.contains("--host=127.0.0.1"))
     }
 
-    @Test("MySQL SSL mode maps to the client's own spelling")
-    func mysqlSSLModes() {
-        #expect(NativeDumpRegistry.mysqlSSLMode(.disabled) == "--ssl-mode=DISABLED")
-        #expect(NativeDumpRegistry.mysqlSSLMode(.preferred) == "--ssl-mode=PREFERRED")
-        #expect(NativeDumpRegistry.mysqlSSLMode(.required) == "--ssl-mode=REQUIRED")
-        #expect(NativeDumpRegistry.mysqlSSLMode(.verifyCa) == "--ssl-mode=VERIFY_CA")
-        #expect(NativeDumpRegistry.mysqlSSLMode(.verifyIdentity) == "--ssl-mode=VERIFY_IDENTITY")
+    /// Measured, MariaDB 12.3.3 answers any `--ssl-mode` with `unknown variable` and exit 7, and
+    /// MySQL 8.4.11 answers `--ssl` with `unknown option` and exit 2, so neither spelling may reach
+    /// the other family's tool in either direction (#3046).
+    @Test("Neither client family is ever handed the other one's SSL flags", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func sslFlagsFollowTheResolvedTool(kind: NativeDumpKind) throws {
+        let secured = connection(type: .mysql, sslMode: .required, sslEnabled: true)
+        let maria = try command(.mysql, kind: kind, connection: secured, flavor: .mariadb)
+        #expect(!maria.arguments.contains { $0.hasPrefix("--ssl-mode") })
+        #expect(maria.arguments.contains("--ssl"))
+        #expect(maria.arguments.contains("--ssl-verify-server-cert"))
+
+        let mysql = try command(.mysql, kind: kind, connection: secured, flavor: .mysql)
+        #expect(mysql.arguments.contains("--ssl-mode=REQUIRED"))
+        #expect(!mysql.arguments.contains("--ssl"))
+        #expect(!mysql.arguments.contains("--skip-ssl"))
+    }
+
+    /// SSL off is the other half of the same defect: the old code sent `--ssl-mode=DISABLED`, which
+    /// MariaDB rejects exactly as it rejects the rest.
+    @Test("An SSL-off connection is disabled in the tool's own spelling")
+    func sslDisabledFollowsTheResolvedTool() throws {
+        let maria = try command(.mysql, flavor: .mariadb)
+        #expect(maria.arguments.contains("--skip-ssl"))
+        #expect(!maria.arguments.contains { $0.hasPrefix("--ssl-mode") })
+
+        let mysql = try command(.mysql, flavor: .mysql)
+        #expect(mysql.arguments.contains("--ssl-mode=DISABLED"))
+    }
+
+    /// `--ssl-cert` implies `--ssl` on MariaDB, so a connection whose SSL is off must not carry the
+    /// certificate the form still holds.
+    @Test("Certificate paths reach the tool, and only while SSL is on")
+    func certificatePathsFollowTheMode() throws {
+        var secured = connection(type: .mysql, sslMode: .verifyCa, sslEnabled: true)
+        secured.sslConfig.caCertificatePath = "/certs/ca.pem"
+        secured.sslConfig.clientCertificatePath = "/certs/client.pem"
+        secured.sslConfig.clientKeyPath = "/certs/client.key"
+        let enabled = try command(.mysql, connection: secured, flavor: .mysql)
+        #expect(enabled.arguments.contains("--ssl-ca=/certs/ca.pem"))
+        #expect(enabled.arguments.contains("--ssl-cert=/certs/client.pem"))
+        #expect(enabled.arguments.contains("--ssl-key=/certs/client.key"))
+
+        var off = secured
+        off.sslConfig.mode = .disabled
+        let disabled = try command(.mysql, connection: off, flavor: .mariadb)
+        #expect(!disabled.arguments.contains { $0.hasPrefix("--ssl-ca") })
+        #expect(!disabled.arguments.contains { $0.hasPrefix("--ssl-cert") })
+        #expect(!disabled.arguments.contains { $0.hasPrefix("--ssl-key") })
+    }
+
+    /// A tool that answered nothing is not guessed at once the connection asks for encryption:
+    /// MariaDB accepts `--loose-ssl-mode=REQUIRED` and ignores it, which is a cleartext dump.
+    @Test("An unidentified client refuses an encrypted connection rather than guessing")
+    func unidentifiedToolRefusesEncryptedModes() throws {
+        for mode in [SSLMode.required, .verifyCa, .verifyIdentity] {
+            let secured = connection(type: .mysql, sslMode: mode, sslEnabled: true)
+            #expect(throws: NativeDumpError.self) {
+                try command(.mysql, connection: secured, flavor: .unidentified)
+            }
+        }
+        let preferred = connection(type: .mysql, sslMode: .preferred, sslEnabled: true)
+        let built = try command(.mysql, connection: preferred, flavor: .unidentified)
+        #expect(!built.arguments.contains { $0.hasPrefix("--ssl") })
+    }
+
+    /// `mysqldump` 8.0 reads a table no MariaDB server and no MySQL before 8.0 has, and exits 2
+    /// after writing part of the file. The flag that skips it is MySQL's own and backup only.
+    @Test("A MySQL 8 dump tool skips column statistics on a server that has none")
+    func columnStatisticsFlagFollowsTheServer() throws {
+        let mysql8 = "mysqldump  Ver 8.4.11 for macos26.6 on arm64 (Homebrew)"
+        let againstMariaDB = try command(
+            .mysql, flavor: .mysql, toolVersionText: mysql8, serverVersion: "12.3.3-MariaDB"
+        )
+        #expect(againstMariaDB.arguments.contains("--skip-column-statistics"))
+
+        let againstMySQL8 = try command(
+            .mysql, flavor: .mysql, toolVersionText: mysql8, serverVersion: "8.4.11"
+        )
+        #expect(!againstMySQL8.arguments.contains("--skip-column-statistics"))
+
+        let restore = try command(
+            .mysql, kind: .restore, flavor: .mysql, toolVersionText: mysql8, serverVersion: "12.3.3-MariaDB"
+        )
+        #expect(!restore.arguments.contains("--skip-column-statistics"))
+
+        let mariaTool = try command(
+            .mysql,
+            flavor: .mariadb,
+            toolVersionText: "mysqldump from 12.3.3-MariaDB, client 10.20 for osx10.21 (arm64)",
+            serverVersion: "12.3.3-MariaDB"
+        )
+        #expect(!mariaTool.arguments.contains("--skip-column-statistics"))
+    }
+
+    /// `my_getopt` parses past a positional argument, so a database named `--no-data` was read as
+    /// the option: measured on MySQL 8.4.11 and MariaDB 12.3.3, that dumped a different database
+    /// with no rows and exited 0, which the result sheet reports as a successful backup.
+    @Test("The option terminator comes before the database, in both directions", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func optionTerminatorPrecedesTheDatabase(kind: NativeDumpKind) throws {
+        let built = try command(.mysql, kind: kind, flavor: .mysql)
+        let terminator = try #require(built.arguments.firstIndex(of: "--"))
+        let database = try #require(built.arguments.firstIndex(of: "sales"))
+        #expect(terminator < database)
+        #expect(built.arguments.filter { $0 == "--" }.count == 1)
+    }
+
+    @Test("A narrowed dump keeps its tables behind the same terminator")
+    func narrowedDumpKeepsOneTerminator() throws {
+        let scope = NativeDumpScope.objects([
+            NativeDumpObject(name: "orders"), NativeDumpObject(name: "customers")
+        ])
+        let built = try command(.mysql, scope: scope, flavor: .mysql)
+        let terminator = try #require(built.arguments.firstIndex(of: "--"))
+        #expect(Array(built.arguments[terminator...]) == ["--", "sales", "orders", "customers"])
+    }
+
+    /// libpq falls back to `~/.postgresql/root.crt` when no root certificate is named, so a
+    /// Verify CA connection that opens in the app could never be dumped: measured with pg_dump
+    /// 17.11, it fails with `root certificate file "..." does not exist`.
+    @Test("PostgreSQL sends the whole SSL configuration, not just the mode")
+    func postgresSendsCertificatePaths() throws {
+        var secured = connection(type: .postgresql, sslMode: .verifyCa, sslEnabled: true)
+        secured.sslConfig.caCertificatePath = "/certs/ca.pem"
+        secured.sslConfig.clientCertificatePath = "/certs/client.pem"
+        secured.sslConfig.clientKeyPath = "/certs/client.key"
+        let built = try command(.postgresql, connection: secured)
+        #expect(built.environment["PGSSLMODE"] == "verify-ca")
+        #expect(built.environment["PGSSLROOTCERT"] == "/certs/ca.pem")
+        #expect(built.environment["PGSSLCERT"] == "/certs/client.pem")
+        #expect(built.environment["PGSSLKEY"] == "/certs/client.key")
+
+        var off = secured
+        off.sslConfig.mode = .disabled
+        let disabled = try command(.postgresql, connection: off)
+        #expect(disabled.environment["PGSSLMODE"] == nil)
+        #expect(disabled.environment["PGSSLROOTCERT"] == nil)
+        #expect(disabled.environment["PGSSLCERT"] == nil)
+        #expect(disabled.environment["PGSSLKEY"] == nil)
+    }
+
+    /// The CA belongs to the modes that verify one, which is the rule the live connection already
+    /// follows in `LibPQConnectionString`.
+    @Test("A required connection sends its client certificate but not a CA it does not check")
+    func postgresRequiredKeepsTheClientCertificate() throws {
+        var secured = connection(type: .postgresql, sslMode: .required, sslEnabled: true)
+        secured.sslConfig.caCertificatePath = "/certs/ca.pem"
+        secured.sslConfig.clientCertificatePath = "/certs/client.pem"
+        let built = try command(.postgresql, connection: secured)
+        #expect(built.environment["PGSSLMODE"] == "require")
+        #expect(built.environment["PGSSLROOTCERT"] == nil)
+        #expect(built.environment["PGSSLCERT"] == "/certs/client.pem")
     }
 
     /// MariaDB 11.0 renamed every client and some builds ship no `mysql`-prefixed symlink, so both

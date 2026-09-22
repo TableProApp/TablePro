@@ -184,6 +184,7 @@ final class NativeDumpService: ObservableObject {
     private var byteSizeTask: Task<Void, Never>?
     private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
     private var toolName = "dump"
+    private var cancelRequested = false
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -272,6 +273,7 @@ final class NativeDumpService: ObservableObject {
             ? nil
             : await Self.resolvedCatalog(connectionId: connection.id, database: database)
 
+        let serverVersion = session?.driver?.serverVersion
         let request = NativeDumpDescriptor.Request(
             connection: effective,
             database: database,
@@ -279,21 +281,22 @@ final class NativeDumpService: ObservableObject {
             password: password,
             scope: scope,
             currentCatalog: catalog,
-            localFilePath: localFilePath
+            localFilePath: localFilePath,
+            serverVersion: serverVersion
         )
 
         switch descriptor.mechanism {
         case .commandLineTool(let tool):
-            let (binaryName, resolvedPath) = try await Self.resolveExecutable(
+            let resolved = try await Self.resolveExecutable(
                 tool: tool,
                 kind: kind,
-                serverVersion: session?.driver?.serverVersion
+                serverVersion: serverVersion
             )
-            toolName = binaryName
+            toolName = resolved.name
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
-                executable: URL(fileURLWithPath: resolvedPath),
+                resolved: resolved,
                 request: request
             )
             try run(job: .process(command), database: database, fileURL: fileURL, totalBytesEstimate: totalBytesEstimate)
@@ -333,6 +336,10 @@ final class NativeDumpService: ObservableObject {
     ) throws {
         if case .running = state { throw NativeDumpError.alreadyRunning }
         if case .cancelling = state { throw NativeDumpError.alreadyRunning }
+        guard !cancelRequested else {
+            setState(.cancelled)
+            return
+        }
 
         let runner = runnerFactory(job)
         try runner.start()
@@ -350,7 +357,14 @@ final class NativeDumpService: ObservableObject {
         }
     }
 
+    /// A cancel that arrives before the tool is running is latched rather than dropped.
+    ///
+    /// `start` finds the binary and asks it what it is before there is anything to cancel, and both
+    /// steps spawn a process, so the window is real: a Cancel taken during it used to be discarded
+    /// and the tool launched afterwards, which on a restore means writing to the target database
+    /// the user just said to leave alone.
     func cancel() {
+        cancelRequested = true
         guard case .running = state else { return }
         setState(.cancelling)
         runner?.cancel()
@@ -358,11 +372,13 @@ final class NativeDumpService: ObservableObject {
 
     // MARK: - Resolution
 
+    /// Both halves run off the main actor together: the lookup spawns `which`, and identifying what
+    /// it found spawns the tool itself.
     private static func resolveExecutable(
         tool: NativeDumpDescriptor.CommandLineTool,
         kind: NativeDumpKind,
         serverVersion: String?
-    ) async throws -> (name: String, path: String) {
+    ) async throws -> NativeDumpResolvedTool {
         let candidates = tool.binaries(for: kind)
         let selector = tool.toolForServer
         let resolved = await Task.detached {
@@ -370,7 +386,7 @@ final class NativeDumpService: ObservableObject {
         }.value
         switch resolved {
         case .found(let name, let path):
-            return (name, path)
+            return await Task.detached { tool.identify(name: name, path: path) }.value
         case .incompatible(let message):
             throw NativeDumpError.incompatibleTool(message: message)
         case .missing:
@@ -472,10 +488,10 @@ final class NativeDumpService: ObservableObject {
     nonisolated static func buildCommand(
         kind: NativeDumpKind,
         tool: NativeDumpDescriptor.CommandLineTool,
-        executable: URL,
+        resolved: NativeDumpResolvedTool,
         request: NativeDumpDescriptor.Request
     ) throws -> NativeDumpCommand {
-        var arguments = tool.arguments(for: kind, request: request)
+        var arguments = try tool.arguments(for: kind, request: request, resolved: resolved)
         var environment = minimalEnvironment()
         environment.merge(tool.environment(request)) { _, new in new }
         if tool.requiresUntranslatedMessages {
@@ -493,7 +509,7 @@ final class NativeDumpService: ObservableObject {
 
         let delivery = tool.delivery(for: kind)
         return NativeDumpCommand(
-            executable: executable,
+            executable: resolved.executableURL,
             arguments: arguments,
             environment: environment,
             stderrByteCap: 64_000,
