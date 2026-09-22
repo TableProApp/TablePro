@@ -85,6 +85,69 @@ struct FieldLevelMergeTests {
         #expect(serverRecord.fields(ConnectionSyncField.self)[.groupId] == nil)
     }
 
+    @Test("A field with no value is left out of the push by default")
+    func anAbsentValueIsNotNamedByDefault() {
+        let record = CKRecord(
+            recordType: "Connection",
+            recordID: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+
+        record.fields(ConnectionSyncField.self)[.groupId] = nil
+
+        #expect(record.changedKeys().contains("groupId") == false)
+        #expect(record.allKeys().contains("groupId") == false)
+    }
+
+    /// Issue #3045. Under `.changedKeys` the server keeps any key the push does not name, so a
+    /// mapper that builds the whole record from the local model has to name the empty ones too or
+    /// a field the user cleared is never cleared anywhere else. Measured on the macOS 27 SDK:
+    /// naming it puts it in `changedKeys()` and leaves it out of `allKeys()`.
+    @Test("A field with no value is named when the record is the whole truth")
+    func anAbsentValueIsNamedWhenClearing() {
+        let record = CKRecord(
+            recordType: "Connection",
+            recordID: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+
+        record.fields(ConnectionSyncField.self, absentValues: .clear)[.groupId] = nil
+
+        #expect(record.changedKeys().contains("groupId"))
+        #expect(record.allKeys().contains("groupId") == false)
+    }
+
+    @Test("Clearing an absent value still writes the fields that hold one")
+    func clearingAbsentValuesKeepsRealOnes() {
+        let record = CKRecord(
+            recordType: "Connection",
+            recordID: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+
+        let fields = record.fields(ConnectionSyncField.self, absentValues: .clear)
+        fields[.name] = "Production"
+        fields[.groupId] = nil
+
+        #expect(record["name"] as? String == "Production")
+        #expect(record.allKeys().contains("name"))
+    }
+
+    /// The production-schema gate outranks the clear. A field that is not deployed must stay out of
+    /// the push whichever answer the record wants for its empty fields, or naming it would have
+    /// CloudKit reject the whole record.
+    @Test("An unverified field is refused even when absent values are cleared")
+    func anUnverifiedFieldIsStillRefused() {
+        let record = CKRecord(
+            recordType: "Probe",
+            recordID: CKRecord.ID(recordName: "Probe_A", zoneID: zoneID)
+        )
+
+        let fields = record.fields(ProbeSyncField.self, absentValues: .clear)
+        fields[.undeployed] = nil
+        fields[.deployed] = nil
+
+        #expect(record.changedKeys().contains("undeployed") == false)
+        #expect(record.changedKeys().contains("deployed"))
+    }
+
     @Test("Clearing a field that had a value removes it")
     func clearingAPopulatedFieldRemovesIt() throws {
         var connection = makeConnection()
@@ -212,4 +275,13 @@ struct SyncRecordCacheTests {
 
         #expect(cache.record(for: CKRecord.ID(recordName: "Connection_Z", zoneID: zoneID)) == nil)
     }
+}
+
+/// A schema with one deployed field and one that is not, so the gate can be tested against both
+/// without waiting for a real type to be mid-deployment.
+private enum ProbeSyncField: String, SyncSchemaField {
+    case deployed
+    case undeployed
+
+    static let verifiedInProduction: Set<Self> = [.deployed]
 }

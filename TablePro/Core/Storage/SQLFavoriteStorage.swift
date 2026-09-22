@@ -440,10 +440,44 @@ internal actor SQLFavoriteStorage {
         return result == SQLITE_DONE
     }
 
-    private static let detachDanglingFolderReferencesSQL = """
-        UPDATE favorites SET folder_id = NULL
+    /// Both tables point at `folders` by id with no foreign key behind either column, so a delete
+    /// that removes a folder leaves whatever named it holding an id nothing answers to.
+    ///
+    /// `folders.parent_id` needs this as much as `favorites.folder_id` does, now that a folder can
+    /// be available in every connection and therefore outlive the connection whose folder it sits
+    /// in. `FavoritesTreeBuilder` draws such a row at the root either way, so the user never sees
+    /// the difference, which is exactly why the column would otherwise stay wrong forever.
+    private static let danglingFavoritesSQL = """
+        SELECT id FROM favorites
         WHERE folder_id IS NOT NULL AND folder_id NOT IN (SELECT id FROM folders);
         """
+
+    private static let danglingFoldersSQL = """
+        SELECT id FROM folders
+        WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM folders);
+        """
+
+    /// Reports which rows it rewrote, because a row that survives a delete with a different parent
+    /// is a row the next push has to carry. Reporting a bare `Bool` left the survivor holding the
+    /// old id on every other device and on a fresh install, which is the same shape as the bug that
+    /// made this function return its deletions in the first place.
+    private func detachDanglingFolderReferences() -> DetachedFavoriteRecords? {
+        let favorites = ids(from: Self.danglingFavoritesSQL, bindings: [])
+        let folders = ids(from: Self.danglingFoldersSQL, bindings: [])
+
+        guard run("UPDATE favorites SET folder_id = NULL WHERE id IN (\(placeholders(favorites)));",
+                  bindings: favorites.map(\.uuidString)),
+              run("UPDATE folders SET parent_id = NULL WHERE id IN (\(placeholders(folders)));",
+                  bindings: folders.map(\.uuidString))
+        else {
+            return nil
+        }
+        return DetachedFavoriteRecords(favorites: favorites, folders: folders)
+    }
+
+    private func placeholders(_ ids: [UUID]) -> String {
+        ids.isEmpty ? "NULL" : ids.map { _ in "?" }.joined(separator: ",")
+    }
 
     /// Returns what it deleted rather than whether it deleted, because the caller has to tombstone
     /// each record for sync and cannot ask afterwards: the rows are gone. Reporting a bare `Bool`
@@ -460,13 +494,13 @@ internal actor SQLFavoriteStorage {
 
         guard run("DELETE FROM favorites WHERE connection_id = ?;", bindings: [id]),
               run("DELETE FROM folders WHERE connection_id = ?;", bindings: [id]),
-              run(Self.detachDanglingFolderReferencesSQL) else {
+              let detached = detachDanglingFolderReferences() else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
             return .none
         }
 
         guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return .none }
-        return DeletedFavoriteRecords(favorites: favorites, folders: folders)
+        return DeletedFavoriteRecords(favorites: favorites, folders: folders, detached: detached)
     }
 
     /// The row's scope as it stands, read before the write replaces it.
@@ -531,7 +565,7 @@ internal actor SQLFavoriteStorage {
         }
         let prunedFolders = Int(sqlite3_changes(db))
 
-        guard run(Self.detachDanglingFolderReferencesSQL) else {
+        guard detachDanglingFolderReferences() != nil else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
             return 0
         }
@@ -1181,13 +1215,35 @@ enum FavoriteScopeRead: Equatable {
     }
 }
 
+/// The rows a delete left in place holding a reference it had to clear.
+///
+/// Separate from the deleted ids because the two need opposite things from sync: a deleted row is
+/// tombstoned, a detached one is pushed.
+struct DetachedFavoriteRecords {
+    let favorites: [UUID]
+    let folders: [UUID]
+
+    static let none = DetachedFavoriteRecords(favorites: [], folders: [])
+
+    var isEmpty: Bool {
+        favorites.isEmpty && folders.isEmpty
+    }
+}
+
 struct DeletedFavoriteRecords {
     let favorites: [UUID]
     let folders: [UUID]
+    let detached: DetachedFavoriteRecords
+
+    init(favorites: [UUID], folders: [UUID], detached: DetachedFavoriteRecords = .none) {
+        self.favorites = favorites
+        self.folders = folders
+        self.detached = detached
+    }
 
     static let none = DeletedFavoriteRecords(favorites: [], folders: [])
 
     var isEmpty: Bool {
-        favorites.isEmpty && folders.isEmpty
+        favorites.isEmpty && folders.isEmpty && detached.isEmpty
     }
 }

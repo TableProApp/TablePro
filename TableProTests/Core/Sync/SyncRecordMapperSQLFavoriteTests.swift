@@ -109,12 +109,16 @@ struct SyncRecordMapperSQLFavoriteTests {
     // MARK: - Emptying a field
 
     /// Issue #3045. `CKModifyRecordsOperation.savePolicy` is `.changedKeys`, so a key the pushed
-    /// record does not carry keeps whatever the server holds. Marking a query Global clears its
-    /// connection id locally, and without the record the server last gave us there is nothing for
-    /// that clear to be written over: the key stays absent, the server keeps the old connection,
-    /// and the next pull puts it back.
-    @Test("Making a query global clears the connection id on the record the server holds")
-    func clearingAConnectionIdOverABaseRecord() {
+    /// record never names keeps whatever the server holds. Marking a query Global clears its
+    /// connection id locally, and a mapper that wrote a field only when it was set said nothing
+    /// about the key at all: the server kept the old connection and the next pull put it back.
+    ///
+    /// Measured on the macOS 27 SDK: assigning nil to a key a fresh `CKRecord` never held puts that
+    /// key in `changedKeys()` and leaves it out of `allKeys()`, which is exactly the push that
+    /// clears it. No record from the server is needed for that, and using one would restate every
+    /// other field too, because an unarchived `CKRecord` reports all of its keys as changed.
+    @Test("Making a query global names the connection id so the push clears it")
+    func clearingAConnectionIdNamesTheKey() {
         let favorite = SQLFavorite(
             id: UUID(),
             name: "Truncate staging",
@@ -126,32 +130,18 @@ struct SyncRecordMapperSQLFavoriteTests {
             createdAt: created,
             updatedAt: updated
         )
-        let base = SyncRecordMapper.toCKRecord(
-            sqlFavorite: SQLFavorite(
-                id: favorite.id,
-                name: favorite.name,
-                query: favorite.query,
-                keyword: "ts",
-                folderId: UUID(),
-                connectionId: UUID(),
-                sortOrder: 0,
-                createdAt: created,
-                updatedAt: updated
-            ),
-            in: zoneID
-        )
 
-        let record = SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID, base: base)
+        let record = SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID)
 
-        #expect(record === base)
         #expect(record["connectionId"] == nil)
         #expect(record["folderId"] == nil)
         #expect(record["keyword"] == nil)
         #expect(Set(record.changedKeys()).isSuperset(of: ["connectionId", "folderId", "keyword"]))
+        #expect(Set(record.allKeys()).isDisjoint(with: ["connectionId", "folderId", "keyword"]))
     }
 
-    @Test("Making a folder global clears the connection id on the record the server holds")
-    func clearingAFolderConnectionIdOverABaseRecord() {
+    @Test("Making a folder global names the connection id so the push clears it")
+    func clearingAFolderConnectionIdNamesTheKey() {
         let folder = SQLFavoriteFolder(
             id: UUID(),
             name: "Reports",
@@ -161,45 +151,37 @@ struct SyncRecordMapperSQLFavoriteTests {
             createdAt: created,
             updatedAt: updated
         )
-        let base = SyncRecordMapper.toCKRecord(
-            sqlFavoriteFolder: SQLFavoriteFolder(
-                id: folder.id,
-                name: folder.name,
-                parentId: UUID(),
-                connectionId: UUID(),
-                sortOrder: 0,
-                createdAt: created,
-                updatedAt: updated
-            ),
-            in: zoneID
-        )
 
-        let record = SyncRecordMapper.toCKRecord(sqlFavoriteFolder: folder, in: zoneID, base: base)
+        let record = SyncRecordMapper.toCKRecord(sqlFavoriteFolder: folder, in: zoneID)
 
         #expect(record["connectionId"] == nil)
         #expect(record["parentId"] == nil)
         #expect(Set(record.changedKeys()).isSuperset(of: ["connectionId", "parentId"]))
+        #expect(Set(record.allKeys()).isDisjoint(with: ["connectionId", "parentId"]))
     }
 
-    /// A base belonging to another record cannot be written over, or one favorite's push would
-    /// carry another's fields.
-    @Test("A base for a different record is not adopted")
-    func aMismatchedBaseIsIgnored() {
+    /// A field that does hold something is still written, so clearing the absent ones never costs
+    /// the record its values.
+    @Test("A query that is still scoped keeps its connection id on the record")
+    func aScopedQueryKeepsItsConnectionId() {
+        let connectionId = UUID()
+        let folderId = UUID()
         let favorite = SQLFavorite(
             id: UUID(),
             name: "All orders",
             query: "SELECT * FROM orders",
+            keyword: "ao",
+            folderId: folderId,
+            connectionId: connectionId,
+            sortOrder: 0,
             createdAt: created,
             updatedAt: updated
         )
-        let stranger = CKRecord(
-            recordType: SyncRecordType.favorite.rawValue,
-            recordID: SyncRecordMapper.recordID(type: .favorite, id: UUID().uuidString, in: zoneID)
-        )
 
-        let record = SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID, base: stranger)
+        let record = SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID)
 
-        #expect(record !== stranger)
-        #expect(record.recordID.recordName == "Favorite_\(favorite.id.uuidString)")
+        #expect(record["connectionId"] as? String == connectionId.uuidString)
+        #expect(record["folderId"] as? String == folderId.uuidString)
+        #expect(record["keyword"] as? String == "ao")
     }
 }

@@ -1205,12 +1205,7 @@ final class SyncCoordinator: ObservableObject {
             let favoritesById = Dictionary(favorites.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
             for id in dirtyFavoriteIds {
                 if let favorite = favoritesById[id] {
-                    let recordID = SyncRecordMapper.recordID(type: .favorite, id: id, in: zoneID)
-                    records.append(SyncRecordMapper.toCKRecord(
-                        sqlFavorite: favorite,
-                        in: zoneID,
-                        base: recordCache.record(for: recordID)
-                    ))
+                    records.append(SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID))
                 }
             }
         }
@@ -1226,12 +1221,7 @@ final class SyncCoordinator: ObservableObject {
             let foldersById = Dictionary(folders.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
             for id in dirtyFolderIds {
                 if let folder = foldersById[id] {
-                    let recordID = SyncRecordMapper.recordID(type: .favoriteFolder, id: id, in: zoneID)
-                    records.append(SyncRecordMapper.toCKRecord(
-                        sqlFavoriteFolder: folder,
-                        in: zoneID,
-                        base: recordCache.record(for: recordID)
-                    ))
+                    records.append(SyncRecordMapper.toCKRecord(sqlFavoriteFolder: folder, in: zoneID))
                 }
             }
         }

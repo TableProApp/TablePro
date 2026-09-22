@@ -349,8 +349,9 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
         }
     }
 
-    /// Whether a folder is available in every connection, which is also what decides where the
-    /// queries inside it can be seen.
+    /// Whether the folder itself is available in every connection. The queries inside keep the
+    /// scope they already had, and a query the other connections cannot see is simply not drawn
+    /// there, so the folder can arrive empty until those queries are made global too.
     func setFolderGlobal(_ folder: SQLFavoriteFolder, _ isGlobal: Bool) {
         Task {
             _ = await manager.setFolderScope(id: folder.id, connectionId: isGlobal ? nil : connectionId)

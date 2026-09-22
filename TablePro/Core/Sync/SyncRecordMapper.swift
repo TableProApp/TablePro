@@ -44,9 +44,10 @@ struct SyncRecordMapper {
     /// The record a push writes into: the one the server last gave us when we still hold it, and a
     /// new one otherwise.
     ///
-    /// Only a record that already carries a key can have that key cleared, because the field gate
-    /// drops a write equal to what is there and `.changedKeys` sends nothing it was not given. A
-    /// mapper that takes no base can add and change fields but can never empty one.
+    /// A base is how a mapper merges into what the server holds rather than restating it, so the
+    /// fields it was not asked about keep their values. It is not how a field is cleared: that is
+    /// `SyncRecordFields.AbsentValueWrite`, which a mapper building the whole record from the local
+    /// model sets to `.clear` so an emptied field is emptied everywhere.
     static func record(
         type: SyncRecordType,
         id: String,
@@ -467,24 +468,18 @@ struct SyncRecordMapper {
 
     // MARK: - SQL Favorite
 
-    /// Writes the optional fields whether or not they hold anything, over the record the server
-    /// last gave us.
+    /// Writes the optional fields whether or not they hold anything.
     ///
-    /// `CKModifyRecordsOperation.savePolicy` is `.changedKeys`, so a key absent from the pushed
-    /// record keeps whatever the server has. Building a fresh `CKRecord` and writing a field only
-    /// when it was set therefore meant a field the user emptied was never emptied anywhere else:
-    /// marking a query Global cleared `connectionId` locally, pushed a record without that key, and
-    /// the next pull put the old connection back. Writing nil is not enough on its own either,
-    /// because the gated subscript skips a write equal to what is already there and a fresh record
-    /// holds nothing. The base is what gives the write something to clear.
-    static func toCKRecord(
-        sqlFavorite favorite: SQLFavorite,
-        in zone: CKRecordZone.ID,
-        base: CKRecord? = nil
-    ) -> CKRecord {
-        let record = record(type: .favorite, id: favorite.id.uuidString, in: zone, base: base)
+    /// `CKModifyRecordsOperation.savePolicy` is `.changedKeys`, so a key the pushed record never
+    /// names keeps whatever the server has, and writing a field only when it was set therefore
+    /// meant a field the user emptied was never emptied anywhere else: marking a query Global
+    /// cleared `connectionId` locally, pushed a record that said nothing about it, and the next
+    /// pull put the old connection back. `absentValues: .clear` is what names the key, measured as
+    /// putting it in `changedKeys()` and leaving it out of `allKeys()` on a record built here.
+    static func toCKRecord(sqlFavorite favorite: SQLFavorite, in zone: CKRecordZone.ID) -> CKRecord {
+        let record = record(type: .favorite, id: favorite.id.uuidString, in: zone, base: nil)
 
-        let fields = record.fields(SQLFavoriteSyncField.self)
+        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: .clear)
         fields[.favoriteId] = favorite.id.uuidString
         fields[.name] = favorite.name
         fields[.query] = favorite.query
@@ -526,14 +521,12 @@ struct SyncRecordMapper {
 
     // MARK: - SQL Favorite Folder
 
-    static func toCKRecord(
-        sqlFavoriteFolder folder: SQLFavoriteFolder,
-        in zone: CKRecordZone.ID,
-        base: CKRecord? = nil
-    ) -> CKRecord {
-        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zone, base: base)
+    /// Writes the optional fields whether or not they hold anything, for the reason
+    /// `toCKRecord(sqlFavorite:in:)` gives.
+    static func toCKRecord(sqlFavoriteFolder folder: SQLFavoriteFolder, in zone: CKRecordZone.ID) -> CKRecord {
+        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zone, base: nil)
 
-        let fields = record.fields(SQLFavoriteFolderSyncField.self)
+        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: .clear)
         fields[.folderId] = folder.id.uuidString
         fields[.name] = folder.name
         fields[.parentId] = folder.parentId?.uuidString
