@@ -8,11 +8,10 @@ import os
 
 /// The subsystem work a launch has to do but the first window does not need.
 ///
-/// Everything here is main-actor work: a registry fetch, a favourites prune that reads the
-/// connection store, an MCP server bind, a history cleanup. Started from the delegate it runs while
-/// the first window is still being built and takes main-thread time away from it. Started once that
-/// window has presented a frame, it costs the person nothing, because by then they are already
-/// looking at the app.
+/// Everything here is main-actor work: a registry fetch, a plugin signature sweep, an MCP server
+/// bind, a history cleanup. Started from the delegate it runs while the first window is still being
+/// built and takes main-thread time away from it. Started once that window has presented a frame,
+/// it costs the person nothing, because by then they are already looking at the app.
 ///
 /// Nothing whose absence is observable before that frame belongs here, and the bar is not whether
 /// it is cheap. A notification handler has to be registered before `applicationDidFinishLaunching`

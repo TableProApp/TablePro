@@ -41,6 +41,24 @@ struct SyncRecordMapper {
         CKRecord.ID(recordName: type.recordName(for: id), zoneID: zone)
     }
 
+    /// The record a push writes into: the one the server last gave us when we still hold it, and a
+    /// new one otherwise.
+    ///
+    /// A base is how a mapper merges into what the server holds rather than restating it, so the
+    /// fields it was not asked about keep their values. It is not how a field is cleared: that is
+    /// `SyncRecordFields.AbsentValueWrite`, which a mapper building the whole record from the local
+    /// model sets to `.clear` so an emptied field is emptied everywhere.
+    static func record(
+        type: SyncRecordType,
+        id: String,
+        in zone: CKRecordZone.ID,
+        base: CKRecord?
+    ) -> CKRecord {
+        let recordID = recordID(type: type, id: id, in: zone)
+        if let base, base.recordID == recordID { return base }
+        return CKRecord(recordType: type.rawValue, recordID: recordID)
+    }
+
     static func parse(recordName: String) -> (type: SyncRecordType, id: String)? {
         SyncRecordType.parse(recordName: recordName)
     }
@@ -69,13 +87,7 @@ struct SyncRecordMapper {
         in zone: CKRecordZone.ID,
         base: CKRecord? = nil
     ) -> CKRecord {
-        let recordID = recordID(type: .connection, id: connection.id.uuidString, in: zone)
-        let record: CKRecord
-        if let base, base.recordID == recordID {
-            record = base
-        } else {
-            record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
-        }
+        let record = record(type: .connection, id: connection.id.uuidString, in: zone, base: base)
 
         let fields = record.fields(ConnectionSyncField.self)
         fields[.connectionId] = connection.id.uuidString
@@ -456,23 +468,24 @@ struct SyncRecordMapper {
 
     // MARK: - SQL Favorite
 
+    /// Writes the optional fields whether or not they hold anything.
+    ///
+    /// `CKModifyRecordsOperation.savePolicy` is `.changedKeys`, so a key the pushed record never
+    /// names keeps whatever the server has, and writing a field only when it was set therefore
+    /// meant a field the user emptied was never emptied anywhere else: marking a query Global
+    /// cleared `connectionId` locally, pushed a record that said nothing about it, and the next
+    /// pull put the old connection back. `absentValues: .clear` is what names the key, measured as
+    /// putting it in `changedKeys()` and leaving it out of `allKeys()` on a record built here.
     static func toCKRecord(sqlFavorite favorite: SQLFavorite, in zone: CKRecordZone.ID) -> CKRecord {
-        let recordID = recordID(type: .favorite, id: favorite.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.favorite.rawValue, recordID: recordID)
+        let record = record(type: .favorite, id: favorite.id.uuidString, in: zone, base: nil)
 
-        let fields = record.fields(SQLFavoriteSyncField.self)
+        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: .clear)
         fields[.favoriteId] = favorite.id.uuidString
         fields[.name] = favorite.name
         fields[.query] = favorite.query
-        if let keyword = favorite.keyword {
-            fields[.keyword] = keyword
-        }
-        if let folderId = favorite.folderId {
-            fields[.folderId] = folderId.uuidString
-        }
-        if let connectionId = favorite.connectionId {
-            fields[.connectionId] = connectionId.uuidString
-        }
+        fields[.keyword] = favorite.keyword
+        fields[.folderId] = favorite.folderId?.uuidString
+        fields[.connectionId] = favorite.connectionId?.uuidString
         fields[.sortOrder] = Int64(favorite.sortOrder)
         fields[.createdAt] = favorite.createdAt
         fields[.updatedAt] = favorite.updatedAt
@@ -508,19 +521,16 @@ struct SyncRecordMapper {
 
     // MARK: - SQL Favorite Folder
 
+    /// Writes the optional fields whether or not they hold anything, for the reason
+    /// `toCKRecord(sqlFavorite:in:)` gives.
     static func toCKRecord(sqlFavoriteFolder folder: SQLFavoriteFolder, in zone: CKRecordZone.ID) -> CKRecord {
-        let recordID = recordID(type: .favoriteFolder, id: folder.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.favoriteFolder.rawValue, recordID: recordID)
+        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zone, base: nil)
 
-        let fields = record.fields(SQLFavoriteFolderSyncField.self)
+        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: .clear)
         fields[.folderId] = folder.id.uuidString
         fields[.name] = folder.name
-        if let parentId = folder.parentId {
-            fields[.parentId] = parentId.uuidString
-        }
-        if let connectionId = folder.connectionId {
-            fields[.connectionId] = connectionId.uuidString
-        }
+        fields[.parentId] = folder.parentId?.uuidString
+        fields[.connectionId] = folder.connectionId?.uuidString
         fields[.sortOrder] = Int64(folder.sortOrder)
         fields[.createdAt] = folder.createdAt
         fields[.updatedAt] = folder.updatedAt

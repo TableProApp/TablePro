@@ -124,6 +124,36 @@ struct SQLFavoriteDeletionSyncTests {
         #expect(await manager.fetchFavorite(id: keptFavorite.id) != nil)
     }
 
+    /// A global subfolder inside a deleted connection's folder survives the delete, and the delete
+    /// has to clear the parent it can no longer resolve. That rewrite is a local edit, so it has to
+    /// be pushed: without the mark this Mac drew the survivor at the root while every other device
+    /// and every fresh install still had it pointing at a folder that no longer exists.
+    @Test("A folder that outlives its parent is marked for the next push")
+    func aDetachedFolderIsMarkedDirty() async {
+        let connectionId = UUID()
+        let owned = SQLFavoriteFolder(name: "Acme", connectionId: connectionId)
+        let survivor = SQLFavoriteFolder(name: "Shared", parentId: owned.id, connectionId: nil)
+        let survivingQuery = SQLFavorite(
+            name: "Counts",
+            query: "SELECT 1",
+            folderId: owned.id,
+            connectionId: nil
+        )
+        #expect(await manager.addFolder(owned))
+        #expect(await manager.addFolder(survivor))
+        #expect(await manager.addFavorite(survivingQuery))
+        metadata.clearDirty(type: .favoriteFolder)
+        metadata.clearDirty(type: .favorite)
+
+        await manager.removeFavoritesAndFolders(for: connectionId)
+
+        #expect(await manager.fetchFolder(id: survivor.id)?.parentId == nil)
+        #expect(await manager.fetchFavorite(id: survivingQuery.id)?.folderId == nil)
+        #expect(metadata.dirtyIds(for: .favoriteFolder).contains(survivor.id.uuidString))
+        #expect(metadata.dirtyIds(for: .favorite).contains(survivingQuery.id.uuidString))
+        #expect(!tombstonedIds(.favoriteFolder).contains(survivor.id.uuidString))
+    }
+
     /// Nothing to remove is not a deletion, so it must not leave a tombstone that would delete a
     /// record another device still has.
     @Test("Deleting a connection with no favorites tombstones nothing")

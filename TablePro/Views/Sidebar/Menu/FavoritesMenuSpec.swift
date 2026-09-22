@@ -133,11 +133,18 @@ internal enum FavoritesMenuSpec {
         ]
     }
 
+    /// A folder is never narrower than what it holds, so a global query is offered only the folders
+    /// that are themselves global. A query belonging to one connection can go anywhere that
+    /// connection can see, a global folder included: a container is allowed to be the wider of the
+    /// two.
+    ///
+    /// Root Level alone is enough to offer the submenu. A query re-homed to the root because its
+    /// folder belongs to another connection still names that folder, and on a connection holding no
+    /// folders of its own there would otherwise be no way to detach it.
     private static func moveToSubmenu(
         _ favorite: SQLFavorite,
         folders: [SQLFavoriteFolder]
     ) -> FavoritesMenuItem? {
-        guard !folders.isEmpty else { return nil }
         var root: [FavoritesMenuItem] = []
         if favorite.folderId != nil {
             root.append(.command(
@@ -147,6 +154,7 @@ internal enum FavoritesMenuSpec {
         }
         let targets: [FavoritesMenuItem] = folders
             .filter { $0.id != favorite.folderId }
+            .filter { SQLFavoriteScopeRule.folder($0.connectionId, canHold: favorite.connectionId) }
             .map { .command($0.name, .moveFavorite(id: favorite.id, toFolder: $0.id)) }
         guard !root.isEmpty || !targets.isEmpty else { return nil }
         return .submenu(
@@ -192,12 +200,20 @@ internal enum FavoritesMenuSpec {
     }
 
     private static func folderSections(_ folder: SQLFavoriteFolder) -> [FavoritesMenuSection] {
-        [
+        let isGlobal = folder.connectionId == nil
+        return [
             FavoritesMenuSection([
                 .command(String(localized: "New Favorite…"), .newFavorite(folderId: folder.id)),
                 .command(String(localized: "New Subfolder"), .newFolder(parentId: folder.id))
             ]),
-            FavoritesMenuSection([.command(String(localized: "Rename"), .renameFolder(folder))]),
+            FavoritesMenuSection([
+                .command(String(localized: "Rename"), .renameFolder(folder)),
+                .command(SidebarMenuEntry(
+                    title: String(localized: "Global"),
+                    command: .setFolderGlobal(folder, !isGlobal),
+                    isOn: isGlobal
+                ))
+            ]),
             FavoritesMenuSection([.command(String(localized: "Delete Folder"), .deleteFolder(folder))])
         ]
     }

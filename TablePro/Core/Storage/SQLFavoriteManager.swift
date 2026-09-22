@@ -76,7 +76,21 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         for id in removed.folders {
             syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
         }
+        markDetachedDirty(removed.detached)
         postUpdateNotification(connectionId: nil)
+    }
+
+    /// A row that survived the delete holding a reference the delete had to clear is a local edit
+    /// like any other, so it is pushed rather than tombstoned. Without this the survivor kept the
+    /// deleted folder's id everywhere else and on a fresh install, while this Mac drew it correctly.
+    ///
+    /// Only on the path that owns the deletion. When another device deleted the connection it runs
+    /// the same cleanup over the same rows and pushes the result itself, and the caller that exists
+    /// for that case deliberately does not mark anything.
+    private func markDetachedDirty(_ detached: DetachedFavoriteRecords) {
+        guard !detached.isEmpty else { return }
+        syncTracker.markDirty(.favorite, ids: detached.favorites.map(\.uuidString))
+        syncTracker.markDirty(.favoriteFolder, ids: detached.folders.map(\.uuidString))
     }
 
     /// Used when another device deleted the connection. Marking tombstones here would push its own
@@ -147,6 +161,37 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     func fetchFolders(connectionId: UUID? = nil) async -> [SQLFavoriteFolder] {
         await storage.fetchFolders(connectionId: connectionId)
+    }
+
+    func fetchFolder(id: UUID) async -> SQLFavoriteFolder? {
+        await storage.fetchFolder(id: id)
+    }
+
+    func renameFolder(id: UUID, name: String) async -> Bool {
+        let result = await storage.renameFolder(id: id, name: name)
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
+        postUpdateNotification(connectionId: result.retainedScope)
+        return true
+    }
+
+    /// The mark runs after the write has committed, per the sync ordering rule: `markDirty` posts a
+    /// change notification that can start a sync, and a sync reading the database before the write
+    /// lands pushes the scope the folder is leaving.
+    func setFolderScope(id: UUID, connectionId: UUID?) async -> Bool {
+        let result = await storage.setFolderScope(id: id, connectionId: connectionId)
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
+        postUpdateNotification(for: result, newConnectionId: connectionId)
+        return true
+    }
+
+    func setFavoriteFolder(id: UUID, folderId: UUID?) async -> Bool {
+        let result = await storage.setFavoriteFolder(id: id, folderId: folderId)
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favorite, id: id.uuidString)
+        postUpdateNotification(connectionId: result.retainedScope)
+        return true
     }
 
     // MARK: - Remote Apply (does not mark dirty, to avoid sync loops)
