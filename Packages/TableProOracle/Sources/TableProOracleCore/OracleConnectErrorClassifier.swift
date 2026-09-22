@@ -48,15 +48,69 @@ public enum OracleConnectErrorClassifier {
     }
 }
 
+/// Which OracleNIO failures leave the channel unusable.
+///
+/// It mirrors OracleNIO's own `ConnectionStateMachine.shouldCloseConnection(reason:)`, which is
+/// internal and so cannot be called. Disagreeing with it means the app keeps a channel OracleNIO
+/// has already torn down, and the next statement on it fails for a reason nobody can act on. The
+/// old three-code list did exactly that for a client-side close (#3053).
+///
+/// `clientClosesConnection` and `clientClosedConnection` are the two OracleNIO refuses to classify
+/// at all, because it raises them only from `OracleConnection.close()`: by the time one exists the
+/// channel is gone, so they are unambiguously fatal here.
 public enum OracleChannelFatalCode {
-    public static func isChannelFatal(_ codeDescription: String) -> Bool {
-        switch codeDescription {
-        case "connectionError", "messageDecodingFailure", "unexpectedBackendMessage":
+    public static func isChannelFatal(_ codeDescription: String, serverErrorNumber: Int? = nil) -> Bool {
+        if codeDescription.hasPrefix("unsupportedVerifierType") {
             return true
+        }
+        switch codeDescription {
+        case "clientClosesConnection",
+             "clientClosedConnection",
+             "failedToAddSSLHandler",
+             "failedToVerifyTLSCertificates",
+             "connectionError",
+             "messageDecodingFailure",
+             "missingParameter",
+             "unexpectedBackendMessage",
+             "serverVersionNotSupported",
+             "sidNotSupported",
+             "uncleanShutdown",
+             "unsupportedDataType",
+             "advancedNegotiationFailed",
+             "advancedNegotiationRequired",
+             "loginHandshakeTimedOut":
+            return true
+        case "server":
+            return serverErrorNumber == 28 || serverErrorNumber == 600
         default:
             return false
         }
     }
+
+    /// What took the channel away, for a code ``isChannelFatal(_:serverErrorNumber:)`` calls fatal.
+    ///
+    /// The three read very differently to a user. A lost socket and a close from this side are both
+    /// "the connection went away, run it again"; only a protocol failure is worth telling anyone
+    /// the server sent something the driver could not read.
+    public static func closureKind(_ codeDescription: String) -> OracleChannelClosureKind {
+        switch codeDescription {
+        case "clientClosesConnection", "clientClosedConnection":
+            return .clientClose
+        case "uncleanShutdown", "connectionError":
+            return .transportLoss
+        default:
+            return .protocolFailure
+        }
+    }
+}
+
+public enum OracleChannelClosureKind: Sendable, Equatable {
+    /// This side called `OracleConnection.close()` while the statement was on the wire.
+    case clientClose
+    /// The socket went away: the server, a VPN, or the OS closed it.
+    case transportLoss
+    /// The driver could not make sense of what came back.
+    case protocolFailure
 }
 
 public enum OracleSSLClassifier {

@@ -18,6 +18,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case connectionFailed(String)
     case queryFailed(String)
     case cancelled
+    case connectionClosed
     case protocolError
     case loginTimedOut
     case queryTimedOut
@@ -41,6 +42,8 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return detail.isEmpty ? String(localized: "Query execution failed") : detail
         case .cancelled:
             return String(localized: "Query was cancelled")
+        case .connectionClosed:
+            return String(localized: "The Oracle connection closed while the statement was running. Run it again.")
         case .protocolError:
             return String(localized: "The server sent an unexpected message and the connection was reset. Run the query again.")
         case .loginTimedOut:
@@ -80,6 +83,11 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(format: Self.certificateUnavailableFormat(for: field), path)
         }
     }
+
+    /// What a driver failure with no server message behind it says to the user. OracleNIO's own
+    /// error description is a struct dump it documents as unfit to show, so the code's name is
+    /// what carries across.
+    public static let driverErrorFormat = String(localized: "The Oracle driver reported an error (%@).")
 
     /// The driver names the handshake step in its own vocabulary. These are the names
     /// a user can act on, and an unrecognized one falls back to the raw label rather

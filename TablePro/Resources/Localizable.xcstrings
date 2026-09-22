@@ -182719,6 +182719,24 @@
     },
     "Clear Recents…" : {
 
+    },
+    "Connection Closed" : {
+
+    },
+    "Run it again. TablePro opens a new connection to the server automatically." : {
+
+    },
+    "If this keeps happening, check for a VPN, firewall or connection manager between you and the server that drops sessions." : {
+
+    },
+    "Ask your DBA whether a resource profile or an idle-session limit is ending the session." : {
+
+    },
+    "The Oracle connection closed while the statement was running. Run it again." : {
+
+    },
+    "The Oracle driver reported an error (%@)." : {
+
     }
   },
   "version" : "1.1"

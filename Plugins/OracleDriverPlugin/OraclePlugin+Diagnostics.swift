@@ -50,6 +50,17 @@ extension OraclePlugin {
                 ],
                 supportURL: issuesURL
             )
+        case .connectionClosed:
+            return PluginDiagnostic(
+                title: String(localized: "Connection Closed"),
+                message: message,
+                suggestedActions: [
+                    String(localized: "Run it again. TablePro opens a new connection to the server automatically."),
+                    String(localized: "If this keeps happening, check for a VPN, firewall or connection manager between you and the server that drops sessions."),
+                    String(localized: "Ask your DBA whether a resource profile or an idle-session limit is ending the session.")
+                ],
+                supportURL: issuesURL
+            )
         case .protocolError:
             return PluginDiagnostic(
                 title: String(localized: "Connection Reset"),
