@@ -105,6 +105,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var queryTimeoutSeconds = 0
         var sessionSchema: String?
         var capturesServerOutput = false
+        var lastCloseReason: OracleDisconnectReason?
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -180,6 +181,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 current.sessionID = connectionId
                 current.isConnected = true
                 current.hasEverConnected = true
+                current.lastCloseReason = nil
             }
 
             osLogger.debug("Connected to Oracle \(self.options.host, privacy: .public):\(self.options.port, privacy: .public)")
@@ -284,6 +286,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         let connection = state.withLock { current -> OracleNIO.OracleConnection? in
             guard current.isConnected else { return nil }
             current.isConnected = false
+            current.lastCloseReason = reason
             let connection = current.nioConnection
             current.nioConnection = nil
             return connection
@@ -401,6 +404,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     private func markConnectionDead(reason: OracleDisconnectReason) {
         let connection = state.withLock { current -> OracleNIO.OracleConnection? in
             current.isConnected = false
+            current.lastCloseReason = reason
             let connection = current.nioConnection
             current.nioConnection = nil
             return connection
@@ -599,18 +603,23 @@ public final class OracleCoreConnection: @unchecked Sendable {
             return .queryFailed(serverMessage)
         }
 
-        if OracleChannelFatalCode.isClientClose(code) {
+        switch OracleChannelFatalCode.closureKind(code) {
+        case .clientClose:
             markConnectionDead(reason: .channelAlreadyClosed)
             osLogger.error("Oracle statement failed because this side had closed the channel: \(code, privacy: .public)")
             return .connectionClosed
+        case .transportLoss:
+            markConnectionDead(reason: .transportError)
+            osLogger.error("Oracle connection lost during a statement: \(code, privacy: .public)")
+            return .connectionClosed
+        case .protocolFailure:
+            markConnectionDead(reason: .fatalProtocolError)
+            osLogger.error("Oracle connection reset after a fatal error: \(code, privacy: .public)")
+            /// ORA-00028 and ORA-00600 end the session, and the server says why better than any
+            /// wording here could. Everything else that reaches this point is the protocol failing.
+            guard let serverMessage = sqlError.serverInfo?.message else { return .protocolError }
+            return .queryFailed(serverMessage)
         }
-
-        markConnectionDead(reason: .fatalProtocolError)
-        osLogger.error("Oracle connection reset after a fatal error: \(code, privacy: .public)")
-        /// ORA-00028 and ORA-00600 end the session, and the server says why better than any
-        /// wording here could. Everything else that reaches this point is the protocol failing.
-        guard let serverMessage = sqlError.serverInfo?.message else { return .protocolError }
-        return .queryFailed(serverMessage)
     }
 
     /// A socket the system reclaimed while the app was suspended surfaces as a
@@ -674,6 +683,8 @@ public final class OracleCoreConnection: @unchecked Sendable {
         do {
             return try await executeQuery(query)
         } catch OracleCoreError.connectionClosed {
+            let closeReason = state.withLock { $0.lastCloseReason }
+            guard closeReason?.allowsReplay == true else { throw OracleCoreError.connectionClosed }
             osLogger.notice("Retrying an Oracle session setup statement on a fresh connection")
             return try await executeQuery(query)
         }

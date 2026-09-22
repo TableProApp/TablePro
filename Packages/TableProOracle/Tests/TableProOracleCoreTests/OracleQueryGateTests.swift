@@ -37,19 +37,27 @@ final class OracleQueryGateTests: XCTestCase {
         await gate.release()
     }
 
+    /// Compared against the first holder's own age rather than a wall-clock bound: time only moves
+    /// forward, so without the reset the second reading could never be the smaller one, whatever a
+    /// loaded CI worker does to the scheduling in between.
     func testAHandoverRestartsTheHoldingClock() async {
         let gate = QueryGate()
         await gate.acquire()
         let queued = Task { await gate.acquire() }
         try? await Task.sleep(for: .milliseconds(120))
 
+        guard case .busy(let beforeHandover) = await gate.takeTurnIfFree() else {
+            return XCTFail("The first holder still holds the gate")
+        }
+
         await gate.release()
         await queued.value
 
-        guard case .busy(let held) = await gate.takeTurnIfFree() else {
+        guard case .busy(let afterHandover) = await gate.takeTurnIfFree() else {
             return XCTFail("The waiter now holds the gate")
         }
-        XCTAssertLessThan(held, .milliseconds(100))
+        XCTAssertGreaterThan(beforeHandover, .zero)
+        XCTAssertLessThan(afterHandover, beforeHandover)
         await gate.release()
     }
 }

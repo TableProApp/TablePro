@@ -87,10 +87,30 @@ public enum OracleChannelFatalCode {
         }
     }
 
-    /// Whether this side closed the channel, rather than the server or the protocol failing.
-    public static func isClientClose(_ codeDescription: String) -> Bool {
-        codeDescription == "clientClosesConnection" || codeDescription == "clientClosedConnection"
+    /// What took the channel away, for a code ``isChannelFatal(_:serverErrorNumber:)`` calls fatal.
+    ///
+    /// The three read very differently to a user. A lost socket and a close from this side are both
+    /// "the connection went away, run it again"; only a protocol failure is worth telling anyone
+    /// the server sent something the driver could not read.
+    public static func closureKind(_ codeDescription: String) -> OracleChannelClosureKind {
+        switch codeDescription {
+        case "clientClosesConnection", "clientClosedConnection":
+            return .clientClose
+        case "uncleanShutdown", "connectionError":
+            return .transportLoss
+        default:
+            return .protocolFailure
+        }
     }
+}
+
+public enum OracleChannelClosureKind: Sendable, Equatable {
+    /// This side called `OracleConnection.close()` while the statement was on the wire.
+    case clientClose
+    /// The socket went away: the server, a VPN, or the OS closed it.
+    case transportLoss
+    /// The driver could not make sense of what came back.
+    case protocolFailure
 }
 
 public enum OracleSSLClassifier {

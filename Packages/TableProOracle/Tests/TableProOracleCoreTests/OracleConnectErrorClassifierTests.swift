@@ -128,11 +128,16 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
         XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server"))
     }
 
-    func testClientClosesAreToldApartFromProtocolFailures() {
-        XCTAssertTrue(OracleChannelFatalCode.isClientClose("clientClosedConnection"))
-        XCTAssertTrue(OracleChannelFatalCode.isClientClose("clientClosesConnection"))
-        XCTAssertFalse(OracleChannelFatalCode.isClientClose("connectionError"))
-        XCTAssertFalse(OracleChannelFatalCode.isClientClose("uncleanShutdown"))
+    /// A lost socket must not be reported as the server sending something the driver could not
+    /// read: `uncleanShutdown` and `connectionError` are the transport going away, and
+    /// `OracleConnectErrorClassifier` already calls the first of them a dropped connection.
+    func testClosuresAreToldApartByWhatTookTheChannel() {
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("clientClosedConnection"), .clientClose)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("clientClosesConnection"), .clientClose)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("uncleanShutdown"), .transportLoss)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("connectionError"), .transportLoss)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("messageDecodingFailure"), .protocolFailure)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("unexpectedBackendMessage"), .protocolFailure)
     }
 
     func testTLSClassifierRecognizesOracleWalletAndCipherErrors() {
