@@ -1083,9 +1083,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Switching
 
     func switchSchema(to schema: String) async throws {
-        _ = try await rawQuery(OracleSchemaQueries.setCurrentSchema(schema))
+        guard let core else { throw OraclePluginError(core: .notConnected) }
+        do {
+            _ = try await core.executeSessionSetup(OracleSchemaQueries.setCurrentSchema(schema))
+        } catch let error as OracleCoreError {
+            throw error.asPluginError
+        }
         _currentSchema = schema
-        core?.noteSessionSchema(schema)
+        core.noteSessionSchema(schema)
     }
 
     /// Oracle has no real database concept; "switch database" is a schema switch.

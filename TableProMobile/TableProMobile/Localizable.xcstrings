@@ -21016,6 +21016,12 @@
     },
     "Read it with a command in Query." : {
 
+    },
+    "The Oracle connection closed while the statement was running. Run it again." : {
+
+    },
+    "The Oracle driver reported an error (%@)." : {
+
     }
   },
   "version" : "1.0"
