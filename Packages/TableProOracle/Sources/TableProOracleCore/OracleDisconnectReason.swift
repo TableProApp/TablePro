@@ -34,6 +34,18 @@ public enum OracleDisconnectReason: Sendable, Equatable {
         }
     }
 
+    /// Whether this close ends the connection for good, rather than taking a channel away from a
+    /// session that still wants one.
+    ///
+    /// The plugin drops its `OracleCoreConnection` when the app disconnects and builds a new one to
+    /// reconnect, so a connection closed this way is never reached again by anything the app owns.
+    /// Anything that still holds it, a statement queued behind the gate or a retry dial already in
+    /// flight, must find it finished rather than quietly opening a second socket on the server.
+    /// Cancelling a query is not this: it ends one statement, and the session goes on.
+    public var endsConnection: Bool {
+        self == .userRequested
+    }
+
     public var logDescription: String {
         switch self {
         case .userRequested: return "the app closed it"

@@ -105,7 +105,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var queryTimeoutSeconds = 0
         var sessionSchema: String?
         var capturesServerOutput = false
-        var lastCloseReason: OracleDisconnectReason?
+        var close = OracleCloseRecord()
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -176,12 +176,23 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 return connection
             }
 
-            state.withLock { current in
+            /// A dial the app gave up on while it was in flight has nowhere to land: the plugin
+            /// dropped this connection and built another, so installing the handle here would
+            /// leave a session open on the server that nothing can reach or close.
+            let adopted = state.withLock { current -> Bool in
+                guard current.close.allowsReconnect else { return false }
                 current.nioConnection = connection
                 current.sessionID = connectionId
                 current.isConnected = true
                 current.hasEverConnected = true
-                current.lastCloseReason = nil
+                current.close.clearOnConnect()
+                return true
+            }
+
+            guard adopted else {
+                try? await connection.close()
+                osLogger.notice("Closed an Oracle connection that finished dialing after the app let it go")
+                throw OracleCoreError.notConnected
             }
 
             osLogger.debug("Connected to Oracle \(self.options.host, privacy: .public):\(self.options.port, privacy: .public)")
@@ -284,9 +295,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     public func disconnect(reason: OracleDisconnectReason = .userRequested) {
         let connection = state.withLock { current -> OracleNIO.OracleConnection? in
+            current.close.record(reason)
             guard current.isConnected else { return nil }
             current.isConnected = false
-            current.lastCloseReason = reason
             let connection = current.nioConnection
             current.nioConnection = nil
             return connection
@@ -404,7 +415,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     private func markConnectionDead(reason: OracleDisconnectReason) {
         let connection = state.withLock { current -> OracleNIO.OracleConnection? in
             current.isConnected = false
-            current.lastCloseReason = reason
+            current.close.record(reason)
             let connection = current.nioConnection
             current.nioConnection = nil
             return connection
@@ -427,7 +438,11 @@ public final class OracleCoreConnection: @unchecked Sendable {
         if let connection = state.withLock({ $0.isConnected ? $0.nioConnection : nil }) {
             return connection
         }
-        guard state.withLock({ $0.hasEverConnected }) else {
+        /// A statement that was queued behind the gate when the app disconnected must find this
+        /// connection finished. Without this it redials instead, and the socket it opens belongs to
+        /// nobody: the plugin has already dropped this connection and the app has removed the
+        /// session, so nothing will ever close it.
+        guard state.withLock({ $0.hasEverConnected && $0.close.allowsReconnect }) else {
             throw OracleCoreError.notConnected
         }
 
@@ -683,8 +698,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
         do {
             return try await executeQuery(query)
         } catch OracleCoreError.connectionClosed {
-            let closeReason = state.withLock { $0.lastCloseReason }
-            guard closeReason?.allowsReplay == true else { throw OracleCoreError.connectionClosed }
+            guard state.withLock({ $0.close.allowsSessionSetupReplay }) else {
+                throw OracleCoreError.connectionClosed
+            }
             osLogger.notice("Retrying an Oracle session setup statement on a fresh connection")
             return try await executeQuery(query)
         }

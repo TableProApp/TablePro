@@ -20,6 +20,18 @@ final class OracleDisconnectReasonTests: XCTestCase {
         XCTAssertTrue(OracleDisconnectReason.fatalProtocolError.allowsReplay)
     }
 
+    /// Only the app's own disconnect ends the connection. Cancelling a query ends one statement,
+    /// and an abandoned login attempt closes its own handle without touching the one installed.
+    func testOnlyTheAppsOwnDisconnectEndsTheConnection() {
+        XCTAssertTrue(OracleDisconnectReason.userRequested.endsConnection)
+        for reason in [
+            OracleDisconnectReason.queryCancelled, .queryTimedOut, .pingTimedOut, .wedgedStatement,
+            .channelAlreadyClosed, .fatalProtocolError, .transportError, .abandonedLoginAttempt
+        ] {
+            XCTAssertFalse(reason.endsConnection, String(describing: reason))
+        }
+    }
+
     func testEveryReasonSaysSomethingTheLogCanUse() {
         let reasons: [OracleDisconnectReason] = [
             .userRequested, .queryCancelled, .queryTimedOut, .pingTimedOut, .wedgedStatement,
