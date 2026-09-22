@@ -19,6 +19,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
     static let formatDisplayName = "SQL"
     static let acceptedFileExtensions = ["sql", "gz"]
     static let iconName = "doc.text"
+    static let excludedDatabaseTypeIds = ["MongoDB", "Redis"]
 
     typealias Settings = SQLImportOptions
     static let settingsStorageId = "sql-import"

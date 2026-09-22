@@ -8,7 +8,6 @@
 import AppKit
 import Foundation
 import TableProPluginKit
-import UniformTypeIdentifiers
 
 extension MainContentCoordinator {
     // MARK: - Result Set Operations
@@ -212,43 +211,63 @@ extension MainContentCoordinator {
         activeSheet = .exportQueryResults
     }
 
+    /// The menu bar's Import Data…, the Actions pull-down's leaf of the same name, and ⇧⌘I. The
+    /// file decides the format, so every format this connection imports is offered and the sheet
+    /// follows what the user picked. Resolving a format first is what made the command a permanent
+    /// alias for SQL (#3047).
+    func openImportPanel() {
+        guard let options = offeredImportFormats() else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let url = await ImportFilePanel.present(
+                matching: options,
+                message: String(localized: "Select a file to import"),
+                in: self.contentWindow
+            )
+            guard let url, case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
+            self.presentImportSheet(fileURL: url, formatId: formatId)
+        }
+    }
+
+    /// One named format, from the Import Data From list or the object browser's own menu. The user
+    /// has already said what the file holds, so every file is offered and nothing is read off the
+    /// extension: this is the route for a CSV called `orders.txt`.
     func openImportDialog(formatId: String) {
-        guard !safeModeLevel.blocksAllWrites else { return }
+        guard let options = offeredImportFormats(),
+              let option = options.first(where: { $0.id == formatId }) else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let url = await ImportFilePanel.presentForNamedFormat(
+                message: String(format: String(localized: "Select %@ file to import"), option.name),
+                in: self.contentWindow
+            )
+            guard let url else { return }
+            self.presentImportSheet(fileURL: url, formatId: formatId)
+        }
+    }
+
+    /// The formats this connection imports from, or nil when it imports from none. An empty list is
+    /// nil too: a panel that enables every file and then refuses all of them is a dead end.
+    private func offeredImportFormats() -> [ImportFormatOption]? {
+        guard !safeModeLevel.blocksAllWrites else { return nil }
         guard PluginManager.shared.supportsImport(for: connection.type) else {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Import Not Supported"),
                 message: String(format: String(localized: "Import is not supported for %@ connections."), connection.type.rawValue),
-                window: nil
+                window: contentWindow
             )
-            return
+            return nil
         }
+        let options = PluginManager.shared.importFormatOptions(for: connection.type)
+        return options.isEmpty ? nil : options
+    }
+
+    private func presentImportSheet(fileURL: URL, formatId: String) {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else { return }
-        let pluginType = type(of: plugin)
-
-        let panel = NSOpenPanel()
-        var contentTypes: [UTType] = []
-        for ext in pluginType.acceptedFileExtensions {
-            if let utType = UTType(filenameExtension: ext) {
-                contentTypes.append(utType)
-            }
-        }
-        if !pluginType.requiresTargetTable, let gzType = UTType(filenameExtension: "gz") {
-            contentTypes.append(gzType)
-        }
-        if !contentTypes.isEmpty {
-            panel.allowedContentTypes = contentTypes
-        }
-        panel.allowsMultipleSelection = false
-        panel.message = String(format: String(localized: "Select %@ file to import"), pluginType.formatDisplayName)
-
-        guard let window = contentWindow else { return }
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            self?.importFileURL = url
-            switch ImportRouting.route(formatId: formatId, requiresTargetTable: pluginType.requiresTargetTable) {
-            case .statement(let id): self?.activeSheet = .importDialog(formatId: id)
-            case .rowMapping(let id): self?.activeSheet = .rowImport(formatId: id)
-            }
+        importFileURL = fileURL
+        switch ImportRouting.route(formatId: formatId, requiresTargetTable: type(of: plugin).requiresTargetTable) {
+        case .statement(let id): activeSheet = .importDialog(formatId: id)
+        case .rowMapping(let id): activeSheet = .rowImport(formatId: id)
         }
     }
 

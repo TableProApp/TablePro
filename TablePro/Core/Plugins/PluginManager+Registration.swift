@@ -313,7 +313,11 @@ extension PluginManager {
 
     func importFormatOptions(for databaseType: DatabaseType) -> [ImportFormatOption] {
         importPlugins(for: databaseType).map {
-            ImportFormatOption(id: type(of: $0).formatId, name: type(of: $0).formatDisplayName)
+            ImportFormatOption(
+                id: type(of: $0).formatId,
+                name: type(of: $0).formatDisplayName,
+                acceptedFileExtensions: type(of: $0).acceptedFileExtensions
+            )
         }
     }
 

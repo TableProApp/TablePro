@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **File > Import > Import Data…** importing every file as SQL. (#3047)
+- A file the import panel dimmed still opening, and reaching the wrong importer.
+- Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
+- **SQL** offered as an import format on MongoDB.
 - No Base URL reaching an OpenAI-compatible server whose version segment is not `/v1`, such as Z.ai's `/v4`. (#3040)
 - Doubled version segment on Claude, OpenAI, xAI and Gemini when the Base URL already carried one.
 - **Connection successful** on a custom provider whose Base URL answered 404.

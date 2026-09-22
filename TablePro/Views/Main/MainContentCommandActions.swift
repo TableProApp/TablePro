@@ -1116,6 +1116,10 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.openExportQueryResultsDialog()
     }
 
+    func importData() {
+        coordinator?.openImportPanel()
+    }
+
     func importTables(formatId: String) {
         coordinator?.openImportDialog(formatId: formatId)
     }

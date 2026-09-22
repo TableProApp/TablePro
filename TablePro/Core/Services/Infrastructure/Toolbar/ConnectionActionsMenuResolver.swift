@@ -162,9 +162,9 @@ internal enum ConnectionActionsMenuResolver {
         )
         if context.supportsImport {
             /// The command and the format list are two rows, as they are under File > Import. The
-            /// leaf is the one ⇧⌘I runs and says so, and it takes the driver's first format; a row
-            /// that owns a submenu can carry neither the action nor the chord. The list is how any
-            /// other format is reached, filled when it opens.
+            /// leaf is the one ⇧⌘I runs and says so, and it reads the format off the file picked; a
+            /// row that owns a submenu can carry neither the action nor the chord. The list names a
+            /// format a file's extension does not, filled when it opens.
             ///
             /// Gated on the driver's capability, which is a registry read, and not on the formats it
             /// actually has: counting those activates every lazily loaded import plugin, and retries
