@@ -148,6 +148,41 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         await storage.fetchFolders(connectionId: connectionId)
     }
 
+    func fetchFolder(id: UUID) async -> SQLFavoriteFolder? {
+        await storage.fetchFolder(id: id)
+    }
+
+    func renameFolder(id: UUID, name: String) async -> Bool {
+        let result = await storage.renameFolder(id: id, name: name)
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
+        postUpdateNotification(connectionId: result.retainedScope)
+        return true
+    }
+
+    /// Every folder the containment walk rewrote is marked dirty, not only the one the user
+    /// clicked: a folder left out of the push keeps the old scope on every other device.
+    ///
+    /// One batched mark rather than one per folder, because each single mark reads and rewrites the
+    /// whole dirty set and posts its own change notification. And the marks run after the write has
+    /// committed, per the sync ordering rule: that notification can start a sync, and a sync reading
+    /// the database before the transaction lands pushes the scope the records are leaving.
+    func setFolderScope(id: UUID, connectionId: UUID?) async -> Bool {
+        let change = await storage.setFolderScope(id: id, connectionId: connectionId)
+        guard !change.isEmpty else { return false }
+        syncTracker.markDirty(.favoriteFolder, ids: change.changedFolderIds.map(\.uuidString))
+        postUpdateNotification(connectionId: nil)
+        return true
+    }
+
+    func setFavoriteFolder(id: UUID, folderId: UUID?) async -> Bool {
+        let result = await storage.setFavoriteFolder(id: id, folderId: folderId)
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favorite, id: id.uuidString)
+        postUpdateNotification(connectionId: result.retainedScope)
+        return true
+    }
+
     // MARK: - Remote Apply (does not mark dirty, to avoid sync loops)
 
     func applyRemoteFavorite(_ favorite: SQLFavorite) async {

@@ -191,6 +191,26 @@ struct SQLFavoriteStorageTests {
         #expect(otherAvailable)
     }
 
+    /// A global keyword is in every connection's expansion map, so it collides with a keyword held
+    /// anywhere. Asking only about other global rows let one connection hold the same keyword
+    /// twice, and `fetchKeywordMap` then kept whichever row SQLite returned last.
+    @Test("A keyword held by one connection is not free for a global favorite")
+    func aGlobalKeywordCollidesWithAScopedOne() async {
+        let connectionId = UUID()
+        let scoped = SQLFavorite(name: "Users", query: "SELECT 1", keyword: "u", connectionId: connectionId)
+        _ = await storage.addFavorite(scoped)
+
+        #expect(await storage.isKeywordAvailable("u", connectionId: nil) == false)
+    }
+
+    @Test("A keyword held by one connection is still free for another connection")
+    func aScopedKeywordIsFreeInAnotherConnection() async {
+        let scoped = SQLFavorite(name: "Users", query: "SELECT 1", keyword: "u", connectionId: UUID())
+        _ = await storage.addFavorite(scoped)
+
+        #expect(await storage.isKeywordAvailable("u", connectionId: UUID()))
+    }
+
     @Test("Keyword uniqueness excludes self")
     func keywordUniquenessExcludesSelf() async {
         let fav = makeFavorite(keyword: "sel")

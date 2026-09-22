@@ -358,4 +358,59 @@ struct FavoritesSidebarCacheObservationTests {
 
         #expect(viewModel.nodes.isEmpty)
     }
+
+    /// Issue #3045. A connection fetches its own folders plus every global one, so a folder
+    /// belonging to another connection never arrives. The global query inside it does, and used to
+    /// be drawn at no level at all: present in storage, in the Quick Switcher and in AI chat, and
+    /// missing from the sidebar.
+    @Test("A global query whose folder belongs to another connection is listed at the root")
+    func aGlobalQueryOutlivesAFolderThisConnectionCannotSee() {
+        let connectionId = UUID()
+        defer { ConnectionDataCache.removeConnection(connectionId) }
+        let viewModel = FavoritesSidebarViewModel(connectionId: connectionId)
+        let cache = ConnectionDataCache.shared(for: connectionId)
+        let stranded = SQLFavorite(
+            name: "Daily counts",
+            query: "SELECT count(*) FROM orders",
+            folderId: UUID(),
+            connectionId: nil
+        )
+
+        cache.commit(
+            ConnectionFavoritesSnapshot(folders: [], favorites: [stranded]),
+            generation: cache.nextRefreshGeneration()
+        )
+        let rootFavoriteIds = viewModel.nodes.compactMap { $0.asFavorite?.id }
+
+        #expect(rootFavoriteIds == [stranded.id])
+    }
+
+    @Test("A global query is still listed inside a global folder the connection can see")
+    func aGlobalQueryStaysInAGlobalFolder() {
+        let connectionId = UUID()
+        defer { ConnectionDataCache.removeConnection(connectionId) }
+        let viewModel = FavoritesSidebarViewModel(connectionId: connectionId)
+        let cache = ConnectionDataCache.shared(for: connectionId)
+        let folder = SQLFavoriteFolder(name: "Reports", connectionId: nil)
+        let nested = SQLFavorite(
+            name: "Daily counts",
+            query: "SELECT count(*) FROM orders",
+            folderId: folder.id,
+            connectionId: nil
+        )
+
+        cache.commit(
+            ConnectionFavoritesSnapshot(folders: [folder], favorites: [nested]),
+            generation: cache.nextRefreshGeneration()
+        )
+
+        let folderChildren = viewModel.nodes.first.flatMap { $0.children } ?? []
+        let rootFolderIds = viewModel.nodes.compactMap { $0.asFolder?.id }
+        let rootFavoriteIds = viewModel.nodes.compactMap { $0.asFavorite?.id }
+        let nestedFavoriteIds = folderChildren.compactMap { $0.asFavorite?.id }
+
+        #expect(rootFolderIds == [folder.id])
+        #expect(rootFavoriteIds.isEmpty)
+        #expect(nestedFavoriteIds == [nested.id])
+    }
 }

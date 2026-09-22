@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Import > Import Data From**, for choosing the import format from the menu bar.
 - **File > Session**, with the agent session commands and the assistant's conversation commands.
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
+- **Global** on a saved query folder's menu, for a folder every connection shows.
 
 ### Changed
 
@@ -69,6 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Global saved query inside a folder missing from every other connection. (#3045)
+- Saved query and folder drawn nowhere when the folder holding it was gone.
+- Keyword accepted for a global saved query while another connection already held it.
+- Cleared keyword, folder or **Global** on a saved query never reaching another device.
+- Renaming a folder putting back the scope another window had just set.
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
 - A file the import panel dimmed still opening, and reaching the wrong importer.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.

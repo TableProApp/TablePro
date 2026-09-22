@@ -39,6 +39,7 @@ internal enum FavoritesMenuCommand: Equatable {
     case removeLinkedFolder(LinkedSQLFolder)
 
     case renameFolder(SQLFavoriteFolder)
+    case setFolderGlobal(SQLFavoriteFolder, Bool)
     case newFavorite(folderId: UUID?)
     case newFolder(parentId: UUID?)
     case deleteFolder(SQLFavoriteFolder)

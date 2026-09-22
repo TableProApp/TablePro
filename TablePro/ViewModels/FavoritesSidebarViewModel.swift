@@ -183,7 +183,7 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
     }
 
     private func buildRootNodes() -> [FavoriteNode] {
-        var roots = buildNodes(folders: cache.folders, favorites: cache.favorites, parentId: nil)
+        var roots = FavoritesTreeBuilder.build(folders: cache.folders, favorites: cache.favorites)
         for folder in cache.linkedFolders {
             guard folder.isEnabled else {
                 roots.append(.disabledLinkedFolder(folder))
@@ -268,33 +268,6 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
         return subfolderNodes + sortedLeaves
     }
 
-    private func buildNodes(
-        folders: [SQLFavoriteFolder],
-        favorites: [SQLFavorite],
-        parentId: UUID?
-    ) -> [FavoriteNode] {
-        var items: [FavoriteNode] = []
-
-        let levelFolders = folders
-            .filter { $0.parentId == parentId }
-            .sorted { $0.sortOrder != $1.sortOrder ? $0.sortOrder < $1.sortOrder : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
-        for folder in levelFolders {
-            let children = buildNodes(folders: folders, favorites: favorites, parentId: folder.id)
-            items.append(.folder(folder, children: children))
-        }
-
-        let levelFavorites = favorites
-            .filter { $0.folderId == parentId }
-            .sorted { $0.sortOrder != $1.sortOrder ? $0.sortOrder < $1.sortOrder : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
-        for fav in levelFavorites {
-            items.append(.favorite(fav))
-        }
-
-        return items
-    }
-
     func createFavorite(query: String? = nil, folderId: UUID? = nil) {
         if let folderId {
             services.favoritesExpansionState.setFolderExpanded(folderId, expanded: true, for: connectionId)
@@ -321,11 +294,7 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
 
     func moveFavorite(id: UUID, toFolder folderId: UUID?) {
         Task {
-            let allFavorites = await manager.fetchFavorites(connectionId: connectionId)
-            guard var favorite = allFavorites.first(where: { $0.id == id }) else { return }
-            favorite.folderId = folderId
-            favorite.updatedAt = Date()
-            _ = await manager.updateFavorite(favorite)
+            _ = await manager.setFavoriteFolder(id: id, folderId: folderId)
         }
     }
 
@@ -367,15 +336,24 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
 
     /// The name arrives from the editor rather than through observable state, so a keystroke no
     /// longer round-trips through the view model on its way to the field.
+    ///
+    /// It renames by id rather than writing back the record the tree was holding. That record
+    /// carries a `connectionId` read when the row was built, and writing it whole would put that
+    /// scope back over one another window had set in the meantime.
     func commitRenameFolder(_ folder: SQLFavoriteFolder, to proposedName: String) {
         let newName = proposedName.trimmingCharacters(in: .whitespaces)
         renamingFolderId = nil
         guard !newName.isEmpty, newName != folder.name else { return }
         Task {
-            var updated = folder
-            updated.name = newName
-            updated.updatedAt = Date()
-            _ = await manager.updateFolder(updated)
+            _ = await manager.renameFolder(id: folder.id, name: newName)
+        }
+    }
+
+    /// Whether a folder is available in every connection, which is also what decides where the
+    /// queries inside it can be seen.
+    func setFolderGlobal(_ folder: SQLFavoriteFolder, _ isGlobal: Bool) {
+        Task {
+            _ = await manager.setFolderScope(id: folder.id, connectionId: isGlobal ? nil : connectionId)
         }
     }
 

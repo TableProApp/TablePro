@@ -17,7 +17,7 @@ internal actor SQLFavoriteStorage {
     private var dbHandle = DatabaseHandle()
     private var isPrepared = false
 
-    private var db: OpaquePointer? {
+    internal var db: OpaquePointer? {
         if !isPrepared {
             isPrepared = true
             setupDatabase()
@@ -478,7 +478,7 @@ internal actor SQLFavoriteStorage {
     /// the caller. A sync pull applies remote records from its own task while the user is editing,
     /// so a read and a write the caller awaits one after the other are two entries this actor is
     /// free to interleave, and the scope reported would be one somebody else had already replaced.
-    private func currentScope(table: String, id: UUID) -> FavoriteScopeRead {
+    internal func currentScope(table: String, id: UUID) -> FavoriteScopeRead {
         var statement: OpaquePointer?
         let sql = "SELECT connection_id FROM \(table) WHERE id = ?;"
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return .notFound }
@@ -544,7 +544,7 @@ internal actor SQLFavoriteStorage {
         return prunedFavorites
     }
 
-    private func run(_ sql: String, bindings: [String] = []) -> Bool {
+    internal func run(_ sql: String, bindings: [String] = []) -> Bool {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             Self.logger.error("Failed to prepare statement: \(String(cString: sqlite3_errmsg(self.db)))")
@@ -1031,10 +1031,14 @@ internal actor SQLFavoriteStorage {
                 AND (connection_id IS NULL OR connection_id = ?)
                 """
         } else {
+            /// A global keyword is in every connection's expansion map, so it collides with a
+            /// keyword held anywhere, not only with another global one. Asking about global rows
+            /// alone let one connection hold the same keyword twice, and `fetchKeywordMap` then
+            /// kept whichever row SQLite happened to return last. The unique index cannot catch
+            /// it either: SQLite treats NULLs in a unique index as distinct.
             sql = """
                 SELECT COUNT(*) FROM favorites
                 WHERE keyword = ?
-                AND connection_id IS NULL
                 """
         }
 
@@ -1104,7 +1108,7 @@ internal actor SQLFavoriteStorage {
         )
     }
 
-    private func parseFolder(from statement: OpaquePointer?) -> SQLFavoriteFolder? {
+    internal func parseFolder(from statement: OpaquePointer?) -> SQLFavoriteFolder? {
         guard let statement = statement else { return nil }
 
         guard let idString = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
@@ -1151,6 +1155,14 @@ enum FavoriteScopeWrite: Equatable {
 
     var succeeded: Bool {
         self != .failed
+    }
+
+    /// The scope the record is in, for a write that did not touch its scope. A rename or a move
+    /// between folders is announced to that scope alone, the way any other write to it would be,
+    /// and a global record's nil still reaches every connection.
+    var retainedScope: UUID? {
+        guard case .updatedExisting(let previousConnectionId) = self else { return nil }
+        return previousConnectionId
     }
 }
 

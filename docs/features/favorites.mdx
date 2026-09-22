@@ -55,6 +55,8 @@ Click a row to reopen the table. Right-click to remove one entry or clear the li
 
 The dialog takes a name, the SQL, and an optional keyword. Select **Global** for a query that names nothing specific to one database. Leave it off and the favorite belongs to the connection you are in, and goes with it when that connection is deleted.
 
+Folders carry the same setting, so the **Folder** list offers only the ones that match: a global query goes in a global folder, a connection's own query goes in either.
+
 <Frame caption="Creating a new SQL favorite">
   <img className="block dark:hidden" src="/images/sql-favorite-create.png" alt="A dialog with Name, Query, Keyword fields and a Global checkbox" />
   <img className="hidden dark:block" src="/images/sql-favorite-create-dark.png" alt="A dialog with Name, Query, Keyword fields and a Global checkbox" />
@@ -66,7 +68,7 @@ There is no plus button. The same right-click menu carries **New Query**, **New 
 
 A keyword is what you type instead of the query. Type its first letters, in any case, and the favorite appears in the completion popup with a star; `Tab` or `Return` inserts the SQL. See [Autocomplete](/features/autocomplete).
 
-Two favorites in one scope cannot share a keyword, and the dialog says so as you type.
+Two favorites that reach the same connection cannot share a keyword, and the dialog says so as you type.
 
 <Frame caption="Keyword expansion in the editor autocomplete">
   <img className="block dark:hidden" src="/images/sql-favorite-keyword.png" alt="A completion popup with a starred favorite matching the typed keyword" />
@@ -91,7 +93,7 @@ The cursor lands right after `orders.`, ready for a column name. Only the first 
 
 Double-click a favorite, or press `Return`, to insert it into the editor. The right-click menu has **Insert in Editor**, **Run in New Tab**, **Copy Query**, **Edit…**, **Move to**, and **Delete**. Arrow keys move between rows, typing jumps to a name, and `Delete` asks first.
 
-Folders come from the same background menu. A folder's own menu has **Rename**, **New Favorite…**, **New Subfolder**, and **Delete Folder**; deleting one moves what was inside up to the parent level. Drag a query or a linked file out of the sidebar to drop its SQL into the editor or another app.
+Folders come from the same background menu. A folder's own menu has **New Favorite…**, **New Subfolder**, **Rename**, **Global**, and **Delete Folder**; deleting one moves what was inside up to the parent level. A global folder carries a globe, and marking a subfolder global marks the folders above it too. A global query kept in a folder that belongs to one connection is listed at the top level on the others. Drag a query or a linked file out of the sidebar to drop its SQL into the editor or another app.
 
 ## Team Library
 

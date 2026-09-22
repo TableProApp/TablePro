@@ -390,7 +390,7 @@ internal struct FavoritesTabView: View {
         case .favorite(let favorite):
             FavoriteRowView(favorite: favorite)
         case .folder(let folder):
-            Label(folder.name, systemImage: "folder")
+            FavoriteFolderRowView(folder: folder)
         case .linkedFolder(let folder):
             LinkedFolderRowLabel(folder: folder)
         case .linkedSubfolder(_, let displayName, _):
@@ -572,6 +572,8 @@ internal struct FavoritesTabView: View {
             showRemoveLinkedFolderAlert = true
         case .renameFolder(let folder):
             viewModel.startRenameFolder(folder)
+        case .setFolderGlobal(let folder, let isGlobal):
+            viewModel.setFolderGlobal(folder, isGlobal)
         case .newFavorite(let folderId):
             viewModel.createFavorite(folderId: folderId)
         case .newFolder(let parentId):
