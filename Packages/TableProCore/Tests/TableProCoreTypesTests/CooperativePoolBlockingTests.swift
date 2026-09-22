@@ -22,10 +22,14 @@ struct CooperativePoolBlockingTests {
     private static var blockerCount: Int { ProcessInfo.processInfo.activeProcessorCount + 4 }
     private static let blockMilliseconds = 300
 
+    /// The high-water mark is the whole assertion, because `blockerCount` callers measured inside the
+    /// blocking call at one instant *is* "every caller at once". A wall clock cannot add to that and
+    /// only reports the host: libdispatch brings its worker threads up one at a time, so on a loaded
+    /// CI runner the group took 2.00s and 2.26s against a 0.9s budget while the peak was the full
+    /// `blockerCount` both times. The companion test below is a peak assertion for the same reason.
     @Test("Blocking through its own queue runs every caller at once")
     func runsEveryBlockerConcurrently() async throws {
         let peak = ConcurrencyPeak()
-        let started = Date()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0 ..< Self.blockerCount {
@@ -44,9 +48,7 @@ struct CooperativePoolBlockingTests {
             try await group.waitForAll()
         }
 
-        let elapsed = Date().timeIntervalSince(started)
         #expect(peak.highWaterMark == Self.blockerCount)
-        #expect(elapsed < Double(Self.blockMilliseconds * 3) / 1_000)
     }
 
     @Test("Blocking a detached task instead caps at the cooperative pool width")

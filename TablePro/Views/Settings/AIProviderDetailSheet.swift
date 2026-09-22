@@ -224,6 +224,7 @@ struct AIProviderDetailSheet: View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
                 .onChange(of: apiKey) { _ in
+                    scheduleFetchModels()
                     testResult = nil
                 }
             HStack {
@@ -264,7 +265,10 @@ struct AIProviderDetailSheet: View {
     private var cursorAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { _ in testResult = nil }
+                .onChange(of: apiKey) { _ in
+                    scheduleFetchModels()
+                    testResult = nil
+                }
             HStack {
                 Spacer()
                 Button {
@@ -396,7 +400,10 @@ struct AIProviderDetailSheet: View {
     private var xaiAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { _ in testResult = nil }
+                .onChange(of: apiKey) { _ in
+                    scheduleFetchModels()
+                    testResult = nil
+                }
             HStack {
                 Spacer()
                 Button {
@@ -689,20 +696,51 @@ struct AIProviderDetailSheet: View {
     private var endpointFootnote: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Include the version segment your server uses, such as /v1 or /v4.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if let resolvedChatURL {
                 Text(resolvedChatURL)
                     .textSelection(.enabled)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if resolvedEndpoint?.isPlaintextToRemoteHost == true {
+                Label(cleartextCaution, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    .lineLimit(2)
             }
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+    }
+
+    private var modelListBlocker: AIModelListFetchGate.Blocker? {
+        AIModelListFetchGate.blocker(
+            fetchesModelList: descriptor?.fetchesModelList == true,
+            takesEndpoint: descriptor?.allowsEndpointConfiguration == true,
+            endpoint: draft.endpoint,
+            authStyle: draft.type.authStyle,
+            apiKey: apiKey
+        )
+    }
+
+    /// Ollama, llama.cpp, MLX and a keyless Custom server send no authorization header at all, so
+    /// naming the key there would warn about something that is not happening.
+    private var cleartextCaution: String {
+        guard draft.type.authStyle.usesAPIKey,
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return String(localized: "Requests to this host are sent unencrypted over http.")
+        }
+        return String(localized: "Your API key is sent unencrypted over http to this host.")
+    }
+
+    private var resolvedEndpoint: AIEndpoint? {
+        AIEndpoint(draft.endpoint, style: draft.type.endpointStyle)
     }
 
     private var resolvedChatURL: String? {
         let style = draft.type.endpointStyle
-        guard let endpoint = AIEndpoint(draft.endpoint, style: style),
-              let url = endpoint.chatURL(model: draft.model, style: style)
-        else { return nil }
+        guard let url = resolvedEndpoint?.chatURL(model: draft.model, style: style) else { return nil }
         return url.absoluteString
     }
 
@@ -865,6 +903,11 @@ struct AIProviderDetailSheet: View {
                 .controlSize(.small)
             }
         }
+        if modelListBlocker == .missingAPIKey {
+            Text("Enter an API key to load this provider's models.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Advanced
@@ -972,19 +1015,22 @@ struct AIProviderDetailSheet: View {
     }
 
     private func fetchModels() {
-        guard descriptor?.fetchesModelList == true else {
+        switch modelListBlocker {
+        case .notFetchable:
             fetchedModels = []
             modelFetchError = nil
+            isFetchingModels = false
             if draft.model.isEmpty, let first = curatedModels.first {
                 draft.model = first.id
             }
             return
-        }
-        if draft.type.authStyle == .apiKey,
-           apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        case .missingEndpoint, .missingAPIKey:
             fetchedModels = []
             modelFetchError = nil
+            isFetchingModels = false
             return
+        case nil:
+            break
         }
 
         let provider = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)

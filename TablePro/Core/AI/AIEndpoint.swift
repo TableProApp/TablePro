@@ -90,6 +90,15 @@ struct AIEndpoint: Equatable, Sendable {
     /// Works on the percent-encoded path. `URLComponents.path` decodes `%2F`, and writing the
     /// decoded value back turns one segment into two, so a gateway mounted under an escaped
     /// separator would be sent to a different route.
+    /// An `Authorization: Bearer` header on a cleartext request to another machine is readable by
+    /// anything between here and there. Reaching a server on this machine over http is an ordinary
+    /// local setup, so only a remote host is worth saying anything about.
+    var isPlaintextToRemoteHost: Bool {
+        guard apiBase.scheme?.lowercased() == "http" else { return false }
+        guard let host = apiBase.host else { return true }
+        return !LoopbackHost.isLoopback(host)
+    }
+
     private static func apiBasePath(for percentEncodedPath: String, style: AIEndpointStyle) -> String {
         let segments = percentEncodedPath.split(separator: "/").map(String.init)
 

@@ -105,7 +105,7 @@ enum PostgreSQLDumpToolLocator {
     }
 
     static func probeVersion(of path: String, timeout: TimeInterval = versionProbeTimeout) -> ProbedVersion {
-        guard let output = versionOutput(of: path, timeout: timeout),
+        guard let output = CLIToolVersionProbe.versionOutput(of: path, timeout: timeout),
               let version = PostgreSQLServerVersion(output) else {
             return .unknown
         }
@@ -134,31 +134,5 @@ enum PostgreSQLDumpToolLocator {
 
     private static func resolvedPath(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-    }
-
-    private static func versionOutput(of path: String, timeout: TimeInterval) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["--version"]
-        process.environment = CLIToolEnvironment.augmented()
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-
-        if finished.wait(timeout: .now() + timeout) == .timedOut {
-            process.terminate()
-            logger.warning("\(path, privacy: .private(mask: .hash)) did not answer --version within \(timeout, privacy: .public)s")
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)
     }
 }

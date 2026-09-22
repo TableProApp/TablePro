@@ -92,13 +92,13 @@ enum NativeDumpRegistry {
                     restoreExitPolicy: .toleratesUnrecognizedSessionSettings,
                     requiresUntranslatedMessages: true,
                     toolForServer: toolForServer,
-                    backupArguments: { request in
+                    backupArguments: { request, _ in
                         connectionFlags(request)
                             + ["-Fc", "-d", request.database]
                             + postgresTableFlags(request)
                             + ["-f", request.fileURL.path]
                     },
-                    restoreArguments: { request in
+                    restoreArguments: { request, _ in
                         connectionFlags(request) + ["--no-owner", "--no-acl", "-d", request.database, request.fileURL.path]
                     },
                     environment: { request in
@@ -106,10 +106,7 @@ enum NativeDumpRegistry {
                         if let password = request.password, !password.isEmpty {
                             environment["PGPASSWORD"] = password
                         }
-                        if request.connection.sslConfig.isEnabled,
-                           let mode = postgresSSLMode(request.connection.sslConfig.mode) {
-                            environment["PGSSLMODE"] = mode
-                        }
+                        environment.merge(postgresSSLEnvironment(request.connection.sslConfig)) { _, new in new }
                         return environment
                     }
                 )
@@ -155,6 +152,28 @@ enum NativeDumpRegistry {
         }
     }
 
+    /// The whole of the connection's SSL configuration, not just its mode.
+    ///
+    /// libpq falls back to `~/.postgresql/root.crt` when no root certificate is named, and measured
+    /// with pg_dump 17.11 a `verify-ca` connection with no such file fails before connecting with
+    /// `root certificate file "..." does not exist`. So a Verify CA connection that opens in the
+    /// app could never be dumped. The rule matches what `LibPQConnectionString` already sends on
+    /// the live connection, down to the CA being tied to the modes that verify.
+    static func postgresSSLEnvironment(_ ssl: SSLConfiguration) -> [String: String] {
+        guard ssl.isEnabled, let mode = postgresSSLMode(ssl.mode) else { return [:] }
+        var environment = ["PGSSLMODE": mode]
+        if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
+            environment["PGSSLROOTCERT"] = ssl.caCertificatePath
+        }
+        if !ssl.clientCertificatePath.isEmpty {
+            environment["PGSSLCERT"] = ssl.clientCertificatePath
+        }
+        if !ssl.clientKeyPath.isEmpty {
+            environment["PGSSLKEY"] = ssl.clientKeyPath
+        }
+        return environment
+    }
+
     // MARK: - MySQL and MariaDB
 
     /// MariaDB 11.0 renamed every client, keeping the `mysql`-prefixed names as symlinks that some
@@ -168,18 +187,25 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with `brew install mysql-client` and link it."),
                     backupDelivery: .standardOutput,
                     restoreDelivery: .standardOutput,
-                    backupArguments: { request in
-                        mysqlConnectionFlags(request) + [
+                    identifyExecutable: { name, path in
+                        MySQLDumpToolIdentifier.identify(name: name, path: path)
+                    },
+                    backupArguments: { request, resolved in
+                        try mysqlConnectionFlags(request, resolved) + [
                             "--single-transaction",
                             "--routines",
                             "--triggers",
                             "--events",
-                            "--default-character-set=utf8mb4",
-                            request.database
-                        ] + mysqlTableArguments(request)
+                            "--default-character-set=utf8mb4"
+                        ]
+                            + MySQLClientArguments.dumpCompatibility(
+                                tool: resolved, serverVersion: request.serverVersion
+                            )
+                            + mysqlObjectArguments(request)
                     },
-                    restoreArguments: { request in
-                        mysqlConnectionFlags(request) + ["--default-character-set=utf8mb4", request.database]
+                    restoreArguments: { request, resolved in
+                        try mysqlConnectionFlags(request, resolved)
+                            + ["--default-character-set=utf8mb4", "--", request.database]
                     },
                     environment: { request in
                         guard let password = request.password, !password.isEmpty else { return [:] }
@@ -201,38 +227,32 @@ enum NativeDumpRegistry {
         )
     }
 
-    /// `--` before the table list, because `my_getopt` does not stop parsing options at the first
-    /// positional argument. Measured with mysqldump 12.3.2: a table named `--no-data` passed as a
-    /// bare argument was read as the option and the dump came back with zero rows, exit 0, which
-    /// the result sheet reports as a successful backup. The same trick reaches `--ssl-mode=DISABLED`
-    /// and sends the whole dump in cleartext. With `--` in front, the name is a table again.
-    private static func mysqlTableArguments(_ request: NativeDumpDescriptor.Request) -> [String] {
-        let names = request.scope.objects.map(\.name)
-        guard !names.isEmpty else { return [] }
-        return ["--"] + names
+    /// `--` before the database, because `my_getopt` does not stop parsing options at the first
+    /// positional argument and every name after it is the user's. Measured with mysqldump 8.4.11
+    /// and 12.3.2, a database named `--no-data` with the terminator behind it dumped a *different*
+    /// database with no rows and exited 0, which the result sheet reports as a successful backup;
+    /// a table named `--ssl-mode=DISABLED` in the same slot sends the whole dump in cleartext. With
+    /// `--` in front of the database, both are names again.
+    private static func mysqlObjectArguments(_ request: NativeDumpDescriptor.Request) -> [String] {
+        ["--", request.database] + request.scope.objects.map(\.name)
     }
 
-    private static func mysqlConnectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
+    private static func mysqlConnectionFlags(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) throws -> [String] {
         var flags = ["--protocol=TCP", "-h", request.host, "-P", String(request.connection.port)]
         if !request.connection.username.isEmpty {
             flags.append(contentsOf: ["-u", request.connection.username])
         }
-        if request.connection.sslConfig.isEnabled {
-            flags.append(mysqlSSLMode(request.connection.sslConfig.mode))
-        } else {
-            flags.append("--ssl-mode=DISABLED")
-        }
+        flags.append(
+            contentsOf: try MySQLClientArguments.tls(
+                request.connection.sslConfig,
+                flavor: resolved.flavor,
+                toolPath: resolved.path
+            )
+        )
         return flags
-    }
-
-    static func mysqlSSLMode(_ mode: SSLMode) -> String {
-        switch mode {
-        case .disabled: return "--ssl-mode=DISABLED"
-        case .preferred: return "--ssl-mode=PREFERRED"
-        case .required: return "--ssl-mode=REQUIRED"
-        case .verifyCa: return "--ssl-mode=VERIFY_CA"
-        case .verifyIdentity: return "--ssl-mode=VERIFY_IDENTITY"
-        }
     }
 
     // MARK: - MongoDB
@@ -250,13 +270,13 @@ enum NativeDumpRegistry {
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
                     needsCredentialsFile: true,
-                    backupArguments: { request in
+                    backupArguments: { request, _ in
                         mongoConnectionFlags(request) + mongoNamespaceFlags(request) + [
                             "--gzip",
                             "--archive=\(request.fileURL.path)"
                         ]
                     },
-                    restoreArguments: { request in
+                    restoreArguments: { request, _ in
                         mongoConnectionFlags(request) + [
                             "--nsInclude=\(request.database).*",
                             "--gzip",
@@ -313,13 +333,13 @@ enum NativeDumpRegistry {
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
                     exposesPasswordInArguments: true,
-                    backupArguments: { request in
+                    backupArguments: { request, _ in
                         ["/Action:Export",
                          "/TargetFile:\(request.fileURL.path)",
                          "/SourceConnectionString:\(sqlServerConnectionString(request))"]
                             + request.scope.objects.map { "/p:TableData=\(sqlServerTableData($0))" }
                     },
-                    restoreArguments: { request in
+                    restoreArguments: { request, _ in
                         ["/Action:Import",
                          "/SourceFile:\(request.fileURL.path)",
                          "/TargetConnectionString:\(sqlServerConnectionString(request))"]
@@ -384,7 +404,7 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with `brew install sqlite` and link it."),
                     backupDelivery: .standardOutput,
                     restoreDelivery: .standardOutput,
-                    backupArguments: { request in
+                    backupArguments: { request, _ in
                         [
                             sqlitePath(request),
                             NativeDumpArgumentQuoting.sqliteDumpCommand(
@@ -392,7 +412,7 @@ enum NativeDumpRegistry {
                             )
                         ]
                     },
-                    restoreArguments: { request in [sqlitePath(request)] }
+                    restoreArguments: { request, _ in [sqlitePath(request)] }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(

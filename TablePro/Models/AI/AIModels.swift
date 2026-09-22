@@ -80,6 +80,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .llamaCpp:     return .none
         case .mlx:          return .none
         case .openCode:     return .optionalApiKey
+        case .custom:       return .optionalApiKey
         default:            return .apiKey
         }
     }

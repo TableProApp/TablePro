@@ -508,11 +508,16 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data)
-                  as? [String: Any],
-              let modelsArray = json["data"] as? [[String: Any]]
-        else {
-            return []
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
+        }
+
+        guard let modelsArray = json["data"] as? [[String: Any]] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
         }
 
         return modelsArray.compactMap { $0["id"] as? String }.sorted()
@@ -543,11 +548,16 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data)
-                  as? [String: Any],
-              let models = json["models"] as? [[String: Any]]
-        else {
-            return []
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
+        }
+
+        guard let models = json["models"] as? [[String: Any]] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
         }
 
         return models.compactMap { $0["name"] as? String }.sorted()

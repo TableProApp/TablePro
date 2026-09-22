@@ -889,6 +889,7 @@ struct MainEditorContentView: View {
             } else {
                 FilterPanelView(
                     coordinator: coordinator,
+                    tabManager: tabManager,
                     columns: rows.columns,
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,

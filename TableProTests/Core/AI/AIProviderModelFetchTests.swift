@@ -115,6 +115,55 @@ struct AIProviderModelFetchTests {
         #expect(StubModelListProtocol.lastRequestedURL() == "https://gateway.internal/openai/v2/models")
     }
 
+    private func compatibleProvider(_ type: AIProviderType, endpoint: String) -> OpenAICompatibleProvider {
+        OpenAICompatibleProvider(
+            endpoint: endpoint,
+            apiKey: "key",
+            providerType: type,
+            session: stubSession()
+        )
+    }
+
+    @Test("An OpenAI-compatible server that serves no models answers with an empty list")
+    func openAICompatibleEmptyListIsNotAnError() async throws {
+        StubModelListProtocol.respond(status: 200, body: #"{"data":[]}"#)
+        let models = try await compatibleProvider(.custom, endpoint: "https://host/v1").fetchAvailableModels()
+        #expect(models.isEmpty)
+    }
+
+    /// An empty picker with no error reads as "this server has no models", which is not what a
+    /// gateway answering 200 with the wrong shape is saying.
+    @Test("A 200 whose JSON has no model array is reported, not read as an empty list")
+    func openAICompatibleWrongShapeThrows() async {
+        StubModelListProtocol.respond(status: 200, body: #"{"models":[{"name":"a"}]}"#)
+        await #expect(throws: AIProviderError.self) {
+            _ = try await compatibleProvider(.custom, endpoint: "https://host/v1").fetchAvailableModels()
+        }
+    }
+
+    @Test("A 200 that is not JSON at all is reported")
+    func openAICompatibleNonJSONThrows() async {
+        StubModelListProtocol.respond(status: 200, body: "<!doctype html><html></html>")
+        await #expect(throws: AIProviderError.self) {
+            _ = try await compatibleProvider(.custom, endpoint: "https://host/v1").fetchAvailableModels()
+        }
+    }
+
+    @Test("An Ollama server with nothing pulled answers with an empty list")
+    func ollamaEmptyListIsNotAnError() async throws {
+        StubModelListProtocol.respond(status: 200, body: #"{"models":[]}"#)
+        let models = try await compatibleProvider(.ollama, endpoint: "http://localhost:11434").fetchAvailableModels()
+        #expect(models.isEmpty)
+    }
+
+    @Test("An Ollama route answering the wrong shape is reported")
+    func ollamaWrongShapeThrows() async {
+        StubModelListProtocol.respond(status: 200, body: #"{"data":[{"id":"a"}]}"#)
+        await #expect(throws: AIProviderError.self) {
+            _ = try await compatibleProvider(.ollama, endpoint: "http://localhost:11434").fetchAvailableModels()
+        }
+    }
+
     @Test("Gemini reaches the model list under the base the user configured")
     func geminiUsesTheResolvedBase() async throws {
         StubModelListProtocol.respond(status: 200, body: #"{"models":[]}"#)

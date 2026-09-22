@@ -83,7 +83,7 @@ struct BackupResultSheet: View {
             }
             scrollingDetail(message)
         case .batch(let outcomes, let directory):
-            scrollingDetail(Self.batchDetail(outcomes, directory: directory))
+            batchDetailView(outcomes, directory: directory)
         case .restoreSuccess(_, _, let skippedSettings):
             summaryDetail
             if let note = Self.skippedSettingsNote(skippedSettings) {
@@ -110,6 +110,107 @@ struct BackupResultSheet: View {
                 .lineLimit(6)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .textSelection(.enabled)
+        }
+    }
+
+    /// The folder is a labelled row and each database is its own row, because one text block made
+    /// the folder and the first database read as a single path (#3046).
+    private func batchDetailView(_ outcomes: [NativeDumpBatchOutcome], directory: URL) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LabeledContent {
+                Text(directory.path(percentEncoded: false))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            } label: {
+                Text("Destination")
+            }
+            .font(.callout)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(BackupOutcomeRow.rows(for: outcomes)) { row in
+                        outcomeRow(row)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: 200)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+        }
+    }
+
+    private func outcomeRow(_ row: BackupOutcomeRow) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: Self.symbolName(for: row.state))
+                    .foregroundStyle(Self.tint(for: row.state))
+                    .accessibilityLabel(Self.stateAccessibilityLabel(for: row.state))
+                Text(row.database)
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                Spacer(minLength: 8)
+                Text(Self.stateLabel(for: row))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let errorDetail = row.errorDetail {
+                RevealedTextView(errorDetail)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if row.state == .succeeded {
+                Text(row.fileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private static func symbolName(for state: BackupOutcomeRow.State) -> String {
+        switch state {
+        case .succeeded: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        case .cancelled: return "slash.circle"
+        }
+    }
+
+    private static func tint(for state: BackupOutcomeRow.State) -> Color {
+        switch state {
+        case .succeeded: return .green
+        case .failed: return .red
+        case .cancelled: return .secondary
+        }
+    }
+
+    /// A successful row's trailing text is its size, so without this the state reaches VoiceOver
+    /// through the symbol's colour alone.
+    private static func stateAccessibilityLabel(for state: BackupOutcomeRow.State) -> String {
+        switch state {
+        case .succeeded: return String(localized: "Backed up")
+        case .failed: return String(localized: "Failed")
+        case .cancelled: return String(localized: "Cancelled")
+        }
+    }
+
+    internal static func stateLabel(for row: BackupOutcomeRow) -> String {
+        switch row.state {
+        case .succeeded: return row.size ?? ""
+        case .failed: return String(localized: "Failed")
+        case .cancelled: return String(localized: "Cancelled")
         }
     }
 
@@ -209,8 +310,8 @@ struct BackupResultSheet: View {
             case .restore:
                 return Self.partialStateWarning
             }
-        case .batch(let outcomes, let directory):
-            return Self.batchDetail(outcomes, directory: directory)
+        case .batch:
+            return nil
         }
     }
 
@@ -226,31 +327,6 @@ struct BackupResultSheet: View {
             format: String(localized: "Skipped settings this server does not recognize: %@."),
             settings.formatted(.list(type: .and))
         )
-    }
-
-    /// One line per database, so a run where the second of three failed says which one and keeps
-    /// the other two visible rather than reporting a single verdict for the batch.
-    private static func batchDetail(_ outcomes: [NativeDumpBatchOutcome], directory: URL) -> String {
-        let lines = outcomes.map { outcome -> String in
-            switch outcome.result {
-            case .succeeded(let bytes):
-                return String(
-                    format: String(localized: "%1$@ \u{2192} %2$@ (%3$@)"),
-                    outcome.database,
-                    outcome.destination.lastPathComponent,
-                    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-                )
-            case .failed(let message):
-                return String(
-                    format: String(localized: "%1$@ failed: %2$@"),
-                    outcome.database,
-                    message.split(separator: "\n").last.map(String.init) ?? message
-                )
-            case .cancelled:
-                return String(format: String(localized: "%@ cancelled"), outcome.database)
-            }
-        }
-        return ([directory.path(percentEncoded: false)] + lines).joined(separator: "\n")
     }
 }
 
@@ -290,6 +366,35 @@ struct BackupResultSheet: View {
         ),
         onClose: {},
         onShowInFinder: nil
+    )
+}
+
+#Preview("Backup Batch With A Failure") {
+    BackupResultSheet(
+        kind: .backup,
+        outcome: .batch(
+            outcomes: [
+                NativeDumpBatchOutcome(
+                    database: "Music",
+                    destination: URL(fileURLWithPath: "/Users/me/Music/New/Music-2026-09-21-181500.sql"),
+                    result: .failed(
+                        message: "/opt/homebrew/bin/mysqldump: unknown variable 'ssl-mode=PREFERRED'")
+                ),
+                NativeDumpBatchOutcome(
+                    database: "production",
+                    destination: URL(fileURLWithPath: "/Users/me/Music/New/production-2026-09-21-181500.sql"),
+                    result: .succeeded(bytes: 4_512_000)
+                ),
+                NativeDumpBatchOutcome(
+                    database: "analytics",
+                    destination: URL(fileURLWithPath: "/Users/me/Music/New/analytics-2026-09-21-181500.sql"),
+                    result: .cancelled
+                )
+            ],
+            directory: URL(fileURLWithPath: "/Users/me/Music/New", isDirectory: true)
+        ),
+        onClose: {},
+        onShowInFinder: {}
     )
 }
 
