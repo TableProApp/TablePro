@@ -97,6 +97,8 @@ Two fields report what the search could not cover:
 | `unlisted_schemas` | Schemas whose tables could not be read, usually for lack of privileges. A table in one of them is missing from `matches` |
 | `column_search` | `searched`, with `columns_schema` naming the schema. `limit_reached` when table matches alone filled `limit`. `failed` when the columns could not be read, leaving table matches only |
 
+A lost connection, or a database where no schema could be read, fails the call instead of returning part of an answer.
+
 ## Reading data
 
 | Tool | Arguments | Returns |

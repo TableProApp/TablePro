@@ -7,17 +7,6 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// What `search_schema` finds for one term.
-///
-/// A caller that names no schema is asking where something lives, so on an engine whose tables
-/// live in schemas the tables and views come from every one of them, through the same listing Open
-/// Quickly and the sidebar filter search. It is read fresh on every call rather than taken from the
-/// sidebar's copy, which only learns of catalog changes the app makes itself: a table a migration
-/// created from a terminal would stay invisible to the tool until the next reconnect.
-///
-/// Columns come from one schema either way. Every schema's columns would be a catalog read of the
-/// whole database for each search, so the result names the schema they came from, and a caller
-/// looks in another by naming it.
 internal enum MCPSchemaSearch {
     internal enum TableReach: Equatable, Sendable {
         case scopeSchema
@@ -36,18 +25,22 @@ internal enum MCPSchemaSearch {
         case column(name: String, table: String, schema: String?, dataType: String)
     }
 
+    internal enum ColumnSearchOutcome: String, CaseIterable, Sendable {
+        case searched
+        case limitReached = "limit_reached"
+        case failed
+    }
+
     internal enum ColumnSearch: Equatable, Sendable {
         case searched(schema: String?)
         case limitReached
         case failed
 
-        internal static let outcomes = [Self.searched(schema: nil), .limitReached, .failed].map(\.outcome)
-
-        internal var outcome: String {
+        internal var outcome: ColumnSearchOutcome {
             switch self {
-            case .searched: "searched"
-            case .limitReached: "limit_reached"
-            case .failed: "failed"
+            case .searched: .searched
+            case .limitReached: .limitReached
+            case .failed: .failed
             }
         }
     }
@@ -80,12 +73,11 @@ internal enum MCPSchemaSearch {
     internal static func run(_ request: Request, metadata: ScopedMetadataProviding) async throws -> Result {
         let needle = request.term.lowercased()
         let listing = try await tables(reaching: request.tableReach, in: request.scope, metadata: metadata)
-        let listedSchema = request.tableReach == .scopeSchema ? request.scope.schema : nil
         let tableMatches = ordered(
             listing.tables.filter { $0.name.lowercased().contains(needle) },
             preferring: request.scope.schema
         ).map { table in
-            Match.table(name: table.name, schema: table.schema ?? listedSchema, type: table.type)
+            Match.table(name: table.name, schema: table.schema, type: table.type)
         }
         let unlisted = listing.unlistedSchemas.sorted()
 
@@ -104,6 +96,8 @@ internal enum MCPSchemaSearch {
             columnRead = try await columns(matching: needle, in: request.scope, metadata: metadata)
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as DatabaseError {
+            throw error
         } catch {
             logger.warning("[search] column read failed error=\(error.publicLogShape, privacy: .public)")
             return Result(
@@ -121,8 +115,6 @@ internal enum MCPSchemaSearch {
         )
     }
 
-    /// The schema the caller is on leads, the way it wins ties in Open Quickly, so a limit that
-    /// clips the matches clips other schemas' first.
     internal static func ordered(_ tables: [TableInfo], preferring schema: String?) -> [TableInfo] {
         let sorted = MCPConnectionBridge.sortedTables(tables)
         guard let schema else { return sorted }
@@ -151,9 +143,8 @@ internal enum MCPSchemaSearch {
         in scope: DatabaseScope,
         metadata: ScopedMetadataProviding
     ) async throws -> ColumnRead {
-        let fallbackSchema = scope.schema
-        return try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-            let schema = (driver as? SchemaSwitchable)?.currentSchema ?? fallbackSchema
+        try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+            let schema = (driver as? SchemaSwitchable)?.currentSchema
             let allColumns = try await driver.fetchAllColumns()
             var matches: [Match] = []
             for table in allColumns.keys.sorted() {

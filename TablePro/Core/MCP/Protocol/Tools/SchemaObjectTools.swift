@@ -514,7 +514,7 @@ public struct SearchSchemaTool: MCPToolImplementation {
             ),
             "column_search": MCPToolSchema.string(
                 String(localized: "Whether columns were searched, or left out because the table matches reached the limit or the column read failed"),
-                enumValues: MCPSchemaSearch.ColumnSearch.outcomes
+                enumValues: MCPSchemaSearch.ColumnSearchOutcome.allCases.map(\.rawValue)
             ),
             "columns_schema": MCPToolSchema.nullableString(
                 String(localized: "Schema whose columns were searched, when they were")
@@ -536,13 +536,13 @@ public struct SearchSchemaTool: MCPToolImplementation {
         )
         let term = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "term")
         let limit = try MCPArgumentDecoder.optionalInt(arguments, key: "limit", range: 1...500) ?? 50
-        let namedSchema = try MCPArgumentDecoder.optionalString(arguments, key: "schema") ?? ""
+        let namedSchema = try MCPScopeArguments.namedSchema(arguments)
         let scope = try await MCPScopeArguments.resolve(arguments, services: services)
         let payload = try await services.connectionBridge.searchSchema(
             scope: scope,
             term: term,
             limit: limit,
-            schemaIsNamed: !namedSchema.isEmpty
+            schemaIsNamed: namedSchema != nil
         )
         return .structured(payload)
     }

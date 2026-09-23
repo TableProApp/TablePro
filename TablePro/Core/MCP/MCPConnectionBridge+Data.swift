@@ -195,7 +195,7 @@ extension MCPConnectionBridge {
             "matches": .array(result.matches.map(encode(match:))),
             "is_truncated": .bool(result.isTruncated),
             "unlisted_schemas": .array(result.unlistedSchemas.map(JsonValue.string)),
-            "column_search": .string(result.columnSearch.outcome)
+            "column_search": .string(result.columnSearch.outcome.rawValue)
         ]
         if case .searched(let schema) = result.columnSearch {
             payload["columns_schema"] = nullable(schema)

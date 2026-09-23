@@ -160,6 +160,7 @@ struct MCPSchemaSearchTests {
     @Test("Exactly as many matches as the limit is not a truncated result")
     func exactlyTheLimitIsNotTruncated() async throws {
         let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
         driver.allSchemaTablesToReturn = [table("log_a", "public"), table("log_b", "audit")]
 
         let exact = try await search(request("log", limit: 2), on: driver)
@@ -184,6 +185,33 @@ struct MCPSchemaSearchTests {
         #expect(result.matches == [.table(name: "timesheet", schema: "attendance", type: .table)])
         #expect(result.columnSearch == .failed)
         #expect(!result.isTruncated)
+    }
+
+    @Test("Columns on an engine without schemas name no schema")
+    func columnsWithoutASchema() async throws {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
+        driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "email", dataType: "varchar")]]
+        let flatScope = DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
+
+        let result = try await MCPSchemaSearch.run(
+            MCPSchemaSearch.Request(scope: flatScope, term: "email", limit: 50, tableReach: .scopeSchema),
+            metadata: SchemaSearchMetadataProvider(driver: driver)
+        )
+
+        #expect(result.matches == [.column(name: "email", table: "users", schema: nil, dataType: "varchar")])
+        #expect(result.columnSearch == .searched(schema: nil))
+    }
+
+    @Test("A connection lost during the column read fails the search rather than dropping the columns")
+    func lostConnectionDuringColumnReadFailsTheSearch() async {
+        let driver = MockDatabaseDriver()
+        driver.allSchemaTablesToReturn = [table("timesheet", "attendance")]
+        driver.fetchAllColumnsError = DatabaseError.notConnected
+
+        await #expect(throws: DatabaseError.self) {
+            try await search(request("timesheet"), on: driver)
+        }
     }
 
     @Test("A lost connection fails the search rather than reading as no match")
@@ -220,6 +248,17 @@ struct MCPSchemaSearchTests {
 
 @Suite("search_schema payload")
 struct MCPSchemaSearchPayloadTests {
+    @Test("A blank schema is not a named one, and any other string is")
+    func namedSchemaFollowsTheScope() throws {
+        #expect(try MCPScopeArguments.namedSchema(.object([:])) == nil)
+        #expect(try MCPScopeArguments.namedSchema(.object(["schema": .null])) == nil)
+        #expect(try MCPScopeArguments.namedSchema(.object(["schema": .string("")])) == nil)
+        #expect(try MCPScopeArguments.namedSchema(.object(["schema": .string("attendance")])) == "attendance")
+        #expect(throws: MCPProtocolError.self) {
+            try MCPScopeArguments.namedSchema(.object(["schema": .int(1)]))
+        }
+    }
+
     private let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: "public")
 
     private func encode(_ result: MCPSchemaSearch.Result, schemaIsNamed: Bool = false) -> JsonValue {
