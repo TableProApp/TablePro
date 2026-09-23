@@ -33,6 +33,31 @@ struct ConnectionFailureClassifierTests {
         #expect(ConnectionFailureClassifier.outcome(for: TabRouterError.userCancelled) == .cancelled)
     }
 
+    @Test("An extension that failed to load sends the user to the connection, with the loader's reason")
+    func extensionFailureOffersEditConnection() {
+        let item = LoadableExtension(path: "/opt/homebrew/lib/vec0.dylib")
+        let error = LoadableExtensionError.libraryNotLoaded(item, detail: "slice is not valid mach-o file")
+
+        guard case .actionRequired(let info, let action) = ConnectionFailureClassifier.outcome(for: error) else {
+            Issue.record("Expected an action to be offered")
+            return
+        }
+        #expect(action == .editConnection)
+        #expect(info.message.contains("vec0.dylib"))
+        #expect(info.failureReason == "slice is not valid mach-o file")
+        #expect(ConnectionFailureClassifier.recoveryAction(for: error, canEditConnection: false) == nil)
+    }
+
+    @Test("Extensions nobody approved are a failure whose retry asks, not an edit")
+    func unapprovedExtensionsRetry() {
+        let error = LoadableExtensionApprovalError.notApproved([LoadableExtension(path: "/x/vec0.dylib")])
+        guard case .failed(let info) = ConnectionFailureClassifier.outcome(for: error) else {
+            Issue.record("Expected a plain failure")
+            return
+        }
+        #expect(info.failureReason == "/x/vec0.dylib")
+    }
+
     @Test("An unrelated Cocoa error is not a cancel")
     func otherCocoaErrorIsNotCancelled() {
         let error = NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError)

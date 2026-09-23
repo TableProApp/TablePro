@@ -15,17 +15,57 @@ final class QueryTabManager: ObservableObject {
             _tabIndexMapDirty = true
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
+                pruneActivations(keeping: tabs)
             }
             publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
 
-    @Published var selectedTabId: UUID?
+    /// Every writer of the selection comes through here, which makes this the one place that sees
+    /// every tab the user switches to: a click in the strip, Command 1 to 9, a new tab, a table
+    /// opened from the sidebar, a reopened tab and the neighbour a close lands on alike. A view
+    /// modifier could not stand in for it, because a connection the window is not showing has its
+    /// views unparented.
+    @Published var selectedTabId: UUID? {
+        didSet {
+            guard selectedTabId != oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
+
+    /// Whether the window shows this connection's tabs, in the key window. The window sets it, for
+    /// every connection it hosts at once. Only then is a selection a tab the user switched to: a
+    /// restore that finishes for a connection in the background selects a tab nobody has seen, and
+    /// recording it would send the next Control-Tab there. Coming to the front records the selected
+    /// tab, because the user is now looking at it.
+    var isFrontmost = false {
+        didSet {
+            guard isFrontmost != oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
 
     @Published var tabStructureVersion: Int = 0
 
     var pendingFocusTabId: UUID?
+
+    /// When each open tab was last the selected one, as a sequence number rather than a time, so
+    /// two selections in one run-loop turn still order. The sequence is shared by every tab manager
+    /// so a window hosting several connections can order all of their tabs together.
+    private(set) var activationSequence: [UUID: UInt64] = [:]
+    private static var lastActivationSequence: UInt64 = 0
+    private var activationRecordPending = false
+
+    /// Held while the window is on its way to a tab across an await, such as the rail switching a
+    /// connection's database before it selects the tab that database holds. The tab shown in the
+    /// meantime is a waypoint, and the one landed on is recorded when the hold lifts.
+    var defersActivationRecord = false {
+        didSet {
+            guard !defersActivationRecord, oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
 
     private var _tabIndexMap: [UUID: Int] = [:]
     private var _tabIndexMapDirty = true
@@ -109,6 +149,37 @@ final class QueryTabManager: ObservableObject {
         let current = selectedTab.flatMap { tab in tabs.firstIndex { $0.id == tab.id } } ?? 0
         let count = tabs.count
         selectedTabId = tabs[((current + offset) % count + count) % count].id
+    }
+
+    // MARK: - Recency
+
+    /// The tab is recorded once the turn settles, not at each write. Opening a table into another
+    /// connection brings that connection forward and then selects the new tab in the same turn, so
+    /// the tab it was showing is never drawn; recorded as it passed through, it would be what the
+    /// next Control-Tab went back to.
+    private func scheduleActivationRecord() {
+        guard isFrontmost, !defersActivationRecord, !activationRecordPending else { return }
+        activationRecordPending = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.recordSettledActivation() }
+        }
+    }
+
+    private func recordSettledActivation() {
+        activationRecordPending = false
+        guard isFrontmost, !defersActivationRecord, let id = selectedTab?.id else { return }
+        recordActivation(of: id)
+    }
+
+    private func recordActivation(of id: UUID) {
+        Self.lastActivationSequence += 1
+        activationSequence[id] = Self.lastActivationSequence
+    }
+
+    private func pruneActivations(keeping tabs: [QueryTab]) {
+        guard !activationSequence.isEmpty else { return }
+        let openIds = Set(tabs.map(\.id))
+        activationSequence = activationSequence.filter { openIds.contains($0.key) }
     }
 
     func bindTabSessionRegistry(_ registry: TabSessionRegistry) {

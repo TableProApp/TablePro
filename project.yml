@@ -846,16 +846,24 @@ targets:
           - -lz
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ
 
+  # Links its own SQLite (scripts/build-sqlite.sh), never -lsqlite3: macOS's library is built without
+  # extension loading.
   SQLiteDriver:
     templates: [DriverPlugin]
     templateAttributes:
       folder: SQLiteDriverPlugin
       principalClass: SQLitePlugin
+    dependencies:
+      - package: TableProCore
+        product: CSQLite
+      - package: TableProCore
+        product: TableProSQLiteCore
     settings:
       base:
         OTHER_LDFLAGS:
           - $(inherited)
-          - -lsqlite3
+          - -force_load
+          - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
   ClickHouseDriver:
     templates: [DriverPlugin]
@@ -1245,11 +1253,17 @@ targets:
     templateAttributes:
       folder: LibSQLDriverPlugin
       principalClass: LibSQLPlugin
+    dependencies:
+      - package: TableProCore
+        product: CSQLite
+      - package: TableProCore
+        product: TableProSQLiteCore
     settings:
       base:
         OTHER_LDFLAGS:
           - $(inherited)
-          - -lsqlite3
+          - -force_load
+          - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
   MSSQLDriver:
     templates: [DriverPlugin]

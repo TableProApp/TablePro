@@ -81,6 +81,7 @@ struct QueryClassifierPLSQLTests {
             connectionId: UUID(),
             databaseType: .oracle,
             externalAccess: .readWrite,
+            loadsExtensions: false,
             allowsDestructive: false
         )
         #expect(throws: ExternalStatementGateError.self) {
@@ -181,6 +182,7 @@ struct QueryClassifierPLSQLTests {
             connectionId: UUID(),
             databaseType: .oracle,
             externalAccess: .readOnly,
+            loadsExtensions: false,
             allowsDestructive: false
         )
         #expect(throws: ExternalStatementGateError.self) {

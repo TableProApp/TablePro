@@ -58,6 +58,11 @@ final class MainContentCommandActions: ObservableObject {
 
     var isTextInputFocusCheckScheduled = false
 
+    /// Asks whether to save a tab being closed. The alert by default, a scripted answer in a test.
+    var confirmSaveChanges: (String, NSWindow?) async -> AlertHelper.SaveConfirmationResult = { message, window in
+        await AlertHelper.confirmSaveChanges(message: message, window: window)
+    }
+
     /// Task handles for async notification observers; cancelled on deinit.
     private var notificationTasks: [Task<Void, Never>] = []
 
@@ -655,18 +660,30 @@ final class MainContentCommandActions: ObservableObject {
         let previousSelection = coordinator.tabManager.selectedTabId
         revealTab(id)
 
-        switch await AlertHelper.confirmSaveChanges(
-            message: String(localized: "Your changes will be lost if you don't save them."),
-            window: closeAnchorWindow
+        switch await confirmSaveChanges(
+            String(localized: "Your changes will be lost if you don't save them."),
+            closeAnchorWindow
         ) {
         case .save:
             guard await saveSelectedTabWork() else { return }
-            coordinator.closeTabsByUser(ids: [id])
+            closeRevealedTab(id, returningTo: previousSelection)
         case .dontSave:
-            coordinator.closeTabsByUser(ids: [id])
+            closeRevealedTab(id, returningTo: previousSelection)
         case .cancel:
+            guard coordinator.tabManager.selectedTabId == id else { return }
             restoreSelection(previousSelection)
         }
+    }
+
+    /// The selection goes back only while the closing tab still holds it. A save can wait on the
+    /// server with the strip still live, and a tab the user picked in the meantime is a newer choice
+    /// than the one this close set aside.
+    private func closeRevealedTab(_ id: UUID, returningTo previousSelection: UUID?) {
+        guard let coordinator else { return }
+        let stillShowsClosingTab = coordinator.tabManager.selectedTabId == id
+        coordinator.closeTabsByUser(ids: [id])
+        guard stillShowsClosingTab else { return }
+        restoreSelection(previousSelection)
     }
 
     /// Shown, then asked. The save and discard machinery reads the selected tab, so the tab being
@@ -677,8 +694,11 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.tabManager.selectedTabId = id
     }
 
-    /// Cancel puts everything back, including a selection that only moved so the sheet had
-    /// somewhere honest to point.
+    /// Every answer puts the selection back where the user had it, unless they have since picked
+    /// another tab, because it only moved so the alert had somewhere honest to point. After a close that is the tab they were working in, not
+    /// the neighbour of the one that went: closing a tab in the background leaves the one in front
+    /// alone whether or not it had anything to save. Closing the tab in front lands on its
+    /// neighbour as before, since the tab it would restore is gone.
     private func restoreSelection(_ id: UUID?) {
         guard let coordinator,
               let id,

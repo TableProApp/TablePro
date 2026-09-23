@@ -69,6 +69,19 @@ struct RoutineInfoTests {
         #expect(routine.id == "PROCEDURE_app.do_thing")
     }
 
+    @Test("A period inside a quoted schema or routine name keeps two routines apart")
+    func periodInsideNameKeepsRoutinesApart() {
+        let dottedName = RoutineInfo(name: "b.c", kind: .function, schema: "a")
+        let dottedSchema = RoutineInfo(name: "c", kind: .function, schema: "a.b")
+        let unqualified = RoutineInfo(name: "a.b", kind: .function)
+        let qualified = RoutineInfo(name: "b", kind: .function, schema: "a")
+
+        #expect(dottedName != dottedSchema)
+        #expect(unqualified != qualified)
+        #expect(Set([dottedName, dottedSchema, unqualified, qualified]).count == 4)
+        #expect(dottedName.qualifiedName == "a.b.c")
+    }
+
     @Test("Return type is never used as the overload discriminator")
     func returnTypeIsNotADiscriminator() {
         let a = RoutineInfo(name: "f", kind: .function, schema: "public", returnType: "integer")
@@ -103,6 +116,20 @@ struct TriggerInfoTests {
         )
         #expect(trigger.id == "public.orders.audit")
         #expect(trigger.qualifiedName == "orders.audit")
+    }
+
+    @Test("A period inside a quoted schema or table name keeps two triggers apart")
+    func periodInsideNameKeepsTriggersApart() {
+        let dottedTable = TriggerInfo(
+            name: "audit", timing: "AFTER", event: "INSERT", statement: "",
+            table: "b.c", schema: "a"
+        )
+        let dottedSchema = TriggerInfo(
+            name: "audit", timing: "AFTER", event: "INSERT", statement: "",
+            table: "c", schema: "a.b"
+        )
+        #expect(dottedTable.id != dottedSchema.id)
+        #expect(dottedTable.qualifiedName == "b.c.audit")
     }
 
     @Test("A trigger with no table falls back to its name")
