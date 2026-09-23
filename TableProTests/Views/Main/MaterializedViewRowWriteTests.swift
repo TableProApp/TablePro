@@ -130,7 +130,8 @@ struct MaterializedViewRowWriteTests {
         let item = try #require(
             QuickSwitcherViewModel.makeCrossConnectionItems(
                 tables: [TableInfo(name: "daily_totals", type: .materializedView, rowCount: nil)],
-                target: target
+                target: target,
+                connectionSwitchesDatabases: true
             ).first
         )
         fromSwitcher.handleQuickSwitcherSelection(item)
