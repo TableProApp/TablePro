@@ -66,7 +66,7 @@ internal final class LaunchIntentRouter {
         Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .private(mask: .hash))")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, alreadyOpen, error in
-                Self.logger.debug("LaunchIntentRouter.openInspectorDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.localizedDescription ?? "nil", privacy: .public)")
+                Self.logger.debug("LaunchIntentRouter.openInspectorDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.publicLogShape ?? "nil", privacy: .public) \(error?.localizedDescription ?? "nil", privacy: .private)")
                 if let error {
                     continuation.resume(throwing: error)
                     return

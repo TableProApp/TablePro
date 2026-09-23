@@ -112,10 +112,7 @@ enum DatabaseError: Error, LocalizedError {
 /// Information about a database table
 struct TableInfo: Identifiable, Hashable, Sendable {
     var id: String {
-        if let schema, !schema.isEmpty {
-            return "\(schema).\(name)_\(type.rawValue)"
-        }
-        return "\(name)_\(type.rawValue)"
+        "\(IdentityPath.qualified(name: name, schema: schema))_\(type.rawValue)"
     }
     let name: String
     let type: TableType
@@ -433,7 +430,10 @@ struct TriggerInfo: Identifiable, Hashable {
     let attributes: [ObjectAttribute]
 
     var id: String {
-        [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ".")
+        IdentityPath.joined(
+            [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil },
+            separator: "."
+        )
     }
 
     init(

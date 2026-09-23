@@ -59,15 +59,25 @@ internal struct FavoriteEditDialog: View {
     private var hidesFoldersForScope: Bool {
         effectiveFolders.contains { !SQLFavoriteScopeRule.folder($0.connectionId, canHold: scopeConnectionId) }
     }
+
+    private var draft: SQLFavoriteEditDraft {
+        SQLFavoriteEditDraft(
+            name: name,
+            query: query,
+            keyword: keywordField.keyword,
+            folderId: selectedFolderId,
+            connectionId: scopeConnectionId
+        )
+    }
+
     private var isValid: Bool {
         SQLFavoriteEditValidation.canSave(
             isNameBlank: !name.contains { !$0.isWhitespace },
             isQueryBlank: !query.contains { !$0.isWhitespace },
+            sizeValidation: draft.sizeValidation,
             keywordValidation: keywordField.validation
         )
     }
-
-    private static let maxQuerySize = 500_000
 
     /// Seeded here rather than from `onAppear`, the way `FilterSettingsPopover` seeds its settings.
     ///
@@ -172,6 +182,12 @@ internal struct FavoriteEditDialog: View {
                         .stroke(Color(nsColor: .separatorColor))
                 )
                 .accessibilityLabel(String(localized: "Query"))
+
+            if let message = draft.sizeValidation.displayText {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(Color.red)
+            }
         } header: {
             Text("Query")
         } footer: {
@@ -274,39 +290,16 @@ internal struct FavoriteEditDialog: View {
     // MARK: - Save
 
     private func save() {
+        guard isValid else { return }
         isSaving = true
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        let trimmedKeyword = keywordField.trimmedKeyword
-        let trimmedQuery: String
-        if (query as NSString).length > Self.maxQuerySize {
-            trimmedQuery = String(query.prefix(Self.maxQuerySize))
-        } else {
-            trimmedQuery = query
-        }
-
-        let scopeConnectionId = isGlobal ? nil : connectionId
-        let keywordValue = trimmedKeyword.isEmpty ? nil : trimmedKeyword
+        let draft = self.draft
 
         Task { @MainActor in
             let success: Bool
             if let existing = favorite {
-                var updated = existing
-                updated.name = trimmedName
-                updated.query = trimmedQuery
-                updated.keyword = keywordValue
-                updated.folderId = selectedFolderId
-                updated.connectionId = scopeConnectionId
-                updated.updatedAt = Date()
-                success = await SQLFavoriteManager.shared.updateFavorite(updated)
+                success = await SQLFavoriteManager.shared.updateFavorite(draft.applied(to: existing, at: Date()))
             } else {
-                let newFavorite = SQLFavorite(
-                    name: trimmedName,
-                    query: trimmedQuery,
-                    keyword: keywordValue,
-                    folderId: selectedFolderId,
-                    connectionId: scopeConnectionId
-                )
-                success = await SQLFavoriteManager.shared.addFavorite(newFavorite)
+                success = await SQLFavoriteManager.shared.addFavorite(draft.newFavorite())
             }
             if success {
                 dismiss()

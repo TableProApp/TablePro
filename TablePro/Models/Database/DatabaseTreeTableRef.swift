@@ -34,7 +34,7 @@ struct DatabaseTreeTableRef: Hashable, Identifiable, Sendable {
     /// quoted one may contain anything. Joined raw, schema `a|b` with table `c` and schema `a`
     /// with table `b|c` produced one id for two objects, and this id keys the outline's rows.
     var id: String {
-        "\(Self.escaped(database))|\(Self.escaped(schema))|\(Self.escaped(table.id))"
+        IdentityPath.joined([database ?? "", schema ?? "", table.id], separator: "|")
     }
 
     /// The schema the statement should qualify with, which is the row's own before the table's.
@@ -50,11 +50,5 @@ struct DatabaseTreeTableRef: Hashable, Identifiable, Sendable {
     /// entry back has to ask with the same spelling or miss it.
     var favoriteSchema: String? {
         table.schema?.nilIfEmpty
-    }
-
-    private static func escaped(_ value: String?) -> String {
-        (value ?? "")
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "|", with: "\\|")
     }
 }

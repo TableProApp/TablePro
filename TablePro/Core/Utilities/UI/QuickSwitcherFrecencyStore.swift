@@ -53,11 +53,10 @@ internal struct QuickSwitcherFrecencyStore {
         loadAccesses().mapValues { score(for: $0, now: now) }
     }
 
-    func recentItemIds(limit: Int) -> [String] {
+    func recentItemIds() -> [String] {
         loadAccesses()
             .compactMap { itemId, samples in samples.max().map { (itemId, $0) } }
             .sorted { $0.1 > $1.1 }
-            .prefix(limit)
             .map(\.0)
     }
 

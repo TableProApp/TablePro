@@ -99,6 +99,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
+    /// Every schema's tables in one call, or nil when the engine has no such call and the caller
+    /// has to ask each schema itself. `CatalogTableListing` is the caller that does.
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]?
+
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
     /// a MySQL or Oracle partition name is unique only within its own table.
@@ -704,6 +708,8 @@ extension DatabaseDriver {
         try await fetchTables()
     }
 
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
+
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
     func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
@@ -788,6 +794,7 @@ enum DatabaseDriverFactory {
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
         additionalFields["connectionId"] = connection.id.uuidString
+        additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,

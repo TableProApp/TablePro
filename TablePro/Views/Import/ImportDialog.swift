@@ -484,10 +484,17 @@ struct ImportDialog: View {
 
         importTask = Task {
             do {
+                /// The scope the driver is already on, not the connection's saved default: a tab may
+                /// have moved it, and on an engine that reconnects to change database, pinning
+                /// somewhere else would refuse the import outright.
+                guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
+                    throw DatabaseError.notConnected
+                }
                 let result = try await service.importFile(
                     from: url,
                     formatId: selectedFormatId,
                     encoding: selectedEncoding.encoding,
+                    scope: scope,
                     decompressedURL: decompressedURL,
                     ownsDecompressedFile: ownsDecompressedFile,
                     knownStatementCount: statementCount > 0 ? statementCount : nil

@@ -17,6 +17,7 @@ struct ExternalStatementGateTests {
         _ sql: String,
         databaseType: DatabaseType = .postgresql,
         externalAccess: ExternalAccessLevel = .readWrite,
+        loadsExtensions: Bool = false,
         allowsDestructive: Bool = true,
         allowsMultiStatement: Bool = false,
         destructiveAlternative: String? = nil
@@ -26,6 +27,7 @@ struct ExternalStatementGateTests {
             connectionId: UUID(),
             databaseType: databaseType,
             externalAccess: externalAccess,
+            loadsExtensions: loadsExtensions,
             allowsDestructive: allowsDestructive,
             allowsMultiStatement: allowsMultiStatement,
             destructiveAlternative: destructiveAlternative
@@ -138,6 +140,36 @@ struct ExternalStatementGateTests {
         #expect(ExternalStatementGate.requiresUserConsent(
             classification: read, sql: "SELECT 1", databaseType: .postgresql, safeModeLevel: .alertFull
         ))
+    }
+
+    @Test("On a connection that loads extensions, a read calling an extension's function is refused")
+    func extensionFunctionRefused() {
+        let sql = "SELECT BlobToFile(x'00', '/Users/me/.zshrc')"
+        #expect(refusal(statement(sql, databaseType: .sqlite, externalAccess: .readOnly, loadsExtensions: true))
+            == .denied(ExternalStatementGate.extensionCallRefusal(sql: sql, databaseType: .sqlite, loadsExtensions: true) ?? ""))
+        #expect(refusal(statement(sql, databaseType: .sqlite, externalAccess: .readWrite, loadsExtensions: true)) != nil)
+    }
+
+    @Test("On a connection that loads extensions, reads using SQLite's own functions still pass")
+    func builtinReadsPassWithExtensions() throws {
+        let reads = [
+            "SELECT rowid, distance FROM items WHERE embedding MATCH '[0.1, 0.2]' ORDER BY distance LIMIT 5",
+            "SELECT count(*), json_extract(meta, '$.kind') FROM items GROUP BY 2",
+            "SELECT * FROM pragma_table_info('items')"
+        ]
+        for sql in reads {
+            let classification = try ExternalStatementGate.classify(
+                statement(sql, databaseType: .sqlite, externalAccess: .readOnly, loadsExtensions: true)
+            )
+            #expect(classification.tier == .safe, "\(sql)")
+        }
+    }
+
+    @Test("A connection without extensions is not scanned for calls")
+    func noExtensionsNoScan() {
+        #expect(ExternalStatementGate.extensionCallRefusal(
+            sql: "SELECT vec_version()", databaseType: .sqlite, loadsExtensions: false
+        ) == nil)
     }
 
     /// Whatever the level says. A script that drops a table gets a person in front of it.

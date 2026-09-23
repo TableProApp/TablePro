@@ -8,18 +8,18 @@ import TableProPluginKit
 
 extension MySQLPluginDriver {
     func generateCreatePrincipalSQL(definition: PluginPrincipalDefinition) -> [String]? {
-        accountStatements.create(definition)
+        accountStatements.create(definition).map(literalSpelling.respelled)
     }
 
     func generateAlterPrincipalSQL(
         old: PluginPrincipalDefinition,
         new: PluginPrincipalDefinition
     ) -> [String]? {
-        accountStatements.alter(old: old, new: new)
+        accountStatements.alter(old: old, new: new).map(literalSpelling.respelled)
     }
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
-        accountStatements.setPassword(password, for: principal)
+        accountStatements.setPassword(password, for: principal).map(literalSpelling.respelled)
     }
 
     func generateDropPrincipalSQL(

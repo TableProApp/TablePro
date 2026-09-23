@@ -3,10 +3,11 @@
 //  TablePro
 //
 
+import CSQLite
 import Foundation
 import os
-import SQLite3
 import TableProPluginKit
+import TableProSQLiteCore
 
 /// Where a SQLite driver's statements actually run.
 ///
@@ -24,7 +25,8 @@ protocol SQLiteExecutionBackend: Actor {
     /// query holds the actor for its whole life, so cancel cannot be an actor-isolated method.
     nonisolated var canceller: SQLiteCanceller { get }
 
-    func open() async throws
+    /// Opens the database and loads `extensions` into it, in order, before any statement runs.
+    func open(loading extensions: [LoadableExtension]) async throws
     func close() async
 
     /// Stops an in-flight `open()` without waiting on the actor, for a connect the user cancelled.
@@ -66,32 +68,6 @@ struct SQLiteRawResult: Sendable {
     let rowsAffected: Int
     let executionTime: TimeInterval
     let isTruncated: Bool
-}
-
-// MARK: - Authorizer
-
-/// Denies the SQLite functions that turn plain SQL into a native-code primitive on the machine
-/// running the query. `fts3_tokenizer` registers an arbitrary pointer as a tokenizer from a bound
-/// blob and dereferences it (measured: a SIGSEGV on the app's own libsqlite3 and on every server
-/// build tried), and `load_extension` loads a shared library. Both are denied on every SQLite
-/// connection, local or remote, so a crafted statement from the editor, an import, or an AI or MCP
-/// client cannot reach them.
-enum SQLiteAuthorizer {
-    private static let function: Int32 = 31
-    private static let denied: Set<String> = ["fts3_tokenizer", "load_extension"]
-
-    private static let callback: @convention(c) (
-        UnsafeMutableRawPointer?, Int32,
-        UnsafePointer<CChar>?, UnsafePointer<CChar>?, UnsafePointer<CChar>?, UnsafePointer<CChar>?
-    ) -> Int32 = { _, action, _, arg2, _, _ in
-        guard action == function, let arg2 else { return SQLITE_OK }
-        let name = String(cString: arg2).lowercased()
-        return denied.contains(name) ? SQLITE_DENY : SQLITE_OK
-    }
-
-    static func install(on db: OpaquePointer?) {
-        sqlite3_set_authorizer(db, callback, nil)
-    }
 }
 
 // MARK: - Busy Wait
@@ -181,7 +157,7 @@ final class SQLiteLocalCanceller: SQLiteCanceller, @unchecked Sendable {
     }
 }
 
-/// Opens a SQLite database with the app's own `libsqlite3` and runs statements against it.
+/// Opens a SQLite database with the plugin's own SQLite build and runs statements against it.
 actor SQLiteLocalBackend: SQLiteExecutionBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
 
@@ -204,7 +180,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     var isConnected: Bool { db != nil }
 
-    func open() throws {
+    func open(loading extensions: [LoadableExtension]) throws {
         let expandedPath = expandPath(path)
         if !FileManager.default.fileExists(atPath: expandedPath) {
             let directory = (expandedPath as NSString).deletingLastPathComponent
@@ -216,9 +192,27 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             let errorMessage = db.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
             throw SQLitePluginError.connectionFailed(errorMessage)
         }
+        guard let db else { throw SQLitePluginError.notConnected }
+        do {
+            try loadExtensions(extensions, into: db)
+        } catch {
+            close()
+            throw error
+        }
         SQLiteAuthorizer.install(on: db)
         installBusyHandler()
         localCanceller.setHandle(db)
+    }
+
+    private func loadExtensions(_ extensions: [LoadableExtension], into db: OpaquePointer) throws {
+        guard !extensions.isEmpty else { return }
+        let loading = SQLiteExtensionLoading(db: db)
+        try LoadableExtensionLoader.load(
+            extensions,
+            setLoadingEnabled: loading.setEnabled,
+            loadExtension: loading.load(file:entryPoint:)
+        )
+        Self.logger.info("Loaded \(extensions.count, privacy: .public) SQLite extension(s)")
     }
 
     func close() {

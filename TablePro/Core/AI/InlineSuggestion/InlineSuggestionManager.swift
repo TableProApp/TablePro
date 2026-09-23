@@ -216,7 +216,12 @@ final class InlineSuggestionManager {
               event.window === textView.window,
               textView.window?.firstResponder === textView else { return false }
 
-        guard event.keyCode == KeyCode.tab.rawValue, !textView.hasMarkedText() else {
+        /// Only a bare Tab accepts. Control-Tab switches tabs, Command-Tab switches apps and
+        /// Shift-Tab outdents, and each of them arriving here with ghost text on screen used to
+        /// insert the suggestion instead.
+        guard event.keyCode == KeyCode.tab.rawValue,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+              !textView.hasMarkedText() else {
             dismissSuggestion()
             return false
         }

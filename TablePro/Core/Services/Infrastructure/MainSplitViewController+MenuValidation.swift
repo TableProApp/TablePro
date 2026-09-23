@@ -84,6 +84,17 @@ struct MenuValidationContext: Equatable {
     var canCloseOtherTabs = false
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
+    /// How many editor tabs the connection on screen has open.
+    var editorTabCount = 0
+    /// The tab a Select Tab item names, read off the item being validated. Nil when the item is not
+    /// one of them.
+    var requestedTabNumber: Int?
+    /// Whether the connections this window can show hold two tabs between them, which is the least
+    /// Control-Tab needs to switch anywhere.
+    var hasRecentTabToSwitchTo = false
+    /// Whether the window sits in a window tab group, where Control-Tab falls back to switching the
+    /// window's tabs when there is no editor tab to switch to.
+    var hasOtherWindowTabs = false
     var canPinResultTab = false
     /// The selected tab's browse history. Separate flags rather than one, because Back and Forward
     /// run out independently and an item that is disabled has to say which one it is.
@@ -164,9 +175,17 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(closeResultTab(_:)),
              #selector(focusSidebarFilter(_:)),
              #selector(showERDiagram(_:)),
-             #selector(previewFKReference(_:)),
-             #selector(selectNumberedTab(_:)):
+             #selector(previewFKReference(_:)):
             return context.isConnected
+
+        /// Each of these moves the selection of a strip, so each needs one on screen, which Agent mode
+        /// does not show, with a tab for the command to reach. Left on `isConnected` alone they
+        /// changed the selected tab behind the conversation, and did nothing at all with one tab or
+        /// for a number past the last tab.
+        case #selector(selectNumberedTab(_:)):
+            guard context.isConnected, !context.isAgentMode, context.editorTabCount > 1 else { return false }
+            guard let number = context.requestedTabNumber else { return true }
+            return number >= 1 && number <= context.editorTabCount
 
         case #selector(goToFirstPage(_:)),
              #selector(goToPreviousPage(_:)),
@@ -195,7 +214,10 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(switchConnection(_:)):
             return context.hasSelectedWorkspace
         case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
-            return context.isConnected
+            return context.isConnected && !context.isAgentMode && context.editorTabCount > 1
+        case #selector(switchToRecentTab(_:)), #selector(switchToLeastRecentTab(_:)):
+            return (context.isConnected && !context.isAgentMode && context.hasRecentTabToSwitchTo)
+                || context.hasOtherWindowTabs
 
         case #selector(closeOtherTabs(_:)):
             return context.canCloseOtherTabs
@@ -542,6 +564,7 @@ extension MainSplitViewController: NSMenuItemValidation {
                 hasAssistantConversation: conversations != nil,
                 hasStoredConversations: conversations?.conversations.isEmpty == false,
                 canFocusAssistant: canFocusAssistant,
+                hasOtherWindowTabs: hasOtherWindowTabs,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
         }
@@ -583,6 +606,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
+            editorTabCount: actions.openTabCount,
+            hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,
+            hasOtherWindowTabs: hasOtherWindowTabs,
             canPinResultTab: actions.canPinResultTab,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,
@@ -648,7 +674,11 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// what the session commands beside it reported.
     private func menuValidationContext(naming menuItem: NSMenuItem) -> MenuValidationContext {
         var context = menuValidationContext
-        guard let action = menuItem.action, Self.agentSessionSelectors.contains(action) else { return context }
+        guard let action = menuItem.action else { return context }
+        if action == #selector(selectNumberedTab(_:)) {
+            context.requestedTabNumber = menuItem.tag
+        }
+        guard Self.agentSessionSelectors.contains(action) else { return context }
         context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status
         return context
     }
