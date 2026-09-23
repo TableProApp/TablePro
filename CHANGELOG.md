@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
+- Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read.
 
 ### Removed
 
@@ -81,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
 - Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
+- Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery.
+- Every schema a search had opened read again after each commit on Oracle, Snowflake and BigQuery.
 - Schemas missing from Open Quickly on every reopen after one failed to load.
 - Unexpanded schemas hidden by the sidebar filter in the Tree layout.
 - Empty object sections opened as "No items" under every match while filtering the sidebar tree.

@@ -519,21 +519,19 @@ final class SidebarViewModel: ObservableObject {
     /// A search has to judge schemas nobody has opened, and the all-schema listing is what answers
     /// for them. It is asked for here rather than by the outline, because a flat list with no local
     /// match shows "No Results" in place of the outline, which then never sees the search at all.
-    /// Asked for the browsed database and for every database whose schemas the tree already shows,
-    /// never for one the user has not opened.
     private func loadAllSchemaTablesForSearch() {
-        guard !filterQuery.isEmpty,
-              PluginManager.shared.databaseGroupingStrategy(for: databaseType) == .bySchema else { return }
+        guard !filterQuery.isEmpty else { return }
         let service = DatabaseTreeMetadataService.shared
         let connectionId = connectionId
-        var databases = Set(
-            service.schemaList.compactMap { key, state in
-                key.connectionId == connectionId && state.value != nil ? key.database : nil
-            }
+        let databases = Self.databasesListedForSearch(
+            grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
+            browsedDatabase: browsedDatabase,
+            databasesWithSchemaLists: Set(
+                service.schemaList.compactMap { key, state in
+                    key.connectionId == connectionId && state.value != nil ? key.database : nil
+                }
+            )
         )
-        if let browsedDatabase, !browsedDatabase.isEmpty {
-            databases.insert(browsedDatabase)
-        }
         let isConnected = DatabaseManager.shared.session(for: connectionId)?.status == .connected
         for database in databases {
             listingDemand.requestIfNeeded(
@@ -542,6 +540,25 @@ final class SidebarViewModel: ObservableObject {
                 isConnected: isConnected,
                 service: service
             )
+        }
+    }
+
+    /// A schema-grouped tree asks for the browsed database and every database whose schemas it
+    /// already shows, never one the user has not opened. A hierarchical tree shows the schemas of
+    /// the browsed database alone, and an engine connected with no database name still has one.
+    nonisolated static func databasesListedForSearch(
+        grouping: GroupingStrategy,
+        browsedDatabase: String?,
+        databasesWithSchemaLists: Set<String>
+    ) -> Set<String> {
+        switch grouping {
+        case .bySchema:
+            guard let browsedDatabase, !browsedDatabase.isEmpty else { return databasesWithSchemaLists }
+            return databasesWithSchemaLists.union([browsedDatabase])
+        case .hierarchicalSchema:
+            return Set([browsedDatabase].compactMap { $0 })
+        case .flat, .byDatabase:
+            return []
         }
     }
 

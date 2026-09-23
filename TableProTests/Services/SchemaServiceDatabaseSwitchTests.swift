@@ -140,7 +140,7 @@ struct SchemaServiceDatabaseSwitchTests {
     }
 
     private func refreshObjects(_ service: SchemaService, database: String, driver: DatabaseCatalogDriver) async {
-        await service.refreshLoadedSchemaObjects(in: scope(database), driver: driver)
+        await service.refreshLoadedSchemaObjects(in: scope(database), fetchingNow: ["PUBLIC", "LEDGER"], driver: driver)
     }
 
     private func sales() -> DatabaseCatalogDriver {

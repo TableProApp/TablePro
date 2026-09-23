@@ -166,15 +166,26 @@ struct DatabaseTreeFilterTests {
         routines: [RoutineInfo] = [],
         triggers: [TriggerInfo] = []
     ) -> Bool {
-        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            schema,
+        let content = isLoaded
+            ? DatabaseTreeFilter.LoadedSchemaContent(
+                buckets: DatabaseTreeFilter.objectBuckets(
+                    tables: tables,
+                    routines: routines,
+                    triggers: triggers,
+                    searchText: searchText
+                ),
+                isSettled: true,
+                isCurrent: true
+            )
+            : nil
+        return DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
+            schema: schema,
+            database: nil,
             searchText: searchText,
-            isLoaded: isLoaded,
-            tables: tables,
-            routines: routines,
-            triggers: triggers,
-            userTypes: []
-        )
+            loadedContent: content,
+            listingMatches: nil,
+            listingCoversSchema: true
+        ).isVisible
     }
 
     private func buckets(
@@ -193,7 +204,7 @@ struct DatabaseTreeFilterTests {
         )
     }
 
-    /// A search fires a per-schema load, and the pane must not blank out while it runs.
+    /// Nothing has read it and no listing has answered for it, so hiding it would hide the match.
     @Test("An unloaded schema stays visible during a search")
     func unloadedSchemaStaysVisible() {
         #expect(isVisible("analytics", searchText: "invoice", isLoaded: false))

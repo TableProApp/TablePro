@@ -179,17 +179,22 @@ struct CatalogEditAdoption {
               let loadedScope = schemaService.loadedScope(for: connectionId) else { return nil }
         let browseDatabase = databaseManager.browseDatabaseName(for: session.connection)
         guard loadedScope.database == browseDatabase else { return nil }
-        var schemas = Set(schemaService.schemas(for: connectionId).filter {
-            schemaService.hasLoadedContent(for: connectionId, schema: $0)
-        })
-        if let schema = loadedScope.schema {
+        var schemas = schemaService.schemasWithCurrentTables(for: connectionId)
+        if let schema = loadedScope.schema, holdsBrowsedSchemaInFlatList(session.connection.type) {
             schemas.insert(schema)
         }
         return LoadedBrowseCatalog(
             database: browseDatabase,
             schemas: schemas,
-            tables: schemaService.allLoadedTables(for: connectionId)
+            tables: schemaService.currentTables(for: connectionId)
         )
+    }
+
+    /// A schema-grouped engine's flat list is the browsed schema's, so that schema is answered for
+    /// even when it holds nothing. A hierarchical engine's flat list is empty, and its browsed schema
+    /// is answered for only by a per-schema list read since the last catalog change.
+    private func holdsBrowsedSchemaInFlatList(_ type: DatabaseType) -> Bool {
+        PluginManager.shared.databaseGroupingStrategy(for: type) != .hierarchicalSchema
     }
 
     /// Unstages queued operations whose object the freshly loaded catalog no longer has, judged by

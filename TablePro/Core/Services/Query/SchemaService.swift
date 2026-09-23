@@ -42,10 +42,10 @@ final class SchemaService: ObservableObject {
     private let triggersDedup = OnceTask<LoadKey, [TriggerInfo]>()
     private let typesDedup = OnceTask<LoadKey, [UserDefinedTypeInfo]>()
     private let schemasDedup = OnceTask<LoadKey, [String]>()
-    private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
-    private let perSchemaRoutinesDedup = OnceTask<SchemaKey, [RoutineInfo]>()
-    private let perSchemaTriggersDedup = OnceTask<SchemaKey, [TriggerInfo]>()
-    private let perSchemaTypesDedup = OnceTask<SchemaKey, [UserDefinedTypeInfo]>()
+    private let perSchemaDedup = OnceTask<SchemaFetchKey, [TableInfo]>()
+    private let perSchemaRoutinesDedup = OnceTask<SchemaFetchKey, [RoutineInfo]>()
+    private let perSchemaTriggersDedup = OnceTask<SchemaFetchKey, [TriggerInfo]>()
+    private let perSchemaTypesDedup = OnceTask<SchemaFetchKey, [UserDefinedTypeInfo]>()
 
     /// A schema is named inside a database, and an engine that changes database on a live
     /// connection reaches a `PUBLIC` in every one of them.
@@ -53,6 +53,13 @@ final class SchemaService: ObservableObject {
         let connectionId: UUID
         let database: String
         let schema: String
+    }
+
+    /// A read after a catalog change starts a fetch of its own rather than joining one that began
+    /// before the change.
+    struct SchemaFetchKey: Hashable, Sendable {
+        let schemaKey: SchemaKey
+        let revision: Int
     }
 
     /// Two windows browsing the same scope share one fetch; two windows browsing different
@@ -83,6 +90,7 @@ final class SchemaService: ObservableObject {
 
     private var loadGenerations: [UUID: Int] = [:]
     private var schemaLoadGenerations: [SchemaKey: Int] = [:]
+    private var schemaFreshness = CatalogFreshness<SchemaKey>()
     private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
     private var nextLoadGeneration = 0
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
@@ -266,13 +274,39 @@ final class SchemaService: ObservableObject {
         })
     }
 
+    /// The loaded schemas read since the last catalog change. A list read before it may still hold
+    /// a table that was dropped or lack one that was created, so it cannot say whether one exists.
+    func schemasWithCurrentTables(for connectionId: UUID) -> Set<String> {
+        schemasWithLoadedTables(for: connectionId).filter { isSchemaCurrent(for: connectionId, schema: $0) }
+    }
+
+    func isSchemaCurrent(for connectionId: UUID, schema: String) -> Bool {
+        schemaFreshness.isCurrent(catalogKey(connectionId, schema: schema))
+    }
+
+    /// Whether a reader showing this schema should fetch it: it was never read, or a catalog change
+    /// has overtaken what was, and no fetch has started since.
+    func schemaObjectsNeedFetch(for connectionId: UUID, schema: String) -> Bool {
+        schemaFreshness.needsFetch(catalogKey(connectionId, schema: schema))
+    }
+
     /// Flat tables plus the union of every loaded per-schema table list. For
     /// hierarchicalSchema plugins the flat list is empty and this is the only
     /// way to see tables across schemas (e.g. for autocomplete).
     func allLoadedTables(for connectionId: UUID) -> [TableInfo] {
+        loadedTables(for: connectionId) { _ in true }
+    }
+
+    /// `allLoadedTables` without the lists a catalog change has overtaken, for a caller judging
+    /// whether an object still exists.
+    func currentTables(for connectionId: UUID) -> [TableInfo] {
+        loadedTables(for: connectionId) { self.isSchemaCurrent(for: connectionId, schema: $0) }
+    }
+
+    private func loadedTables(for connectionId: UUID, inSchemas includes: (String) -> Bool) -> [TableInfo] {
         var result = tables(for: connectionId)
         var seen = Set(result.map(\.id))
-        for state in catalogEntries(perSchemaStates, of: connectionId).values {
+        for (schema, state) in catalogEntries(perSchemaStates, of: connectionId) where includes(schema) {
             guard case .loaded(let schemaTables) = state else { continue }
             for table in schemaTables where seen.insert(table.id).inserted {
                 result.append(table)
@@ -287,7 +321,7 @@ final class SchemaService: ObservableObject {
     /// opened a pooled connection per schema, one for every schema a sidebar search walked.
     func loadSchemaObjects(connectionId: UUID, schema: String, database: String?) async {
         guard let scope = schemaRouteScope(connectionId: connectionId, database: database) else { return }
-        guard !hasLoadedContent(SchemaKey(scope: scope, schema: schema)) else { return }
+        guard !schemaFreshness.isCurrent(SchemaKey(scope: scope, schema: schema)) else { return }
         await withSchemaMetadataDriver(scope: scope, schema: schema) { driver in
             await self.loadSchemaObjects(schema: schema, in: scope, driver: driver)
         }
@@ -304,57 +338,82 @@ final class SchemaService: ObservableObject {
         DatabaseManager.shared.resolvedScope(database: database, schema: nil, for: connectionId)
     }
 
+    /// The fetch counts as started from the moment it asks for a driver, so a reader redrawing while
+    /// the lease is pending does not ask for a second one.
     private func withSchemaMetadataDriver(
         scope: DatabaseScope,
         schema: String,
         _ body: @Sendable @escaping (DatabaseDriver) async -> Void
     ) async {
+        let key = SchemaKey(scope: scope, schema: schema)
+        let revision = schemaFreshness.revision(for: key)
+        schemaFreshness.noteFetchStarted(revision, for: key)
         do {
             try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk, body)
         } catch is CancellationError {
-            return
+            schemaFreshness.noteFetchAbandoned(revision, for: key)
         } catch {
             Self.logger.warning(
                 "[schema] per-schema route failed connId=\(scope.connectionId, privacy: .public) schema=\(schema, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
-            commitSchemaTables(.failed(error.localizedDescription), key: SchemaKey(scope: scope, schema: schema))
+            settleSchemaFailure(error.localizedDescription, key: key)
         }
     }
 
     /// `scope` names the database `driver` reads, which is the database the objects are kept under.
+    /// A schema already read since the last catalog change is not read again.
     func loadSchemaObjects(schema: String, in scope: DatabaseScope, driver: DatabaseDriver) async {
         let key = SchemaKey(scope: scope, schema: schema)
-        guard !hasLoadedContent(key) else { return }
+        guard !schemaFreshness.isCurrent(key) else { return }
         await runSchemaLoad(key, driver: driver)
     }
 
     func reloadSchemaObjects(schema: String, in scope: DatabaseScope, driver: DatabaseDriver) async {
         let key = SchemaKey(scope: scope, schema: schema)
-        schemaLoadGenerations.removeValue(forKey: key)
-        await cancelSchemaLoads { $0 == key }
+        schemaFreshness.markChanged(key)
         await runSchemaLoad(key, driver: driver)
     }
 
-    /// Re-fetches every schema of `scope`'s database the user has already expanded, in place.
-    /// Without this a non-destructive refresh would leave those lists showing pre-refresh contents.
-    func refreshLoadedSchemaObjects(in scope: DatabaseScope, driver: DatabaseDriver) async {
-        /// A schema still loading is reloaded too. Its fetch may have begun before the change this
-        /// refresh answers, and reloading moves its generation so that fetch cannot commit.
-        let loadedSchemas = perSchemaStates.compactMap { key, state -> String? in
-            guard key.connectionId == scope.connectionId, key.database == scope.database else { return nil }
-            switch state {
-            case .loaded, .loading: return key.schema
-            case .idle, .failed: return nil
-            }
+    /// Marks every schema the connection has loaded as overtaken by a catalog change, keeping what
+    /// each one shows, and reads again now only `fetchingNow`, the schemas something is about to
+    /// judge. Every other schema is read by its next reader: an expanded tree row, or a caller of
+    /// `loadSchemaObjects`. Reading them all here re-ran two to four queries per schema on every
+    /// COMMIT, for lists nobody was looking at.
+    func refreshLoadedSchemaObjects(
+        in scope: DatabaseScope,
+        fetchingNow schemas: Set<String>,
+        driver: DatabaseDriver
+    ) async {
+        markLoadedSchemaObjectsStale(connectionId: scope.connectionId)
+        for schema in schemas.sorted() where holdsOrIsLoading(SchemaKey(scope: scope, schema: schema)) {
+            await loadSchemaObjects(schema: schema, in: scope, driver: driver)
         }
-        for schema in loadedSchemas.sorted() {
-            await reloadSchemaObjects(schema: schema, in: scope, driver: driver)
+    }
+
+    /// A schema still loading is marked too: its fetch may have begun before the change, so what it
+    /// brings back is shown but not taken as current.
+    func markLoadedSchemaObjectsStale(connectionId: UUID) {
+        let marked = perSchemaStates.keys.filter { $0.connectionId == connectionId && holdsOrIsLoading($0) }
+        guard !marked.isEmpty else { return }
+        for key in marked {
+            schemaFreshness.markChanged(key)
+        }
+        bumpGeneration(connectionId)
+    }
+
+    private func holdsOrIsLoading(_ key: SchemaKey) -> Bool {
+        switch perSchemaStates[key] {
+        case .loaded, .loading: return true
+        case .idle, .failed, nil: return false
         }
     }
 
     private func runSchemaLoad(_ key: SchemaKey, driver: DatabaseDriver) async {
         let connectionId = key.connectionId
         let schema = key.schema
+        let revision = schemaFreshness.revision(for: key)
+        let fetchKey = SchemaFetchKey(schemaKey: key, revision: revision)
+        schemaFreshness.noteFetchStarted(revision, for: key)
         nextLoadGeneration += 1
         let generation = nextLoadGeneration
         schemaLoadGenerations[key] = generation
@@ -365,12 +424,13 @@ final class SchemaService: ObservableObject {
         }
         updateSchemaSideObjects(key) { $0 = Self.enteringLoad($0, kinds: kinds) }
         bumpGeneration(connectionId)
+        await cancelSchemaLoads { $0.schemaKey == key && $0.revision != revision }
 
-        async let tablesTask: [TableInfo] = perSchemaDedup.execute(key: key) {
+        async let tablesTask: [TableInfo] = perSchemaDedup.execute(key: fetchKey) {
             try await driver.fetchTables(schema: schema)
         }
         async let routinesTask: MetadataFetchOutcome<[RoutineInfo]> = Self.fetchObjectsSafely(
-            key: key,
+            key: fetchKey,
             connectionId: connectionId,
             label: "schema routines",
             dedup: perSchemaRoutinesDedup,
@@ -378,7 +438,7 @@ final class SchemaService: ObservableObject {
         )
         async let triggersTask: MetadataFetchOutcome<[TriggerInfo]>? = kinds.triggers
             ? Self.fetchObjectsSafely(
-                key: key,
+                key: fetchKey,
                 connectionId: connectionId,
                 label: "schema triggers",
                 dedup: perSchemaTriggersDedup,
@@ -387,7 +447,7 @@ final class SchemaService: ObservableObject {
             : nil
         async let typesTask: MetadataFetchOutcome<[UserDefinedTypeInfo]>? = kinds.types
             ? Self.fetchObjectsSafely(
-                key: key,
+                key: fetchKey,
                 connectionId: connectionId,
                 label: "schema types",
                 dedup: perSchemaTypesDedup,
@@ -407,7 +467,7 @@ final class SchemaService: ObservableObject {
             tablesOutcome = .failed(error.localizedDescription)
         }
         guard schemaLoadGenerations[key] == generation else { return }
-        commitSchemaTables(tablesOutcome, key: key)
+        commitSchemaTables(tablesOutcome, key: key, revision: revision)
 
         let routinesOutcome = await routinesTask
         let triggersOutcome = await triggersTask
@@ -426,17 +486,23 @@ final class SchemaService: ObservableObject {
         bumpGeneration(connectionId)
     }
 
-    private func commitSchemaTables(_ outcome: MetadataFetchOutcome<[TableInfo]>, key: SchemaKey) {
+    private func commitSchemaTables(_ outcome: MetadataFetchOutcome<[TableInfo]>, key: SchemaKey, revision: Int) {
         switch outcome {
         case .fetched(let tables):
             setPerSchemaState(.loaded(tables), key: key)
+            _ = schemaFreshness.commit(revision, for: key)
         case .failed(let message):
-            guard !hasLoadedContent(key) else { return }
-            setPerSchemaState(.failed(message), key: key)
+            settleSchemaFailure(message, key: key)
         case .cancelled:
+            schemaFreshness.noteFetchAbandoned(revision, for: key)
             guard case .loading = perSchemaStates[key] else { return }
             setPerSchemaState(.idle, key: key)
         }
+    }
+
+    private func settleSchemaFailure(_ message: String, key: SchemaKey) {
+        guard !hasLoadedContent(key) else { return }
+        setPerSchemaState(.failed(message), key: key)
     }
 
     private func setPerSchemaState(_ state: SchemaState, key: SchemaKey) {
@@ -444,7 +510,7 @@ final class SchemaService: ObservableObject {
         bumpGeneration(key.connectionId)
     }
 
-    private func cancelSchemaLoads(where shouldCancel: @escaping @Sendable (SchemaKey) -> Bool) async {
+    private func cancelSchemaLoads(where shouldCancel: @escaping @Sendable (SchemaFetchKey) -> Bool) async {
         await perSchemaDedup.cancel(where: shouldCancel)
         await perSchemaRoutinesDedup.cancel(where: shouldCancel)
         await perSchemaTriggersDedup.cancel(where: shouldCancel)
@@ -462,7 +528,8 @@ final class SchemaService: ObservableObject {
         perSchemaStates = perSchemaStates.filter { !discarded.contains($0.key) }
         perSchemaSideObjects = perSchemaSideObjects.filter { !discarded.contains($0.key) }
         schemaLoadGenerations = schemaLoadGenerations.filter { !discarded.contains($0.key) }
-        await cancelSchemaLoads { discarded.contains($0) }
+        schemaFreshness.removeAll { discarded.contains($0) }
+        await cancelSchemaLoads { discarded.contains($0.schemaKey) }
     }
 
     private func updateSideObjects(_ connectionId: UUID, _ change: (inout SideObjects) -> Void) {
@@ -627,16 +694,14 @@ final class SchemaService: ObservableObject {
         await triggersDedup.cancel { $0.connectionId == connectionId }
         await typesDedup.cancel { $0.connectionId == connectionId }
         await schemasDedup.cancel { $0.connectionId == connectionId }
-        await perSchemaDedup.cancel { $0.connectionId == connectionId }
-        await perSchemaRoutinesDedup.cancel { $0.connectionId == connectionId }
-        await perSchemaTriggersDedup.cancel { $0.connectionId == connectionId }
-        await perSchemaTypesDedup.cancel { $0.connectionId == connectionId }
+        await cancelSchemaLoads { $0.schemaKey.connectionId == connectionId }
     }
 
     func invalidate(connectionId: UUID) async {
         await cancelInFlightLoads(connectionId: connectionId)
         loadGenerations.removeValue(forKey: connectionId)
         schemaLoadGenerations = schemaLoadGenerations.filter { $0.key.connectionId != connectionId }
+        schemaFreshness.removeAll { $0.connectionId == connectionId }
         refreshingConnections.remove(connectionId)
         states.removeValue(forKey: connectionId)
         sideObjects.removeValue(forKey: connectionId)

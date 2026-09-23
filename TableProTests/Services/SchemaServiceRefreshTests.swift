@@ -350,8 +350,8 @@ struct SchemaServiceRefreshTests {
         #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders"])
     }
 
-    @Test("refreshLoadedSchemaObjects refetches only the schemas already expanded")
-    func refreshLoadedSchemaObjectsRefetchesExpandedSchemas() async {
+    @Test("refreshLoadedSchemaObjects rereads a loaded schema it is asked for now, and loads nothing else")
+    func refreshLoadedSchemaObjectsRereadsNamedLoadedSchema() async {
         let connectionId = UUID()
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
@@ -368,7 +368,7 @@ struct SchemaServiceRefreshTests {
             TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales"),
             TableInfo(name: "refunds", type: .table, rowCount: 0, schema: "sales")
         ]
-        await service.refreshLoadedSchemaObjects(in: scope, driver: driver)
+        await service.refreshLoadedSchemaObjects(in: scope, fetchingNow: ["sales", "hr"], driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders", "refunds"])
         #expect(service.tables(for: connectionId, schema: "hr").isEmpty)

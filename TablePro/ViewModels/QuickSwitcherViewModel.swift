@@ -422,11 +422,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             return DatabaseTreeMetadataService.shared
                 .allSchemaTablesLoadState(connectionId: connectionId, database: database).value?.tables
         }
-        let loadedScope = services.schemaService.loadedScope(for: connectionId)
+        let schemaService = services.schemaService
+        let loadedScope = schemaService.loadedScope(for: connectionId)
         let tables = Self.mergedTables(
-            local: services.schemaService.allLoadedTables(for: connectionId),
+            local: schemaService.allLoadedTables(for: connectionId),
             loadedFrom: loadedScope?.database,
             coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
+            staleSchemas: schemaService.schemasWithLoadedTables(for: connectionId)
+                .subtracting(schemaService.schemasWithCurrentTables(for: connectionId)),
             listing: listing,
             browsing: tableSource.database
         )
@@ -645,16 +648,23 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// `coveredSchemas` names the schemas the schema service answers for even when it found them
     /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
     /// so no say, and the listing's stale copy of that table would come back.
+    ///
+    /// `staleSchemas` are the per-schema lists a catalog change has overtaken and nothing has read
+    /// again, because only an expanded tree row reads one again. The listing, which this panel asks
+    /// for again after every change, answers for them once it has arrived.
     nonisolated static func mergedTables(
         local loaded: [TableInfo],
         loadedFrom loadedDatabase: String?,
         coveredSchemas: Set<String>,
+        staleSchemas: Set<String>,
         listing: [TableInfo]?,
         browsing database: String?
     ) -> [TableInfo] {
         let isCurrent = loadedDatabase == database
-        let local = isCurrent ? loaded : []
-        let authoritative = (isCurrent ? coveredSchemas : []).union(local.map { $0.schema ?? "" })
+        let overtaken = listing == nil ? [] : staleSchemas
+        let local = isCurrent ? loaded.filter { !overtaken.contains($0.schema ?? "") } : []
+        let authoritative = (isCurrent ? coveredSchemas.subtracting(overtaken) : [])
+            .union(local.map { $0.schema ?? "" })
         var seen: Set<TableIdentity> = []
         return (local + (listing ?? []).filter { !authoritative.contains($0.schema ?? "") })
             .filter { seen.insert(TableIdentity(schema: $0.schema ?? "", name: $0.name)).inserted }

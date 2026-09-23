@@ -212,33 +212,42 @@ struct DatabaseTreeFilterQualifiedSearchTests {
 
     // MARK: - Hierarchical shape
 
+    private func hierarchicalVerdict(
+        _ schema: String,
+        searchText: String,
+        loaded tables: [TableInfo]? = nil,
+        database: String? = nil
+    ) -> DatabaseTreeFilter.SchemaSearchVerdict {
+        let content = tables.map { tables in
+            DatabaseTreeFilter.LoadedSchemaContent(
+                buckets: DatabaseTreeFilter.objectBuckets(
+                    tables: tables, routines: [], triggers: [], searchText: searchText, database: database
+                ),
+                isSettled: true,
+                isCurrent: true
+            )
+        }
+        return DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
+            schema: schema,
+            database: database,
+            searchText: searchText,
+            loadedContent: content,
+            listingMatches: nil,
+            listingCoversSchema: true
+        )
+    }
+
     @Test("A qualified search hides the hierarchical schemas it does not name")
     func hierarchicalQualified() {
-        let other = DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            "HR", searchText: "SALES.ORDERS", isLoaded: false,
-            tables: [], routines: [], triggers: [], userTypes: []
-        )
-        let named = DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            "SALES", searchText: "SALES.ORDERS", isLoaded: false,
-            tables: [], routines: [], triggers: [], userTypes: []
-        )
-        #expect(!other)
-        #expect(named)
+        #expect(hierarchicalVerdict("HR", searchText: "SALES.ORDERS") == .noMatch)
+        #expect(hierarchicalVerdict("SALES", searchText: "SALES.ORDERS") == .unknown)
     }
 
     @Test("A hierarchical search can name the browsed database, and only that one")
     func hierarchicalThreeParts() {
         let loaded = [table("EMPLOYEES", schema: "HR")]
-        let browsed = DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            "HR", searchText: "SHOP.HR.EMP", isLoaded: true,
-            tables: loaded, routines: [], triggers: [], userTypes: [], database: "SHOP"
-        )
-        let other = DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            "HR", searchText: "BLOG.HR.EMP", isLoaded: true,
-            tables: loaded, routines: [], triggers: [], userTypes: [], database: "SHOP"
-        )
-        #expect(browsed)
-        #expect(!other)
+        #expect(hierarchicalVerdict("HR", searchText: "SHOP.HR.EMP", loaded: loaded, database: "SHOP") == .match)
+        #expect(hierarchicalVerdict("HR", searchText: "BLOG.HR.EMP", loaded: loaded, database: "SHOP") == .noMatch)
     }
 
     @Test("A trailing dot shows everything in the hierarchical schema it names")

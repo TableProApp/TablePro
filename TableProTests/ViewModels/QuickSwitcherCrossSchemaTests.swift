@@ -105,7 +105,8 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("dropped", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: local, loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop"
+            local: local, loadedFrom: "shop", coveredSchemas: ["public"], staleSchemas: [],
+            listing: allSchemas, browsing: "shop"
         )
 
         #expect(merged.map(\.name) == ["users", "timesheet"])
@@ -118,7 +119,8 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop"
+            local: [], loadedFrom: "shop", coveredSchemas: ["public"], staleSchemas: [],
+            listing: allSchemas, browsing: "shop"
         )
 
         #expect(merged.map(\.name) == ["timesheet"])
@@ -129,7 +131,8 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("timesheet", "attendance"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", coveredSchemas: [], listing: allSchemas, browsing: "shop"
+            local: [], loadedFrom: "shop", coveredSchemas: [], staleSchemas: [],
+            listing: allSchemas, browsing: "shop"
         )
 
         #expect(merged.count == 1)
@@ -143,6 +146,7 @@ struct QuickSwitcherCrossSchemaTests {
             local: [table("invoices", "public")],
             loadedFrom: "billing",
             coveredSchemas: ["public"],
+            staleSchemas: [],
             listing: [table("orders", "public"), table("timesheet", "attendance")],
             browsing: "shop"
         )
@@ -158,6 +162,7 @@ struct QuickSwitcherCrossSchemaTests {
             local: [table("ENTRIES", "LEDGER")],
             loadedFrom: "SALES",
             coveredSchemas: ["PUBLIC", "LEDGER"],
+            staleSchemas: [],
             listing: [table("ORDERS", "PUBLIC"), table("ENTRIES", "LEDGER"), table("RATES", "FX")],
             browsing: "SALES"
         )
@@ -171,6 +176,36 @@ struct QuickSwitcherCrossSchemaTests {
             local: [table("ORDERS", "PUBLIC")],
             loadedFrom: "SALES",
             coveredSchemas: ["PUBLIC"],
+            staleSchemas: [],
+            listing: nil,
+            browsing: "SALES"
+        )
+
+        #expect(merged.map(\.name) == ["ORDERS"])
+    }
+
+    /// `REFUNDS` was created after the last read of `PUBLIC`, which nobody has expanded since.
+    @Test("A schema a catalog change overtook yields to the listing once it arrives")
+    func staleSchemaYieldsToTheListing() {
+        let merged = QuickSwitcherViewModel.mergedTables(
+            local: [table("ORDERS", "PUBLIC"), table("ENTRIES", "LEDGER")],
+            loadedFrom: "SALES",
+            coveredSchemas: ["PUBLIC", "LEDGER"],
+            staleSchemas: ["PUBLIC"],
+            listing: [table("ORDERS", "PUBLIC"), table("REFUNDS", "PUBLIC"), table("STALE", "LEDGER")],
+            browsing: "SALES"
+        )
+
+        #expect(merged.map(\.name) == ["ENTRIES", "ORDERS", "REFUNDS"])
+    }
+
+    @Test("A schema a catalog change overtook still stands in until the listing arrives")
+    func staleSchemaStandsInWithoutAListing() {
+        let merged = QuickSwitcherViewModel.mergedTables(
+            local: [table("ORDERS", "PUBLIC")],
+            loadedFrom: "SALES",
+            coveredSchemas: ["PUBLIC"],
+            staleSchemas: ["PUBLIC"],
             listing: nil,
             browsing: "SALES"
         )
