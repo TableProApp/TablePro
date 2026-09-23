@@ -366,6 +366,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted.
 - Structure and Create Table SQL Preview disagreeing with Save on the schema, primary key name or a SQLite foreign key.
 - Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
+- PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
+- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
 
 ### Security
 

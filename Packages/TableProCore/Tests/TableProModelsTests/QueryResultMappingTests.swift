@@ -72,6 +72,19 @@ struct QueryResultMappingTests {
         #expect(!external.type.allowsRowEditing)
     }
 
+    @Test("A foreign table keeps its kind, in either spelling, and offers no Truncate or Drop Table")
+    func mapPluginForeignTable() {
+        let listed = TableInfo(from: PluginTableInfo(name: "ft", type: "FOREIGN TABLE"))
+        let informationSchema = TableInfo(from: PluginTableInfo(name: "ft", type: "FOREIGN"))
+
+        #expect(listed.type == .foreignTable)
+        #expect(informationSchema.type == .foreignTable)
+        #expect(!listed.type.allowsTruncate)
+        #expect(!listed.type.allowsDrop)
+        #expect(listed.type.allowsRowEditing)
+        #expect(listed.type.listSection == .tables)
+    }
+
     @Test("Maps PluginColumnInfo to ColumnInfo")
     func mapPluginColumnInfo() {
         let plugin = PluginColumnInfo(
@@ -104,6 +117,27 @@ struct QueryResultMappingTests {
         #expect(index.columns == ["email"])
         #expect(index.isUnique)
         #expect(!index.isPrimary)
+        #expect(index.includedColumns.isEmpty)
+        #expect(index.whereClause == nil)
+    }
+
+    @Test("An index keeps its INCLUDE columns and its predicate apart from its key")
+    func mapPluginIndexInfoIncludeAndPredicate() {
+        let plugin = PluginIndexInfo(
+            name: "t_include_partial",
+            columns: ["a", "lower(email)"],
+            isUnique: true,
+            type: "BTREE",
+            whereClause: "(a > 0)",
+            expressions: ["lower(email)"],
+            includedColumns: ["b"],
+            ddlMethodAndKeys: nil,
+            ddlWhereClause: nil
+        )
+        let index = IndexInfo(from: plugin)
+        #expect(index.columns == ["a", "lower(email)"])
+        #expect(index.includedColumns == ["b"])
+        #expect(index.whereClause == "(a > 0)")
     }
 
     @Test("Maps PluginForeignKeyInfo to ForeignKeyInfo")
