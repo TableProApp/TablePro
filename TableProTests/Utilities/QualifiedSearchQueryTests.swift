@@ -95,11 +95,16 @@ struct QualifiedSearchQueryTests {
         #expect(query.containerPairs(with: ["attendance"]) == nil)
     }
 
-    @Test("A location drops a schema that only repeats the database")
-    func locationDropsRepeatedSchema() {
-        #expect(QualifiedSearchQuery.location(database: "shop", schema: "shop") == ["shop"])
+    @Test("A location keeps a schema named like its database as a level of its own")
+    func locationKeepsBothLevels() throws {
+        #expect(QualifiedSearchQuery.location(database: "shop", schema: "shop") == ["shop", "shop"])
         #expect(QualifiedSearchQuery.location(database: "shop", schema: "public") == ["shop", "public"])
         #expect(QualifiedSearchQuery.location(database: nil, schema: "public") == ["public"])
         #expect(QualifiedSearchQuery.location(database: "", schema: nil).isEmpty)
+
+        let full = try #require(QualifiedSearchQuery("shop.shop.orders"))
+        let short = try #require(QualifiedSearchQuery("shop.orders"))
+        #expect(full.containerPairs(with: ["shop", "shop"]) != nil)
+        #expect(short.containerPairs(with: ["shop", "shop"]) != nil)
     }
 }

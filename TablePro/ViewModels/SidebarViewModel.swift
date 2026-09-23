@@ -106,15 +106,12 @@ final class SidebarViewModel: ObservableObject {
     @Published private(set) var filterQuery = "" {
         didSet {
             invalidateFilterCaches()
-            requestedListingRevisions.removeAll()
+            listingDemand.reset()
             loadAllSchemaTablesForSearch()
         }
     }
 
-    /// The listing revision each database was last asked for at, so a search asks again after a
-    /// catalog change, a reconnect or a database switch, and never twice for the same revision:
-    /// a read that failed would otherwise be retried on every change the sidebar observes.
-    private var requestedListingRevisions: [String: Int] = [:]
+    private var listingDemand = AllSchemaTablesDemand()
     private var listingDemandObservations: [AnyCancellable] = []
 
     private var filterDebounceTask: Task<Void, Never>?
@@ -537,25 +534,14 @@ final class SidebarViewModel: ObservableObject {
         if let browsedDatabase, !browsedDatabase.isEmpty {
             databases.insert(browsedDatabase)
         }
-        for database in databases where needsListingRequest(database: database, service: service) {
-            requestedListingRevisions[database] = service.allSchemaTablesRevision(
-                connectionId: connectionId, database: database
+        let isConnected = DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        for database in databases {
+            listingDemand.requestIfNeeded(
+                connectionId: connectionId,
+                database: database,
+                isConnected: isConnected,
+                service: service
             )
-            Task { await service.loadAllSchemaTables(connectionId: connectionId, database: database) }
-        }
-    }
-
-    /// A listing nobody holds is asked for; one in flight is left alone; one loaded or failed is
-    /// asked for again only once its revision has moved past the one this search last asked at.
-    private func needsListingRequest(database: String, service: DatabaseTreeMetadataService) -> Bool {
-        switch service.allSchemaTablesLoadState(connectionId: connectionId, database: database) {
-        case .loading:
-            return false
-        case .idle:
-            return true
-        case .loaded, .failed:
-            let revision = service.allSchemaTablesRevision(connectionId: connectionId, database: database)
-            return requestedListingRevisions[database] != revision
         }
     }
 

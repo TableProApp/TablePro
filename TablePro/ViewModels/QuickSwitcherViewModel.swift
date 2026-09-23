@@ -89,6 +89,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     private var tableItems: [QuickSwitcherItem] = []
     private var tableSource: TableSource?
     private var tableSourceObservations: [AnyCancellable] = []
+    private var listingDemand = AllSchemaTablesDemand()
     private var filterTask: Task<Void, Never>?
     private var selectionQuery: String?
     private var selectionScope: QuickSwitcherScope?
@@ -377,18 +378,35 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         guard activeLoadId == loadId else { return }
         mergeTableItems()
         guard source.listsTablesPerSchema, let database = source.database else { return }
-        await DatabaseTreeMetadataService.shared.loadAllSchemaTables(connectionId: connectionId, database: database)
+        let service = DatabaseTreeMetadataService.shared
+        listingDemand.noteRequested(connectionId: connectionId, database: database, service: service)
+        await service.loadAllSchemaTables(connectionId: connectionId, database: database)
         guard activeLoadId == loadId else { return }
         mergeTableItems()
     }
 
     /// A change to either source while the panel is open reaches it. A change that leaves the
-    /// tables as they were costs a comparison and no refilter.
+    /// tables as they were costs a comparison and no refilter. A catalog change or a reconnect
+    /// while it is open asks for the listing again.
     private func observeTableSources() {
         tableSourceObservations = [
             services.schemaService.onMainActorChange { [weak self] in self?.mergeTableItems() },
-            DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in self?.mergeTableItems() }
+            DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in
+                self?.requestListingIfStale()
+                self?.mergeTableItems()
+            },
+            services.databaseManager.onMainActorChange { [weak self] in self?.requestListingIfStale() }
         ]
+    }
+
+    private func requestListingIfStale() {
+        guard let tableSource, tableSource.listsTablesPerSchema, let database = tableSource.database else { return }
+        listingDemand.requestIfNeeded(
+            connectionId: connectionId,
+            database: database,
+            isConnected: services.databaseManager.session(for: connectionId)?.status == .connected,
+            service: DatabaseTreeMetadataService.shared
+        )
     }
 
     private func mergeTableItems() {
@@ -400,18 +418,19 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     private func currentTableItems() -> [QuickSwitcherItem] {
         guard let tableSource else { return [] }
-        let allSchemaTables = tableSource.database.flatMap { database -> [TableInfo]? in
+        let listing = tableSource.database.flatMap { database -> [TableInfo]? in
             guard tableSource.listsTablesPerSchema else { return nil }
             return DatabaseTreeMetadataService.shared
                 .allSchemaTablesLoadState(connectionId: connectionId, database: database).value?.tables
-        } ?? []
+        }
         let loadedScope = services.schemaService.loadedScope(for: connectionId)
         let tables = Self.mergedTables(
             local: services.schemaService.allLoadedTables(for: connectionId),
             loadedFrom: loadedScope?.database,
             coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
-            allSchemas: allSchemaTables,
-            browsing: tableSource.database
+            listing: listing,
+            browsing: tableSource.database,
+            grouping: tableSource.grouping
         )
         return Self.makeTableItems(
             tables,
@@ -643,18 +662,25 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// `coveredSchemas` names the schemas the schema service answers for even when it found them
     /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
     /// so no say, and the listing's stale copy of that table would come back.
+    ///
+    /// A hierarchical engine is the exception. Its per-schema lists are keyed by schema alone and
+    /// keep the rows of a database the connection has just switched away from until each one
+    /// reloads, so once the listing, which is keyed by database, has arrived it answers for every
+    /// schema, and the schema service only stands in until then.
     nonisolated static func mergedTables(
         local loaded: [TableInfo],
         loadedFrom loadedDatabase: String?,
         coveredSchemas: Set<String>,
-        allSchemas: [TableInfo],
-        browsing database: String?
+        listing: [TableInfo]?,
+        browsing database: String?,
+        grouping: GroupingStrategy
     ) -> [TableInfo] {
-        let isCurrent = loadedDatabase == database
+        let listingAnswersAll = grouping == .hierarchicalSchema && listing != nil
+        let isCurrent = loadedDatabase == database && !listingAnswersAll
         let local = isCurrent ? loaded : []
         let authoritative = (isCurrent ? coveredSchemas : []).union(local.map { $0.schema ?? "" })
         var seen: Set<TableIdentity> = []
-        return (local + allSchemas.filter { !authoritative.contains($0.schema ?? "") })
+        return (local + (listing ?? []).filter { !authoritative.contains($0.schema ?? "") })
             .filter { seen.insert(TableIdentity(schema: $0.schema ?? "", name: $0.name)).inserted }
     }
 

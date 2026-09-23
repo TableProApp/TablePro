@@ -101,7 +101,8 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("dropped", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: local, loadedFrom: "shop", coveredSchemas: ["public"], allSchemas: allSchemas, browsing: "shop"
+            local: local, loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop",
+            grouping: .bySchema
         )
 
         #expect(merged.map(\.name) == ["users", "timesheet"])
@@ -114,7 +115,8 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", coveredSchemas: ["public"], allSchemas: allSchemas, browsing: "shop"
+            local: [], loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop",
+            grouping: .bySchema
         )
 
         #expect(merged.map(\.name) == ["timesheet"])
@@ -125,7 +127,8 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("timesheet", "attendance"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", coveredSchemas: [], allSchemas: allSchemas, browsing: "shop"
+            local: [], loadedFrom: "shop", coveredSchemas: [], listing: allSchemas, browsing: "shop",
+            grouping: .bySchema
         )
 
         #expect(merged.count == 1)
@@ -139,11 +142,42 @@ struct QuickSwitcherCrossSchemaTests {
             local: [table("invoices", "public")],
             loadedFrom: "billing",
             coveredSchemas: ["public"],
-            allSchemas: [table("orders", "public"), table("timesheet", "attendance")],
-            browsing: "shop"
+            listing: [table("orders", "public"), table("timesheet", "attendance")],
+            browsing: "shop",
+            grouping: .bySchema
         )
 
         #expect(merged.map(\.name) == ["orders", "timesheet"])
+    }
+
+    /// A hierarchical engine keys its per-schema lists by schema alone, so after a database switch
+    /// they can still hold the database the connection left while the listing names the new one.
+    @Test("On a hierarchical engine the listing answers for every schema once it has arrived")
+    func hierarchicalListingWins() {
+        let merged = QuickSwitcherViewModel.mergedTables(
+            local: [table("OLD_ORDERS", "PUBLIC")],
+            loadedFrom: "SALES",
+            coveredSchemas: ["PUBLIC"],
+            listing: [table("ORDERS", "PUBLIC")],
+            browsing: "SALES",
+            grouping: .hierarchicalSchema
+        )
+
+        #expect(merged.map(\.name) == ["ORDERS"])
+    }
+
+    @Test("On a hierarchical engine the schema service stands in until the listing arrives")
+    func hierarchicalBeforeListing() {
+        let merged = QuickSwitcherViewModel.mergedTables(
+            local: [table("ORDERS", "PUBLIC")],
+            loadedFrom: "SALES",
+            coveredSchemas: ["PUBLIC"],
+            listing: nil,
+            browsing: "SALES",
+            grouping: .hierarchicalSchema
+        )
+
+        #expect(merged.map(\.name) == ["ORDERS"])
     }
 
     // MARK: - Qualified queries

@@ -38,18 +38,15 @@ internal struct QualifiedSearchQuery: Equatable, Sendable {
         return Array(zip(containers, location.suffix(containers.count)))
     }
 
-    /// Where an object lives, outermost first, as a qualified query addresses it. A schema that
-    /// only repeats the database, which is how some engines report a schema-less object, is not a
-    /// second level.
+    /// Where an object lives, outermost first, as a qualified query addresses it. Both levels stay
+    /// even when they share a name: a PostgreSQL database `shop` can hold a schema `shop`, and
+    /// `shop.shop.orders` has to reach it. An engine that reports its database as the schema of a
+    /// schema-less object still matches `shop.orders`, since the query lines up from the right.
     internal static func location(database: String?, schema: String?) -> [String] {
-        var location: [String] = []
-        if let database, !database.isEmpty {
-            location.append(database)
+        [database, schema].compactMap { part in
+            guard let part, !part.isEmpty else { return nil }
+            return part
         }
-        if let schema, !schema.isEmpty, schema != database {
-            location.append(schema)
-        }
-        return location
     }
 
     private static let closingQuotes: [Character: Character] = ["\"": "\"", "`": "`", "[": "]"]
