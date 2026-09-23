@@ -6366,6 +6366,9 @@
     "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
 
     },
+    "%@ cannot index an expression. Index a generated column instead." : {
+
+    },
     "%@ does not allow NULL, so its default cannot be NULL" : {
 
     },
@@ -74857,6 +74860,9 @@
           }
         }
       }
+    },
+    "Indexing an expression needs MySQL 8.0.13 or later." : {
+
     },
     "Its indexes are left out, because the target is not known to take indexes on this kind of object." : {
 

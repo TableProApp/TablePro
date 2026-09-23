@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 - Invalid PostgreSQL indexes named on the table's **Indexes** tab.
+- Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
 
 ### Changed
 
@@ -377,6 +378,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL exclusion constraints missing from exports and the DDL tab.
 - PostgreSQL column reorder script dropping an index named like one of the table's check constraints.
 - Invalid PostgreSQL index recreated on the target by Compare & Sync and **Copy To**.
+- Expression key parts missing from SQLite, libSQL, Cloudflare D1, MySQL and DuckDB indexes.
+- Condition missing from SQLite, libSQL and Cloudflare D1 partial indexes.
+- Descending MySQL index keys recreated ascending by a rename.
+- MySQL index dropped when the index replacing it failed to create.
 - Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard.
 - Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.

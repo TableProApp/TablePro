@@ -57,29 +57,15 @@ enum StructureEditingSupport {
         }
     }
 
-    static func updateIndex(_ index: inout EditableIndexDefinition, at colIndex: Int, with value: String) {
+    static func updateIndex(
+        _ index: inout EditableIndexDefinition,
+        at colIndex: Int,
+        with value: String,
+        keys: IndexKeyContext
+    ) {
         switch colIndex {
         case 0: index.name = value
-        case 1:
-            let previousExpressions = Set(index.expressions)
-            var prefixes: [String: Int] = [:]
-            var expressions: [String] = []
-            index.columns = indexKeyParts(value, expressions: index.expressions).map { trimmed in
-                if previousExpressions.contains(trimmed) {
-                    expressions.append(trimmed)
-                    return trimmed
-                }
-                if let parenStart = trimmed.firstIndex(of: "("),
-                   let parenEnd = trimmed.firstIndex(of: ")"),
-                   let prefix = Int(trimmed[trimmed.index(after: parenStart)..<parenEnd]) {
-                    let name = String(trimmed[..<parenStart])
-                    prefixes[name] = prefix
-                    return name
-                }
-                return trimmed
-            }
-            index.columnPrefixes = prefixes
-            index.expressions = expressions
+        case 1: applyKeyParts(IndexKeyList.parts(of: value, keeping: index.expressions, in: keys), to: &index)
         case 2:
             let indexType = EditableIndexDefinition.IndexType(rawValue: value)
             if EditableIndexDefinition.IndexType.knownTypes.contains(indexType) {
@@ -91,43 +77,26 @@ enum StructureEditingSupport {
         }
     }
 
-    /// The entries of an index's Columns cell, split at the commas that separate key parts.
-    ///
-    /// The cell lists column names as they are, unquoted, beside expressions as the server writes
-    /// them, so no single reading of quotes and parentheses fits both: the column `owner's_id` opens a
-    /// quote that never closes, and `coalesce(a, b)` holds a comma that separates nothing. An
-    /// expression can only have come from the index being edited, so each of `expressions` is taken
-    /// whole where an entry starts with it, and the rest of the cell is split at every comma, the way
-    /// a list of column names always was. An expression edited by hand is therefore read as column
-    /// names, which the column check then names.
-    static func indexKeyParts(_ value: String, expressions: [String]) -> [String] {
-        let longestFirst = expressions.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
-        var parts: [String] = []
-        var remaining = value[...]
-        while !remaining.isEmpty {
-            remaining = remaining.drop(while: isBlank)
-            if let expression = longestFirst.first(where: { entry(in: remaining, isWhole: $0) }) {
-                parts.append(expression)
-                remaining = remaining.dropFirst(expression.count).drop(while: isBlank).dropFirst()
-                continue
-            }
-            let entryEnd = remaining.firstIndex(of: ",") ?? remaining.endIndex
-            parts.append(remaining[..<entryEnd].trimmingCharacters(in: .whitespaces))
-            remaining = entryEnd == remaining.endIndex
-                ? remaining[entryEnd...]
-                : remaining[remaining.index(after: entryEnd)...]
+    static func indexKeyContext(
+        for changeManager: StructureChangeManager,
+        on connection: DatabaseConnection
+    ) -> IndexKeyContext {
+        IndexKeyContext(
+            columnNames: changeManager.workingColumns.map(\.name),
+            dialect: .forType(connection.type),
+            grammar: SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
+        )
+    }
+
+    private static func applyKeyParts(_ parts: [IndexKeyPart], to index: inout EditableIndexDefinition) {
+        index.columns = parts.map(\.entry)
+        index.columnPrefixes = parts.reduce(into: [:]) { prefixes, part in
+            if case .prefixedColumn(let name, let length) = part { prefixes[name] = length }
         }
-        return parts.filter { !$0.isEmpty }
-    }
-
-    nonisolated private static func entry(in text: Substring, isWhole expression: String) -> Bool {
-        guard text.hasPrefix(expression) else { return false }
-        let rest = text.dropFirst(expression.count).drop(while: isBlank)
-        return rest.isEmpty || rest.first == ","
-    }
-
-    nonisolated private static func isBlank(_ character: Character) -> Bool {
-        character.unicodeScalars.allSatisfy { CharacterSet.whitespaces.contains($0) }
+        index.expressions = parts.compactMap { part in
+            guard case .expression(let text) = part else { return nil }
+            return text
+        }
     }
 
     static func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {
@@ -171,8 +140,8 @@ enum StructureEditingSupport {
     }
 
     /// Grid columns: 0 Name, 1 Columns, 2 Type, 3 Unique, 4 Condition. Index 1
-    /// covers `columns` and `columnPrefixes` together because prefixes render
-    /// inline with the column list (`email(10)`). `isPrimary` and `comment` are
+    /// covers `columns`, `columnPrefixes` and `expressions` together because all three
+    /// render in the one column list (`email(10), lower(name)`). `isPrimary` and `comment` are
     /// intentionally excluded; neither has a grid column on the Indexes tab,
     /// so changes to them produce no tint. Matches the data-tab convention of
     /// only tinting fields the user can actually see.
@@ -182,7 +151,10 @@ enum StructureEditingSupport {
     ) -> Set<Int> {
         var indices: Set<Int> = []
         if old.name != new.name { indices.insert(0) }
-        if old.columns != new.columns || old.columnPrefixes != new.columnPrefixes { indices.insert(1) }
+        if old.columns != new.columns || old.columnPrefixes != new.columnPrefixes
+            || old.expressions != new.expressions {
+            indices.insert(1)
+        }
         if old.type != new.type { indices.insert(2) }
         if old.isUnique != new.isUnique { indices.insert(3) }
         if old.whereClause != new.whereClause { indices.insert(4) }

@@ -330,7 +330,7 @@ struct SQLFeatureLexer {
             || unit == 0x5F
     }
 
-    private func isWordUnit(_ unit: UInt16) -> Bool {
+    func isWordUnit(_ unit: UInt16) -> Bool {
         unit < 0x80 ? isASCIIIdentifierPart(unit) : !isSeparating(unit)
     }
 

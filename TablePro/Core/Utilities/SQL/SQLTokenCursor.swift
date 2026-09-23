@@ -46,6 +46,8 @@ internal struct SQLTokenCursor {
 
     internal private(set) var parenDepth = 0
 
+    internal var location: Int { index }
+
     internal init(_ text: NSString, grammar: SQLLexicalGrammar) {
         self.text = text
         self.grammar = grammar

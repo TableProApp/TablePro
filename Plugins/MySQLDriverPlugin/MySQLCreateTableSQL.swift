@@ -56,30 +56,76 @@ internal func mysqlCreateTableSQL(
     return sql + ";"
 }
 
-internal func mysqlIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
-    let columns = index.columns.map { column -> String in
-        let quoted = mysqlQuoteIdentifier(column)
-        if let prefixes = index.columnPrefixes, let prefix = prefixes[column] {
-            return "\(quoted)(\(prefix))"
+internal enum MySQLIndexKeyPart: Equatable {
+    case column(String, prefixLength: Int?)
+    case expression(String)
+
+    var text: String {
+        switch self {
+        case .column(let name, _): return name
+        case .expression(let expression): return expression
         }
-        return quoted
-    }.joined(separator: ", ")
-
-    let upperType = index.indexType?.uppercased() ?? ""
-    var definition: String
-    switch upperType {
-    case "FULLTEXT": definition = "FULLTEXT INDEX"
-    case "SPATIAL": definition = "SPATIAL INDEX"
-    default: definition = index.isUnique ? "UNIQUE INDEX" : "INDEX"
     }
 
-    definition += " \(mysqlQuoteIdentifier(index.name)) (\(columns))"
+    var sql: String {
+        switch self {
+        case .column(let name, let prefixLength?): return "\(mysqlQuoteIdentifier(name))(\(prefixLength))"
+        case .column(let name, nil): return mysqlQuoteIdentifier(name)
+        case .expression(let expression): return "(\(expression))"
+        }
+    }
+}
 
+internal struct MySQLIndexKey: Equatable {
+    let part: MySQLIndexKeyPart
+    let isDescending: Bool
+
+    var sql: String {
+        isDescending ? "\(part.sql) DESC" : part.sql
+    }
+}
+
+internal func mysqlIndexKeyClause(_ keys: [MySQLIndexKey], type: String?) -> String {
+    var clause = "(\(keys.map(\.sql).joined(separator: ", ")))"
+    let upperType = type?.uppercased() ?? ""
     if upperType == "BTREE" || upperType == "HASH" {
-        definition += " USING \(upperType)"
+        clause += " USING \(upperType)"
     }
+    return clause
+}
 
-    return definition
+internal func mysqlIndexKeys(of index: PluginIndexDefinition) -> [MySQLIndexKey] {
+    let expressions = Set(index.expressions ?? [])
+    return index.columns.map { column in
+        let part: MySQLIndexKeyPart = expressions.contains(column)
+            ? .expression(column)
+            : .column(column, prefixLength: index.columnPrefixes?[column])
+        return MySQLIndexKey(part: part, isDescending: false)
+    }
+}
+
+internal func mysqlIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
+    let upperType = index.indexType?.uppercased() ?? ""
+    let kind: String
+    switch upperType {
+    case "FULLTEXT": kind = "FULLTEXT INDEX"
+    case "SPATIAL": kind = "SPATIAL INDEX"
+    default: kind = index.isUnique ? "UNIQUE INDEX" : "INDEX"
+    }
+    let keys = index.ddlMethodAndKeys?.nilIfEmpty
+        ?? mysqlIndexKeyClause(mysqlIndexKeys(of: index), type: upperType)
+    return "\(kind) \(mysqlQuoteIdentifier(index.name)) \(keys)"
+}
+
+internal func mysqlModifyIndexSQL(
+    table: String,
+    oldIndexName: String,
+    newIndex: PluginIndexDefinition,
+    flavor: MySQLServerFlavor
+) -> String? {
+    guard flavor == .mysql || flavor == .mariadb else { return nil }
+    return "ALTER TABLE \(mysqlQuoteIdentifier(table)) DROP INDEX \(mysqlQuoteIdentifier(oldIndexName)), "
+        + "ADD \(mysqlIndexDefinitionSQL(newIndex))"
 }
 
 /// `CONSTRAINT name` is optional in MySQL's grammar and the server invents one when it is left out,
