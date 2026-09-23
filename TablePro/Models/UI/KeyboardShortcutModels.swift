@@ -333,8 +333,8 @@ extension ShortcutAction {
     /// editor-context binding.
     static let editorBuiltIns: [(key: BoundKey, name: String)] = [
         (.character("/", command: true), String(localized: "Toggle Comment")),
-        (.character("[", command: true), String(localized: "Indent")),
-        (.character("]", command: true), String(localized: "Outdent")),
+        (.character("[", command: true), String(localized: "Outdent")),
+        (.character("]", command: true), String(localized: "Indent")),
         (.character("d", command: true, shift: true), String(localized: "Duplicate Line")),
         (.character("k", command: true, shift: true), String(localized: "Delete Line")),
         (.special(.space, control: true), String(localized: "Show Completions")),
