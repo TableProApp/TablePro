@@ -475,6 +475,23 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
+    static func tableDDLConstraintsQuery(schema: String, table: String) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        return """
+            SELECT
+                pg_get_constraintdef(con.oid, true)
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = \(tableLiteral)
+              AND n.nspname = \(schemaLiteral)
+              AND con.contype IN ('p', 'u', 'c', 'x')
+            ORDER BY
+              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 ELSE 3 END
+            """
+    }
+
     /// Column introspection for one schema, read under `schemaRelativeReadPrefix(schema:)`.
     ///
     /// `declared_type` is what the column shows and `data_type` is what the app classifies by, which

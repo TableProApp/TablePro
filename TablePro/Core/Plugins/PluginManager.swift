@@ -83,6 +83,9 @@ final class PluginManager: ObservableObject {
     /// the session already has open so nothing the app owns wraps a transaction the user opened.
     /// Both have defaults (nil and `.unknown`), so an already-built plugin keeps loading and
     /// answers them; the minimum stays where it is and no bulk re-release is needed.
+    ///
+    /// 33 also adds `isValid` to `PluginIndexInfo`, through an added initializer with the previous
+    /// full one disfavoured; nil means the driver does not report it.
     nonisolated static let currentPluginKitVersion = 33
 
     /// Still 19, so every plugin already published for the previous release keeps loading.

@@ -125,10 +125,11 @@ enum MCPToolSchema {
             "columns": array(String(localized: "Indexed columns in order"), of: stringItem),
             "is_unique": boolean(String(localized: "Whether the index enforces uniqueness")),
             "is_primary": boolean(String(localized: "Whether the index backs the primary key")),
+            "is_valid": boolean(String(localized: "False for an index the engine reports as invalid, which queries skip and exports leave out")),
             "type": string(String(localized: "Index type reported by the engine")),
             "where_clause": string(String(localized: "Partial index predicate"))
         ],
-        required: ["name", "columns", "is_unique", "is_primary", "type"],
+        required: ["name", "columns", "is_unique", "is_primary", "is_valid", "type"],
         allowsAdditional: true
     )
 

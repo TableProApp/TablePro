@@ -182746,6 +182746,18 @@
     },
     "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
 
+    },
+    "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
+
+    },
+    "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
+
+    },
+    "Invalid indexes are not recreated: %@." : {
+
+    },
+    "False for an index the engine reports as invalid, which queries skip and exports leave out" : {
+
     }
   },
   "version" : "1.1"

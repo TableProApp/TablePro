@@ -107,6 +107,12 @@ Everything that runs goes to query history rather than the change queue.
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |
 
+### Invalid indexes
+
+A PostgreSQL `CREATE INDEX CONCURRENTLY` or `REINDEX CONCURRENTLY` that fails or is cancelled leaves an invalid index behind. It keeps its row in the list, and a line under the list names it. Queries skip it, but every write still updates it, and an invalid unique index still refuses duplicates. Delete the row and save to drop it, or run `REINDEX INDEX` on it in the SQL editor to build it again.
+
+The DDL tab, SQL exports and **Copy To** leave an invalid index out, the same as `pg_dump`, and [Compare & Sync](/features/compare-sync) never creates one on the target. An index on a partitioned table that is still waiting for a partition's index to be attached is not flagged, and exports keep it.
+
 ### Materialized views
 
 A materialized view's indexes list, add and drop the same way a table's do. The line under the list says whether **Refresh Materialized View** can refresh it concurrently, which keeps other sessions reading the view while it runs:

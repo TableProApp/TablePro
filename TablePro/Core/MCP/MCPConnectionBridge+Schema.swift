@@ -470,6 +470,7 @@ extension MCPConnectionBridge {
             "columns": .array(index.columns.map { .string($0) }),
             "is_unique": .bool(index.isUnique),
             "is_primary": .bool(index.isPrimary),
+            "is_valid": .bool(index.isValid),
             "type": .string(index.type)
         ]
         if let whereClause = index.whereClause, !whereClause.isEmpty {
