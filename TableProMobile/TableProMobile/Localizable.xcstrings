@@ -21034,6 +21034,9 @@
     },
     "Sequence" : {
 
+    },
+    "Foreign Table" : {
+
     }
   },
   "version" : "1.0"

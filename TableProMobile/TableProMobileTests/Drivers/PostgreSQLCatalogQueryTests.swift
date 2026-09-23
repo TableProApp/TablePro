@@ -37,6 +37,16 @@ struct PostgreSQLCatalogQueryTests {
         #expect(tables.first?.type.listSection == .views)
     }
 
+    @Test("a foreign table is listed as one, with no Truncate or Drop Table the server refuses")
+    func foreignTableKind() {
+        let tables = PostgreSQLDriver.tables(fromRows: [["ft", "FOREIGN TABLE", nil, nil]], databaseType: .postgresql)
+
+        #expect(tables.map(\.type) == [.foreignTable])
+        #expect(tables.first?.type.listSection == .tables)
+        #expect(tables.first?.type.allowsDrop == false)
+        #expect(tables.first?.type.allowsTruncate == false)
+    }
+
     @Test("the listing reads pg_matviews and pg_foreign_table only when the probe found them")
     func optionalCatalogsFollowTheProbe() {
         let withCatalogs = PostgreSQLDriver.tablesQuery(

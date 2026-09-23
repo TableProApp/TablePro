@@ -72,6 +72,19 @@ struct QueryResultMappingTests {
         #expect(!external.type.allowsRowEditing)
     }
 
+    @Test("A foreign table keeps its kind, in either spelling, and offers no Truncate or Drop Table")
+    func mapPluginForeignTable() {
+        let listed = TableInfo(from: PluginTableInfo(name: "ft", type: "FOREIGN TABLE"))
+        let informationSchema = TableInfo(from: PluginTableInfo(name: "ft", type: "FOREIGN"))
+
+        #expect(listed.type == .foreignTable)
+        #expect(informationSchema.type == .foreignTable)
+        #expect(!listed.type.allowsTruncate)
+        #expect(!listed.type.allowsDrop)
+        #expect(listed.type.allowsRowEditing)
+        #expect(listed.type.listSection == .tables)
+    }
+
     @Test("Maps PluginColumnInfo to ColumnInfo")
     func mapPluginColumnInfo() {
         let plugin = PluginColumnInfo(

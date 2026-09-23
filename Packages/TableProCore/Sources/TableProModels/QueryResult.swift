@@ -78,6 +78,7 @@ public struct TableInfo: Hashable, Sendable, Identifiable {
         case table
         case view
         case materializedView
+        case foreignTable
         case systemTable
         case externalTable
         case sequence
@@ -92,7 +93,7 @@ public struct TableInfo: Hashable, Sendable, Identifiable {
         /// which is what happened to a MariaDB sequence.
         public var listSection: ListSection {
             switch self {
-            case .table, .systemTable, .externalTable, .sequence: return .tables
+            case .table, .foreignTable, .systemTable, .externalTable, .sequence: return .tables
             case .view, .materializedView: return .views
             }
         }
@@ -102,7 +103,7 @@ public struct TableInfo: Hashable, Sendable, Identifiable {
         public var allowsTruncate: Bool {
             switch self {
             case .table: return true
-            case .view, .materializedView, .systemTable, .externalTable, .sequence: return false
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence: return false
             }
         }
 
@@ -115,7 +116,7 @@ public struct TableInfo: Hashable, Sendable, Identifiable {
         public var allowsDrop: Bool {
             switch self {
             case .table, .sequence: return true
-            case .view, .materializedView, .systemTable, .externalTable: return false
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable: return false
             }
         }
 
@@ -127,7 +128,7 @@ public struct TableInfo: Hashable, Sendable, Identifiable {
         /// why the Mac app withholds row editing for one and this must too.
         public var allowsRowEditing: Bool {
             switch self {
-            case .table, .systemTable: return true
+            case .table, .foreignTable, .systemTable: return true
             case .view, .materializedView, .externalTable, .sequence: return false
             }
         }
@@ -266,6 +267,8 @@ public extension TableInfo {
             kind = .view
         case "MATERIALIZED VIEW":
             kind = .materializedView
+        case "FOREIGN TABLE", "FOREIGN":
+            kind = .foreignTable
         case "SYSTEM TABLE":
             kind = .systemTable
         case "EXTERNAL TABLE":

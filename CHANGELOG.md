@@ -322,6 +322,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
 - PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
+- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
 
 ### Security
 

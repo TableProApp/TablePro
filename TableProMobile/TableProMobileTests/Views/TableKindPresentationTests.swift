@@ -19,6 +19,15 @@ struct TableKindPresentationTests {
         )
     }
 
+    @Test("a foreign table has the Mac's link symbol and its own spoken kind, apart from a table's")
+    func foreignTableIsNotATable() {
+        #expect(TableKindPresentation.systemImage(for: .foreignTable) == "link")
+        #expect(
+            TableKindPresentation.accessibilityKind(for: .foreignTable)
+                != TableKindPresentation.accessibilityKind(for: .table)
+        )
+    }
+
     @Test("every kind names a symbol the system has and a spoken kind of its own", arguments: TableInfo.TableKind.allCases)
     func everyKindIsPresented(kind: TableInfo.TableKind) {
         let symbol = TableKindPresentation.systemImage(for: kind)

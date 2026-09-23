@@ -112,7 +112,7 @@ On Redis the list holds the current database's keys. A key opens by type: a stri
 
 ### Editing
 
-Tap a row to open it full screen, page between rows, edit values, toggle one to `NULL`, and save. While you edit, **Cancel** takes the place of the back button and asks before it throws away a changed value, and so does **Connections** in another tab. Inserting and deleting rows, and truncating or dropping a table, are here too. Editing needs a primary key.
+Tap a row to open it full screen, page between rows, edit values, toggle one to `NULL`, and save. While you edit, **Cancel** takes the place of the back button and asks before it throws away a changed value, and so does **Connections** in another tab. Inserting and deleting rows, and truncating or dropping a table, are here too; a PostgreSQL foreign table offers neither Truncate nor Drop. Editing needs a primary key.
 
 A new row starts with every column on **DEFAULT**, which leaves that column out of the `INSERT` so the database fills it in. The badge beside a field switches it between **DEFAULT**, **NULL** and a typed value, and **NULL** is offered on nullable columns only. Generated columns are never written, and an auto-increment key stays on **DEFAULT** until you type one.
 

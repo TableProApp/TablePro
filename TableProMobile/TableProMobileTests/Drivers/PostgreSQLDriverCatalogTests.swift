@@ -5,6 +5,7 @@ import XCTest
 
 final class PostgreSQLDriverCatalogTests: XCTestCase {
     private static let schema = "ios_pg_catalog_test"
+    private static let foreignDataWrapper = "ios_pg_catalog_test_fdw"
 
     private var driver: PostgreSQLDriver?
 
@@ -41,6 +42,7 @@ final class PostgreSQLDriverCatalogTests: XCTestCase {
     override func tearDown() async throws {
         if let driver {
             _ = try? await driver.execute(query: "DROP SCHEMA IF EXISTS \(Self.schema) CASCADE")
+            _ = try? await driver.execute(query: "DROP FOREIGN DATA WRAPPER IF EXISTS \(Self.foreignDataWrapper) CASCADE")
             try await driver.disconnect()
         }
         driver = nil
@@ -61,6 +63,13 @@ final class PostgreSQLDriverCatalogTests: XCTestCase {
         "CREATE INDEX mv_expr_idx ON \(schema).mv (lower(mv_expr))"
     ]
 
+    private static let foreignTableFixture = [
+        "DROP FOREIGN DATA WRAPPER IF EXISTS \(foreignDataWrapper) CASCADE",
+        "CREATE FOREIGN DATA WRAPPER \(foreignDataWrapper)",
+        "CREATE SERVER ios_pg_catalog_test_server FOREIGN DATA WRAPPER \(foreignDataWrapper)",
+        "CREATE FOREIGN TABLE \(schema).ft (a int) SERVER ios_pg_catalog_test_server"
+    ]
+
     func testMaterializedViewIsListedAsOne() async throws {
         let driver = try XCTUnwrap(driver)
 
@@ -68,6 +77,23 @@ final class PostgreSQLDriverCatalogTests: XCTestCase {
 
         XCTAssertEqual(tables.map(\.name), ["mv", "t", "v"])
         XCTAssertEqual(tables.map(\.type), [.materializedView, .table, .view])
+    }
+
+    func testForeignTableIsListedAsOne() async throws {
+        let driver = try XCTUnwrap(driver)
+        do {
+            for statement in Self.foreignTableFixture {
+                _ = try await driver.execute(query: statement)
+            }
+        } catch {
+            throw XCTSkip("Creating a foreign data wrapper needs a superuser: \(error.localizedDescription)")
+        }
+
+        let tables = try await driver.fetchTables(schema: Self.schema)
+
+        XCTAssertEqual(tables.map(\.name), ["ft", "mv", "t", "v"])
+        XCTAssertEqual(tables.first?.type, .foreignTable)
+        XCTAssertEqual(tables.first?.type.allowsDrop, false)
     }
 
     func testIndexesKeepKeyOrderExpressionsIncludeColumnsAndPredicates() async throws {
