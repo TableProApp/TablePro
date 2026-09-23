@@ -44,6 +44,18 @@ extension OracleRawCell {
     }
 }
 
+extension OracleColumnRow {
+    var pluginColumnInfo: PluginColumnInfo {
+        PluginColumnInfo(
+            name: name,
+            dataType: displayType,
+            isNullable: isNullable,
+            isPrimaryKey: isPrimaryKey,
+            defaultValue: defaultValue
+        )
+    }
+}
+
 extension OracleRawResult {
     func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
         PluginQueryResult(

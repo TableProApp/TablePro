@@ -29,6 +29,9 @@ final class MainContentCommandActions: ObservableObject {
 
     internal weak var coordinator: MainContentCoordinator?
     private let connection: DatabaseConnection
+    internal var chooseSaveURL: @MainActor (String) async -> URL? = { suggestedName in
+        await SQLFileService.showSavePanel(suggestedName: suggestedName)
+    }
 
     // MARK: - Bindings
 
@@ -645,8 +648,8 @@ final class MainContentCommandActions: ObservableObject {
     ///
     /// Save proceeds with the close, per `NSDocument.canCloseDocumentWithDelegate`: "shouldClose
     /// will be YES if ... the user chose to discard modifications, or chose to save and the saving
-    /// was successful". `saveSelectedTabWork` returns false for the one case where saving cannot
-    /// finish on its own, staged principals, whose review sheet is now up and owns the decision.
+    /// was successful". `saveSelectedTabWork` returns false whenever the work is still unsaved
+    /// after the attempt, and the tab stays open.
     func closeTabAwaiting(id: UUID) async {
         guard let coordinator,
               let tab = coordinator.tabManager.tabs.first(where: { $0.id == id }) else { return }
@@ -828,7 +831,8 @@ final class MainContentCommandActions: ObservableObject {
     /// goes on to close and closing destroys it. User and role changes can only be applied after
     /// the SQL is reviewed, so Save opens the review sheet and stands the close down; a schema
     /// change that Safe Mode refused, that the user cancelled at the destructive prompt, or that
-    /// the server rejected stands it down for the same reason.
+    /// the server rejected stands it down for the same reason, and so does a file that changed on
+    /// disk, whose conflict sheet is now up, or a Save As the user cancelled.
     func saveSelectedTabWork() async -> Bool {
         guard let coordinator = coordinator else { return true }
 
@@ -868,8 +872,7 @@ final class MainContentCommandActions: ObservableObject {
 
         // File save (query editor with source file)
         if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
-            saveFileToSourceURL()
-            return true
+            return await saveSelectedFileAwaiting()
         }
 
         return true
@@ -1075,25 +1078,30 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func saveFileAs() {
+        Task { await saveFileAsAwaiting() }
+    }
+
+    @discardableResult
+    func saveFileAsAwaiting() async -> Bool {
         guard let tab = coordinator?.tabManager.selectedTab,
-              tab.tabType == .query else { return }
+              tab.tabType == .query else { return false }
         let content = tab.content.query
         let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
         let tabId = tab.id
-        Task {
-            guard let url = await SQLFileService.showSavePanel(suggestedName: suggestedName) else { return }
-            do {
-                try await SQLFileService.writeFile(content: content, to: url)
-                coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
-                    mutTab.content.sourceFileURL = url
-                    mutTab.content.savedFileContent = content
-                    mutTab.title = url.deletingPathExtension().lastPathComponent
-                }
-                coordinator?.tabManager.markTabRenamed(tabId)
-            } catch {
-                Self.logger.error("Failed to save file: \(error.localizedDescription)")
-            }
+        guard let url = await chooseSaveURL(suggestedName) else { return false }
+        do {
+            try await SQLFileService.writeFile(content: content, to: url)
+        } catch {
+            Self.logger.error("Failed to save file: \(error.localizedDescription)")
+            return false
         }
+        coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
+            mutTab.content.sourceFileURL = url
+            FileTabBaseline.recordWrite(of: content, to: url, in: &mutTab.content)
+            mutTab.title = url.deletingPathExtension().lastPathComponent
+        }
+        coordinator?.tabManager.markTabRenamed(tabId)
+        return true
     }
 
     var supportsExplain: Bool {

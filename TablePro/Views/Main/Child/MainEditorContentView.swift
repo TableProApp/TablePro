@@ -255,6 +255,40 @@ struct MainEditorContentView: View {
             queryInsightsContent(tab: tab)
         case .objectSource:
             objectSourceContent(tab: tab)
+        case .versionHistory:
+            versionHistoryContent(tab: tab)
+        }
+    }
+
+    // MARK: - Version History Tab Content
+
+    @ViewBuilder
+    private func versionHistoryContent(tab: QueryTab) -> some View {
+        if let subject = tab.display.versionHistorySubject {
+            VersionHistoryTabView(
+                tabId: tab.id,
+                subject: subject,
+                databaseType: connection.type,
+                exportFileName: Self.versionHistoryExportName(for: subject, title: tab.title),
+                onOpenInEditor: { content in
+                    coordinator.openVersionInEditor(content)
+                }
+            )
+            .id(subject)
+        } else {
+            UnavailableStateView(
+                String(localized: "No History"),
+                systemImage: "clock.arrow.circlepath"
+            )
+        }
+    }
+
+    private static func versionHistoryExportName(for subject: VersionHistorySubject, title: String) -> String {
+        switch subject {
+        case .linkedFile(let url):
+            return url.lastPathComponent
+        case .savedQuery:
+            return "query.sql"
         }
     }
 
@@ -439,12 +473,14 @@ struct MainEditorContentView: View {
             autosaveName: SplitViewAutosaveName.querySplit(connectionId: connectionId),
             topContent: {
                 VStack(spacing: 0) {
-                    if tab.content.externalModificationDetected,
+                    if let change = tab.content.diskChange,
                        let url = tab.content.sourceFileURL {
-                        FileModifiedOnDiskBanner(
+                        SourceFileDiskChangeBanner(
                             fileName: url.lastPathComponent,
-                            onReload: { reloadFileForTab(tabId: tab.id, url: url) },
-                            onDismiss: { dismissExternalModBanner(tabId: tab.id) }
+                            change: change,
+                            onReload: { coordinator.commandActions?.reloadFileFromDisk(tabId: tab.id, url: url) },
+                            onSaveAs: { coordinator.commandActions?.saveFileAs() },
+                            onDismiss: { dismissDiskChangeBanner(tabId: tab.id) }
                         )
                         Divider()
                     }
@@ -524,23 +560,8 @@ struct MainEditorContentView: View {
         }
     }
 
-    private func reloadFileForTab(tabId: UUID, url: URL) {
-        Task {
-            guard let loaded = FileTextLoader.load(url) else { return }
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-            await MainActor.run {
-                coordinator.tabManager.mutate(tabId: tabId) { tab in
-                    tab.content.query = loaded.content
-                    tab.content.savedFileContent = loaded.content
-                    tab.content.loadMtime = mtime
-                    tab.content.externalModificationDetected = false
-                }
-            }
-        }
-    }
-
-    private func dismissExternalModBanner(tabId: UUID) {
-        coordinator.tabManager.mutate(tabId: tabId) { $0.content.externalModificationDetected = false }
+    private func dismissDiskChangeBanner(tabId: UUID) {
+        coordinator.tabManager.mutate(tabId: tabId) { FileTabBaseline.dismissDiskChange(in: &$0.content) }
     }
 
     /// Both facts the toolbar's query items validate against, written together. They used to be one

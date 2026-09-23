@@ -1067,6 +1067,74 @@
         }
       }
     },
+    "\"%@\" was deleted or moved." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목이 삭제되었거나 이동되었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" silindi veya taşındı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" đã bị xoá hoặc di chuyển."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\"已被删除或移动。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」已被刪除或移動。"
+          }
+        }
+      }
+    },
+    "Couldn't Move File to Trash" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일을 휴지통으로 이동할 수 없음"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dosya Çöp Kutusu'na Taşınamadı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể chuyển tệp vào Thùng rác"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将文件移到废纸篓"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將檔案移到垃圾桶"
+          }
+        }
+      }
+    },
     "“%@” will be disconnected and any in-flight requests will be cancelled." : {
       "localizations" : {
         "ko" : {
@@ -6285,6 +6353,9 @@
           }
         }
       }
+    },
+    "%@ does not allow NULL, so its default cannot be NULL" : {
+
     },
     "%d added" : {
       "localizations" : {
@@ -106223,6 +106294,40 @@
         }
       }
     },
+    "Too many lines differ to compare line by line." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "달라진 줄이 너무 많아 줄 단위로 비교할 수 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satır satır karşılaştırmak için çok fazla satır farklı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có quá nhiều dòng khác nhau để so sánh từng dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，无法逐行比较。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，無法逐行比較。"
+          }
+        }
+      }
+    },
     "On error" : {
       "localizations" : {
         "ko" : {
@@ -163026,6 +163131,9 @@
     "This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them." : {
 
     },
+    "This column does not allow NULL, so its default cannot be NULL." : {
+
+    },
     "This column holds %@, which the map cannot draw." : {
 
     },
@@ -168992,6 +169100,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "待處理的配對碼過多。請稍後再試。"
+          }
+        }
+      }
+    },
+    "Saved queries are limited to %@ so they fit in iCloud. Save a query this large as a .sql file instead." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 쿼리는 iCloud에 맞도록 %@(으)로 제한됩니다. 이렇게 큰 쿼리는 .sql 파일로 저장하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı sorgular iCloud'a sığması için %@ ile sınırlıdır. Bu kadar büyük bir sorguyu .sql dosyası olarak kaydedin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đã lưu bị giới hạn ở %@ để vừa với iCloud. Hãy lưu truy vấn lớn như thế này thành tệp .sql."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为适配 iCloud，已保存的查询最大为 %@。请将这么大的查询另存为 .sql 文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為配合 iCloud，已儲存的查詢最大為 %@。請將這麼大的查詢另存為 .sql 檔案。"
           }
         }
       }
@@ -183057,6 +183199,41 @@
     },
     "This connection loads SQLite extensions, and their functions can read and write files. A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead." : {
 
+    },
+    "Changes from iCloud could not be saved on this device. They will download again on the next sync." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud의 변경 사항을 이 기기에 저장하지 못했습니다. 다음 동기화 때 다시 다운로드됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud'daki değişiklikler bu cihaza kaydedilemedi. Bir sonraki eşitlemede yeniden indirilecek."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể lưu các thay đổi từ iCloud trên thiết bị này. Chúng sẽ được tải lại ở lần đồng bộ tiếp theo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在本设备上保存来自 iCloud 的更改。下次同步时会重新下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在本裝置上儲存來自 iCloud 的變更。下次同步時會重新下載。"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

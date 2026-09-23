@@ -54,6 +54,10 @@ The cell holds the SQL that follows `DEFAULT`, so a string literal carries its o
 
 Typing straight into the cell is the same as **SQL expression**, so `pending` is a column reference and `'pending'` is the string. **Text** does the quoting and escaping for you.
 
+On MySQL and MariaDB a nullable column declared without a default has `DEFAULT NULL`, so its cell reads **NULL**, and **No default** on a nullable column saves as **NULL**.
+
+Setting **Nullable** to NO, or **Primary Key** to YES, clears a NULL default. A column you change so that it refuses NULL and defaults to NULL is reported before anything is saved.
+
 Auto-increment has its own **Auto Inc** field.
 
 <Frame caption="Every Default cell carries the chevron that opens the list">

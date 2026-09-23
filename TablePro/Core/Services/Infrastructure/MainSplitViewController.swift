@@ -1342,7 +1342,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource:
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory:
             return defaultDetailMinThickness
         }
     }

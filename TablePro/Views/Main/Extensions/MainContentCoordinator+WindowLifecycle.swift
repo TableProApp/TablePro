@@ -3,9 +3,10 @@
 //  TablePro
 //
 //  Window-lifecycle handlers invoked by TabWindowController's NSWindowDelegate
-//  methods. windowDidBecomeKey is intentionally lightweight (focus state +
-//  sidebar sync only) per Apple's documentation; visibility-scoped lazy-load
-//  lives in MainEditorContentView's `.task(id:)` modifier.
+//  methods. windowDidBecomeKey is intentionally lightweight (focus state,
+//  sidebar sync, and a file check that stats off the main actor) per Apple's
+//  documentation; visibility-scoped lazy-load lives in MainEditorContentView's
+//  `.task(id:)` modifier.
 //
 
 import AppKit
@@ -17,8 +18,9 @@ extension MainContentCoordinator {
     // MARK: - Window Delegate Dispatch
 
     /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
-    /// Updates focus state, refreshes file-based schema if stale, and syncs the
-    /// sidebar selection to the active tab. The one query-related action here is
+    /// Updates focus state, refreshes file-based schema if stale, starts a check of
+    /// each file-backed tab against its file on disk, and syncs the sidebar selection
+    /// to the active tab. The one query-related action here is
     /// consuming a deferred restore load: a restored background tab loads its data
     /// the first time its window becomes key. All other lazy-load is owned by
     /// `MainEditorContentView`'s `.task(id:)` modifier.
@@ -32,6 +34,7 @@ extension MainContentCoordinator {
         evictionTask = nil
 
         consumeDeferredRestoreLoadIfNeeded()
+        refreshSourceFileDiskChanges()
 
         recordSelectedTabContainer()
         syncSidebarObjectSelection()
