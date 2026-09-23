@@ -79,6 +79,40 @@ struct SQLLexicalReadingsTests {
         #expect(readings.contains { $0.contains(.taggedDollarQuotes) })
     }
 
+    @Test("A DynamoDB request whose JSON string escapes a quote is one statement to the driver")
+    func dynamoDBRequestKeepsEscapedQuotesInsideTheString() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "DynamoDB", declared: nil, session: nil)
+        let text = #"PutItem {"TableName": "t", "Item": {"a": {"S": "x\";y"}}}; SELECT * FROM "t""#
+
+        let executed = SQLStatementScanner.executableStatements(in: text, grammar: readings.execution).map(\.sql)
+
+        #expect(executed == [#"PutItem {"TableName": "t", "Item": {"a": {"S": "x\";y"}}}"#, #"SELECT * FROM "t""#])
+    }
+
+    @Test("DynamoDB keeps plain ANSI as a reading, so a gate still counts what PartiQL could split")
+    func dynamoDBGateReadsTheANSIReading() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "DynamoDB", declared: nil, session: nil)
+        let text = #"PutItem {"TableName": "t", "Item": {"a": {"S": "x\";y\";z"}}}; SELECT * FROM "t""#
+
+        let counts = readings.distinct(for: text).map {
+            SQLStatementScanner.executableStatements(in: text, grammar: $0).count
+        }
+
+        #expect(readings.all.contains(.ansi))
+        #expect(SQLStatementScanner.executableStatements(in: text, grammar: readings.execution).count == 2)
+        #expect(counts.max() == 3)
+    }
+
+    @Test("PartiQL's doubled quote still closes nothing under DynamoDB's execution grammar")
+    func dynamoDBPartiQLDoubledQuoteStillLexes() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "DynamoDB", declared: nil, session: nil)
+        let text = #"SELECT * FROM "a""b"; DELETE FROM "t""#
+
+        let executed = SQLStatementScanner.executableStatements(in: text, grammar: readings.execution).map(\.sql)
+
+        #expect(executed == [#"SELECT * FROM "a""b""#, #"DELETE FROM "t""#])
+    }
+
     @Test("Every combination of the undetermined facts is a reading")
     func undeterminedFactsExpand() {
         let profile = SQLLexicalProfile(grammar: .ansi, undetermined: [.hashLineComments, .nestedBlockComments])

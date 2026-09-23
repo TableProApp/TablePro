@@ -83,6 +83,12 @@ final class PluginManager: ObservableObject {
     /// the session already has open so nothing the app owns wraps a transaction the user opened.
     /// Both have defaults (nil and `.unknown`), so an already-built plugin keeps loading and
     /// answers them; the minimum stays where it is and no bulk re-release is needed.
+    ///
+    /// 33 also adds `createTableFormSpec(schema:)` and `createTableStatements(for:schema:)`, the
+    /// Create Table form a driver describes for tables that are not a list of typed columns. The
+    /// defaults answer nil and throw, so an already-built plugin keeps the column grid. It adds the
+    /// `modifyIndex` and `dropIndex` cases to the non-frozen `PluginSchemaOperation`, which an
+    /// already-built plugin answers through its `@unknown default`.
     nonisolated static let currentPluginKitVersion = 33
 
     /// Still 19, so every plugin already published for the previous release keeps loading.

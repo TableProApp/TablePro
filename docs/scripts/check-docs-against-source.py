@@ -264,7 +264,8 @@ def check_heading_case(root: Path, docs: Path) -> list[str]:
     ui = set()
     sources = [root / "TablePro", root / "Plugins", root / "Packages" / "TableProCore" / "Sources"]
     for swift in (path for source in sources for path in source.rglob("*.swift")):
-        ui |= set(re.findall(r'String\(localized:\s*"((?:[^"\\]|\\.)*)"', swift.read_text()))
+        ui |= set(re.findall(r'String\(\s*localized:\s*"((?:[^"\\]|\\.)*)"', swift.read_text()))
+    ui |= {re.sub(r"%(?:\d+\$)?(?:@|l{0,2}d)", "…", s) for s in ui}
 
     acronym = re.compile(r"^[A-Z0-9]{2,}$")
     inner = re.compile(r"^[A-Za-z][a-z0-9.]*[A-Z]")

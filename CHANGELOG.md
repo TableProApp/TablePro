@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Session**, with the agent session commands and the assistant's conversation commands.
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
+- DynamoDB reads that query the table, a local index or a global index when the grid's filters allow it.
+- Create Table form for DynamoDB: keys, capacity, table class, deletion protection and secondary indexes.
+- DynamoDB API requests in the editor, such as `CreateTable {…}`, `UpdateTimeToLive {…}` and `BatchWriteItem {…}`.
+- DynamoDB point-in-time recovery, deletion protection, stream, class and billing under **Maintenance**.
+- Adding and dropping a DynamoDB global secondary index from the **Structure** tab.
+- Nested DynamoDB attribute paths in the filter bar and autocomplete.
+- **DynamoDB Local (no credentials)** auth method.
+- Items read and read units for a DynamoDB browse in the result status bar.
 
 ### Changed
 
@@ -59,6 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- DynamoDB maps, lists and sets shown as plain JSON and edited in the JSON editor.
+- DynamoDB column types named as the AWS console names them: String, Number, Map, String Set.
+- DynamoDB region taken from the AWS profile when the connection names none.
+- DynamoDB table counts left to **Count Exactly**, with no automatic full-table count.
+- DynamoDB table DDL shown as the `CreateTable` request that recreates it.
+- Plain HTTP DynamoDB endpoint refused for any host but this Mac, instead of switched to HTTPS.
 
 ### Removed
 
@@ -321,6 +335,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- DynamoDB edits saving numbers, booleans, maps and sets as strings.
+- DynamoDB binary, map and long-text edits lost or saved as a fragment, and **Set NULL** leaving a NULL attribute.
+- Duplicated DynamoDB row saved with `__DEFAULT__` as its key.
+- Nine DynamoDB filter operators matching nothing, and an OR filter dropping other partitions' items.
+- DynamoDB column sort ignored, and each page re-reading every page before it.
+- DynamoDB **Count Exactly** never finishing.
+- DynamoDB export dropping attributes first seen after the first page.
+- DynamoDB PartiQL result cut to its first 1 MB.
+- DynamoDB **Stop** cancelling the wrong request, and throttled requests failing instead of retrying.
+- AWS SSO sign-in prompt never shown for DynamoDB.
+- DynamoDB connections to China and European Sovereign Cloud regions failing.
+- DynamoDB connection sampling every table on connect.
+- Imported DynamoDB connection losing its AWS Region.
+- Failed **Count Exactly** showing no error.
 
 ### Security
 

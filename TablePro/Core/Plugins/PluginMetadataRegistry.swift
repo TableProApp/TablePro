@@ -88,6 +88,10 @@ struct PluginMetadataSnapshot: Sendable {
         /// database, such as ClickHouse's `default`, leaves this false.
         var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
+        /// Whether an exact count reads the whole table and the engine bills that read, while its query language
+        /// has no `COUNT(*)`. DynamoDB is the case: a count is a `Scan` of every item. Such an engine is counted
+        /// only when the user asks, and only by its driver.
+        var exactRowCountIsBilledScan: Bool = false
         var isEngineReadOnly: Bool = false
 
         /// Which connection field carries the path of the local database file this driver opens,
@@ -708,6 +712,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
                     .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
+                exactRowCountIsBilledScan: existingSnapshot?.capabilities.exactRowCountIsBilledScan ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities

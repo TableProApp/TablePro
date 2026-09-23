@@ -170,6 +170,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .doubleSlashLineComments,
     ]
 
+    /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
+    /// JSON string. PartiQL, the other form, documents only a doubled quote, so plain ANSI is kept as an alternative
+    /// and a gate reads both. Not measured.
+    static let dynamoDB: SQLLexicalGrammar = [.backslashEscapesInDoubleQuotes]
+
     /// Engines whose statements are commands or JSON documents rather than SQL. Their splitting is what it has always
     /// been: a backslash escapes inside any quote, as it does in JSON and in `redis-cli`.
     static let commandLine: SQLLexicalGrammar = [
@@ -250,7 +255,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             ),
             "Cassandra": cqlFamily,
             "ScyllaDB": cqlFamily,
-            "DynamoDB": SQLLexicalProfile(grammar: .ansi, undetermined: [.carriageReturnEndsLineComments]),
+            "DynamoDB": SQLLexicalProfile(
+                grammar: dynamoDB,
+                alternatives: [.ansi],
+                undetermined: [.carriageReturnEndsLineComments]
+            ),
             "SurrealDB": SQLLexicalProfile(grammar: surrealQL, undetermined: [.carriageReturnEndsLineComments]),
             "Redis": commandLineFamily,
             "MongoDB": commandLineFamily,
