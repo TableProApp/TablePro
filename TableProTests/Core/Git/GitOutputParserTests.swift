@@ -299,4 +299,12 @@ struct FileTextLoaderDecodeTests {
         #expect(FileTextLoader.decode(Data(text.utf8)) == text)
         #expect(FileTextLoader.decode(Data([0x53, 0xE9])) == "Sé")
     }
+
+    @Test("A big-endian UTF-32 blob and an empty blob decode")
+    func bigEndianAndEmpty() throws {
+        let text = "SELECT 'é';"
+        let utf32 = try #require(text.data(using: .utf32BigEndian))
+        #expect(FileTextLoader.decode(Data([0x00, 0x00, 0xFE, 0xFF]) + utf32) == text)
+        #expect(FileTextLoader.decode(Data()) == "")
+    }
 }
