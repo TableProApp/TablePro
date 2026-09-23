@@ -7,7 +7,6 @@ import AppKit
 import SwiftUI
 
 struct QuickSwitcherPanelView: View {
-    let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
     let databaseType: DatabaseType
     let openTables: Set<QuickSwitcherOpenTable>
@@ -18,7 +17,6 @@ struct QuickSwitcherPanelView: View {
     @StateObject private var viewModel: QuickSwitcherViewModel
 
     init(
-        schemaProvider: SQLSchemaProvider,
         connectionId: UUID,
         databaseType: DatabaseType,
         openTables: Set<QuickSwitcherOpenTable> = [],
@@ -26,7 +24,6 @@ struct QuickSwitcherPanelView: View {
         onSelect: @escaping (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void,
         onDismiss: @escaping () -> Void
     ) {
-        self.schemaProvider = schemaProvider
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.openTables = openTables
@@ -44,7 +41,6 @@ struct QuickSwitcherPanelView: View {
         }
         .task {
             await viewModel.loadItems(
-                schemaProvider: schemaProvider,
                 databaseType: databaseType,
                 openTables: openTables,
                 browseSchema: browseSchema
@@ -296,6 +292,7 @@ struct QuickSwitcherPanelContent: View {
         .contextMenu { contextMenuActions(for: item) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(item.name))
+        .accessibilityValue(Text(namesLocation(item) ? item.subtitle : ""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onCommit(item, .open) }
         .id(item.id)
@@ -345,10 +342,17 @@ struct QuickSwitcherPanelContent: View {
     }
 
     /// A cross-connection result keeps its path while selected, because it names the connection
-    /// the commit is about to open and nothing else on the row carries that.
+    /// the commit is about to open and nothing else on the row carries that. A table in another
+    /// schema keeps its schema for the same reason.
     private func showsSubtitle(for item: QuickSwitcherItem, isSelected: Bool) -> Bool {
         guard !item.subtitle.isEmpty else { return false }
-        return !isSelected || item.target != nil
+        return !isSelected || namesLocation(item)
+    }
+
+    /// Spoken as well as shown, or two rows named `timesheet` in different schemas would read the
+    /// same to VoiceOver.
+    private func namesLocation(_ item: QuickSwitcherItem) -> Bool {
+        item.target != nil || item.isOutsideBrowsedSchema
     }
 
     private func commitHint(for item: QuickSwitcherItem) -> String {

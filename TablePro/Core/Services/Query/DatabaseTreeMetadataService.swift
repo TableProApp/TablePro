@@ -30,6 +30,15 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let table: String
     }
 
+    /// Keyed by the revision it was started under as well as the database, so a read that arrives
+    /// after a catalog change starts its own fetch instead of joining one that began before it.
+    /// `retrying` names the schemas a second read asks for, and is empty for a whole listing.
+    struct AllSchemaTablesLoadKey: Hashable, Sendable {
+        let database: DatabaseKey
+        let revision: Int
+        let retrying: Set<String>
+    }
+
     @Published private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
     @Published private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
     @Published private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
@@ -37,6 +46,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     @Published private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
     @Published private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
     @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[PartitionInfo]>] = [:]
+    @Published private(set) var allSchemaTablesState: [DatabaseKey: MetadataLoadState<CatalogTableListing.Result>] = [:]
 
     private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
     private let schemaDedup = OnceTask<DatabaseKey, [String]>()
@@ -45,6 +55,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
     private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
     private let partitionsDedup = OnceTask<PartitionsKey, [PartitionInfo]>()
+    private let allSchemaTablesDedup = OnceTask<AllSchemaTablesLoadKey, CatalogTableListing.Result>()
 
     private var databaseListFence = CommitFence<UUID>()
     private var schemaListFence = CommitFence<DatabaseKey>()
@@ -53,6 +64,8 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private var triggersFence = CommitFence<ObjectsKey>()
     private var typesFence = CommitFence<ObjectsKey>()
     private var partitionsFence = CommitFence<PartitionsKey>()
+    private var allSchemaTablesFence = CommitFence<DatabaseKey>()
+    private var allSchemaTablesFreshness = CatalogFreshness<DatabaseKey>()
 
     nonisolated private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
@@ -117,6 +130,110 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     ) -> MetadataLoadState<[PartitionInfo]> {
         let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
         return partitionsState[key] ?? .idle
+    }
+
+    func allSchemaTablesLoadState(
+        connectionId: UUID, database: String
+    ) -> MetadataLoadState<CatalogTableListing.Result> {
+        allSchemaTablesState[DatabaseKey(connectionId: connectionId, database: database)] ?? .idle
+    }
+
+    /// Engines whose tables live in schemas the sidebar does not list until they are opened. The
+    /// rest list a whole database in the one table list they already load.
+    nonisolated static func listsTablesPerSchema(_ strategy: GroupingStrategy) -> Bool {
+        switch strategy {
+        case .bySchema, .hierarchicalSchema: return true
+        case .flat, .byDatabase: return false
+        }
+    }
+
+    // MARK: - All-schema tables
+
+    /// Every schema's tables in one database, for the searches that have to judge a schema nobody
+    /// has expanded. Unlike the lists the tree draws, it refreshes when it is next read rather than
+    /// on every catalog change: a COMMIT reports a catalog change too, and relisting every schema
+    /// of the database on each one would pay for a listing nobody asked for.
+    func loadAllSchemaTables(connectionId: UUID, database: String) async {
+        guard isConnected(connectionId) else { return }
+        let key = DatabaseKey(connectionId: connectionId, database: database)
+        if allSchemaTablesFreshness.isCurrent(key) {
+            await retryUnlistedSchemas(key)
+            return
+        }
+        let revision = allSchemaTablesFreshness.revision(for: key)
+        allSchemaTablesState[key] = (allSchemaTablesState[key] ?? .idle).enteringLoad
+        let token = allSchemaTablesFence.token(for: key)
+        let outcome: MetadataFetchOutcome<CatalogTableListing.Result>
+        do {
+            let listing = try await allSchemaTablesDedup.execute(
+                key: AllSchemaTablesLoadKey(database: key, revision: revision, retrying: [])
+            ) { [self] in
+                try await fetchAllSchemaTables(key)
+            }
+            outcome = .fetched(listing)
+        } catch is CancellationError {
+            outcome = .cancelled
+        } catch {
+            outcome = .failed(error.localizedDescription)
+            Self.logger.warning(
+                "all-schema tables load failed db=\(database, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
+            )
+        }
+        guard allSchemaTablesFence.isCurrent(token, for: key) else { return }
+        if case .fetched = outcome, !allSchemaTablesFreshness.commit(revision, for: key) { return }
+        allSchemaTablesState[key] = (allSchemaTablesState[key] ?? .idle).settled(by: outcome, discardingValue: false)
+    }
+
+    /// A listing that could not read some schemas stays current for the rest, and only those are
+    /// asked for again on the next read. Relisting the whole database each time would repeat a
+    /// schema-by-schema listing for the one schema the role may never be able to read.
+    private func retryUnlistedSchemas(_ key: DatabaseKey) async {
+        guard let listing = allSchemaTablesState[key]?.value, !listing.unlistedSchemas.isEmpty else { return }
+        let schemas = listing.unlistedSchemas
+        let revision = allSchemaTablesFreshness.revision(for: key)
+        let token = allSchemaTablesFence.token(for: key)
+        let retry: CatalogTableListing.Result
+        do {
+            retry = try await allSchemaTablesDedup.execute(
+                key: AllSchemaTablesLoadKey(database: key, revision: revision, retrying: schemas)
+            ) { [self] in
+                try await fetchSchemaTables(key, schemas: schemas)
+            }
+        } catch {
+            return
+        }
+        guard allSchemaTablesFence.isCurrent(token, for: key),
+              allSchemaTablesFreshness.revision(for: key) == revision,
+              let current = allSchemaTablesState[key]?.value else { return }
+        allSchemaTablesState[key] = .loaded(current.merging(retry, retried: schemas))
+    }
+
+    func markAllSchemaTablesChanged(_ keys: some Sequence<DatabaseKey>) {
+        for key in keys {
+            allSchemaTablesFreshness.markChanged(key)
+        }
+    }
+
+    /// System schemas stay out, as they stay out of the tree until Show System is on.
+    private func fetchAllSchemaTables(_ key: DatabaseKey) async throws -> CatalogTableListing.Result {
+        guard let session = DatabaseManager.shared.session(for: key.connectionId) else {
+            throw DatabaseError.notConnected
+        }
+        let systemSchemas = Set(PluginManager.shared.systemSchemaNames(for: session.connection.type))
+        return try await CatalogTableListing.tables(in: try listingScope(key), excludingSchemas: systemSchemas)
+    }
+
+    private func fetchSchemaTables(_ key: DatabaseKey, schemas: Set<String>) async throws -> CatalogTableListing.Result {
+        try await CatalogTableListing.tables(inSchemas: schemas.sorted(), scope: try listingScope(key))
+    }
+
+    private func listingScope(_ key: DatabaseKey) throws -> DatabaseScope {
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: key.database, schema: nil, for: key.connectionId
+        ) else {
+            throw DatabaseError.notConnected
+        }
+        return scope
     }
 
     // MARK: - Loads
@@ -658,6 +775,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     func handleReconnect(connectionId: UUID) async {
         supersedeEveryKey(of: connectionId)
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
+        markAllSchemaTablesChanged(allSchemaTablesState.keys.filter { $0.connectionId == connectionId })
         await resetPending(connectionId: connectionId)
     }
 
@@ -684,6 +802,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         for key in connectionPartitionKeys(connectionId) {
             await partitionsDedup.cancel(key: key)
         }
+        await allSchemaTablesDedup.cancel { $0.database.connectionId == connectionId }
+        allSchemaTablesFreshness.removeAll { $0.connectionId == connectionId }
+        allSchemaTablesState = allSchemaTablesState.filter { $0.key.connectionId != connectionId }
         databaseList.removeValue(forKey: connectionId)
         schemaList = schemaList.filter { $0.key.connectionId != connectionId }
         tablesState = tablesState.filter { $0.key.connectionId != connectionId }
@@ -716,6 +837,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         for key in connectionPartitionKeys(connectionId) {
             partitionsFence.supersede(key)
         }
+        for key in allSchemaTablesState.keys where key.connectionId == connectionId {
+            allSchemaTablesFence.supersede(key)
+        }
     }
 
     private func resetPending(connectionId: UUID) async {
@@ -744,6 +868,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         for key in partitionKeys where isPending(partitionsState[key]) {
             await partitionsDedup.cancel(key: key)
         }
+        let allSchemaKeys = allSchemaTablesState.keys.filter { $0.connectionId == connectionId }
+        await allSchemaTablesDedup.cancel { $0.database.connectionId == connectionId }
+        for key in allSchemaKeys where isPending(allSchemaTablesState[key]) { allSchemaTablesState[key] = .idle }
 
         if isPending(databaseList[connectionId]) { databaseList[connectionId] = .idle }
         for key in schemaKeys where isPending(schemaList[key]) { schemaList[key] = .idle }

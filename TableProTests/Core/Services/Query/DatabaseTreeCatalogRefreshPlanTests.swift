@@ -160,4 +160,44 @@ struct DatabaseTreeCatalogRefreshPlanTests {
 
         #expect(result.schemaLists == [shop])
     }
+
+    private func allSchemaPlan(_ change: CatalogChange, keys: [DatabaseKey]) -> CatalogTreeRefreshPlan {
+        DatabaseTreeMetadataService.catalogRefreshPlan(
+            for: change,
+            hasDatabaseList: false,
+            schemaListKeys: [DatabaseKey](),
+            tableKeys: [ObjectsKey](),
+            routineKeys: [ObjectsKey](),
+            triggerKeys: [ObjectsKey](),
+            typeKeys: [ObjectsKey](),
+            allSchemaTableKeys: keys
+        )
+    }
+
+    @Test("a table or schema change reaches the all-schema listing of its database only")
+    func allSchemaListingFollowsItsDatabase() {
+        let shop = DatabaseKey(connectionId: connectionId, database: "shop")
+        let warehouse = DatabaseKey(connectionId: connectionId, database: "warehouse")
+        let other = DatabaseKey(connectionId: UUID(), database: "shop")
+
+        let tables = allSchemaPlan(
+            CatalogChange(connectionId: connectionId, database: "shop", kinds: .tables),
+            keys: [shop, warehouse, other]
+        )
+        let schemas = allSchemaPlan(CatalogChange(connectionId: connectionId, kinds: .schemas), keys: [shop, warehouse])
+
+        #expect(tables.allSchemaTables == [shop])
+        #expect(schemas.allSchemaTables == [shop, warehouse])
+        #expect(!tables.isEmpty)
+    }
+
+    @Test("a change that cannot touch a table leaves the all-schema listing alone")
+    func routineChangeLeavesAllSchemaListing() {
+        let shop = DatabaseKey(connectionId: connectionId, database: "shop")
+
+        let result = allSchemaPlan(CatalogChange(connectionId: connectionId, kinds: .routines), keys: [shop])
+
+        #expect(result.allSchemaTables.isEmpty)
+        #expect(result.isEmpty)
+    }
 }

@@ -30,8 +30,8 @@ The segmented control under the search field sets the scope. It stays on screen,
 
 | Scope | Key | Covers |
 |-------|-----|--------|
-| **All** | `Cmd+1` | Tables, views, databases, schemas, and saved queries in this connection, plus its last 50 queries |
-| **Tables** | `Cmd+2` | Tables, views, and system tables |
+| **All** | `Cmd+1` | Tables and views in every schema of this connection's database, plus its databases, schemas, saved queries, and last 50 queries |
+| **Tables** | `Cmd+2` | Tables, views, and system tables in every schema |
 | **Databases** | `Cmd+3` | Databases and schemas |
 | **Queries** | `Cmd+4` | Saved queries and recent queries, from every connected window |
 | **Connections** | `Cmd+5` | Tables, views, and system tables in every connected window |
@@ -39,6 +39,22 @@ The segmented control under the search field sets the scope. It stays on screen,
 Leave the search empty in any scope other than All and everything in it is listed under section headers. Saved queries come from your [favorites](/features/favorites) and match on their keyword as well as their name, so a keyword you use in the editor reaches the query from here too.
 
 Opening a table or view opens a table tab, a database or schema switches the connection to it, and a query loads into the SQL editor without running it.
+
+## Other schemas
+
+A table outside the schema the sidebar is browsing shows its schema at the end of the row, `attendance` or `attendance · View`, and keeps it while selected. Opening it leaves the connection on the schema it was browsing.
+
+Type a dot to search by where a table lives:
+
+| Search | Finds |
+|--------|-------|
+| `attendance.timesheet` | `timesheet` in `attendance`, and no other `timesheet` |
+| `attendance.` | Everything in `attendance` |
+| `att.time` | The same table, since each part matches fuzzily |
+| `shop.attendance.timesheet` | The table, when `shop` is the database the connection is browsing |
+| `"my.schema".orders` | `orders` in a schema whose name holds a dot. Backticks and square brackets quote too |
+
+The browsed schema's tables are listed as the panel opens, and the rest arrive after one catalog query on PostgreSQL or one query per schema on other engines. Until then the panel reads **Loading…** rather than reporting no results.
 
 ## Across connections
 
@@ -60,13 +76,15 @@ A table already open in a tab shows an **Open** badge, and the hint on the selec
 
 ## Ranking
 
-An empty search shows **Recent**: the last 10 items you opened through the panel on this connection. Once you type, a match on the name beats a match on the connection and database path beside it, tables rank above other kinds, and anything you open often through the panel or already have open in a tab moves up. The list stops at 200 results.
+An empty search shows **Recent**: the last 10 items you opened through the panel on this connection. Once you type, a match on the name beats a match on the connection and database path beside it, tables rank above other kinds, and anything you open often through the panel or already have open in a tab moves up. Between two equal matches, the table in the browsed schema comes first. The list stops at 200 results.
 
 ## When a table is not listed
 
-- The list covers the database the connection is browsing. To reach a table somewhere else, switch database first, then search again.
+- The list covers every schema of the database the connection is browsing. To reach a table in another database, switch database first, then search again.
+- System schemas such as `pg_catalog` and `information_schema` are left out.
+- A table created in another schema since the panel last listed that schema appears the next time you open the panel.
 - The **Databases** scope offers the databases the sidebar's database filter keeps, plus every system database. Clear the filter with **View > Show All Databases**.
-- The **Connections** scope covers connected windows only, and only the database each one is browsing.
+- The **Connections** scope covers connected windows only, and only the database and schema each one is browsing.
 
 ## Right-click actions
 

@@ -25,6 +25,12 @@ extension DatabaseTreeOutlineCoordinator {
                 if outlineView.isItemExpanded(sectionNode) { restorePartitionExpansion(under: sectionNode) }
             case .redisKeysSection:
                 setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
+            case .schema:
+                setExpanded(sectionNode, true)
+                if outlineView.isItemExpanded(sectionNode) {
+                    triggerLoad(for: sectionNode)
+                    restoreObjectGroupExpansion(under: sectionNode)
+                }
             case .hierarchicalSchemaSection(let schema):
                 let want = searching
                     ? hierarchicalSchemaMatches(schema)
@@ -53,7 +59,7 @@ extension DatabaseTreeOutlineCoordinator {
             for schemaNode in resolvedChildren(of: databaseNode) {
                 guard case .schema(let database, let schema) = schemaNode.kind else { continue }
                 let wantSchema = searching
-                    ? DatabaseTreeFilter.matches(searchText, schema) || schemaContentMatchesSearch(database: database, schema: schema)
+                    ? schemaSearchVerdict(database: database, schema: schema) == .match
                     : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
                 setExpanded(schemaNode, wantSchema)
                 if outlineView.isItemExpanded(schemaNode) {
