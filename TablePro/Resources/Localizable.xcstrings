@@ -182881,6 +182881,9 @@
     },
     "An extension runs inside TablePro with full access to your Mac. Load them only if you trust these files." : {
 
+    },
+    "The path of an extension in the list contains a line break or another control character." : {
+
     }
   },
   "version" : "1.1"

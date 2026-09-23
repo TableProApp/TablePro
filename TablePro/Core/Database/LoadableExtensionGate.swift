@@ -28,15 +28,19 @@ internal enum LoadableExtensionGate {
             .flatMap { (try? LoadableExtensionList.decode(connection.additionalFields[$0.id])) ?? [] }
     }
 
-    /// The declared extensions this Mac has not approved for the connection. Empty for a live session
-    /// on a server, where the driver refuses a list itself: asking would approve files that cannot load.
+    /// The declared extensions this Mac has not approved for the connection. Nothing stored with the
+    /// connection can exempt a list: every field of it can arrive from an import or another device,
+    /// so a list that would not load anyway (a live session on a server) is asked about all the same.
+    /// A list that fails validation is not asked about, since the connect refuses it before loading
+    /// anything, and a path with a line break in it could otherwise write its own lines into the alert.
     internal static func pendingApproval(
         for connection: DatabaseConnection,
         fields: [ConnectionField]? = nil,
         approvals: LoadableExtensionApproving = LoadableExtensionApprovalStore.shared
     ) -> [LoadableExtension] {
-        guard !runsOnServer(connection) else { return [] }
-        return approvals.unapproved(declaredExtensions(for: connection, fields: fields), for: connection.id)
+        let declared = declaredExtensions(for: connection, fields: fields)
+        guard (try? LoadableExtensionPreflight.validate(declared)) != nil else { return [] }
+        return approvals.unapproved(declared, for: connection.id)
     }
 
     /// The fields a driver for `connection` is built with. Hidden extension lists are dropped, and a
@@ -53,14 +57,10 @@ internal enum LoadableExtensionGate {
             && !fields.isVisible(field, forValues: connection.additionalFields) {
             authorized.removeValue(forKey: field.id)
         }
+        try LoadableExtensionPreflight.validate(declaredExtensions(for: connection, fields: fields))
         let pending = pendingApproval(for: connection, fields: fields, approvals: approvals)
         guard pending.isEmpty else { throw LoadableExtensionApprovalError.notApproved(pending) }
         return authorized
-    }
-
-    private static func runsOnServer(_ connection: DatabaseConnection) -> Bool {
-        connection.opensRemoteDatabaseSession
-            || connection.additionalFields[RemoteSQLiteWire.backendFieldKey] == RemoteSQLiteWire.agentBackendValue
     }
 }
 

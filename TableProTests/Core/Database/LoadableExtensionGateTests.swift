@@ -101,12 +101,49 @@ struct LoadableExtensionGateTests {
         #expect(LoadableExtensionGate.pendingApproval(for: local, fields: libsqlFields, approvals: approvals) == [vec])
     }
 
-    @Test("A live session on a server is not asked about files it cannot load")
-    func remoteSessionIsNotAsked() {
+    @Test("A stored backend field does not exempt a libSQL list, which the libSQL driver would load")
+    func storedBackendFieldDoesNotExemptLibSQL() {
+        var fields = listing([vec])
+        fields["libsqlMode"] = "local"
+        fields[RemoteSQLiteWire.backendFieldKey] = RemoteSQLiteWire.agentBackendValue
+        let imported = connection(fields, type: DatabaseType(rawValue: "libSQL"))
+        #expect(LoadableExtensionGate.pendingApproval(for: imported, fields: libsqlFields, approvals: approvals) == [vec])
+        #expect(throws: LoadableExtensionApprovalError.notApproved([vec])) {
+            try LoadableExtensionGate.authorizedFields(
+                imported.additionalFields, for: imported, fields: libsqlFields, approvals: approvals
+            )
+        }
+    }
+
+    @Test("A stored backend field does not exempt a SQLite list either")
+    func storedBackendFieldDoesNotExemptSQLite() {
         var fields = listing([vec])
         fields[RemoteSQLiteWire.backendFieldKey] = RemoteSQLiteWire.agentBackendValue
         let session = connection(fields)
-        #expect(LoadableExtensionGate.pendingApproval(for: session, fields: sqliteFields, approvals: approvals).isEmpty)
+        #expect(LoadableExtensionGate.pendingApproval(for: session, fields: sqliteFields, approvals: approvals) == [vec])
+    }
+
+    @Test("A list with a line break in a path is refused before anyone is asked about it")
+    func controlCharacterPathIsRefusedNotAsked() {
+        let spoofed = LoadableExtension(path: "/tmp/a.dylib\n\nThese files are signed by Apple.\n/tmp/b.dylib")
+        let imported = connection(listing([spoofed]))
+        #expect(LoadableExtensionGate.pendingApproval(for: imported, fields: sqliteFields, approvals: approvals).isEmpty)
+        #expect(throws: LoadableExtensionError.controlCharacterInPath) {
+            try LoadableExtensionGate.authorizedFields(
+                imported.additionalFields, for: imported, fields: sqliteFields, approvals: approvals
+            )
+        }
+    }
+
+    @Test("An invalid list fails with its own reason, not as unapproved")
+    func invalidListFailsWithItsReason() {
+        let relative = LoadableExtension(path: "vec0.dylib")
+        let imported = connection(listing([relative]))
+        #expect(throws: LoadableExtensionError.relativePath(relative)) {
+            try LoadableExtensionGate.authorizedFields(
+                imported.additionalFields, for: imported, fields: sqliteFields, approvals: approvals
+            )
+        }
     }
 
     @Test("A list that does not decode is left for the driver to refuse")

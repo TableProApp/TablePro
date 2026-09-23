@@ -16,6 +16,9 @@ public enum LoadableExtensionPreflight {
         var seen = Set<LoadableExtension>()
         for item in extensions {
             guard !item.path.isEmpty else { throw LoadableExtensionError.missingPath }
+            guard !item.path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+                throw LoadableExtensionError.controlCharacterInPath
+            }
             guard item.expandedPath.hasPrefix("/") else { throw LoadableExtensionError.relativePath(item) }
             guard item.expandedPath.utf8.count <= maximumPathLength else {
                 throw LoadableExtensionError.pathTooLong(item)

@@ -6,6 +6,7 @@ import Foundation
 public enum LoadableExtensionError: Error, Equatable, Sendable {
     case malformedList
     case missingPath
+    case controlCharacterInPath
     case relativePath(LoadableExtension)
     case pathTooLong(LoadableExtension)
     case invalidEntryPoint(LoadableExtension)
@@ -27,7 +28,8 @@ public enum LoadableExtensionError: Error, Equatable, Sendable {
              .damagedSignature(let item), .entryPointNotFound(let item, _),
              .initializationFailed(let item, _), .libraryNotLoaded(let item, _):
             return item
-        case .malformedList, .missingPath, .loadingUnavailable, .loadingNotClosed, .remoteSession:
+        case .malformedList, .missingPath, .controlCharacterInPath, .loadingUnavailable, .loadingNotClosed,
+             .remoteSession:
             return nil
         }
     }
@@ -47,6 +49,8 @@ extension LoadableExtensionError: LocalizedError {
             return String(localized: "The saved extension list is not in a format TablePro can read.")
         case .missingPath:
             return String(localized: "An extension in the list has no file.")
+        case .controlCharacterInPath:
+            return String(localized: "The path of an extension in the list contains a line break or another control character.")
         case .relativePath(let item):
             return String(format: String(localized: "\"%@\" is not a full path."), item.path)
         case .pathTooLong(let item):
@@ -87,7 +91,7 @@ extension LoadableExtensionError: LocalizedError {
             return String(localized: "Use the name of a C function, such as sqlite3_vec_init, or leave it empty.")
         case .duplicate:
             return String(localized: "Remove the second entry.")
-        case .fileNotFound, .notAFile:
+        case .fileNotFound, .notAFile, .controlCharacterInPath:
             return String(localized: "Choose the extension's file again in Edit Connection.")
         case .damagedSignature(let item):
             return String(format: String(localized: "Sign it again with: codesign --force --sign - \"%@\""), item.path)
