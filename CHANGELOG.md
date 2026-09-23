@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Session**, with the agent session commands and the assistant's conversation commands.
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
+- Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
 
@@ -74,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
+- Schemas missing from Open Quickly on every reopen after one failed to load.
+- Unexpanded schemas hidden by the sidebar filter in the Tree layout.
+- Empty object sections opened as "No items" under every match while filtering the sidebar tree.
+- **Drop View** offered in Recent for a sequence or materialized view opened from Open Quickly.
 - Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
 - Raw Oracle driver error in the schema switch failure dialog. (#3053)
 - Oracle health check closing a connection a statement was still running on. (#3053)

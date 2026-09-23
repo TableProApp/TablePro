@@ -23,8 +23,6 @@ extension MainContentCoordinator {
             FeatureTipSignals.quickSwitcherOpened()
         }
         let browseSchema = services.databaseManager.session(for: connectionId)?.browseSchema
-        let switcherScope = browseScope
-            ?? DatabaseScope(connectionId: connectionId, database: connection.database, schema: nil)
         let openTables = Set(
             tabManager.tabs
                 .filter { $0.tabType == .table }
@@ -38,7 +36,6 @@ extension MainContentCoordinator {
                 }
         )
         let panelView = QuickSwitcherPanelView(
-            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: switcherScope),
             connectionId: connectionId,
             databaseType: connection.type,
             openTables: openTables,
@@ -69,6 +66,7 @@ extension MainContentCoordinator {
                 schema: schemaName,
                 showStructure: intent == .openStructure,
                 isView: item.isReadOnly,
+                objectType: item.tableType,
                 activateGridFocus: true,
                 forceNewTab: intent == .openInNewWindowTab
             )
@@ -79,6 +77,7 @@ extension MainContentCoordinator {
                 schema: schemaName,
                 showStructure: intent == .openStructure,
                 isView: true,
+                objectType: item.tableType,
                 activateGridFocus: true,
                 forceNewTab: intent == .openInNewWindowTab
             )
@@ -121,6 +120,7 @@ extension MainContentCoordinator {
                 item.name,
                 schema: target.schemaName,
                 isView: item.kind == .view || item.isReadOnly,
+                objectType: item.tableType,
                 activateGridFocus: true,
                 forceNewTab: intent == .openInNewWindowTab
             )
