@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -98,7 +99,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let dbs = try await conn.listDatabases()
                 currentDb = dbs.first { !Self.systemDatabases.contains($0) } ?? dbs.first ?? ""
             } catch {
-                Self.logger.warning("listDatabases failed during connect, continuing without default database: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("listDatabases failed during connect, continuing without default database: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
         }
 

@@ -20,10 +20,12 @@ struct CatalogTreeRefreshPlan: Equatable, Sendable {
     var routines: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var triggers: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var types: Set<DatabaseTreeMetadataService.ObjectsKey> = []
+    /// Marked stale rather than refetched, for the reason `loadAllSchemaTables` gives.
+    var allSchemaTables: Set<DatabaseTreeMetadataService.DatabaseKey> = []
 
     var isEmpty: Bool {
         !refreshesDatabaseList && schemaLists.isEmpty && tables.isEmpty && partitions.isEmpty
-            && routines.isEmpty && triggers.isEmpty && types.isEmpty
+            && routines.isEmpty && triggers.isEmpty && types.isEmpty && allSchemaTables.isEmpty
     }
 }
 
@@ -41,9 +43,11 @@ extension DatabaseTreeMetadataService {
             partitionKeys: partitionsState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
-            typeKeys: typesState.keys
+            typeKeys: typesState.keys,
+            allSchemaTableKeys: allSchemaTablesState.keys
         )
         guard !plan.isEmpty else { return }
+        markAllSchemaTablesChanged(plan.allSchemaTables)
         let databaseType = DatabaseManager.shared.session(for: change.connectionId)?.connection.type
         await withTaskGroup(of: Void.self) { group in
             if plan.refreshesDatabaseList, let databaseType {
@@ -88,7 +92,8 @@ extension DatabaseTreeMetadataService {
         partitionKeys: some Sequence<PartitionsKey> = EmptyCollection(),
         routineKeys: some Sequence<ObjectsKey>,
         triggerKeys: some Sequence<ObjectsKey>,
-        typeKeys: some Sequence<ObjectsKey>
+        typeKeys: some Sequence<ObjectsKey>,
+        allSchemaTableKeys: some Sequence<DatabaseKey> = EmptyCollection()
     ) -> CatalogTreeRefreshPlan {
         func reached(_ key: ObjectsKey) -> Bool {
             key.connectionId == change.connectionId && change.reaches(database: key.database, schema: key.schema)
@@ -117,6 +122,11 @@ extension DatabaseTreeMetadataService {
         plan.routines = objectKeys(routineKeys, for: .routines)
         plan.triggers = objectKeys(triggerKeys, for: .triggers)
         plan.types = objectKeys(typeKeys, for: .types)
+        if !change.kinds.isDisjoint(with: [.tables, .schemas]) {
+            plan.allSchemaTables = Set(allSchemaTableKeys.filter { key in
+                key.connectionId == change.connectionId && change.reaches(database: key.database)
+            })
+        }
         return plan
     }
 }

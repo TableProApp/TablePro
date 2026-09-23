@@ -920,9 +920,8 @@ final class SyncCoordinator: ObservableObject {
             try applySettingsData(data, for: category)
         } catch {
             let recordName = record.recordID.recordName
-            let message = error.localizedDescription
             Self.logger.error(
-                "Skipping remote settings \(recordName, privacy: .public) (\(category, privacy: .public)): \(message, privacy: .public)"
+                "Skipping remote settings \(recordName, privacy: .private(mask: .hash)) (\(category, privacy: .private(mask: .hash))): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
         }
     }
@@ -934,9 +933,8 @@ final class SyncCoordinator: ObservableObject {
             entry = try SyncRecordMapper.favoriteEntry(from: record)
         } catch {
             let recordName = record.recordID.recordName
-            let message = error.localizedDescription
             Self.logger.error(
-                "Skipping remote favorite table \(recordName, privacy: .public): \(message, privacy: .public)"
+                "Skipping remote favorite table \(recordName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return false
         }
@@ -952,9 +950,8 @@ final class SyncCoordinator: ObservableObject {
             entry = try SyncRecordMapper.favoriteDatabase(from: record)
         } catch {
             let recordName = record.recordID.recordName
-            let message = error.localizedDescription
             Self.logger.error(
-                "Skipping remote favorite database \(recordName, privacy: .public): \(message, privacy: .public)"
+                "Skipping remote favorite database \(recordName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return
         }

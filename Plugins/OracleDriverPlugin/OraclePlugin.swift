@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProOracleCore
 import TableProPluginKit
 
@@ -250,7 +251,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             try await connection.captureServerOutput()
         } catch {
-            Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(String(describing: error), privacy: .public)")
+            Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(String(describing: error), privacy: .private)")
         }
 
         if let result = try? await connection.executeQuery(OracleSchemaQueries.currentSchema),

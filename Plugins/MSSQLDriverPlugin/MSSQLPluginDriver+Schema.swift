@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProMSSQLCore
 import TableProPluginKit
 
@@ -433,7 +434,7 @@ extension MSSQLPluginDriver {
                 metadata.append(try await fetchDatabaseMetadata(name))
             } catch {
                 Self.metadataLogger.debug(
-                    "No metadata for database \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "No metadata for database \(name, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
                 )
                 unreadable.insert(name)
                 metadata.append(PluginDatabaseMetadata(name: name))
@@ -458,7 +459,7 @@ extension MSSQLPluginDriver {
             }
             return sizes
         } catch {
-            Self.metadataLogger.debug("Server-wide database sizes unavailable: \(error.localizedDescription, privacy: .public)")
+            Self.metadataLogger.debug("Server-wide database sizes unavailable: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return [:]
         }
     }

@@ -26,8 +26,8 @@ struct QuickSwitcherHistoryItemTests {
         )
     }
 
-    private func makeItem(_ id: String, kind: QuickSwitcherItemKind) -> QuickSwitcherItem {
-        QuickSwitcherItem(id: id, name: id, kind: kind, subtitle: "")
+    private func makeItem(_ key: String, kind: QuickSwitcherItemKind) -> QuickSwitcherItem {
+        QuickSwitcherItem(frecencyKey: key, name: key, kind: kind, subtitle: "")
     }
 
     @Test("repeated executions collapse to one entry")
@@ -67,6 +67,14 @@ struct QuickSwitcherHistoryItemTests {
 
         #expect(QuickSwitcherViewModel.distinctByQuery([plain, padded]).count == 1)
         #expect(QuickSwitcherViewModel.distinctByQuery([plain, different]).count == 2)
+    }
+
+    @Test("one statement run on two connections stays one entry per connection")
+    func sameStatementOnTwoConnectionsStaysTwoEntries() {
+        let first = makeEntry(query: "SELECT a", connectionId: UUID())
+        let second = makeEntry(query: "SELECT a", connectionId: UUID())
+
+        #expect(QuickSwitcherViewModel.distinctByQuery([first, second]).map(\.id) == [first.id, second.id])
     }
 
     @Test("blank statements are dropped rather than shown as an empty row")

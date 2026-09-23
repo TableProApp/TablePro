@@ -50,12 +50,7 @@ enum PostgreSQLSchemaQueries {
     /// literally; without an `ESCAPE` clause, `_` would be SQL LIKE's
     /// single-char wildcard and `'pg_%'` would also exclude legitimate user
     /// schemas such as `pgboss`, `pgcrypto`, or `pgvector`.
-    static let listSchemas = """
-        SELECT schema_name FROM information_schema.schemata
-        WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
-          AND schema_name <> 'information_schema'
-        ORDER BY schema_name
-        """
+    static let listSchemas = PostgreSQLTableListing.visibleSchemas
 
     /// Redshift variant: queries `pg_namespace` directly and additionally
     /// requires the connected role to hold `USAGE` on the schema.
