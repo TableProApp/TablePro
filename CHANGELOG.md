@@ -107,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No changed-on-disk notice for an SQL file outside a linked folder or replaced by an older copy, and Save overwriting it.
 - Saved queries and their folders deleted at launch when their connection had not arrived from iCloud.
 - Saved queries left naming a deleted folder on other devices after that folder was deleted.
+- Unresponsive app when saving over a large SQL file that changed on disk.
 - A keyword two linked SQL files both declared reaching a different file on each launch.
 - A keyword a saved query shared with a global one reaching either query, depending on the connection.
 - Silent failure moving a linked SQL file to the Trash, and an open tab recreating a deleted file on save.

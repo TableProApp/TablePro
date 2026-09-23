@@ -106294,6 +106294,40 @@
         }
       }
     },
+    "Too many lines differ to compare line by line." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "달라진 줄이 너무 많아 줄 단위로 비교할 수 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satır satır karşılaştırmak için çok fazla satır farklı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có quá nhiều dòng khác nhau để so sánh từng dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，无法逐行比较。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，無法逐行比較。"
+          }
+        }
+      }
+    },
     "On error" : {
       "localizations" : {
         "ko" : {
