@@ -8,6 +8,7 @@
 //  cancellation cleared isExecuting asynchronously.
 //
 
+import Combine
 import Foundation
 import Testing
 
@@ -374,5 +375,19 @@ struct MainContentCoordinatorRefreshTests {
         #expect(coordinator.tabExecution.contentEpoch(for: tabId) == epochAfterLeading)
         #expect(coordinator.refreshPendingTrailing == false)
         #expect(coordinator.refreshCoalesceTask == nil)
+    }
+
+    @Test("Refresh on a history tab asks that tab to reload its versions")
+    func refreshOnHistoryTabReloadsHistory() {
+        let (coordinator, tabManager) = makeCoordinator()
+        tabManager.addVersionHistoryTab(subject: .savedQuery(id: UUID()), title: "History: Revenue")
+        let tabId = tabManager.selectedTabId
+        var requested: [UUID] = []
+        let subscription = AppEvents.shared.versionHistoryRefreshRequested.sink { requested.append($0) }
+        defer { subscription.cancel() }
+
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        #expect(requested == [tabId].compactMap { $0 })
     }
 }

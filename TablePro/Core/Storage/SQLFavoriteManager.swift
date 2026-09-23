@@ -126,6 +126,24 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         )
     }
 
+    // MARK: - Versions
+
+    func fetchVersions(favoriteId: UUID) async -> [SQLFavoriteVersion] {
+        await storage.fetchVersions(favoriteId: favoriteId)
+    }
+
+    func querySavedAt(favoriteId: UUID) async -> Date? {
+        await storage.querySavedAt(favoriteId: favoriteId)
+    }
+
+    func restore(_ version: SQLFavoriteVersion) async -> Bool {
+        let result = await storage.replaceQuery(favoriteId: version.favoriteId, query: version.query, updatedAt: Date())
+        guard result.succeeded else { return false }
+        syncTracker.markDirty(.favorite, id: version.favoriteId.uuidString)
+        postUpdateNotification(connectionId: result.retainedScope)
+        return true
+    }
+
     // MARK: - Folders
 
     func addFolder(_ folder: SQLFavoriteFolder) async -> Bool {

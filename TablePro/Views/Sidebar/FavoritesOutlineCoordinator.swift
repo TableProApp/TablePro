@@ -324,7 +324,8 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
             allFolders: owner.input.allFolders,
             teamLibraryAvailable: owner.input.teamLibraryAvailable,
             databaseEntityName: owner.input.databaseEntityName,
-            activeDatabase: owner.input.activeDatabase
+            activeDatabase: owner.input.activeDatabase,
+            linkedFileGitStates: owner.input.linkedFileGitStates
         )
         SidebarMenuBuilder.fill(
             menu,

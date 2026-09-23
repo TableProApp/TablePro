@@ -255,6 +255,40 @@ struct MainEditorContentView: View {
             queryInsightsContent(tab: tab)
         case .objectSource:
             objectSourceContent(tab: tab)
+        case .versionHistory:
+            versionHistoryContent(tab: tab)
+        }
+    }
+
+    // MARK: - Version History Tab Content
+
+    @ViewBuilder
+    private func versionHistoryContent(tab: QueryTab) -> some View {
+        if let subject = tab.display.versionHistorySubject {
+            VersionHistoryTabView(
+                tabId: tab.id,
+                subject: subject,
+                databaseType: connection.type,
+                exportFileName: Self.versionHistoryExportName(for: subject, title: tab.title),
+                onOpenInEditor: { content in
+                    coordinator.openVersionInEditor(content)
+                }
+            )
+            .id(subject)
+        } else {
+            UnavailableStateView(
+                String(localized: "No History"),
+                systemImage: "clock.arrow.circlepath"
+            )
+        }
+    }
+
+    private static func versionHistoryExportName(for subject: VersionHistorySubject, title: String) -> String {
+        switch subject {
+        case .linkedFile(let url):
+            return url.lastPathComponent
+        case .savedQuery:
+            return "query.sql"
         }
     }
 

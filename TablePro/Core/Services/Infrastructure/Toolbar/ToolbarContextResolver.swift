@@ -60,7 +60,7 @@ internal enum ToolbarContextResolver {
             String(localized: "Create Table")
         case .usersRoles:
             String(localized: "Apply Changes")
-        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, nil:
+        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, nil:
             String(localized: "Save Changes")
         }
     }
@@ -93,8 +93,8 @@ internal enum ToolbarContextResolver {
         case .createTable:
             /// A definition that is not on the server yet has nothing to reload.
             return [MainWindowToolbar.refresh]
-        case .erDiagram, .serverDashboard, .insights, .objectSource:
-            /// None of these four can stage a change, so the commit control could only ever be dim.
+        case .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory:
+            /// None of these can stage a change, so the commit control could only ever be dim.
             return [MainWindowToolbar.saveChanges]
         case .query, .table, .usersRoles:
             return []

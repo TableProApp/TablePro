@@ -87,6 +87,9 @@ internal enum EditorTabOpener {
         case .objectSource:
             guard let objectRef = payload.objectRef else { return }
             tabManager.addObjectSourceTab(objectRef: objectRef)
+        case .versionHistory:
+            guard let subject = payload.versionHistorySubject else { return }
+            tabManager.addVersionHistoryTab(subject: subject, title: payload.tabTitle ?? QueryTabManager.versionHistoryFallbackTitle)
         }
     }
 

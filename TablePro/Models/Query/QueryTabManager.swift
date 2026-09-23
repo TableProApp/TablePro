@@ -508,6 +508,30 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
+    func addVersionHistoryTab(subject: VersionHistorySubject, title: String) {
+        if let existing = tabs.first(where: {
+            $0.tabType == .versionHistory && $0.display.versionHistorySubject == subject
+        }) {
+            selectedTabId = existing.id
+            return
+        }
+        var newTab = QueryTab(title: title, tabType: .versionHistory)
+        newTab.tableContext.isEditable = false
+        newTab.display.versionHistorySubject = subject
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
+    static var versionHistoryFallbackTitle: String {
+        String(localized: "History")
+    }
+
+    static func versionHistoryTitle(for name: String) -> String {
+        guard !name.isBlank else { return versionHistoryFallbackTitle }
+        return String(format: String(localized: "History: %@"), name)
+    }
+
     static func objectSourceTitle(for objectRef: DatabaseObjectRef) -> String {
         let format: String
         switch objectRef.kind {
