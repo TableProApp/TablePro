@@ -18,6 +18,7 @@ private final class MockPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     var dropColumnHandler: ((String, String) -> String?)?
     var addIndexHandler: ((String, PluginIndexDefinition) -> String?)?
     var dropIndexHandler: ((String, String) -> String?)?
+    var modifyIndexHandler: ((String, String, PluginIndexDefinition) -> String?)?
     var addForeignKeyHandler: ((String, PluginForeignKeyDefinition) -> String?)?
     var dropForeignKeyHandler: ((String, String) -> String?)?
     var modifyPrimaryKeyHandler: ((String, [String], [String]) -> [String]?)?
@@ -42,6 +43,10 @@ private final class MockPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
         dropIndexHandler?(table, indexName)
+    }
+
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? {
+        modifyIndexHandler?(table, oldIndexName, newIndex)
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
@@ -361,6 +366,50 @@ struct SchemaStatementGeneratorPluginTests {
         #expect(throws: (any Error).self) {
             _ = try generator.generate(changes: [.modifyIndex(old: oldIndex, new: newIndex)])
         }
+    }
+
+    @Test("A modified index the driver replaces in one statement is written as that one statement")
+    func modifyIndexInOneStatement() throws {
+        let mock = MockPluginDriver()
+        mock.dropIndexHandler = { _, name in "DROP INDEX \(name)" }
+        mock.addIndexHandler = { table, idx in "CREATE INDEX \(idx.name) ON \(table)" }
+        mock.modifyIndexHandler = { table, oldName, idx in
+            "ALTER TABLE \(table) DROP INDEX \(oldName), ADD INDEX \(idx.name)"
+        }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [
+            .modifyIndex(old: makeIndex(name: "idx_email"), new: makeIndex(name: "idx_email_name")),
+            .addIndex(makeIndex(name: "idx_other"))
+        ])
+
+        let sql = stmts.map { $0.sql }
+        #expect(sql == [
+            "ALTER TABLE users DROP INDEX idx_email, ADD INDEX idx_email_name;",
+            "CREATE INDEX idx_other ON users;"
+        ])
+    }
+
+    @Test("A modified index is split around column changes even when the driver can replace it whole")
+    func modifyIndexSplitsAroundColumnWork() throws {
+        let mock = MockPluginDriver()
+        mock.addColumnHandler = { table, col in "ALTER TABLE \(table) ADD COLUMN \(col.name)" }
+        mock.dropIndexHandler = { _, name in "DROP INDEX \(name)" }
+        mock.addIndexHandler = { table, idx in "CREATE INDEX \(idx.name) ON \(table)" }
+        mock.modifyIndexHandler = { table, oldName, _ in "ALTER TABLE \(table) REPLACE \(oldName)" }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [
+            .modifyIndex(old: makeIndex(name: "idx_name"), new: makeIndex(name: "idx_name", columns: ["name", "email"])),
+            .addColumn(makeColumn(name: "email"))
+        ])
+
+        let sql = stmts.map { $0.sql }
+        #expect(sql == [
+            "DROP INDEX idx_name;",
+            "ALTER TABLE users ADD COLUMN email;",
+            "CREATE INDEX idx_name ON users;"
+        ])
     }
 
     @Test("Modify foreign key generates drop and create via plugin")

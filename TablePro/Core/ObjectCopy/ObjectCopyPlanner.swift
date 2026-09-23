@@ -281,7 +281,7 @@ internal struct ObjectCopyPlanner {
                 skipped.append(ObjectCopySkip(selection: selection, reason: Self.missingInSource))
                 continue
             }
-            guard read.snapshot != nil else {
+            guard read.sourceSnapshot != nil else {
                 skipped.append(ObjectCopySkip(selection: selection, reason: read.failure ?? Self.unreadable))
                 continue
             }
@@ -303,7 +303,7 @@ internal struct ObjectCopyPlanner {
         for selection in Self.orderedByDependency(
             scope.objects.filter { reads[$0] != nil }, reads: reads, effectiveSchema: sourceNamespace
         ) {
-            guard let read = reads[selection], let snapshot = read.snapshot else { continue }
+            guard let read = reads[selection], let snapshot = read.sourceSnapshot else { continue }
             let targetRead = match(selection, in: targetReads)
             let existsInTarget = targetRead != nil
             if existsInTarget, request.existingPolicy == .skip {
@@ -753,24 +753,28 @@ internal struct ObjectCopyPlanner {
             return []
         }
 
-        let definitions = try await sourceDefinitions(
+        let definitionReads = try await sourceDefinitions(
             sourceEndpoint: sourceEndpoint,
             selections: selections,
             sourceReads: sourceReads,
             connection: connection
         )
-        var pending: [(selection: ObjectCopySelection, definition: String, target: ObjectCopySelection?)] = []
+        let targetScriptText = SQLScriptText(databaseType: request.target.databaseType)
+        var pending: [(
+            selection: ObjectCopySelection, definition: String, read: RoutineSourceRead, target: ObjectCopySelection?
+        )] = []
         for selection in Self.orderedByKind(selections) {
-            guard let definition = definitions[selection.id],
-                  !definition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard let read = definitionReads[selection.id] else {
                 skipped.append(ObjectCopySkip(selection: selection, reason: Self.noDefinition))
                 continue
             }
-            guard ObjectCopyEligibility.isExecutableDefinition(definition) else {
-                skipped.append(ObjectCopySkip(
-                    selection: selection, reason: ObjectCopyEligibility.definitionNotExecutableRefusal
-                ))
+            let definition: String
+            switch Self.definitionOutcome(read, sentAs: targetScriptText) {
+            case .skipped(let reason):
+                skipped.append(ObjectCopySkip(selection: selection, reason: reason))
                 continue
+            case .runnable(let runnable):
+                definition = runnable
             }
             let existing = targetObjects[Self.objectKey(for: selection)]
             /// Add rows promises the target's structure is kept, and these objects hold no rows at
@@ -779,23 +783,23 @@ internal struct ObjectCopyPlanner {
                 skipped.append(ObjectCopySkip(selection: selection, reason: Self.alreadyThere))
                 continue
             }
-            pending.append((selection, definition, existing))
+            pending.append((selection, definition, read, existing))
         }
         guard !pending.isEmpty else { return [] }
 
+        let targetIndexedKinds = SourceObjectIndexes.carriedKinds(on: request.target.databaseType)
         let inputs = pending.map { item in
-            (
+            ObjectCopyDefinitionInput(
                 id: item.selection.id,
-                create: CompareObjectResult(
-                    identity: CompareObjectIdentity(
-                        kind: item.selection.kind,
-                        schema: targetSchema ?? item.selection.schema,
-                        name: item.selection.name,
-                        signature: item.selection.signature
-                    ),
-                    status: .onlyInSource,
-                    sourceDefinition: [item.definition]
+                identity: CompareObjectIdentity(
+                    kind: item.selection.kind,
+                    schema: targetSchema ?? item.selection.schema,
+                    name: item.selection.name,
+                    signature: item.selection.signature
                 ),
+                definition: item.definition,
+                read: item.read,
+                targetCarriesIndexes: targetIndexedKinds.contains(item.selection.kind),
                 /// Dropped as the kind the target actually holds. A source view over a target
                 /// materialized view emitted `DROP VIEW`, which those engines refuse.
                 drop: item.target.map { target in
@@ -820,31 +824,33 @@ internal struct ObjectCopyPlanner {
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            let builder = SourceObjectSyncBuilder(targetDriver: plugin, targetDatabaseType: driver.connection.type)
-            var statements: [String: (drop: [SyncStatement], create: [SyncStatement])] = [:]
+            let builder = SourceObjectSyncBuilder(
+                targetDriver: plugin,
+                targetDatabaseType: driver.connection.type,
+                indexSchema: plugin.currentSchema
+            )
+            var builds: [String: ObjectCopyDefinitionBuild] = [:]
             for input in inputs {
-                let drop = input.drop.map { existing in
-                    builder.replacesInPlace(existing.identity, with: input.create)
-                        ? []
-                        : builder.build(for: existing, action: .drop)
-                } ?? []
-                let create = builder.build(for: input.create, action: .create)
-                statements[input.id] = (drop, create)
+                builds[input.id] = try Self.definitionBuild(for: input, using: builder)
             }
-            return statements
+            return builds
         }
 
         var steps: [ObjectCopyDefinitionStep] = []
         for item in pending {
-            guard let statements = built[item.selection.id], !statements.create.isEmpty else {
+            switch built[item.selection.id] {
+            case .refused(let reason)?:
+                skipped.append(ObjectCopySkip(selection: item.selection, reason: reason))
+            case .built(let drop, let create, let note)? where !create.isEmpty:
+                steps.append(ObjectCopyDefinitionStep(
+                    selection: item.selection,
+                    dropStatements: drop,
+                    createStatements: create,
+                    note: note
+                ))
+            case .built?, nil:
                 skipped.append(ObjectCopySkip(selection: item.selection, reason: Self.noDefinition))
-                continue
             }
-            steps.append(ObjectCopyDefinitionStep(
-                selection: item.selection,
-                dropStatements: statements.drop,
-                createStatements: statements.create
-            ))
         }
         return steps
     }
@@ -854,55 +860,29 @@ internal struct ObjectCopyPlanner {
         selections: [ObjectCopySelection],
         sourceReads: [TableStructureRead],
         connection: DatabaseConnection
-    ) async throws -> [String: String] {
-        var definitions: [String: String] = [:]
-
-        let views = selections.filter { $0.kind == .view || $0.kind == .materializedView }
-        if !views.isEmpty {
-            let infos = sourceReads.map(\.table).filter { info in
-                views.contains { $0.name.lowercased() == info.name.lowercased() }
-            }
-            for read in try await metadata.viewDefinitions(
-                for: sourceEndpoint, connection: connection, views: infos
-            ) {
-                guard let selection = views.first(where: { $0.name.lowercased() == read.name.lowercased() })
-                else { continue }
-                definitions[selection.id] = read.source
+    ) async throws -> [String: RoutineSourceRead] {
+        let views = sourceReads.filter { read in
+            selections.contains { selection in
+                (selection.kind == .view || selection.kind == .materializedView)
+                    && selection.name.lowercased() == read.table.name.lowercased()
             }
         }
-
-        /// Matched on the argument signature as well as the name, because `f(integer)` and
-        /// `f(text)` are two routines and copying one must not carry the other's body.
-        let routines = selections.filter { $0.kind == .procedure || $0.kind == .function }
-        if !routines.isEmpty {
-            for read in try await metadata.routineReads(for: sourceEndpoint, connection: connection) {
-                guard let selection = routines.first(where: {
-                    $0.kind == read.kind
-                        && $0.name.lowercased() == read.name.lowercased()
-                        && ($0.signature ?? "") == (read.signature ?? "")
-                }) else { continue }
-                definitions[selection.id] = read.source
-            }
+        let triggerTables = Set(selections.filter { $0.kind == .trigger }.compactMap(\.owner))
+            .union(sourceReads.map(\.table.name))
+        let schema = sourceEndpoint.schema
+        let endpointName = sourceEndpoint.qualifiedDescription
+        try await manager.ensureConnected(connection)
+        return try await manager.withMetadataDriver(scope: sourceEndpoint.scope) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [:] }
+            return try await Self.sourceDefinitionReads(
+                for: selections,
+                views: views,
+                triggerTables: Array(triggerTables),
+                schema: schema,
+                endpointName: endpointName,
+                using: plugin
+            )
         }
-
-        /// Asked of the tables the selected triggers name, not of the tables the user happened to
-        /// select. Deriving the lookup from the table selection meant a trigger chosen on its own
-        /// had no table to be found under and was always reported as having no definition.
-        let triggers = selections.filter { $0.kind == .trigger }
-        if !triggers.isEmpty {
-            let owners = Set(triggers.compactMap(\.owner)).union(sourceReads.map(\.table.name))
-            for read in try await metadata.triggerReads(
-                for: sourceEndpoint, connection: connection, tables: Array(owners)
-            ) {
-                guard let selection = triggers.first(where: {
-                    $0.name.lowercased() == read.name.lowercased()
-                        && ($0.owner.map { $0.lowercased() == (read.signature ?? "").lowercased() } ?? true)
-                })
-                else { continue }
-                definitions[selection.id] = read.source
-            }
-        }
-        return definitions
     }
 
     // MARK: - Ordering
@@ -996,7 +976,7 @@ internal struct ObjectCopyPlanner {
         localized: "The target has it, but its structure could not be read."
     )
     nonisolated private static let alreadyThere = String(localized: "Already in the target.")
-    nonisolated private static let noDefinition = String(
+    nonisolated internal static let noDefinition = String(
         localized: "The source reports no definition for it."
     )
     nonisolated private static let structureOnlyObject = String(

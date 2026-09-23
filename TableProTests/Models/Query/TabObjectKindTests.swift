@@ -8,10 +8,10 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-/// A tab used to carry one `isView` Bool, derived from `allowsRowEditing`, which is deliberately true
-/// for a materialized view because a matview does hold rows. So a matview reached the Structure tab as
-/// a table and was offered column, index and constraint edits PostgreSQL always refuses. The kind now
-/// travels beside the Bool rather than replacing it: they answer different questions. (#2726)
+/// A tab used to carry one `isView` Bool, derived from `allowsRowEditing`, which was then true for a
+/// materialized view. So a matview reached the Structure tab as a table and was offered column, index
+/// and constraint edits PostgreSQL always refuses. The kind now travels beside the Bool, and a tab an
+/// older build saved with the Bool false still carries the kind that refuses its rows. (#2726)
 @Suite("Tab Object Kind")
 @MainActor
 struct TabObjectKindTests {
@@ -19,7 +19,7 @@ struct TabObjectKindTests {
         QueryTab(id: UUID(), title: "mv_sales", query: "SELECT 1", tabType: .table, tableName: "mv_sales")
     }
 
-    @Test("A materialized view keeps its kind and leaves row editing alone")
+    @Test("A materialized view keeps its kind, and the kind refuses its rows even with the Bool false")
     func materializedViewKeepsItsKind() throws {
         let manager = QueryTabManager()
         try manager.addTableTab(
@@ -34,6 +34,30 @@ struct TabObjectKindTests {
         #expect(tab.tableContext.objectType == .materializedView)
         #expect(tab.tableContext.isView == false)
         #expect(tab.tableContext.resolvedObjectKind() == .materializedView)
+        #expect(!tab.tableContext.allowsRowEditing)
+    }
+
+    @Test("A kind that refuses rows refuses them whatever the Bool says")
+    func refusingKindDecidesRowEditing() {
+        #expect(!TabTableContext(isView: false, objectType: .materializedView).allowsRowEditing)
+        #expect(!TabTableContext(isView: false, objectType: .view).allowsRowEditing)
+        #expect(!TabTableContext(isView: false, objectType: .externalTable).allowsRowEditing)
+        #expect(!TabTableContext(isView: false, objectType: .sequence).allowsRowEditing)
+    }
+
+    @Test("A kind never turns a read-only mark back into a writable tab")
+    func readOnlyMarkOutranksTheKind() {
+        #expect(!TabTableContext(isView: true, objectType: .table).allowsRowEditing)
+        #expect(!TabTableContext(isView: true, objectType: .partitionedTable).allowsRowEditing)
+        #expect(!TabTableContext(isView: true, objectType: nil).allowsRowEditing)
+    }
+
+    @Test("A writable kind, or no kind at all, keeps the rows writable")
+    func writableKindsKeepRowEditing() {
+        #expect(TabTableContext(isView: false, objectType: .table).allowsRowEditing)
+        #expect(TabTableContext(isView: false, objectType: .partitionedTable).allowsRowEditing)
+        #expect(TabTableContext(isView: false, objectType: .foreignTable).allowsRowEditing)
+        #expect(TabTableContext(isView: false, objectType: nil).allowsRowEditing)
     }
 
     @Test("Retargeting a tab writes the new object's kind over the old one")

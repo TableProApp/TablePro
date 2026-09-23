@@ -9,6 +9,11 @@
 
 import Foundation
 
+enum DuckDBTableListingScope: Sendable, Equatable {
+    case schema
+    case allSchemas
+}
+
 /// DuckDB's namespace is `catalog.schema.table`, and the `duckdb_*` table functions span
 /// every attached catalog. A predicate on the schema alone therefore matches same-named
 /// schemas in other catalogs: with a second database attached, `WHERE schema_name = 'main'`
@@ -54,20 +59,39 @@ enum DuckDBSchemaQueries {
         ORDER BY schema_name
         """
 
-    static let listTables = """
-        SELECT table_name, 'BASE TABLE' AS table_type
-        FROM duckdb_tables()
-        WHERE database_name = $1
-          AND schema_name = $2
-          AND internal = false
-        UNION ALL
-        SELECT view_name, 'VIEW'
-        FROM duckdb_views()
-        WHERE database_name = $1
-          AND schema_name = $2
-          AND internal = false
-        ORDER BY 1
-        """
+    /// One schema's objects, bound to the catalog and the schema, or every schema's, bound to the
+    /// catalog alone. The second filters by `listSchemas` itself rather than dropping the schema
+    /// predicate, so an object is listed here exactly when its schema is listed there, and it
+    /// projects each row's schema as a third column.
+    static func listTables(in scope: DuckDBTableListingScope) -> String {
+        let schemaFilter: String
+        let schemaColumn: String
+        let orderBy: String
+        switch scope {
+        case .schema:
+            schemaFilter = "schema_name = $2"
+            schemaColumn = ""
+            orderBy = "ORDER BY 1"
+        case .allSchemas:
+            schemaFilter = "schema_name IN (\n\(listSchemas)\n)"
+            schemaColumn = ", schema_name"
+            orderBy = "ORDER BY 3, 1"
+        }
+        return """
+            SELECT table_name, 'BASE TABLE' AS table_type\(schemaColumn)
+            FROM duckdb_tables()
+            WHERE database_name = $1
+              AND \(schemaFilter)
+              AND internal = false
+            UNION ALL
+            SELECT view_name, 'VIEW'\(schemaColumn)
+            FROM duckdb_views()
+            WHERE database_name = $1
+              AND \(schemaFilter)
+              AND internal = false
+            \(orderBy)
+            """
+    }
 
     static let columnsForTable = """
         SELECT column_name, data_type, is_nullable, column_default, column_index

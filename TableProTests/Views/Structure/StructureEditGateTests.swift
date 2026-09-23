@@ -51,6 +51,60 @@ struct StructureEditGateTests {
         #expect(!matview.allows(.addForeignKey))
     }
 
+    /// PGlite is PostgreSQL 17 running the same driver and the same `CREATE INDEX` and `DROP INDEX`,
+    /// and it was left on the tables-only matrix, which refused a matview's index as if the server
+    /// did. (#2522)
+    @Test("PGlite offers a materialized view the same edits PostgreSQL does")
+    func pgliteMatchesPostgreSQL() {
+        #expect(PluginManager.shared.structureEditMatrix(for: .pglite) == .postgreSQL)
+        let matview = gate(.materializedView, .pglite)
+        #expect(matview.allows(.addIndex))
+        #expect(matview.allows(.dropIndex))
+        #expect(!matview.allows(.setDefault))
+    }
+
+    @Test("A materialized view is offered no trigger, while a view and a table keep theirs")
+    func triggersFollowTheKind() {
+        #expect(!gate(.materializedView).allowsTriggerEditing)
+        #expect(!gate(.systemTable).allowsTriggerEditing)
+        #expect(gate(.table).allowsTriggerEditing)
+        #expect(gate(.view).allowsTriggerEditing)
+        #expect(gate(.foreignTable).allowsTriggerEditing)
+    }
+
+    /// SQLite, SQL Server and Oracle take an `INSTEAD OF` trigger on a view, and none of them has a
+    /// curated edit matrix, so triggers cannot be a cell of it without taking that away.
+    @Test("An uncurated engine keeps New Trigger on a view")
+    func uncuratedEngineKeepsViewTriggers() {
+        #expect(gate(.view, .sqlite).allowsTriggerEditing)
+        #expect(!gate(.view, .sqlite).allowsAnyEdit)
+    }
+
+    @Test("An engine without trigger editing offers none on any kind")
+    func engineWithoutTriggerEditing() {
+        #expect(!gate(.table, .clickhouse).allowsTriggerEditing)
+    }
+
+    /// Refusing the commit while the editor stayed open dropped whatever was typed, so the lock and
+    /// the commit guard come from this one rule.
+    @Test("A list whose add the object refuses locks every field, so nothing typed is dropped")
+    func refusedAddLocksTheWholeList() {
+        #expect(gate(.view).locksField(at: 0, on: .indexes, orderedFields: []))
+        #expect(gate(.view).lockedFieldIndices(on: .indexes, orderedFields: [], fieldCount: 5) == Set(0..<5))
+        #expect(!gate(.materializedView).locksField(at: 0, on: .indexes, orderedFields: []))
+        #expect(gate(.materializedView).locksField(at: 0, on: .foreignKeys, orderedFields: []))
+        #expect(gate(.materializedView).locksField(at: 0, on: .checkConstraints, orderedFields: []))
+        #expect(!gate(.table).locksField(at: 0, on: .indexes, orderedFields: []))
+        #expect(!gate(.table).locksField(at: 0, on: .ddl, orderedFields: []))
+    }
+
+    @Test("The Columns list locks field by field")
+    func columnsLockPerField() {
+        let fields: [StructureColumnField] = [.name, .type, .defaultValue, .comment]
+        #expect(gate(.materializedView).lockedFieldIndices(on: .columns, orderedFields: fields, fieldCount: 4) == [1, 2])
+        #expect(gate(.table).lockedFieldIndices(on: .columns, orderedFields: fields, fieldCount: 4).isEmpty)
+    }
+
     @Test("A system table allows nothing at all, so the grid has nothing to offer")
     func systemTableAllowsNothing() {
         let system = gate(.systemTable)

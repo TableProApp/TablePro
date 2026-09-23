@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
+- Version history for saved queries, with **Restore This Version**. (#2505)
+- Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
+- Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
+- Invalid PostgreSQL indexes named on the table's **Indexes** tab.
+- Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
 
 ### Changed
 
@@ -76,8 +81,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DynamoDB table counts left to **Count Exactly**, with no automatic full-table count.
 - DynamoDB table DDL shown as the `CreateTable` request that recreates it.
 - Plain HTTP DynamoDB endpoint refused for any host but this Mac, instead of switched to HTTPS.
+- ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
+- One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
+- Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 
 ### Removed
 
@@ -90,26 +100,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
+- Stale column and MongoDB field suggestions when a refresh ran while they were loading.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
+- Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
 - Schemas missing from Open Quickly on every reopen after one failed to load.
 - Unexpanded schemas hidden by the sidebar filter in the Tree layout.
 - Empty object sections opened as "No items" under every match while filtering the sidebar tree.
 - **Drop View** offered in Recent for a sequence or materialized view opened from Open Quickly.
+- Column default of NULL shown as Empty on MySQL and MariaDB, and a NULL default that never stuck. (#3058)
+- String column defaults misread on MariaDB 10.2.7 and later, and expression defaults on MariaDB 10.2.1 to 10.2.6.
+- `ERROR 1064` editing a MySQL 8 column whose expression default holds a quoted string.
+- `ERROR 1067` saving a column made NOT NULL while its default was NULL.
+- NULL default on a MySQL `TEXT`, `BLOB`, `JSON` or `GEOMETRY` column saved as the expression `(NULL)`.
+- Backslashes and line breaks mangled in MySQL defaults, comments, enum values and passwords under `NO_BACKSLASH_ESCAPES`.
+- Form feed in a MySQL comment, default or SQL export saved as the letter `f`.
+- Saved query from iCloud dropped for good when a query on this Mac held its keyword.
 - Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
 - Raw Oracle driver error in the schema switch failure dialog. (#3053)
 - Oracle health check closing a connection a statement was still running on. (#3053)
+- Oracle column defaults missing from the Structure tab.
+- ORA-01442 when changing the default or type of a `NOT NULL` Oracle column.
+- Oracle `VARCHAR2(n CHAR)` column turned into a byte length when only its nullability was edited.
 - Global saved query inside a folder missing from every other connection. (#3045)
+- Edit Metadata deleting a linked SQL file's other `-- @key: value` header lines.
 - Saved query and folder drawn nowhere when the folder holding it was gone.
 - Keyword accepted for a global saved query while another connection already held it.
+- Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files.
 - Cleared keyword, folder or **Global** on a saved query or its folder never reaching another device.
 - Renaming a folder putting back the scope another window had just set.
+- No changed-on-disk notice for an SQL file outside a linked folder or replaced by an older copy, and Save overwriting it.
 - Saved queries and their folders deleted at launch when their connection had not arrived from iCloud.
 - Saved queries left naming a deleted folder on other devices after that folder was deleted.
+- Unresponsive app when saving over a large SQL file that changed on disk.
 - A keyword two linked SQL files both declared reaching a different file on each launch.
 - A keyword a saved query shared with a global one reaching either query, depending on the connection.
+- Silent failure moving a linked SQL file to the Trash, and an open tab recreating a deleted file on save.
 - AI chat's saved query mentions missing a query saved earlier in the same session.
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
+- Saved query longer than 500,000 characters silently cut short when saved.
 - A file the import panel dimmed still opening, and reaching the wrong importer.
+- Materialized view opened from Open Quickly edited as a plain view. (#2522)
+- Materialized view rows editable in the data grid, then refused at Save.
+- Index edits refused on a PGlite materialized view.
+- Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
+- **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
+- **New Trigger** offered on a materialized view.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
@@ -310,6 +345,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
+- Compare & Sync scripting a `DROP` with no `CREATE` for a view, routine or trigger whose definition it could not read.
+- Compare & Sync offering to drop every target procedure, function or trigger when the source's list could not be read.
+- DuckDB macro dropped and not recreated by a Compare & Sync replace.
+- Copy To giving no reason for a view, routine or trigger whose definition could not be read.
+- Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
+- Materialized view indexes ignored by Compare & Sync, and lost when it or Copy To recreated the view.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 - Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)
@@ -360,6 +401,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DynamoDB connection sampling every table on connect.
 - Imported DynamoDB connection losing its AWS Region.
 - Failed **Count Exactly** showing no error.
+- PostgreSQL export and column reorder script failing on an index a failed `CREATE INDEX CONCURRENTLY` left behind.
+- PostgreSQL export and column reorder script failing on a foreign key that references a unique index.
+- PostgreSQL exclusion constraints missing from exports and the DDL tab.
+- PostgreSQL column reorder script dropping an index named like one of the table's check constraints.
+- Invalid PostgreSQL index recreated on the target by Compare & Sync and **Copy To**.
+- Expression key parts missing from SQLite, libSQL, Cloudflare D1, MySQL and DuckDB indexes.
+- Condition missing from SQLite, libSQL and Cloudflare D1 partial indexes.
+- Descending MySQL index keys recreated ascending by a rename.
+- MySQL index dropped when the index replacing it failed to create.
+- Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard.
 - Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.
 - Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
@@ -367,6 +418,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closing a background tab with unsaved work landing on its neighbour instead of the tab you were on.
 - Show Previous Tab, Show Next Tab and Select Tab 1 to 9 enabled in Agent mode and with no tab to go to.
 - Row data of a window's first connection kept in memory after switching to another connection.
+- Query picked from Open Quickly's Recent list dropping out of it once the query ran again.
+- Table opened in one database shown in Open Quickly's Recent in every other database, and opened there.
+- Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half.
+- MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted.
+- Structure and Create Table SQL Preview disagreeing with Save on the schema, primary key name or a SQLite foreign key.
+- Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
+- PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
+- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
 
 ### Security
 
@@ -375,6 +434,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A locked launch on iPhone and iPad connecting to the last session, and asking to trust a host key, before Face ID was answered.
 - Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
 - The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
+- Driver error messages and server replies published in the system log by database plugins.
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
 - An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock.
 - **Require Face ID** turned off on iPhone and iPad without authenticating.

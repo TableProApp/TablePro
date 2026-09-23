@@ -59,6 +59,25 @@ internal struct SQLScriptText {
         return sendableStatements(definition).joined(separator: ";\n")
     }
 
+    internal func leadingKeyword(of statement: String) -> String? {
+        let text = statement as NSString
+        let length = text.length
+        var index = 0
+        while index < length {
+            let blank = StatementBlank.blankLength(in: text, at: index)
+            guard blank == 0 else {
+                index += blank
+                continue
+            }
+            guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar), span.kind.isComment else {
+                let head = text.substring(with: NSRange(location: index, length: min(length - index, 64)))
+                return String(head.prefix { $0.isLetter }).uppercased()
+            }
+            index = max(span.end, index + 1)
+        }
+        return nil
+    }
+
     /// Every statement in `statements`, which are sendable texts, written as one script for this engine's client.
     internal func script(_ statements: [String]) -> String {
         let ended = statements

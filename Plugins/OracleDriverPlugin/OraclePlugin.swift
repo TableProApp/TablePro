@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProOracleCore
 import TableProPluginKit
 
@@ -250,7 +251,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             try await connection.captureServerOutput()
         } catch {
-            Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(String(describing: error), privacy: .public)")
+            Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(String(describing: error), privacy: .private)")
         }
 
         if let result = try? await connection.executeQuery(OracleSchemaQueries.currentSchema),
@@ -448,17 +449,9 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let result = try await rawQuery(
-            OracleSchemaQueries.columns(schema: effectiveSchema(schema), table: table)
+            OracleSchemaQueries.columns(schema: effectiveSchema(schema), table: table, release: serverRelease())
         )
-        return result.rows.compactMap(OracleSchemaQueries.parseColumnRow).map {
-            PluginColumnInfo(
-                name: $0.name,
-                dataType: $0.displayType,
-                isNullable: $0.isNullable,
-                isPrimaryKey: $0.isPrimaryKey,
-                defaultValue: nil
-            )
-        }
+        return result.rows.compactMap(OracleSchemaQueries.parseColumnRow).map(\.pluginColumnInfo)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -537,29 +530,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let sql = OracleSchemaQueries.allColumns(schema: effectiveSchema(schema))
-        let result = try await execute(query: sql)
+        let result = try await rawQuery(
+            OracleSchemaQueries.allColumns(schema: effectiveSchema(schema), release: serverRelease())
+        )
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let name = row[safe: 1]?.asText else { continue }
-            let dataType = (row[safe: 2]?.asText)?.lowercased() ?? "varchar2"
-            let dataLength = row[safe: 3]?.asText
-            let precision = row[safe: 4]?.asText
-            let scale = row[safe: 5]?.asText
-            let isNullable = (row[safe: 6]?.asText) == "Y"
-            let isPk = (row[safe: 7]?.asText) == "Y"
-
-            let fullType = buildOracleFullType(dataType: dataType, dataLength: dataLength, precision: precision, scale: scale)
-
-            let col = PluginColumnInfo(
-                name: name,
-                dataType: fullType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: nil
-            )
-            columnsByTable[tableName, default: []].append(col)
+        for (table, column) in result.rows.compactMap(OracleSchemaQueries.parseTableColumnRow) {
+            columnsByTable[table, default: []].append(column.pluginColumnInfo)
         }
         return columnsByTable
     }
@@ -935,40 +911,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
-        let qt = oracleQualifiedTable(table)
-        var stmts: [String] = []
-
-        if oldColumn.name != newColumn.name {
-            stmts.append("ALTER TABLE \(qt) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
-        }
-
-        var modifyParts: [String] = []
-        let colName = quoteIdentifier(newColumn.name)
-
-        let typeChanged = oldColumn.dataType.uppercased() != newColumn.dataType.uppercased()
-        let nullabilityChanged = oldColumn.isNullable != newColumn.isNullable
-        let defaultChanged = oldColumn.defaultValue != newColumn.defaultValue
-
-        if typeChanged || nullabilityChanged || defaultChanged {
-            var def = "\(colName) \(newColumn.dataType.uppercased())"
-            if let defaultValue = newColumn.defaultValue {
-                def += " DEFAULT \(defaultValue)"
-            } else if defaultChanged {
-                def += " DEFAULT NULL"
-            }
-            if !newColumn.isNullable {
-                def += " NOT NULL"
-            } else if nullabilityChanged {
-                def += " NULL"
-            }
-            modifyParts.append(def)
-        }
-
-        if !modifyParts.isEmpty {
-            stmts.append("ALTER TABLE \(qt) MODIFY (\(modifyParts.joined(separator: ", ")))")
-        }
-
-        return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
+        OracleColumnStatements.modify(
+            qualifiedTable: oracleQualifiedTable(table),
+            oldColumn: oldColumn,
+            newColumn: newColumn,
+            quote: quoteIdentifier
+        )
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
@@ -1247,18 +1195,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Private Helpers
 
-    private func buildOracleFullType(
-        dataType: String,
-        dataLength: String?,
-        precision: String?,
-        scale: String?
-    ) -> String {
-        OracleSchemaQueries.fullType(
-            dataType: dataType,
-            dataLength: dataLength,
-            precision: precision,
-            scale: scale
-        )
+    /// Set at login before `core` is, so a driver with a core always has it.
+    private func serverRelease() throws -> OracleServerRelease {
+        guard let release = core?.serverRelease else { throw OraclePluginError(core: .notConnected) }
+        return release
     }
 
     func effectiveSchema(_ schema: String?) -> String {

@@ -155,13 +155,13 @@ internal struct CopyObjectsReviewView: View {
 
     @ViewBuilder
     private func notes(_ plan: ObjectCopyPlan) -> some View {
-        let noted = plan.tableSteps.compactMap { step in step.note.map { (step.id, step.selection, $0) } }
+        let noted = plan.partialNotes
         if !noted.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Partly copied")
                     .font(.subheadline.weight(.medium))
-                ForEach(noted, id: \.0) { _, selection, note in
-                    Text(verbatim: "\(selection.displayName): \(note)")
+                ForEach(noted) { note in
+                    Text(verbatim: "\(note.selection.displayName): \(note.text)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

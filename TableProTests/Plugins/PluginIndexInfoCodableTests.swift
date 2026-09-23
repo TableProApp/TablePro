@@ -26,6 +26,7 @@ struct PluginIndexInfoCodableTests {
         #expect(decoded.includedColumns == nil)
         #expect(decoded.ddlMethodAndKeys == nil)
         #expect(decoded.ddlWhereClause == nil)
+        #expect(decoded.isValid == nil)
     }
 
     @Test("The published initializer leaves the new fields nil")
@@ -35,7 +36,15 @@ struct PluginIndexInfoCodableTests {
         #expect(info.includedColumns == nil)
         #expect(info.ddlMethodAndKeys == nil)
         #expect(info.ddlWhereClause == nil)
+        #expect(info.isValid == nil)
         #expect(info.whereClause == "(a > 0)")
+
+        let spelled = PluginIndexInfo(
+            name: "ix", columns: ["a"], expressions: nil, includedColumns: nil,
+            ddlMethodAndKeys: "USING btree (a)", ddlWhereClause: nil
+        )
+        #expect(spelled.ddlMethodAndKeys == "USING btree (a)")
+        #expect(spelled.isValid == nil)
 
         let definition = PluginIndexDefinition(name: "ix", columns: ["a"], indexType: "HASH")
         #expect(definition.expressions == nil)
@@ -54,9 +63,11 @@ struct PluginIndexInfoCodableTests {
             expressions: ["lower(email)"],
             includedColumns: ["name"],
             ddlMethodAndKeys: "USING btree (tenant_id, lower(email)) INCLUDE (name)",
-            ddlWhereClause: "(m = 'a'::src.mood)"
+            ddlWhereClause: "(m = 'a'::src.mood)",
+            isValid: false
         )
         let decoded = try JSONDecoder().decode(PluginIndexInfo.self, from: JSONEncoder().encode(original))
+        #expect(decoded.isValid == false)
         #expect(decoded.expressions == ["lower(email)"])
         #expect(decoded.includedColumns == ["name"])
         #expect(decoded.ddlMethodAndKeys == "USING btree (tenant_id, lower(email)) INCLUDE (name)")

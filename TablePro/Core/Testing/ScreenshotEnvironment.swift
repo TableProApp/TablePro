@@ -53,17 +53,17 @@ internal enum ScreenshotEnvironment {
     /// Centred on the visible frame rather than placed at a fixed origin. `screencapture` reads the
     /// window's own bounds, so a window hanging off the screen edge comes back clipped by the
     /// display instead of failing.
-    @MainActor
-    internal static func pinWindowSize(_ window: NSWindow) {
-        guard let size = windowSize else { return }
-        guard let screen = window.screen ?? NSScreen.main else { return }
-
-        let visible = screen.visibleFrame
-        let origin = NSPoint(
-            x: visible.midX - size.width / 2,
-            y: visible.midY - size.height / 2
+    ///
+    /// Only a frame. Where it is applied is the caller's decision, and there is one right answer:
+    /// see `TabWindowController.placeInitialFrame(of:pinnedSize:)`.
+    internal static func pinnedFrame(size: CGSize, in visibleFrame: NSRect) -> NSRect {
+        NSRect(
+            origin: NSPoint(
+                x: visibleFrame.midX - size.width / 2,
+                y: visibleFrame.midY - size.height / 2
+            ),
+            size: size
         )
-        window.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
     private static func sandboxedValue(of variable: String) -> String? {

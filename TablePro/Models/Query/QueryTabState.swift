@@ -22,6 +22,7 @@ enum TabType: Equatable, Codable, Hashable {
     case usersRoles
     case insights
     case objectSource
+    case versionHistory
 }
 
 /// Minimal representation of a tab for persistence
@@ -41,6 +42,7 @@ struct PersistedTab: Codable {
     var sourceFileURL: URL?
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
+    var versionHistorySubject: VersionHistorySubject?
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
     /// Who chose the saved order. Absent in every file written before this existed, which decodes
@@ -72,6 +74,7 @@ struct PersistedTab: Codable {
         sourceFileURL: URL? = nil,
         erDiagramSchemaKey: String? = nil,
         objectRef: DatabaseObjectRef? = nil,
+        versionHistorySubject: VersionHistorySubject? = nil,
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
         sortSource: SortSource? = nil,
@@ -96,6 +99,7 @@ struct PersistedTab: Codable {
         self.sourceFileURL = sourceFileURL
         self.erDiagramSchemaKey = erDiagramSchemaKey
         self.objectRef = objectRef
+        self.versionHistorySubject = versionHistorySubject
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
         self.sortSource = sortSource
@@ -111,7 +115,7 @@ struct PersistedTab: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
-        case sourceFileURL, erDiagramSchemaKey, objectRef, queryParameters
+        case sourceFileURL, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
@@ -132,6 +136,7 @@ struct PersistedTab: Codable {
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
+        versionHistorySubject = try container.decodeIfPresent(VersionHistorySubject.self, forKey: .versionHistorySubject)
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         sortSource = try container.decodeIfPresent(SortSource.self, forKey: .sortSource)
@@ -577,11 +582,10 @@ struct TabTableContext: Equatable {
 
     /// The object's own kind, carried beside `isView` rather than replacing it.
     ///
-    /// The two answer different questions. `isView` decides whether the *rows* may be written, which
-    /// a dozen Bool-only carriers already speak (deeplinks, the URL parser, scripting, recents), and
-    /// it comes from `allowsRowEditing`, which is deliberately true for a materialized view because
-    /// a matview does hold rows. This says which of seven kinds the object is, which is the only
-    /// thing that can say which *structure* edits it accepts. Conflating them is the defect. (#2726)
+    /// `isView` is a read-only mark that a dozen Bool-only carriers already speak (deeplinks, the URL
+    /// parser, scripting, recents), and a tab saved by an older build can carry it false over a
+    /// materialized view. It cannot say which of seven kinds the object is. This can, and only the
+    /// kind says which *structure* edits the object accepts. (#2726)
     ///
     /// Nil on a tab restored from a file written before this existed, and on any path that never
     /// learned the kind; `resolvedObjectKind()` falls back to what `isView` can still tell us.
@@ -589,6 +593,10 @@ struct TabTableContext: Equatable {
 
     func resolvedObjectKind() -> TableInfo.TableType {
         objectType ?? (isView ? .view : .table)
+    }
+
+    var allowsRowEditing: Bool {
+        !isView && resolvedObjectKind().allowsRowEditing
     }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }
@@ -620,8 +628,9 @@ struct TabQueryContent: Equatable {
     var isParameterPanelVisible: Bool = false
     var sourceFileURL: URL?
     var savedFileContent: String?
-    var loadMtime: Date?
-    var externalModificationDetected: Bool = false
+    var savedFileStamp: FileStamp?
+    var diskChange: SourceFileDiskChange?
+    var dismissedDiskChange: SourceFileDiskChange?
 
     static let maxPersistableQuerySize = 500_000
 
@@ -631,16 +640,18 @@ struct TabQueryContent: Equatable {
         isParameterPanelVisible: Bool = false,
         sourceFileURL: URL? = nil,
         savedFileContent: String? = nil,
-        loadMtime: Date? = nil,
-        externalModificationDetected: Bool = false
+        savedFileStamp: FileStamp? = nil,
+        diskChange: SourceFileDiskChange? = nil,
+        dismissedDiskChange: SourceFileDiskChange? = nil
     ) {
         self.queryStorage = QueryStorage(query)
         self.queryParameters = queryParameters
         self.isParameterPanelVisible = isParameterPanelVisible
         self.sourceFileURL = sourceFileURL
         self.savedFileContent = savedFileContent
-        self.loadMtime = loadMtime
-        self.externalModificationDetected = externalModificationDetected
+        self.savedFileStamp = savedFileStamp
+        self.diskChange = diskChange
+        self.dismissedDiskChange = dismissedDiskChange
     }
 
     var isFileDirty: Bool {
@@ -656,9 +667,10 @@ struct TabQueryContent: Equatable {
         // bridged from NSTextStorage, so they are compared last and with `sameText` to avoid Swift's canonical Unicode
         // comparison (O(n) on the bridged text); the same-box identity check makes an unchanged query O(1).
         lhs.isParameterPanelVisible == rhs.isParameterPanelVisible
-            && lhs.externalModificationDetected == rhs.externalModificationDetected
+            && lhs.diskChange == rhs.diskChange
+            && lhs.dismissedDiskChange == rhs.dismissedDiskChange
             && lhs.sourceFileURL == rhs.sourceFileURL
-            && lhs.loadMtime == rhs.loadMtime
+            && lhs.savedFileStamp == rhs.savedFileStamp
             && lhs.queryParameters == rhs.queryParameters
             && (lhs.queryStorage === rhs.queryStorage || sameText(lhs.query, rhs.query))
             && sameText(lhs.savedFileContent, rhs.savedFileContent)
@@ -688,6 +700,7 @@ struct TabDisplayState: Equatable {
     var spatialColumns: [SpatialColumn] = []
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
+    var versionHistorySubject: VersionHistorySubject?
     var isResultsCollapsed: Bool = false
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?

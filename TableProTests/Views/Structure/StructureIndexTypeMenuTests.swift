@@ -88,9 +88,9 @@ struct StructureIndexTypeMenuTests {
         ))
         let typeColumn = StructureRowProvider.indexTypeColumn
 
-        StructureEditingSupport.updateIndex(&index, at: typeColumn, with: "hnsw USING btree")
+        StructureEditingSupport.updateIndex(&index, at: typeColumn, with: "hnsw USING btree", keys: .testing(.postgresql))
         #expect(index.type.rawValue == "BLOOM")
-        StructureEditingSupport.updateIndex(&index, at: typeColumn, with: "spgist")
+        StructureEditingSupport.updateIndex(&index, at: typeColumn, with: "spgist", keys: .testing(.postgresql))
         #expect(index.type == .spgist)
     }
 }

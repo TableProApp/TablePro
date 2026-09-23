@@ -30,6 +30,8 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: legacy),
             PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: "orders"),
             PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: nil),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: "public", table: "orders"),
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: "public", table: "orders"),
             PostgreSQLObjectQueries.triggerList(schema: "public", table: nil),
             PostgreSQLObjectQueries.userDefinedTypeList(schema: "public", identity: nil, capabilities: legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: "public", table: "t"),
@@ -40,7 +42,7 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLPrincipalQueries.tableGrants(role: "r"),
             PostgreSQLPrincipalQueries.columnGrants(role: "r"),
             PostgreSQLSequenceQueries.sequenceList(schema: "public", dependentOnTable: "orders", source: .sequenceParameters),
-            PostgreSQLSchemaQueries.fetchTables(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
             PostgreSQLViewDefinition.catalogQuery(name: "v", schema: "public")
         ]
         for sql in queries {
@@ -55,7 +57,9 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLObjectQueries.triggerList(schema: hostile, table: hostile),
             PostgreSQLObjectQueries.routineList(schema: hostile, capabilities: Self.legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: hostile, table: hostile),
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: hostile, table: hostile),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: hostile, table: hostile),
+            PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
             )
         ]

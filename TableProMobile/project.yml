@@ -67,10 +67,25 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
-      # Foreign key catalog read the iOS PostgreSQL driver shares with the macOS plugin, plus the
-      # single owner of the plugin's literal quoting that it builds its SQL with, and the version
-      # gate that owner projects against.
+      # The column default reading both apps show, plus the literal spellings it writes and the
+      # version floor that says which catalog quotes its defaults. The DDL writers stay on macOS.
+      - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLLiteralSQL.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
+      - ../Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
+      # Catalog reads the iOS PostgreSQL driver shares with the macOS plugin: the table listing,
+      # the materialized view columns, the index list and the Redshift table and key reads, with
+      # the catalog probe that gates them. Plus the single owner of the plugin's literal quoting
+      # that it builds its SQL with, and the version gate that owner projects against.
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogForeignKeys.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLMaterializedViewColumnSource.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListing.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
+      - ../Plugins/PostgreSQLDriverPlugin/RedshiftTableCatalog.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       # libpq COPY handling the iOS PostgreSQL driver shares with the macOS plugin.

@@ -1,5 +1,10 @@
 import Foundation
 
+public enum MSSQLTableListingScope: Sendable, Equatable {
+    case schema(String)
+    case allSchemas
+}
+
 public enum MSSQLSchemaQueries {
     public static func escape(_ value: String) -> String {
         MSSQLStringLiteral.escaped(value)
@@ -137,7 +142,9 @@ public enum MSSQLSchemaQueries {
 
     public static let databases = "SELECT name FROM sys.databases ORDER BY name"
 
-    public static let schemas = """
+    /// Unordered, because SQL Server rejects an `ORDER BY` in a subquery and the all-schema table
+    /// listing filters by this query.
+    internal static let listedSchemaNames = """
         SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
         WHERE SCHEMA_NAME NOT IN (
             'information_schema','sys','db_owner','db_accessadmin',
@@ -145,17 +152,37 @@ public enum MSSQLSchemaQueries {
             'db_datareader','db_datawriter','db_denydatareader',
             'db_denydatawriter','guest'
         )
-        ORDER BY SCHEMA_NAME
         """
 
+    public static let schemas = listedSchemaNames + "\nORDER BY SCHEMA_NAME"
+
     public static func tables(schema: String) -> String {
-        let s = MSSQLStringLiteral.quoted(schema)
+        tables(in: .schema(schema))
+    }
+
+    /// The same listing over one schema or over every schema `schemas` returns. The second filters
+    /// by that query itself rather than dropping the schema predicate, so a table is listed here
+    /// exactly when its schema is listed there, and it projects each row's schema as a third column.
+    public static func tables(in scope: MSSQLTableListingScope) -> String {
+        let schemaFilter: String
+        let schemaColumn: String
+        let orderBy: String
+        switch scope {
+        case .schema(let schema):
+            schemaFilter = "t.TABLE_SCHEMA = \(MSSQLStringLiteral.quoted(schema))"
+            schemaColumn = ""
+            orderBy = "t.TABLE_NAME"
+        case .allSchemas:
+            schemaFilter = "t.TABLE_SCHEMA IN (\n\(listedSchemaNames)\n)"
+            schemaColumn = ", t.TABLE_SCHEMA"
+            orderBy = "t.TABLE_SCHEMA, t.TABLE_NAME"
+        }
         return """
-            SELECT t.TABLE_NAME, t.TABLE_TYPE
+            SELECT t.TABLE_NAME, t.TABLE_TYPE\(schemaColumn)
             FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = \(s)
+            WHERE \(schemaFilter)
               AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
-            ORDER BY t.TABLE_NAME
+            ORDER BY \(orderBy)
             """
     }
 
@@ -235,10 +262,12 @@ public enum MSSQLSchemaQueries {
 public struct MSSQLTableRow: Sendable, Equatable {
     public let name: String
     public let isView: Bool
+    public let schema: String?
 
-    public init(name: String, isView: Bool) {
+    public init(name: String, isView: Bool, schema: String? = nil) {
         self.name = name
         self.isView = isView
+        self.schema = schema
     }
 }
 
@@ -340,7 +369,7 @@ public extension MSSQLSchemaQueries {
     static func parseTableRow(_ row: [String?]) -> MSSQLTableRow? {
         guard let name = row[safe: 0] ?? nil else { return nil }
         let typeRaw = (row[safe: 1] ?? nil) ?? "BASE TABLE"
-        return MSSQLTableRow(name: name, isView: typeRaw == "VIEW")
+        return MSSQLTableRow(name: name, isView: typeRaw == "VIEW", schema: row[safe: 2] ?? nil)
     }
 
     static func parseColumnRow(_ row: [String?]) -> MSSQLColumnRow? {

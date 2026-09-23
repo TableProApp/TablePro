@@ -8,8 +8,10 @@ import Foundation
 import os
 import TableProPluginKit
 
-private enum QuickSwitcherRanking {
+internal enum QuickSwitcherRanking {
     static let maxResults = 200
+    static let recentLimit = 10
+    static let localHistoryLimit = 50
     static let subtitleMatchPenalty = 0.6
     static let keywordMatchWeight = 1.0
     static let frecencyBoost = 0.5
@@ -51,6 +53,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// What the panel's own connection is browsing, which is what its table rows are built for.
     struct TableSource {
         let database: String?
+        let connectionSwitchesDatabases: Bool
         let browseSchema: String?
         let openTables: Set<QuickSwitcherOpenTable>
         let grouping: GroupingStrategy
@@ -61,7 +64,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
-    private static let recentLimit = 10
     private static let filterDebounceNanoseconds: UInt64 = 40_000_000
 
     private let services: AppServices
@@ -210,6 +212,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
         let tableSource = TableSource(
             database: services.databaseManager.browseScope(for: connectionId)?.database,
+            connectionSwitchesDatabases: services.pluginManager.supportsDatabaseSwitching(for: databaseType),
             browseSchema: browseSchema,
             openTables: openTables,
             grouping: services.pluginManager.databaseGroupingStrategy(for: databaseType)
@@ -251,6 +254,10 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let activeDatabase = services.databaseManager.session(for: connectionId)
             .map { services.databaseManager.browseDatabaseName(for: $0.connection) }
+        let qualifier = QuickSwitcherFrecencyKey.DatabaseQualifier(
+            database: activeDatabase,
+            connectionSwitchesDatabases: services.pluginManager.supportsDatabaseSwitching(for: databaseType)
+        )
         /// A schema-only engine has no database to switch to, and its driver answers
         /// `fetchDatabases()` with its schema list, so listing them here showed every schema
         /// twice and the copy labelled "Database" failed with the driver's own error (#2262).
@@ -272,7 +279,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     : databases
                 for db in listed {
                     items.append(QuickSwitcherItem(
-                        id: "db_\(db)",
+                        frecencyKey: QuickSwitcherFrecencyKey.database(db),
                         name: db,
                         kind: .database,
                         subtitle: databaseSubtitle
@@ -294,7 +301,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     : String(localized: "Schema")
                 for schema in schemas {
                     items.append(QuickSwitcherItem(
-                        id: "schema_\(schema)",
+                        frecencyKey: QuickSwitcherFrecencyKey.schema(schema, in: qualifier),
                         name: schema,
                         kind: .schema,
                         subtitle: schemaSubtitle
@@ -306,14 +313,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             }
         }
 
-        items += routineItems(connectionId: connectionId, database: activeDatabase)
-        items += triggerItems(connectionId: connectionId, database: activeDatabase)
-        items += userTypeItems(connectionId: connectionId, database: activeDatabase)
+        items += routineItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
+        items += triggerItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
+        items += userTypeItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
 
         let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
         for favorite in favorites {
             items.append(QuickSwitcherItem(
-                id: "favorite_\(favorite.id.uuidString)",
+                frecencyKey: QuickSwitcherFrecencyKey.savedQuery(favorite.id),
                 name: favorite.name,
                 kind: .savedQuery,
                 subtitle: favorite.keyword ?? "",
@@ -326,15 +333,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             QueryHistoryFilter(scope: .connection(connectionId), sources: QueryHistorySource.userAuthored),
             limit: 200
         ).entries
-        for entry in Self.distinctByQuery(historyEntries).prefix(50) {
-            items.append(QuickSwitcherItem(
-                id: "history_\(entry.id.uuidString)",
-                name: entry.queryPreview,
-                kind: .queryHistory,
-                subtitle: entry.databaseDisplayName,
-                payload: entry.query
-            ))
-        }
+        items += Self.makeHistoryItems(historyEntries)
 
         return (items, isComplete)
     }
@@ -429,12 +428,12 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             loadedFrom: loadedScope?.database,
             coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
             listing: listing,
-            browsing: tableSource.database,
-            grouping: tableSource.grouping
+            browsing: tableSource.database
         )
         return Self.makeTableItems(
             tables,
             database: tableSource.database,
+            connectionSwitchesDatabases: tableSource.connectionSwitchesDatabases,
             browseSchema: tableSource.browseSchema,
             openTables: tableSource.openTables
         )
@@ -559,25 +558,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return Self.interleaveByConnection(perConnection, limit: limit)
     }
 
-    nonisolated static func interleaveByConnection(
-        _ perConnection: [[QueryHistoryEntry]],
-        limit: Int
-    ) -> [QueryHistoryEntry] {
-        var queues = perConnection.filter { !$0.isEmpty }
-        var merged: [QueryHistoryEntry] = []
-        var queueIndex = 0
-        while merged.count < limit, !queues.isEmpty {
-            if queueIndex >= queues.count { queueIndex = 0 }
-            merged.append(queues[queueIndex].removeFirst())
-            if queues[queueIndex].isEmpty {
-                queues.remove(at: queueIndex)
-            } else {
-                queueIndex += 1
-            }
-        }
-        return merged.sorted { $0.executedAt > $1.executedAt }
-    }
-
     private func connectedSessions() -> [ConnectionSession] {
         services.databaseManager.activeSessions.values
             .filter { $0.isConnected && $0.driver != nil }
@@ -626,7 +606,10 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 )
                 return Self.makeCrossConnectionItems(
                     tables: services.schemaService.allLoadedTables(for: session.id),
-                    target: target
+                    target: target,
+                    connectionSwitchesDatabases: services.pluginManager.supportsDatabaseSwitching(
+                        for: session.connection.type
+                    )
                 )
             }
     }
@@ -662,21 +645,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// `coveredSchemas` names the schemas the schema service answers for even when it found them
     /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
     /// so no say, and the listing's stale copy of that table would come back.
-    ///
-    /// A hierarchical engine is the exception. Its per-schema lists are keyed by schema alone and
-    /// keep the rows of a database the connection has just switched away from until each one
-    /// reloads, so once the listing, which is keyed by database, has arrived it answers for every
-    /// schema, and the schema service only stands in until then.
     nonisolated static func mergedTables(
         local loaded: [TableInfo],
         loadedFrom loadedDatabase: String?,
         coveredSchemas: Set<String>,
         listing: [TableInfo]?,
-        browsing database: String?,
-        grouping: GroupingStrategy
+        browsing database: String?
     ) -> [TableInfo] {
-        let listingAnswersAll = grouping == .hierarchicalSchema && listing != nil
-        let isCurrent = loadedDatabase == database && !listingAnswersAll
+        let isCurrent = loadedDatabase == database
         let local = isCurrent ? loaded : []
         let authoritative = (isCurrent ? coveredSchemas : []).union(local.map { $0.schema ?? "" })
         var seen: Set<TableIdentity> = []
@@ -707,17 +683,27 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     nonisolated static func makeTableItems(
         _ tables: [TableInfo],
         database: String?,
+        connectionSwitchesDatabases: Bool,
         browseSchema: String?,
         openTables: Set<QuickSwitcherOpenTable>
     ) -> [QuickSwitcherItem] {
-        tables.map { table in
+        let qualifier = QuickSwitcherFrecencyKey.DatabaseQualifier(
+            database: database,
+            connectionSwitchesDatabases: connectionSwitchesDatabases
+        )
+        var listedKeys: Set<String> = []
+        return tables.compactMap { table in
+            let frecencyKey = QuickSwitcherFrecencyKey.table(
+                name: table.name, schema: table.schema ?? browseSchema, in: qualifier
+            )
+            guard listedKeys.insert(frecencyKey).inserted else { return nil }
             let presentation = tablePresentation(for: table.type)
             let otherSchema = SchemaQualifiedName.explicitSchema(table.schema, implicitSchemaName: browseSchema)
             let subtitle = [otherSchema, presentation.subtitle]
                 .compactMap { $0?.isEmpty == false ? $0 : nil }
                 .joined(separator: " · ")
             return QuickSwitcherItem(
-                id: QuickSwitcherItem.tableItemId(name: table.name, schema: table.schema),
+                frecencyKey: frecencyKey,
                 name: table.name,
                 kind: presentation.kind,
                 subtitle: subtitle,
@@ -735,10 +721,15 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     nonisolated static func makeCrossConnectionItems(
         tables: [TableInfo],
-        target: QuickSwitcherTarget
+        target: QuickSwitcherTarget,
+        connectionSwitchesDatabases: Bool
     ) -> [QuickSwitcherItem] {
-        tables.map { table in
-            let presentation = tablePresentation(for: table.type)
+        let qualifier = QuickSwitcherFrecencyKey.DatabaseQualifier(
+            database: target.databaseName,
+            connectionSwitchesDatabases: connectionSwitchesDatabases
+        )
+        var listedKeys: Set<String> = []
+        return tables.compactMap { table in
             let resolvedTarget = QuickSwitcherTarget(
                 connectionId: target.connectionId,
                 connectionName: target.connectionName,
@@ -747,8 +738,13 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 databaseDisplayName: target.databaseDisplayName,
                 pathFieldRole: target.pathFieldRole
             )
+            let frecencyKey = QuickSwitcherFrecencyKey.table(
+                name: table.name, schema: resolvedTarget.schemaName, in: qualifier
+            )
+            guard listedKeys.insert(frecencyKey).inserted else { return nil }
+            let presentation = tablePresentation(for: table.type)
             return QuickSwitcherItem(
-                id: "connection_\(target.connectionId.uuidString)_\(table.id)",
+                frecencyKey: frecencyKey,
                 name: table.name,
                 kind: presentation.kind,
                 subtitle: connectionPath(for: resolvedTarget),
@@ -757,89 +753,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 tableType: table.type
             )
         }
-    }
-
-    nonisolated static func makeCrossConnectionQueryItems(
-        favorites: [SQLFavorite],
-        historyEntries: [QueryHistoryEntry],
-        targets: [UUID: QuickSwitcherTarget],
-        currentConnectionId: UUID
-    ) -> [QuickSwitcherItem] {
-        let favoriteItems = favorites.compactMap { favorite -> QuickSwitcherItem? in
-            let targetConnectionId = favorite.connectionId ?? currentConnectionId
-            guard let target = targets[targetConnectionId] else { return nil }
-            let subtitle = [favorite.keyword, connectionPath(for: target)]
-                .compactMap { value in value.flatMap { $0.isEmpty ? nil : $0 } }
-                .joined(separator: " · ")
-            return QuickSwitcherItem(
-                id: "favorite_\(favorite.id.uuidString)",
-                name: favorite.name,
-                kind: .savedQuery,
-                subtitle: subtitle,
-                keyword: favorite.keyword,
-                payload: favorite.query,
-                target: target
-            )
-        }
-
-        let historyItems = distinctByQuery(historyEntries).compactMap { entry -> QuickSwitcherItem? in
-            guard let baseTarget = targets[entry.connectionId] else { return nil }
-            let databaseName = entry.databaseName.isEmpty ? nil : entry.databaseName
-            let target = QuickSwitcherTarget(
-                connectionId: baseTarget.connectionId,
-                connectionName: baseTarget.connectionName,
-                databaseName: databaseName,
-                schemaName: nil,
-                databaseDisplayName: databaseDisplayName(
-                    databaseName,
-                    pathFieldRole: baseTarget.pathFieldRole
-                )
-            )
-            return QuickSwitcherItem(
-                id: "history_\(entry.id.uuidString)",
-                name: entry.queryPreview,
-                kind: .queryHistory,
-                subtitle: [
-                    connectionPath(for: target),
-                    entry.hasMeasuredDuration ? entry.formattedExecutionTime : ""
-                ]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " · "),
-                payload: entry.query,
-                target: target
-            )
-        }
-
-        return interleaveToCap(favoriteItems, historyItems, cap: QuickSwitcherRanking.maxResults)
-    }
-
-    /// The switcher is a recall list, so one statement run twenty times is one thing to recall.
-    /// Every execution stays in history; only the list collapses them, keeping the most recent.
-    nonisolated static func distinctByQuery(_ entries: [QueryHistoryEntry]) -> [QueryHistoryEntry] {
-        var seen: Set<String> = []
-        var distinct: [QueryHistoryEntry] = []
-        for entry in entries {
-            let key = entry.query.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !key.isEmpty, seen.insert(key).inserted else { continue }
-            distinct.append(entry)
-        }
-        return distinct
-    }
-
-    /// Concatenating and truncating let a long favourites list push recent queries out of the
-    /// panel entirely. Each source keeps its own half of the cap and only lends what it does
-    /// not use.
-    nonisolated static func interleaveToCap(
-        _ favorites: [QuickSwitcherItem],
-        _ history: [QuickSwitcherItem],
-        cap: Int
-    ) -> [QuickSwitcherItem] {
-        guard favorites.count + history.count > cap else { return favorites + history }
-
-        let share = cap / 2
-        let favoriteCount = min(favorites.count, max(share, cap - history.count))
-        let historyCount = min(history.count, cap - favoriteCount)
-        return Array(favorites.prefix(favoriteCount)) + Array(history.prefix(historyCount))
     }
 
     func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
@@ -867,7 +780,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
 
     func recordSelection(_ item: QuickSwitcherItem, at date: Date = Date()) {
-        frecencyStore(for: item).recordAccess(itemId: item.id, at: date)
+        frecencyStore(for: item).recordAccess(itemId: item.frecencyKey, at: date)
     }
 
     /// A result from another connection is recorded against that connection. The store is keyed per
@@ -886,8 +799,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         let items = scopedItems()
         let scope = scope
+        let connectionId = connectionId
         let frecencyScores = frecencyStore.scores()
-        let recentIds = frecencyStore.recentItemIds(limit: Self.recentLimit)
+        let recentKeys = frecencyStore.recentItemIds()
         isFiltering = true
         filterTask = Task { @MainActor [weak self] in
             if debounced {
@@ -895,8 +809,12 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
             }
             let groups = query.isEmpty
-                ? await Self.emptyQueryGroups(items: items, scope: scope, recentIds: recentIds)
-                : await Self.filteredGroups(items: items, query: query, frecencyScores: frecencyScores)
+                ? await Self.emptyQueryGroups(
+                    items: items, scope: scope, recentKeys: recentKeys, connectionId: connectionId
+                )
+                : await Self.filteredGroups(
+                    items: items, query: query, frecencyScores: frecencyScores, connectionId: connectionId
+                )
             guard !Task.isCancelled, let self else { return }
             self.groups = groups
             self.isFiltering = false
@@ -946,29 +864,30 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     nonisolated private static func emptyQueryGroups(
         items: [QuickSwitcherItem],
         scope: QuickSwitcherScope,
-        recentIds: [String]
+        recentKeys: [String],
+        connectionId: UUID
     ) async -> [Group] {
-        let recentIdSet = Set(recentIds)
-        let recentOrder = Dictionary(uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) })
+        let recent = recentItems(in: items, keys: recentKeys, ownedBy: connectionId)
+        let recentKeySet = Set(recent.map(\.frecencyKey))
+        let isRecent: (QuickSwitcherItem) -> Bool = { item in
+            item.belongs(to: connectionId) && recentKeySet.contains(item.frecencyKey)
+        }
 
         var result: [Group] = []
 
-        let recent = items
-            .filter { recentIdSet.contains($0.id) }
-            .sorted { (recentOrder[$0.id] ?? 0) < (recentOrder[$1.id] ?? 0) }
         if !recent.isEmpty {
             result.append(Group(id: "recent", header: String(localized: "Recent"), items: recent))
         }
 
         if scope.usesCrossConnectionCatalog {
-            return result + connectionGroups(items: items, excluding: recentIdSet)
+            return result + connectionGroups(items: items, excluding: isRecent)
         }
 
         guard scope != .all else { return result }
 
         for kind in QuickSwitcherItemKind.displayOrder {
             let kindItems = items
-                .filter { $0.kind == kind && !recentIdSet.contains($0.id) }
+                .filter { $0.kind == kind && !isRecent($0) }
                 .sorted { lhs, rhs in
                     if lhs.isOutsideBrowsedSchema != rhs.isOutsideBrowsedSchema { return rhs.isOutsideBrowsedSchema }
                     return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
@@ -983,14 +902,33 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return result
     }
 
+    nonisolated private static func recentItems(
+        in items: [QuickSwitcherItem],
+        keys recentKeys: [String],
+        ownedBy connectionId: UUID
+    ) -> [QuickSwitcherItem] {
+        let rank = Dictionary(recentKeys.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        var rankedItems: [Int: QuickSwitcherItem] = [:]
+        for item in items where item.belongs(to: connectionId) {
+            guard let position = rank[item.frecencyKey], rankedItems[position] == nil else { continue }
+            rankedItems[position] = item
+        }
+        return rankedItems
+            .sorted { $0.key < $1.key }
+            .prefix(QuickSwitcherRanking.recentLimit)
+            .map(\.value)
+    }
+
     nonisolated private static func connectionGroups(
         items: [QuickSwitcherItem],
-        excluding excludedIds: Set<String>
+        excluding isExcluded: (QuickSwitcherItem) -> Bool
     ) -> [Group] {
-        let excludedCount = items.lazy.filter { excludedIds.contains($0.id) }.count
+        let excludedCount = items.reduce(into: 0) { count, item in
+            if isExcluded(item) { count += 1 }
+        }
         let availableCount = max(0, QuickSwitcherRanking.maxResults - excludedCount)
         let sortedItems = items
-            .filter { !excludedIds.contains($0.id) }
+            .filter { !isExcluded($0) }
             .sorted { lhs, rhs in
                 let lhsConnection = lhs.target?.connectionName ?? ""
                 let rhsConnection = rhs.target?.connectionName ?? ""
@@ -1021,7 +959,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     nonisolated private static func filteredGroups(
         items: [QuickSwitcherItem],
         query: String,
-        frecencyScores: [String: Double]
+        frecencyScores: [String: Double],
+        connectionId: UUID
     ) async -> [Group] {
         let qualified = QualifiedSearchQuery(query)
         let prefersShorterNames = qualified.map { !$0.name.isEmpty } ?? true
@@ -1031,7 +970,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             }
             var matched = item
             matched.matchedIndices = matchedIndices
-            let frecency = 1 + (frecencyScores[item.id] ?? 0) * QuickSwitcherRanking.frecencyBoost
+            let recalled = item.belongs(to: connectionId) ? frecencyScores[item.frecencyKey] ?? 0 : 0
+            let frecency = 1 + recalled * QuickSwitcherRanking.frecencyBoost
             let openBoost = item.isOpenInTab ? QuickSwitcherRanking.openTabBoost : 1
             let location = item.isOutsideBrowsedSchema ? QuickSwitcherRanking.otherSchemaWeight : 1
             return (matched, matchScore * item.kind.rankWeight * frecency * openBoost * location)
@@ -1134,7 +1074,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         }
     }
 
-    nonisolated private static func connectionPath(for target: QuickSwitcherTarget) -> String {
+    nonisolated static func connectionPath(for target: QuickSwitcherTarget) -> String {
         var components = [target.connectionName]
         if let databaseDisplayName = target.databaseDisplayName ?? target.databaseName,
            !databaseDisplayName.isEmpty {
@@ -1158,12 +1098,16 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// Reads the sidebar's own cache rather than querying. The switcher opens over a connection
     /// whose objects the tree has already loaded, and a fresh catalog read per keystroke session
     /// would make opening the panel wait on the server.
-    private func routineItems(connectionId: UUID, database: String?) -> [QuickSwitcherItem] {
+    private func routineItems(
+        connectionId: UUID,
+        database: String?,
+        qualifier: QuickSwitcherFrecencyKey.DatabaseQualifier
+    ) -> [QuickSwitcherItem] {
         let routines = SchemaService.shared.routines(for: connectionId)
         let labels = RoutineDisplayLabel.labels(for: routines)
         return routines.map { routine in
             QuickSwitcherItem(
-                id: "routine_\(routine.id)",
+                frecencyKey: QuickSwitcherFrecencyKey.routine(routine.id, in: qualifier),
                 name: labels[routine.id] ?? routine.name,
                 kind: routine.kind == .procedure ? .procedure : .function,
                 subtitle: routine.schema ?? database ?? "",
@@ -1174,10 +1118,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         }
     }
 
-    private func triggerItems(connectionId: UUID, database: String?) -> [QuickSwitcherItem] {
+    private func triggerItems(
+        connectionId: UUID,
+        database: String?,
+        qualifier: QuickSwitcherFrecencyKey.DatabaseQualifier
+    ) -> [QuickSwitcherItem] {
         SchemaService.shared.triggers(for: connectionId).map { trigger in
             QuickSwitcherItem(
-                id: "trigger_\(trigger.id)",
+                frecencyKey: QuickSwitcherFrecencyKey.trigger(trigger.id, in: qualifier),
                 name: trigger.name,
                 kind: .trigger,
                 subtitle: trigger.table ?? trigger.schema ?? database ?? "",
@@ -1188,10 +1136,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         }
     }
 
-    private func userTypeItems(connectionId: UUID, database: String?) -> [QuickSwitcherItem] {
+    private func userTypeItems(
+        connectionId: UUID,
+        database: String?,
+        qualifier: QuickSwitcherFrecencyKey.DatabaseQualifier
+    ) -> [QuickSwitcherItem] {
         SchemaService.shared.userDefinedTypes(for: connectionId).map { type in
             QuickSwitcherItem(
-                id: "usertype_\(type.id)",
+                frecencyKey: QuickSwitcherFrecencyKey.userType(type.id, in: qualifier),
                 name: type.name,
                 kind: .userType,
                 subtitle: type.schema ?? database ?? "",

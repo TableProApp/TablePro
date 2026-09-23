@@ -196,6 +196,6 @@ custom_rules:
     severity: error
   public_error_text_in_log:
     name: "Error Text In The System Log"
-    regex: '\.localizedDescription\s*,\s*privacy:\s*\.public'
-    message: "A driver or Foundation error's text carries row values, paths and server messages. Publish `error.publicLogShape` and log the description at .private."
+    regex: '(\.(localizedDescription|errorDescription|failureReason)(\.prefix\(\d+\))?(\s*\?\?\s*"[^"]*")?|String\(describing:\s*\w*[eE]rr(or)?\)|\\\((?!(has|is|did|was|should)[A-Z])(\w*[eE]rr(or)?|e)(\.(message|description|debugDescription))?)\s*,\s*privacy:\s*\.public'
+    message: "A driver or Foundation error's text carries row values, paths and server messages. Publish `error.publicLogShape`, or `LogRedaction.publicDescription(of: error)` in a plugin, and log the description at .private."
     severity: error

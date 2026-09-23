@@ -582,16 +582,30 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaName = resolveSchema(schema)
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.listTables,
-            parameters: [.text(try requireCatalog()), .text(schemaName)]
+            query: DuckDBSchemaQueries.listTables(in: .schema),
+            parameters: [.text(try requireCatalog()), .text(resolveSchema(schema))]
         )
-        return result.rows.compactMap { row in
+        return Self.tableInfos(from: result)
+    }
+
+    /// A remote catalog answers its schema list best-effort, falling back to `main` when it cannot,
+    /// and one query filtered by that list has no such fallback, so it keeps the per-schema listing.
+    func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? {
+        guard remoteAlias == nil else { return nil }
+        let result = try await executeParameterized(
+            query: DuckDBSchemaQueries.listTables(in: .allSchemas),
+            parameters: [.text(try requireCatalog())]
+        )
+        return Self.tableInfos(from: result)
+    }
+
+    private static func tableInfos(from result: PluginQueryResult) -> [PluginTableInfo] {
+        result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeString = (row[safe: 1]?.asText) ?? "BASE TABLE"
             let tableType = typeString.uppercased().contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: tableType)
+            return PluginTableInfo(name: name, type: tableType, schema: row[safe: 2]?.asText)
         }
     }
 
@@ -699,16 +713,22 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 guard let name = row[safe: 0]?.asText else { return nil }
                 let sql = row[safe: 2]?.asText
 
+                let keys = DuckDBIndexClauses.keyParts(ofCreateIndex: sql)
                 /// `duckdb_indexes()` lists user indexes only, so nothing here backs a primary key.
                 /// Reading one out of the name matched any index called something like
                 /// `idx_primary_contact`, which then reported as the table's primary key and as
                 /// unique.
                 return PluginIndexInfo(
                     name: name,
-                    columns: extractIndexColumns(from: sql),
+                    columns: keys.columns,
                     isUnique: (row[safe: 1]?.asText) == "true",
                     isPrimary: false,
-                    type: "ART"
+                    type: "ART",
+                    expressions: keys.expressions.isEmpty ? nil : keys.expressions,
+                    includedColumns: nil,
+                    ddlMethodAndKeys: nil,
+                    ddlWhereClause: nil,
+                    isValid: nil
                 )
             }
         } catch {
@@ -1028,9 +1048,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func duckdbIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
+        DuckDBIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTable, quote: quoteIdentifier)
     }
 
     private func duckdbForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
@@ -1123,49 +1141,5 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             stmts.append("ALTER TABLE \(qt) ADD PRIMARY KEY (\(cols))")
         }
         return stmts.isEmpty ? nil : stmts
-    }
-
-    private static let indexColumnsRegex = try? NSRegularExpression(
-        pattern: #"ON\s+(?:(?:"[^"]*"|[^\s(]+)\s*\.\s*)*(?:"[^"]*"|[^\s(]+)\s*\("#,
-        options: .caseInsensitive
-    )
-
-    /// Splits an index's key list on the commas that separate its keys.
-    ///
-    /// A key can be an expression, so both the opening parenthesis and the commas inside it belong
-    /// to the key rather than to the list: `(lower(email))` is one key and `(coalesce(a, b))` is
-    /// one key with a comma in it. Matching the list with a regex that stops at the first closing
-    /// parenthesis produced `(lower(email` and `[(COALESCE(a, b]`, which the DDL then quoted as
-    /// column names.
-    private func extractIndexColumns(from sql: String?) -> [String] {
-        guard let sql, let regex = Self.indexColumnsRegex else { return [] }
-
-        let range = NSRange(sql.startIndex..., in: sql)
-        guard let match = regex.firstMatch(in: sql, range: range),
-              let openParen = Range(match.range, in: sql) else {
-            return []
-        }
-
-        var depth = 1
-        var current = ""
-        var keys: [String] = []
-        for character in sql[openParen.upperBound...] {
-            if character == "(" {
-                depth += 1
-            } else if character == ")" {
-                depth -= 1
-                if depth == 0 { break }
-            } else if character == "," , depth == 1 {
-                keys.append(current)
-                current = ""
-                continue
-            }
-            current.append(character)
-        }
-        keys.append(current)
-
-        return keys
-            .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\"", with: "") }
-            .filter { !$0.isEmpty }
     }
 }

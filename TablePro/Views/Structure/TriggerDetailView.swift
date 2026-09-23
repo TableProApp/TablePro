@@ -47,14 +47,13 @@ struct TriggerDetailView: View {
     let connection: DatabaseConnection
     let tableName: String
     let isLoading: Bool
+    let canEdit: Bool
     let onOpenInEditor: (TriggerInfo) -> Void
 
     @StateObject private var state = TriggerInspectorState()
     @State private var editorSheet: TriggerEditorSheetItem?
     @State private var pendingDelete: TriggerInfo?
     @State private var actionError: String?
-
-    private var canEdit: Bool { connection.type.supportsTriggerEditing }
 
     var body: some View {
         if isLoading {

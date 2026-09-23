@@ -7,8 +7,49 @@ import Foundation
 import os
 import TableProPluginKit
 
-enum PostgreSQLIndexQueries {
+nonisolated enum PostgreSQLIndexQueries {
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "IndexQueries")
+
+    static let restorableIndexPredicate = "(ix.indisvalid OR t.relkind = 'p') AND ix.indisready"
+
+    static func standaloneIndexQuery(schema: String, table: String) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        return """
+            SELECT
+                i.relname AS index_name,
+                pg_catalog.pg_get_indexdef(ix.indexrelid) AS definition,
+                (\(restorableIndexPredicate)) AS is_restorable
+            FROM pg_catalog.pg_index ix
+            JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = \(schemaLiteral)
+              AND t.relname = \(tableLiteral)
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_catalog.pg_constraint con
+                WHERE con.conrelid = ix.indrelid
+                  AND con.conindid = ix.indexrelid
+                  AND con.contype IN ('p', 'u', 'x')
+              )
+            ORDER BY i.relname
+            """
+    }
+
+    static func standaloneIndexes(rows: [[PluginCellValue]]) -> PostgreSQLStandaloneIndexes {
+        var definitions: [String] = []
+        var invalidNames: [String] = []
+        for row in rows {
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText?.nilIfEmpty else { continue }
+            if PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText) {
+                definitions.append(definition)
+            } else {
+                invalidNames.append(name)
+            }
+        }
+        return PostgreSQLStandaloneIndexes(definitions: definitions, invalidNames: invalidNames)
+    }
 
     /// One row per index, with its key parts in key order.
     ///
@@ -56,7 +97,8 @@ enum PostgreSQLIndexQueries {
                     JOIN pg_catalog.pg_attribute a
                         ON a.attrelid = ix.indrelid AND a.attnum = ix.indkey[k.n - 1]
                     ORDER BY k.n
-                )::text AS included_columns
+                )::text AS included_columns,
+                (\(restorableIndexPredicate)) AS is_valid
             FROM pg_catalog.pg_index ix
             JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
             JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
@@ -152,12 +194,17 @@ enum PostgreSQLIndexQueries {
     }
 }
 
-struct PostgreSQLCatalogIndexDDL: Equatable {
+nonisolated struct PostgreSQLCatalogIndexDDL: Equatable {
     let methodAndKeys: String?
     let whereClause: String?
 }
 
-enum PostgreSQLIndexRow {
+nonisolated struct PostgreSQLStandaloneIndexes: Equatable {
+    let definitions: [String]
+    let invalidNames: [String]
+}
+
+nonisolated enum PostgreSQLIndexRow {
     static func index(
         from row: [PluginCellValue],
         ddl: [String: [String: PostgreSQLCatalogIndexDDL]]
@@ -176,7 +223,8 @@ enum PostgreSQLIndexRow {
             expressions: nonEmptyValues(row[safe: 7]?.asText),
             includedColumns: nonEmptyValues(row[safe: 8]?.asText),
             ddlMethodAndKeys: spelling?.methodAndKeys,
-            ddlWhereClause: spelling?.whereClause
+            ddlWhereClause: spelling?.whereClause,
+            isValid: row[safe: 9]?.asText.map { PostgreSQLCatalogBoolean.isTrue($0) }
         )
         return (table, index)
     }

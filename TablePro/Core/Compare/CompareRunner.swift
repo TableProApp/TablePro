@@ -299,7 +299,7 @@ internal struct CompareRunner {
         let targetTables = targetReads.filter { CompareTableKindClassifier.kind(of: $0.table) == .table }
 
         let sourceSnapshots = sourceTables.compactMap {
-            $0.snapshot?.droppingCatalogSpellings(ownSchema: context.source.schema)
+            $0.sourceSnapshot?.droppingCatalogSpellings(ownSchema: context.source.schema)
         }
         let targetSnapshots = targetTables.compactMap {
             $0.snapshot?.droppingCatalogSpellings(ownSchema: context.target.schema)
@@ -358,17 +358,20 @@ internal struct CompareRunner {
         targetReads: [TableStructureRead]
     ) async throws -> [CompareObjectResult] {
         var results: [CompareObjectResult] = []
+        let includedKinds = session.includedKinds
         let diffEngine = SourceObjectDiffEngine(
             options: session.structureOptions,
             sourceDatabaseType: context.source.databaseType,
-            targetDatabaseType: context.target.databaseType
+            targetDatabaseType: context.target.databaseType,
+            targetIndexedKinds: SourceObjectIndexes.carriedKinds(on: context.target.databaseType)
         )
 
         /// Each pair reads two independent endpoints, so the two sides run together rather than the
         /// second waiting out the first.
-        if session.includedKinds.contains(.view) || session.includedKinds.contains(.materializedView) {
-            let sourceViews = sourceReads.map(\.table).filter { CompareTableKindClassifier.kind(of: $0) != .table }
-            let targetViews = targetReads.map(\.table).filter { CompareTableKindClassifier.kind(of: $0) != .table }
+        let viewKinds = includedKinds.intersection([.view, .materializedView])
+        if !viewKinds.isEmpty {
+            let sourceViews = sourceReads.filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0.table)) }
+            let targetViews = targetReads.filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0.table)) }
             async let sourceDefinitions = metadataService.viewDefinitions(
                 for: context.source, connection: context.sourceConnection, views: sourceViews
             )
@@ -378,7 +381,7 @@ internal struct CompareRunner {
             results += try await diffEngine.compare(source: sourceDefinitions, target: targetDefinitions)
         }
 
-        if session.includedKinds.contains(.procedure) || session.includedKinds.contains(.function) {
+        if includedKinds.contains(.procedure) || includedKinds.contains(.function) {
             async let sourceRoutines = metadataService.routineReads(
                 for: context.source, connection: context.sourceConnection
             )
@@ -386,10 +389,9 @@ internal struct CompareRunner {
                 for: context.target, connection: context.targetConnection
             )
             results += try await diffEngine.compare(source: sourceRoutines, target: targetRoutines)
-                .filter { session.includedKinds.contains($0.identity.kind) }
         }
 
-        if session.includedKinds.contains(.trigger) {
+        if includedKinds.contains(.trigger) {
             async let sourceTriggers = metadataService.triggerReads(
                 for: context.source,
                 connection: context.sourceConnection,
@@ -403,7 +405,7 @@ internal struct CompareRunner {
             results += try await diffEngine.compare(source: sourceTriggers, target: targetTriggers)
         }
 
-        return results
+        return results.filter { includedKinds.contains($0.identity.kind) }
     }
 
     private func structureStatements(_ context: Context) async throws -> [SyncStatement] {
@@ -444,10 +446,12 @@ internal struct CompareRunner {
                 targetDriver: plugin, targetDatabaseType: driver.connection.type
             ).build(operations: tableOperations, foreignKeysByTable: foreignKeys)
             let sourceBuilder = SourceObjectSyncBuilder(
-                targetDriver: plugin, targetDatabaseType: driver.connection.type
+                targetDriver: plugin,
+                targetDatabaseType: driver.connection.type,
+                indexSchema: plugin.currentSchema
             )
             for entry in sourceDefined {
-                statements += sourceBuilder.build(for: entry.result, action: entry.action)
+                statements += try sourceBuilder.build(for: entry.result, action: entry.action)
             }
             return statements
         }
@@ -476,7 +480,13 @@ internal struct CompareRunner {
             actions: { actions[$0.id] ?? .skip },
             sourceSnapshots: verification.sourceSnapshots
         )
-        if let refusal = StructureChangeGuard.refusal(expected: expected, actual: actual) {
+        let unreadable = Dictionary(
+            verification.report.uncomparable.compactMap { result in
+                result.comparisonError.map { (result.id, $0) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        if let refusal = StructureChangeGuard.refusal(expected: expected, actual: actual, unreadable: unreadable) {
             throw refusal
         }
     }

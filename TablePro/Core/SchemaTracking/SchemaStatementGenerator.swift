@@ -73,7 +73,8 @@ struct SchemaStatementGenerator {
     private func sortByDependency(_ changes: [SchemaChange]) -> [SchemaChange] {
         // Execution order for safety:
         // 1. Drop foreign keys first (includes modify FK, which requires drop+recreate)
-        // 2. Drop indexes (includes modify index, which requires drop+recreate)
+        // 2. Drop indexes (a modified index drops here and is added at 6, unless the driver
+        //    replaces it in one statement and no column changes in the same save)
         // 3. Drop/modify columns
         // 4. Add columns
         // 5. Modify primary key
@@ -91,6 +92,7 @@ struct SchemaStatementGenerator {
         var indexAdds: [SchemaChange] = []
         var fkAdds: [SchemaChange] = []
         var constraintAdds: [SchemaChange] = []
+        let keepsIndexModifiesWhole = !changes.contains(where: Self.changesColumns)
 
         for change in changes {
             switch change {
@@ -121,8 +123,12 @@ struct SchemaStatementGenerator {
             case .deleteIndex:
                 indexDeletes.append(change)
             case .modifyIndex(let old, let new):
-                indexDeletes.append(.deleteIndex(old))
-                indexAdds.append(.addIndex(new))
+                if keepsIndexModifiesWhole, modifyIndexSQL(old: old, new: new) != nil {
+                    indexAdds.append(change)
+                } else {
+                    indexDeletes.append(.deleteIndex(old))
+                    indexAdds.append(.addIndex(new))
+                }
             case .deleteColumn:
                 columnDeletes.append(change)
             case .modifyColumn:
@@ -140,6 +146,16 @@ struct SchemaStatementGenerator {
 
         return constraintDeletes + constraintModifies + fkDeletes + indexDeletes + columnDeletes
             + columnModifies + columnAdds + pkChanges + indexAdds + fkAdds + constraintAdds
+    }
+
+    private static func changesColumns(_ change: SchemaChange) -> Bool {
+        switch change {
+        case .addColumn, .modifyColumn, .deleteColumn, .modifyPrimaryKey:
+            return true
+        case .addIndex, .modifyIndex, .deleteIndex, .addForeignKey, .modifyForeignKey, .deleteForeignKey,
+             .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
+            return false
+        }
     }
 
     // MARK: - Statement Generation
@@ -216,14 +232,12 @@ struct SchemaStatementGenerator {
     }
 
     private func generateModifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition) -> [SchemaStatement] {
-        guard let dropSql = pluginDriver.generateDropIndexSQL(table: tableName, indexName: old.name),
-              let addSql = pluginDriver.generateAddIndexSQL(table: tableName, index: new.toPlugin()) else {
-            return []
-        }
-        return [
-            SchemaStatement(sql: dropSql, description: "Drop index '\(old.name)'", isDestructive: false),
-            SchemaStatement(sql: addSql, description: "Add index '\(new.name)'", isDestructive: false)
-        ]
+        guard let sql = modifyIndexSQL(old: old, new: new) else { return [] }
+        return [SchemaStatement(sql: sql, description: "Replace index '\(old.name)'", isDestructive: false)]
+    }
+
+    private func modifyIndexSQL(old: EditableIndexDefinition, new: EditableIndexDefinition) -> String? {
+        pluginDriver.generateModifyIndexSQL(table: tableName, oldIndexName: old.name, newIndex: new.toPlugin())
     }
 
     private func generateDeleteIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {

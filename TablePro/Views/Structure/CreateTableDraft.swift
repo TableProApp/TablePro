@@ -7,6 +7,15 @@ import Combine
 import Foundation
 import TableProPluginKit
 
+internal struct CreateTableCompositionKey: Hashable {
+    let scope: DatabaseScope
+    let tableName: String
+    let options: CreateTableOptions
+    let columns: [EditableColumnDefinition]
+    let indexes: [EditableIndexDefinition]
+    let foreignKeys: [EditableForeignKeyDefinition]
+}
+
 /// A table definition in progress, held outside the view that edits it.
 ///
 /// A Create Table tab's whole content is unsaved by definition: nothing exists on the server until
@@ -34,6 +43,18 @@ internal final class CreateTableDraft: ObservableObject {
         form = spec().map(CreateTableFormState.init(spec:))
     }
 
+    @Published internal private(set) var composed: CreateTableStatements?
+    @Published internal private(set) var compositionFailure: String?
+
+    private var composedKey: CreateTableCompositionKey?
+    private var compositionGeneration = 0
+    private var changeManagerForwarding: AnyCancellable?
+
+    internal init() {
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+    }
+
     /// Whether the draft holds anything worth losing. A tab that has only just opened does not: the
     /// editor seeds one blank column so the grid has a row to show, which registers as a pending
     /// change without the user having typed anything.
@@ -48,5 +69,55 @@ internal final class CreateTableDraft: ObservableObject {
             || changeManager.workingForeignKeys.contains {
                 !$0.name.isEmpty || !$0.columns.isEmpty || !$0.referencedTable.isEmpty
             }
+    }
+
+    internal static func offersEngineOptions(for databaseType: DatabaseType) -> Bool {
+        databaseType == .mysql || databaseType == .mariadb
+    }
+
+    internal func plan(for databaseType: DatabaseType) -> CreateTablePlan {
+        CreateTableDraftBuilder.plan(
+            tableName: tableName,
+            options: tableOptions,
+            columns: changeManager.workingColumns,
+            indexes: changeManager.workingIndexes,
+            foreignKeys: changeManager.workingForeignKeys,
+            dialect: ForeignKeyDialect.forType(databaseType),
+            includesEngineOptions: Self.offersEngineOptions(for: databaseType)
+        )
+    }
+
+    internal func compositionKey(scope: DatabaseScope) -> CreateTableCompositionKey {
+        CreateTableCompositionKey(
+            scope: scope,
+            tableName: tableName,
+            options: tableOptions,
+            columns: changeManager.workingColumns,
+            indexes: changeManager.workingIndexes,
+            foreignKeys: changeManager.workingForeignKeys
+        )
+    }
+
+    internal func recompose(databaseType: DatabaseType, scope: DatabaseScope) async {
+        let key = compositionKey(scope: scope)
+        guard key != composedKey else { return }
+
+        compositionGeneration += 1
+        let generation = compositionGeneration
+        do {
+            let statements = try await DatabaseManager.shared.createTableStatements(
+                plan: plan(for: databaseType),
+                scope: scope
+            )
+            guard generation == compositionGeneration else { return }
+            composed = statements
+            composedKey = key
+            compositionFailure = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation == compositionGeneration else { return }
+            compositionFailure = error.localizedDescription
+        }
     }
 }

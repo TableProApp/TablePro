@@ -21,7 +21,11 @@ struct QuickSwitcherCrossSchemaTests {
         openTables: Set<QuickSwitcherOpenTable> = []
     ) -> [QuickSwitcherItem] {
         QuickSwitcherViewModel.makeTableItems(
-            tables, database: "shop", browseSchema: browseSchema, openTables: openTables
+            tables,
+            database: "shop",
+            connectionSwitchesDatabases: true,
+            browseSchema: browseSchema,
+            openTables: openTables
         )
     }
 
@@ -101,8 +105,7 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("dropped", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: local, loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop",
-            grouping: .bySchema
+            local: local, loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop"
         )
 
         #expect(merged.map(\.name) == ["users", "timesheet"])
@@ -115,8 +118,7 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop",
-            grouping: .bySchema
+            local: [], loadedFrom: "shop", coveredSchemas: ["public"], listing: allSchemas, browsing: "shop"
         )
 
         #expect(merged.map(\.name) == ["timesheet"])
@@ -127,8 +129,7 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("timesheet", "attendance"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", coveredSchemas: [], listing: allSchemas, browsing: "shop",
-            grouping: .bySchema
+            local: [], loadedFrom: "shop", coveredSchemas: [], listing: allSchemas, browsing: "shop"
         )
 
         #expect(merged.count == 1)
@@ -143,38 +144,35 @@ struct QuickSwitcherCrossSchemaTests {
             loadedFrom: "billing",
             coveredSchemas: ["public"],
             listing: [table("orders", "public"), table("timesheet", "attendance")],
-            browsing: "shop",
-            grouping: .bySchema
+            browsing: "shop"
         )
 
         #expect(merged.map(\.name) == ["orders", "timesheet"])
     }
 
-    /// A hierarchical engine keys its per-schema lists by schema alone, so after a database switch
-    /// they can still hold the database the connection left while the listing names the new one.
-    @Test("On a hierarchical engine the listing answers for every schema once it has arrived")
-    func hierarchicalListingWins() {
+    /// Snowflake's `PUBLIC` lost its last table: the schema service reloaded it as empty, and the
+    /// listing still holds the table until it is next asked.
+    @Test("A schema a hierarchical engine loaded keeps the listing's stale rows out")
+    func hierarchicalCoveredSchemaKeepsStaleRowsOut() {
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [table("OLD_ORDERS", "PUBLIC")],
+            local: [table("ENTRIES", "LEDGER")],
             loadedFrom: "SALES",
-            coveredSchemas: ["PUBLIC"],
-            listing: [table("ORDERS", "PUBLIC")],
-            browsing: "SALES",
-            grouping: .hierarchicalSchema
+            coveredSchemas: ["PUBLIC", "LEDGER"],
+            listing: [table("ORDERS", "PUBLIC"), table("ENTRIES", "LEDGER"), table("RATES", "FX")],
+            browsing: "SALES"
         )
 
-        #expect(merged.map(\.name) == ["ORDERS"])
+        #expect(merged.map(\.name) == ["ENTRIES", "RATES"])
     }
 
-    @Test("On a hierarchical engine the schema service stands in until the listing arrives")
-    func hierarchicalBeforeListing() {
+    @Test("The schema service stands in until the listing arrives")
+    func schemaServiceBeforeListing() {
         let merged = QuickSwitcherViewModel.mergedTables(
             local: [table("ORDERS", "PUBLIC")],
             loadedFrom: "SALES",
             coveredSchemas: ["PUBLIC"],
             listing: nil,
-            browsing: "SALES",
-            grouping: .hierarchicalSchema
+            browsing: "SALES"
         )
 
         #expect(merged.map(\.name) == ["ORDERS"])
@@ -271,7 +269,8 @@ struct QuickSwitcherCrossSchemaTests {
         )
         let remote = QuickSwitcherViewModel.makeCrossConnectionItems(
             tables: [table("timesheet", "attendance"), table("timesheet", "public")],
-            target: target
+            target: target,
+            connectionSwitchesDatabases: true
         )
         guard let defaults = UserDefaults(suiteName: "QuickSwitcherCrossSchemaTests.\(UUID().uuidString)") else {
             Issue.record("no defaults suite")
@@ -298,18 +297,26 @@ struct QuickSwitcherCrossSchemaTests {
 
     // MARK: - Identity
 
-    @Test("A name without a dot keeps the id it always had")
-    func idUnchangedWithoutDots() {
-        #expect(QuickSwitcherItem.tableItemId(name: "users", schema: "public") == "table_public.users")
-        #expect(QuickSwitcherItem.tableItemId(name: "users", schema: nil) == "table_users")
+    private func key(_ name: String, schema: String?, switchesDatabases: Bool) -> String {
+        QuickSwitcherFrecencyKey.table(
+            name: name,
+            schema: schema,
+            in: .init(database: "shop", connectionSwitchesDatabases: switchesDatabases)
+        )
     }
 
-    @Test("Dotted names in different schemas never share an id")
-    func dottedNamesStayDistinct() {
-        let first = QuickSwitcherItem.tableItemId(name: "b.c", schema: "a")
-        let second = QuickSwitcherItem.tableItemId(name: "c", schema: "a.b")
-        let unqualified = QuickSwitcherItem.tableItemId(name: "a.b", schema: nil)
-        let qualified = QuickSwitcherItem.tableItemId(name: "b", schema: "a")
+    @Test("A name without a dot keeps the key it always had on a connection that reaches one database")
+    func keyUnchangedWithoutDots() {
+        #expect(key("users", schema: "public", switchesDatabases: false) == "table_public.users")
+        #expect(key("users", schema: nil, switchesDatabases: false) == "table_users")
+    }
+
+    @Test("Dotted names in different schemas never share a key", arguments: [false, true])
+    func dottedNamesStayDistinct(switchesDatabases: Bool) {
+        let first = key("b.c", schema: "a", switchesDatabases: switchesDatabases)
+        let second = key("c", schema: "a.b", switchesDatabases: switchesDatabases)
+        let unqualified = key("a.b", schema: nil, switchesDatabases: switchesDatabases)
+        let qualified = key("b", schema: "a", switchesDatabases: switchesDatabases)
 
         #expect(first != second)
         #expect(unqualified != qualified)

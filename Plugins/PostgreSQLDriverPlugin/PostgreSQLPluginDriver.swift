@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProPluginKit
 
 class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
@@ -175,7 +176,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func listTables(in listing: PostgreSQLTableListingScope) async throws -> [PluginTableInfo] {
         func query(_ attempt: PostgreSQLTableListingAttempt) -> String {
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLTableListing.query(
                 in: listing,
                 includeMaterializedViews: attempt.includeOptionalCatalogs && includesMaterializedViews(),
                 includeForeignTables: attempt.includeOptionalCatalogs && includesForeignTables(),
@@ -197,27 +198,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         guard let result else { return [] }
-        return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[0].asText else { return nil }
-            let typeStr = row[1].asText ?? "BASE TABLE"
-            let type: String
-            switch typeStr {
-            case "PARTITIONED TABLE": type = "PARTITIONED TABLE"
-            case "MATERIALIZED VIEW": type = "MATERIALIZED VIEW"
-            case "FOREIGN TABLE":     type = "FOREIGN TABLE"
-            case "VIEW":              type = "VIEW"
-            default:                  type = "TABLE"
-            }
-            let comment = row[safe: 2]?.asText?.nilIfEmpty
-            let partitionCount = row[safe: 3]?.asText.flatMap(Int.init)
-            return PluginTableInfo(
-                name: name,
-                type: type,
-                schema: row[safe: 4]?.asText,
-                comment: comment,
-                partitionCount: partitionCount
-            )
-        }
+        return result.rows.compactMap { PostgreSQLTableListing.table(fromRow: $0.map(\.asText)) }
     }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
@@ -427,18 +408,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             ORDER BY a.attnum
             """
 
-        let constraintsQuery = """
-            SELECT
-                pg_get_constraintdef(con.oid, true)
-            FROM pg_constraint con
-            JOIN pg_class c ON c.oid = con.conrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = \(tableLiteral)
-              AND n.nspname = \(schemaLiteral)
-              AND con.contype IN ('p', 'u', 'c')
-            ORDER BY
-              CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 END
-            """
+        let constraintsQuery = PostgreSQLSchemaQueries.tableDDLConstraintsQuery(
+            schema: resolvedSchema, table: table
+        )
 
         async let columnsResult = execute(query: columnsQuery)
         async let constraintsResult = execute(query: constraintsQuery)
@@ -472,27 +444,19 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// operator class, an `INCLUDE` list, a storage parameter, a partial predicate and a per-column
     /// sort direction verbatim. It also qualifies the table whatever `search_path` holds, so a dump
     /// spanning two schemas attaches each index to the right one.
-    ///
-    /// An index backing a constraint is excluded by `conindid` rather than by matching its name
-    /// against `conname`, which is how `pg_dump` does it: the names agree for a unique or primary
-    /// key constraint, but a CHECK constraint that happens to share an index's name would drop that
-    /// index from the dump.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let query = """
-            SELECT pg_get_indexdef(ix.indexrelid)
-            FROM pg_index ix
-            JOIN pg_class c ON c.oid = ix.indrelid
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
-              AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema))
-              AND NOT EXISTS (
-                SELECT 1 FROM pg_constraint con WHERE con.conindid = ix.indexrelid
-              )
-            ORDER BY i.relname
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { $0[0].asText }
+        try await fetchStandaloneIndexes(table: table, schema: schema ?? core.currentSchema).definitions
+    }
+
+    func fetchStandaloneIndexes(table: String, schema: String) async throws -> PostgreSQLStandaloneIndexes {
+        let query = PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table)
+        let indexes = PostgreSQLIndexQueries.standaloneIndexes(rows: try await execute(query: query).rows)
+        if !indexes.invalidNames.isEmpty {
+            Self.logger.info(
+                "Left out \(indexes.invalidNames.count) invalid index(es) on \(table, privacy: .private(mask: .hash))"
+            )
+        }
+        return indexes
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -839,7 +803,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             )
         } catch {
             Self.logger.error(
-                "Failed to read template1 defaults: \(error.localizedDescription, privacy: .public)"
+                "Failed to read template1 defaults: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return nil
         }
@@ -864,7 +828,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             return (libc: libc, icu: icu)
         } catch {
             Self.logger.error(
-                "Failed to read pg_collation: \(error.localizedDescription, privacy: .public)"
+                "Failed to read pg_collation: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return (libc: [], icu: [])
         }

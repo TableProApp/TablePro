@@ -31,6 +31,7 @@
             <enumerator name="users and roles" code="TPk6" description="Users, roles and grants."/>
             <enumerator name="query insights" code="TPk7" description="Query history statistics."/>
             <enumerator name="object source" code="TPk8" description="The source of a routine or trigger."/>
+            <enumerator name="version history" code="TPk9" description="The history of a saved query or a linked SQL file."/>
         </enumeration>
 
         <record-type name="result row" code="TPrr" description="One row of a query result.">

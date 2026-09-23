@@ -26,7 +26,7 @@ struct PostgreSQLLiteralQuotingTests {
     /// which is what makes that safe.
     private static func statements(schema: String, table: String) -> [String] {
         [
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLTableListing.query(
                 schema: schema, includeMaterializedViews: true, includeForeignTables: true
             ),
             PostgreSQLSchemaQueries.fetchPartitions(schema: schema, table: table),
@@ -42,6 +42,8 @@ struct PostgreSQLLiteralQuotingTests {
             PostgreSQLObjectQueries.userDefinedTypeList(schema: schema, identity: nil, capabilities: caps),
             PostgreSQLIndexQueries.indexList(schema: schema, table: table, capabilities: caps),
             PostgreSQLIndexQueries.indexDDLQuery(schema: schema, table: table),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: schema, table: table),
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: schema, table: table, capabilities: caps),
             PostgreSQLSequenceQueries.sequenceList(
                 schema: schema, dependentOnTable: table, source: .sequencesView
