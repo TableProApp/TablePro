@@ -33,6 +33,14 @@ internal struct TableStructureRead: Sendable {
     internal var objectIndexes: ObjectIndexRead?
 
     internal var snapshot: TableStructureSnapshot? {
+        snapshot(indexes: indexes)
+    }
+
+    internal var sourceSnapshot: TableStructureSnapshot? {
+        snapshot(indexes: indexes.filter { $0.isValid != false })
+    }
+
+    private func snapshot(indexes: [PluginIndexInfo]) -> TableStructureSnapshot? {
         guard failure == nil else { return nil }
         return TableStructureSnapshot.from(
             table: table, columns: columns, indexes: indexes, foreignKeys: foreignKeys, metadata: metadata

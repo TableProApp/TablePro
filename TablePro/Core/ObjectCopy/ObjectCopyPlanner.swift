@@ -281,7 +281,7 @@ internal struct ObjectCopyPlanner {
                 skipped.append(ObjectCopySkip(selection: selection, reason: Self.missingInSource))
                 continue
             }
-            guard read.snapshot != nil else {
+            guard read.sourceSnapshot != nil else {
                 skipped.append(ObjectCopySkip(selection: selection, reason: read.failure ?? Self.unreadable))
                 continue
             }
@@ -303,7 +303,7 @@ internal struct ObjectCopyPlanner {
         for selection in Self.orderedByDependency(
             scope.objects.filter { reads[$0] != nil }, reads: reads, effectiveSchema: sourceNamespace
         ) {
-            guard let read = reads[selection], let snapshot = read.snapshot else { continue }
+            guard let read = reads[selection], let snapshot = read.sourceSnapshot else { continue }
             let targetRead = match(selection, in: targetReads)
             let existsInTarget = targetRead != nil
             if existsInTarget, request.existingPolicy == .skip {

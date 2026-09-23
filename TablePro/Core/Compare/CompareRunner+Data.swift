@@ -179,7 +179,7 @@ internal extension CompareRunner {
             session.dataPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
         )
         let sourceSnapshots = Dictionary(
-            sourceReads.compactMap { $0.snapshot }.map { ($0.qualifiedName, $0) },
+            sourceReads.compactMap { $0.sourceSnapshot }.map { ($0.qualifiedName, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 

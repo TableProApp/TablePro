@@ -33,6 +33,7 @@ public struct PluginIndexInfo: Codable, Sendable {
     /// `whereClause` as a `CREATE INDEX` on another schema has to write it, or nil to write
     /// `whereClause`.
     public let ddlWhereClause: String?
+    public let isValid: Bool?
 
     /// The signature published before key expressions, `INCLUDE` columns and the DDL spellings
     /// existed. Kept byte-identical and disfavoured so plugins built against an older PluginKit keep
@@ -58,8 +59,10 @@ public struct PluginIndexInfo: Codable, Sendable {
         self.includedColumns = nil
         self.ddlMethodAndKeys = nil
         self.ddlWhereClause = nil
+        self.isValid = nil
     }
 
+    @_disfavoredOverload
     public init(
         name: String,
         columns: [String],
@@ -84,5 +87,34 @@ public struct PluginIndexInfo: Codable, Sendable {
         self.includedColumns = includedColumns
         self.ddlMethodAndKeys = ddlMethodAndKeys
         self.ddlWhereClause = ddlWhereClause
+        self.isValid = nil
+    }
+
+    public init(
+        name: String,
+        columns: [String],
+        isUnique: Bool = false,
+        isPrimary: Bool = false,
+        type: String = "BTREE",
+        columnPrefixes: [String: Int]? = nil,
+        whereClause: String? = nil,
+        expressions: [String]?,
+        includedColumns: [String]?,
+        ddlMethodAndKeys: String?,
+        ddlWhereClause: String?,
+        isValid: Bool?
+    ) {
+        self.name = name
+        self.columns = columns
+        self.isUnique = isUnique
+        self.isPrimary = isPrimary
+        self.type = type
+        self.columnPrefixes = columnPrefixes
+        self.whereClause = whereClause
+        self.expressions = expressions
+        self.includedColumns = includedColumns
+        self.ddlMethodAndKeys = ddlMethodAndKeys
+        self.ddlWhereClause = ddlWhereClause
+        self.isValid = isValid
     }
 }

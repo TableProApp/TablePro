@@ -6357,6 +6357,9 @@
         }
       }
     },
+    "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
+
+    },
     "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
 
     },
@@ -6364,6 +6367,9 @@
 
     },
     "%@ does not allow NULL, so its default cannot be NULL" : {
+
+    },
+    "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
 
     },
     "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it." : {
@@ -56054,9 +56060,6 @@
         }
       }
     },
-    "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges." : {
-
-    },
     "Drop…" : {
       "localizations" : {
         "ko" : {
@@ -56266,6 +56269,9 @@
           }
         }
       }
+    },
+    "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges." : {
+
     },
     "Dropping materialized view %@ discards its stored rows, comments and privileges. The rows are computed again and the source's indexes are created on it." : {
 
@@ -62547,6 +62553,9 @@
           }
         }
       }
+    },
+    "False for an index the engine reports as invalid, which queries skip and exports leave out" : {
+
     },
     "expand" : {
       "extractionState" : "stale",
@@ -74849,6 +74858,9 @@
         }
       }
     },
+    "Its indexes are left out, because the target is not known to take indexes on this kind of object." : {
+
+    },
     "history entries" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75303,6 +75315,9 @@
         }
       }
     },
+    "Invalid indexes are not recreated: %@." : {
+
+    },
     "hostname:%lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75611,13 +75626,7 @@
         }
       }
     },
-    "Its indexes are left out, because the target is not known to take indexes on this kind of object." : {
-
-    },
     "Its indexes are left out, because the target's index statements would name a different schema than its definition." : {
-
-    },
-    "Its indexes could not be read: %@" : {
 
     },
     "hyphen" : {
@@ -81514,6 +81523,9 @@
           }
         }
       }
+    },
+    "Its indexes could not be read: %@" : {
+
     },
     "is empty" : {
       "localizations" : {
@@ -147350,9 +147362,6 @@
     "SSH_AUTH_SOCK" : {
 
     },
-    "The target's indexes could not be read: %@" : {
-
-    },
     "ssh.example.com" : {
       "localizations" : {
         "ko" : {
@@ -162080,6 +162089,9 @@
 
     },
     "The target returned an empty definition." : {
+
+    },
+    "The target's indexes could not be read: %@" : {
 
     },
     "The target's object is dropped and built again from the source." : {

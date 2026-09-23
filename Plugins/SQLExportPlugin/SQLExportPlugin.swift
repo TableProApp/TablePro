@@ -766,7 +766,8 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         to writer: SQLExportFileWriter,
         progress: PluginExportProgress
     ) async throws {
-        var emittedAnything = false
+        var emittedAnything = try await writeIndexPhase(
+            objects: sortedTables, dataSource: dataSource, to: writer, progress: progress)
         /// A driver that hands back the server's own CREATE statement has already declared these
         /// constraints inline, so adding them again names each one twice: MySQL and SQL Server
         /// reject the duplicate, and SQLite has no ADD CONSTRAINT to reject it with. The phase
@@ -781,11 +782,6 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     emittedAnything = true
                 }
             }
-        }
-
-        if try await writeIndexPhase(
-            objects: sortedTables, dataSource: dataSource, to: writer, progress: progress) {
-            emittedAnything = true
         }
 
         /// `setval` and `pg_get_serial_sequence` are PostgreSQL's own, so the sequence is only
@@ -808,7 +804,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         }
     }
 
-    /// Writes each object's `CREATE INDEX` statements, after its rows and after the deferred
+    /// Writes each object's `CREATE INDEX` statements, after its rows and before the deferred
     /// foreign keys.
     ///
     /// That is where every engine's own dump tool puts them, and the reason is that a bulk load
