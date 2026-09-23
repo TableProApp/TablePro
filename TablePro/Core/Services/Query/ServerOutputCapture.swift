@@ -70,7 +70,7 @@ enum ServerOutputCapture {
         do {
             return try await driver.fetchServerOutput()
         } catch {
-            logger.warning("Server output could not be read: \(String(describing: error), privacy: .public)")
+            logger.warning("Server output could not be read: \(error.publicLogShape, privacy: .public) \(String(describing: error), privacy: .private)")
             return .none
         }
     }

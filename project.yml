@@ -238,7 +238,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -350,6 +350,9 @@ targets:
       - TablePro/Core/MCP/Transport/MCPUpstreamCredentials.swift
       - TablePro/Core/MCP/Wire
       - TablePro/Core/Services/Infrastructure/BackgroundLaunchFlag.swift
+    dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
     scheme: {}
     settings:
       base:
@@ -713,7 +716,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -769,6 +772,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProGeometry
+      - package: TableProCore
+        product: TableProLogRedaction
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -797,6 +802,9 @@ targets:
     templateAttributes:
       folder: PostgreSQLDriverPlugin
       principalClass: PostgreSQLPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1024,6 +1032,9 @@ targets:
     templateAttributes:
       folder: CSVInspectorPlugin
       principalClass: CSVInspectorPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
 
   # ─── Plugins published to the registry ────────────────────────────────────────
 
@@ -1049,6 +1060,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProGoogleCloud
+      - package: TableProCore
+        product: TableProLogRedaction
 
   SpannerDriverPlugin:
     templates: [DriverPlugin]
@@ -1247,7 +1260,7 @@ targets:
       principalClass: MSSQLPlugin
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProMSSQLCore]
+        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1279,6 +1292,8 @@ targets:
       folder: MongoDBDriverPlugin
       principalClass: MongoDBPlugin
     dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
       - package: TableProCore
         product: TableProNumberFormatting
     settings:
@@ -1314,6 +1329,8 @@ targets:
       folder: OracleDriverPlugin
       principalClass: OraclePlugin
     dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
       - package: TableProOracle
         product: TableProOracleCore
 

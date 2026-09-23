@@ -207,7 +207,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         Self.logger.debug("""
         buildFilteredQuery table=\(table, privacy: .public) logic=\(logicMode, privacy: .public) limit=\(limit) offset=\(offset) \
         columns=[\(columns.joined(separator: ","), privacy: .public)] \
-        filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .public) \
+        filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .private) \
         sortColumns=\(sortColumns.map { "[\($0.columnIndex)]=\($0.ascending ? "asc" : "desc")" }.joined(separator: " "), privacy: .public) \
         resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public)
         """)
