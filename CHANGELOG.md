@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
 - Schemas missing from Open Quickly on every reopen after one failed to load.
 - Unexpanded schemas hidden by the sidebar filter in the Tree layout.
