@@ -6,67 +6,118 @@
 import Foundation
 
 internal enum SQLFrontmatter {
+    enum Key: String, CaseIterable, Comparable {
+        case name
+        case keyword
+        case description
+
+        static func < (lhs: Key, rhs: Key) -> Bool {
+            lhs.canonicalPosition < rhs.canonicalPosition
+        }
+
+        private var canonicalPosition: Int {
+            switch self {
+            case .name: 0
+            case .keyword: 1
+            case .description: 2
+            }
+        }
+    }
+
     struct Metadata: Equatable {
         var name: String?
         var keyword: String?
         var description: String?
+
+        func value(for key: Key) -> String? {
+            switch key {
+            case .name: name
+            case .keyword: keyword
+            case .description: description
+            }
+        }
     }
 
-    struct Parsed: Equatable {
-        var metadata: Metadata
-        var bodyCharOffset: Int
+    struct HeaderLine: Equatable {
+        let text: String
+        let terminator: String
+        let key: String
+        let value: String
+
+        var ownedKey: Key? {
+            Key(rawValue: key)
+        }
     }
+
+    struct Document: Equatable {
+        let byteOrderMark: String
+        let header: [HeaderLine]
+        let body: String
+    }
+
+    private static let byteOrderMark: Character = "\u{FEFF}"
+    private static let lineFeed: unichar = 0x0A
+    private static let carriageReturn: unichar = 0x0D
 
     static func parse(_ content: String) -> Metadata {
-        parseWithBody(content).metadata
+        split(content).header.reduce(into: Metadata()) { metadata, line in
+            switch line.ownedKey {
+            case .name: metadata.name = line.value
+            case .keyword: metadata.keyword = line.value.isEmpty ? nil : line.value
+            case .description: metadata.description = line.value
+            case nil: break
+            }
+        }
     }
 
-    static func parseWithBody(_ content: String) -> Parsed {
-        var metadata = Metadata()
-        let bomLength = content.first == "\u{FEFF}" ? 1 : 0
-        let stripped = bomLength > 0 ? String(content.dropFirst()) : content
-        let nsContent = stripped as NSString
+    static func split(_ content: String) -> Document {
+        let hasByteOrderMark = content.first == byteOrderMark
+        let nsContent = (hasByteOrderMark ? String(content.dropFirst()) : content) as NSString
         let length = nsContent.length
+        var header: [HeaderLine] = []
         var lineStart = 0
-        var bodyOffset = 0
 
         while lineStart < length {
-            var lineEnd = lineStart
-            while lineEnd < length {
-                let char = nsContent.character(at: lineEnd)
-                if char == 0x0A || char == 0x0D { break }
-                lineEnd += 1
-            }
+            let lineEnd = endOfLine(in: nsContent, from: lineStart)
+            let text = nsContent.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
+            guard let entry = parseLine(text.trimmingCharacters(in: .whitespaces)) else { break }
 
-            let line = nsContent
-                .substring(with: NSRange(location: lineStart, length: lineEnd - lineStart))
-                .trimmingCharacters(in: .whitespaces)
-
-            guard let entry = parseLine(line) else {
-                bodyOffset = lineStart
-                return Parsed(metadata: metadata, bodyCharOffset: bodyOffset + bomLength)
-            }
-            switch entry.key {
-            case "name": metadata.name = entry.value
-            case "keyword": metadata.keyword = entry.value.isEmpty ? nil : entry.value
-            case "description": metadata.description = entry.value
-            default: break
-            }
-
-            var nextLineStart = lineEnd
-            if nextLineStart < length, nsContent.character(at: nextLineStart) == 0x0D {
-                nextLineStart += 1
-                if nextLineStart < length, nsContent.character(at: nextLineStart) == 0x0A {
-                    nextLineStart += 1
-                }
-            } else if nextLineStart < length, nsContent.character(at: nextLineStart) == 0x0A {
-                nextLineStart += 1
-            }
+            let nextLineStart = startOfNextLine(in: nsContent, after: lineEnd)
+            header.append(HeaderLine(
+                text: text,
+                terminator: nsContent.substring(with: NSRange(location: lineEnd, length: nextLineStart - lineEnd)),
+                key: entry.key,
+                value: entry.value
+            ))
             lineStart = nextLineStart
-            bodyOffset = lineStart
         }
 
-        return Parsed(metadata: metadata, bodyCharOffset: bodyOffset + bomLength)
+        return Document(
+            byteOrderMark: hasByteOrderMark ? String(byteOrderMark) : "",
+            header: header,
+            body: nsContent.substring(from: lineStart)
+        )
+    }
+
+    private static func endOfLine(in content: NSString, from lineStart: Int) -> Int {
+        var lineEnd = lineStart
+        while lineEnd < content.length {
+            let char = content.character(at: lineEnd)
+            if char == lineFeed || char == carriageReturn { break }
+            lineEnd += 1
+        }
+        return lineEnd
+    }
+
+    private static func startOfNextLine(in content: NSString, after lineEnd: Int) -> Int {
+        guard lineEnd < content.length else { return lineEnd }
+        guard content.character(at: lineEnd) == carriageReturn else { return lineEnd + 1 }
+        let afterCarriageReturn = lineEnd + 1
+        guard afterCarriageReturn < content.length,
+              content.character(at: afterCarriageReturn) == lineFeed else {
+            return afterCarriageReturn
+        }
+        return afterCarriageReturn + 1
     }
 
     private static func parseLine(_ line: String) -> (key: String, value: String)? {

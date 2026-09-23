@@ -98,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ORA-01442 when changing the default or type of a `NOT NULL` Oracle column.
 - Oracle `VARCHAR2(n CHAR)` column turned into a byte length when only its nullability was edited.
 - Global saved query inside a folder missing from every other connection. (#3045)
+- Edit Metadata deleting a linked SQL file's other `-- @key: value` header lines.
 - Saved query and folder drawn nowhere when the folder holding it was gone.
 - Keyword accepted for a global saved query while another connection already held it.
 - Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files.
