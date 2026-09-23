@@ -201,6 +201,29 @@ struct QuickSwitcherCrossSchemaTests {
         #expect(Set(results.map(\.name)) == ["timesheet", "shift"])
     }
 
+    /// A shorter name is a tighter match only when there is a name to match. `attendance.` names
+    /// none, so the schema's tables come back the way a list does.
+    @Test("A trailing dot lists the schema alphabetically")
+    func trailingDotIsAlphabetical() async {
+        let catalog = items([
+            table("timesheet", "attendance"), table("leave_requests", "attendance"),
+            table("shifts", "attendance"), table("holidays", "attendance")
+        ])
+
+        let results = await search("attendance.", in: catalog)
+
+        #expect(results.map(\.name) == ["holidays", "leave_requests", "shifts", "timesheet"])
+    }
+
+    @Test("A named table still ranks its shorter matches first")
+    func namedQueryKeepsShorterFirst() async {
+        let catalog = items([table("timesheet_archive", "attendance"), table("timesheet", "attendance")])
+
+        let results = await search("attendance.timesheet", in: catalog)
+
+        #expect(results.map(\.name) == ["timesheet", "timesheet_archive"])
+    }
+
     @Test("Each part of a qualified query matches fuzzily")
     func fuzzyParts() async {
         let catalog = items([table("timesheet", "attendance"), table("orders", "sales")])

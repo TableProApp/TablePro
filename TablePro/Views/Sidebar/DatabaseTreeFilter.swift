@@ -208,6 +208,13 @@ enum DatabaseTreeFilter {
         return deduplicated(matched, by: { $0 })
     }
 
+    /// While searching, a container's kind section opens only when it holds a match. Opening every
+    /// section put a "No items" row under each empty kind of each matching container, burying the
+    /// match it was opened for. Outside a search the user's own choice stands.
+    static func objectGroupIsExpanded(searching: Bool, matchCount: Int, stored: Bool) -> Bool {
+        searching ? matchCount > 0 : stored
+    }
+
     /// What a search can say about one schema of a database-grouped tree. `unknown` is a schema
     /// whose objects neither the tree nor the all-schema listing can answer for yet, which stays on
     /// screen collapsed, for the reason `hierarchicalSchemaIsVisible` keeps an unloaded schema.

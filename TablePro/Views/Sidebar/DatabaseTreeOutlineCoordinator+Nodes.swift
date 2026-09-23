@@ -449,6 +449,10 @@ extension DatabaseTreeOutlineCoordinator {
         return buckets
     }
 
+    internal func matchCount(in group: DatabaseTreeObjectGroup) -> Int {
+        objectBuckets(database: group.database, schema: group.schema).itemCounts[group.kind] ?? 0
+    }
+
     /// Nil until the tree has loaded this schema's tables, so a search can tell a schema that holds
     /// no match from one nobody has listed yet.
     private func loadedObjectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets? {

@@ -1024,6 +1024,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         frecencyScores: [String: Double]
     ) async -> [Group] {
         let qualified = QualifiedSearchQuery(query)
+        let prefersShorterNames = qualified.map { !$0.name.isEmpty } ?? true
         var ranked = items.compactMap { item -> (item: QuickSwitcherItem, rank: Double)? in
             guard let (matchScore, matchedIndices) = bestMatch(for: item, query: query, qualified: qualified) else {
                 return nil
@@ -1042,7 +1043,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
             let lhsLength = (lhs.item.name as NSString).length
             let rhsLength = (rhs.item.name as NSString).length
-            if lhsLength != rhsLength { return lhsLength < rhsLength }
+            if prefersShorterNames, lhsLength != rhsLength { return lhsLength < rhsLength }
             return lhs.item.name.localizedStandardCompare(rhs.item.name) == .orderedAscending
         }
         let items = Array(ranked.prefix(QuickSwitcherRanking.maxResults).map(\.item))

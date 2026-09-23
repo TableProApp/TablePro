@@ -264,4 +264,16 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         )
         #expect(visible == ["attendance"])
     }
+
+    @Test("While searching, a kind section opens only when it holds a match")
+    func searchOpensOnlyMatchingSections() {
+        #expect(DatabaseTreeFilter.objectGroupIsExpanded(searching: true, matchCount: 1, stored: false))
+        #expect(!DatabaseTreeFilter.objectGroupIsExpanded(searching: true, matchCount: 0, stored: true))
+    }
+
+    @Test("Outside a search a kind section keeps the user's choice")
+    func noSearchKeepsStoredExpansion() {
+        #expect(DatabaseTreeFilter.objectGroupIsExpanded(searching: false, matchCount: 0, stored: true))
+        #expect(!DatabaseTreeFilter.objectGroupIsExpanded(searching: false, matchCount: 3, stored: false))
+    }
 }

@@ -124,7 +124,11 @@ extension DatabaseTreeOutlineCoordinator {
         let searching = !searchText.isEmpty
         for groupNode in resolvedChildren(of: parent) {
             guard case .containerObjectKindSection(let group) = groupNode.kind else { continue }
-            let expanded = searching || (windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault)
+            let expanded = DatabaseTreeFilter.objectGroupIsExpanded(
+                searching: searching,
+                matchCount: searching ? matchCount(in: group) : 0,
+                stored: windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault
+            )
             setExpanded(groupNode, expanded)
             if outlineView.isItemExpanded(groupNode) { restorePartitionExpansion(under: groupNode) }
         }
