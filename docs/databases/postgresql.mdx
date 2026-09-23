@@ -114,6 +114,8 @@ An SQL export writes those statements back for tables, views and materialized vi
 
 The Structure tab of a view, a materialized view or a foreign table offers only the edits PostgreSQL takes on that kind of object, which is fewer than a table's and different for each. See [Table Structure](/features/table-structure#what-each-object-accepts).
 
+PostgreSQL refuses `INSERT`, `UPDATE` and `DELETE` on a materialized view, so its rows open read-only in the data grid. Edit the tables it reads from, then choose **Refresh Materialized View…**.
+
 ## Cross-database tabs
 
 PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).

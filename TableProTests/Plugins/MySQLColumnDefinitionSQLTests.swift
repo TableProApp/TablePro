@@ -194,18 +194,285 @@ struct MySQLColumnDefinitionSQLTests {
         ]
     )
     func catalogDefaultRoundTrip(value: String, extra: String, type: String, expected: String) {
-        let resolved = mysqlDefaultValueFromCatalog(value, extra: extra, dataType: type, quotesLiterals: false)
+        for isNullable in [true, false] {
+            #expect(mysqlColumnDefault(.bare(value), extra: extra, dataType: type, isNullable: isNullable) == expected)
+        }
+    }
+
+    /// #3058. MySQL writes `DEFAULT NULL` itself for a nullable column declared without a default, and
+    /// both servers report it as SQL NULL, the same answer they give for a NOT NULL column with no
+    /// default at all. Only the column's nullability tells the two apart.
+    @Test(
+        "SQL NULL is DEFAULT NULL on a nullable column and no default on a NOT NULL one",
+        arguments: [
+            MySQLCatalogDefault.bare(nil),
+            MySQLCatalogDefault.quoted(nil)
+        ]
+    )
+    func catalogNullFollowsNullability(catalog: MySQLCatalogDefault) {
+        for type in ["VARCHAR(255)", "INT", "TEXT", "JSON", "TIMESTAMP", "enum('a','b')"] {
+            #expect(mysqlColumnDefault(catalog, extra: "", dataType: type, isNullable: true) == "NULL", "\(type)")
+            #expect(mysqlColumnDefault(catalog, extra: "", dataType: type, isNullable: false) == nil, "\(type)")
+        }
+    }
+
+    /// MariaDB reports a generated column's default as the text `NULL`, and both servers refuse a
+    /// `DEFAULT` on a generated or AUTO_INCREMENT column, so neither may read as having one.
+    @Test(
+        "A generated or AUTO_INCREMENT column has no default whatever the catalog says",
+        arguments: [
+            (catalog: MySQLCatalogDefault.quoted("NULL"), extra: "VIRTUAL GENERATED"),
+            (catalog: MySQLCatalogDefault.quoted("NULL"), extra: "STORED GENERATED"),
+            (catalog: MySQLCatalogDefault.bare(nil), extra: "VIRTUAL GENERATED"),
+            (catalog: MySQLCatalogDefault.bare(nil), extra: "PERSISTENT"),
+            (catalog: MySQLCatalogDefault.bare(nil), extra: "auto_increment"),
+            (catalog: MySQLCatalogDefault.quoted(nil), extra: "auto_increment")
+        ]
+    )
+    func generatedAndAutoIncrementHaveNoDefault(catalog: MySQLCatalogDefault, extra: String) {
+        #expect(mysqlColumnDefault(catalog, extra: extra, dataType: "INT", isNullable: true) == nil)
+        #expect(mysqlColumnDefault(catalog, extra: extra, dataType: "INT", isNullable: false) == nil)
+    }
+
+    /// `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT` on MariaDB 12.3.3, byte for byte: literals quoted,
+    /// expressions bare, and `DEFAULT NULL` as the unquoted text `NULL`.
+    @Test(
+        "A MariaDB catalog default is already the SQL",
+        arguments: [
+            (value: "NULL", type: "VARCHAR(255)"),
+            (value: "'NULL'", type: "VARCHAR(10)"),
+            (value: "'abc'", type: "VARCHAR(10)"),
+            (value: "''", type: "VARCHAR(10)"),
+            (value: "'it''s'", type: "VARCHAR(40)"),
+            (value: #"'x\\y'"#, type: "VARCHAR(40)"),
+            (value: #"'l1\nl2'"#, type: "VARCHAR(40)"),
+            (value: "'q'", type: "TEXT"),
+            (value: "'a'", type: "enum('a','b')"),
+            (value: "uuid()", type: "VARCHAR(36)"),
+            (value: "concat('a','b')", type: "VARCHAR(40)"),
+            (value: "current_timestamp()", type: "DATETIME"),
+            (value: "5", type: "INT(11)"),
+            (value: "1.50", type: "DECIMAL(5,2)"),
+            (value: "b'1'", type: "BIT(1)"),
+            (value: "x'61'", type: "VARBINARY(4)")
+        ]
+    )
+    func mariaDBCatalogDefaultPassesThrough(value: String, type: String) {
+        #expect(mysqlColumnDefault(.quoted(value), extra: "", dataType: type, isNullable: true) == value)
+    }
+
+    /// MariaDB's `SHOW FULL COLUMNS` never quotes, whatever the version: measured on 12.3.3 it answers
+    /// `abc` for `'abc'`, an empty string for `''` and the text `NULL` for the string `'NULL'`. That
+    /// read is what a MariaDB connection falls back to when its catalog is blind or refuses, so it
+    /// has to be decoded as bare, where the text `NULL` and SQL NULL stay apart.
+    @Test(
+        "A MariaDB SHOW FULL COLUMNS default is decoded as bare",
+        arguments: [
+            (value: "abc", expected: "'abc'"),
+            (value: "", expected: "''"),
+            (value: "NULL", expected: "'NULL'"),
+            (value: "it's", expected: "'it''s'")
+        ]
+    )
+    func mariaDBShowColumnsDefaultIsBare(value: String, expected: String) {
+        #expect(mysqlColumnDefault(.bare(value), extra: "", dataType: "VARCHAR(10)", isNullable: true) == expected)
+    }
+
+    /// What a MariaDB whose catalog does not answer in the quoted form falls back to: `SHOW CREATE
+    /// TABLE`, verbatim from MariaDB 13.0.2. Its `SHOW FULL COLUMNS` reports `k`'s expression and a
+    /// string of the same text alike, so reading that instead turns `concat('x',uuid())` into the
+    /// constant string the next time the column is written.
+    @Test("A MariaDB SHOW CREATE TABLE default reads like its catalog's")
+    func mariaDBCreateTableDefaultsReadLikeTheCatalog() throws {
+        let createTable = """
+            CREATE TABLE `t` (
+              `a` int(11) DEFAULT (1 + 2),
+              `b` int(11) DEFAULT -5,
+              `c` varchar(20) DEFAULT 'a b',
+              `d` varchar(40) DEFAULT concat('a','b'),
+              `e` bigint(20) DEFAULT nextval(`p2`.`s1`),
+              `f` datetime(6) DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
+              `g` varchar(10) DEFAULT 'x' COMMENT 'c,d',
+              `h` varchar(10) NOT NULL,
+              `i` text DEFAULT 'q',
+              `n` varchar(10) DEFAULT NULL,
+              `k` varchar(40) DEFAULT concat('x',uuid()),
+              `we ird` varchar(5) DEFAULT 'y',
+              `l` varchar(10) DEFAULT 'it''s, ok'
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            """
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: createTable))
+        let expected: [(name: String, type: String, isNullable: Bool, sql: String?)] = [
+            ("a", "INT(11)", true, "(1 + 2)"),
+            ("b", "INT(11)", true, "-5"),
+            ("c", "VARCHAR(20)", true, "'a b'"),
+            ("d", "VARCHAR(40)", true, "concat('a','b')"),
+            ("e", "BIGINT(20)", true, "nextval(`p2`.`s1`)"),
+            ("f", "DATETIME(6)", true, "current_timestamp(6)"),
+            ("g", "VARCHAR(10)", true, "'x'"),
+            ("h", "VARCHAR(10)", false, nil),
+            ("i", "TEXT", true, "'q'"),
+            ("n", "VARCHAR(10)", true, "NULL"),
+            ("k", "VARCHAR(40)", true, "concat('x',uuid())"),
+            ("we ird", "VARCHAR(5)", true, "'y'"),
+            ("l", "VARCHAR(10)", true, "'it''s, ok'")
+        ]
+        for column in expected {
+            let resolved = mysqlColumnDefault(
+                .quoted(clauses[column.name]), extra: "", dataType: column.type, isNullable: column.isNullable
+            )
+            #expect(resolved == column.sql, "\(column.name)")
+        }
+    }
+
+    /// MySQL keeps an expression default escaped in its catalog, and non-ASCII text in it encoded twice
+    /// (`日` comes back as `æ\u{97}¥`), so an expression default is taken from `SHOW CREATE TABLE`.
+    /// Verbatim from MySQL 8.4.11.
+    @Test("A MySQL expression default reads from SHOW CREATE TABLE exactly, non-ASCII text included")
+    func mysqlExpressionDefaultsReadFromCreateTable() throws {
+        let createTable = """
+            CREATE TABLE `mx` (
+              `a` varchar(20) DEFAULT (concat(_utf8mb4'日',_utf8mb4'x')),
+              `b` varchar(20) CHARACTER SET latin1 COLLATE latin1_swedish_ci DEFAULT (concat(_utf8mb4'é',_utf8mb4'x')),
+              `c` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `f` text DEFAULT (NULL),
+              `g` int DEFAULT ((1 + 2)),
+              `i` int DEFAULT '5',
+              `日本` varchar(5) DEFAULT (upper(_utf8mb4'ü'))
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+            """
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: createTable))
+        let defaults = MySQLCreateTableDefaults(clauses: clauses, scope: .expressionDefaults)
+        let generated = "DEFAULT_GENERATED"
+
+        #expect(defaults.catalogDefault(forColumn: "a", extra: generated) == .quoted("(concat(_utf8mb4'日',_utf8mb4'x'))"))
+        #expect(defaults.catalogDefault(forColumn: "b", extra: generated) == .quoted("(concat(_utf8mb4'é',_utf8mb4'x'))"))
+        #expect(defaults.catalogDefault(forColumn: "f", extra: generated) == .quoted("(NULL)"))
+        #expect(defaults.catalogDefault(forColumn: "g", extra: generated) == .quoted("((1 + 2))"))
+        #expect(defaults.catalogDefault(forColumn: "日本", extra: generated) == .quoted("(upper(_utf8mb4'ü'))"))
+        #expect(defaults.catalogDefault(forColumn: "i", extra: "") == nil)
+        #expect(defaults.catalogDefault(forColumn: "missing", extra: generated) == nil)
+    }
+
+    /// A quoted identifier may hold a line break and a string default may hold a comma. Read line by
+    /// line, the first handed the rest of its name's line to another column as that column's default.
+    @Test("A line break in a quoted name or a comma in a default moves no default to another column")
+    func lineBreakInQuotedNameKeepsDefaultsInPlace() throws {
+        let createTable = """
+            CREATE TABLE `t` (
+              `a` varchar(10) DEFAULT 'x',
+              `we
+            ird` varchar(5) DEFAULT 'y, z',
+              `b` int DEFAULT NULL,
+              PRIMARY KEY (`a`),
+              KEY `k` (`b`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: createTable))
+        #expect(clauses == ["a": "'x'", "we\nird": "'y, z'", "b": "NULL"])
+    }
+
+    @Test("SHOW CREATE TABLE answers every column for a MariaDB, and a missing clause is no default")
+    func everyColumnScopeAnswersForAll() {
+        let defaults = MySQLCreateTableDefaults(clauses: ["a": "'x'"], scope: .everyColumn)
+        #expect(defaults.catalogDefault(forColumn: "a", extra: "") == .quoted("'x'"))
+        #expect(defaults.catalogDefault(forColumn: "b", extra: "") == .quoted(nil))
+    }
+
+    /// MariaDB 13.0.2 reports `DEFAULT uuid()` and `DEFAULT 'uuid()'` as the same `uuid()` in `SHOW
+    /// FULL COLUMNS`, so the quoted catalog decides first, `SHOW CREATE TABLE` second, and the row last.
+    @Test("A SHOW FULL COLUMNS default takes the quoted catalog, then SHOW CREATE TABLE, then its own text")
+    func showColumnsDefaultPrecedence() {
+        let createTable = MySQLCreateTableDefaults(clauses: ["e": "uuid()"], scope: .everyColumn)
+        func read(_ catalog: MySQLCatalogDefault?, _ createTable: MySQLCreateTableDefaults?) -> String? {
+            mysqlShowColumnsDefault(
+                "uuid()", catalog: catalog, createTable: createTable,
+                column: "e", extra: "", dataType: "VARCHAR(36)", isNullable: true
+            )
+        }
+        #expect(read(.quoted("'uuid()'"), createTable) == "'uuid()'")
+        #expect(read(nil, createTable) == "uuid()")
+        #expect(read(nil, nil) == "'uuid()'")
+        #expect(read(.quoted("NULL"), nil) == "NULL")
+    }
+
+    /// The catalog's escaping is undone exactly, its double encoding of non-ASCII text is not.
+    @Test(
+        "Only a MySQL expression default holding non-ASCII text needs SHOW CREATE TABLE",
+        arguments: [
+            (value: "concat(_utf8mb4\\'\u{E6}\u{97}\u{A5}\\',_utf8mb4\\'x\\')", extra: "DEFAULT_GENERATED",
+             type: "VARCHAR(20)", needs: true),
+            (value: "upper(_utf8mb4\\'\u{C3}\u{BC}\\')", extra: "DEFAULT_GENERATED", type: "VARCHAR(5)", needs: true),
+            (value: "uuid()", extra: "DEFAULT_GENERATED", type: "VARCHAR(36)", needs: false),
+            (value: "concat(_utf8mb4\\'it\\\\\\'s\\')", extra: "DEFAULT_GENERATED", type: "VARCHAR(40)", needs: false),
+            (value: "NULL", extra: "DEFAULT_GENERATED", type: "TEXT", needs: false),
+            (value: "CURRENT_TIMESTAMP", extra: "DEFAULT_GENERATED", type: "TIMESTAMP", needs: false),
+            (value: "caf\u{E9}", extra: "", type: "VARCHAR(10)", needs: false)
+        ]
+    )
+    func expressionDefaultsNeedCreateTable(value: String, extra: String, type: String, needs: Bool) {
+        #expect(mysqlExpressionDefaultNeedsCreateTable(value, extra: extra, dataType: type) == needs)
+    }
+
+    /// Before 10.2.7 a MariaDB catalog reports `uuid()` and the string `'uuid()'` alike.
+    @Test(
+        "A bare MariaDB default may be an expression only when it holds a parenthesis",
+        arguments: [
+            (value: "uuid()", type: "VARCHAR(36)", may: true),
+            (value: "concat('a','b')", type: "VARCHAR(10)", may: true),
+            (value: "(1 + 2)", type: "INT(11)", may: true),
+            (value: "current_timestamp()", type: "DATETIME", may: false),
+            (value: "abc", type: "VARCHAR(10)", may: false),
+            (value: "5", type: "INT(11)", may: false)
+        ]
+    )
+    func mariaDBBareDefaultsThatMayBeExpressions(value: String, type: String, may: Bool) {
+        #expect(mariaDBBareDefaultMayBeExpression(value, dataType: type) == may)
+    }
+
+    @Test("A catalog expression holding non-ASCII text is left escaped rather than rewritten")
+    func nonASCIIExpressionIsNotUnescaped() {
+        let doubleEncoded = "concat(_utf8mb4\\'\u{E6}\u{97}\u{A5}\\',_utf8mb4\\'x\\')"
+        #expect(mysqlUnescapedCatalogExpression(doubleEncoded) == doubleEncoded)
+    }
+
+    /// MySQL 8.4.11 backslash-escapes every quote and backslash in an expression default, relative to
+    /// what `SHOW CREATE TABLE` prints. Measured from `HEX(COLUMN_DEFAULT)`.
+    @Test(
+        "A MySQL expression default is unescaped back to the SQL it was written as",
+        arguments: [
+            (value: #"concat(_utf8mb4\'a\',_utf8mb4\'b\')"#, type: "VARCHAR(40)",
+             expected: #"(concat(_utf8mb4'a',_utf8mb4'b'))"#),
+            (value: #"_utf8mb4\'it\\\'s\'"#, type: "VARCHAR(40)", expected: #"(_utf8mb4'it\'s')"#),
+            (value: #"concat(_utf8mb4\'x\\\\y\',_utf8mb4\'z\')"#, type: "VARCHAR(40)",
+             expected: #"(concat(_utf8mb4'x\\y',_utf8mb4'z'))"#),
+            (value: #"concat(_utf8mb4\'l1\\nl2\',_utf8mb4\'\')"#, type: "VARCHAR(40)",
+             expected: #"(concat(_utf8mb4'l1\nl2',_utf8mb4''))"#),
+            (value: #"json_object(_utf8mb4\'k\',_utf8mb4\'v\')"#, type: "JSON",
+             expected: #"(json_object(_utf8mb4'k',_utf8mb4'v'))"#),
+            (value: "NULL", type: "TEXT", expected: "(NULL)")
+        ]
+    )
+    func mysqlExpressionDefaultIsUnescaped(value: String, type: String, expected: String) {
+        let resolved = mysqlColumnDefault(.bare(value), extra: "DEFAULT_GENERATED", dataType: type, isNullable: true)
         #expect(resolved == expected)
     }
 
-    @Test("A server that quotes its own literals has already produced the SQL")
-    func quotingServerCatalogDefaultPassesThrough() {
-        #expect(
-            mysqlDefaultValueFromCatalog("'abc'", extra: "", dataType: "VARCHAR(16)", quotesLiterals: true) == "'abc'"
-        )
-        #expect(
-            mysqlDefaultValueFromCatalog("uuid()", extra: "", dataType: "VARCHAR(36)", quotesLiterals: true) == "uuid()"
-        )
+    /// A server that stops escaping would hand back the SQL itself, which always holds a bare quote
+    /// wherever it holds a string, so the scan leaves it as it came rather than eating its backslashes.
+    @Test(
+        "Text that was never escaped is returned unchanged",
+        arguments: [
+            #"concat(_utf8mb4'a',_utf8mb4'b')"#,
+            #"(_utf8mb4'it\'s')"#,
+            #"concat('x\\y','z')"#,
+            "uuid()",
+            "(curdate() + interval 1 year)",
+            #"trailing\"#
+        ]
+    )
+    func unescapedExpressionPassesThrough(value: String) {
+        #expect(mysqlUnescapedCatalogExpression(value) == value)
     }
 
     /// MariaDB began quoting `COLUMN_DEFAULT` in 10.2.7. Before that it reads like MySQL without the
@@ -228,18 +495,34 @@ struct MySQLColumnDefinitionSQLTests {
         )
     }
 
-    @Test("An older MariaDB literal is quoted rather than passed through")
-    func olderMariaDBLiteralIsQuoted() {
-        #expect(
-            mysqlDefaultValueFromCatalog("active", extra: "", dataType: "VARCHAR(16)", quotesLiterals: false)
-                == "'active'"
-        )
+    /// The whole of #3058 in one line: the default a nullable column reads back is written as
+    /// `DEFAULT NULL`, which the next read turns into the same `NULL` again.
+    @Test("A nullable column's NULL default survives a read and a rewrite")
+    func nullDefaultRoundTrips() {
+        let read = mysqlColumnDefault(.bare(nil), extra: "", dataType: "VARCHAR(255)", isNullable: true)
+        let column = PluginColumnDefinition(name: "Name", dataType: "VARCHAR(255)", isNullable: true, defaultValue: read)
+        #expect(mysqlColumnDefinitionSQL(column) == "`Name` VARCHAR(255) NULL DEFAULT NULL")
     }
 
-    @Test("No default at all stays absent")
-    func absentCatalogDefault() {
-        #expect(mysqlDefaultValueFromCatalog(nil, extra: "", dataType: "INT", quotesLiterals: false) == nil)
-        #expect(mysqlDefaultValueFromCatalog(nil, extra: "", dataType: "INT", quotesLiterals: true) == nil)
+    /// `DEFAULT (NULL)` is an expression default on MySQL 8 and a syntax error on MySQL 5.7, while a
+    /// bare `DEFAULT NULL` is taken by every type, including the four whose other defaults need
+    /// parentheses.
+    @Test(
+        "NULL is written bare on every type and for both servers",
+        arguments: ["TEXT", "LONGBLOB", "JSON", "GEOMETRY", "VARCHAR(16)", "INT", "TIMESTAMP"]
+    )
+    func nullDefaultIsNeverParenthesised(dataType: String) {
+        for isMariaDB in [false, true] {
+            #expect(mysqlDefaultValueLiteral("NULL", dataType: dataType, isMariaDB: isMariaDB) == "NULL")
+            #expect(mysqlDefaultValueLiteral("null", dataType: dataType, isMariaDB: isMariaDB) == "NULL")
+        }
+        let column = PluginColumnDefinition(name: "c", dataType: dataType, isNullable: true, defaultValue: "NULL")
+        #expect(mysqlColumnDefinitionSQL(column).hasSuffix(" NULL DEFAULT NULL"))
+    }
+
+    @Test("An expression default of NULL keeps the parentheses it was read with")
+    func parenthesisedNullExpressionIsKept() {
+        #expect(mysqlDefaultValueLiteral("(NULL)", dataType: "TEXT", isMariaDB: false) == "(NULL)")
     }
 
     @Test("A numeric default is unquoted")

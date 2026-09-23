@@ -2,11 +2,11 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.fetchTables comments")
+@Suite("PostgreSQLTableListing.query comments")
 struct PostgreSQLFetchTablesCommentTests {
     @Test("Base query selects the table comment via obj_description")
     func baseQuerySelectsComment() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false
@@ -19,7 +19,7 @@ struct PostgreSQLFetchTablesCommentTests {
     func noRungUsesToRegclass() {
         let attempts = PostgreSQLTableListingLadder.degradableAttempts + [PostgreSQLTableListingLadder.leastCapableAttempt]
         for attempt in attempts {
-            let query = PostgreSQLSchemaQueries.fetchTables(
+            let query = PostgreSQLTableListing.query(
                 schema: "public",
                 includeMaterializedViews: attempt.includeOptionalCatalogs,
                 includeForeignTables: attempt.includeOptionalCatalogs,
@@ -32,7 +32,7 @@ struct PostgreSQLFetchTablesCommentTests {
 
     @Test("Comments without partition awareness still join pg_class for the relation oid")
     func commentsWithoutPartitionsKeepTheClassJoin() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false,
@@ -45,7 +45,7 @@ struct PostgreSQLFetchTablesCommentTests {
 
     @Test("A materialized view's comment comes from its own relation oid")
     func matviewCommentUsesItsOid() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: false
@@ -56,7 +56,7 @@ struct PostgreSQLFetchTablesCommentTests {
 
     @Test("Fully degraded query does not reference pg_class/pg_namespace so the portability fallback stays minimal")
     func fallbackQueryStaysPortable() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false,
@@ -70,7 +70,7 @@ struct PostgreSQLFetchTablesCommentTests {
 
     @Test("Every union branch projects a comment column so columns stay aligned")
     func allBranchesProjectComment() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true
@@ -82,7 +82,7 @@ struct PostgreSQLFetchTablesCommentTests {
 
     @Test("Comment-free fallback omits obj_description but keeps the aligned comment column")
     func commentFreeFallbackOmitsObjDescription() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true,

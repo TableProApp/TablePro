@@ -115,6 +115,8 @@ final class AppEvents {
     /// uniformly handle "this update may affect me" via `payload == nil || payload == self.connectionId`.
     let linkedSQLFoldersDidUpdate = PassthroughSubject<UUID?, Never>()
 
+    let versionHistoryRefreshRequested = PassthroughSubject<UUID, Never>()
+
     // MARK: - License & Sync
 
     let licenseStatusDidChange = PassthroughSubject<Void, Never>()

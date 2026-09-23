@@ -367,6 +367,7 @@ final class MainContentCoordinator: ObservableObject {
     private var terminationObserver: NSObjectProtocol?
     internal var postConnectCancellable: AnyCancellable?
     private var externalFileModCancellable: AnyCancellable?
+    internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?
@@ -733,7 +734,7 @@ final class MainContentCoordinator: ObservableObject {
             .sink { [weak self] payload in
                 guard let self else { return }
                 guard payload == nil || payload == self.connectionId else { return }
-                self.checkOpenTabsForExternalModification()
+                self.refreshSourceFileDiskChanges()
             }
 
         schemaSwitchCancellable = services.appEvents.currentSchemaChanged
@@ -758,18 +759,8 @@ final class MainContentCoordinator: ObservableObject {
         )
     }
 
-    private func checkOpenTabsForExternalModification() {
-        for index in tabManager.tabs.indices {
-            guard let url = tabManager.tabs[index].content.sourceFileURL,
-                  let loadMtime = tabManager.tabs[index].content.loadMtime,
-                  let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-            else { continue }
-
-            let modified = currentMtime > loadMtime.addingTimeInterval(0.5)
-            if modified != tabManager.tabs[index].content.externalModificationDetected {
-                tabManager.mutate(at: index) { $0.content.externalModificationDetected = modified }
-            }
-        }
+    func refreshSourceFileDiskChanges() {
+        sourceFileDiskChangeMonitor.refresh()
     }
 
     func markActivated() {
@@ -934,6 +925,7 @@ final class MainContentCoordinator: ObservableObject {
         }
         postConnectCancellable = nil
         externalFileModCancellable = nil
+        sourceFileDiskChangeMonitor.cancel()
         schemaSwitchCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil

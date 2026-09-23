@@ -8,8 +8,25 @@ import SwiftUI
 
 private let fallbackScreenFrame = NSRect(x: 0, y: 0, width: 1_280, height: 800)
 
+/// Whether a panel takes the keyboard. Open Quickly and the switchers do: they own a search field.
+/// The recent-tab switcher must not: it is driven by a chord held in the window behind it, and a
+/// panel that took key status would dim that window's title bar and move the key events away from
+/// the editor for the length of a Control-Tab.
+internal enum QuickSwitcherPanelFocus: Equatable {
+    case key
+    case passive
+}
+
 internal final class QuickSwitcherPanel: NSPanel {
-    init<Content: View>(hostingController: NSHostingController<Content>, surfaceCornerRadius: CGFloat) {
+    private let focus: QuickSwitcherPanelFocus
+
+    init<Content: View>(
+        hostingController: NSHostingController<Content>,
+        surfaceCornerRadius: CGFloat,
+        focus: QuickSwitcherPanelFocus = .key,
+        accessibilityIdentifier: String = "quick-switcher-panel"
+    ) {
+        self.focus = focus
         hostingController.sizingOptions = []
         let proposal = NSScreen.main?.visibleFrame.size ?? fallbackScreenFrame.size
         let contentSize = hostingController.sizeThatFits(in: proposal)
@@ -23,7 +40,7 @@ internal final class QuickSwitcherPanel: NSPanel {
         /// the window's accessibility identifier, so a client can scope a search to this panel
         /// instead of walking the whole application. A SwiftUI modifier could not do it, because an
         /// identifier on the content view overwrites the one every control inside it publishes.
-        identifier = NSUserInterfaceItemIdentifier("quick-switcher-panel")
+        identifier = NSUserInterfaceItemIdentifier(accessibilityIdentifier)
         isFloatingPanel = true
         level = .floating
         collectionBehavior.insert(.fullScreenAuxiliary)
@@ -35,6 +52,9 @@ internal final class QuickSwitcherPanel: NSPanel {
         animationBehavior = .utilityWindow
         contentViewController = hostingController
         setContentSize(contentSize)
+        /// A panel that never becomes key still takes the clicks that land on it. The passive one
+        /// is a readout of a chord held elsewhere, so a click goes to whatever is under it.
+        ignoresMouseEvents = focus == .passive
         maskContentToSurfaceShape(cornerRadius: surfaceCornerRadius)
     }
 
@@ -56,7 +76,7 @@ internal final class QuickSwitcherPanel: NSPanel {
         layer.masksToBounds = true
     }
 
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { focus == .key }
     override var canBecomeMain: Bool { false }
 
     override func resignKey() {
@@ -81,6 +101,7 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
     private var panel: QuickSwitcherPanel?
     private var anchor: Anchor?
     private var presentedIdentity: String?
+    private var onClose: (() -> Void)?
 
     var isPresented: Bool { panel != nil }
 
@@ -91,9 +112,19 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
         panel != nil && presentedIdentity == identity
     }
 
-    func present(_ content: some View, over parentWindow: NSWindow?, identity: String? = nil) {
+    /// `onClose` runs however the panel goes, including when another presentation replaces it,
+    /// which is how a caller that keeps state of its own alongside the panel learns to drop it.
+    func present(
+        _ content: some View,
+        over parentWindow: NSWindow?,
+        identity: String? = nil,
+        focus: QuickSwitcherPanelFocus = .key,
+        accessibilityIdentifier: String = "quick-switcher-panel",
+        onClose: (() -> Void)? = nil
+    ) {
         dismiss()
         presentedIdentity = identity
+        self.onClose = onClose
 
         let sizeReportingContent = content.onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
@@ -104,7 +135,9 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
         let panel = QuickSwitcherPanel(
             hostingController: hostingController,
-            surfaceCornerRadius: QuickSwitcherMetrics.cornerRadius
+            surfaceCornerRadius: QuickSwitcherMetrics.cornerRadius,
+            focus: focus,
+            accessibilityIdentifier: accessibilityIdentifier
         )
         panel.delegate = self
         self.panel = panel
@@ -117,7 +150,12 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
             top: reference.maxY - reference.height * Self.topOffsetRatio
         )
         applyAnchor(to: panel)
-        panel.makeKeyAndOrderFront(nil)
+        switch focus {
+        case .key:
+            panel.makeKeyAndOrderFront(nil)
+        case .passive:
+            panel.orderFront(nil)
+        }
     }
 
     func dismiss() {
@@ -129,6 +167,9 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
         panel = nil
         anchor = nil
         presentedIdentity = nil
+        let closed = onClose
+        onClose = nil
+        closed?()
     }
 
     func windowDidResize(_ notification: Notification) {

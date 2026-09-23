@@ -10,7 +10,7 @@ extension MySQLPluginDriver {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         guard !flavor.isDatabend else { return [] }
         let resolvedSchema = routineSchema(schema)
-        let result = try await execute(query: MySQLObjectQueries.routineList(schema: resolvedSchema))
+        let result = try await execute(ownStatement: MySQLObjectQueries.routineList(schema: resolvedSchema))
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let isProcedure = row[safe: 1]?.asText?.uppercased() == "PROCEDURE"
@@ -49,7 +49,7 @@ extension MySQLPluginDriver {
             schema: resolvedSchema,
             name: routine.name
         )
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         guard let row = result.rows.first else {
             throw PluginObjectSourceError.notFound(routine.name)
         }
@@ -80,7 +80,7 @@ extension MySQLPluginDriver {
     }
 
     func triggerList(schema: String, table: String?) async throws -> [PluginTriggerInfo] {
-        let result = try await execute(query: MySQLObjectQueries.triggerList(schema: schema, table: table))
+        let result = try await execute(ownStatement: MySQLObjectQueries.triggerList(schema: schema, table: table))
         return result.rows.compactMap { row -> PluginTriggerInfo? in
             guard let name = row[safe: 0]?.asText,
                   let owningTable = row[safe: 1]?.asText,

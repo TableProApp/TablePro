@@ -57,7 +57,7 @@ internal extension MySQLPluginDriver {
     private func catalogTableCount(database: String) async throws -> MySQLCatalogCount {
         do {
             let query = MySQLObjectQueries.catalogTableCount(schema: database)
-            let result = try await execute(query: query)
+            let result = try await execute(ownStatement: query)
             guard let count = result.rows.first?[safe: 0]?.asText.flatMap(Int.init) else { return .noRow }
             return .counted(count)
         } catch let error as MariaDBPluginError

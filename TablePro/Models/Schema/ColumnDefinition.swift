@@ -186,6 +186,18 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isGenerated: Bool { generationExpression?.isEmpty == false }
 
+    var hasNullDefault: Bool { ColumnDefaultLiteral.isNull(defaultValue) }
+
+    /// A column that stops accepting NULL cannot keep NULL as its default: MySQL and MariaDB refuse
+    /// `NOT NULL DEFAULT NULL` with `ERROR 1067`, and elsewhere the pair only moves the failure to
+    /// the first insert that relies on it. The default goes with the nullability, in one edit, so
+    /// undo brings both back.
+    mutating func setNullable(_ isNullable: Bool) {
+        self.isNullable = isNullable
+        guard !isNullable, hasNullDefault else { return }
+        defaultValue = nil
+    }
+
     /// Check if this definition is valid (not a placeholder)
     var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&

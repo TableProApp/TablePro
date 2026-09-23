@@ -20,6 +20,7 @@ extension FavoritesSidebarViewModel {
 
     internal func startWatchingLinkedFolders() {
         SQLFolderWatcher.shared.start()
+        LinkedFolderGitStatusStore.shared.start()
     }
 
     internal func reloadLinkedFolders() {

@@ -106,6 +106,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sessionLock.withLock { mariadbConnection }?.noBackslashEscapes
     }
 
+    /// How this session reads a quoted literal. Databend reports no `NO_BACKSLASH_ESCAPES` flag and
+    /// always reads backslash escapes.
+    var literalSpelling: MySQLLiteralSpelling {
+        guard !flavor.isDatabend else { return .backslashEscapes }
+        return MySQLLiteralSpelling(noBackslashEscapes: noBackslashEscapes)
+    }
+
     var capabilities: PluginCapabilities {
         guard !flavor.isDatabend else { return Self.databendCapabilities }
         return [
@@ -258,6 +265,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         try await executeWithReconnect(query: query, isRetry: false)
+    }
+
+    /// A statement the plugin wrote itself, spelled with backslash escapes, run with its literals
+    /// spelled for this session.
+    func execute(ownStatement statement: String) async throws -> PluginQueryResult {
+        try await execute(query: literalSpelling.respelled(statement))
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
@@ -569,7 +582,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func catalogTableRows(database: String) async throws -> [[PluginCellValue]] {
         do {
             let query = MySQLObjectQueries.tableList(schema: database, includePartitions: true)
-            return try await execute(query: query).rows
+            return try await execute(ownStatement: query).rows
         } catch let error as MariaDBPluginError
             where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
             Self.logger.warning(
@@ -593,7 +606,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             schema: effectiveSchema(schema),
             table: table
         )
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
 
         var emittedPartitions: Set<String> = []
         var ordered: [PluginPartitionInfo] = []
@@ -688,7 +701,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               AND TABLE_NAME = '\(escapedTable)'
             """
 
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         guard let firstRow = result.rows.first,
               let value = firstRow[safe: 0]?.asText,
               let count = Int(value)
@@ -713,7 +726,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
         guard !flavor.isDatabend else { return [] }
-        let result = try await execute(query: """
+        let result = try await execute(ownStatement: """
             SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
             FROM information_schema.EVENTS
             WHERE EVENT_SCHEMA = '\(effectiveSchemaLiteral(schema))'
@@ -754,7 +767,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
         let escapedTable = mysqlEscapeStringLiteral(table)
-        let result = try await execute(query: showTableStatus(matching: escapedTable, schema: schema))
+        let result = try await execute(ownStatement: showTableStatus(matching: escapedTable, schema: schema))
 
         guard let row = result.rows.first else {
             return PluginTableMetadata(tableName: table)
@@ -802,7 +815,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             FROM information_schema.TABLES
             WHERE TABLE_SCHEMA = '\(escapedDb)'
         """
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         let row = result.rows.first
         let tableCount = Int(row?[safe: 0]?.asText ?? "0") ?? 0
         let sizeBytes = Int64(row?[safe: 1]?.asText ?? "0") ?? 0
@@ -979,7 +992,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !flavor.isDatabend else { return DatabendCatalog.createTableSQL(definition: definition) }
-        return mysqlCreateTableSQL(definition: definition, isMariaDB: flavor.isMariaDB)
+        return mysqlCreateTableSQL(definition: definition, isMariaDB: flavor.isMariaDB).map(literalSpelling.respelled)
     }
 
     // MARK: - Definition SQL (clipboard copy)
@@ -1005,7 +1018,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let definition = flavor.isDatabend
             ? DatabendCatalog.columnDefinitionSQL(column)
             : mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(definition)"
+        return literalSpelling.respelled("ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(definition)")
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -1013,10 +1026,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return DatabendCatalog.modifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
         }
         let tableName = quoteIdentifier(table)
+        let definition = mysqlColumnDefinitionSQL(newColumn, isMariaDB: flavor.isMariaDB)
         if oldColumn.name != newColumn.name {
-            return "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: flavor.isMariaDB))"
+            return literalSpelling.respelled(
+                "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(definition)"
+            )
         }
-        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: flavor.isMariaDB))"
+        return literalSpelling.respelled("ALTER TABLE \(tableName) MODIFY COLUMN \(definition)")
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
@@ -1050,8 +1066,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT "
-            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+        return literalSpelling.respelled(
+            "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT \(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+        )
     }
 
     func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
@@ -1091,7 +1108,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         /// replaces the whole definition, and the attribute list does not carry
         /// `GENERATED ALWAYS AS`, so moving a generated column with it dropped the expression and
         /// left a plain column of stored defaults behind.
-        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)) \(position)"
+        let definition = mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)
+        return literalSpelling.respelled("ALTER TABLE \(tableName) MODIFY COLUMN \(definition) \(position)")
     }
 
     /// `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
@@ -1143,7 +1161,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func allTablesMetadataSQL(schema: String?) -> String? {
         guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
-        return """
+        return literalSpelling.respelled("""
         SELECT
             TABLE_SCHEMA as `schema`,
             TABLE_NAME as name,
@@ -1160,6 +1178,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ON TABLE_COLLATION = CCSA.COLLATION_NAME
         WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
         ORDER BY TABLE_NAME
-        """
+        """)
     }
 }

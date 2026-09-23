@@ -30,6 +30,7 @@ struct QuickSwitcherObjectKindTests {
 
         #expect(items.map(\.tableType) == [.materializedView, .partitionedTable])
         #expect(items.first?.kind == .view)
+        #expect(items.map(\.isReadOnly) == [true, false])
     }
 
     @Test("Opening a materialized view from the Quick Switcher gives its tab the matview kind")
@@ -49,9 +50,9 @@ struct QuickSwitcherObjectKindTests {
             name: "daily_totals",
             kind: .view,
             subtitle: String(localized: "Materialized View"),
-            isReadOnly: false,
-            tableType: .materializedView,
-            schemaName: "public"
+            isReadOnly: true,
+            schemaName: "public",
+            tableType: .materializedView
         )
         coordinator.handleQuickSwitcherSelection(item)
 
@@ -78,8 +79,8 @@ struct QuickSwitcherObjectKindTests {
             name: "events",
             kind: .table,
             subtitle: String(localized: "Partitioned Table"),
-            tableType: .partitionedTable,
-            schemaName: "public"
+            schemaName: "public",
+            tableType: .partitionedTable
         )
         coordinator.handleQuickSwitcherSelection(item)
 

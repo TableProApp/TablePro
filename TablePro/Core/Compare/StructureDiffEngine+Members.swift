@@ -143,6 +143,14 @@ private extension StructureDiffEngine {
             .joined(separator: "\u{1F}")
     }
 
+    /// A nullable column behaves the same with a NULL default and with none, and engines report the
+    /// pair differently: MySQL and MariaDB spell it `DEFAULT NULL`, PostgreSQL stores no default at
+    /// all. Compared as written, every nullable column of a MySQL table reads as changed against the
+    /// same table on another engine.
+    func comparableDefault(_ column: EditableColumnDefinition) -> String? {
+        column.isNullable && column.hasNullDefault ? nil : column.defaultValue
+    }
+
     func columnSignature(_ column: EditableColumnDefinition) -> String {
         var parts: [String] = [
             options.matchKey(column.name),
@@ -150,7 +158,7 @@ private extension StructureDiffEngine {
             String(column.isNullable),
             String(column.autoIncrement),
             String(column.unsigned),
-            options.normalizedText(column.defaultValue) ?? "",
+            options.normalizedText(comparableDefault(column)) ?? "",
             options.normalizedText(column.onUpdate) ?? "",
             options.normalizedText(strippedExtra(column.extra)) ?? "",
             options.normalizedText(column.generationExpression) ?? "",
