@@ -97,6 +97,20 @@ struct SQLFavoriteStorageTests {
         #expect(!fetched.contains { $0.id == fav.id })
     }
 
+    @Test("A query past 500,000 characters is stored and read back whole")
+    func largeQueryRoundTrips() async {
+        let query = (1...12_000)
+            .map { "INSERT INTO users (id, email) VALUES (\($0), 'user\($0)@example.com');" }
+            .joined(separator: "\n")
+        #expect((query as NSString).length > 500_000)
+        let fav = makeFavorite(name: "Seed users", query: query)
+
+        #expect(await storage.addFavorite(fav))
+
+        let fetched = await storage.fetchFavorite(id: fav.id)
+        #expect(fetched?.query == query)
+    }
+
     // MARK: - Favorites in Folders
 
     @Test("Favorite in folder is fetched when no folderId filter")

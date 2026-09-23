@@ -169104,6 +169104,40 @@
         }
       }
     },
+    "Saved queries are limited to %@ so they fit in iCloud. Save a query this large as a .sql file instead." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 쿼리는 iCloud에 맞도록 %@(으)로 제한됩니다. 이렇게 큰 쿼리는 .sql 파일로 저장하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı sorgular iCloud'a sığması için %@ ile sınırlıdır. Bu kadar büyük bir sorguyu .sql dosyası olarak kaydedin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đã lưu bị giới hạn ở %@ để vừa với iCloud. Hãy lưu truy vấn lớn như thế này thành tệp .sql."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为适配 iCloud，已保存的查询最大为 %@。请将这么大的查询另存为 .sql 文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為配合 iCloud，已儲存的查詢最大為 %@。請將這麼大的查詢另存為 .sql 檔案。"
+          }
+        }
+      }
+    },
     "Tool" : {
       "localizations" : {
         "ko" : {
