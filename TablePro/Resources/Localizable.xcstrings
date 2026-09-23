@@ -183057,6 +183057,438 @@
     },
     "This connection loads SQLite extensions, and their functions can read and write files. A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead." : {
 
+    },
+    "Query on the table" : {
+
+    },
+    "Query on index %@" : {
+
+    },
+    "Scan with filters" : {
+
+    },
+    "Scan" : {
+
+    },
+    "Get by key" : {
+
+    },
+    "No read needed" : {
+
+    },
+    "An attribute value must name exactly one type" : {
+
+    },
+    "Unknown attribute type \"%@\"" : {
+
+    },
+    "A %@ attribute has a payload of the wrong shape" : {
+
+    },
+    "A set member must be a string" : {
+
+    },
+    "A binary value is not valid base64" : {
+
+    },
+    "An item must be a JSON object" : {
+
+    },
+    "Browse needs a TableName" : {
+
+    },
+    "Each Browse filter needs an Attribute and an Operator" : {
+
+    },
+    "\"%@\" is not a DynamoDB number" : {
+
+    },
+    "\"%@\" is not true or false" : {
+
+    },
+    "A Binary value must be base64" : {
+
+    },
+    "A %@ value must be JSON: %@" : {
+
+    },
+    "A set can't be empty. Clear the cell to remove it." : {
+
+    },
+    "A set can't contain the same value twice" : {
+
+    },
+    "The endpoint did not answer over HTTP" : {
+
+    },
+    "The endpoint answered with a redirect, which DynamoDB never sends. Check the Custom Endpoint." : {
+
+    },
+    "\"%@\" is not an AWS region" : {
+
+    },
+    "\"%@\" is not a URL. Enter an endpoint such as http://localhost:8000." : {
+
+    },
+    "The endpoint must start with https:// or http://" : {
+
+    },
+    "Plain HTTP is only allowed for an endpoint on this Mac (localhost). Use https:// for any other host." : {
+
+    },
+    "Stopped after %d seconds, the query timeout" : {
+
+    },
+    "The item %@ changed after it was loaded. Refresh the table and edit it again." : {
+
+    },
+    "The item %@ no longer exists." : {
+
+    },
+    "%1$d of %2$d were applied." : {
+
+    },
+    "HTTP %d with a body of %d bytes" : {
+
+    },
+    "DynamoDB error: [%1$@] %2$@" : {
+
+    },
+    "Action %1$d: %2$@%3$@" : {
+
+    },
+    "Raw filters aren't available for DynamoDB. Write the condition in PartiQL in the editor." : {
+
+    },
+    "Not valid JSON at character %d" : {
+
+    },
+    "The key \"%@\" appears twice in one JSON object" : {
+
+    },
+    "The JSON is nested more deeply than DynamoDB allows" : {
+
+    },
+    "Unexpected text after the JSON at character %d" : {
+
+    },
+    "Access Key + Secret Key" : {
+
+    },
+    "AWS SSO" : {
+
+    },
+    "DynamoDB Local (no credentials)" : {
+
+    },
+    "The profile's region, or us-east-1" : {
+
+    },
+    "Optional, such as http://localhost:8000" : {
+
+    },
+    "The request must be a JSON object" : {
+
+    },
+    "The transaction was applied" : {
+
+    },
+    "More tables follow. Pass LastEvaluatedTableName as ExclusiveStartTableName." : {
+
+    },
+    "%@ succeeded" : {
+
+    },
+    "%1$@ accepted. Table status: %2$@" : {
+
+    },
+    "%d requests were not processed after 10 attempts" : {
+
+    },
+    "%d requests applied" : {
+
+    },
+    "Statement %1$d: %2$@ %3$@" : {
+
+    },
+    "%d statements applied" : {
+
+    },
+    "No item read so far holds \"%@\" as a key type. Create this index from the editor with its AttributeDefinitions." : {
+
+    },
+    "Time to Live is not on for this table" : {
+
+    },
+    "Parameters apply only to PartiQL statements" : {
+
+    },
+    "DynamoDB is still creating this table. Refresh in a moment." : {
+
+    },
+    "In DynamoDB order: sorting by %@ needs the whole result, or a Query on that sort key" : {
+
+    },
+    "The request needs a TableName" : {
+
+    },
+    "This SELECT reads the whole table" : {
+
+    },
+    "Could not create a temporary file for the export" : {
+
+    },
+    "DynamoDB left some keys unread after 10 attempts" : {
+
+    },
+    "%@ returned" : {
+
+    },
+    "%@ read" : {
+
+    },
+    "%@ RCU" : {
+
+    },
+    "Partition key" : {
+
+    },
+    "Sort key" : {
+
+    },
+    "Key of %@" : {
+
+    },
+    "DynamoDB indexes are never unique" : {
+
+    },
+    "A global secondary index takes a partition key and an optional sort key" : {
+
+    },
+    "A DynamoDB table declares only its keys. Add the attribute by writing it to an item." : {
+
+    },
+    "A DynamoDB index can't be changed. Delete it and save, then add the new one once the old one is gone." : {
+
+    },
+    "The primary key is part of the table and can't be dropped." : {
+
+    },
+    "A local secondary index is part of its table and is removed only with the table." : {
+
+    },
+    "Point-in-Time Recovery" : {
+
+    },
+    "Deletion Protection" : {
+
+    },
+    "Stream" : {
+
+    },
+    "Table Class" : {
+
+    },
+    "Switch to On-Demand Capacity" : {
+
+    },
+    "Turn Off Time to Live" : {
+
+    },
+    "Keys only" : {
+
+    },
+    "New image" : {
+
+    },
+    "Old image" : {
+
+    },
+    "New and old images" : {
+
+    },
+    "Standard" : {
+
+    },
+    "Standard-Infrequent Access" : {
+
+    },
+    "On" : {
+
+    },
+    "Class" : {
+
+    },
+    "An item with this key already exists" : {
+
+    },
+    "DELETE ran. DynamoDB reports whether an item was deleted only with RETURNING ALL OLD *." : {
+
+    },
+    "%d item(s) affected" : {
+
+    },
+    "A key attribute needs a value" : {
+
+    },
+    "DynamoDB has no views" : {
+
+    },
+    "The %1$@ request is not valid JSON: %2$@" : {
+
+    },
+    "The %@ request must be a JSON object" : {
+
+    },
+    "\"%@\" is not a DynamoDB action this editor runs" : {
+
+    },
+    "%@ takes no ORDER BY, LIMIT or OFFSET" : {
+
+    },
+    "Unexpected text after the %1$@ request: %2$@" : {
+
+    },
+    "On-demand capacity" : {
+
+    },
+    "Provisioned: %1$lld read, %2$lld write" : {
+
+    },
+    "Deletion protection on" : {
+
+    },
+    "Stream: %@" : {
+
+    },
+    "Status: %@" : {
+
+    },
+    "Item count is approximate, updated about every six hours" : {
+
+    },
+    "Capacity" : {
+
+    },
+    "Billing" : {
+
+    },
+    "On-demand" : {
+
+    },
+    "Provisioned" : {
+
+    },
+    "Read capacity units" : {
+
+    },
+    "Write capacity units" : {
+
+    },
+    "Table class" : {
+
+    },
+    "Deletion protection" : {
+
+    },
+    "Global Secondary Indexes" : {
+
+    },
+    "Add Global Index" : {
+
+    },
+    "Local Secondary Indexes" : {
+
+    },
+    "Add Local Index" : {
+
+    },
+    "A DynamoDB table declares only its key attributes. The items you write add every other attribute." : {
+
+    },
+    "All attributes" : {
+
+    },
+    "Keys and chosen attributes" : {
+
+    },
+    "Chosen attributes" : {
+
+    },
+    "Comma-separated names" : {
+
+    },
+    "A table name is 3 to 255 characters of letters, digits, underscore, hyphen and period." : {
+
+    },
+    "\"%@\" is declared as two different types" : {
+
+    },
+    "Enter the partition key's name" : {
+
+    },
+    "A local secondary index needs a table with a sort key" : {
+
+    },
+    "An index name is 3 to 255 characters of letters, digits, underscore, hyphen and period." : {
+
+    },
+    "Enter the partition key of index %@" : {
+
+    },
+    "Enter the sort key of index %@" : {
+
+    },
+    "Name the attributes index %@ includes" : {
+
+    },
+    "Read capacity must be a whole number of at least 1" : {
+
+    },
+    "Write capacity must be a whole number of at least 1" : {
+
+    },
+    "DescribeTable returned no table" : {
+
+    },
+    "DynamoDB can't change a key. Duplicate the row with the new key, then delete the old one." : {
+
+    },
+    "This key is a %@, not binary data" : {
+
+    },
+    "This database has no Create Table form" : {
+
+    },
+    "Form" : {
+
+    },
+    "%1$@ must be at least %2$lld." : {
+
+    },
+    "%1$@ must be at most %2$lld." : {
+
+    },
+    "%1$@ must be between %2$lld and %3$lld." : {
+
+    },
+    "%1$@, entry %2$lld: %3$@" : {
+
+    },
+    "%@ is required." : {
+
+    },
+    "%@ must be a whole number." : {
+
+    },
+    "Entry %1$lld: %2$@" : {
+
+    },
+    "Entry %lld" : {
+
+    },
+    "The form produced no statements to run." : {
+
     }
   },
   "version" : "1.1"
