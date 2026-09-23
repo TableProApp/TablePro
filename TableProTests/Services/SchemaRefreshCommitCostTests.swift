@@ -9,6 +9,10 @@ import TableProPluginKit
 import Testing
 
 /// Records every catalog read it answers, so a test can count the queries a refresh costs.
+///
+/// A schema load reads tables, routines, triggers and types concurrently, so the read log and the
+/// pause gate are locked rather than isolated: an unlocked append from those reads raced and
+/// crashed the test host.
 final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
@@ -18,23 +22,62 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     var tablesBySchema: [String: [TableInfo]] = [:]
     var tablesError: Error?
     var allSchemaTables: [TableInfo]?
-    private(set) var reads: [String] = []
 
-    var pausesNextTableFetch = false
-    var onTableFetchPaused: (@Sendable () -> Void)?
+    private let lock = NSLock()
+    private var readLog: [String] = []
+    private var pauseNextTableFetch = false
+    private var tableFetchPausedHandler: (@Sendable () -> Void)?
     private var tableFetchGate: CheckedContinuation<Void, Never>?
 
     init(connection: DatabaseConnection) {
         self.connection = connection
     }
 
+    var reads: [String] {
+        lock.withLock { readLog }
+    }
+
+    var pausesNextTableFetch: Bool {
+        get { lock.withLock { pauseNextTableFetch } }
+        set { lock.withLock { pauseNextTableFetch = newValue } }
+    }
+
+    var onTableFetchPaused: (@Sendable () -> Void)? {
+        get { lock.withLock { tableFetchPausedHandler } }
+        set { lock.withLock { tableFetchPausedHandler = newValue } }
+    }
+
     func resumeTableFetch() {
-        tableFetchGate?.resume()
-        tableFetchGate = nil
+        let gate = lock.withLock {
+            let gate = tableFetchGate
+            tableFetchGate = nil
+            return gate
+        }
+        gate?.resume()
     }
 
     func forgetReads() {
-        reads.removeAll()
+        lock.withLock { readLog.removeAll() }
+    }
+
+    private func record(_ read: String) {
+        lock.withLock { readLog.append(read) }
+    }
+
+    private func takeTableFetchPause() -> Bool {
+        lock.withLock {
+            let pauses = pauseNextTableFetch
+            pauseNextTableFetch = false
+            return pauses
+        }
+    }
+
+    private func park(_ continuation: CheckedContinuation<Void, Never>) {
+        let handler = lock.withLock {
+            tableFetchGate = continuation
+            return tableFetchPausedHandler
+        }
+        handler?()
     }
 
     func reads(ofSchema schema: String) -> [String] {
@@ -63,25 +106,23 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchSchemas() async throws -> [String] {
-        reads.append("schemas")
+        record("schemas")
         return schemasToReturn
     }
 
     func fetchTables() async throws -> [TableInfo] {
-        reads.append("tables")
+        record("tables")
         return []
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let schema = schema ?? ""
-        reads.append("tables:\(schema)")
+        record("tables:\(schema)")
         if let tablesError { throw tablesError }
         let snapshot = tablesBySchema[schema] ?? []
-        if pausesNextTableFetch {
-            pausesNextTableFetch = false
+        if takeTableFetchPause() {
             await withCheckedContinuation { continuation in
-                tableFetchGate = continuation
-                onTableFetchPaused?()
+                park(continuation)
             }
             try Task.checkCancellation()
         }
@@ -89,22 +130,22 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
-        reads.append("allSchemaTables")
+        record("allSchemaTables")
         return allSchemaTables
     }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
-        reads.append(schema.map { "routines:\($0)" } ?? "routines")
+        record(schema.map { "routines:\($0)" } ?? "routines")
         return []
     }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
-        reads.append(schema.map { "triggers:\($0)" } ?? "triggers")
+        record(schema.map { "triggers:\($0)" } ?? "triggers")
         return []
     }
 
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] {
-        reads.append(schema.map { "types:\($0)" } ?? "types")
+        record(schema.map { "types:\($0)" } ?? "types")
         return []
     }
 
