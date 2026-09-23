@@ -428,8 +428,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             loadedFrom: loadedScope?.database,
             coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
             listing: listing,
-            browsing: tableSource.database,
-            grouping: tableSource.grouping
+            browsing: tableSource.database
         )
         return Self.makeTableItems(
             tables,
@@ -646,21 +645,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// `coveredSchemas` names the schemas the schema service answers for even when it found them
     /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
     /// so no say, and the listing's stale copy of that table would come back.
-    ///
-    /// A hierarchical engine is the exception. Its per-schema lists are keyed by schema alone and
-    /// keep the rows of a database the connection has just switched away from until each one
-    /// reloads, so once the listing, which is keyed by database, has arrived it answers for every
-    /// schema, and the schema service only stands in until then.
     nonisolated static func mergedTables(
         local loaded: [TableInfo],
         loadedFrom loadedDatabase: String?,
         coveredSchemas: Set<String>,
         listing: [TableInfo]?,
-        browsing database: String?,
-        grouping: GroupingStrategy
+        browsing database: String?
     ) -> [TableInfo] {
-        let listingAnswersAll = grouping == .hierarchicalSchema && listing != nil
-        let isCurrent = loadedDatabase == database && !listingAnswersAll
+        let isCurrent = loadedDatabase == database
         let local = isCurrent ? loaded : []
         let authoritative = (isCurrent ? coveredSchemas : []).union(local.map { $0.schema ?? "" })
         var seen: Set<TableIdentity> = []

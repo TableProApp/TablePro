@@ -88,6 +88,10 @@ struct SchemaServiceHierarchicalTests {
         TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
     }
 
+    private func unnamedDatabase(_ connectionId: UUID) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     @Test("BigQuery resolves to hierarchicalSchema grouping while Postgres stays bySchema")
     func groupingStrategyResolution() {
         #expect(PluginManager.shared.databaseGroupingStrategy(for: .bigQuery) == .hierarchicalSchema)
@@ -104,7 +108,7 @@ struct SchemaServiceHierarchicalTests {
             "marketing": [bigQueryTable("campaigns", schema: "marketing")]
         ]
 
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(schema: "analytics", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "analytics").map(\.name) == ["events", "sessions"])
         #expect(service.tables(for: connectionId, schema: "marketing").isEmpty)
@@ -119,8 +123,8 @@ struct SchemaServiceHierarchicalTests {
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(schema: "analytics", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "analytics", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(driver.fetchTablesCallCount["analytics"] == 1)
     }
@@ -132,12 +136,12 @@ struct SchemaServiceHierarchicalTests {
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(schema: "analytics", in: unnamedDatabase(connectionId), driver: driver)
         driver.tablesBySchema["analytics"] = [
             bigQueryTable("events", schema: "analytics"),
             bigQueryTable("clicks", schema: "analytics")
         ]
-        await service.reloadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.reloadSchemaObjects(schema: "analytics", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(driver.fetchTablesCallCount["analytics"] == 2)
         #expect(service.tables(for: connectionId, schema: "analytics").map(\.name) == ["events", "clicks"])
@@ -169,7 +173,7 @@ struct SchemaServiceHierarchicalTests {
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaObjects(schema: "analytics", in: unnamedDatabase(connectionId), driver: driver)
         #expect(!service.tables(for: connectionId, schema: "analytics").isEmpty)
 
         await service.invalidate(connectionId: connectionId)

@@ -165,7 +165,7 @@ final class SchemaRefreshService {
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                await schemaService.loadSchemaObjects(connectionId: connectionId, schema: schema, driver: driver)
+                await schemaService.loadSchemaObjects(schema: schema, in: scope, driver: driver)
             }
         } catch {
             Self.logger.warning(
@@ -309,10 +309,7 @@ final class SchemaRefreshService {
                     connection: connection,
                     scope: scope
                 )
-                await schemaService.refreshLoadedSchemaObjects(
-                    connectionId: connectionId,
-                    driver: driver
-                )
+                await schemaService.refreshLoadedSchemaObjects(in: scope, driver: driver)
             }
         } catch is CancellationError {
             return
