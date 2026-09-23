@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
 - Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
+- Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
+- **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
 
 ### Changed
 
@@ -60,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
+- SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 
 ### Removed
 
@@ -327,6 +331,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- Show Previous Tab and Show Next Tab listed twice in the Window menu.
+- Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
+- Shift-Tab and Control-Tab accepting an inline AI suggestion instead of outdenting or reaching the menu.
+- Closing a background tab with unsaved work landing on its neighbour instead of the tab you were on.
+- Show Previous Tab, Show Next Tab and Select Tab 1 to 9 enabled in Agent mode and with no tab to go to.
+- Row data of a window's first connection kept in memory after switching to another connection.
 
 ### Security
 
@@ -349,6 +359,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
 - Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 - A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
+- `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
 
 ## [0.75.0] - 2026-09-18
 

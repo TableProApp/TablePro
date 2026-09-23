@@ -63,8 +63,8 @@ internal struct InlineSuggestionManagerCompositionTests {
         let manager: InlineSuggestionManager
         let source: RecordingInlineSource
 
-        func tab() -> NSEvent? {
-            EditorControllerFixture.keyDown(keyCode: kVK_Tab, characters: "\t", in: window)
+        func tab(modifiers: NSEvent.ModifierFlags = []) -> NSEvent? {
+            EditorControllerFixture.keyDown(keyCode: kVK_Tab, characters: "\t", modifiers: modifiers, in: window)
         }
     }
 
@@ -162,6 +162,30 @@ internal struct InlineSuggestionManagerCompositionTests {
         #expect(harness.editor.textView.hasMarkedText())
         #expect(harness.source.accepted.isEmpty)
         #expect(harness.source.dismissed.count == 1)
+    }
+
+    /// Control-Tab is the recent-tab chord and must reach the menu bar, and Shift-Tab outdents. Both
+    /// used to insert the suggestion because only the key code was checked.
+    @Test("A Tab chord with a modifier leaves the suggestion and the text alone")
+    func modifiedTabDoesNotAccept() async throws {
+        let chords: [(name: String, modifiers: NSEvent.ModifierFlags)] = [
+            ("Control-Tab", .control),
+            ("Control-Shift-Tab", [.control, .shift]),
+            ("Shift-Tab", .shift),
+            ("Command-Tab", .command)
+        ]
+        for chord in chords {
+            let harness = makeHarness()
+            defer { harness.manager.uninstall() }
+            harness.manager.requestSuggestion()
+            await waitUntil { !harness.source.shown.isEmpty }
+            try #require(harness.source.shown.count == 1, "\(chord.name)")
+            let event = try #require(harness.tab(modifiers: chord.modifiers))
+
+            #expect(harness.manager.consumesKeyDown(event) == false, "\(chord.name)")
+            #expect(harness.editor.textView.string == "SELECT * ", "\(chord.name)")
+            #expect(harness.source.accepted.isEmpty, "\(chord.name)")
+        }
     }
 
     @Test("Tab accepts a shown suggestion when nothing is composing")

@@ -18,10 +18,23 @@ final class AdvancedPaneViewModel: ObservableObject {
 
     @Published var coordinator: WeakCoordinatorRef?
 
+    /// The extensions the connection held when the form opened. Only what the person adds or changes
+    /// here counts as approved on this Mac, so saving an imported connection without touching its
+    /// list approves nothing.
+    private(set) var initialExtensions: [LoadableExtension] = []
+
     var advancedFields: [ConnectionField] {
-        guard let type = coordinator?.value?.network.type else { return [] }
-        return PluginManager.shared.additionalConnectionFields(for: type)
-            .filter { $0.section == .advanced }
+        allAdvancedFields.filter { $0.content == .plain }
+    }
+
+    /// The extension list the form shows for this type and these values, if any.
+    var extensionListField: ConnectionField? {
+        allAdvancedFields.first { $0.content == .loadableExtensions && isFieldVisible($0) }
+    }
+
+    var editedExtensions: [LoadableExtension] {
+        let initial = Set(initialExtensions)
+        return currentExtensions.filter { !initial.contains($0) }
     }
 
     var validationIssues: [String] {
@@ -33,7 +46,32 @@ final class AdvancedPaneViewModel: ObservableObject {
             }
         }
         issues += advancedFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
+        if let extensionIssue {
+            issues.append(extensionIssue)
+        }
         return issues
+    }
+
+    private var allAdvancedFields: [ConnectionField] {
+        guard let type = coordinator?.value?.network.type else { return [] }
+        return PluginManager.shared.additionalConnectionFields(for: type)
+            .filter { $0.section == .advanced }
+    }
+
+    private var currentExtensions: [LoadableExtension] {
+        guard let field = extensionListField else { return [] }
+        return (try? LoadableExtensionList.decode(additionalFieldValues[field.id])) ?? []
+    }
+
+    private var extensionIssue: String? {
+        do {
+            try LoadableExtensionPreflight.validate(currentExtensions)
+            return nil
+        } catch let error as LoadableExtensionError {
+            return error.failureReason
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
@@ -68,6 +106,9 @@ final class AdvancedPaneViewModel: ObservableObject {
             values[RedisDatabaseIndex.fieldName] = String(connection.configuredRedisDatabaseIndex)
         }
         additionalFieldValues = values
+        initialExtensions = allFields
+            .filter { $0.content == .loadableExtensions }
+            .flatMap { (try? LoadableExtensionList.decode(connection.additionalFields[$0.id])) ?? [] }
         startupCommands = connection.startupCommands ?? ""
         preConnectScript = connection.preConnectScript ?? ""
         aiPolicy = connection.aiPolicy
