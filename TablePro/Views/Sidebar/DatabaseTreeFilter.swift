@@ -132,34 +132,82 @@ enum DatabaseTreeFilter {
         )
     }
 
-    /// A schema whose objects have not loaded yet cannot be judged, so it stays visible. Reading an
-    /// unloaded schema as an empty one hides it for the whole life of the filter and blanks the
-    /// pane while the search-driven load is still running. A match on a procedure, trigger or type
-    /// keeps the schema as surely as a match on a table.
+    /// What a hierarchical tree has read of one schema, filtered by the search.
+    struct LoadedSchemaContent {
+        let buckets: DatabaseTreeObjectBuckets
+        /// Every kind has answered. One that failed or is still coming may hold the match.
+        let isSettled: Bool
+        /// Read since the last catalog change, which may have created or dropped anything in it.
+        let isCurrent: Bool
+    }
+
+    /// A hierarchical tree lists every schema of the database and judges each one without reading
+    /// it. A schema's own lists answer first while they are current. Otherwise the database's
+    /// all-schema listing answers for its tables, which is all the listing holds: a procedure,
+    /// function, trigger or type is found only in a schema whose objects have been read, and one
+    /// read before the last catalog change still counts, since the match expands the schema and the
+    /// expansion reads it again. A schema nothing can answer for yet stays on screen, collapsed.
     ///
     /// `database` is the one being browsed, when the engine has one, so a search that names it
-    /// (`shop.hr.employees`) can match.
-    static func hierarchicalSchemaIsVisible(
-        _ schema: String,
+    /// (`shop.hr.employees`) can match. `listingCoversSchema` is false for a schema the listing
+    /// leaves out on purpose, a system schema.
+    static func hierarchicalSchemaSearchVerdict(
+        schema: String,
+        database: String?,
         searchText: String,
-        isLoaded: Bool,
-        tables: [TableInfo],
-        routines: [RoutineInfo],
-        triggers: [TriggerInfo],
-        userTypes: [UserDefinedTypeInfo],
-        database: String? = nil
-    ) -> Bool {
+        loadedContent: LoadedSchemaContent?,
+        listingMatches: SchemaListingMatches?,
+        listingCoversSchema: Bool
+    ) -> SchemaSearchVerdict {
         let search = SidebarSearch(searchText)
-        if search.matchesContainer(database: database, schema: schema) { return true }
-        guard isLoaded else { return search.admits(database: database, schema: schema) }
-        return !objectBuckets(
-            tables: tables,
-            routines: routines,
-            triggers: triggers,
-            userTypes: userTypes,
-            searchText: searchText,
-            database: database
-        ).isEmpty
+        if search.matchesContainer(database: database, schema: schema) { return .match }
+        if let loadedContent {
+            if !loadedContent.buckets.isEmpty { return .match }
+            if loadedContent.isSettled, loadedContent.isCurrent { return .noMatch }
+        }
+        let unanswered: SchemaSearchVerdict = search.admits(database: database, schema: schema) ? .unknown : .noMatch
+        let listingAnswers = listingCoversSchema && listingMatches?.unlisted.contains(schema) == false
+        if listingAnswers, listingMatches?.matched.contains(schema) == true { return .match }
+        if let loadedContent { return loadedContent.isSettled ? .noMatch : unanswered }
+        return listingAnswers || !listingCoversSchema ? .noMatch : unanswered
+    }
+
+    @MainActor
+    static func hierarchicalLoadedContent(
+        in service: SchemaService,
+        connectionId: UUID,
+        schema: String,
+        searchText: String,
+        database: String?
+    ) -> LoadedSchemaContent? {
+        guard service.hasLoadedContent(for: connectionId, schema: schema) else { return nil }
+        return LoadedSchemaContent(
+            buckets: objectBuckets(
+                tables: service.tables(for: connectionId, schema: schema),
+                routines: service.routines(for: connectionId, schema: schema),
+                triggers: service.triggers(for: connectionId, schema: schema),
+                userTypes: service.userDefinedTypes(for: connectionId, schema: schema),
+                searchText: searchText,
+                database: database
+            ),
+            isSettled: service.isSchemaSettled(for: connectionId, schema: schema),
+            isCurrent: service.isSchemaCurrent(for: connectionId, schema: schema)
+        )
+    }
+
+    /// The listing of the database the hierarchical tree's schemas were read from, which during a
+    /// database switch is still the one being left.
+    @MainActor
+    static func hierarchicalListingMatches(
+        in treeMetadata: DatabaseTreeMetadataService,
+        schemaService: SchemaService,
+        connectionId: UUID,
+        searchText: String
+    ) -> SchemaListingMatches? {
+        guard let database = schemaService.loadedScope(for: connectionId)?.database,
+              let listing = treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database).value
+        else { return nil }
+        return SchemaListingMatches(listing: listing, database: database, searchText: searchText)
     }
 
     /// A schema the search matched by name shows everything inside it. Filtering its objects by the
@@ -215,9 +263,9 @@ enum DatabaseTreeFilter {
         searching ? matchCount > 0 : stored
     }
 
-    /// What a search can say about one schema of a database-grouped tree. `unknown` is a schema
-    /// whose objects neither the tree nor the all-schema listing can answer for yet, which stays on
-    /// screen collapsed, for the reason `hierarchicalSchemaIsVisible` keeps an unloaded schema.
+    /// What a search can say about one schema of a tree. `unknown` is a schema whose objects neither
+    /// the tree nor the all-schema listing can answer for yet, which stays on screen collapsed:
+    /// reading it as empty would hide it for the whole life of the filter.
     enum SchemaSearchVerdict: Equatable {
         case match
         case noMatch

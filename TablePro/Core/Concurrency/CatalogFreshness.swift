@@ -15,6 +15,7 @@ import Foundation
 struct CatalogFreshness<Key: Hashable> {
     private var revisions: [Key: Int] = [:]
     private var committed: [Key: Int] = [:]
+    private var started: [Key: Int] = [:]
 
     func revision(for key: Key) -> Int {
         revisions[key, default: 0]
@@ -22,6 +23,22 @@ struct CatalogFreshness<Key: Hashable> {
 
     func isCurrent(_ key: Key) -> Bool {
         committed[key] == revision(for: key)
+    }
+
+    /// A read that finds nothing current asks for one fetch per revision. One that failed is not
+    /// asked for again until the next change, or every reader observing the failure would repeat it.
+    func needsFetch(_ key: Key) -> Bool {
+        !isCurrent(key) && started[key] != revision(for: key)
+    }
+
+    mutating func noteFetchStarted(_ revision: Int, for key: Key) {
+        started[key] = revision
+    }
+
+    /// A fetch cut short answered nothing, so the next read may ask again at the same revision.
+    mutating func noteFetchAbandoned(_ revision: Int, for key: Key) {
+        guard started[key] == revision else { return }
+        started.removeValue(forKey: key)
     }
 
     mutating func markChanged(_ key: Key) {
@@ -39,5 +56,6 @@ struct CatalogFreshness<Key: Hashable> {
     mutating func removeAll(where shouldRemove: (Key) -> Bool) {
         revisions = revisions.filter { !shouldRemove($0.key) }
         committed = committed.filter { !shouldRemove($0.key) }
+        started = started.filter { !shouldRemove($0.key) }
     }
 }

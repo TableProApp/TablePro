@@ -299,6 +299,7 @@ final class SchemaRefreshService {
             guard let scope = browseScope else {
                 throw DatabaseError.notConnected
             }
+            let awaitedSchemas = schemasAwaitingJudgement(in: scope)
             try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
@@ -309,7 +310,11 @@ final class SchemaRefreshService {
                     connection: connection,
                     scope: scope
                 )
-                await schemaService.refreshLoadedSchemaObjects(in: scope, driver: driver)
+                await schemaService.refreshLoadedSchemaObjects(
+                    in: scope,
+                    fetchingNow: awaitedSchemas,
+                    driver: driver
+                )
             }
         } catch is CancellationError {
             return
@@ -328,6 +333,20 @@ final class SchemaRefreshService {
             await treeMetadataService.refreshLoadedTables(connectionId: connectionId, database: database)
         }
         await syncAutocompleteProvider(connectionId: connectionId)
+    }
+
+    /// The schemas judged against the refreshed catalog as soon as it settles: the browsed one, and
+    /// every one holding a queued truncate or drop, which a catalog change prunes when it finishes.
+    private func schemasAwaitingJudgement(in scope: DatabaseScope) -> Set<String> {
+        var schemas = Set([scope.schema].compactMap { $0 })
+        guard let session = databaseManager?.session(for: scope.connectionId) else { return schemas }
+        for ref in session.pendingTruncates.union(session.pendingDeletes) {
+            guard (ref.database ?? scope.database) == scope.database, let schema = ref.qualifyingSchema else {
+                continue
+            }
+            schemas.insert(schema)
+        }
+        return schemas
     }
 }
 

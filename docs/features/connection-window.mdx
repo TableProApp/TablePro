@@ -95,7 +95,9 @@ The filter field matches any part of a name, so `sheet` finds `timesheet`. How f
 | **View > Sidebar as List** | The browsed schema, then every other schema holding a match, listed below it and opened to show the matches |
 | **View > Sidebar as Tree** | Every schema of every database whose schemas the tree has shown, expanded or not |
 
-A schema whose tables have not been read yet stays in the tree, collapsed, until they arrive.
+A schema whose tables have not been read yet stays in the tree, collapsed, until they arrive. Oracle, Snowflake, BigQuery and the other engines whose sidebar lists schemas with no database above them show that tree in both layouts, and the filter checks the tables of every schema in it.
+
+Until the sidebar has read a schema's objects, only its tables and views match. Expand the schema to read them, and its procedures, functions, triggers and types match too.
 
 <Frame caption="The List layout filtered by timesheet">
   <img className="block dark:hidden" src="/images/sidebar-filter-other-schemas.png" alt="Sidebar with timesheet in public at the top, and attendance and payroll below it, each opened to its timesheet table" />

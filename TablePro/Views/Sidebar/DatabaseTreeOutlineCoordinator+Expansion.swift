@@ -33,7 +33,7 @@ extension DatabaseTreeOutlineCoordinator {
                 }
             case .hierarchicalSchemaSection(let schema):
                 let want = searching
-                    ? hierarchicalSchemaMatches(schema)
+                    ? hierarchicalSchemaVerdict(schema) == .match
                     : windowState?.expandedTreeSchemas.contains(schema) ?? false
                 setExpanded(sectionNode, want)
                 if outlineView.isItemExpanded(sectionNode) {
@@ -228,8 +228,10 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// An expanded schema is the reader a catalog change waits for: it reads a schema never read,
+    /// and one a change has overtaken, once per change.
     private func loadHierarchicalSchemaObjects(_ schema: String) {
-        guard case .idle = schemaService.schemaState(for: connectionId, schema: schema) else { return }
+        guard schemaService.schemaObjectsNeedFetch(for: connectionId, schema: schema) else { return }
         let connectionId = connectionId
         let database = browsingDatabase
         Task {

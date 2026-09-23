@@ -88,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
 - Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
+- Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read.
 
 ### Removed
 
@@ -103,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stale column and MongoDB field suggestions when a refresh ran while they were loading.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
 - Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
+- Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery.
+- Every schema a search had opened read again after each commit on Oracle, Snowflake and BigQuery.
 - Schemas missing from Open Quickly on every reopen after one failed to load.
 - Unexpanded schemas hidden by the sidebar filter in the Tree layout.
 - Empty object sections opened as "No items" under every match while filtering the sidebar tree.

@@ -269,23 +269,27 @@ extension DatabaseTreeOutlineCoordinator {
             showsSystem: showSystemContainers
         )
         nodes += browsable
-            .filter { searchText.isEmpty || hierarchicalSchemaMatches($0) }
+            .filter { searchText.isEmpty || hierarchicalSchemaVerdict($0).isVisible }
             .map {
                 node(id: DatabaseTreeNode.hierarchicalSchemaSectionId($0), kind: .hierarchicalSchemaSection(schema: $0))
             }
         return nodes
     }
 
-    internal func hierarchicalSchemaMatches(_ schema: String) -> Bool {
-        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            schema,
+    internal func hierarchicalSchemaVerdict(_ schema: String) -> DatabaseTreeFilter.SchemaSearchVerdict {
+        DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
+            schema: schema,
+            database: browsingDatabase,
             searchText: searchText,
-            isLoaded: schemaService.isSchemaSettled(for: connectionId, schema: schema),
-            tables: schemaService.tables(for: connectionId, schema: schema),
-            routines: schemaService.routines(for: connectionId, schema: schema),
-            triggers: schemaService.triggers(for: connectionId, schema: schema),
-            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
-            database: browsingDatabase
+            loadedContent: DatabaseTreeFilter.hierarchicalLoadedContent(
+                in: schemaService,
+                connectionId: connectionId,
+                schema: schema,
+                searchText: searchText,
+                database: browsingDatabase
+            ),
+            listingMatches: schemaService.loadedScope(for: connectionId).flatMap { listingMatches(database: $0.database) },
+            listingCoversSchema: !systemSchemas.contains(schema)
         )
     }
 
