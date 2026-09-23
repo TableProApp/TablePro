@@ -23,6 +23,7 @@ struct ExternalStatementGateLexicalTests {
             connectionId: UUID(),
             databaseType: databaseType,
             externalAccess: .readOnly,
+            loadsExtensions: false,
             allowsDestructive: false,
             allowsMultiStatement: allowsMultiStatement,
             destructiveAlternative: nil
