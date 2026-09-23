@@ -432,6 +432,7 @@ targets:
       - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
       - Plugins/DuckDBDriverPlugin/DuckDBLexicalFeatures.swift
       - Plugins/DuckDBDriverPlugin/DuckDBLockConflict.swift
@@ -541,6 +542,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLForeignKeyCatalog.swift
       - Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - Plugins/MySQLDriverPlugin/MySQLIndexGrouping.swift
+      - Plugins/MySQLDriverPlugin/MySQLFunctionalKeyParts.swift
       - Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift

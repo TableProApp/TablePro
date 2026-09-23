@@ -182758,6 +182758,12 @@
     },
     "False for an index the engine reports as invalid, which queries skip and exports leave out" : {
 
+    },
+    "%@ cannot index an expression. Index a generated column instead." : {
+
+    },
+    "Indexing an expression needs MySQL 8.0.13 or later." : {
+
     }
   },
   "version" : "1.1"

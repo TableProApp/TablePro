@@ -295,6 +295,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateDropColumnSQL(table: String, columnName: String) -> String?
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String?
     func generateDropIndexSQL(table: String, indexName: String) -> String?
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String?
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String?
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String?
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String?
@@ -915,6 +916,7 @@ public extension PluginDatabaseDriver {
     func generateDropColumnSQL(table: String, columnName: String) -> String? { nil }
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? { nil }
     func generateDropIndexSQL(table: String, indexName: String) -> String? { nil }
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? { nil }
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? { nil }
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? { nil }
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? { nil }

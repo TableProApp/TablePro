@@ -133,4 +133,15 @@ struct SQLTokenCursorTests {
         let tokens = Self.tokens("SELECT q'[it's; ok]' FROM dual", grammar: TestGrammar.oracle)
         #expect(tokens == [.word("SELECT"), .literal, .word("FROM"), .word("DUAL")])
     }
+
+    @Test("The location is just past the last token read, and stays on a depth-0 semicolon")
+    func locationFollowsTheTokens() {
+        var cursor = SQLTokenCursor("f(a, 'b,c'), d; e", grammar: TestGrammar.postgres)
+        var commas: [Int] = []
+        while let token = cursor.next() {
+            if token.isSymbol(SQLTokenCursor.comma), cursor.parenDepth == 0 { commas.append(cursor.location - 1) }
+        }
+        #expect(commas == [11])
+        #expect(cursor.location == 14)
+    }
 }

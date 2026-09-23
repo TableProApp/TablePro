@@ -501,26 +501,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT il.name, il."unique", il.origin, ii.name AS col_name
-            FROM pragma_index_list('\(safeTable)') il
-            LEFT JOIN pragma_index_info(il.name) ii ON 1=1
-            ORDER BY il.seq, ii.seqno
-            """
-        let result = try await execute(query: query)
-
-        let rows = result.rows.compactMap { row -> SQLiteIndexRow? in
-            guard row.count >= 4, let indexName = row[0].asText else { return nil }
-            return SQLiteIndexRow(
-                table: table,
-                index: indexName,
-                column: row[3].asText,
-                isUnique: row[1].asText == "1",
-                origin: row[2].asText ?? "c"
-            )
-        }
-        return SQLiteIndexGrouping.group(rows)[table] ?? []
+        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table))
+        return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -806,7 +788,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        sqliteAddIndexSQL(table: table, index: index)
+        SQLiteIndexCatalog.createStatement(for: index, table: table, quote: sqliteQuoteIdentifier)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

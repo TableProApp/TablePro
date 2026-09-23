@@ -77,6 +77,20 @@ struct IndexDefinitionCatalogSpellingTests {
         #expect(type.ddlMethodAndKeys == nil)
     }
 
+    @Test("A changed key prefix retires the key spelling")
+    func prefixEditRetiresTheKeySpelling() {
+        let keys = "(`v` DESC, `email`(20)) USING BTREE"
+        var index = EditableIndexDefinition.from(IndexInfo(
+            name: "i_desc", columns: ["v", "email"], isUnique: false, isPrimary: false, type: "BTREE",
+            columnPrefixes: ["email": 20], ddlMethodAndKeys: keys
+        ))
+        index.name = "i_desc_renamed"
+        #expect(index.ddlMethodAndKeys == keys)
+
+        index.columnPrefixes = ["email": 30]
+        #expect(index.ddlMethodAndKeys == nil)
+    }
+
     @Test("Changing a field and changing it back restores the spelling")
     func revertRestores() {
         var index = Self.loaded()
