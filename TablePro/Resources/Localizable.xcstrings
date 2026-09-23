@@ -23313,7 +23313,7 @@
         }
       }
     },
-    "Available once the view holds rows. Refresh it once without this option first." : {
+    "Available once the view is populated. Refresh it once without this option first." : {
 
     },
     "Average" : {
@@ -182736,6 +182736,15 @@
 
     },
     "The Oracle driver reported an error (%@)." : {
+
+    },
+    "This view can be refreshed concurrently." : {
+
+    },
+    "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+
+    },
+    "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
 
     }
   },

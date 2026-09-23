@@ -214,6 +214,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     QuickSwitcherOpenTable(schema: table.schema, name: table.name, browsing: browseSchema)
                 ),
                 isReadOnly: !table.type.allowsRowEditing,
+                tableType: table.type,
                 schemaName: table.schema
             ))
         }
@@ -579,6 +580,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 kind: presentation.kind,
                 subtitle: connectionPath(for: resolvedTarget),
                 isReadOnly: !table.type.allowsRowEditing,
+                tableType: table.type,
                 target: resolvedTarget
             )
         }

@@ -109,7 +109,7 @@ internal final class LaunchIntentRouter {
         switch intent {
         case .openConnection(let id):
             return id
-        case .openTable(let id, _, _, _, _):
+        case .openTable(let id, _, _, _, _, _):
             return id
         case .openQuery(let id, _):
             return id

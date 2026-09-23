@@ -106,6 +106,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var payload: String?
     var isOpenInTab: Bool = false
     var isReadOnly: Bool = false
+    var tableType: TableInfo.TableType?
     /// The schema of an object in the connection that opened the panel. `target` carries the schema
     /// for a result in another connection and is nil here, so without this a local result committed
     /// with no schema at all: the tab-reuse check compares schemas, so "Switch to Tab" opened a

@@ -69,6 +69,7 @@ extension MainContentCoordinator {
                 schema: schemaName,
                 showStructure: intent == .openStructure,
                 isView: item.isReadOnly,
+                objectType: item.tableType,
                 activateGridFocus: true,
                 forceNewTab: intent == .openInNewWindowTab
             )
@@ -79,6 +80,7 @@ extension MainContentCoordinator {
                 schema: schemaName,
                 showStructure: intent == .openStructure,
                 isView: true,
+                objectType: item.tableType,
                 activateGridFocus: true,
                 forceNewTab: intent == .openInNewWindowTab
             )
@@ -121,6 +123,7 @@ extension MainContentCoordinator {
                 item.name,
                 schema: target.schemaName,
                 isView: item.kind == .view || item.isReadOnly,
+                objectType: item.tableType,
                 activateGridFocus: true,
                 forceNewTab: intent == .openInNewWindowTab
             )
@@ -144,7 +147,8 @@ extension MainContentCoordinator {
                     database: target.databaseName,
                     schema: target.schemaName,
                     table: item.name,
-                    isView: item.kind == .view || item.isReadOnly
+                    isView: item.kind == .view || item.isReadOnly,
+                    objectType: item.tableType
                 ))
             } catch {
                 guard let self else { return }

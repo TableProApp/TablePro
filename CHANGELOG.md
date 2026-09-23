@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Session**, with the agent session commands and the assistant's conversation commands.
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
+- Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 
 ### Changed
 
@@ -85,6 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI chat's saved query mentions missing a query saved earlier in the same session.
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
 - A file the import panel dimmed still opening, and reaching the wrong importer.
+- Materialized view opened from Open Quickly edited as a plain view. (#2522)
+- Index edits refused on a PGlite materialized view.
+- Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
+- **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
+- **New Trigger** offered on a materialized view.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.

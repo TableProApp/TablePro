@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProPluginKit
 
 /// Everything one tab's structure editor is, held outside the view that presents it.
@@ -33,6 +34,8 @@ import TableProPluginKit
 /// fetch is the only version of this that keeps the edits.
 @MainActor
 internal final class StructureEditingSession: ObservableObject {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
+
     /// The scope and table this session was opened against. A tab retargeted to another table gets
     /// a new session rather than inheriting edits staged against the old one.
     internal let identity: String
@@ -67,6 +70,8 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var triggers: [TriggerInfo] = []
     @Published internal var ddlStatement: String = ""
     @Published internal var tabData = StructureTabDataState()
+
+    @Published internal var concurrentRefresh: MetadataLoadState<PluginConcurrentRefreshAvailability?> = .idle
 
     /// Where the user was. Held here rather than in the view because two tabs on one table are two
     /// editors: one being on Indexes must not move the other, and neither should lose its place to
@@ -145,6 +150,26 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal func markApplied() {
         appliedVersion += 1
+    }
+
+    internal func reloadConcurrentRefreshAvailability(
+        provider: any ScopedMetadataProviding = DatabaseManager.shared
+    ) async {
+        guard objectKind == .materializedView else { return }
+        concurrentRefresh = concurrentRefresh.enteringLoad
+        let loader = TableStructureLoader(scope: scope, tableName: tableName, provider: provider)
+        let outcome: MetadataFetchOutcome<PluginConcurrentRefreshAvailability?>
+        do {
+            outcome = .fetched(try await loader.concurrentRefreshAvailability())
+        } catch is CancellationError {
+            outcome = .cancelled
+        } catch {
+            Self.logger.error(
+                "Concurrent refresh check failed: \(error.publicLogShape, privacy: .public)"
+            )
+            outcome = .failed(error.localizedDescription)
+        }
+        concurrentRefresh = concurrentRefresh.settled(by: outcome, discardingValue: true)
     }
 
     /// Breaks the cycle the mounted view's wiring creates.
