@@ -72,6 +72,7 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var tabData = StructureTabDataState()
 
     @Published internal var concurrentRefresh: MetadataLoadState<PluginConcurrentRefreshAvailability?> = .idle
+    private var concurrentRefreshRequest = 0
 
     /// Where the user was. Held here rather than in the view because two tabs on one table are two
     /// editors: one being on Indexes must not move the other, and neither should lose its place to
@@ -156,6 +157,8 @@ internal final class StructureEditingSession: ObservableObject {
         provider: any ScopedMetadataProviding = DatabaseManager.shared
     ) async {
         guard objectKind == .materializedView else { return }
+        concurrentRefreshRequest += 1
+        let request = concurrentRefreshRequest
         concurrentRefresh = concurrentRefresh.enteringLoad
         let loader = TableStructureLoader(scope: scope, tableName: tableName, provider: provider)
         let outcome: MetadataFetchOutcome<PluginConcurrentRefreshAvailability?>
@@ -169,6 +172,7 @@ internal final class StructureEditingSession: ObservableObject {
             )
             outcome = .failed(error.localizedDescription)
         }
+        guard request == concurrentRefreshRequest else { return }
         concurrentRefresh = concurrentRefresh.settled(by: outcome, discardingValue: true)
     }
 

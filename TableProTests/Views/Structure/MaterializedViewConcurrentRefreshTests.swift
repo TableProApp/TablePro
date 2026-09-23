@@ -35,6 +35,53 @@ private final class ConcurrentRefreshProvider: ScopedMetadataProviding {
     func browseScope(for connectionId: UUID) -> DatabaseScope? { nil }
 }
 
+/// Holds the first request until released, so a later request can finish first. Each request
+/// reads its own driver, so the two answers stay apart however the calls interleave.
+@MainActor
+private final class ParkingProvider: ScopedMetadataProviding {
+    private let drivers: [MockDatabaseDriver]
+    private var calls = 0
+    private var parked: CheckedContinuation<Void, Never>?
+    private var parkWaiter: CheckedContinuation<Void, Never>?
+
+    init(answers: [PluginConcurrentRefreshAvailability]) {
+        drivers = answers.map { answer in
+            let driver = MockDatabaseDriver()
+            driver.concurrentRefreshAvailabilityToReturn = answer
+            return driver
+        }
+    }
+
+    func withMetadataDriver<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        let index = calls
+        calls += 1
+        if index == 0 {
+            await withCheckedContinuation { continuation in
+                parked = continuation
+                parkWaiter?.resume()
+                parkWaiter = nil
+            }
+        }
+        return try await body(drivers[index])
+    }
+
+    func browseScope(for connectionId: UUID) -> DatabaseScope? { nil }
+
+    func waitUntilParked() async {
+        guard parked == nil else { return }
+        await withCheckedContinuation { parkWaiter = $0 }
+    }
+
+    func releaseParked() {
+        parked?.resume()
+        parked = nil
+    }
+}
+
 @Suite("Materialized view concurrent refresh note")
 struct MaterializedViewConcurrentRefreshNoteTests {
     @Test("Nothing is shown before the server has answered")
@@ -159,6 +206,22 @@ struct MaterializedViewConcurrentRefreshCheckTests {
             return
         }
         #expect(MaterializedViewConcurrentRefreshNote(state: session.concurrentRefresh)?.text.contains("Couldn't check") == true)
+    }
+
+    @Test("An older check that finishes last cannot overwrite a newer answer")
+    func olderCheckCannotOverwriteANewerOne() async {
+        let session = Self.makeSession(kind: .materializedView)
+        let provider = ParkingProvider(answers: [.requiresUniqueIndex, .available])
+        let older = Task { await session.reloadConcurrentRefreshAvailability(provider: provider) }
+        await provider.waitUntilParked()
+
+        await session.reloadConcurrentRefreshAvailability(provider: provider)
+        #expect(session.concurrentRefresh == .loaded(.available))
+
+        provider.releaseParked()
+        await older.value
+
+        #expect(session.concurrentRefresh == .loaded(.available))
     }
 
     @Test("A first check that fails is reported as failed")
