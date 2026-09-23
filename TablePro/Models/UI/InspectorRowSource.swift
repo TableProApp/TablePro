@@ -14,12 +14,14 @@ internal struct InspectorRowField: Equatable {
     let value: String?
     let editor: FieldEditorKind
     let isModified: Bool
+    let isEditable: Bool
 
-    init(name: String, value: String?, editor: FieldEditorKind, isModified: Bool = false) {
+    init(name: String, value: String?, editor: FieldEditorKind, isModified: Bool = false, isEditable: Bool = true) {
         self.name = name
         self.value = value
         self.editor = editor
         self.isModified = isModified
+        self.isEditable = isEditable
     }
 }
 

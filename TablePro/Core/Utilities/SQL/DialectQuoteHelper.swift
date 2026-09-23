@@ -59,8 +59,7 @@ func escapeStringLiteralFromDialect(_ dialect: SQLDialectDescriptor) -> @Sendabl
         result = result.replacingOccurrences(of: "\t", with: "\\t")
         result = result.replacingOccurrences(of: "\0", with: "\\0")
         result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f")
-        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
+            result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
         return result
     }
 }

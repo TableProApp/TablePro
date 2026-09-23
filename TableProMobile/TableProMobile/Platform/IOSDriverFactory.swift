@@ -103,7 +103,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                ssl: try ssl(for: connection)
+                ssl: try ssl(for: connection),
+                databaseType: connection.type
             )
         case .redis:
             let dbIndex = RedisDatabaseIndex.resolve(

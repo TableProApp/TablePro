@@ -8,7 +8,14 @@ import TableProImport
 
 internal enum LaunchIntent: @unchecked Sendable {
     case openConnection(UUID)
-    case openTable(connectionId: UUID, database: String?, schema: String?, table: String, isView: Bool)
+    case openTable(
+        connectionId: UUID,
+        database: String?,
+        schema: String?,
+        table: String,
+        isView: Bool,
+        objectType: TableInfo.TableType? = nil
+    )
     case openQuery(connectionId: UUID, sql: String)
     /// Open a connection in Agent mode, optionally carrying the question the user already typed.
     case openAgentSession(connectionId: UUID, prompt: String?)
@@ -27,7 +34,7 @@ internal enum LaunchIntent: @unchecked Sendable {
     internal var targetConnectionId: UUID? {
         switch self {
         case .openConnection(let id),
-             .openTable(let id, _, _, _, _),
+             .openTable(let id, _, _, _, _, _),
              .openQuery(let id, _),
              .openAgentSession(let id, _):
             return id

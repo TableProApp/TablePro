@@ -61,10 +61,10 @@ internal final class TabRouter {
         case .openConnection(let id):
             try await openConnection(id: id)
 
-        case .openTable(let id, let database, let schema, let table, let isView):
+        case .openTable(let id, let database, let schema, let table, let isView, let objectType):
             try await openTable(
                 connectionId: id, transientConnection: nil,
-                database: database, schema: schema, table: table, isView: isView
+                database: database, schema: schema, table: table, isView: isView, objectType: objectType
             )
 
         case .openQuery(let id, let sql):
@@ -217,6 +217,7 @@ internal final class TabRouter {
     private func openTable(
         connectionId: UUID, transientConnection: DatabaseConnection? = nil,
         database: String?, schema: String?, table: String, isView: Bool,
+        objectType: TableInfo.TableType? = nil,
         passwordOverride: String? = nil, sshPasswordOverride: String? = nil
     ) async throws {
         let connection: DatabaseConnection
@@ -241,7 +242,8 @@ internal final class TabRouter {
             tableName: table,
             databaseName: database,
             schemaName: schema,
-            isView: isView
+            isView: isView,
+            objectType: objectType
         )
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
@@ -486,18 +488,21 @@ internal final class TabRouter {
         }
 
         if let session = DatabaseManager.shared.lastActiveSession {
-            let content = await Task.detached(priority: .userInitiated) { () -> String? in
-                try? String(contentsOf: url, encoding: .utf8)
+            let read = await Task.detached(priority: .userInitiated) { () -> (content: String, stamp: FileStamp?)? in
+                let stamp = FileStamp.read(url)
+                guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+                return (content, stamp)
             }.value
-            guard let content else {
+            guard let read else {
                 Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
                 return
             }
             let payload = EditorTabPayload(
                 connectionId: session.connection.id,
                 tabType: .query,
-                initialQuery: content,
-                sourceFileURL: url
+                initialQuery: read.content,
+                sourceFileURL: url,
+                sourceFileStamp: read.stamp
             )
             WindowManager.shared.openTab(payload: payload)
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)

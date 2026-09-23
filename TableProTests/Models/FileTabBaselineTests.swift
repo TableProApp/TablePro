@@ -36,7 +36,7 @@ struct FileTabBaselineTests {
         FileTabBaseline.hydrate(&tab)
 
         #expect(tab.content.savedFileContent == "SELECT 1")
-        #expect(tab.content.loadMtime != nil)
+        #expect(tab.content.savedFileStamp != nil)
         #expect(tab.content.isFileDirty == false)
     }
 
@@ -92,14 +92,14 @@ struct FileTabBaselineTests {
         #expect(tabs[2].content.savedFileContent == "SELECT 2")
     }
 
-    @Test("The loader reports when the file it read was last written")
-    func loaderCarriesTheModificationDate() throws {
+    @Test("The loader reports what the file it read was")
+    func loaderCarriesTheFileStamp() throws {
         let url = try makeFile(contents: "SELECT 1")
         defer { try? FileManager.default.removeItem(at: url) }
 
         let loaded = try #require(FileTextLoader.load(url))
 
         #expect(loaded.content == "SELECT 1")
-        #expect(loaded.modifiedAt != nil)
+        #expect(loaded.stamp != nil)
     }
 }

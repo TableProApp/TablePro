@@ -9,8 +9,8 @@
 
 import AppKit
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // MARK: - QueryTab sourceFileURL Property Tests
@@ -150,11 +150,13 @@ struct QueryTabManagerDeduplicationTests {
         let url = URL(fileURLWithPath: "/tmp/test.sql")
 
         tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
-        tabManager.tabs[0].content.externalModificationDetected = true
+        tabManager.tabs[0].content.diskChange = .modified(
+            FileStamp(modificationSeconds: 1, modificationNanoseconds: 0, size: 8, fileNumber: 1)
+        )
 
         tabManager.addTab(initialQuery: "SELECT 2", sourceFileURL: url)
 
-        #expect(tabManager.tabs.first?.content.externalModificationDetected == false)
+        #expect(tabManager.tabs.first?.content.diskChange == nil)
     }
 }
 

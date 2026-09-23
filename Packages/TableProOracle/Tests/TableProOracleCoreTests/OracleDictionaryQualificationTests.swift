@@ -5,9 +5,11 @@ import XCTest
 /// user plants in the current schema, or in a schema the reader switched into, cannot shadow it. Measured on Oracle
 /// 23ai: a bare `ALL_TABLES` in the current schema captured the tables read, and `SYS.ALL_TABLES` did not.
 final class OracleDictionaryQualificationTests: XCTestCase {
-    /// A dictionary token that must never appear without its `SYS` owner in front of it.
+    /// A dictionary token that must never appear without its `SYS` owner in front of it. The queries give their
+    /// tables lowercase aliases, so a name after one (`c.USER_GENERATED`, a column of `ALL_TAB_COLS`) is a column and
+    /// names no dictionary object, while an uppercase owner in front of a view is still caught.
     private static let bareDictionary = try! NSRegularExpression(
-        pattern: #"\b(ALL|DBA|USER)_[A-Z_]+\b|\bDUAL\b|V\$[A-Z_]+"#
+        pattern: #"(?<![a-z]\.)\b(ALL|DBA|USER)_[A-Z_]+\b|\bDUAL\b|V\$[A-Z_]+"#
     )
 
     /// Strips every `SYS.`-qualified reference, then fails if any dictionary token is left bare.
@@ -31,10 +33,12 @@ final class OracleDictionaryQualificationTests: XCTestCase {
             ("tables", OracleSchemaQueries.tables(schema: "HR")),
             ("partitions", OracleSchemaQueries.partitions(schema: "HR", table: "T")),
             ("subpartitions", OracleSchemaQueries.subpartitions(schema: "HR", table: "T")),
-            ("columns", OracleSchemaQueries.columns(schema: "HR", table: "T")),
+            ("columns 11g", OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 11))),
+            ("columns 23ai", OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 23))),
             ("indexes", OracleSchemaQueries.indexes(schema: "HR", table: "T")),
             ("foreignKeys", OracleSchemaQueries.foreignKeys(schema: "HR", table: "T")),
-            ("allColumns", OracleSchemaQueries.allColumns(schema: "HR")),
+            ("allColumns 11g", OracleSchemaQueries.allColumns(schema: "HR", release: OracleServerRelease(major: 11))),
+            ("allColumns 23ai", OracleSchemaQueries.allColumns(schema: "HR", release: OracleServerRelease(major: 23))),
             ("allForeignKeys", OracleSchemaQueries.allForeignKeys(schema: "HR")),
             ("databaseSummaries", OracleSchemaQueries.databaseSummaries),
             ("schemaSegmentSizes", OracleSchemaQueries.schemaSegmentSizes),

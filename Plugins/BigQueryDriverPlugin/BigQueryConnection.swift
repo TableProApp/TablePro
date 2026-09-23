@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProGoogleCloud
+import TableProLogRedaction
 import TableProPluginKit
 
 internal struct BQTableFieldSchema: Codable, Sendable {
@@ -714,7 +715,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
             do {
                 try await cancelJob(jobId: jobId, location: location)
             } catch {
-                Self.logger.warning("BigQuery job cancel failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("BigQuery job cancel failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
         }
     }

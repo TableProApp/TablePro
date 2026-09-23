@@ -94,7 +94,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
 
 /// A single item in the quick switcher results list
 internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
-    let id: String
+    let frecencyKey: String
     let name: String
     let kind: QuickSwitcherItemKind
     let subtitle: String
@@ -132,31 +132,13 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         return QualifiedSearchQuery.location(database: target.databaseName, schema: target.schemaName)
     }
 
-    /// The frecency identity of a table, produced identically by the two places that record one:
-    /// the quick switcher, which knows the object's `TableInfo.TableType`, and the tab open
-    /// chokepoint, which only ever learns a Bool.
-    ///
-    /// The type used to be part of this. It cannot be, because the two sides spell it differently
-    /// and one of them cannot spell it at all: the switcher used the full `TableType` raw value
-    /// while the tab derived `isView` from `allowsRowEditing`, so a materialized view was recorded
-    /// as `TABLE` and looked up as `MATERIALIZED VIEW`. Five of the seven table types disagreed,
-    /// and those objects could never reach the Recent section or earn a frecency boost no matter
-    /// how often they were opened. A name and a schema identify one object in a database whatever
-    /// its type, so the type buys nothing here.
-    ///
-    /// A dot or backslash inside a name is escaped, or schema `a` with table `b.c` and schema `a.b`
-    /// with table `c` would share one id, one row selection and one Recent entry. A name with
-    /// neither keeps the id it always had, so no Recent history is lost.
-    static func tableItemId(name: String, schema: String?) -> String {
-        guard let schema, !schema.isEmpty else { return "table_\(escapedIdComponent(name))" }
-        return "table_\(escapedIdComponent(schema)).\(escapedIdComponent(name))"
+    var id: String {
+        guard let target else { return frecencyKey }
+        return "\(target.connectionId.uuidString)/\(frecencyKey)"
     }
 
-    private static func escapedIdComponent(_ component: String) -> String {
-        guard component.contains(where: { $0 == "." || $0 == "\\" }) else { return component }
-        return component
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: ".", with: "\\.")
+    func belongs(to connectionId: UUID) -> Bool {
+        target.map { $0.connectionId == connectionId } ?? true
     }
 
     /// SF Symbol name for this item's icon

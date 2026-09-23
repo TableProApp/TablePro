@@ -31,7 +31,11 @@ struct QuickSwitcherCatalogStoreTests {
 
     private func table(_ name: String, schema: String? = "public", isOpen: Bool = false) -> QuickSwitcherItem {
         QuickSwitcherItem(
-            id: QuickSwitcherItem.tableItemId(name: name, schema: schema),
+            frecencyKey: QuickSwitcherFrecencyKey.table(
+                name: name,
+                schema: schema,
+                in: .init(database: "app", connectionSwitchesDatabases: true)
+            ),
             name: name,
             kind: .table,
             subtitle: "",

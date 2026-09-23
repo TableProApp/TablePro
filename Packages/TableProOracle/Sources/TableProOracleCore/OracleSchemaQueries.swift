@@ -32,6 +32,8 @@ public struct OracleColumnRow: Sendable, Equatable {
     public let scale: String?
     public let isNullable: Bool
     public let isPrimaryKey: Bool
+    /// The exact SQL that follows `DEFAULT`, or nil when the column has no default. ``OracleColumnDefault`` decides it.
+    public let defaultValue: String?
 
     public var displayType: String {
         OracleSchemaQueries.fullType(
@@ -128,19 +130,23 @@ public enum OracleSchemaQueries {
         """
     }
 
-    public static func columns(schema: String, table: String) -> String {
+    /// One table's columns, each with what ``parseColumnRow(_:)`` needs to decide its default.
+    ///
+    /// The rows come from `ALL_TAB_COLS` because `VIRTUAL_COLUMN` is only there, filtered to exactly the rows
+    /// `ALL_TAB_COLUMNS` returns: from 12.1 that view is `ALL_TAB_COLS` where `USER_GENERATED = 'YES'` (read from
+    /// the view's own text on 23ai), which keeps invisible columns and drops the hidden ones Oracle adds for a
+    /// function-based index or an unused column; on 11g it is the rows that are not hidden, and 11g has no
+    /// invisible columns.
+    ///
+    /// `DATA_DEFAULT` is a LONG, which OracleNIO decodes (measured on 23ai). `DATA_DEFAULT_VC` is a VARCHAR2 that may
+    /// truncate the value, and neither 11g nor 21c has it.
+    public static func columns(schema: String, table: String, release: OracleServerRelease) -> String {
         let owner = escapeLiteral(schema)
         let tableName = escapeLiteral(table)
         return """
             SELECT
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.DATA_LENGTH,
-                c.DATA_PRECISION,
-                c.DATA_SCALE,
-                c.NULLABLE,
-                CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
-            FROM \(OracleDictionary.allTabColumns) c
+                \(columnProjection(release: release))
+            FROM \(OracleDictionary.allTabCols) c
             LEFT JOIN (
                 SELECT acc.COLUMN_NAME
                 FROM \(OracleDictionary.allConsColumns) acc
@@ -152,8 +158,35 @@ public enum OracleSchemaQueries {
             ) cc ON c.COLUMN_NAME = cc.COLUMN_NAME
             WHERE c.OWNER = '\(owner)'
               AND c.TABLE_NAME = '\(tableName)'
+              AND \(tableColumnFilter(release: release))
             ORDER BY c.COLUMN_ID
             """
+    }
+
+    /// The columns ``parseColumnRow(_:)`` reads, in its order. A flag the release does not have is the literal
+    /// `'NO'`, because naming a missing dictionary column fails the whole statement.
+    private static func columnProjection(release: OracleServerRelease) -> String {
+        let identity = release.hasIdentityColumns ? "c.IDENTITY_COLUMN" : "'NO'"
+        let onNull = release.hasIdentityColumns ? "c.DEFAULT_ON_NULL" : "'NO'"
+        let onNullForUpdate = release.hasDefaultOnNullForUpdate ? "c.DEFAULT_ON_NULL_UPD" : "'NO'"
+        return """
+            c.COLUMN_NAME,
+                c.DATA_TYPE,
+                c.DATA_LENGTH,
+                c.DATA_PRECISION,
+                c.DATA_SCALE,
+                c.NULLABLE,
+                CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK,
+                c.DATA_DEFAULT,
+                c.VIRTUAL_COLUMN,
+                \(identity) AS IDENTITY_COLUMN,
+                \(onNull) AS DEFAULT_ON_NULL,
+                \(onNullForUpdate) AS DEFAULT_ON_NULL_UPD
+            """
+    }
+
+    private static func tableColumnFilter(release: OracleServerRelease) -> String {
+        release.hasIdentityColumns ? "c.USER_GENERATED = 'YES'" : "c.HIDDEN_COLUMN = 'NO'"
     }
 
     public static func indexes(schema: String, table: String) -> String {
@@ -197,21 +230,15 @@ public enum OracleSchemaQueries {
             """
     }
 
-    /// Every column of every table in a schema, for the bulk structure read. Rows carry the table name first so the
-    /// caller groups them.
-    public static func allColumns(schema: String) -> String {
+    /// Every column of every table in a schema, for the bulk structure read, from the same rows and with the same
+    /// columns as ``columns(schema:table:release:)``. Rows carry the table name first so the caller groups them.
+    public static func allColumns(schema: String, release: OracleServerRelease) -> String {
         let owner = escapeLiteral(schema)
         return """
             SELECT
                 c.TABLE_NAME,
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.DATA_LENGTH,
-                c.DATA_PRECISION,
-                c.DATA_SCALE,
-                c.NULLABLE,
-                CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
-            FROM \(OracleDictionary.allTabColumns) c
+                \(columnProjection(release: release))
+            FROM \(OracleDictionary.allTabCols) c
             LEFT JOIN (
                 SELECT acc.TABLE_NAME, acc.COLUMN_NAME
                 FROM \(OracleDictionary.allConsColumns) acc
@@ -220,6 +247,7 @@ public enum OracleSchemaQueries {
                 WHERE ac.CONSTRAINT_TYPE = 'P' AND ac.OWNER = '\(owner)'
             ) cc ON c.TABLE_NAME = cc.TABLE_NAME AND c.COLUMN_NAME = cc.COLUMN_NAME
             WHERE c.OWNER = '\(owner)'
+              AND \(tableColumnFilter(release: release))
             ORDER BY c.TABLE_NAME, c.COLUMN_ID
             """
     }
@@ -377,6 +405,15 @@ public enum OracleSchemaQueries {
 
     public static func parseColumnRow(_ row: [OracleRawCell]) -> OracleColumnRow? {
         guard let name = row[safe: 0]?.stringValue else { return nil }
+        let columnDefault = OracleColumnDefault(
+            storedText: row[safe: 7]?.stringValue,
+            isIdentity: row[safe: 9]?.stringValue == "YES",
+            isVirtual: row[safe: 8]?.stringValue == "YES",
+            onNull: OracleDefaultOnNull(
+                onInsert: row[safe: 10]?.stringValue == "YES",
+                onUpdate: row[safe: 11]?.stringValue == "YES"
+            )
+        )
         return OracleColumnRow(
             name: name,
             dataType: (row[safe: 1]?.stringValue)?.lowercased() ?? "varchar2",
@@ -384,8 +421,16 @@ public enum OracleSchemaQueries {
             precision: row[safe: 3]?.stringValue,
             scale: row[safe: 4]?.stringValue,
             isNullable: row[safe: 5]?.stringValue == "Y",
-            isPrimaryKey: row[safe: 6]?.stringValue == "Y"
+            isPrimaryKey: row[safe: 6]?.stringValue == "Y",
+            defaultValue: columnDefault.clause
         )
+    }
+
+    /// A row of ``allColumns(schema:release:)``: the table name, then a row ``parseColumnRow(_:)`` reads.
+    public static func parseTableColumnRow(_ row: [OracleRawCell]) -> (table: String, column: OracleColumnRow)? {
+        guard let table = row[safe: 0]?.stringValue,
+              let column = parseColumnRow(Array(row.dropFirst())) else { return nil }
+        return (table, column)
     }
 
     public static func parseIndexRow(_ row: [OracleRawCell]) -> OracleIndexRow? {
