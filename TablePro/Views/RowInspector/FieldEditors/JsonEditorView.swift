@@ -40,11 +40,14 @@ internal struct JsonEditorView: View {
             range: ResizableFieldMetrics.jsonHeightRange,
             expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
         ) {
-            JSONCodeEditor(text: editorText, isEditable: !context.isReadOnly)
+            JSONCodeEditor(
+                text: editorText,
+                isEditable: !context.isReadOnly,
+                accessibilityIdentifier: "inspector-json-field"
+            )
                 .clipShape(RoundedRectangle(cornerRadius: 5))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
                 .overlay(alignment: .bottomTrailing) { actionButtons }
-                .accessibilityIdentifier("inspector-json-field")
         }
         /// `newValue`, never a re-read of `context.value.wrappedValue`. An `onChange` action
         /// closure belongs to the render that registered it, so its captured context is a render
