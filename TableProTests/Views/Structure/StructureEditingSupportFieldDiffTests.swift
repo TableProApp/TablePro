@@ -174,6 +174,16 @@ struct StructureEditingSupportFieldDiffTests {
         #expect(result == [1])
     }
 
+    @Test("A key that turns from a column into an expression flags the columns index")
+    func indexExpressionsChanged() {
+        var original = makeIndex()
+        original.columns = ["lower(email)"]
+        var changed = original
+        changed.expressions = ["lower(email)"]
+
+        #expect(StructureEditingSupport.indexModifiedIndices(old: original, new: changed) == [1])
+    }
+
     @Test("Toggling unique flags only the unique index")
     func indexUniqueChanged() {
         let original = makeIndex()

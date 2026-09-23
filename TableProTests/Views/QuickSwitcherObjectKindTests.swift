@@ -25,7 +25,8 @@ struct QuickSwitcherObjectKindTests {
                 TableInfo(name: "daily_totals", type: .materializedView, rowCount: nil),
                 TableInfo(name: "orders", type: .partitionedTable, rowCount: nil)
             ],
-            target: target
+            target: target,
+            connectionSwitchesDatabases: true
         )
 
         #expect(items.map(\.tableType) == [.materializedView, .partitionedTable])
@@ -46,7 +47,11 @@ struct QuickSwitcherObjectKindTests {
         defer { coordinator.teardown() }
 
         let item = QuickSwitcherItem(
-            id: QuickSwitcherItem.tableItemId(name: "daily_totals", schema: "public"),
+            frecencyKey: QuickSwitcherFrecencyKey.table(
+                name: "daily_totals",
+                schema: "public",
+                in: .init(database: "shop", connectionSwitchesDatabases: true)
+            ),
             name: "daily_totals",
             kind: .view,
             subtitle: String(localized: "Materialized View"),
@@ -75,7 +80,11 @@ struct QuickSwitcherObjectKindTests {
         defer { coordinator.teardown() }
 
         let item = QuickSwitcherItem(
-            id: QuickSwitcherItem.tableItemId(name: "events", schema: "public"),
+            frecencyKey: QuickSwitcherFrecencyKey.table(
+                name: "events",
+                schema: "public",
+                in: .init(database: "shop", connectionSwitchesDatabases: true)
+            ),
             name: "events",
             kind: .table,
             subtitle: String(localized: "Partitioned Table"),

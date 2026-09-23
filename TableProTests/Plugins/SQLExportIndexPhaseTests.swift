@@ -13,15 +13,18 @@ struct SQLExportIndexPhaseTests {
         let databaseTypeId: String
         let indexDDL: [String: [String]]
         let failingTables: Set<String>
+        let foreignKeys: [String: [PluginForeignKeyInfo]]
 
         init(
             databaseTypeId: String = "PostgreSQL",
             indexDDL: [String: [String]] = [:],
-            failingTables: Set<String> = []
+            failingTables: Set<String> = [],
+            foreignKeys: [String: [PluginForeignKeyInfo]] = [:]
         ) {
             self.databaseTypeId = databaseTypeId
             self.indexDDL = indexDDL
             self.failingTables = failingTables
+            self.foreignKeys = foreignKeys
         }
 
         func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -56,6 +59,10 @@ struct SQLExportIndexPhaseTests {
         }
 
         func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? { nil }
+
+        func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
+            foreignKeys
+        }
     }
 
     private enum StubError: Error {
@@ -101,14 +108,32 @@ struct SQLExportIndexPhaseTests {
         #expect(try offset(of: "INSERT INTO", in: dump) < offset(of: "CREATE INDEX", in: dump))
     }
 
-    @Test("Index statements are written after the deferred foreign keys")
-    func indexesFollowDeferredConstraints() async throws {
+    @Test("Index statements are written after every table is created")
+    func indexesFollowTheTables() async throws {
         let source = StubExportDataSource(
             indexDDL: ["orders": ["CREATE INDEX idx_orders_day ON orders (day)"]])
 
         let (dump, _) = try await runExport(tables: [table("orders")], dataSource: source)
 
         #expect(try offset(of: "CREATE TABLE orders", in: dump) < offset(of: "CREATE INDEX", in: dump))
+    }
+
+    @Test("A unique index is written before the deferred foreign key that references it, as pg_dump orders them")
+    func indexesPrecedeDeferredForeignKeys() async throws {
+        let source = StubExportDataSource(
+            indexDDL: ["parent": ["CREATE UNIQUE INDEX parent_code_idx ON parent (code)"]],
+            foreignKeys: ["child": [PluginForeignKeyInfo(
+                name: "child_code_fkey", column: "code", referencedTable: "parent", referencedColumn: "code"
+            )]]
+        )
+
+        let (dump, _) = try await runExport(tables: [table("child"), table("parent")], dataSource: source)
+
+        let index = try offset(of: "CREATE UNIQUE INDEX parent_code_idx", in: dump)
+        let foreignKey = try offset(of: "ADD CONSTRAINT \"child_code_fkey\"", in: dump)
+        let lastRow = try offset(of: "INSERT INTO \"parent\"", in: dump)
+        #expect(lastRow < index)
+        #expect(index < foreignKey)
     }
 
     @Test("Only the statements the driver reported are written, in the order it reported them")

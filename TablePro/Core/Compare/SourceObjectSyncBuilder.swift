@@ -4,12 +4,15 @@
 //
 //  Statements for the objects whose definition is SQL text.
 //
-//  There is nothing to synthesise here: the source's own definition is the
-//  statement. What the builder decides is how to get from the target's current
-//  definition to that one, which for a view or a routine means dropping what is
-//  there and running the source's text. `CREATE OR REPLACE` is not written here,
-//  because the engines spell it differently and several do not accept it for a
-//  signature change. The one exception is a definition the source already wrote
+//  The source's own definition is the statement. What the builder decides is how
+//  to get from the target's current definition to that one, which for a view or
+//  a routine means dropping what is there and running the source's text. The one
+//  part it writes itself is a materialized view's indexes, where the engine's
+//  structure matrix says that kind takes them: the text does not carry them, so
+//  a view dropped and created again from it comes back without any.
+//
+//  `CREATE OR REPLACE` is not written here, because the engines spell it
+//  differently and several do not accept it for a signature change. The one exception is a definition the source already wrote
 //  as `CREATE OR REPLACE`, on a target whose driver says that replaces the
 //  object in place: there the DROP is what would lose the object when the new
 //  definition fails, so it is left out.
@@ -24,13 +27,21 @@ internal struct SourceObjectSyncBuilder {
 
     private let targetDriver: any PluginDatabaseDriver
     private let targetDatabaseType: DatabaseType
+    internal let indexSchema: String?
     private let scriptText: SQLScriptText
+    private let changeBuilder: SchemaSyncScriptBuilder
     private let classifier = SyncSafetyClassifier()
 
-    internal init(targetDriver: any PluginDatabaseDriver, targetDatabaseType: DatabaseType) {
+    internal init(
+        targetDriver: any PluginDatabaseDriver,
+        targetDatabaseType: DatabaseType,
+        indexSchema: String? = nil
+    ) {
         self.targetDriver = targetDriver
         self.targetDatabaseType = targetDatabaseType
+        self.indexSchema = indexSchema
         self.scriptText = SQLScriptText(databaseType: targetDatabaseType)
+        self.changeBuilder = SchemaSyncScriptBuilder(targetDriver: targetDriver, targetDatabaseType: targetDatabaseType)
     }
 
     internal func build(for result: CompareObjectResult, action: TableSyncAction) throws -> [SyncStatement] {
@@ -39,16 +50,67 @@ internal struct SourceObjectSyncBuilder {
             return []
         case .create:
             try refuseWithoutACreateStatement(result)
-            return createStatements(for: result, isReplacement: false)
+            let indexes = try indexCreationStatements(for: result)
+            return createStatements(for: result, isReplacement: false) + indexes
         case .alter:
+            if result.definitionMatches, result.sourceIndexes != nil {
+                return try indexChangeStatements(for: result)
+            }
             try refuseWithoutACreateStatement(result)
             guard replacesInPlace(result.identity, with: result) else {
+                let indexes = try indexCreationStatements(for: result)
                 return dropStatements(for: result, isReplacement: true)
                     + createStatements(for: result, isReplacement: false)
+                    + indexes
             }
             return createStatements(for: result, isReplacement: true)
         case .drop:
             return dropStatements(for: result, isReplacement: false)
+        }
+    }
+
+    private func indexCreationStatements(for result: CompareObjectResult) throws -> [SyncStatement] {
+        let indexes = (result.sourceIndexes ?? []).filter { !$0.isPrimary }
+        guard !indexes.isEmpty else { return [] }
+        try refuseIndexesInAnotherSchema(result)
+        return try changeBuilder.changeStatements(
+            on: result.identity.name,
+            objectName: result.identity.displayName,
+            changes: indexes.map(SchemaChange.addIndex)
+        )
+    }
+
+    private func indexChangeStatements(for result: CompareObjectResult) throws -> [SyncStatement] {
+        guard !result.changes.isEmpty else { return [] }
+        try refuseIndexesInAnotherSchema(result)
+        let refreshHazard = classifier.concurrentRefreshHazard(
+            on: result.identity, from: result.targetIndexes ?? [], to: result.sourceIndexes ?? []
+        )
+        return try changeBuilder.changeStatements(
+            on: result.identity.name,
+            objectName: result.identity.displayName,
+            changes: result.changes
+        ) { change in
+            guard let refreshHazard, case .deleteIndex(let index) = change,
+                  ConcurrentRefreshIndexRule.isUsable(index)
+            else { return [] }
+            return [refreshHazard]
+        }
+    }
+
+    private func refuseIndexesInAnotherSchema(_ result: CompareObjectResult) throws {
+        guard let indexSchema, result.identity.schema == indexSchema else {
+            Self.logger.error(
+                "Refused index statements for \(result.identity.name, privacy: .private(mask: .hash)) outside the schema its definition creates it in"
+            )
+            throw CompareSyncError.unsupportedOperation(
+                String(
+                    format: String(
+                        localized: "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition."
+                    ),
+                    result.identity.displayName
+                )
+            )
         }
     }
 
@@ -73,6 +135,7 @@ internal struct SourceObjectSyncBuilder {
         guard targetDriver.replacesDefinitionsInPlace,
               existing.kind == replacement.identity.kind,
               existing.kind != .materializedView,
+              replacement.sourceIndexes == nil,
               let first = scriptText.sendableStatements(replacement.sourceDefinition.joined(separator: "\n")).first
         else { return false }
         let leadingWords = first.split(whereSeparator: \.isWhitespace).prefix(3).map { $0.uppercased() }
@@ -105,7 +168,7 @@ internal struct SourceObjectSyncBuilder {
                 format: String(localized: "Drop %1$@ %2$@"),
                 result.identity.kind.displayName.lowercased(), result.identity.displayName
             )
-        let hazards = classifier.hazards(forDropping: result.identity, isReplacement: isReplacement)
+        let hazards = dropHazards(for: result, isReplacement: isReplacement)
         return scriptText.sendableStatements(sql).map { statement in
             SyncStatement(
                 sql: statement,
@@ -114,6 +177,21 @@ internal struct SourceObjectSyncBuilder {
                 hazards: hazards
             )
         }
+    }
+
+    private func dropHazards(for result: CompareObjectResult, isReplacement: Bool) -> [SyncHazard] {
+        let recreatedIndexes = isReplacement ? (result.sourceIndexes ?? []) : []
+        let hazards = classifier.hazards(
+            forDropping: result.identity,
+            isReplacement: isReplacement,
+            recreatesIndexes: !recreatedIndexes.isEmpty
+        )
+        guard isReplacement, let current = result.targetIndexes,
+              let refreshHazard = classifier.concurrentRefreshHazard(
+                  on: result.identity, from: current, to: recreatedIndexes
+              )
+        else { return hazards }
+        return hazards + [refreshHazard]
     }
 
     /// A routine and a trigger are not addressed by name alone on every engine. PostgreSQL needs an

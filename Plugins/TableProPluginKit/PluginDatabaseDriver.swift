@@ -242,6 +242,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)]
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec?
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
+    /// The form the app shows for a new table in place of its column grid, or nil for the grid.
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec?
+    /// The statements that create what the form describes. Throws `PluginCreateTableFormError`
+    /// with a message for the user when a value is missing or invalid.
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String]
     func dropDatabase(name: String) async throws
     func dropSchema(name: String) async throws
 
@@ -300,6 +305,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateDropColumnSQL(table: String, columnName: String) -> String?
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String?
     func generateDropIndexSQL(table: String, indexName: String) -> String?
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String?
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String?
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String?
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String?
@@ -832,6 +838,12 @@ public extension PluginDatabaseDriver {
         )
     }
 
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec? { nil }
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String] {
+        throw PluginCreateTableFormError(message: String(localized: "This database has no Create Table form"))
+    }
+
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
         throw PluginDriverUnsupportedOperation.renameTable
     }
@@ -922,6 +934,7 @@ public extension PluginDatabaseDriver {
     func generateDropColumnSQL(table: String, columnName: String) -> String? { nil }
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? { nil }
     func generateDropIndexSQL(table: String, indexName: String) -> String? { nil }
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? { nil }
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? { nil }
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? { nil }
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? { nil }

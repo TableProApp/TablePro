@@ -271,6 +271,9 @@ struct PaginationState: Equatable {
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
     var isCountingExact: Bool = false        // True while a user-requested exact count is running
+    /// The message a failed `Count Exactly` put on the tab, so a later count that succeeds takes
+    /// down its own error and no other.
+    var exactCountError: String?
     /// An automatic row count is running, so the total on screen is not the one this page settles on.
     ///
     /// Separate from `isCountingExact`, which the user asked for and which owns the spinner. This

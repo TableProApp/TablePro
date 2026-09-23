@@ -66,6 +66,7 @@ Five defaults are worth a second look before you accept them:
 - `fetchAllColumns(schema:)` and `fetchAllForeignKeys(schema:)` loop one round-trip per table. Any SQL driver should replace them with a single catalog query.
 - `quoteIdentifier`, `escapeStringLiteral`, `executeParameterized`, and `streamRows` assume generic SQL.
 - A non-SQL database implements `buildBrowseQuery`, `buildFilteredQuery`, and `generateStatements` instead, which is what makes browsing and editing work without SQL. Implement the `schema:`-aware overloads if your database has schemas; the schema-less defaults throw the schema away.
+- A database whose tables are not a list of typed columns returns a `PluginCreateTableFormSpec` from `createTableFormSpec(schema:)` and turns the filled-in form into statements in `createTableStatements(for:schema:)`. **New Table…** then shows that form in place of the column grid. The default returns `nil`, which keeps the grid.
 
 [Testing a Custom Plugin](/development/testing-plugins) covers getting the built bundle into a running app and reading the failure if it does not load.
 

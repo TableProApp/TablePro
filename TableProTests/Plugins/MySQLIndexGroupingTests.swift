@@ -19,11 +19,34 @@ struct MySQLIndexGroupingTests {
         MySQLIndexRow(
             table: table,
             index: index,
-            column: column,
+            key: MySQLIndexKey(part: .column(column, prefixLength: prefixLength), isDescending: false),
             isNonUnique: isNonUnique,
-            type: "BTREE",
-            prefixLength: prefixLength
+            type: "BTREE"
         )
+    }
+
+    private func catalogRow(
+        _ index: String,
+        column: String?,
+        expression: String? = nil,
+        collation: String? = "A",
+        type: String = "BTREE"
+    ) -> MySQLIndexRow? {
+        MySQLIndexRow(
+            table: "t",
+            index: index,
+            column: column,
+            catalogExpression: expression,
+            prefixLength: nil,
+            collation: collation,
+            isNonUnique: index != "PRIMARY",
+            type: type
+        )
+    }
+
+    private func grouped(_ rows: [MySQLIndexRow?]) -> [String: PluginIndexInfo] {
+        let indexes = MySQLIndexGrouping.group(rows.compactMap { $0 })["t"] ?? []
+        return Dictionary(uniqueKeysWithValues: indexes.map { ($0.name, $0) })
     }
 
     /// Compare & Sync reads a table twice, once to compare and once before writing the script, and
@@ -75,5 +98,50 @@ struct MySQLIndexGroupingTests {
         #expect(index.isUnique)
         #expect(!index.isPrimary)
         #expect(grouped["regions"]?.map(\.name) == ["regions_name_idx"])
+    }
+
+    @Test("A functional key part is read from its expression, beside the plain columns")
+    func functionalKeyPartsAreRead() throws {
+        let indexes = grouped([
+            catalogRow("PRIMARY", column: "id"),
+            catalogRow("i_fn", column: nil, expression: "lower(`v`)", collation: "D"),
+            catalogRow("i_mix", column: "id"),
+            catalogRow("i_mix", column: nil, expression: "coalesce(`a`,`b`)")
+        ])
+
+        let function = try #require(indexes["i_fn"])
+        #expect(function.columns == ["lower(`v`)"])
+        #expect(function.expressions == ["lower(`v`)"])
+
+        let mixed = try #require(indexes["i_mix"])
+        #expect(mixed.columns == ["id", "coalesce(`a`,`b`)"])
+        #expect(mixed.expressions == ["coalesce(`a`,`b`)"])
+        #expect(mixed.ddlMethodAndKeys == nil)
+    }
+
+    @Test("The catalog's escaping is taken off an expression, which then reads as SHOW CREATE TABLE writes it")
+    func catalogEscapingIsRemoved() throws {
+        let raw = #"concat(`a`,_utf8mb4\'it\\\'s\',_utf8mb4\'\\\\n\',_utf8mb4\'x\\ny\')"#
+        let index = try #require(grouped([catalogRow("i_q", column: nil, expression: raw)])["i_q"])
+        #expect(index.expressions == [#"concat(`a`,_utf8mb4'it\'s',_utf8mb4'\\n',_utf8mb4'x\ny')"#])
+    }
+
+    @Test("A row with neither a column nor an expression is not a key part")
+    func unreadableRowIsDropped() {
+        #expect(catalogRow("i_fn", column: nil, expression: nil) == nil)
+    }
+
+    @Test("A descending key part is kept in the server's own key spelling")
+    func descendingKeysAreSpelled() throws {
+        let indexes = grouped([
+            catalogRow("i_desc", column: "v", collation: "D"),
+            catalogRow("i_desc", column: "id"),
+            catalogRow("i_fn", column: nil, expression: "lower(`v`)", collation: "D"),
+            catalogRow("i_ft", column: "body", collation: nil, type: "FULLTEXT")
+        ])
+
+        #expect(indexes["i_desc"]?.ddlMethodAndKeys == "(`v` DESC, `id`) USING BTREE")
+        #expect(indexes["i_fn"]?.ddlMethodAndKeys == "((lower(`v`)) DESC) USING BTREE")
+        #expect(indexes["i_ft"]?.ddlMethodAndKeys == nil)
     }
 }

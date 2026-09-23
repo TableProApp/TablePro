@@ -38,12 +38,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Session**, with the agent session commands and the assistant's conversation commands.
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
+- DynamoDB reads that query the table, a local index or a global index when the grid's filters allow it.
+- Create Table form for DynamoDB: keys, capacity, table class, deletion protection and secondary indexes.
+- DynamoDB API requests in the editor, such as `CreateTable {…}`, `UpdateTimeToLive {…}` and `BatchWriteItem {…}`.
+- DynamoDB point-in-time recovery, deletion protection, stream, class and billing under **Maintenance**.
+- Adding and dropping a DynamoDB global secondary index from the **Structure** tab.
+- Nested DynamoDB attribute paths in the filter bar and autocomplete.
+- **DynamoDB Local (no credentials)** auth method.
+- Items read and read units for a DynamoDB browse in the result status bar.
 - Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
 - Version history for saved queries, with **Restore This Version**. (#2505)
 - Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
+- Invalid PostgreSQL indexes named on the table's **Indexes** tab.
+- Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
 
 ### Changed
 
@@ -65,6 +75,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- DynamoDB maps, lists and sets shown as plain JSON and edited in the JSON editor.
+- DynamoDB column types named as the AWS console names them: String, Number, Map, String Set.
+- DynamoDB region taken from the AWS profile when the connection names none.
+- DynamoDB table counts left to **Count Exactly**, with no automatic full-table count.
+- DynamoDB table DDL shown as the `CreateTable` request that recreates it.
+- Plain HTTP DynamoDB endpoint refused for any host but this Mac, instead of switched to HTTPS.
 - ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
@@ -337,6 +353,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB macro dropped and not recreated by a Compare & Sync replace.
 - Copy To giving no reason for a view, routine or trigger whose definition could not be read.
 - Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
+- Materialized view indexes ignored by Compare & Sync, and lost when it or Copy To recreated the view.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 - Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)
@@ -373,6 +390,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- DynamoDB edits saving numbers, booleans, maps and sets as strings.
+- DynamoDB binary, map and long-text edits lost or saved as a fragment, and **Set NULL** leaving a NULL attribute.
+- Duplicated DynamoDB row saved with `__DEFAULT__` as its key.
+- Nine DynamoDB filter operators matching nothing, and an OR filter dropping other partitions' items.
+- DynamoDB column sort ignored, and each page re-reading every page before it.
+- DynamoDB **Count Exactly** never finishing.
+- DynamoDB export dropping attributes first seen after the first page.
+- DynamoDB PartiQL result cut to its first 1 MB.
+- DynamoDB **Stop** cancelling the wrong request, and throttled requests failing instead of retrying.
+- AWS SSO sign-in prompt never shown for DynamoDB.
+- DynamoDB connections to China and European Sovereign Cloud regions failing.
+- DynamoDB connection sampling every table on connect.
+- Imported DynamoDB connection losing its AWS Region.
+- Failed **Count Exactly** showing no error.
+- PostgreSQL export and column reorder script failing on an index a failed `CREATE INDEX CONCURRENTLY` left behind.
+- PostgreSQL export and column reorder script failing on a foreign key that references a unique index.
+- PostgreSQL exclusion constraints missing from exports and the DDL tab.
+- PostgreSQL column reorder script dropping an index named like one of the table's check constraints.
+- Invalid PostgreSQL index recreated on the target by Compare & Sync and **Copy To**.
+- Expression key parts missing from SQLite, libSQL, Cloudflare D1, MySQL and DuckDB indexes.
+- Condition missing from SQLite, libSQL and Cloudflare D1 partial indexes.
+- Descending MySQL index keys recreated ascending by a rename.
+- MySQL index dropped when the index replacing it failed to create.
 - Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard.
 - Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.

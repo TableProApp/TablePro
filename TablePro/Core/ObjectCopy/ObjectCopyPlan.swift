@@ -120,6 +120,19 @@ internal struct ObjectCopyDefinitionStep: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let dropStatements: [SyncStatement]
     internal let createStatements: [SyncStatement]
+    internal let note: String?
+
+    internal init(
+        selection: ObjectCopySelection,
+        dropStatements: [SyncStatement],
+        createStatements: [SyncStatement],
+        note: String? = nil
+    ) {
+        self.selection = selection
+        self.dropStatements = dropStatements
+        self.createStatements = createStatements
+        self.note = note
+    }
 
     internal var id: String { selection.id }
 
@@ -148,6 +161,13 @@ internal struct ObjectCopyStatementGroup: Sendable {
 internal struct ObjectCopySkip: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let reason: String
+
+    internal var id: String { selection.id }
+}
+
+internal struct ObjectCopyPartialNote: Identifiable, Sendable {
+    internal let selection: ObjectCopySelection
+    internal let text: String
 
     internal var id: String { selection.id }
 }
@@ -211,6 +231,13 @@ internal struct ObjectCopyPlan: Sendable {
             localized: "Identity and auto-increment values are written as they are. A column the server generates always may refuse them."
         ))
         return warnings
+    }
+
+    internal var partialNotes: [ObjectCopyPartialNote] {
+        tableSteps.compactMap { step in step.note.map { ObjectCopyPartialNote(selection: step.selection, text: $0) } }
+            + definitionSteps.compactMap { step in
+                step.note.map { ObjectCopyPartialNote(selection: step.selection, text: $0) }
+            }
     }
 
     /// Every type, default and index the crossing changed, worst first.

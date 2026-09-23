@@ -7,7 +7,9 @@
 //  A table is compared as parsed metadata and yields a `SchemaChange` list. A
 //  view, procedure, function or trigger has no such structure: its definition is
 //  a body of SQL, so it is compared as normalised text and the only honest
-//  answers are create, replace and drop. Both arrive here as one type, so the
+//  answers are create, replace and drop. A materialized view whose engine takes
+//  indexes on it also carries those indexes, which change in place when the text
+//  is the same on both sides. Both arrive here as one type, so the
 //  results list, the selection model and the script builder do not each need to
 //  know which engine produced a row.
 //
@@ -53,6 +55,9 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
     internal let targetDefinition: [String]
     internal let notes: [String]
     internal let comparisonError: String?
+    internal let sourceIndexes: [EditableIndexDefinition]?
+    internal let targetIndexes: [EditableIndexDefinition]?
+    internal let definitionMatches: Bool
 
     internal init(
         identity: CompareObjectIdentity,
@@ -61,7 +66,10 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
         sourceDefinition: [String] = [],
         targetDefinition: [String] = [],
         notes: [String] = [],
-        comparisonError: String? = nil
+        comparisonError: String? = nil,
+        sourceIndexes: [EditableIndexDefinition]? = nil,
+        targetIndexes: [EditableIndexDefinition]? = nil,
+        definitionMatches: Bool = false
     ) {
         self.identity = identity
         self.status = status
@@ -70,9 +78,24 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
         self.targetDefinition = targetDefinition
         self.notes = notes
         self.comparisonError = comparisonError
+        self.sourceIndexes = sourceIndexes
+        self.targetIndexes = targetIndexes
+        self.definitionMatches = definitionMatches
     }
 
     internal var id: String { identity.id }
+
+    internal var showsIndexes: Bool {
+        sourceIndexes != nil || (status == .onlyInTarget && targetIndexes != nil)
+    }
+
+    internal var sourceIndexLines: [String] {
+        TableDefinitionRenderer.indexLines(for: sourceIndexes ?? [])
+    }
+
+    internal var targetIndexLines: [String] {
+        TableDefinitionRenderer.indexLines(for: targetIndexes ?? [])
+    }
 
     internal var isComparable: Bool { comparisonError == nil }
 

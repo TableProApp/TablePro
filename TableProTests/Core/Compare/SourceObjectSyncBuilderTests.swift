@@ -295,4 +295,181 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
 
         XCTAssertEqual(statements.map(\.sql), ["DROP VIEW \"shop\".\"recent\""])
     }
+
+    // MARK: - A materialized view's indexes
+
+    private let matviewDefinition = "CREATE MATERIALIZED VIEW \"public\".\"mv\" AS SELECT id, customer FROM orders"
+
+    private func index(_ name: String, _ columns: [String], unique: Bool = false) -> EditableIndexDefinition {
+        EditableIndexDefinition(
+            id: UUID(), name: name, columns: columns, type: .btree, isUnique: unique, isPrimary: false, comment: nil
+        )
+    }
+
+    private func matview(
+        schema: String = "public",
+        status: TableDiffStatus,
+        changes: [SchemaChange] = [],
+        sourceIndexes: [EditableIndexDefinition]?,
+        targetIndexes: [EditableIndexDefinition]? = nil,
+        definitionMatches: Bool = false
+    ) -> CompareObjectResult {
+        CompareObjectResult(
+            identity: CompareObjectIdentity(kind: .materializedView, schema: schema, name: "mv"),
+            status: status,
+            changes: changes,
+            sourceDefinition: [matviewDefinition],
+            sourceIndexes: sourceIndexes,
+            targetIndexes: targetIndexes,
+            definitionMatches: definitionMatches
+        )
+    }
+
+    private func indexBuilder(
+        _ driver: IndexStatementStubDriver = IndexStatementStubDriver(),
+        indexSchema: String? = "public"
+    ) -> SourceObjectSyncBuilder {
+        SourceObjectSyncBuilder(targetDriver: driver, targetDatabaseType: .postgresql, indexSchema: indexSchema)
+    }
+
+    func testACreatedMaterializedViewGetsTheSourcesIndexesAfterIt() throws {
+        let result = matview(
+            status: .onlyInSource,
+            sourceIndexes: [index("mv_id_idx", ["id"], unique: true), index("mv_customer_idx", ["customer"])]
+        )
+
+        let statements = try indexBuilder().build(for: result, action: .create)
+
+        XCTAssertEqual(statements.map(\.sql), [
+            matviewDefinition,
+            "CREATE UNIQUE INDEX \"mv_id_idx\" ON \"public\".\"mv\" USING btree (\"id\")",
+            "CREATE INDEX \"mv_customer_idx\" ON \"public\".\"mv\" USING btree (\"customer\")"
+        ])
+        XCTAssertEqual(Set(statements.map(\.objectName)), ["public.mv"], "one view is one object in the Apply sheet")
+    }
+
+    func testAReplacedMaterializedViewGetsTheSourcesIndexesBack() throws {
+        let result = matview(
+            status: .differs,
+            sourceIndexes: [index("mv_id_idx", ["id"], unique: true)],
+            targetIndexes: [index("mv_id_idx", ["id"], unique: true)]
+        )
+
+        let statements = try indexBuilder().build(for: result, action: .alter)
+
+        XCTAssertEqual(statements.map(\.sql), [
+            "DROP MATERIALIZED VIEW \"public\".\"mv\"",
+            matviewDefinition,
+            "CREATE UNIQUE INDEX \"mv_id_idx\" ON \"public\".\"mv\" USING btree (\"id\")"
+        ])
+        let dropHazards = statements[0].hazards
+        XCTAssertTrue(dropHazards.contains { $0.severity == .refusedByDefault })
+        XCTAssertTrue(dropHazards.contains { $0.explanation.contains("the source's indexes are created on it") })
+        XCTAssertFalse(dropHazards.contains { $0.kind == .concurrentRefresh })
+    }
+
+    /// Measured on PostgreSQL 17.11: an index changed in place kept the 100 rows the view stored
+    /// while its base table had 101, where a DROP and CREATE would have computed them again.
+    func testAnIndexOnlyDifferenceChangesTheIndexesInPlace() throws {
+        let old = index("mv_customer_idx", ["customer"])
+        let new = index("mv_customer_amount_idx", ["customer", "amount"])
+        let result = matview(
+            status: .differs,
+            changes: [.addIndex(new), .deleteIndex(old)],
+            sourceIndexes: [new],
+            targetIndexes: [old],
+            definitionMatches: true
+        )
+
+        let statements = try indexBuilder().build(for: result, action: .alter)
+
+        XCTAssertEqual(statements.map(\.sql), [
+            "DROP INDEX \"public\".\"mv_customer_idx\"",
+            "CREATE INDEX \"mv_customer_amount_idx\" ON \"public\".\"mv\" USING btree (\"customer\", \"amount\")"
+        ])
+        XCTAssertFalse(statements.contains { $0.sql.contains("MATERIALIZED VIEW") })
+        XCTAssertEqual(Set(statements.map(\.objectName)), ["public.mv"])
+    }
+
+    func testDroppingTheLastUniqueIndexWarnsThatAConcurrentRefreshStopsWorking() throws {
+        let unique = index("mv_id_idx", ["id"], unique: true)
+        let plain = index("mv_id_plain_idx", ["id"])
+        let result = matview(
+            status: .differs,
+            changes: [.addIndex(plain), .deleteIndex(unique)],
+            sourceIndexes: [plain],
+            targetIndexes: [unique],
+            definitionMatches: true
+        )
+
+        let statements = try indexBuilder().build(for: result, action: .alter)
+
+        let drop = try XCTUnwrap(statements.first { $0.sql.hasPrefix("DROP INDEX") })
+        let create = try XCTUnwrap(statements.first { $0.sql.hasPrefix("CREATE INDEX") })
+        XCTAssertTrue(drop.hazards.contains { $0.kind == .concurrentRefresh && $0.severity == .warning })
+        XCTAssertFalse(create.hazards.contains { $0.kind == .concurrentRefresh })
+    }
+
+    func testAReplacementThatLosesTheUniqueIndexWarnsOnTheDrop() throws {
+        let result = matview(
+            status: .differs,
+            sourceIndexes: [index("mv_id_idx", ["id"])],
+            targetIndexes: [index("mv_id_idx", ["id"], unique: true)]
+        )
+
+        let statements = try indexBuilder().build(for: result, action: .alter)
+
+        XCTAssertTrue(statements[0].hazards.contains { $0.kind == .concurrentRefresh })
+    }
+
+    func testAnIndexChangeThatKeepsAUsableUniqueIndexDoesNotWarn() throws {
+        let unique = index("mv_id_idx", ["id"], unique: true)
+        let key = index("mv_id_key", ["id", "customer"], unique: true)
+        let result = matview(
+            status: .differs,
+            changes: [.addIndex(key), .deleteIndex(unique)],
+            sourceIndexes: [key],
+            targetIndexes: [unique],
+            definitionMatches: true
+        )
+
+        let statements = try indexBuilder().build(for: result, action: .alter)
+
+        XCTAssertFalse(statements.contains { $0.hazards.contains { $0.kind == .concurrentRefresh } })
+    }
+
+    /// Measured on PostgreSQL 17.11: `CREATE MATERIALIZED VIEW "a"."mv"` followed by an index on
+    /// `"b"."mv"` left `a.mv` with no index and indexed the target's own `b.mv` instead.
+    func testIndexesThatWouldNameAnotherSchemaThanTheDefinitionAreRefused() {
+        let result = matview(schema: "a", status: .onlyInSource, sourceIndexes: [index("mv_id_idx", ["id"])])
+        let unknown = matview(status: .onlyInSource, sourceIndexes: [index("mv_id_idx", ["id"])])
+
+        XCTAssertThrowsError(try indexBuilder(indexSchema: "b").build(for: result, action: .create)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("a.mv"), error.localizedDescription)
+        }
+        XCTAssertThrowsError(try indexBuilder(indexSchema: nil).build(for: unknown, action: .create))
+    }
+
+    func testAViewWithNoIndexesToWriteNeedsNoSchemaToWriteThemIn() throws {
+        let result = matview(schema: "a", status: .onlyInSource, sourceIndexes: [])
+
+        XCTAssertEqual(try indexBuilder(indexSchema: "b").build(for: result, action: .create).count, 1)
+    }
+
+    func testAnIndexTheTargetCannotWriteRefusesTheScript() {
+        let result = matview(status: .onlyInSource, sourceIndexes: [index("mv_id_idx", ["id"])])
+
+        XCTAssertThrowsError(
+            try indexBuilder(IndexStatementStubDriver(writesIndexes: false)).build(for: result, action: .create)
+        )
+    }
+
+    func testAMaterializedViewWhoseIndexesAreNotComparedKeepsTheDefinitionOnlyReplacement() throws {
+        let result = matview(status: .differs, sourceIndexes: nil)
+
+        let statements = try indexBuilder().build(for: result, action: .alter)
+
+        XCTAssertEqual(statements.map(\.sql), ["DROP MATERIALIZED VIEW \"public\".\"mv\"", matviewDefinition])
+        XCTAssertTrue(statements[0].hazards.contains { $0.explanation.contains("along with its indexes") })
+    }
 }

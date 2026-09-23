@@ -436,6 +436,7 @@ targets:
       - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
       - Plugins/DuckDBDriverPlugin/DuckDBLexicalFeatures.swift
       - Plugins/DuckDBDriverPlugin/DuckDBLockConflict.swift
@@ -445,9 +446,34 @@ targets:
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
       - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
-      - Plugins/DynamoDBDriverPlugin/DynamoDBOperations.swift
-      - Plugins/DynamoDBDriverPlugin/DynamoDBQueryBuilder.swift
-      - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBAccessPlanner.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBAttributeValue.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBBrowseRequest.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBCatalog.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBCellCodec.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBClient.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBEndpoint.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBError.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBExpression.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBFilterTranslator.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBItemTable.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBJSON.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBNumber.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPartiQL.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPlugin.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver+API.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver+Execution.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver+Reading.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver+Schema.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver+TableManagement.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver+Writes.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBPluginDriver.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBRetryPolicy.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBSigner.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBStatement.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBTableDefinition.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBTableSchema.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBWriteStatements.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchMappingFlattener.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
@@ -548,6 +574,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLForeignKeyCatalog.swift
       - Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - Plugins/MySQLDriverPlugin/MySQLIndexGrouping.swift
+      - Plugins/MySQLDriverPlugin/MySQLFunctionalKeyParts.swift
       - Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
@@ -601,6 +628,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListing.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableRebuild.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTypeDefinition.swift

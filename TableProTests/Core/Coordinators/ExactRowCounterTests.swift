@@ -77,9 +77,10 @@ struct ExactRowCounterTests {
 
     private func count(
         _ stub: CountStubDriver,
-        countSQL: String? = ExactRowCounterTests.countSQL
+        countSQL: String? = ExactRowCounterTests.countSQL,
+        type: DatabaseType = .spanner
     ) async throws -> Int? {
-        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .spanner), pluginDriver: stub)
+        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: type), pluginDriver: stub)
         return try await ExactRowCounter.count(
             on: adapter, table: "Orders", filters: [], logicMode: .and, countSQL: countSQL
         )
@@ -88,23 +89,74 @@ struct ExactRowCounterTests {
     @Test("A driver that builds its own queries is asked first, and the host SQL follows it")
     func routesQueryBuildingDriversThroughTheDriverFirst() {
         #expect(
-            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: true)
-                == .driverCountThenHostSQL(Self.countSQL)
+            ExactRowCounter.route(
+                countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsBilledScan: false
+            ) == .driverCountThenHostSQL(Self.countSQL)
         )
     }
 
     @Test("Every other SQL engine keeps the host COUNT query alone")
     func keepsHostSQLForOtherEngines() {
         #expect(
-            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: false)
-                == .hostCountSQL(Self.countSQL)
+            ExactRowCounter.route(
+                countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsBilledScan: false
+            ) == .hostCountSQL(Self.countSQL)
         )
     }
 
     @Test("Without host SQL the driver is the only source, whoever builds the queries")
     func withoutHostSQLTheDriverCounts() {
-        #expect(ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: true) == .driverCount)
-        #expect(ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: false) == .driverCount)
+        #expect(
+            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: true, exactRowCountIsBilledScan: false)
+                == .driverCount
+        )
+        #expect(
+            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: false, exactRowCountIsBilledScan: false)
+                == .driverCount
+        )
+    }
+
+    @Test("An engine whose count is a billed scan is counted by its driver alone, whatever host SQL exists")
+    func billedScanEnginesCountThroughTheDriverOnly() {
+        #expect(
+            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsBilledScan: true)
+                == .driverCount
+        )
+        #expect(
+            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsBilledScan: true)
+                == .driverCount
+        )
+    }
+
+    @Test("DynamoDB's driver count is the only count, and the host COUNT never runs")
+    func dynamoDBCountsThroughTheDriver() async throws {
+        let stub = CountStubDriver(ownsQueryBuilding: true, driverCount: .success(42))
+
+        let result = try await count(stub, type: .dynamodb)
+
+        #expect(result == 42)
+        #expect(stub.executedQueries.isEmpty)
+    }
+
+    @Test("A DynamoDB driver that has no count leaves it unknown rather than running PartiQL COUNT(*)")
+    func dynamoDBNilCountDoesNotFallBack() async throws {
+        let stub = CountStubDriver(ownsQueryBuilding: true, driverCount: .success(nil))
+
+        let result = try await count(stub, type: .dynamodb)
+
+        #expect(result == nil)
+        #expect(stub.executedQueries.isEmpty)
+    }
+
+    @Test("A failed DynamoDB count reaches the caller instead of a host COUNT")
+    func dynamoDBFailureIsReported() async {
+        let stub = CountStubDriver(ownsQueryBuilding: true, driverCount: .failure(.refused))
+
+        await #expect(throws: CountStubError.self) {
+            _ = try await count(stub, type: .dynamodb)
+        }
+        #expect(stub.driverCountCallCount == 1)
+        #expect(stub.executedQueries.isEmpty)
     }
 
     @Test("The driver's own count wins and the host COUNT never runs")

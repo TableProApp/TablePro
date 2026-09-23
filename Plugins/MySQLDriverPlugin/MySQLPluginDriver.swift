@@ -649,18 +649,19 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         guard !flavor.isDatabend else { return [] }
         let result = try await execute(query: "SHOW INDEX FROM \(qualifiedName(table, schema: schema))")
+        let expressionColumn = result.columns.firstIndex(of: "Expression")
 
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
-            guard let indexName = row[safe: 2]?.asText,
-                  let columnName = row[safe: 4]?.asText
-            else { return nil }
+            guard let indexName = row[safe: 2]?.asText else { return nil }
             return MySQLIndexRow(
                 table: table,
                 index: indexName,
-                column: columnName,
+                column: row[safe: 4]?.asText,
+                catalogExpression: expressionColumn.flatMap { row[safe: $0]?.asText },
+                prefixLength: (row[safe: 7]?.asText).flatMap { Int($0) },
+                collation: row[safe: 5]?.asText,
                 isNonUnique: (row[safe: 1]?.asText) == "1",
-                type: (row[safe: 10]?.asText) ?? "BTREE",
-                prefixLength: (row[safe: 7]?.asText).flatMap { Int($0) }
+                type: (row[safe: 10]?.asText) ?? "BTREE"
             )
         }
         return MySQLIndexGrouping.group(rows)[table] ?? []
@@ -1047,6 +1048,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
         guard !flavor.isDatabend else { return nil }
         return "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
+    }
+
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? {
+        mysqlModifyIndexSQL(table: table, oldIndexName: oldIndexName, newIndex: newIndex, flavor: flavor)
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        guard case .addIndex(let index) = operation else { return nil }
+        let identity = serverIdentity
+        return MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {

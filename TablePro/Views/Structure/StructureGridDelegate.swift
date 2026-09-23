@@ -179,7 +179,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .indexes:
             guard sourceRowIndex < structureChangeManager.workingIndexes.count else { return }
             var idx = structureChangeManager.workingIndexes[sourceRowIndex]
-            StructureEditingSupport.updateIndex(&idx, at: column, with: newValue ?? "")
+            StructureEditingSupport.updateIndex(
+                &idx,
+                at: column,
+                with: newValue ?? "",
+                keys: StructureEditingSupport.indexKeyContext(for: structureChangeManager, on: connection)
+            )
             structureChangeManager.updateIndex(id: idx.id, with: idx)
 
         case .foreignKeys:

@@ -38,10 +38,15 @@ extension MySQLPluginDriver {
 
     private func catalogIndexes(database: String) async throws -> [String: [PluginIndexInfo]] {
         let escapedDb = mysqlEscapeStringLiteral(database)
+        let identity = serverIdentity
+        let expression = MySQLFunctionalKeyParts.catalogReportsExpressions(
+            banner: identity.banner, flavor: identity.flavor
+        ) ? "EXPRESSION" : "NULL"
         let query = """
             SELECT
                 TABLE_NAME, INDEX_NAME, COLUMN_NAME,
-                CAST(NON_UNIQUE AS CHAR), INDEX_TYPE, CAST(SUB_PART AS CHAR)
+                CAST(NON_UNIQUE AS CHAR), INDEX_TYPE, CAST(SUB_PART AS CHAR),
+                COLLATION, \(expression)
             FROM INFORMATION_SCHEMA.STATISTICS
             WHERE TABLE_SCHEMA = '\(escapedDb)'
             ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
@@ -50,16 +55,17 @@ extension MySQLPluginDriver {
         let result = try await execute(ownStatement: query)
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let table = row[safe: 0]?.asText,
-                  let index = row[safe: 1]?.asText,
-                  let column = row[safe: 2]?.asText
+                  let index = row[safe: 1]?.asText
             else { return nil }
             return MySQLIndexRow(
                 table: table,
                 index: index,
-                column: column,
+                column: row[safe: 2]?.asText,
+                catalogExpression: row[safe: 7]?.asText,
+                prefixLength: (row[safe: 5]?.asText).flatMap { Int($0) },
+                collation: row[safe: 6]?.asText,
                 isNonUnique: (row[safe: 3]?.asText) == "1",
-                type: (row[safe: 4]?.asText) ?? "BTREE",
-                prefixLength: (row[safe: 5]?.asText).flatMap { Int($0) }
+                type: (row[safe: 4]?.asText) ?? "BTREE"
             )
         }
         return MySQLIndexGrouping.group(rows)

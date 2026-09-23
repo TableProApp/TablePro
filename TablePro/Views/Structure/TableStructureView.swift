@@ -367,10 +367,7 @@ struct TableStructureView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if objectKind == .materializedView,
-                   let note = MaterializedViewConcurrentRefreshNote(state: session.concurrentRefresh) {
-                    ConcurrentRefreshNoteView(note: note)
-                }
+                indexesTabNotes
             }
         case .foreignKeys:
             if shouldShowForeignKeysEmptyState {
@@ -403,6 +400,26 @@ struct TableStructureView: View {
                 connection: connection,
                 reloadToken: partsReloadToken
             )
+        }
+    }
+
+    private var indexesTabNotes: some View {
+        VStack(spacing: 0) {
+            if let note = InvalidIndexNote(indexes: indexes) {
+                StructureTabNoteView(
+                    systemImage: note.systemImage,
+                    text: note.text,
+                    identifier: "structure-invalid-index-note"
+                )
+            }
+            if objectKind == .materializedView,
+               let note = MaterializedViewConcurrentRefreshNote(state: session.concurrentRefresh) {
+                StructureTabNoteView(
+                    systemImage: note.systemImage,
+                    text: note.text,
+                    identifier: "structure-concurrent-refresh-note"
+                )
+            }
         }
     }
 

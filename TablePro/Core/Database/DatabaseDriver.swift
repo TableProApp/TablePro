@@ -256,6 +256,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func createDatabase(_ request: CreateDatabaseRequest) async throws
 
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec?
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String]
+
     func dropDatabase(name: String) async throws
 
     func dropSchema(name: String) async throws
@@ -543,6 +547,12 @@ extension DatabaseDriver {
     func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? { nil }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
+
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec? { nil }
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String] {
+        throw PluginCreateTableFormError(message: String(localized: "This database has no Create Table form"))
+    }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
 

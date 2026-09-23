@@ -152,6 +152,72 @@ final class StructureChangeGuardTests: XCTestCase {
         )
     }
 
+    // MARK: - A materialized view's indexes
+
+    private func matviewIndex(_ name: String, unique: Bool = false) -> EditableIndexDefinition {
+        EditableIndexDefinition(
+            id: UUID(), name: name, columns: ["id"], type: .btree, isUnique: unique, isPrimary: false, comment: nil
+        )
+    }
+
+    private func matview(
+        changes: [SchemaChange] = [],
+        sourceIndexes: [EditableIndexDefinition]?,
+        definitionMatches: Bool = true
+    ) -> CompareObjectResult {
+        CompareObjectResult(
+            identity: CompareObjectIdentity(kind: .materializedView, schema: "shop", name: "totals"),
+            status: .differs,
+            changes: changes,
+            sourceDefinition: ["CREATE MATERIALIZED VIEW shop.totals AS SELECT 1 AS id"],
+            sourceIndexes: sourceIndexes,
+            definitionMatches: definitionMatches
+        )
+    }
+
+    func testTwoReadsOfAnUnchangedMaterializedViewAreAllowed() {
+        let read = {
+            self.matview(
+                changes: [.addIndex(self.matviewIndex("totals_id_idx"))],
+                sourceIndexes: [self.matviewIndex("totals_id_idx")]
+            )
+        }
+
+        XCTAssertNil(StructureChangeGuard.refusal(
+            expected: inputs([read()], action: .alter), actual: inputs([read()], action: .alter)
+        ))
+    }
+
+    func testASourceIndexAddedAfterComparingRefusesTheScript() {
+        let expected = inputs([matview(sourceIndexes: [matviewIndex("totals_id_idx")])], action: .create)
+        let actual = inputs(
+            [matview(sourceIndexes: [matviewIndex("totals_id_idx"), matviewIndex("totals_key", unique: true)])],
+            action: .create
+        )
+
+        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+    }
+
+    func testATargetIndexChangedAfterComparingRefusesAnIndexOnlyAlter() {
+        let expected = inputs(
+            [matview(changes: [.deleteIndex(matviewIndex("totals_old_idx"))], sourceIndexes: [])], action: .alter
+        )
+        let actual = inputs(
+            [matview(changes: [.deleteIndex(matviewIndex("totals_other_idx"))], sourceIndexes: [])], action: .alter
+        )
+
+        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+    }
+
+    /// An index-only alter keeps the view and its rows, and a definition that moved since would
+    /// turn it into a DROP and CREATE the user never reviewed.
+    func testADefinitionThatStoppedMatchingRefusesAnIndexOnlyAlter() {
+        let expected = inputs([matview(sourceIndexes: [], definitionMatches: true)], action: .alter)
+        let actual = inputs([matview(sourceIndexes: [], definitionMatches: false)], action: .alter)
+
+        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+    }
+
     // MARK: - Two reads of the same tables
 
     private func ordersRead(

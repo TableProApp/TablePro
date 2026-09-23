@@ -144,6 +144,22 @@ struct SchemaOperationRefusalTests {
         #expect(refusal(of: .addIndex(index("ix_btree", type: .btree)), driver: driver) == nil)
     }
 
+    @Test("An index edited in place and a dropped index reach the driver as their own operations")
+    func modifyAndDropIndexReachTheDriver() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            switch operation {
+            case .modifyIndex(let old, let new): return "modify \(old.name) to \(new.name)"
+            case .dropIndex(let index): return "drop \(index.name)"
+            default: return nil
+            }
+        }
+        let modify = SchemaChange.modifyIndex(old: index("ix", type: .btree), new: index("ix", type: .hash))
+
+        #expect(refusal(of: modify, driver: driver) == "modify ix to ix")
+        #expect(refusal(of: .deleteIndex(index("ix_old", type: .btree)), driver: driver) == "drop ix_old")
+    }
+
     @Test("A refusal is reported ahead of a change in the same save that the driver cannot generate")
     func refusalWinsOverUngeneratableChange() {
         let unsupportedDrop = SchemaChange.deleteIndex(index("ix_old", type: .btree))

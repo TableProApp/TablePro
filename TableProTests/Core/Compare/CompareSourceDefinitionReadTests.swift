@@ -24,16 +24,24 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
 
     // MARK: - Views
 
+    private func object(
+        _ name: String,
+        type: String = "VIEW",
+        indexes: ObjectIndexRead? = nil
+    ) -> TableStructureRead {
+        TableStructureRead(
+            table: PluginTableInfo(name: name, type: type, schema: "shop", comment: nil),
+            columns: [], indexes: [], foreignKeys: [], metadata: nil, failure: nil, objectIndexes: indexes
+        )
+    }
+
     func testAViewTheDriverRefusesCarriesTheDriversReason() async throws {
         let driver = SourceDefinitionStubDriver()
         let refusal = PluginObjectSourceError.insufficientPrivilege("recent")
         driver.viewDefinitions = ["recent": .failure(refusal), "totals": .failure(refusal)]
 
         let reads = try await CompareMetadataService.readViewDefinitions(
-            [
-                PluginTableInfo(name: "recent", type: "VIEW", schema: "shop", comment: nil),
-                PluginTableInfo(name: "totals", type: "MATERIALIZED VIEW", schema: "shop", comment: nil)
-            ],
+            [object("recent"), object("totals", type: "MATERIALIZED VIEW")],
             schema: "shop",
             using: driver
         )
@@ -48,7 +56,7 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
         driver.viewDefinitions = ["recent": .success("CREATE VIEW recent AS SELECT 1")]
 
         let reads = try await CompareMetadataService.readViewDefinitions(
-            [PluginTableInfo(name: "recent", type: "VIEW", schema: "shop", comment: nil)],
+            [object("recent")],
             schema: "shop",
             using: driver
         )
@@ -57,13 +65,43 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
         XCTAssertEqual(reads.first?.source, "CREATE VIEW recent AS SELECT 1")
     }
 
+    func testAMaterializedViewsIndexesTravelWithItsDefinition() async throws {
+        let driver = SourceDefinitionStubDriver()
+        driver.viewDefinitions = [
+            "totals": .success("CREATE MATERIALIZED VIEW shop.totals AS SELECT 1 AS id"),
+            "denied": .success("CREATE MATERIALIZED VIEW shop.denied AS SELECT 1 AS id")
+        ]
+
+        let reads = try await CompareMetadataService.readViewDefinitions(
+            [
+                object("totals", type: "MATERIALIZED VIEW", indexes: .read([
+                    PluginIndexInfo(name: "totals_id_idx", columns: ["id"], isUnique: true)
+                ])),
+                object("denied", type: "MATERIALIZED VIEW", indexes: .failed("permission denied")),
+                object("recent")
+            ],
+            schema: "shop",
+            using: driver
+        )
+
+        guard case .read(let indexes)? = reads.first?.indexes else {
+            return XCTFail("the indexes read with the view must reach its definition read")
+        }
+        XCTAssertEqual(indexes.map(\.name), ["totals_id_idx"])
+        guard case .failed(let reason)? = reads.dropFirst().first?.indexes else {
+            return XCTFail("a failed index read must reach the definition read as a failure")
+        }
+        XCTAssertEqual(reason, "permission denied")
+        XCTAssertNil(reads.last?.indexes)
+    }
+
     func testACancelledViewReadIsNotAFailure() async {
         let driver = SourceDefinitionStubDriver()
         driver.viewDefinitions = ["recent": .failure(CancellationError())]
 
         do {
             _ = try await CompareMetadataService.readViewDefinitions(
-                [PluginTableInfo(name: "recent", type: "VIEW", schema: "shop", comment: nil)],
+                [object("recent")],
                 schema: "shop",
                 using: driver
             )

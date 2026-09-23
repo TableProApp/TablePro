@@ -649,7 +649,7 @@ extension QueryExecutionCoordinator {
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
-        let countsAutomatically = PluginManager.shared.paginationCapability(for: connectionType).allowsSeeking
+        let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: connectionType)
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
 
@@ -756,8 +756,8 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    /// An engine that cannot skip rows has no pages for a total to bound, so it is only counted
-    /// when the user asks: each automatic count would be a full scan the engine may bill for.
+    /// `countsAutomatically` is `PluginManager.countsRowsAutomatically(for:)`: an engine that cannot skip rows, or
+    /// whose count is a billed scan, is only counted when the user asks.
     static func rowCountPlan(
         isNonSQL: Bool,
         filterState: TabFilterState,

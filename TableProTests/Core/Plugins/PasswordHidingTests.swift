@@ -204,6 +204,7 @@ struct PluginManagerPasswordHidingTests {
         #expect(hides("DuckDB", ["duckdbMode": "local"]))
         #expect(hides("DuckDB", ["duckdbMode": "remote"]))
         #expect(hides("DynamoDB", ["awsAuthMethod": "profile"]))
+        #expect(hides("DynamoDB", ["awsAuthMethod": "local"]))
         #expect(hides("BigQuery", ["bqAuthMethod": "adc"]))
         #expect(hides("Spanner", ["spAuthMethod": "adc"]))
         #expect(hides("Snowflake", ["snowflakeAuthMethod": "externalBrowser"]))

@@ -1,41 +1,44 @@
 ---
 title: Amazon DynamoDB
-description: Connect to Amazon DynamoDB with PartiQL queries, GSI/LSI browsing, and DynamoDB Local support
+description: Browse DynamoDB tables through their indexes, edit items with their types intact, and run PartiQL or DynamoDB API requests
 ---
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Opening a table runs a Scan. A filter becomes a Query only when it pins the partition key to a single value with `=`; every other filter is applied to the items after they come back, so it narrows what you see and not what the table read.
+What a table read costs depends on the filter bar. Pin the partition key with `=` and the grid runs a Query that reads one partition; leave it out and the grid runs a Scan, which reads the whole table and is billed for every item it reads, including the ones your filters then drop.
 
 <RegistryPlugin name="DynamoDB" plugin="DynamoDB Driver" />
 
 ## Quick setup
 
-Click **New Connection…**, select **DynamoDB**, choose an **Auth Method**, enter credentials and region, then click **Save & Connect**.
+Click **New Connection…**, select **DynamoDB**, choose an **Auth Method**, fill in its fields and the **AWS Region**, then click **Save & Connect**.
 
-<Frame caption="The DynamoDB connection form with an auth method picked">
-  <img className="block dark:hidden" src="/images/dynamodb-connection-form.png" alt="DynamoDB connection form" />
-  <img className="hidden dark:block" src="/images/dynamodb-connection-form-dark.png" alt="DynamoDB connection form" />
+<Frame caption="Access Key + Secret Key shows the key fields; AWS Profile and AWS SSO take a profile name instead">
+  <img className="block dark:hidden" src="/images/dynamodb-connection-form.png" alt="DynamoDB connection form with Auth Method, Access Key ID, Secret Access Key, Session Token, AWS Region and Custom Endpoint fields" />
+  <img className="hidden dark:block" src="/images/dynamodb-connection-form-dark.png" alt="DynamoDB connection form with Auth Method, Access Key ID, Secret Access Key, Session Token, AWS Region and Custom Endpoint fields" />
 </Frame>
 
 ## Connection settings
 
-The form asks for no host, no port and no database, and offers no SSL/TLS section. Every request is an HTTPS call to the AWS endpoint signed with SigV4, and one connection sees one region's tables.
+There is no host, port, database or connection URL. A connection is one AWS account in one region, and the sidebar lists that region's tables. Every region works, as does DynamoDB Local.
 
 | Field | Description |
 |-------|-------------|
-| **AWS Region** | Region the tables live in. Defaults to `us-east-1` |
-| **Custom Endpoint** | Overrides the endpoint URL. Leave it empty unless you run DynamoDB Local |
+| **AWS Region** | Region the tables live in. Left empty, the region comes from the AWS profile, then `us-east-1` |
+| **Custom Endpoint** | Replaces the regional endpoint. Leave it empty unless you run DynamoDB Local or a VPC endpoint |
+
+The endpoint follows the region's partition, so `cn-north-1` reaches `dynamodb.cn-north-1.amazonaws.com.cn` and the European Sovereign Cloud reaches its own domain without a custom endpoint.
 
 ## Authentication
 
 | Auth Method | Fields | Credentials come from |
 |-------------|--------|----------------------|
-| **Access Key + Secret Key** | **Access Key ID**, **Secret Access Key**, and **Session Token** for STS | What you type |
+| **Access Key + Secret Key** | **Access Key ID**, **Secret Access Key**, **Session Token** for temporary credentials | What you type |
 | **AWS Profile** | **Profile Name** | That profile in `~/.aws/config` and `~/.aws/credentials`, read the way the AWS CLI reads it |
-| **AWS SSO** | **Profile Name** | The IAM Identity Center token cached in `~/.aws/sso/cache`. Run `aws sso login --profile <name>` first |
+| **AWS SSO** | **Profile Name** | The IAM Identity Center session for that profile. An expired session opens the sign-in prompt |
+| **DynamoDB Local (no credentials)** | None | Fixed placeholder keys that DynamoDB Local accepts |
 
-Pick **AWS Profile** if the AWS CLI already works on this Mac. Static keys, `credential_process` helpers and `role_arn` chains all resolve; the rules are on [AWS IAM Authentication](/connections/aws-iam#profiles).
+Pick **AWS Profile** if the AWS CLI already works on this Mac. Static keys, `credential_process` helpers and `role_arn` chains all resolve; the rules are on [AWS IAM Authentication](/connections/aws-iam#profiles). Expired temporary credentials are fetched again and the request retried once.
 
 ## DynamoDB Local
 
@@ -43,32 +46,106 @@ Pick **AWS Profile** if the AWS CLI already works on this Mac. Static keys, `cre
 docker run -p 8000:8000 amazon/dynamodb-local
 ```
 
-Set **Auth Method** to Access Key + Secret Key, put any non-empty string in **Access Key ID** and **Secret Access Key**, and set **Custom Endpoint** to `http://localhost:8000`.
+Set **Auth Method** to **DynamoDB Local (no credentials)**. With **Custom Endpoint** empty it connects to `http://localhost:8000`; fill it in for any other port.
 
-## Columns over schemaless items
+## How a table is read
 
-A table declares only its key attributes, so the grid builds columns from the items it fetched: the union of their attribute names, partition key first, sort key next, the rest alphabetically. An attribute none of those items carries gets no column. Each column's type is a majority vote over the same items; the Structure tab votes on a sample of up to 100.
+Opening a table, filtering it and paging it all go through one planner. It picks the cheapest read your filters allow and names it at the start of the status bar, followed by how many items came back, how many DynamoDB read to find them, and the read capacity units it charged: `Query on index byStatus · 50 returned · 212 read · 26.5 RCU`.
+
+| Filters | Read |
+|---------|------|
+| Partition key `=` one value | **Query on the table** |
+| Partition key `IN` a list, or several partition keys joined by **Match Any** | One Query per partition, or **Get by key** when the table has no sort key |
+| A global index's partition key `=`, with a filter on each of its sort keys | **Query on index** |
+| The partition key `=` and a key-condition filter on a local index's sort key | **Query on index** for that local index |
+| Anything else | **Scan with filters** |
+
+A filter on the sort key of the chosen table or index joins the key condition when it is `=`, `<`, `<=`, `>`, `>=`, **BETWEEN** or **STARTS WITH**. Other filters become a FilterExpression, which DynamoDB applies after reading, so they narrow the rows without lowering the bill. **ENDS WITH**, regular expressions, matches that ignore case and a search across every column are checked on the returned items instead. **CONTAINS** means what DynamoDB's `contains` means on either side: text inside a String, or a member of a set or a list. **STARTS WITH** ignores case until you select **Match Case** in its operator menu, and only then can it run as a key condition.
+
+A global index is used only when it projects every attribute, and only when every one of its sort keys carries a filter, because an item missing a key attribute is not in the index at all.
+
+Filter on a nested attribute with a path such as `address.city` or `items[0].sku`. Autocomplete offers the map paths found in the table's first 100 items.
+
+### Sorting and paging
+
+Clicking the sort key's header on a Query that reads one partition makes DynamoDB return the items in that order, forwards or backwards. Any other sort needs every matching item. When the read holds them all, the grid sorts them. When it does not, the rows stay in DynamoDB's order and the status bar says so: `In DynamoDB order: sorting by total needs the whole result, or a Query on that sort key`.
+
+The next page starts from where the previous one stopped rather than reading the table again from the start. A page can take several requests: DynamoDB counts the items it examined against the request's limit before a FilterExpression drops any, so the reader keeps going until the page is full or the table has no more.
+
+### Row counts
+
+The total under the grid is DynamoDB's own item count, which it refreshes about every six hours. No count runs on its own. **Count Exactly** reads every item your filters match with `Select: COUNT`, so it is billed as a full read of those items. The query timeout does not stop it; `Cmd+.` does.
+
+## Items in the grid
+
+A table declares only its key attributes, so the columns come from the items themselves: every attribute in the table's first 100 items and in the page on screen, plus the key attributes of each index. The table's keys come first. An attribute that appears in none of those items has no column until a page returns it. Column types use the AWS console's names, taken from the most common type in the column.
 
 | Attribute type | In the cell |
 |----------------|-------------|
-| `S`, `N`, `BOOL`, `NULL` | The value |
-| `B` | Base64 |
-| `L`, `M` | DynamoDB-typed JSON, `[{"S":"a"}]` and `{"k":{"S":"a"}}` |
-| `SS`, `NS`, `BS` | A plain JSON array |
+| String, Number, Boolean | The value |
+| Null | `NULL` |
+| Binary | Hex, `0x…` |
+| Map, List | Plain JSON, `{"city":"Paris"}` and `["a",1]` |
+| String Set, Number Set, Binary Set | A JSON array |
 
-An edit is parsed back through the same shape, so keep the typed envelopes when you change a list or a map.
+Maps, lists and sets open in the JSON editor. Numbers keep all 38 digits; nothing in the grid rounds them.
 
-In [Table Structure](/features/table-structure), **Indexes** lists the primary key with every GSI and LSI, and **DDL** prints the key schema, billing mode, capacity, item count, table size and each index's projection.
+### Saving edits
 
-## PartiQL
+Each changed row becomes one PartiQL statement, sent when you save, and each value keeps the type it had: an edited Number stays a Number, a String that looks like `02134` stays a String, and a String Set edited as JSON goes back as a String Set, nested Binary values included. A new attribute takes the type its column shows. **Set NULL** removes the attribute from the item.
 
-The editor runs PartiQL. Table names take double quotes, string values single quotes: `SELECT * FROM "Users" WHERE userId = 'user123'`. Amazon's [PartiQL reference](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.html) has the grammar.
+An update also checks each attribute it changes against the value the grid loaded, so it fails rather than overwrite a value someone else changed since, or recreate an item someone deleted. **Duplicate Row** copies every attribute but the keys; fill in the new keys before saving.
 
-Grid edits become PartiQL as well, one `INSERT`, `UPDATE` or `DELETE` per row. A key attribute is never part of a `SET`: to change a key, delete the item and insert it again.
+## PartiQL and the DynamoDB API
+
+The editor runs two kinds of statement. PartiQL takes double quotes around names and single quotes around strings, and Amazon's [PartiQL reference](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.html) has the grammar:
+
+```sql
+SELECT * FROM "Orders" WHERE "pk" = 'customer#42' AND "sk" > 100
+```
+
+A DynamoDB action name followed by its request JSON runs that action, exactly as the [API reference](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Operations_Amazon_DynamoDB.html) describes the request:
+
+```json
+Query {"TableName": "Orders", "IndexName": "byStatus",
+       "KeyConditionExpression": "#s = :s",
+       "ExpressionAttributeNames": {"#s": "status"},
+       "ExpressionAttributeValues": {":s": {"S": "shipped"}}}
+```
+
+| Kind | Actions |
+|------|---------|
+| Read | `Scan`, `Query`, `GetItem`, `BatchGetItem`, `TransactGetItems` |
+| Write | `PutItem`, `UpdateItem`, `DeleteItem`, `BatchWriteItem`, `TransactWriteItems` |
+| PartiQL | `ExecuteStatement`, `ExecuteTransaction`, `BatchExecuteStatement` |
+| Describe | `ListTables`, `DescribeTable`, `DescribeTimeToLive`, `DescribeContinuousBackups`, `ListTagsOfResource`, `DescribeLimits` |
+| Manage | `CreateTable`, `UpdateTable`, `DeleteTable`, `UpdateTimeToLive`, `UpdateContinuousBackups`, `TagResource`, `UntagResource` |
+
+Any other action name is refused. Autocomplete inserts a template for the common ones. Items come back in the grid; any other response comes back as JSON.
+
+- A `Scan` or `Query` request takes a trailing `ORDER BY`, `LIMIT` and `OFFSET`, which count the items returned. With `"Select": "COUNT"` it pages to the end and returns one row of `Count` and `ScannedCount`.
+- A PartiQL `SELECT` takes them too. An `ORDER BY` on the sort key goes to DynamoDB when the WHERE clause fixes the partition key with `=`; any other is applied to the result. A `SELECT` that does not fix the partition key reads the whole table, and the status bar says so.
+- A `BatchWriteItem` sends its unprocessed items again until they are written, and reports the ones still left after 10 attempts rather than calling the batch a success.
+- A throttled request retries with backoff, and so does a failed one that is safe to send twice: a read, or a write whose repeat changes nothing. Four attempts in all. `Cmd+.` stops a running statement.
+
+## Creating and changing tables
+
+**New Table…** opens a form rather than a column grid: the partition and sort key with their types, on-demand or provisioned capacity, the table class, deletion protection, up to 20 global and 5 local secondary indexes. **Preview** shows the `CreateTable` request it will send. A local secondary index can only be defined here, when the table is created. The new table opens empty until DynamoDB finishes creating it.
+
+<Frame caption="Preview shows the request before Create Table sends it">
+  <img className="block dark:hidden" src="/images/dynamodb-create-table.png" alt="Create Table form with Primary Key, Capacity, Settings and secondary index sections" />
+  <img className="hidden dark:block" src="/images/dynamodb-create-table-dark.png" alt="Create Table form with Primary Key, Capacity, Settings and secondary index sections" />
+</Frame>
+
+In [Table Structure](/features/table-structure), **Indexes** lists the key and every index. Add a global secondary index there with its partition key as the first column and an optional sort key as the second, or drop one; either is an `UpdateTable` request, and DynamoDB builds or removes the index in the background. The key's type comes from the table's items; when no item read so far holds that attribute, the index is refused, so create it from the editor with an `UpdateTable` request that declares `AttributeDefinitions`. An index cannot be edited in place: delete it, save, and add the replacement once the old one is gone. The primary key and a local secondary index go only with the table. **DDL** shows the `CreateTable` request that recreates the table, plus the Time to Live and point-in-time recovery settings it carries.
+
+Right-click a table and choose **Maintenance** for point-in-time recovery, deletion protection, the stream, the table class, switching to on-demand capacity and turning Time to Live off. [Table Operations](/features/table-operations#maintenance) covers the sheet.
+
+Dropping a table from the sidebar sends `DeleteTable`. It fails while deletion protection is on.
 
 ## IAM permissions
 
-The driver calls `ListTables`, `DescribeTable`, `Scan`, `Query` and `ExecuteStatement`, and nothing else. That is this policy:
+Browsing, filtering, exporting and the Structure tab call these actions:
 
 ```json
 {
@@ -79,12 +156,13 @@ The driver calls `ListTables`, `DescribeTable`, `Scan`, `Query` and `ExecuteStat
       "Action": [
         "dynamodb:ListTables",
         "dynamodb:DescribeTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:DescribeContinuousBackups",
         "dynamodb:Scan",
         "dynamodb:Query",
-        "dynamodb:PartiQLSelect",
-        "dynamodb:PartiQLInsert",
-        "dynamodb:PartiQLUpdate",
-        "dynamodb:PartiQLDelete"
+        "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:PartiQLSelect"
       ],
       "Resource": "*"
     }
@@ -92,23 +170,36 @@ The driver calls `ListTables`, `DescribeTable`, `Scan`, `Query` and `ExecuteStat
 }
 ```
 
-For read-only access, drop `PartiQLInsert`, `PartiQLUpdate` and `PartiQLDelete`.
+Saving grid edits adds `dynamodb:PartiQLInsert`, `dynamodb:PartiQLUpdate` and `dynamodb:PartiQLDelete`. Creating, changing and dropping tables adds `dynamodb:CreateTable`, `dynamodb:UpdateTable`, `dynamodb:DeleteTable`, `dynamodb:UpdateTimeToLive` and `dynamodb:UpdateContinuousBackups`. A request typed in the editor needs the action it names.
+
+## SSL/TLS
+
+Every request goes to the AWS endpoint over HTTPS, signed with Signature Version 4, and there is no SSL/TLS section to set. A custom endpoint may use plain HTTP only when it is on this Mac: `localhost`, `127.0.0.1` or `::1`.
 
 ## Limitations
 
-- Consumed capacity is never reported. Nothing in the app shows what a browse cost; read it in CloudWatch.
-- Paging is cursor-based, so page 40 re-scans everything before it.
-- A list or map cell is cut at 10,000 characters and ends in `...`. Saving an edit to a cut cell stores the fragment; change long nested values with PartiQL instead.
-- Table structure is fixed at creation: no structure editing, no transactions, no import.
-- Truncate is not offered. DynamoDB empties a table by scanning it and deleting every item, which is a long billed job rather than a statement. Deleting the table is available, from the sidebar or with `DROP TABLE "<name>"`, which issues `DeleteTable`.
-- Item counts come from DynamoDB and refresh roughly every six hours, so they lag.
-- DAX endpoints are not supported. Leave **Custom Endpoint** empty or point it at a standard endpoint.
+- A key attribute cannot be edited in place, and saving the change fails. Duplicate the row, give the copy its new key, save, then delete the original.
+- The Structure tab cannot add, change or drop an attribute. Write the attribute to an item and it appears as a column.
+- A global index that projects only its keys or chosen attributes is never used for browsing, so a filter on its key scans the table. Query that index from the editor with a `Query` request naming its `IndexName`.
+- Import is not available. Write items from the editor with `BatchWriteItem` or PartiQL `INSERT`.
+- Truncate is not offered, because DynamoDB can only empty a table by deleting every item. Drop the table and create it again from its DDL.
+- Saving writes each changed row on its own, so there is no transaction across rows. Group writes that must succeed together in an `ExecuteTransaction` or `TransactWriteItems` request.
+- A read through a global secondary index is eventually consistent, so an edit saved a moment ago can be missing from it. Refresh, or filter on the table's own partition key, which reads the table.
+- DAX endpoints are not supported. Leave **Custom Endpoint** empty or point it at a DynamoDB endpoint.
 
 ## Troubleshooting
 
 ### Authentication failed: …
 
-The credentials were rejected: an unrecognized key, a bad signature, or a policy that denies the call. Check the key and secret, the profile name, or the SSO session with `aws sso login --profile <name>`. An aged-out STS session token needs replacing.
+DynamoDB rejected the credentials: an unknown key, a bad signature, or a session token that aged out. Check the key and secret, the profile name, or sign in again with `aws sso login --profile <name>`.
+
+### "…" is not an AWS region
+
+**AWS Region**, or the region in the AWS profile, holds something other than a region name. Region names are lowercase letters, digits and hyphens. Set it to one such as `us-east-1`.
+
+### DynamoDB error: [AccessDeniedException] …
+
+The credentials work but their policy does not allow the action the message names. Add it to the policy, using the list in [IAM permissions](#iam-permissions).
 
 ### DynamoDB error: [ResourceNotFoundException] …
 
@@ -116,9 +207,19 @@ The table is not in this region. Tables are regional; set **AWS Region** to the 
 
 ### DynamoDB error: [ProvisionedThroughputExceededException] …
 
-The table's provisioned read capacity is used up. Retry, move the table to on-demand billing, or filter on the partition key so the browse runs as a Query.
+The table used up its provisioned read or write capacity and four attempts did not get through. Filter on the partition key so the read runs as a Query, raise the capacity, or switch the table to on-demand from **Maintenance**.
+
+### The item … changed after it was loaded. Refresh the table and edit it again.
+
+Someone changed the item between loading it and saving it, and the save was refused so their change survives. Refresh, then make the edit again.
+
+### Plain HTTP is only allowed for an endpoint on this Mac (localhost). Use https:// for any other host.
+
+**Custom Endpoint** starts with `http://` and names another machine. Use `https://`, or run DynamoDB Local on this Mac.
 
 ## Related
 
 - [AWS IAM Authentication](/connections/aws-iam)
+- [Filtering](/features/filtering)
+- [Table Operations](/features/table-operations)
 - [Import & Export](/features/import-export)

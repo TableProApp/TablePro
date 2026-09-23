@@ -30,6 +30,8 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: legacy),
             PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: "orders"),
             PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: nil),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: "public", table: "orders"),
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: "public", table: "orders"),
             PostgreSQLObjectQueries.triggerList(schema: "public", table: nil),
             PostgreSQLObjectQueries.userDefinedTypeList(schema: "public", identity: nil, capabilities: legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: "public", table: "t"),
@@ -55,6 +57,8 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLObjectQueries.triggerList(schema: hostile, table: hostile),
             PostgreSQLObjectQueries.routineList(schema: hostile, capabilities: Self.legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: hostile, table: hostile),
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: hostile, table: hostile),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: hostile, table: hostile),
             PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
             )

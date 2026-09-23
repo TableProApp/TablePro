@@ -37,4 +37,19 @@ struct PluginIndexMappingCoverageTests {
         #expect(problems.contains { $0.hasPrefix("ddlMethodAndKeys:") })
         #expect(problems.contains { $0.hasPrefix("ddlWhereClause:") })
     }
+
+    @Test("A mapper that reads every index as valid is caught")
+    func droppedValidityIsCaught() {
+        let fixtures = PluginStructureFixtures.indexes
+        let mapped = fixtures.map {
+            IndexInfo(
+                name: $0.name, columns: $0.columns, isUnique: $0.isUnique, isPrimary: $0.isPrimary, type: $0.type,
+                columnPrefixes: $0.columnPrefixes, whereClause: $0.whereClause, expressions: $0.expressions,
+                includedColumns: $0.includedColumns, ddlMethodAndKeys: $0.ddlMethodAndKeys,
+                ddlWhereClause: $0.ddlWhereClause
+            )
+        }
+        let problems = StructureMappingCoverage.carryProblems(from: fixtures, to: mapped, appOnly: ["id"])
+        #expect(problems == ["isValid: PluginIndexInfo has false, IndexInfo has true"])
+    }
 }

@@ -78,7 +78,7 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 | `get_table_statistics` | `connection_id`, `table` (`database`, `schema`) | `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at` |
 | `get_database_statistics` | `connection_id` (`database`) | `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name |
 
-`describe_table` is the one call to make before writing SQL against an unfamiliar table. A column always carries `name`, `data_type`, `is_nullable` and `is_primary_key`, and picks up `is_generated`, `default_value`, `extra`, `comment` and `allowed_values` where the engine reports them; indexes and foreign keys work the same way.
+`describe_table` is the one call to make before writing SQL against an unfamiliar table. A column always carries `name`, `data_type`, `is_nullable` and `is_primary_key`, and picks up `is_generated`, `default_value`, `extra`, `comment` and `allowed_values` where the engine reports them; indexes and foreign keys work the same way. An index always carries `name`, `columns`, `is_unique`, `is_primary`, `is_valid` and `type`. `is_valid` is `false` for a PostgreSQL index whose build did not finish, such as one a failed `CREATE INDEX CONCURRENTLY` left behind: queries skip it and `get_table_ddl` leaves it out.
 
 `include_row_counts` defaults to `false`. Counts come from engine statistics rather than `COUNT(*)`, and are fetched one table at a time, so `list_tables` skips them when the schema holds more than 200 objects.
 

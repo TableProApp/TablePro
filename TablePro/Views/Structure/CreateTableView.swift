@@ -89,25 +89,19 @@ struct CreateTableView: View {
         VStack(spacing: 0) {
             configBar
             Divider()
-            toolbar
-            Divider()
-            tabContent
+            editorContent
         }
         .navigationTitle(String(localized: "Create Table"))
         .onAppear {
             selectionState.indices = []
-            coordinator?.inspectorRowSource = gridDelegate
-            gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
-            gridDelegate.onReferenceListsChanged = { coordinator?.inspectorRowSourceRevision += 1 }
-            serverSupport = StructureServerSupport.forConnection(connection.id)
-            updateGridDelegate()
-            if structureChangeManager.workingColumns.isEmpty {
-                structureChangeManager.addNewColumn()
-            }
+            draft.resolveForm(
+                from: DatabaseManager.shared.driver(for: connection.id)?.createTableFormSpec(schema: scope?.schema)
+            )
             actionHandler.createTable = { createTable() }
-            actionHandler.undo = { gridDelegate.dataGridUndo() }
-            actionHandler.redo = { gridDelegate.dataGridRedo() }
             coordinator?.createTableActions = actionHandler
+            if draft.form == nil {
+                attachStructureGrid()
+            }
             coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
         }
         .onDisappear {
@@ -142,6 +136,38 @@ struct CreateTableView: View {
         } message: {
             Text(verbatim: RevealedText(errorMessage ?? "").plainText)
         }
+    }
+
+    @ViewBuilder
+    private var editorContent: some View {
+        if draft.form != nil {
+            CreateTableFormEditor(
+                draft: draft,
+                databaseType: connection.type,
+                isCreating: isCreating,
+                generateStatements: { request in try formStatements(for: request) },
+                onCreate: { createTable() }
+            )
+        } else if draft.hasResolvedForm {
+            toolbar
+            Divider()
+            tabContent
+        } else {
+            Color.clear
+        }
+    }
+
+    private func attachStructureGrid() {
+        coordinator?.inspectorRowSource = gridDelegate
+        gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
+        gridDelegate.onReferenceListsChanged = { coordinator?.inspectorRowSourceRevision += 1 }
+        serverSupport = StructureServerSupport.forConnection(connection.id)
+        updateGridDelegate()
+        if structureChangeManager.workingColumns.isEmpty {
+            structureChangeManager.addNewColumn()
+        }
+        actionHandler.undo = { gridDelegate.dataGridUndo() }
+        actionHandler.redo = { gridDelegate.dataGridRedo() }
     }
 
     // MARK: - Config Bar
@@ -429,8 +455,19 @@ struct CreateTableView: View {
     // MARK: - Create Table
 
     private var isReadyToCreate: Bool {
-        guard !isCreating, let composed = draft.composed else { return false }
+        guard !isCreating else { return false }
+        if let form = draft.form {
+            return form.issues(tableName: draft.tableName).isEmpty
+        }
+        guard let composed = draft.composed else { return false }
         return composed.issues.isEmpty && !composed.statements.isEmpty
+    }
+
+    private func formStatements(for request: PluginCreateTableRequest) throws -> [String] {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+            throw PluginCreateTableFormError(message: String(localized: "Not connected to database"))
+        }
+        return try driver.createTableStatements(for: request, schema: scope?.schema)
     }
 
     private func updateCreateTablePendingState() {
@@ -445,6 +482,14 @@ struct CreateTableView: View {
     /// last `CREATE INDEX` takes that tab's uncommitted work with it. `schemaChangeRoute` exists to
     /// keep the app's own DDL off the user's connection.
     private func createTable() {
+        guard draft.form != nil else {
+            createTableFromStructureGrid()
+            return
+        }
+        createTableFromForm()
+    }
+
+    private func createTableFromStructureGrid() {
         guard !isCreating else { return }
         let plan = draft.plan(for: connection.type)
         guard plan.issues.isEmpty else {
@@ -472,20 +517,66 @@ struct CreateTableView: View {
                     return
                 }
                 let createdName = composed.tableName ?? draft.tableName
-                try await DatabaseManager.shared.executeCreateTable(
-                    statements: composed.statements,
-                    databaseType: connection.type,
-                    scope: scope
-                )
-                coordinator?.openTableTab(
-                    createdName, schema: scope.schema, database: scope.database.nilIfEmpty
-                )
-                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+                try await runCreateTable(statements: composed.statements, createdName: createdName, in: scope)
             } catch {
                 Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
                 errorMessage = error.localizedDescription
                 showError = true
             }
         }
+    }
+
+    private func createTableFromForm() {
+        guard !isCreating, let form = draft.form else { return }
+        let issues = form.issues(tableName: draft.tableName)
+        guard issues.isEmpty else {
+            errorMessage = issues.map(\.qualifiedMessage).joined(separator: "\n")
+            showError = true
+            return
+        }
+        guard let scope else {
+            errorMessage = String(localized: "Not connected to database")
+            showError = true
+            return
+        }
+
+        let request = form.request(tableName: draft.tableName)
+        let schema = scope.schema
+        isCreating = true
+        errorMessage = nil
+        draft.form?.clearSubmissionError()
+        updateCreateTablePendingState()
+
+        Task {
+            defer { isCreating = false }
+            do {
+                let statements = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                    try driver.createTableStatements(for: request, schema: schema)
+                }
+                guard !statements.isEmpty else {
+                    draft.form?.recordSubmissionError(PluginCreateTableFormError(
+                        message: String(localized: "The form produced no statements to run.")
+                    ))
+                    return
+                }
+                try await runCreateTable(statements: statements, createdName: request.tableName, in: scope)
+            } catch let formError as PluginCreateTableFormError {
+                draft.form?.recordSubmissionError(formError)
+            } catch {
+                Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+        }
+    }
+
+    private func runCreateTable(statements: [String], createdName: String, in scope: DatabaseScope) async throws {
+        try await DatabaseManager.shared.executeCreateTable(
+            statements: statements,
+            databaseType: connection.type,
+            scope: scope
+        )
+        coordinator?.openTableTab(createdName, schema: scope.schema, database: scope.database.nilIfEmpty)
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 }

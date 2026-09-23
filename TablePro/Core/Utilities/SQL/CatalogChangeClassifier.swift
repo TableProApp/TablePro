@@ -46,11 +46,23 @@ enum CatalogChangeClassifier {
             let tier = QueryClassifier.classifyTier(trimmed, databaseType: databaseType)
             return tier == .safe ? .none : opaque
         }
+        if let request = dynamoDBRequestEffect(trimmed, databaseType: databaseType) {
+            return request
+        }
         let grammar = databaseType.lexicalGrammar
         if QueryClassifier.runsPLSQL(trimmed, grammar: grammar) {
             return opaque
         }
         return sqlEffect(trimmed, grammar: grammar)
+    }
+
+    /// A DynamoDB request names its action, so only the three that create, change or drop a table touch the
+    /// catalog. PartiQL cannot, and an action the driver does not know is sent as PartiQL, so both take the SQL path.
+    private static func dynamoDBRequestEffect(_ trimmed: String, databaseType: DatabaseType) -> CatalogStatementEffect? {
+        guard databaseType == .dynamodb,
+              let action = DynamoDBRequestStatement(trimmed)?.action
+        else { return nil }
+        return action.changesCatalog ? CatalogStatementEffect(kinds: .tables, endsTransaction: false) : .none
     }
 
     private static func sqlEffect(_ trimmed: String, grammar: SQLLexicalGrammar) -> CatalogStatementEffect {

@@ -11,7 +11,52 @@ internal enum ObjectCopyDefinitionOutcome: Equatable, Sendable {
     case skipped(String)
 }
 
+internal struct ObjectCopyDefinitionInput: Sendable {
+    internal let id: String
+    internal let identity: CompareObjectIdentity
+    internal let definition: String
+    internal let read: RoutineSourceRead
+    internal let targetCarriesIndexes: Bool
+    internal let drop: CompareObjectResult?
+}
+
+internal enum ObjectCopyDefinitionBuild: Sendable {
+    case built(drop: [SyncStatement], create: [SyncStatement], note: String?)
+    case refused(String)
+}
+
 internal extension ObjectCopyPlanner {
+    nonisolated static func definitionBuild(
+        for input: ObjectCopyDefinitionInput,
+        using builder: SourceObjectSyncBuilder
+    ) throws -> ObjectCopyDefinitionBuild {
+        var sourceIndexes: [EditableIndexDefinition]?
+        var note: String?
+        switch SourceObjectIndexCopy.decide(
+            for: input.read, targetCarries: input.targetCarriesIndexes, indexSchema: builder.indexSchema
+        ) {
+        case .none:
+            break
+        case .write(let indexes):
+            sourceIndexes = indexes
+        case .leaveOut(let text):
+            note = text
+        case .refuse(let reason):
+            return .refused(reason)
+        }
+        let create = CompareObjectResult(
+            identity: input.identity,
+            status: .onlyInSource,
+            sourceDefinition: [input.definition],
+            sourceIndexes: sourceIndexes
+        )
+        let drop = try input.drop.map { existing -> [SyncStatement] in
+            guard !builder.replacesInPlace(existing.identity, with: create) else { return [] }
+            return try builder.build(for: existing, action: .drop)
+        } ?? []
+        return .built(drop: drop, create: try builder.build(for: create, action: .create), note: note)
+    }
+
     nonisolated static func definitionOutcome(
         _ read: RoutineSourceRead?,
         sentAs scriptText: SQLScriptText
@@ -30,7 +75,7 @@ internal extension ObjectCopyPlanner {
 
     nonisolated static func sourceDefinitionReads(
         for selections: [ObjectCopySelection],
-        views: [PluginTableInfo],
+        views: [TableStructureRead],
         triggerTables: [String],
         schema: String?,
         endpointName: String,

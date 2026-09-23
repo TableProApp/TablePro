@@ -141,6 +141,7 @@ New connections default to **Preferred**: TLS first, dropping to plain text only
 
 - No Unix socket connections. Give the connection a host and a port, and leave networking on in the server.
 - `LOAD DATA LOCAL INFILE` is refused by the driver. Load the file with **File > Import > Import Data…** instead.
+- An index key over an expression, such as `lower(email)`, needs MySQL 8.0.13 or later. MariaDB has none, so index a generated column instead. The **Indexes** tab stops the save on either server before anything runs.
 
 ## Troubleshooting
 
