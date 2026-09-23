@@ -358,6 +358,7 @@ internal struct CompareRunner {
         targetReads: [TableStructureRead]
     ) async throws -> [CompareObjectResult] {
         var results: [CompareObjectResult] = []
+        let includedKinds = session.includedKinds
         let diffEngine = SourceObjectDiffEngine(
             options: session.structureOptions,
             sourceDatabaseType: context.source.databaseType,
@@ -366,9 +367,10 @@ internal struct CompareRunner {
 
         /// Each pair reads two independent endpoints, so the two sides run together rather than the
         /// second waiting out the first.
-        if session.includedKinds.contains(.view) || session.includedKinds.contains(.materializedView) {
-            let sourceViews = sourceReads.map(\.table).filter { CompareTableKindClassifier.kind(of: $0) != .table }
-            let targetViews = targetReads.map(\.table).filter { CompareTableKindClassifier.kind(of: $0) != .table }
+        let viewKinds = includedKinds.intersection([.view, .materializedView])
+        if !viewKinds.isEmpty {
+            let sourceViews = sourceReads.map(\.table).filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0)) }
+            let targetViews = targetReads.map(\.table).filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0)) }
             async let sourceDefinitions = metadataService.viewDefinitions(
                 for: context.source, connection: context.sourceConnection, views: sourceViews
             )
@@ -378,7 +380,7 @@ internal struct CompareRunner {
             results += try await diffEngine.compare(source: sourceDefinitions, target: targetDefinitions)
         }
 
-        if session.includedKinds.contains(.procedure) || session.includedKinds.contains(.function) {
+        if includedKinds.contains(.procedure) || includedKinds.contains(.function) {
             async let sourceRoutines = metadataService.routineReads(
                 for: context.source, connection: context.sourceConnection
             )
@@ -386,10 +388,9 @@ internal struct CompareRunner {
                 for: context.target, connection: context.targetConnection
             )
             results += try await diffEngine.compare(source: sourceRoutines, target: targetRoutines)
-                .filter { session.includedKinds.contains($0.identity.kind) }
         }
 
-        if session.includedKinds.contains(.trigger) {
+        if includedKinds.contains(.trigger) {
             async let sourceTriggers = metadataService.triggerReads(
                 for: context.source,
                 connection: context.sourceConnection,
@@ -403,7 +404,7 @@ internal struct CompareRunner {
             results += try await diffEngine.compare(source: sourceTriggers, target: targetTriggers)
         }
 
-        return results
+        return results.filter { includedKinds.contains($0.identity.kind) }
     }
 
     private func structureStatements(_ context: Context) async throws -> [SyncStatement] {
@@ -447,7 +448,7 @@ internal struct CompareRunner {
                 targetDriver: plugin, targetDatabaseType: driver.connection.type
             )
             for entry in sourceDefined {
-                statements += sourceBuilder.build(for: entry.result, action: entry.action)
+                statements += try sourceBuilder.build(for: entry.result, action: entry.action)
             }
             return statements
         }
@@ -476,7 +477,13 @@ internal struct CompareRunner {
             actions: { actions[$0.id] ?? .skip },
             sourceSnapshots: verification.sourceSnapshots
         )
-        if let refusal = StructureChangeGuard.refusal(expected: expected, actual: actual) {
+        let unreadable = Dictionary(
+            verification.report.uncomparable.compactMap { result in
+                result.comparisonError.map { (result.id, $0) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        if let refusal = StructureChangeGuard.refusal(expected: expected, actual: actual, unreadable: unreadable) {
             throw refusal
         }
     }

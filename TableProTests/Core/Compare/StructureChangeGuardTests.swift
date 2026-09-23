@@ -475,4 +475,33 @@ final class StructureChangeGuardTests: XCTestCase {
             "the message must name what changed, got \(message ?? "nil")"
         )
     }
+
+    func testAnObjectThatCouldNotBeReadAgainIsRefusedWithItsReason() throws {
+        let result = view(definition: ["CREATE VIEW recent_orders AS SELECT 1"])
+        let reason = SourceDefinitionDefect.unreadable("SHOW VIEW command denied").reason(on: .source)
+
+        let refusal = StructureChangeGuard.refusal(
+            expected: inputs([result], action: .create),
+            actual: [:],
+            unreadable: [result.id: reason]
+        )
+
+        let message = try XCTUnwrap(refusal?.errorDescription)
+        XCTAssertTrue(message.contains("shop.recent_orders"), message)
+        XCTAssertTrue(message.contains(reason), message)
+        XCTAssertFalse(message.contains("changed after it was compared"), message)
+    }
+
+    func testAnUnreadableObjectOutsideTheSelectionDoesNotRefuse() {
+        let selected = view(definition: ["CREATE VIEW recent_orders AS SELECT 1"])
+        let expected = inputs([selected], action: .create)
+
+        XCTAssertNil(
+            StructureChangeGuard.refusal(
+                expected: expected,
+                actual: expected,
+                unreadable: ["view|shop|other|": "denied"]
+            )
+        )
+    }
 }
