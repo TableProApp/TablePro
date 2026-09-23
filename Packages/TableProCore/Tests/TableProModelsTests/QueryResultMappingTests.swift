@@ -104,6 +104,27 @@ struct QueryResultMappingTests {
         #expect(index.columns == ["email"])
         #expect(index.isUnique)
         #expect(!index.isPrimary)
+        #expect(index.includedColumns.isEmpty)
+        #expect(index.whereClause == nil)
+    }
+
+    @Test("An index keeps its INCLUDE columns and its predicate apart from its key")
+    func mapPluginIndexInfoIncludeAndPredicate() {
+        let plugin = PluginIndexInfo(
+            name: "t_include_partial",
+            columns: ["a", "lower(email)"],
+            isUnique: true,
+            type: "BTREE",
+            whereClause: "(a > 0)",
+            expressions: ["lower(email)"],
+            includedColumns: ["b"],
+            ddlMethodAndKeys: nil,
+            ddlWhereClause: nil
+        )
+        let index = IndexInfo(from: plugin)
+        #expect(index.columns == ["a", "lower(email)"])
+        #expect(index.includedColumns == ["b"])
+        #expect(index.whereClause == "(a > 0)")
     }
 
     @Test("Maps PluginForeignKeyInfo to ForeignKeyInfo")

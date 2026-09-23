@@ -154,19 +154,25 @@ public struct IndexInfo: Sendable {
     public let isUnique: Bool
     public let isPrimary: Bool
     public let type: String
+    public let includedColumns: [String]
+    public let whereClause: String?
 
     public init(
         name: String,
         columns: [String],
         isUnique: Bool = false,
         isPrimary: Bool = false,
-        type: String = "BTREE"
+        type: String = "BTREE",
+        includedColumns: [String] = [],
+        whereClause: String? = nil
     ) {
         self.name = name
         self.columns = columns
         self.isUnique = isUnique
         self.isPrimary = isPrimary
         self.type = type
+        self.includedColumns = includedColumns
+        self.whereClause = whereClause
     }
 }
 
@@ -300,7 +306,9 @@ public extension IndexInfo {
             columns: plugin.columns,
             isUnique: plugin.isUnique,
             isPrimary: plugin.isPrimary,
-            type: plugin.type
+            type: plugin.type,
+            includedColumns: plugin.includedColumns ?? [],
+            whereClause: plugin.whereClause
         )
     }
 }

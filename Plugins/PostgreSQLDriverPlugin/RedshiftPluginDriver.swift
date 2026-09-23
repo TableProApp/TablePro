@@ -73,20 +73,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let resolvedSchema = schema ?? core.currentSchema
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
-        let query = """
-            SELECT table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema = \(schemaLiteral)
-            ORDER BY table_name
-            """
-        let result = try await execute(query: query)
-        let localTables = result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[0].asText else { return nil }
-            let typeStr = row[1].asText ?? "BASE TABLE"
-            let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: type)
-        }
+        let result = try await execute(query: RedshiftTableCatalog.listingQuery(schema: resolvedSchema))
+        let localTables = result.rows.compactMap { RedshiftTableCatalog.table(fromListingRow: $0.map(\.asText)) }
 
         guard isExternalSchema(resolvedSchema) else { return localTables }
 
@@ -305,40 +293,9 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                "column",
-                type,
-                distkey,
-                sortkey
-            FROM pg_table_def
-            WHERE schemaname = \(schemaLiteral)
-              AND tablename = \(tableLiteral)
-              AND (distkey = true OR sortkey != 0)
-            ORDER BY sortkey
-            """
+        let query = RedshiftTableCatalog.keysQuery(schema: schema ?? core.currentSchema, table: table)
         let result = try await execute(query: query)
-
-        var distkeyCols: [String] = []
-        var sortkeyCols: [String] = []
-        for row in result.rows {
-            guard let colName = row[0].asText else { continue }
-            let isDistkey = PostgreSQLCatalogBoolean.isTrue(row[2].asText)
-            let sortKeyVal = Int(row[3].asText ?? "0") ?? 0
-            if isDistkey { distkeyCols.append(colName) }
-            if sortKeyVal != 0 { sortkeyCols.append(colName) }
-        }
-
-        var indexes: [PluginIndexInfo] = []
-        if !distkeyCols.isEmpty {
-            indexes.append(PluginIndexInfo(name: "DISTKEY", columns: distkeyCols, type: "DISTKEY"))
-        }
-        if !sortkeyCols.isEmpty {
-            indexes.append(PluginIndexInfo(name: "SORTKEY", columns: sortkeyCols, type: "SORTKEY"))
-        }
-        return indexes
+        return RedshiftTableCatalog.keys(fromRows: result.rows.map { $0.map(\.asText) })
     }
 
     var tableDDLIncludesForeignKeys: Bool { true }

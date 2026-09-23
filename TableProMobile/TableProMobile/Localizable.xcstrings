@@ -21022,6 +21022,18 @@
     },
     "The Oracle driver reported an error (%@)." : {
 
+    },
+    "Materialized View" : {
+
+    },
+    "System Table" : {
+
+    },
+    "External Table" : {
+
+    },
+    "Sequence" : {
+
     }
   },
   "version" : "1.0"

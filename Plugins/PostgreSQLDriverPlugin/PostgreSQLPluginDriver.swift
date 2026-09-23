@@ -168,7 +168,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let schemaName = schema ?? core.currentSchema
         func query(_ attempt: PostgreSQLTableListingAttempt) -> String {
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLTableListing.query(
                 schema: schemaName,
                 includeMaterializedViews: attempt.includeOptionalCatalogs && includesMaterializedViews(),
                 includeForeignTables: attempt.includeOptionalCatalogs && includesForeignTables(),
@@ -190,21 +190,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         guard let result else { return [] }
-        return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[0].asText else { return nil }
-            let typeStr = row[1].asText ?? "BASE TABLE"
-            let type: String
-            switch typeStr {
-            case "PARTITIONED TABLE": type = "PARTITIONED TABLE"
-            case "MATERIALIZED VIEW": type = "MATERIALIZED VIEW"
-            case "FOREIGN TABLE":     type = "FOREIGN TABLE"
-            case "VIEW":              type = "VIEW"
-            default:                  type = "TABLE"
-            }
-            let comment = row[safe: 2]?.asText?.nilIfEmpty
-            let partitionCount = row[safe: 3]?.asText.flatMap(Int.init)
-            return PluginTableInfo(name: name, type: type, comment: comment, partitionCount: partitionCount)
-        }
+        return result.rows.compactMap { PostgreSQLTableListing.table(fromRow: $0.map(\.asText)) }
     }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
