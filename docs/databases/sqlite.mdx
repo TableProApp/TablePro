@@ -57,10 +57,10 @@ A database built with sqlite-vec, SpatiaLite or another loadable extension canno
 
 <Steps>
   <Step title="Open the connection's Options">
-    Right-click the connection in the welcome window, choose **Edit…**, and select **Options**.
+    Right-click the connection in the welcome window, choose **Edit…**, and select **Options**. A new connection from **File > New Connection…** has the same pane.
   </Step>
   <Step title="Add the library">
-    Click **+** under **Extensions** and choose the file: `vec0.dylib` from a [sqlite-vec release](https://github.com/asg017/sqlite-vec/releases), or `/opt/homebrew/lib/mod_spatialite.dylib` after `brew install libspatialite`. Typing or pasting the file's full path into a row works too; give the whole file name, `.dylib` included.
+    Click **+** under **Extensions** and choose the file: `vec0.dylib` from a [sqlite-vec release](https://github.com/asg017/sqlite-vec/releases), or `/opt/homebrew/lib/mod_spatialite.dylib` after `brew install libspatialite`. The file panel hides `/opt`: press `Cmd+Shift+G` in the panel and type the folder. A row's path can be edited in place afterwards, with the whole file name, `.dylib` included.
   </Step>
   <Step title="Save and connect">
     Click **Save**, then connect. The extension's functions and virtual tables answer in the editor, the sidebar and the Structure tab.
@@ -68,13 +68,13 @@ A database built with sqlite-vec, SpatiaLite or another loadable extension canno
 </Steps>
 
 <Frame caption="Two extensions, loaded top to bottom">
-  <img className="block dark:hidden" src="/images/sqlite-extensions.png" alt="The Options tab of a SQLite connection with an Extensions list holding mod_spatialite.dylib and vec0.dylib, an Entry Point column, and add and remove buttons under the list" />
-  <img className="hidden dark:block" src="/images/sqlite-extensions-dark.png" alt="The Options tab of a SQLite connection with an Extensions list holding mod_spatialite.dylib and vec0.dylib, an Entry Point column, and add and remove buttons under the list" />
+  <img className="block dark:hidden" src="/images/sqlite-extensions.png" alt="The Options pane of a new SQLite connection. The Extensions list holds /opt/homebrew/lib/mod_spatialite.dylib above ~/Downloads/vec0.dylib, each row's entry point field reads Default entry point, and the add and remove buttons sit under the list" />
+  <img className="hidden dark:block" src="/images/sqlite-extensions-dark.png" alt="The Options pane of a new SQLite connection. The Extensions list holds /opt/homebrew/lib/mod_spatialite.dylib above ~/Downloads/vec0.dylib, each row's entry point field reads Default entry point, and the add and remove buttons sit under the list" />
 </Frame>
 
 The list loads in order every time the connection opens, Test Connection and reconnects included. Drag a row to reorder it when one extension needs another loaded first. The first file that fails stops the connect, and the connection window names the file and the reason.
 
-Leave **Entry Point** empty for most libraries: SQLite derives it from the file name, `sqlite3_vec_init` for `vec0.dylib`. Fill it in for a renamed file, or to call a second function the same library exports, such as sqlite-vec's `sqlite3_vec_numpy_init`.
+Leave a row's entry point field empty for most libraries, where it reads Default entry point: SQLite derives it from the file name, `sqlite3_vec_init` for `vec0.dylib`. Fill it in for a renamed file, or to call a second function the same library exports, such as sqlite-vec's `sqlite3_vec_numpy_init`.
 
 Only this list loads code. The `load_extension()` SQL function stays refused, so a statement in the editor, an import or an AI client cannot load a library.
 
@@ -139,4 +139,4 @@ The database has a virtual table from an extension the connection does not load,
 
 ### Could not load the extension "…".
 
-The line under it is the reason. `There is no file at "…"` means the path is wrong or the file moved. `The file has no function named …` means the entry point SQLite derived is not in the library: set **Entry Point** to the name its documentation gives. For a download or the wrong architecture, see [A library downloaded in a browser](#a-library-downloaded-in-a-browser).
+The line under it is the reason. `There is no file at "…"` means the path is wrong or the file moved. `The file has no function named …` means the entry point SQLite derived is not in the library: type the name its documentation gives into the row's entry point field. For a download or the wrong architecture, see [A library downloaded in a browser](#a-library-downloaded-in-a-browser).

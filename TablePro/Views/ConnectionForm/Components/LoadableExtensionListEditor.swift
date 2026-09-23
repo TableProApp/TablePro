@@ -11,8 +11,8 @@ import UniformTypeIdentifiers
 ///
 /// Built like the other lists in this form: a bordered list with the add and remove pair beneath
 /// it, rows reordered by dragging or with the Move Up and Move Down accessibility actions, and
-/// Delete removing the selection. Add opens a file panel; a path can also be typed or pasted into a
-/// row, which is how a Homebrew path under a hidden folder gets in.
+/// Delete removing the selection. Add opens a file panel, the only way a row is created; once it
+/// exists, its path and entry point are edited in place.
 struct LoadableExtensionListEditor: View {
     @Binding var value: String
 
