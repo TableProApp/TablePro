@@ -21,6 +21,7 @@ on:
       - "project.yml"
       - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
       - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
+      - ".swiftlint.yml"
   push:
     branches: [main]
     paths:
@@ -36,6 +37,7 @@ on:
       - "project.yml"
       - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
       - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
+      - ".swiftlint.yml"
   workflow_dispatch:
 
 concurrency:
@@ -105,6 +107,16 @@ jobs:
       # file were each green alone, and main broke on the merge of the second.
       - name: Check plugin sources that log import the module that defines it
         run: python3 scripts/ci/check-plugin-os-import.py
+
+      # SwiftLint runs in CI only on a release tag, and its included: never reaches Plugins/,
+      # where fifteen log lines published an error's text unseen. This applies that one rule to
+      # the app, the packages and the plugins on every pull request, with the regex read from
+      # .swiftlint.yml.
+      - name: Check no source publishes an error's text to the system log
+        run: python3 scripts/ci/check-log-privacy.py
+
+      - name: Validate the log privacy check
+        run: python3 scripts/ci/test_check_log_privacy.py
 
       # A plugin's String(localized:) resolves against Bundle.main, which is the host app, so its
       # strings live in the app's catalog. Xcode extracts per target and the plugin targets are not

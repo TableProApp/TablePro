@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProPluginKit
 
 internal extension PostgreSQLPluginDriver {
@@ -35,7 +36,7 @@ internal extension PostgreSQLPluginDriver {
         } catch {
             sessionFacts.withLock { $0 = .unknown }
             Self.sessionLogger.error(
-                "Session probe failed; DDL falls back to forms every server accepts: \(error.localizedDescription, privacy: .public)"
+                "Session probe failed; DDL falls back to forms every server accepts: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
         }
     }

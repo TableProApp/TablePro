@@ -347,6 +347,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A locked launch on iPhone and iPad connecting to the last session, and asking to trust a host key, before Face ID was answered.
 - Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
 - The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
+- Driver error messages and server replies published in the system log by database plugins.
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
 - An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock.
 - **Require Face ID** turned off on iPhone and iPad without authenticating.
