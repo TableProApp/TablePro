@@ -50,6 +50,14 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             )
         }
 
+        if let refusal = ExternalStatementGate.extensionCallRefusal(
+            sql: query,
+            databaseType: meta.databaseType,
+            loadsExtensions: meta.loadsExtensions
+        ) {
+            return ChatToolResult(content: refusal, isError: true)
+        }
+
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         guard tier == .destructive else {
             return ChatToolResult(

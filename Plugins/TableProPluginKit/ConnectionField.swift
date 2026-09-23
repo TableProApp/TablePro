@@ -77,6 +77,14 @@ public struct ConnectionField: Codable, Sendable {
         case hostList
     }
 
+    /// What the stored string holds, when it is more than text the field edits directly. The host
+    /// renders such a field with its own editor and applies the rules that come with the content,
+    /// so a plugin declares the content instead of choosing a control.
+    public enum Content: String, Codable, Sendable {
+        case plain
+        case loadableExtensions
+    }
+
     public struct DropdownOption: Codable, Sendable, Equatable {
         public let value: String
         public let label: String
@@ -98,6 +106,7 @@ public struct ConnectionField: Codable, Sendable {
     public let visibleWhen: FieldVisibilityRule?
     public var dynamicOptions: DynamicFieldOptions?
     public var hidesUsername: Bool = false
+    public var content: Content = .plain
 
     /// Backward-compatible convenience: true when fieldType is .secure
     public var isSecure: Bool {
@@ -140,6 +149,12 @@ public struct ConnectionField: Codable, Sendable {
         return copy
     }
 
+    public func withContent(_ content: Content) -> ConnectionField {
+        var copy = self
+        copy.content = content
+        return copy
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -153,10 +168,11 @@ public struct ConnectionField: Codable, Sendable {
         visibleWhen = try container.decodeIfPresent(FieldVisibilityRule.self, forKey: .visibleWhen)
         dynamicOptions = try container.decodeIfPresent(DynamicFieldOptions.self, forKey: .dynamicOptions)
         hidesUsername = try container.decodeIfPresent(Bool.self, forKey: .hidesUsername) ?? false
+        content = try container.decodeIfPresent(Content.self, forKey: .content) ?? .plain
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, label, placeholder, isRequired, defaultValue, fieldType, section, hidesPassword, visibleWhen
-        case dynamicOptions, hidesUsername
+        case dynamicOptions, hidesUsername, content
     }
 }

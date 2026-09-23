@@ -11,7 +11,7 @@ import Foundation
 /// `DatabaseManager.ensureConnected` runs it. `PreConnectScriptPrompt` exists so no route to a
 /// connect can run that code without a person seeing it first, and every route a person can take
 /// asks: the connection list, a `tablepro://` link, and opening a table. A script is a route too, so
-/// it asks as well.
+/// it asks as well, and it asks about SQLite extensions this Mac has not approved for the same reason.
 ///
 /// Skipped only when the session is genuinely live. An installed driver is not the test: a session
 /// the health monitor has marked unreachable or recovering keeps its driver by design, and
@@ -27,11 +27,14 @@ internal enum ScriptConnectGate {
         else {
             throw ScriptingError.noSuchObject(String(localized: "No saved connection has that id."))
         }
-        guard connection.hasPreConnectScript else { return }
-
         guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
             throw ScriptingError.refused(
                 String(localized: "The connection's pre-connect script was not approved.")
+            )
+        }
+        guard await LoadableExtensionPrompt.confirmIfNeeded(for: connection) else {
+            throw ScriptingError.refused(
+                String(localized: "The connection's SQLite extensions were not approved.")
             )
         }
     }
