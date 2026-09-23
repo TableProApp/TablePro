@@ -118,12 +118,9 @@ enum LoadableExtensionFileIssue: Equatable {
         let item = LoadableExtension(path: path)
         guard !item.path.isEmpty else { return nil }
         guard item.expandedPath.hasPrefix("/") else { return .notFullPath }
-        for file in [item.expandedPath, item.expandedPath + ".dylib"] {
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: file, isDirectory: &isDirectory) else { continue }
-            return !isDirectory.boolValue && MachOFile.isMachO(atPath: file) ? nil : .notALibrary
-        }
-        return .missing
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: item.expandedPath, isDirectory: &isDirectory) else { return .missing }
+        return !isDirectory.boolValue && MachOFile.isMachO(atPath: item.expandedPath) ? nil : .notALibrary
     }
 }
 

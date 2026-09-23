@@ -58,7 +58,7 @@ public enum LoadableExtensionDiagnosis {
         from file: String,
         diagnoseOpenFailure: (String) -> String? = openFailure
     ) -> LoadableExtensionError {
-        if message.hasPrefix("dlsym("), let symbol = missingSymbol(in: message) {
+        if let symbol = missingSymbol(in: message) {
             return .entryPointNotFound(
                 item,
                 detail: String(format: String(localized: "The file has no function named %@."), symbol)
@@ -72,8 +72,16 @@ public enum LoadableExtensionDiagnosis {
                 detail: String(format: String(localized: "The extension failed to start: %@"), reason)
             )
         }
+        guard reportsOpenFailure(message) else { return .libraryNotLoaded(item, detail: message) }
         let reason = diagnoseOpenFailure(file).map { dyldReason(in: $0, for: file) } ?? message
         return .libraryNotLoaded(item, detail: reason)
+    }
+
+    /// Only a library that never opened is opened again to ask dyld why: opening one that did open
+    /// would run its initializers a second time. SQLite reports a failed open with dyld's own text,
+    /// or with "unable to open shared library" when dyld gave none.
+    public static func reportsOpenFailure(_ message: String) -> Bool {
+        message.hasPrefix("dlopen(") || message.hasPrefix("unable to open shared library")
     }
 
     /// SQLite reports a failed open against the path it retried with ".dylib" appended, so the
@@ -133,11 +141,20 @@ public enum LoadableExtensionDiagnosis {
         return nil
     }
 
+    /// SQLite names a missing entry point two ways: with dyld's `dlsym(0x..., name): symbol not found`
+    /// when dyld explained, and with its own `no entry point [name] in shared library [file]` when not.
     private static func missingSymbol(in message: String) -> String? {
-        guard let comma = message.firstIndex(of: ","),
-              let close = message[comma...].firstIndex(of: ")")
+        if message.hasPrefix("dlsym("),
+           let comma = message.firstIndex(of: ","),
+           let close = message[comma...].firstIndex(of: ")") {
+            let symbol = message[message.index(after: comma)..<close].trimmingCharacters(in: .whitespaces)
+            return symbol.isEmpty ? nil : symbol
+        }
+        let prefix = "no entry point ["
+        guard message.hasPrefix(prefix),
+              let close = message.range(of: "] in shared library [")
         else { return nil }
-        let symbol = message[message.index(after: comma)..<close].trimmingCharacters(in: .whitespaces)
+        let symbol = String(message[message.index(message.startIndex, offsetBy: prefix.count)..<close.lowerBound])
         return symbol.isEmpty ? nil : symbol
     }
 }

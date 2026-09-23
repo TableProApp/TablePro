@@ -79,18 +79,48 @@ struct LoadableExtensionLoaderTests {
     @Test("One file listed under two spellings loads once, and the second spelling is refused")
     func sameFileTwiceIsADuplicate() throws {
         let library = try library("mod_spatialite.dylib")
-        let bare = LoadableExtension(path: String(library.path.dropLast(".dylib".count)))
         let link = directory.appendingPathComponent("link.dylib")
         try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: library.path)
         let linked = LoadableExtension(path: link.path)
 
-        for second in [bare, linked] {
-            let handle = FakeHandle()
-            #expect(throws: LoadableExtensionError.duplicate(second)) {
-                try run([library, second], on: handle)
-            }
-            #expect(handle.calls == ["enable", "load mod_spatialite.dylib", "disable"])
+        let handle = FakeHandle()
+        #expect(throws: LoadableExtensionError.duplicate(linked)) {
+            try run([library, linked], on: handle)
         }
+        #expect(handle.calls == ["enable", "load mod_spatialite.dylib", "disable"])
+    }
+
+    @Test("SQLite's own missing-entry-point text is recognized without opening the library again")
+    func noEntryPointNeverReopens() throws {
+        let item = try library("renamed.dylib")
+        var reopened = false
+        let error = LoadableExtensionDiagnosis.error(
+            forSQLiteMessage: "no entry point [sqlite3_renamed_init] in shared library [\(item.path)]",
+            loading: item,
+            from: item.path,
+            diagnoseOpenFailure: { _ in
+                reopened = true
+                return nil
+            }
+        )
+        #expect(error == .entryPointNotFound(item, detail: "The file has no function named sqlite3_renamed_init."))
+        #expect(!reopened)
+    }
+
+    @Test("Only a failed open is diagnosed by opening the file again")
+    func onlyOpenFailuresReopen() throws {
+        let item = try library("odd.dylib")
+        var reopened: [String] = []
+        let diagnose: (String) -> String? = { file in
+            reopened.append(file)
+            return nil
+        }
+        _ = LoadableExtensionDiagnosis.error(forSQLiteMessage: "something else", loading: item, from: item.path, diagnoseOpenFailure: diagnose)
+        #expect(reopened.isEmpty)
+        _ = LoadableExtensionDiagnosis.error(
+            forSQLiteMessage: "unable to open shared library [\(item.path)]", loading: item, from: item.path, diagnoseOpenFailure: diagnose
+        )
+        #expect(reopened == [item.path])
     }
 
     @Test("A command a recovery suggests quotes the path as one shell word")

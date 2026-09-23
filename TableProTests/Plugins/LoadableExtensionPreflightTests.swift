@@ -128,11 +128,13 @@ struct LoadableExtensionPreflightTests {
         #expect(try LoadableExtensionPreflight.resolveFile(for: LoadableExtension(path: path)) == path)
     }
 
-    @Test("A path without .dylib resolves to the .dylib file beside it, as SQLite does")
-    func resolvesWithDylibSuffix() throws {
+    @Test("A path without .dylib is not completed, so the approved file is the file that loads")
+    func doesNotCompleteDylibSuffix() throws {
         let path = try file("mod_spatialite.dylib")
-        let bare = String(path.dropLast(".dylib".count))
-        #expect(try LoadableExtensionPreflight.resolveFile(for: LoadableExtension(path: bare)) == path)
+        let bare = LoadableExtension(path: String(path.dropLast(".dylib".count)))
+        #expect(throws: LoadableExtensionError.fileNotFound(bare)) {
+            try LoadableExtensionPreflight.resolveFile(for: bare)
+        }
     }
 
     @Test("A missing file and a folder are refused before SQLite sees them")

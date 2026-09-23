@@ -60,7 +60,7 @@ A database built with sqlite-vec, SpatiaLite or another loadable extension canno
     Right-click the connection in the welcome window, choose **Edit…**, and select **Options**.
   </Step>
   <Step title="Add the library">
-    Click **+** under **Extensions** and choose the file: `vec0.dylib` from a [sqlite-vec release](https://github.com/asg017/sqlite-vec/releases), or `/opt/homebrew/lib/mod_spatialite.dylib` after `brew install libspatialite`. Typing or pasting a full path into a row works too.
+    Click **+** under **Extensions** and choose the file: `vec0.dylib` from a [sqlite-vec release](https://github.com/asg017/sqlite-vec/releases), or `/opt/homebrew/lib/mod_spatialite.dylib` after `brew install libspatialite`. Typing or pasting the file's full path into a row works too; give the whole file name, `.dylib` included.
   </Step>
   <Step title="Save and connect">
     Click **Save**, then connect. The extension's functions and virtual tables answer in the editor, the sidebar and the Structure tab.
@@ -77,6 +77,8 @@ The list loads in order every time the connection opens, Test Connection and rec
 Leave **Entry Point** empty for most libraries: SQLite derives it from the file name, `sqlite3_vec_init` for `vec0.dylib`. Fill it in for a renamed file, or to call a second function the same library exports, such as sqlite-vec's `sqlite3_vec_numpy_init`.
 
 Only this list loads code. The `load_extension()` SQL function stays refused, so a statement in the editor, an import or an AI client cannot load a library.
+
+An extension's functions can write files, so statements from MCP clients, AppleScript and the AI assistant may call only the functions built into SQLite on a connection that loads extensions. A vector search written with `MATCH` passes; `SELECT vec_distance_l2(a, b)` is refused with `This connection loads SQLite extensions`. Run such statements in the editor.
 
 ### A list from somewhere else
 

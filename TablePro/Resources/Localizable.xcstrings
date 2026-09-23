@@ -182884,6 +182884,9 @@
     },
     "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
 
+    },
+    "This connection loads SQLite extensions, and their functions can read and write files. A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead." : {
+
     }
   },
   "version" : "1.1"

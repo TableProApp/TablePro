@@ -97,6 +97,6 @@ struct LoadableExtensionListModelTests {
         #expect(LoadableExtensionFileIssue.issue(forPath: directory.path) == .notALibrary)
         #expect(LoadableExtensionFileIssue.issue(forPath: text.path) == .notALibrary)
         #expect(LoadableExtensionFileIssue.issue(forPath: library.path) == nil)
-        #expect(LoadableExtensionFileIssue.issue(forPath: String(library.path.dropLast(".dylib".count))) == nil)
+        #expect(LoadableExtensionFileIssue.issue(forPath: String(library.path.dropLast(".dylib".count))) == .missing)
     }
 }

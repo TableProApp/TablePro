@@ -14,11 +14,15 @@
 #      again, and it is registered on that connection only.
 #   3. No sqlite3_ symbol is exported, so a plugin bundle never offers a second sqlite3_open to the
 #      process that also links the system library.
+#   4. TablePro/Core/Utilities/SQL/SQLiteBuiltinNames.swift names exactly the functions, table-valued
+#      functions and keywords this SQLite provides. A statement from outside the app may call only
+#      those on a connection that loads extensions, so a stale list either refuses a built-in or
+#      lets an extension's function through.
 #
 # Run after bumping SQLITE_VERSION or editing the options in build-sqlite.sh, and before
 # publishing a rebuilt libsqlite3_vendored.
 #
-# Usage: scripts/check-sqlite-build.sh
+# Usage: scripts/check-sqlite-build.sh [--write-builtin-names]
 #
 set -euo pipefail
 
@@ -168,6 +172,81 @@ if [ "$exported" -eq 0 ]; then
     printf '%-64s ok\n' "no sqlite3_ symbol is exported"
 else
     printf '%-64s FAILED (%s exported)\n' "no sqlite3_ symbol is exported" "$exported"
+    status=1
+fi
+
+# The functions, table-valued functions and keywords this SQLite provides, which
+# SQLiteBuiltinNames.swift repeats so the app can tell a call into SQLite from a call into an
+# extension without a connection. The table-valued ones are registered lazily and never appear in
+# pragma_module_list, so each candidate is asked for directly.
+cat > "$WORK_DIR/names.c" << 'EOF'
+#include <stdio.h>
+#include "sqlite3.h"
+
+static void rows(sqlite3 *db, const char *label, const char *sql) {
+    sqlite3_stmt *statement = 0;
+    sqlite3_prepare_v2(db, sql, -1, &statement, 0);
+    while (sqlite3_step(statement) == SQLITE_ROW) printf("%s %s\n", label, sqlite3_column_text(statement, 0));
+    sqlite3_finalize(statement);
+}
+
+int main(void) {
+    const char *tableValued[] = { "json_each", "json_tree", "jsonb_each", "jsonb_tree", "carray", "generate_series", 0 };
+    sqlite3 *db = 0;
+    sqlite3_open(":memory:", &db);
+    rows(db, "function", "SELECT DISTINCT lower(name) FROM pragma_function_list WHERE builtin");
+    rows(db, "table", "SELECT DISTINCT lower(name) FROM pragma_module_list");
+    for (int i = 0; tableValued[i]; i++) {
+        char sql[128];
+        sqlite3_stmt *statement = 0;
+        snprintf(sql, sizeof sql, "SELECT * FROM %s LIMIT 0", tableValued[i]);
+        if (sqlite3_prepare_v2(db, sql, -1, &statement, 0) == SQLITE_OK) printf("table %s\n", tableValued[i]);
+        sqlite3_finalize(statement);
+    }
+    for (int i = 0; i < sqlite3_keyword_count(); i++) {
+        const char *name = 0;
+        int length = 0;
+        sqlite3_keyword_name(i, &name, &length);
+        printf("keyword %.*s\n", length, name);
+    }
+    sqlite3_close(db);
+    return 0;
+}
+EOF
+
+xcrun clang -arch "$ARCH" -I "$CSQLITE/include" "$WORK_DIR/names.c" "$LIB" -o "$WORK_DIR/names"
+"$WORK_DIR/names" > "$WORK_DIR/names.txt"
+
+swift_set() {
+    local label="$1" property="$2"
+    printf '    static let %s: Set<String> = [\n' "$property"
+    grep "^$label " "$WORK_DIR/names.txt" | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]' | sort -u \
+        | sed 's/.*/        "&",/' | sed '$ s/,$//'
+    printf '    ]\n'
+}
+
+{
+    printf '//\n//  SQLiteBuiltinNames.swift\n//  TablePro\n//\n\n'
+    printf '/// Generated from Libs/libsqlite3_vendored.a by scripts/check-sqlite-build.sh --write-builtin-names,\n'
+    printf '/// which fails whenever this list and the library disagree.\n'
+    printf 'enum SQLiteBuiltinNames {\n'
+    swift_set function functions
+    printf '\n'
+    swift_set table tableValuedFunctions
+    printf '\n'
+    swift_set keyword keywords
+    printf '}\n'
+} > "$WORK_DIR/SQLiteBuiltinNames.swift"
+
+BUILTIN_NAMES="$ROOT/TablePro/Core/Utilities/SQL/SQLiteBuiltinNames.swift"
+if [ "${1:-}" = "--write-builtin-names" ]; then
+    cp "$WORK_DIR/SQLiteBuiltinNames.swift" "$BUILTIN_NAMES"
+    printf '%-64s written\n' "SQLiteBuiltinNames.swift"
+elif diff -u "$BUILTIN_NAMES" "$WORK_DIR/SQLiteBuiltinNames.swift"; then
+    printf '%-64s ok\n' "SQLiteBuiltinNames.swift matches the library"
+else
+    printf '%-64s FAILED\n' "SQLiteBuiltinNames.swift matches the library"
+    echo "       rerun with --write-builtin-names and review the diff" >&2
     status=1
 fi
 
