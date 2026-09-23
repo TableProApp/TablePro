@@ -195,3 +195,54 @@ struct RecentTabMenuValidationTests {
         ) == nil)
     }
 }
+
+/// Show Previous and Next Tab and Select Tab 1 to 9 move a strip's selection. Validated on
+/// `isConnected` alone they stayed lit in Agent mode, where no strip is drawn, and with a tab count
+/// that left them nothing to do.
+@Suite("Tab navigation menu validation")
+struct TabNavigationMenuValidationTests {
+    private func context(tabs: Int, agent: Bool = false, number: Int? = nil) -> MenuValidationContext {
+        var context = MenuValidationContext()
+        context.hasSelectedWorkspace = true
+        context.isConnected = true
+        context.isAgentMode = agent
+        context.editorTabCount = tabs
+        context.requestedTabNumber = number
+        return context
+    }
+
+    private let stepping = [
+        #selector(MainSplitViewController.selectNextEditorTab(_:)),
+        #selector(MainSplitViewController.selectPreviousEditorTab(_:))
+    ]
+    private let numbered = #selector(MainSplitViewController.selectNumberedTab(_:))
+
+    @Test("Stepping needs a second tab and a strip on screen")
+    @MainActor
+    func steppingNeedsTwoTabsInBrowse() {
+        for selector in stepping {
+            #expect(MainSplitViewController.isEnabled(selector, context: context(tabs: 2)))
+            #expect(MainSplitViewController.isEnabled(selector, context: context(tabs: 1)) == false)
+            #expect(MainSplitViewController.isEnabled(selector, context: context(tabs: 3, agent: true)) == false)
+        }
+    }
+
+    @Test("Select Tab N needs an Nth tab and a strip on screen")
+    @MainActor
+    func numberedNeedsThatTab() {
+        #expect(MainSplitViewController.isEnabled(numbered, context: context(tabs: 3, number: 3)))
+        #expect(MainSplitViewController.isEnabled(numbered, context: context(tabs: 3, number: 4)) == false)
+        #expect(MainSplitViewController.isEnabled(numbered, context: context(tabs: 3, agent: true, number: 1)) == false)
+    }
+
+    /// One tab shows no strip, and Select Tab 1 would reselect the tab already in front.
+    @Test("Select Tab 1 dims with a single tab")
+    @MainActor
+    func numberedDimsWithOneTab() throws {
+        let menu = try #require(WindowMenuBuilder.build(keyboard: KeyboardSettings()).submenu)
+        let selectFirst = try #require(menu.items.first { $0.action == numbered && $0.keyEquivalent == "1" })
+
+        #expect(MainSplitViewController.isEnabled(numbered, context: context(tabs: 1, number: selectFirst.tag)) == false)
+        #expect(MainSplitViewController.isEnabled(numbered, context: context(tabs: 2, number: selectFirst.tag)))
+    }
+}
