@@ -33,6 +33,8 @@ Both stage cell edits as pending changes. A query tab does it only when its quer
 | Go to a tab by position | `Cmd+1` through `Cmd+9` |
 | Previous tab | `Cmd+Shift+[` |
 | Next tab | `Cmd+Shift+]` |
+| Tab used before this one | `Ctrl+Tab` |
+| Tab used longest ago | `Ctrl+Shift+Tab` |
 
 **Close Other Tabs**, **Close All Tabs**, and **Close Tabs for Other Databases** ship unbound. Bind them in **Settings > Keyboard** under Navigation.
 
@@ -101,7 +103,18 @@ The strip keeps one row and scrolls it, the way every macOS tab bar does. Scroll
 
 ## Switching tabs
 
-`Cmd+1` through `Cmd+9` jump by position, `Cmd+Shift+[` and `Cmd+Shift+]` step, and **Window > Show Previous Tab** and **Window > Show Next Tab** do the same from the menu bar. A tab scrolled out of sight is pulled back into view. Switching keeps SQL, cursor, results, scroll position, sort, filters, and pending changes.
+`Cmd+1` through `Cmd+9` jump by position, `Cmd+Shift+[` and `Cmd+Shift+]` step along the strip, and **Window > Show Previous Tab** and **Window > Show Next Tab** do the same from the menu bar. A tab scrolled out of sight is pulled back into view. Switching keeps SQL, cursor, results, scroll position, sort, filters, and pending changes.
+
+`Ctrl+Tab` goes back to the tab you used before this one, wherever it sits in the strip. Press it again to return. The order covers every connection in the window, so it also bounces between a tab on one connection and a tab on another.
+
+To reach further back, keep `Control` held and press `Tab` again. After a moment the window's tabs appear in a list, most recent first, and letting go of `Control` switches to the highlighted one. `Shift` walks the list the other way and `Esc` stays where you started. `Ctrl+Shift+Tab` starts at the tab used longest ago.
+
+<Frame caption="Hold Control to see the list; let go to switch">
+  <img className="block dark:hidden" src="/images/recent-tabs.png" alt="A floating list of five tabs over the connection window, the second one highlighted, each with its database or connection beside it" />
+  <img className="hidden dark:block" src="/images/recent-tabs-dark.png" alt="A floating list of five tabs over the connection window, the second one highlighted, each with its database or connection beside it" />
+</Frame>
+
+Both commands are in the **Window** menu as **Switch to Recent Tab** and **Switch to Least Recent Tab**. Chosen there with the pointer, or bound in **Settings > Keyboard** to a function key with no modifier, each one switches straight to its tab without showing the list. Tabs behind Agent mode or a connection that is not connected are left out. In a window with no other editor tab to go to, `Ctrl+Tab` and `Ctrl+Shift+Tab` switch the window's own tabs instead, when it is part of a macOS window tab group.
 
 Loaded rows are the exception, and only in bulk. Background table tabs keep their rows up to a budget read from the Mac's memory: two under 8 GB, three at 8 GB, five at 16 GB, eight at 32 GB or more, halved under memory pressure. Past that, the tabs you touched longest ago drop their rows and re-query when you return. Thirty table tabs cost one query on return, not thirty resident result sets.
 

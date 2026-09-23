@@ -84,6 +84,12 @@ struct MenuValidationContext: Equatable {
     var canCloseOtherTabs = false
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
+    /// Whether the connections this window can show hold two tabs between them, which is the least
+    /// Control-Tab needs to switch anywhere.
+    var hasRecentTabToSwitchTo = false
+    /// Whether the window sits in a window tab group, where Control-Tab falls back to switching the
+    /// window's tabs when there is no editor tab to switch to.
+    var hasOtherWindowTabs = false
     var canPinResultTab = false
     /// The selected tab's browse history. Separate flags rather than one, because Back and Forward
     /// run out independently and an item that is disabled has to say which one it is.
@@ -196,6 +202,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.hasSelectedWorkspace
         case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
             return context.isConnected
+        case #selector(switchToRecentTab(_:)), #selector(switchToLeastRecentTab(_:)):
+            return (context.isConnected && !context.isAgentMode && context.hasRecentTabToSwitchTo)
+                || context.hasOtherWindowTabs
 
         case #selector(closeOtherTabs(_:)):
             return context.canCloseOtherTabs
@@ -542,6 +551,7 @@ extension MainSplitViewController: NSMenuItemValidation {
                 hasAssistantConversation: conversations != nil,
                 hasStoredConversations: conversations?.conversations.isEmpty == false,
                 canFocusAssistant: canFocusAssistant,
+                hasOtherWindowTabs: hasOtherWindowTabs,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
         }
@@ -583,6 +593,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
+            hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,
+            hasOtherWindowTabs: hasOtherWindowTabs,
             canPinResultTab: actions.canPinResultTab,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,

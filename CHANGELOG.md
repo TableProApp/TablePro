@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Session**, with the agent session commands and the assistant's conversation commands.
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
+- Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 
 ### Changed
 
@@ -59,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 
 ### Removed
 
@@ -321,6 +323,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- Show Previous Tab and Show Next Tab listed twice in the Window menu.
+- Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
+- Shift-Tab and Control-Tab accepting an inline AI suggestion instead of outdenting or reaching the menu.
 
 ### Security
 
