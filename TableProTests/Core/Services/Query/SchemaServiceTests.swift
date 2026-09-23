@@ -53,6 +53,24 @@ struct SchemaServiceTests {
         #expect(matching.count == 1)
     }
 
+    @Test("allLoadedTables keeps two tables whose names differ only in where a period sits")
+    func allLoadedTablesKeepsDottedNamesApart() async {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        driver.schemaTablesToReturn = [
+            "a": [TableInfo(name: "b.c", type: .table, rowCount: 0, schema: "a")],
+            "a.b": [TableInfo(name: "c", type: .table, rowCount: 0, schema: "a.b")]
+        ]
+
+        let service = SchemaService()
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "a", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "a.b", driver: driver)
+
+        let loaded = service.allLoadedTables(for: connectionId)
+        #expect(loaded.count == 2)
+        #expect(Set(loaded.map(\.schema)) == ["a", "a.b"])
+    }
+
     @Test("allLoadedTables is empty for a connection with no loaded state")
     func allLoadedTablesEmptyWhenNothingLoaded() {
         let service = SchemaService()

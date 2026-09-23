@@ -37,6 +37,11 @@ struct MenuDisclosureIndicatorTests {
     /// The modifier replaces what the label was providing, with nothing. Four controls in this app
     /// carried it and were silent to VoiceOver because of it, the result-set chooser among them,
     /// which is why two suites asserting on its name could never have passed.
+    ///
+    /// `.accessibilityElement(children: .contain)` ahead of the label is a different construction:
+    /// the label then names the container that modifier creates rather than the menu, and that is
+    /// the one form that names a pull-down whose label draws only an icon. The trailing pane's
+    /// ellipsis menu relies on it, and `TrailingPaneSurfaceUITests` reads its name on CI.
     @Test("No menu names itself with accessibilityLabel")
     func menusCarryTheirNameInTheirLabel() throws {
         let viewsRoot = Self.repositoryRoot.appendingPathComponent("TablePro/Views")
@@ -47,7 +52,9 @@ struct MenuDisclosureIndicatorTests {
         var inspected = 0
         var offenders: [String] = []
         for case let url as URL in enumerator where url.pathExtension == "swift" {
-            let result = Self.scanForMisplacedNames(url, root: Self.repositoryRoot)
+            guard let source = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let relativePath = url.path.replacingOccurrences(of: Self.repositoryRoot.path + "/", with: "")
+            let result = Self.scanForMisplacedNames(source, relativePath: relativePath)
             inspected += result.inspected
             offenders += result.offenders
         }
@@ -59,10 +66,37 @@ struct MenuDisclosureIndicatorTests {
         )
     }
 
-    private static func scanForMisplacedNames(_ url: URL, root: URL) -> (inspected: Int, offenders: [String]) {
-        guard let source = try? String(contentsOf: url, encoding: .utf8) else { return (0, []) }
+    @Test("A label on the menu itself is flagged, a label on a container wrapping it is not")
+    func scannerTellsTheMenuFromItsContainer() {
+        let namedMenu = """
+            Menu {
+                Button("Fields") {}
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.button)
+            .accessibilityLabel("Options")
+            """
+        let namedContainer = """
+            Menu {
+                Button("Fields") {}
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.button)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Options")
+            """
+
+        #expect(Self.scanForMisplacedNames(namedMenu, relativePath: "Menu.swift").offenders == ["Menu.swift:1"])
+        #expect(Self.scanForMisplacedNames(namedContainer, relativePath: "Menu.swift").offenders.isEmpty)
+    }
+
+    private static func scanForMisplacedNames(
+        _ source: String,
+        relativePath: String
+    ) -> (inspected: Int, offenders: [String]) {
         let lines = source.components(separatedBy: .newlines)
-        let relativePath = url.path.replacingOccurrences(of: root.path + "/", with: "")
 
         var inspected = 0
         var offenders: [String] = []
@@ -72,9 +106,11 @@ struct MenuDisclosureIndicatorTests {
             let end = labelBlockEnd(lines, from: index)
             let chain = lines[end ..< min(end + 14, lines.count)].joined(separator: "\n")
             guard let modifiers = chain.range(of: ".accessibilityLabel") else { continue }
+            let precedingModifiers = chain[..<modifiers.lowerBound]
             /// Only the chain that belongs to this menu. A nested control's own modifiers sit
             /// deeper and are reached by their own iteration of this loop.
-            guard !chain[..<modifiers.lowerBound].contains(labelMarker) else { continue }
+            guard !precedingModifiers.contains(labelMarker) else { continue }
+            guard !precedingModifiers.contains(".accessibilityElement(children: .contain)") else { continue }
             offenders.append("\(relativePath):\(opening + 1)")
         }
         return (inspected, offenders)

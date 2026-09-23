@@ -239,6 +239,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.startActivationConnectIfNeeded()
+            splitVC.syncFrontmostTabManager()
         }
 
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
@@ -272,6 +273,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         // Closing or backgrounding this window leaves its yield on a menu it no longer
         // owns, and the window taking over may not be one of ours.
         MainMenuBuilder.syncKeyEquivalents()
+        (window.contentViewController as? MainSplitViewController)?.syncFrontmostTabManager()
 
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
         Self.lifecycleLogger.debug(

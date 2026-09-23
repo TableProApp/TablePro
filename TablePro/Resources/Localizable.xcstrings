@@ -35,6 +35,9 @@
         }
       }
     },
+    "%1$@ could not be read again before generating the script. %2$@" : {
+
+    },
     "A sequence" : {
       "localizations" : {
         "ko" : {
@@ -167,6 +170,176 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尋找與取代…"
+          }
+        }
+      }
+    },
+    "Recent Tabs" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "최근 탭",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Son Sekmeler",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Tab gần đây",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "最近的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "最近的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Show Next Window Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다음 윈도우 탭 보기",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Sonraki Pencere Sekmesini Göster",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hiện tab cửa sổ tiếp theo",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "显示下一个窗口标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "顯示下一個視窗分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Show Previous Window Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이전 윈도우 탭 보기",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Önceki Pencere Sekmesini Göster",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hiện tab cửa sổ trước",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "显示上一个窗口标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "顯示上一個視窗分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch to Least Recent Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "가장 오래전에 사용한 탭으로 전환",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "En Eski Kullanılan Sekmeye Geç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển đến tab dùng lâu nhất",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "切换到最久未用的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "切換到最久未用的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch to Recent Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "최근 탭으로 전환",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Son Sekmeye Geç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển đến tab gần đây",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "切换到最近的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "切換到最近的分頁",
+            "state" : "translated"
           }
         }
       }
@@ -893,6 +1066,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%@」已在磁碟上被修改。"
+          }
+        }
+      }
+    },
+    "\"%@\" was deleted or moved." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목이 삭제되었거나 이동되었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" silindi veya taşındı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" đã bị xoá hoặc di chuyển."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\"已被删除或移动。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」已被刪除或移動。"
+          }
+        }
+      }
+    },
+    "Couldn't Move File to Trash" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일을 휴지통으로 이동할 수 없음"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dosya Çöp Kutusu'na Taşınamadı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể chuyển tệp vào Thùng rác"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将文件移到废纸篓"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將檔案移到垃圾桶"
           }
         }
       }
@@ -6115,6 +6356,12 @@
           }
         }
       }
+    },
+    "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
+
+    },
+    "%@ does not allow NULL, so its default cannot be NULL" : {
+
     },
     "%d added" : {
       "localizations" : {
@@ -36947,6 +37194,12 @@
           }
         }
       }
+    },
+    "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+
+    },
+    "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
+
     },
     "Condition" : {
       "localizations" : {
@@ -106053,6 +106306,40 @@
         }
       }
     },
+    "Too many lines differ to compare line by line." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "달라진 줄이 너무 많아 줄 단위로 비교할 수 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satır satır karşılaştırmak için çok fazla satır farklı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có quá nhiều dòng khác nhau để so sánh từng dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，无法逐行比较。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，無法逐行比較。"
+          }
+        }
+      }
+    },
     "On error" : {
       "localizations" : {
         "ko" : {
@@ -150309,6 +150596,21 @@
         }
       }
     },
+    "The procedures and functions in %1$@ could not be listed: %2$@" : {
+
+    },
+    "The source returned a body rather than a statement that recreates it." : {
+
+    },
+    "The source returned an empty definition." : {
+
+    },
+    "The target returned a body rather than a statement that recreates it." : {
+
+    },
+    "The target's definition could not be read: %@" : {
+
+    },
     "switch %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -153844,6 +154146,9 @@
       }
     },
     "Table Type" : {
+
+    },
+    "The source's definition could not be read: %@" : {
 
     },
     "table_name" : {
@@ -161778,6 +162083,9 @@
     "The target keeps what it has and the object is left out." : {
 
     },
+    "The target returned an empty definition." : {
+
+    },
     "The target's object is dropped and built again from the source." : {
 
     },
@@ -162021,6 +162329,9 @@
           }
         }
       }
+    },
+    "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
+
     },
     "the tunnel command" : {
 
@@ -162820,6 +163131,9 @@
       }
     },
     "This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them." : {
+
+    },
+    "This column does not allow NULL, so its default cannot be NULL." : {
 
     },
     "This column holds %@, which the map cannot draw." : {
@@ -167709,6 +168023,9 @@
         }
       }
     },
+    "This view can be refreshed concurrently." : {
+
+    },
     "to view data" : {
       "localizations" : {
         "ko" : {
@@ -168788,6 +169105,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "待處理的配對碼過多。請稍後再試。"
+          }
+        }
+      }
+    },
+    "Saved queries are limited to %@ so they fit in iCloud. Save a query this large as a .sql file instead." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 쿼리는 iCloud에 맞도록 %@(으)로 제한됩니다. 이렇게 큰 쿼리는 .sql 파일로 저장하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı sorgular iCloud'a sığması için %@ ile sınırlıdır. Bu kadar büyük bir sorguyu .sql dosyası olarak kaydedin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đã lưu bị giới hạn ở %@ để vừa với iCloud. Hãy lưu truy vấn lớn như thế này thành tệp .sql."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为适配 iCloud，已保存的查询最大为 %@。请将这么大的查询另存为 .sql 文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為配合 iCloud，已儲存的查詢最大為 %@。請將這麼大的查詢另存為 .sql 檔案。"
           }
         }
       }
@@ -182704,44 +183055,190 @@
     "The Oracle driver reported an error (%@)." : {
 
     },
-    "This view can be refreshed concurrently." : {
+    "Extensions" : {
 
     },
-    "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+    "The SQLite extensions for this connection could not be loaded." : {
 
     },
-    "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
+    "Could not load the extension \"%@\"." : {
 
     },
-    "The source's definition could not be read: %@" : {
+    "The saved extension list is not in a format TablePro can read." : {
 
     },
-    "The target's definition could not be read: %@" : {
+    "An extension in the list has no file." : {
 
     },
-    "The source returned an empty definition." : {
+    "\"%@\" is not a full path." : {
 
     },
-    "The target returned an empty definition." : {
+    "The path \"%@\" is too long." : {
 
     },
-    "The source returned a body rather than a statement that recreates it." : {
+    "\"%@\" is not a valid entry point name." : {
 
     },
-    "The target returned a body rather than a statement that recreates it." : {
+    "\"%@\" is in the list more than once." : {
 
     },
-    "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
+    "There is no file at \"%@\"." : {
 
     },
-    "%1$@ could not be read again before generating the script. %2$@" : {
+    "\"%@\" is not a file." : {
 
     },
-    "The procedures and functions in %1$@ could not be listed: %2$@" : {
+    "The code signature of \"%@\" is damaged, so macOS would stop TablePro when it loads." : {
 
     },
-    "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
+    "SQLite did not allow extension loading on this connection." : {
 
+    },
+    "SQLite did not turn extension loading off again after loading." : {
+
+    },
+    "Extensions load only for a database file on this Mac, not for a database on a server." : {
+
+    },
+    "Choose the file again, or type a path that starts with / or ~." : {
+
+    },
+    "Use the name of a C function, such as sqlite3_vec_init, or leave it empty." : {
+
+    },
+    "Remove the second entry." : {
+
+    },
+    "Choose the extension's file again in Edit Connection." : {
+
+    },
+    "Enter the entry point the extension's documentation names." : {
+
+    },
+    "Use the build of the extension made for this Mac's processor." : {
+
+    },
+    "Remove the extensions from this connection in Edit Connection." : {
+
+    },
+    "The file has no function named %@." : {
+
+    },
+    "The extension failed to start: %@" : {
+
+    },
+    "This connection loads SQLite extensions that have not been approved on this Mac." : {
+
+    },
+    "Connect from the connection's window in TablePro to review them." : {
+
+    },
+    "Load Extensions" : {
+
+    },
+    "%@ (entry point %@)" : {
+
+    },
+    "The saved list could not be read. Adding an extension replaces it." : {
+
+    },
+    "No Extensions" : {
+
+    },
+    "Add Extension…" : {
+
+    },
+    "Remove Extension" : {
+
+    },
+    "Add Extension" : {
+
+    },
+    "Choose the SQLite extension libraries to load when this connection opens." : {
+
+    },
+    "Extension File" : {
+
+    },
+    "Entry Point" : {
+
+    },
+    "Default entry point" : {
+
+    },
+    "The initialization function to call. Leave empty to use the one SQLite derives from the file name." : {
+
+    },
+    "\"%@\" is not a library." : {
+
+    },
+    "Not a full path. Use a path that starts with / or ~." : {
+
+    },
+    "No file at this path." : {
+
+    },
+    "This file is not a library." : {
+
+    },
+    "The connection's SQLite extensions were not approved." : {
+
+    },
+    "Connection \"%@\" loads SQLite extensions that were not added on this Mac:" : {
+
+    },
+    "Loaded in this order each time the database file opens on this Mac. An extension runs with full access to your Mac, so add only files you trust." : {
+
+    },
+    "An extension runs inside TablePro with full access to your Mac. Load them only if you trust these files." : {
+
+    },
+    "The path of an extension in the list contains a line break or another control character." : {
+
+    },
+    "Sign it again with: codesign --force --sign - %@" : {
+
+    },
+    "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
+
+    },
+    "This connection loads SQLite extensions, and their functions can read and write files. A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead." : {
+
+    },
+    "Changes from iCloud could not be saved on this device. They will download again on the next sync." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud의 변경 사항을 이 기기에 저장하지 못했습니다. 다음 동기화 때 다시 다운로드됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud'daki değişiklikler bu cihaza kaydedilemedi. Bir sonraki eşitlemede yeniden indirilecek."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể lưu các thay đổi từ iCloud trên thiết bị này. Chúng sẽ được tải lại ở lần đồng bộ tiếp theo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在本设备上保存来自 iCloud 的更改。下次同步时会重新下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在本裝置上儲存來自 iCloud 的變更。下次同步時會重新下載。"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

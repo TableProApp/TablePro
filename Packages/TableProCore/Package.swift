@@ -27,10 +27,13 @@ let package = Package(
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
+        .library(name: "TableProLogRedaction", targets: ["TableProLogRedaction"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
-        .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"])
+        .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
+        .library(name: "CSQLite", targets: ["CSQLite"]),
+        .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"])
     ],
     targets: [
         .target(
@@ -42,6 +45,11 @@ let package = Package(
             name: "TableProDocumentPath",
             dependencies: [],
             path: "Sources/TableProDocumentPath"
+        ),
+        .target(
+            name: "TableProLogRedaction",
+            dependencies: [],
+            path: "Sources/TableProLogRedaction"
         ),
         .target(
             name: "TableProCoreTypes",
@@ -143,6 +151,16 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProSSHTransport"
         ),
+        .target(
+            name: "CSQLite",
+            dependencies: [],
+            path: "Sources/CSQLite"
+        ),
+        .target(
+            name: "TableProSQLiteCore",
+            dependencies: ["CSQLite"],
+            path: "Sources/TableProSQLiteCore"
+        ),
         .testTarget(
             name: "TableProConnectionLibraryTests",
             dependencies: ["TableProConnectionLibrary"],
@@ -172,6 +190,11 @@ let package = Package(
             name: "TableProDocumentPathTests",
             dependencies: ["TableProDocumentPath"],
             path: "Tests/TableProDocumentPathTests"
+        ),
+        .testTarget(
+            name: "TableProLogRedactionTests",
+            dependencies: ["TableProLogRedaction"],
+            path: "Tests/TableProLogRedactionTests"
         ),
         .testTarget(
             name: "TableProModelsTests",

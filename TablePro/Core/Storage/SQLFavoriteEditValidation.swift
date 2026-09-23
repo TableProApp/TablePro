@@ -101,12 +101,39 @@ internal final class SQLFavoriteKeywordField: ObservableObject {
     }
 }
 
+internal enum SQLFavoriteSizeValidation: Equatable {
+    case valid
+    case tooLarge
+
+    static let maximumSyncableByteCount = 900_000
+
+    static func validate(name: String, query: String, keyword: String?) -> SQLFavoriteSizeValidation {
+        let byteCount = name.utf8.count + query.utf8.count + (keyword?.utf8.count ?? 0)
+        return byteCount > maximumSyncableByteCount ? .tooLarge : .valid
+    }
+
+    var blocksSave: Bool {
+        self == .tooLarge
+    }
+
+    var displayText: String? {
+        guard self == .tooLarge else { return nil }
+        return String(
+            format: String(
+                localized: "Saved queries are limited to %@ so they fit in iCloud. Save a query this large as a .sql file instead."
+            ),
+            ByteCountFormatter.string(fromByteCount: Int64(Self.maximumSyncableByteCount), countStyle: .file)
+        )
+    }
+}
+
 internal enum SQLFavoriteEditValidation {
     static func canSave(
         isNameBlank: Bool,
         isQueryBlank: Bool = false,
+        sizeValidation: SQLFavoriteSizeValidation = .valid,
         keywordValidation: SQLFavoriteKeywordValidation
     ) -> Bool {
-        !isNameBlank && !isQueryBlank && !keywordValidation.blocksSave
+        !isNameBlank && !isQueryBlank && !sizeValidation.blocksSave && !keywordValidation.blocksSave
     }
 }

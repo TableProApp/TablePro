@@ -6,6 +6,8 @@ import TableProModels
 import TableProPluginKit
 
 nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
+    static let logger = Logger(subsystem: "com.TablePro", category: "PostgreSQLDriver")
+
     private let actor = PostgreSQLActor()
     private let host: String
     private let port: Int
@@ -13,6 +15,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let password: String
     private let database: String
     private let ssl: DriverSSLConfiguration
+    let databaseType: DatabaseType
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -21,18 +24,28 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
     nonisolated(unsafe) private(set) var serverVersion: String?
     nonisolated(unsafe) private(set) var serverVersionNumber: Int32 = 0
+    nonisolated(unsafe) private(set) var catalogPresence = PostgreSQLDriver.presence(probedRows: nil)
 
-    nonisolated(unsafe) private var reportsIdentityColumns: Bool?
+    nonisolated(unsafe) var columnReadSupport = PostgreSQLColumnReadSupport()
 
-    private var effectiveSchema: String { currentSchema ?? "public" }
+    var effectiveSchema: String { currentSchema ?? "public" }
 
-    init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
+    init(
+        host: String,
+        port: Int,
+        user: String,
+        password: String,
+        database: String,
+        ssl: DriverSSLConfiguration = .disabled,
+        databaseType: DatabaseType = .postgresql
+    ) {
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
         self.ssl = ssl
+        self.databaseType = databaseType
     }
 
     // MARK: - Connection
@@ -43,7 +56,22 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
         serverVersionNumber = await actor.serverVersionNumber()
+        catalogPresence = await probeCatalogPresence()
+        columnReadSupport = PostgreSQLColumnReadSupport()
         await adoptServerSchema()
+    }
+
+    private func probeCatalogPresence() async -> PostgreSQLCatalogPresence {
+        guard databaseType != .redshift else { return Self.presence(probedRows: nil) }
+        do {
+            let rows = try await actor.execute(PostgreSQLCatalogPresence.probeQuery).rows
+            return Self.presence(probedRows: rows)
+        } catch {
+            Self.logger.warning(
+                "Catalog presence probe failed; listing without the optional catalogs: \(error.localizedDescription, privacy: .private)"
+            )
+            return Self.presence(probedRows: nil)
+        }
     }
 
     private func adoptServerSchema() async {
@@ -148,145 +176,6 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Schema
-
-    func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let schemaName = schema ?? effectiveSchema
-        let safe = schemaName.replacingOccurrences(of: "'", with: "''")
-        let raw = try await actor.execute("""
-            SELECT table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema = '\(safe)'
-            ORDER BY table_name
-            """)
-
-        return raw.rows.compactMap { row in
-            guard row.count >= 2, let name = row[0] else { return nil }
-            let typeStr = row[1]?.uppercased() ?? "TABLE"
-            let kind: TableInfo.TableKind
-            switch typeStr {
-            case "VIEW": kind = .view
-            case "SYSTEM TABLE": kind = .systemTable
-            default: kind = .table
-            }
-            return TableInfo(name: name, type: kind, rowCount: nil, dataSize: nil, comment: nil)
-        }
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let schemaName = schema ?? effectiveSchema
-        let safeTbl = table.replacingOccurrences(of: "'", with: "''")
-        let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
-
-        let result: RawPGResult
-        if reportsIdentityColumns == false {
-            result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: false))
-        } else {
-            do {
-                result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: true))
-                reportsIdentityColumns = true
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                reportsIdentityColumns = false
-                result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: false))
-            }
-        }
-
-        return result.rows.enumerated().compactMap { index, row in
-            guard row.count >= 6, let name = row[0], let dataType = row[1] else { return nil }
-            let maxLen = row[4].flatMap { Int($0) }
-            return ColumnInfo(
-                name: name,
-                typeName: dataType,
-                isPrimaryKey: row[5] == "YES",
-                isNullable: row[2]?.uppercased() == "YES",
-                defaultValue: row[3],
-                comment: nil,
-                characterMaxLength: maxLen,
-                ordinalPosition: index,
-                isAutoIncrement: ColumnMetadataRules.postgresIsAutoIncrement(
-                    isIdentity: row.count > 6 ? row[6] : nil, columnDefault: row[3]
-                ),
-                isGenerated: ColumnMetadataRules.postgresIsGenerated(
-                    isGenerated: row.count > 7 ? row[7] : nil
-                )
-            )
-        }
-    }
-
-    private func columnsQuery(schema: String, table: String, identity: Bool) -> String {
-        let identityColumns = identity ? ",\n                c.is_identity,\n                c.is_generated" : ""
-        return """
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.character_maximum_length,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk\(identityColumns)
-            FROM information_schema.columns c
-            LEFT JOIN (
-                SELECT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(schema)'
-                    AND tc.table_name = '\(table)'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(schema)' AND c.table_name = '\(table)'
-            ORDER BY c.ordinal_position
-            """
-    }
-
-    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let schemaName = schema ?? effectiveSchema
-        let safeTbl = table.replacingOccurrences(of: "'", with: "''")
-        let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
-
-        let raw = try await actor.execute("""
-            SELECT
-                i.relname AS index_name,
-                ix.indisunique,
-                ix.indisprimary,
-                a.attname AS column_name
-            FROM pg_index ix
-            JOIN pg_class t ON t.oid = ix.indrelid
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE n.nspname = '\(safeSchema)' AND t.relname = '\(safeTbl)'
-            ORDER BY i.relname, a.attnum
-            """)
-
-        var indexMap: [String: (isUnique: Bool, isPrimary: Bool, columns: [String])] = [:]
-        var order: [String] = []
-
-        for row in raw.rows {
-            guard row.count >= 4, let indexName = row[0], let colName = row[3] else { continue }
-            if indexMap[indexName] == nil {
-                indexMap[indexName] = (
-                    isUnique: row[1] == "t",
-                    isPrimary: row[2] == "t",
-                    columns: []
-                )
-                order.append(indexName)
-            }
-            indexMap[indexName]?.columns.append(colName)
-        }
-
-        return order.compactMap { name in
-            guard let entry = indexMap[name] else { return nil }
-            return IndexInfo(
-                name: name,
-                columns: entry.columns,
-                isUnique: entry.isUnique,
-                isPrimary: entry.isPrimary,
-                type: "BTREE"
-            )
-        }
-    }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         let raw = try await actor.execute(

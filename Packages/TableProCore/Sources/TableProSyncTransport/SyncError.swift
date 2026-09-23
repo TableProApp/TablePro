@@ -11,6 +11,7 @@ public enum SyncError: Error, LocalizedError, Equatable, Sendable {
     case encodingFailed(String)
     case pushRejected(count: Int, detail: String)
     case tokenExpired
+    case pullNotSaved
     case unknown(String)
 
     public var errorDescription: String? {
@@ -37,6 +38,8 @@ public enum SyncError: Error, LocalizedError, Equatable, Sendable {
             )
         case .tokenExpired:
             return String(localized: "Sync token expired. A full sync will be performed.")
+        case .pullNotSaved:
+            return String(localized: "Changes from iCloud could not be saved on this device. They will download again on the next sync.")
         case .unknown(let message):
             return String(format: String(localized: "An unknown sync error occurred: %@"), message)
         }

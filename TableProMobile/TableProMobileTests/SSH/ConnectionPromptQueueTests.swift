@@ -101,6 +101,7 @@ struct ConnectionPromptQueueTests {
         let second = makePrompt("Second")
 
         async let firstAnswer = queue.ask(first)
+        await waitUntil({ queue.current?.id == first.id }, "the first question should be on screen")
         async let secondAnswer = queue.ask(second)
         await waitUntil({ queue.pending.count == 2 }, "both questions should be queued")
 

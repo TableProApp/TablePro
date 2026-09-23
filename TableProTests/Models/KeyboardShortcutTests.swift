@@ -57,11 +57,29 @@ struct ShortcutActionDefaultsTests {
 
 @Suite("Default shortcut hygiene")
 struct DefaultShortcutHygieneTests {
-    @Test("No default uses Control without Command")
+    /// Control-Tab is not a system hotkey the way Control-1 is (that one switches Spaces, which is
+    /// why this rule exists). It is the chord AppKit itself gives tab switching in every app with
+    /// window tabs, so the recent-tab commands are the one exception, and only on Tab.
+    private static let controlTabDefaults: Set<ShortcutAction> = [.switchToRecentTab, .switchToLeastRecentTab]
+
+    @Test("No default uses Control without Command, apart from Control-Tab tab switching")
     func noBareControlDefaults() {
         for (action, key) in KeyboardSettings.defaultShortcuts where key.control && !key.command {
+            if Self.controlTabDefaults.contains(action), key.keyCode == KeyCode.tab.rawValue, !key.option {
+                continue
+            }
             Issue.record("\(action.rawValue) uses Control without Command: \(key.displayString)")
         }
+    }
+
+    @Test("Recent tabs are Control-Tab and Control-Shift-Tab, and window tabs have no default")
+    func recentTabDefaults() {
+        #expect(KeyboardSettings.defaultShortcuts[.switchToRecentTab] == .special(.tab, control: true))
+        #expect(KeyboardSettings.defaultShortcuts[.switchToLeastRecentTab] == .special(.tab, shift: true, control: true))
+        #expect(KeyboardSettings.defaultShortcuts[.showPreviousWindowTab] == nil)
+        #expect(KeyboardSettings.defaultShortcuts[.showNextWindowTab] == nil)
+        #expect(ShortcutAction.switchToRecentTab.category == .navigation)
+        #expect(ShortcutAction.switchToRecentTab.context == .global)
     }
 
     @Test("No two defaults collide within overlapping contexts")

@@ -114,7 +114,8 @@ extension PluginMetadataRegistry {
                             required: true,
                             section: .authentication,
                             visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
-                        )
+                        ),
+                        .loadableExtensions(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"]))
                     ],
                     category: .cloud,
                     tagline: String(localized: "Hosted libSQL over HTTP")

@@ -207,7 +207,7 @@ Outside insert mode, a `Ctrl` letter goes to vim, never to the editor's own bind
 | `Ctrl+R` | Redo | Nothing |
 | `Ctrl+H` `Ctrl+N` `Ctrl+P` | Same as `h`, `j`, `k` | Same as `h`, `j`, `k` |
 
-Any other `Ctrl` letter does nothing. That includes `Ctrl+E` and `Ctrl+Y`, which like `zt`, `zz` and `zb` are read and discarded: the view scrolls only to follow the cursor. `Ctrl+Space` still opens completions, and `Ctrl+Tab` and `Ctrl+Shift+Tab` still move focus to the next and previous control. A shortcut of `Ctrl` and a letter assigned in **Settings > Keyboard** does not fire from the SQL editor outside insert mode.
+Any other `Ctrl` letter does nothing. That includes `Ctrl+E` and `Ctrl+Y`, which like `zt`, `zz` and `zb` are read and discarded: the view scrolls only to follow the cursor. `Ctrl+Space` still opens completions, and `Ctrl+Tab` and `Ctrl+Shift+Tab` still [switch tabs](/features/tabs#switching-tabs). To leave the editor from the keyboard, use a command under **View > Focus**. A shortcut of `Ctrl` and a letter assigned in **Settings > Keyboard** does not fire from the SQL editor outside insert mode.
 
 In insert and replace mode, vim takes these and leaves every other `Ctrl` combination to the editor:
 

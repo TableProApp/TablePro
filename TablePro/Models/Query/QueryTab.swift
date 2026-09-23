@@ -233,7 +233,8 @@ struct QueryTab: Identifiable, Equatable {
         )
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
-            objectRef: persisted.objectRef
+            objectRef: persisted.objectRef,
+            versionHistorySubject: persisted.versionHistorySubject
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
@@ -410,6 +411,7 @@ struct QueryTab: Identifiable, Equatable {
             sourceFileURL: content.sourceFileURL,
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
+            versionHistorySubject: display.versionHistorySubject,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             sortSource: persistedSortSource,

@@ -25,11 +25,7 @@ final class SyncCoordinator: ObservableObject {
     private let engine = CloudKitSyncEngine()
     private let changeTracker: SyncChangeTracker
     private let metadataStorage: SyncMetadataStorage
-    private let recordCache = SyncRecordCache(
-        directory: AppStorageEnvironment.shared.supportDirectory
-            .appendingPathComponent("SyncRecordCache", isDirectory: true),
-        defaults: AppStorageEnvironment.shared.defaults
-    )
+    private let recordCache: SyncRecordCache
     private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var changeCancellable: AnyCancellable?
     private var licenseCancellable: AnyCancellable?
@@ -40,11 +36,20 @@ final class SyncCoordinator: ObservableObject {
     /// suspended across the network can tell whether its outcome is still the current answer.
     private var statusGeneration = 0
 
-    init(services: AppServices = .live) {
+    init(services: AppServices = .live, recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache()) {
         self.services = services
         self.changeTracker = services.syncTracker
         self.metadataStorage = services.syncMetadataStorage
+        self.recordCache = recordCache
         lastSyncDate = metadataStorage.lastSyncDate
+    }
+
+    nonisolated static func makeRecordCache() -> SyncRecordCache {
+        SyncRecordCache(
+            directory: AppStorageEnvironment.shared.supportDirectory
+                .appendingPathComponent("SyncRecordCache", isDirectory: true),
+            defaults: AppStorageEnvironment.shared.defaults
+        )
     }
 
     deinit {
@@ -114,10 +119,15 @@ final class SyncCoordinator: ObservableObject {
                 Self.logger.error("Push failed: \(error.localizedDescription)")
             }
 
-            await performPull()
+            let pullError = await performPull()
 
             if let pushError {
                 settle(.error(SyncError.from(pushError)), from: generation)
+                return
+            }
+
+            if let pullError {
+                settle(.error(pullError), from: generation)
                 return
             }
 
@@ -448,39 +458,47 @@ final class SyncCoordinator: ObservableObject {
         (error as? SyncError) == .tokenExpired
     }
 
-    private func performPull() async {
+    @discardableResult
+    private func performPull() async -> SyncError? {
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
 
         do {
             let result = try await engine.pull(since: token)
-            applyPullResult(result)
+            return await applyPullResult(result) ? nil : .pullNotSaved
         } catch let error where Self.isTokenExpired(error) {
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await engine.pull(since: nil)
-                applyPullResult(result)
+                return await applyPullResult(result) ? nil : .pullNotSaved
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
+                return nil
             }
         } catch {
             Self.logger.error("Pull failed: \(error.localizedDescription)")
+            return nil
         }
     }
 
-    private func applyPullResult(_ result: PullResult) {
-        let persisted = applyRemoteChanges(result)
+    @discardableResult
+    internal func applyPullResult(_ result: PullResult) async -> Bool {
+        let settings = services.appSettingsStorage.loadSync()
+        let storesPersisted = applyRemoteChanges(result, settings: settings)
+        let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
+            remoteSQLFavoriteBatch(from: result, settings: settings)
+        )
 
         /// The token and the cache are the record of what this device holds, so neither is
         /// committed over a batch a store refused. Saving the token first acknowledged records that
         /// were never written and the server never sent them again, and the cached record then
         /// stood in as the merge base for an edit that had no local base at all. Not saving it
         /// means the next pull replays the batch, which every apply here is written to survive.
-        guard persisted else {
+        guard storesPersisted, favoritesOutcome != .failed else {
             Self.logger.error("Pull not acknowledged: a store refused to persist part of the batch")
-            return
+            return false
         }
 
         if let newToken = result.newToken {
@@ -493,6 +511,7 @@ final class SyncCoordinator: ObservableObject {
         Self.logger.info(
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"
         )
+        return true
     }
 
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
@@ -500,10 +519,7 @@ final class SyncCoordinator: ObservableObject {
     // for large payloads.
     /// Reports whether every record that can say so was persisted. A pull that answers false must
     /// not commit its token: the batch has to arrive again.
-    @discardableResult
-    private func applyRemoteChanges(_ result: PullResult) -> Bool {
-        let settings = services.appSettingsStorage.loadSync()
-
+    private func applyRemoteChanges(_ result: PullResult, settings: SyncSettings) -> Bool {
         services.connectionStorage.invalidateCache()
 
         changeTracker.isSuppressed = true
@@ -522,10 +538,6 @@ final class SyncCoordinator: ObservableObject {
         let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
-        let sqlFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
-        let sqlFolderTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteFolder).map(\.id))
-        var remoteFavorites: [SQLFavorite] = []
-        var remoteFolders: [SQLFavoriteFolder] = []
 
         for record in result.changedRecords {
             switch record.recordType {
@@ -559,16 +571,6 @@ final class SyncCoordinator: ObservableObject {
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
             case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
                 applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
-            case SyncRecordType.favorite.rawValue where settings.syncSQLFavorites:
-                if let favorite = try? SyncRecordMapper.sqlFavorite(from: record),
-                   !sqlFavoriteTombstoneIds.contains(favorite.id.uuidString) {
-                    remoteFavorites.append(favorite)
-                }
-            case SyncRecordType.favoriteFolder.rawValue where settings.syncSQLFavorites:
-                if let folder = try? SyncRecordMapper.sqlFavoriteFolder(from: record),
-                   !sqlFolderTombstoneIds.contains(folder.id.uuidString) {
-                    remoteFolders.append(folder)
-                }
             default:
                 break
             }
@@ -581,8 +583,6 @@ final class SyncCoordinator: ObservableObject {
         let sshProfileIdsToDelete = pendingDeletions.sshProfiles
         let credentialProfileIdsToDelete = pendingDeletions.credentialProfiles
         let tableFavoriteIdsToDelete = pendingDeletions.tableFavorites
-        let sqlFavoriteIdsToDelete = pendingDeletions.sqlFavorites
-        let sqlFolderIdsToDelete = pendingDeletions.sqlFolders
         actualConnectionChanges = actualConnectionChanges || !connectionIdsToDelete.isEmpty
         groupsOrTagsChanged = groupsOrTagsChanged
             || !groupIdsToDelete.isEmpty
@@ -622,29 +622,6 @@ final class SyncCoordinator: ObservableObject {
             services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
         }
 
-        if !remoteFolders.isEmpty || !remoteFavorites.isEmpty
-            || !sqlFolderIdsToDelete.isEmpty || !sqlFavoriteIdsToDelete.isEmpty {
-            let manager = services.sqlFavoriteManager
-            let folders = remoteFolders
-            let favorites = remoteFavorites
-            let folderDeletes = sqlFolderIdsToDelete
-            let favoriteDeletes = sqlFavoriteIdsToDelete
-            Task {
-                for folder in folders {
-                    await manager.applyRemoteFolder(folder)
-                }
-                for favorite in favorites {
-                    await manager.applyRemoteFavorite(favorite)
-                }
-                for id in favoriteDeletes {
-                    await manager.applyRemoteDeleteFavorite(id: id)
-                }
-                for id in folderDeletes {
-                    await manager.applyRemoteDeleteFolder(id: id)
-                }
-            }
-        }
-
         /// After the batch, never per record: a pull carries no dependency order, so a legal
         /// hierarchy change spread over two records passes through a state that reads as a cycle
         /// until both have landed.
@@ -657,6 +634,34 @@ final class SyncCoordinator: ObservableObject {
         }
 
         return !persistenceFailed
+    }
+
+    private func remoteSQLFavoriteBatch(from result: PullResult, settings: SyncSettings) -> RemoteSQLFavoriteBatch {
+        guard settings.syncSQLFavorites else { return RemoteSQLFavoriteBatch() }
+
+        let favoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
+        let folderTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteFolder).map(\.id))
+        let deletions = Self.parseDeletions(result.deletedRecordIDs, settings: settings)
+        var batch = RemoteSQLFavoriteBatch(
+            deletedFavoriteIds: deletions.sqlFavorites,
+            deletedFolderIds: deletions.sqlFolders
+        )
+
+        for record in result.changedRecords {
+            switch record.recordType {
+            case SyncRecordType.favorite.rawValue:
+                guard let favorite = try? SyncRecordMapper.sqlFavorite(from: record),
+                      !favoriteTombstoneIds.contains(favorite.id.uuidString) else { continue }
+                batch.favorites.append(favorite)
+            case SyncRecordType.favoriteFolder.rawValue:
+                guard let folder = try? SyncRecordMapper.sqlFavoriteFolder(from: record),
+                      !folderTombstoneIds.contains(folder.id.uuidString) else { continue }
+                batch.folders.append(folder)
+            default:
+                continue
+            }
+        }
+        return batch
     }
 
     @discardableResult
@@ -920,9 +925,8 @@ final class SyncCoordinator: ObservableObject {
             try applySettingsData(data, for: category)
         } catch {
             let recordName = record.recordID.recordName
-            let message = error.localizedDescription
             Self.logger.error(
-                "Skipping remote settings \(recordName, privacy: .public) (\(category, privacy: .public)): \(message, privacy: .public)"
+                "Skipping remote settings \(recordName, privacy: .private(mask: .hash)) (\(category, privacy: .private(mask: .hash))): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
         }
     }
@@ -934,9 +938,8 @@ final class SyncCoordinator: ObservableObject {
             entry = try SyncRecordMapper.favoriteEntry(from: record)
         } catch {
             let recordName = record.recordID.recordName
-            let message = error.localizedDescription
             Self.logger.error(
-                "Skipping remote favorite table \(recordName, privacy: .public): \(message, privacy: .public)"
+                "Skipping remote favorite table \(recordName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return false
         }
@@ -952,9 +955,8 @@ final class SyncCoordinator: ObservableObject {
             entry = try SyncRecordMapper.favoriteDatabase(from: record)
         } catch {
             let recordName = record.recordID.recordName
-            let message = error.localizedDescription
             Self.logger.error(
-                "Skipping remote favorite database \(recordName, privacy: .public): \(message, privacy: .public)"
+                "Skipping remote favorite database \(recordName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return
         }
