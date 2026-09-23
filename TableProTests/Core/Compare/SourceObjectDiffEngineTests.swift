@@ -29,7 +29,9 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         _ options: StructureCompareOptions = .default,
         databaseType: DatabaseType = .postgresql
     ) -> SourceObjectDiffEngine {
-        SourceObjectDiffEngine(options: options, sourceDatabaseType: databaseType, targetDatabaseType: databaseType)
+        SourceObjectDiffEngine(
+            options: options, sourceDatabaseType: databaseType, targetDatabaseType: databaseType, targetIndexedKinds: []
+        )
     }
 
     private func status(
@@ -286,11 +288,15 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         let mysqlDefinition = "# reporting view\nCREATE VIEW v AS SELECT 1"
         let postgresDefinition = "CREATE VIEW v AS SELECT 1"
 
-        let fromMySQL = SourceObjectDiffEngine(sourceDatabaseType: .mysql, targetDatabaseType: .postgresql).compare(
+        let fromMySQL = SourceObjectDiffEngine(
+            sourceDatabaseType: .mysql, targetDatabaseType: .postgresql, targetIndexedKinds: []
+        ).compare(
             source: [read("v", kind: .view, schema: nil, source: mysqlDefinition)],
             target: [read("v", kind: .view, schema: nil, source: postgresDefinition)]
         )
-        let intoMySQL = SourceObjectDiffEngine(sourceDatabaseType: .postgresql, targetDatabaseType: .mysql).compare(
+        let intoMySQL = SourceObjectDiffEngine(
+            sourceDatabaseType: .postgresql, targetDatabaseType: .mysql, targetIndexedKinds: []
+        ).compare(
             source: [read("v", kind: .view, schema: nil, source: postgresDefinition)],
             target: [read("v", kind: .view, schema: nil, source: mysqlDefinition)]
         )

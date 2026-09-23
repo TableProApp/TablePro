@@ -15,6 +15,7 @@ internal struct RoutineSourceRead: Sendable {
     internal let signature: String?
     internal let source: String
     internal let failure: String?
+    internal let indexes: ObjectIndexRead?
 
     internal init(
         name: String,
@@ -22,7 +23,8 @@ internal struct RoutineSourceRead: Sendable {
         schema: String?,
         signature: String?,
         source: String,
-        failure: String? = nil
+        failure: String? = nil,
+        indexes: ObjectIndexRead? = nil
     ) {
         self.name = name
         self.kind = kind
@@ -30,6 +32,7 @@ internal struct RoutineSourceRead: Sendable {
         self.signature = signature
         self.source = source
         self.failure = failure
+        self.indexes = indexes
     }
 }
 
@@ -39,21 +42,22 @@ internal extension CompareMetadataService {
     )
 
     nonisolated static func readViewDefinitions(
-        _ views: [PluginTableInfo],
+        _ views: [TableStructureRead],
         schema: String?,
         using plugin: any PluginDatabaseDriver
     ) async throws -> [RoutineSourceRead] {
         var reads: [RoutineSourceRead] = []
         for view in views {
             try Task.checkCancellation()
-            let viewSchema = view.schema ?? schema
+            let viewSchema = view.table.schema ?? schema
             reads.append(try await definitionRead(
-                name: view.name,
-                kind: CompareTableKindClassifier.kind(of: view),
+                name: view.table.name,
+                kind: CompareTableKindClassifier.kind(of: view.table),
                 schema: viewSchema,
-                signature: nil
+                signature: nil,
+                indexes: view.objectIndexes
             ) {
-                try await plugin.fetchViewDefinition(view: view.name, schema: viewSchema)
+                try await plugin.fetchViewDefinition(view: view.table.name, schema: viewSchema)
             })
         }
         return reads
@@ -175,11 +179,14 @@ internal extension CompareMetadataService {
         kind: CompareObjectKind,
         schema: String?,
         signature: String?,
+        indexes: ObjectIndexRead? = nil,
         reading: () async throws -> String
     ) async throws -> RoutineSourceRead {
         do {
             let source = try await reading()
-            return RoutineSourceRead(name: name, kind: kind, schema: schema, signature: signature, source: source)
+            return RoutineSourceRead(
+                name: name, kind: kind, schema: schema, signature: signature, source: source, indexes: indexes
+            )
         } catch {
             guard !(error is CancellationError), !Task.isCancelled else { throw CancellationError() }
             definitionLogger.warning(
@@ -187,7 +194,7 @@ internal extension CompareMetadataService {
             )
             return RoutineSourceRead(
                 name: name, kind: kind, schema: schema, signature: signature,
-                source: "", failure: error.localizedDescription
+                source: "", failure: error.localizedDescription, indexes: indexes
             )
         }
     }

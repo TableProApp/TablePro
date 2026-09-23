@@ -335,6 +335,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB macro dropped and not recreated by a Compare & Sync replace.
 - Copy To giving no reason for a view, routine or trigger whose definition could not be read.
 - Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
+- Materialized view indexes ignored by Compare & Sync, and lost when it or Copy To recreated the view.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 - Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)

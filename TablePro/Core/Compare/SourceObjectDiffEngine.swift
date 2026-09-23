@@ -23,15 +23,18 @@ internal struct SourceObjectDiffEngine {
     private let options: StructureCompareOptions
     private let sourceScriptText: SQLScriptText
     private let targetScriptText: SQLScriptText
+    private let targetIndexedKinds: Set<CompareObjectKind>
 
     internal init(
         options: StructureCompareOptions = .default,
         sourceDatabaseType: DatabaseType,
-        targetDatabaseType: DatabaseType
+        targetDatabaseType: DatabaseType,
+        targetIndexedKinds: Set<CompareObjectKind>
     ) {
         self.options = options
         self.sourceScriptText = SQLScriptText(databaseType: sourceDatabaseType)
         self.targetScriptText = SQLScriptText(databaseType: targetDatabaseType)
+        self.targetIndexedKinds = targetIndexedKinds
     }
 
     internal func compare(
@@ -65,29 +68,94 @@ internal struct SourceObjectDiffEngine {
     ) -> CompareObjectResult {
         let sourceDefect = source.flatMap { SourceDefinitionDefect.of($0, sentAs: sourceScriptText) }
         let targetDefect = target.flatMap { SourceDefinitionDefect.of($0, sentAs: targetScriptText) }
-        let comparisonError = sourceDefect.map { $0.reason(on: .source) } ?? targetDefect.map { $0.reason(on: .target) }
+        let indexes = indexComparison(source: source, target: target)
+        let comparisonError = sourceDefect.map { $0.reason(on: .source) }
+            ?? targetDefect.map { $0.reason(on: .target) }
+            ?? indexes.failure
+        let definitionMatches = comparisonError == nil && definitionsMatch(source: source, target: target)
         return CompareObjectResult(
             identity: CompareObjectIdentity(
                 kind: read.kind, schema: read.schema, name: read.name, signature: read.signature
             ),
-            status: status(source: source, target: target, comparable: comparisonError == nil),
+            status: status(
+                source: source,
+                target: target,
+                comparable: comparisonError == nil,
+                definitionMatches: definitionMatches,
+                indexes: indexes
+            ),
+            changes: comparisonError == nil ? indexes.changes : [],
             sourceDefinition: source.map(displayedLines) ?? [],
             targetDefinition: target.map(displayedLines) ?? [],
-            comparisonError: comparisonError
+            notes: comparisonError == nil ? indexes.notes : [],
+            comparisonError: comparisonError,
+            sourceIndexes: indexes.source,
+            targetIndexes: indexes.target,
+            definitionMatches: definitionMatches
         )
     }
 
     private func status(
         source: RoutineSourceRead?,
         target: RoutineSourceRead?,
-        comparable: Bool
+        comparable: Bool,
+        definitionMatches: Bool,
+        indexes: IndexComparison
     ) -> TableDiffStatus {
-        guard let source else { return .onlyInTarget }
-        guard let target else { return .onlyInSource }
-        guard comparable else { return .differs }
-        let equal = normalize(source.source, scriptText: sourceScriptText)
+        guard source != nil else { return .onlyInTarget }
+        guard target != nil else { return .onlyInSource }
+        guard comparable, definitionMatches else { return .differs }
+        return indexes.changes.isEmpty && indexes.notes.isEmpty ? .identical : .differs
+    }
+
+    private func definitionsMatch(source: RoutineSourceRead?, target: RoutineSourceRead?) -> Bool {
+        guard let source, let target else { return false }
+        return normalize(source.source, scriptText: sourceScriptText)
             == normalize(target.source, scriptText: targetScriptText)
-        return equal ? .identical : .differs
+    }
+
+    private struct IndexComparison {
+        var source: [EditableIndexDefinition]?
+        var target: [EditableIndexDefinition]?
+        var changes: [SchemaChange] = []
+        var notes: [String] = []
+        var failure: String?
+    }
+
+    private func indexComparison(source: RoutineSourceRead?, target: RoutineSourceRead?) -> IndexComparison {
+        var comparison = IndexComparison()
+        if case .read(let found)? = target?.indexes {
+            comparison.target = SourceObjectIndexes.definitions(found)
+        }
+        guard let source, let sourceRead = source.indexes else { return comparison }
+        guard targetIndexedKinds.contains(source.kind) else {
+            if target == nil, case .read(let found) = sourceRead, !SourceObjectIndexes.definitions(found).isEmpty {
+                comparison.notes = [SourceObjectIndexes.notCarriedByTargetNote]
+            }
+            return comparison
+        }
+        switch sourceRead {
+        case .failed(let reason):
+            comparison.failure = String(format: String(localized: "The source's indexes could not be read: %@"), reason)
+            return comparison
+        case .read(let found):
+            comparison.source = SourceObjectIndexes.definitions(found)
+        }
+        guard let target else { return comparison }
+        guard let targetRead = target.indexes, let sourceIndexes = comparison.source else {
+            comparison.source = nil
+            return comparison
+        }
+        if case .failed(let reason) = targetRead {
+            comparison.failure = String(format: String(localized: "The target's indexes could not be read: %@"), reason)
+            return comparison
+        }
+        let outcome = StructureDiffEngine(options: options).indexChanges(
+            source: sourceIndexes, target: comparison.target ?? []
+        )
+        comparison.changes = outcome.changes
+        comparison.notes = outcome.notes
+        return comparison
     }
 
     private func displayedLines(_ read: RoutineSourceRead) -> [String] {

@@ -362,15 +362,16 @@ internal struct CompareRunner {
         let diffEngine = SourceObjectDiffEngine(
             options: session.structureOptions,
             sourceDatabaseType: context.source.databaseType,
-            targetDatabaseType: context.target.databaseType
+            targetDatabaseType: context.target.databaseType,
+            targetIndexedKinds: SourceObjectIndexes.carriedKinds(on: context.target.databaseType)
         )
 
         /// Each pair reads two independent endpoints, so the two sides run together rather than the
         /// second waiting out the first.
         let viewKinds = includedKinds.intersection([.view, .materializedView])
         if !viewKinds.isEmpty {
-            let sourceViews = sourceReads.map(\.table).filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0)) }
-            let targetViews = targetReads.map(\.table).filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0)) }
+            let sourceViews = sourceReads.filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0.table)) }
+            let targetViews = targetReads.filter { viewKinds.contains(CompareTableKindClassifier.kind(of: $0.table)) }
             async let sourceDefinitions = metadataService.viewDefinitions(
                 for: context.source, connection: context.sourceConnection, views: sourceViews
             )
@@ -445,7 +446,9 @@ internal struct CompareRunner {
                 targetDriver: plugin, targetDatabaseType: driver.connection.type
             ).build(operations: tableOperations, foreignKeysByTable: foreignKeys)
             let sourceBuilder = SourceObjectSyncBuilder(
-                targetDriver: plugin, targetDatabaseType: driver.connection.type
+                targetDriver: plugin,
+                targetDatabaseType: driver.connection.type,
+                indexSchema: plugin.currentSchema
             )
             for entry in sourceDefined {
                 statements += try sourceBuilder.build(for: entry.result, action: entry.action)

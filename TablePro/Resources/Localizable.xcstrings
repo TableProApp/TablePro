@@ -6360,6 +6360,9 @@
     "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
 
     },
+    "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
+
+    },
     "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
 
     },
@@ -6367,6 +6370,9 @@
 
     },
     "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
+
+    },
+    "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it." : {
 
     },
     "%d added" : {
@@ -37201,6 +37207,9 @@
         }
       }
     },
+    "Concurrent refresh" : {
+
+    },
     "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
 
     },
@@ -56261,39 +56270,11 @@
         }
       }
     },
-    "Dropping materialized view %@ discards its stored rows, which have to be rebuilt." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "구체화 뷰 %@을(를) 삭제하면 저장된 행이 버려지며, 다시 만들어야 합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ materyalize görünümünü silmek saklanan satırlarını atar; bunların yeniden oluşturulması gerekir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa materialized view %@ sẽ bỏ các dòng đã lưu của nó, và chúng phải được dựng lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除物化视图 %@ 会丢弃其存储的行，这些行必须重建。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刪除具體化檢視表 %@ 會捨棄其儲存的列，這些列必須重建。"
-          }
-        }
-      }
+    "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges." : {
+
+    },
+    "Dropping materialized view %@ discards its stored rows, comments and privileges. The rows are computed again and the source's indexes are created on it." : {
+
     },
     "Dropping table %@ permanently removes the table and all of its rows." : {
       "localizations" : {
@@ -74877,6 +74858,9 @@
         }
       }
     },
+    "Its indexes are left out, because the target is not known to take indexes on this kind of object." : {
+
+    },
     "history entries" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75641,6 +75625,9 @@
           }
         }
       }
+    },
+    "Its indexes are left out, because the target's index statements would name a different schema than its definition." : {
+
     },
     "hyphen" : {
       "extractionState" : "manual",
@@ -81536,6 +81523,9 @@
           }
         }
       }
+    },
+    "Its indexes could not be read: %@" : {
+
     },
     "is empty" : {
       "localizations" : {
@@ -161566,6 +161556,9 @@
     "The batch is committing and cannot be stopped." : {
 
     },
+    "The source's indexes could not be read: %@" : {
+
+    },
     "The statement before it stays applied." : {
 
     },
@@ -162096,6 +162089,9 @@
 
     },
     "The target returned an empty definition." : {
+
+    },
+    "The target's indexes could not be read: %@" : {
 
     },
     "The target's object is dropped and built again from the source." : {

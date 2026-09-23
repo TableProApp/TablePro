@@ -30,6 +30,7 @@ internal struct TableStructureRead: Sendable {
     internal let foreignKeys: [PluginForeignKeyInfo]
     internal let metadata: PluginTableMetadata?
     internal let failure: String?
+    internal var objectIndexes: ObjectIndexRead?
 
     internal var snapshot: TableStructureSnapshot? {
         snapshot(indexes: indexes)
@@ -118,6 +119,7 @@ internal struct CompareMetadataService {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
         let databaseType = endpoint.databaseType
+        let indexedKinds = SourceObjectIndexes.carriedKinds(on: databaseType)
         let wanted = names.map { Set($0.map { $0.lowercased() }) }
 
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
@@ -129,7 +131,8 @@ internal struct CompareMetadataService {
             }
             return try await Self.read(
                 tables: tables, schema: schema, profile: profile,
-                narrowed: wanted != nil, databaseType: databaseType, using: plugin
+                narrowed: wanted != nil, databaseType: databaseType,
+                indexedKinds: indexedKinds, using: plugin
             )
         }
     }
@@ -191,7 +194,7 @@ internal struct CompareMetadataService {
     internal func viewDefinitions(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
-        views: [PluginTableInfo]
+        views: [TableStructureRead]
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
@@ -223,6 +226,7 @@ internal struct CompareMetadataService {
         profile: TableReadProfile,
         narrowed: Bool,
         databaseType: DatabaseType,
+        indexedKinds: Set<CompareObjectKind>,
         using plugin: any PluginDatabaseDriver
     ) async throws -> [TableStructureRead] {
         let bulk = narrowed
@@ -240,7 +244,10 @@ internal struct CompareMetadataService {
             : Self.fallbackConcurrency
 
         return try await map(tables, concurrency: concurrency) { table in
-            await read(table: table, schema: table.schema ?? schema, profile: profile, bulk: bulk, using: plugin)
+            await read(
+                table: table, schema: table.schema ?? schema, profile: profile, bulk: bulk,
+                indexedKinds: indexedKinds, using: plugin
+            )
         }
     }
 
@@ -380,18 +387,25 @@ internal struct CompareMetadataService {
         schema: String?,
         profile: TableReadProfile,
         bulk: BulkMetadata,
+        indexedKinds: Set<CompareObjectKind>,
         using plugin: any PluginDatabaseDriver
     ) async -> TableStructureRead {
+        let kind = CompareTableKindClassifier.kind(of: table)
+        let objectIndexes = kind != .table && indexedKinds.contains(kind)
+            ? await objectIndexes(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
+            : nil
         do {
             let columns = try await columns(of: table, schema: schema, bulk: bulk, using: plugin)
-            let indexes = try await indexes(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
+            let indexes = try await indexes(
+                of: table, schema: schema, profile: profile, bulk: bulk, objectIndexes: objectIndexes, using: plugin
+            )
             let foreignKeys = try await foreignKeys(
                 of: table, schema: schema, profile: profile, bulk: bulk, using: plugin
             )
             let metadata = await metadata(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
             return TableStructureRead(
                 table: table, columns: columns, indexes: indexes,
-                foreignKeys: foreignKeys, metadata: metadata, failure: nil
+                foreignKeys: foreignKeys, metadata: metadata, failure: nil, objectIndexes: objectIndexes
             )
         } catch {
             Self.logger.warning(
@@ -399,8 +413,27 @@ internal struct CompareMetadataService {
             )
             return TableStructureRead(
                 table: table, columns: [], indexes: [], foreignKeys: [],
-                metadata: nil, failure: error.localizedDescription
+                metadata: nil, failure: error.localizedDescription, objectIndexes: objectIndexes
             )
+        }
+    }
+
+    nonisolated private static func objectIndexes(
+        of object: PluginTableInfo,
+        schema: String?,
+        profile: TableReadProfile,
+        bulk: BulkMetadata,
+        using plugin: any PluginDatabaseDriver
+    ) async -> ObjectIndexRead? {
+        guard profile.wantsIndexes else { return nil }
+        guard bulk.indexes == nil else { return .read(bulk.lookup(bulk.indexes, object.name) ?? []) }
+        do {
+            return .read(try await plugin.fetchIndexes(table: object.name, schema: schema))
+        } catch {
+            Self.logger.warning(
+                "Index read failed for \(object.name, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
+            )
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -425,20 +458,25 @@ internal struct CompareMetadataService {
     /// offers to drop every index the table really has. So the failure fails the table, the way the
     /// column read already did, and the comparison reports it rather than acting on it.
     ///
-    /// A view is the one object where the failure means nothing: it has neither indexes nor foreign
-    /// keys, and engines disagree on whether asking answers empty or refuses.
+    /// A view or a materialized view is not asked here. Its indexes are part of its comparison only
+    /// where the engine's structure matrix says that kind takes them, and that read keeps its own
+    /// failure in `objectIndexes` rather than failing the object: engines whose views take no index
+    /// disagree on whether asking answers empty or refuses, and several answer with clustering or
+    /// sort keys that no `CREATE INDEX` can write back.
     nonisolated private static func indexes(
         of table: PluginTableInfo,
         schema: String?,
         profile: TableReadProfile,
         bulk: BulkMetadata,
+        objectIndexes: ObjectIndexRead?,
         using plugin: any PluginDatabaseDriver
     ) async throws -> [PluginIndexInfo] {
         guard profile.wantsIndexes else { return [] }
-        guard bulk.indexes == nil else { return bulk.lookup(bulk.indexes, table.name) ?? [] }
         guard CompareTableKindClassifier.kind(of: table) == .table else {
-            return (try? await plugin.fetchIndexes(table: table.name, schema: schema)) ?? []
+            guard case .read(let indexes) = objectIndexes else { return [] }
+            return indexes
         }
+        guard bulk.indexes == nil else { return bulk.lookup(bulk.indexes, table.name) ?? [] }
         return try await plugin.fetchIndexes(table: table.name, schema: schema)
     }
 
