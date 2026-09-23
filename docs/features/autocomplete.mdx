@@ -137,7 +137,14 @@ WHERE mood <> 'ha|       -- 'happy'
 
 On multi-schema engines, schemas complete in FROM and `public.users` resolves in FROM, JOIN, UPDATE, INSERT INTO and CREATE INDEX.
 
-Where the hierarchy is database, schema, table (Snowflake, BigQuery), every segment completes and a schema you have not opened in the sidebar is fetched on demand:
+A bare table name completes with the tables the server finds without a schema: those in the tab's own schema, or on Spanner those in the default schema. For a table anywhere else, type its schema and a dot. That schema's tables follow, including a schema the sidebar has never opened:
+
+```sql
+SELECT * FROM times|          -- tables in the tab's own schema
+SELECT * FROM attendance.|    -- tables in attendance
+```
+
+Where the hierarchy is database, schema, table (Snowflake, BigQuery), every segment completes:
 
 ```sql
 SELECT * FROM ANALYTICS_|                      -- databases
