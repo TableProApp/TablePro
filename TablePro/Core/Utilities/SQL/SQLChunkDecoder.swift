@@ -92,40 +92,22 @@ struct SQLChunkDecoder {
         let byteOrderMarkLength: Int
     }
 
-    private static let utf16LittleEndianMark: [UInt8] = [0xFF, 0xFE]
-    private static let utf16BigEndianMark: [UInt8] = [0xFE, 0xFF]
-    private static let utf32LittleEndianMark: [UInt8] = [0xFF, 0xFE, 0x00, 0x00]
-    private static let utf32BigEndianMark: [UInt8] = [0x00, 0x00, 0xFE, 0xFF]
-
     /// `.utf8` is absent on purpose: Foundation consumes a UTF-8 mark itself, measured.
     private static func resolve(_ encoding: String.Encoding, startingWith data: Data) -> Resolution {
+        if let mark = ByteOrderMark.leading(data, allowedBy: encoding) {
+            return Resolution(encoding: mark.byteOrderedEncoding, byteOrderMarkLength: mark.length)
+        }
+        return Resolution(encoding: unmarkedByteOrder(of: encoding), byteOrderMarkLength: 0)
+    }
+
+    private static func unmarkedByteOrder(of encoding: String.Encoding) -> String.Encoding {
         switch encoding {
         case .utf16:
-            if data.starts(with: utf16LittleEndianMark) {
-                return Resolution(encoding: .utf16LittleEndian, byteOrderMarkLength: 2)
-            }
-            if data.starts(with: utf16BigEndianMark) {
-                return Resolution(encoding: .utf16BigEndian, byteOrderMarkLength: 2)
-            }
-            return Resolution(encoding: .utf16BigEndian, byteOrderMarkLength: 0)
-        case .utf16LittleEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf16LittleEndianMark) ? 2 : 0)
-        case .utf16BigEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf16BigEndianMark) ? 2 : 0)
+            return .utf16BigEndian
         case .utf32:
-            if data.starts(with: utf32LittleEndianMark) {
-                return Resolution(encoding: .utf32LittleEndian, byteOrderMarkLength: 4)
-            }
-            if data.starts(with: utf32BigEndianMark) {
-                return Resolution(encoding: .utf32BigEndian, byteOrderMarkLength: 4)
-            }
-            return Resolution(encoding: .utf32BigEndian, byteOrderMarkLength: 0)
-        case .utf32LittleEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf32LittleEndianMark) ? 4 : 0)
-        case .utf32BigEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf32BigEndianMark) ? 4 : 0)
+            return .utf32BigEndian
         default:
-            return Resolution(encoding: encoding, byteOrderMarkLength: 0)
+            return encoding
         }
     }
 

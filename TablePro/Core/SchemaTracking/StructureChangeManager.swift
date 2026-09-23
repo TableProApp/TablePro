@@ -404,6 +404,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         for column in workingColumns {
             if !column.isValid {
                 validationErrors[.column(column.id)] = String(localized: "Column must have a name and a data type")
+            } else if isStaged(.column(column.id)), introducesNullDefaultOnNotNull(column) {
+                validationErrors[.column(column.id)] = String(
+                    format: String(localized: "%@ does not allow NULL, so its default cannot be NULL"), column.name
+                )
             }
         }
 
@@ -522,6 +526,15 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// spelling as written.
     private func namesAColumn(_ name: String, in columnNames: [String]) -> Bool {
         columnNames.contains { $0.compare(name, options: .caseInsensitive) == .orderedSame }
+    }
+
+    /// MySQL and MariaDB refuse `NOT NULL DEFAULT NULL` with ERROR 1067. SQLite and DuckDB accept it,
+    /// so a loaded column can already hold the pair, and an edit that leaves it as it was is not the
+    /// user's to fix before the save.
+    private func introducesNullDefaultOnNotNull(_ column: EditableColumnDefinition) -> Bool {
+        guard !column.isNullable, column.hasNullDefault else { return false }
+        guard let loaded = currentColumns.first(where: { $0.id == column.id }) else { return true }
+        return loaded.isNullable || !loaded.hasNullDefault
     }
 
     private func isColumnPendingDeletion(_ id: UUID) -> Bool {

@@ -2,16 +2,23 @@
 import XCTest
 
 final class OracleSchemaQueriesTests: XCTestCase {
+    private let release23ai = OracleServerRelease(major: 23)
+
     func testSchemaOwnerIsEscapedInEveryQuery() {
         let owner = "O'BRIEN"
         XCTAssertTrue(OracleSchemaQueries.tables(schema: owner).contains("owner = 'O''BRIEN'"))
-        XCTAssertTrue(OracleSchemaQueries.columns(schema: owner, table: "T").contains("c.OWNER = 'O''BRIEN'"))
+        XCTAssertTrue(
+            OracleSchemaQueries.columns(schema: owner, table: "T", release: release23ai).contains("c.OWNER = 'O''BRIEN'")
+        )
+        XCTAssertTrue(
+            OracleSchemaQueries.allColumns(schema: owner, release: release23ai).contains("c.OWNER = 'O''BRIEN'")
+        )
         XCTAssertTrue(OracleSchemaQueries.indexes(schema: owner, table: "T").contains("i.OWNER = 'O''BRIEN'"))
         XCTAssertTrue(OracleSchemaQueries.foreignKeys(schema: owner, table: "T").contains("ac.OWNER = 'O''BRIEN'"))
     }
 
     func testTableNameIsEscaped() {
-        let sql = OracleSchemaQueries.columns(schema: "HR", table: "IT'S")
+        let sql = OracleSchemaQueries.columns(schema: "HR", table: "IT'S", release: release23ai)
         XCTAssertTrue(sql.contains("c.TABLE_NAME = 'IT''S'"))
         XCTAssertFalse(sql.contains("'IT'S'"))
     }
@@ -132,6 +139,133 @@ final class OracleSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(parsed?.isNullable, false)
         XCTAssertEqual(parsed?.isPrimaryKey, false)
         XCTAssertEqual(parsed?.displayType, "number(10,2)")
+    }
+
+    func testParseColumnRowReadsTheDefault() {
+        let row: [OracleRawCell] = [
+            .string("CREATED"), .string("DATE"), .string("7"), .null, .null, .string("Y"), .string("N"),
+            .string("sysdate\n  "), .string("NO"), .string("NO"), .string("NO"), .string("NO")
+        ]
+        XCTAssertEqual(OracleSchemaQueries.parseColumnRow(row)?.defaultValue, "sysdate")
+    }
+
+    func testParseColumnRowWithoutADefaultReadsNil() {
+        let row: [OracleRawCell] = [
+            .string("NOTE"), .string("VARCHAR2"), .string("20"), .null, .null, .string("Y"), .string("N"),
+            .null, .string("NO"), .string("NO"), .string("NO"), .string("NO")
+        ]
+        XCTAssertNil(OracleSchemaQueries.parseColumnRow(row)?.defaultValue)
+    }
+
+    /// Positions 8 and 9 are `VIRTUAL_COLUMN` and `IDENTITY_COLUMN`, in the order the projection writes them.
+    func testParseColumnRowDropsTheDefaultOfAnIdentityOrVirtualColumn() {
+        let identity: [OracleRawCell] = [
+            .string("ID"), .string("NUMBER"), .string("22"), .null, .null, .string("N"), .string("Y"),
+            .string("\"HR\".\"ISEQ$$_73292\".nextval"), .string("NO"), .string("YES"), .string("NO"), .string("NO")
+        ]
+        XCTAssertNil(OracleSchemaQueries.parseColumnRow(identity)?.defaultValue)
+
+        let virtual: [OracleRawCell] = [
+            .string("TOTAL"), .string("NUMBER"), .string("22"), .null, .null, .string("Y"), .string("N"),
+            .string("\"C_ZERO\"+1"), .string("YES"), .string("NO"), .string("NO"), .string("NO")
+        ]
+        XCTAssertNil(OracleSchemaQueries.parseColumnRow(virtual)?.defaultValue)
+    }
+
+    /// Positions 10 and 11 are `DEFAULT_ON_NULL` and `DEFAULT_ON_NULL_UPD`.
+    func testParseColumnRowReadsDefaultOnNull() {
+        let onInsert: [OracleRawCell] = [
+            .string("STATUS"), .string("VARCHAR2"), .string("10"), .null, .null, .string("N"), .string("N"),
+            .string("'x'"), .string("NO"), .string("NO"), .string("YES"), .string("NO")
+        ]
+        XCTAssertEqual(OracleSchemaQueries.parseColumnRow(onInsert)?.defaultValue, "ON NULL 'x'")
+
+        let onUpdate: [OracleRawCell] = [
+            .string("STATUS"), .string("VARCHAR2"), .string("10"), .null, .null, .string("N"), .string("N"),
+            .string("'u'"), .string("NO"), .string("NO"), .string("YES"), .string("YES")
+        ]
+        XCTAssertEqual(
+            OracleSchemaQueries.parseColumnRow(onUpdate)?.defaultValue,
+            "ON NULL FOR INSERT AND UPDATE 'u'"
+        )
+    }
+
+    func testParseTableColumnRowReadsTheTableThenTheSameColumnShape() {
+        let row: [OracleRawCell] = [
+            .string("ORDERS"), .string("QTY"), .string("NUMBER"), .string("22"), .string("5"), .string("0"),
+            .string("N"), .string("N"), .string("0"), .string("NO"), .string("NO"), .string("NO"), .string("NO")
+        ]
+        let parsed = OracleSchemaQueries.parseTableColumnRow(row)
+        XCTAssertEqual(parsed?.table, "ORDERS")
+        XCTAssertEqual(parsed?.column.name, "QTY")
+        XCTAssertEqual(parsed?.column.displayType, "number(5)")
+        XCTAssertEqual(parsed?.column.isNullable, false)
+        XCTAssertEqual(parsed?.column.defaultValue, "0")
+        XCTAssertNil(OracleSchemaQueries.parseTableColumnRow([.null, .string("QTY")]))
+    }
+
+    /// 11g has no `IDENTITY_COLUMN`, `DEFAULT_ON_NULL` or `USER_GENERATED`, and naming any of them fails the statement
+    /// with ORA-00904. Its `ALL_TAB_COLUMNS` is `ALL_TAB_COLS` without the hidden columns.
+    func testAnElevenGServerIsNeverAskedForAColumnItDoesNotHave() {
+        let release = OracleServerRelease(major: 11)
+        for sql in [
+            OracleSchemaQueries.columns(schema: "HR", table: "T", release: release),
+            OracleSchemaQueries.allColumns(schema: "HR", release: release)
+        ] {
+            XCTAssertFalse(sql.contains("c.IDENTITY_COLUMN"), sql)
+            XCTAssertFalse(sql.contains("c.DEFAULT_ON_NULL"), sql)
+            XCTAssertFalse(sql.contains("USER_GENERATED"), sql)
+            XCTAssertTrue(sql.contains("c.HIDDEN_COLUMN = 'NO'"), sql)
+            XCTAssertTrue(sql.contains("'NO' AS IDENTITY_COLUMN"), sql)
+            XCTAssertTrue(sql.contains("c.VIRTUAL_COLUMN"), sql)
+            XCTAssertTrue(sql.contains("c.DATA_DEFAULT"), sql)
+        }
+    }
+
+    /// From 12.1 `ALL_TAB_COLUMNS` is `ALL_TAB_COLS` where `USER_GENERATED = 'YES'`, which keeps invisible columns;
+    /// filtering on `HIDDEN_COLUMN` there would drop them.
+    func testATwelveCServerReadsTheFlagsAndKeepsInvisibleColumns() {
+        let release = OracleServerRelease(major: 19)
+        for sql in [
+            OracleSchemaQueries.columns(schema: "HR", table: "T", release: release),
+            OracleSchemaQueries.allColumns(schema: "HR", release: release)
+        ] {
+            XCTAssertTrue(sql.contains("c.USER_GENERATED = 'YES'"), sql)
+            XCTAssertFalse(sql.contains("HIDDEN_COLUMN"), sql)
+            XCTAssertTrue(sql.contains("c.IDENTITY_COLUMN AS IDENTITY_COLUMN"), sql)
+            XCTAssertTrue(sql.contains("c.DEFAULT_ON_NULL AS DEFAULT_ON_NULL"), sql)
+            XCTAssertTrue(sql.contains("'NO' AS DEFAULT_ON_NULL_UPD"), sql)
+            XCTAssertFalse(sql.contains("c.DEFAULT_ON_NULL_UPD"), sql)
+        }
+    }
+
+    func testA23aiServerReadsDefaultOnNullForUpdate() {
+        for sql in [
+            OracleSchemaQueries.columns(schema: "HR", table: "T", release: release23ai),
+            OracleSchemaQueries.allColumns(schema: "HR", release: release23ai)
+        ] {
+            XCTAssertTrue(sql.contains("c.DEFAULT_ON_NULL_UPD AS DEFAULT_ON_NULL_UPD"), sql)
+        }
+    }
+
+    /// The bulk read is parsed by dropping its first cell, so after `TABLE_NAME` its projection has to be the
+    /// per-table one, column for column.
+    func testTheBulkReadProjectsTheTableNameThenThePerTableColumns() {
+        for major in [11, 19, 23] {
+            let release = OracleServerRelease(major: major)
+            let single = projection(of: OracleSchemaQueries.columns(schema: "HR", table: "T", release: release))
+            let bulk = projection(of: OracleSchemaQueries.allColumns(schema: "HR", release: release))
+            XCTAssertEqual(bulk.first, "c.TABLE_NAME")
+            XCTAssertEqual(Array(bulk.dropFirst()), single, "release \(major)")
+            XCTAssertEqual(single.count, 12, "release \(major)")
+        }
+    }
+
+    private func projection(of sql: String) -> [String] {
+        guard let select = sql.range(of: "SELECT"), let from = sql.range(of: "FROM ") else { return [] }
+        return sql[select.upperBound..<from.lowerBound]
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     func testParseColumnRowTreatsMissingTypeAsVarchar2() {

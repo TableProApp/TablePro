@@ -429,6 +429,7 @@ targets:
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
@@ -513,6 +514,9 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLLiteralSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
+      - Plugins/MySQLDriverPlugin/MySQLLiteralSpelling.swift
       - Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
@@ -583,6 +587,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaterializedViewColumnSource.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPartitionBound.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
@@ -594,6 +599,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceReference.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListing.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
@@ -601,6 +607,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLVersionedStatements.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/RedshiftTableCatalog.swift
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift

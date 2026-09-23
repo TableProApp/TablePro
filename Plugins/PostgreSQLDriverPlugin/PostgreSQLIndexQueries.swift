@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-enum PostgreSQLIndexQueries {
+nonisolated enum PostgreSQLIndexQueries {
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "IndexQueries")
 
     /// One row per index, with its key parts in key order.
@@ -152,12 +152,12 @@ enum PostgreSQLIndexQueries {
     }
 }
 
-struct PostgreSQLCatalogIndexDDL: Equatable {
+nonisolated struct PostgreSQLCatalogIndexDDL: Equatable {
     let methodAndKeys: String?
     let whereClause: String?
 }
 
-enum PostgreSQLIndexRow {
+nonisolated enum PostgreSQLIndexRow {
     static func index(
         from row: [PluginCellValue],
         ddl: [String: [String: PostgreSQLCatalogIndexDDL]]

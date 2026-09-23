@@ -52,6 +52,7 @@ final class ImportService: ObservableObject {
         from url: URL,
         formatId: String,
         encoding: String.Encoding,
+        scope: DatabaseScope,
         decompressedURL: URL? = nil,
         ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil,
@@ -62,12 +63,6 @@ final class ImportService: ObservableObject {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
         }
 
-        /// The scope the driver is already on, not the connection's saved default: a tab may have
-        /// moved it, and on an engine that reconnects to change database, pinning somewhere else
-        /// would refuse the import outright.
-        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
-            throw DatabaseError.notConnected
-        }
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
         state = ImportState(isImporting: true)
