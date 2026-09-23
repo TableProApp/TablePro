@@ -21,7 +21,11 @@ struct QuickSwitcherCrossSchemaTests {
         openTables: Set<QuickSwitcherOpenTable> = []
     ) -> [QuickSwitcherItem] {
         QuickSwitcherViewModel.makeTableItems(
-            tables, database: "shop", browseSchema: browseSchema, openTables: openTables
+            tables,
+            database: "shop",
+            connectionSwitchesDatabases: true,
+            browseSchema: browseSchema,
+            openTables: openTables
         )
     }
 
@@ -271,7 +275,8 @@ struct QuickSwitcherCrossSchemaTests {
         )
         let remote = QuickSwitcherViewModel.makeCrossConnectionItems(
             tables: [table("timesheet", "attendance"), table("timesheet", "public")],
-            target: target
+            target: target,
+            connectionSwitchesDatabases: true
         )
         guard let defaults = UserDefaults(suiteName: "QuickSwitcherCrossSchemaTests.\(UUID().uuidString)") else {
             Issue.record("no defaults suite")
@@ -298,18 +303,26 @@ struct QuickSwitcherCrossSchemaTests {
 
     // MARK: - Identity
 
-    @Test("A name without a dot keeps the id it always had")
-    func idUnchangedWithoutDots() {
-        #expect(QuickSwitcherItem.tableItemId(name: "users", schema: "public") == "table_public.users")
-        #expect(QuickSwitcherItem.tableItemId(name: "users", schema: nil) == "table_users")
+    private func key(_ name: String, schema: String?, switchesDatabases: Bool) -> String {
+        QuickSwitcherFrecencyKey.table(
+            name: name,
+            schema: schema,
+            in: .init(database: "shop", connectionSwitchesDatabases: switchesDatabases)
+        )
     }
 
-    @Test("Dotted names in different schemas never share an id")
-    func dottedNamesStayDistinct() {
-        let first = QuickSwitcherItem.tableItemId(name: "b.c", schema: "a")
-        let second = QuickSwitcherItem.tableItemId(name: "c", schema: "a.b")
-        let unqualified = QuickSwitcherItem.tableItemId(name: "a.b", schema: nil)
-        let qualified = QuickSwitcherItem.tableItemId(name: "b", schema: "a")
+    @Test("A name without a dot keeps the key it always had on a connection that reaches one database")
+    func keyUnchangedWithoutDots() {
+        #expect(key("users", schema: "public", switchesDatabases: false) == "table_public.users")
+        #expect(key("users", schema: nil, switchesDatabases: false) == "table_users")
+    }
+
+    @Test("Dotted names in different schemas never share a key", arguments: [false, true])
+    func dottedNamesStayDistinct(switchesDatabases: Bool) {
+        let first = key("b.c", schema: "a", switchesDatabases: switchesDatabases)
+        let second = key("c", schema: "a.b", switchesDatabases: switchesDatabases)
+        let unqualified = key("a.b", schema: nil, switchesDatabases: switchesDatabases)
+        let qualified = key("b", schema: "a", switchesDatabases: switchesDatabases)
 
         #expect(first != second)
         #expect(unqualified != qualified)

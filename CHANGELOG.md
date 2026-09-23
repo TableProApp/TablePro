@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
+- One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
 
 ### Removed
 
@@ -339,6 +340,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closing a background tab with unsaved work landing on its neighbour instead of the tab you were on.
 - Show Previous Tab, Show Next Tab and Select Tab 1 to 9 enabled in Agent mode and with no tab to go to.
 - Row data of a window's first connection kept in memory after switching to another connection.
+- Query picked from Open Quickly's Recent list dropping out of it once the query ran again.
+- Table opened in one database shown in Open Quickly's Recent in every other database, and opened there.
+- Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half.
 
 ### Security
 
