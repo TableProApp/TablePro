@@ -162,7 +162,10 @@ internal struct SyncSafetyClassifier {
         }
         return String(
             format: String(
-                localized: "Dropping materialized view %@ discards its stored rows, comments and privileges. The rows are computed again and the source's indexes are created on it."
+                localized: """
+                Dropping materialized view %@ discards its stored rows, comments and privileges. \
+                The rows are computed again and the source's indexes are created on it.
+                """
             ),
             identity.displayName
         )

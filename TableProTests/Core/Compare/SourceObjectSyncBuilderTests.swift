@@ -342,8 +342,8 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
 
         XCTAssertEqual(statements.map(\.sql), [
             matviewDefinition,
-            "CREATE UNIQUE INDEX \"mv_id_idx\" ON \"public\".\"mv\" (\"id\")",
-            "CREATE INDEX \"mv_customer_idx\" ON \"public\".\"mv\" (\"customer\")"
+            "CREATE UNIQUE INDEX \"mv_id_idx\" ON \"public\".\"mv\" USING btree (\"id\")",
+            "CREATE INDEX \"mv_customer_idx\" ON \"public\".\"mv\" USING btree (\"customer\")"
         ])
         XCTAssertEqual(Set(statements.map(\.objectName)), ["public.mv"], "one view is one object in the Apply sheet")
     }
@@ -360,7 +360,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
         XCTAssertEqual(statements.map(\.sql), [
             "DROP MATERIALIZED VIEW \"public\".\"mv\"",
             matviewDefinition,
-            "CREATE UNIQUE INDEX \"mv_id_idx\" ON \"public\".\"mv\" (\"id\")"
+            "CREATE UNIQUE INDEX \"mv_id_idx\" ON \"public\".\"mv\" USING btree (\"id\")"
         ])
         let dropHazards = statements[0].hazards
         XCTAssertTrue(dropHazards.contains { $0.severity == .refusedByDefault })
@@ -385,7 +385,7 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
 
         XCTAssertEqual(statements.map(\.sql), [
             "DROP INDEX \"public\".\"mv_customer_idx\"",
-            "CREATE INDEX \"mv_customer_amount_idx\" ON \"public\".\"mv\" (\"customer\", \"amount\")"
+            "CREATE INDEX \"mv_customer_amount_idx\" ON \"public\".\"mv\" USING btree (\"customer\", \"amount\")"
         ])
         XCTAssertFalse(statements.contains { $0.sql.contains("MATERIALIZED VIEW") })
         XCTAssertEqual(Set(statements.map(\.objectName)), ["public.mv"])

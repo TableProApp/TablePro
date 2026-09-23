@@ -191,7 +191,7 @@ final class ObjectCopyPlannerSourceDefinitionTests: XCTestCase {
         guard case .built(_, let create, let note) = build else { return XCTFail("expected statements, got \(build)") }
         XCTAssertEqual(create.map(\.sql), [
             definition,
-            "CREATE UNIQUE INDEX \"totals_id_idx\" ON \"sales\".\"totals\" (\"id\")"
+            "CREATE UNIQUE INDEX \"totals_id_idx\" ON \"sales\".\"totals\" USING btree (\"id\")"
         ])
         XCTAssertNil(note)
     }

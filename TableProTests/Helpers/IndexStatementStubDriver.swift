@@ -22,14 +22,9 @@ internal final class IndexStatementStubDriver: PluginDatabaseDriver, @unchecked 
 
     internal func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         guard writesIndexes else { return nil }
-        let unique = index.isUnique ? "UNIQUE " : ""
-        let columns = index.columns.map(quoteIdentifier).joined(separator: ", ")
-        let target = "\(quoteIdentifier(indexSchema)).\(quoteIdentifier(table))"
-        var sql = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(target) (\(columns))"
-        if let whereClause = index.whereClause, !whereClause.isEmpty {
-            sql += " WHERE \(whereClause)"
-        }
-        return sql
+        return PostgreSQLIndexClauses.createStatement(
+            for: index, qualifiedTable: "\(quoteIdentifier(indexSchema)).\(quoteIdentifier(table))"
+        )
     }
 
     internal func generateDropIndexSQL(table: String, indexName: String) -> String? {
