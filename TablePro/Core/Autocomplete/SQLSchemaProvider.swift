@@ -520,9 +520,17 @@ actor SQLSchemaProvider {
         if let inFlight = fieldPathTasks[key] { return await inFlight.value }
         guard let sample = metadataSource?.sampleFieldPaths else { return [] }
 
-        let task = Task { (try? await sample(tableName, sampleSize)) ?? [] }
+        let task = Task {
+            do {
+                return try await sample(tableName, sampleSize)
+            } catch {
+                Self.logger.debug("[schema] field path sample failed: \(error.publicLogShape, privacy: .public)")
+                return [PluginFieldPath]()
+            }
+        }
         fieldPathTasks[key] = task
         let paths = await task.value
+        guard fieldPathTasks[key] == task else { return paths }
         fieldPathTasks[key] = nil
         if !paths.isEmpty { fieldPathCache[key] = paths }
         return paths
