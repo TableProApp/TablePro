@@ -68,7 +68,12 @@ final class ObjectCopyPlannerSourceDefinitionTests: XCTestCase {
 
         let reads = try await ObjectCopyPlanner.sourceDefinitionReads(
             for: [view, function],
-            views: [PluginTableInfo(name: "recent", type: "VIEW", schema: "public", comment: nil)],
+            views: [
+                TableStructureRead(
+                    table: PluginTableInfo(name: "recent", type: "VIEW", schema: "public", comment: nil),
+                    columns: [], indexes: [], foreignKeys: [], metadata: nil, failure: nil
+                )
+            ],
             triggerTables: [],
             schema: "public",
             endpointName: "Local / app / public",
@@ -144,5 +149,82 @@ final class ObjectCopyPlannerSourceDefinitionTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is CancellationError, "\(error)")
         }
+    }
+
+    // MARK: - A materialized view's indexes
+
+    private let definition = "CREATE MATERIALIZED VIEW \"sales\".\"totals\" AS SELECT 1 AS id"
+
+    private func input(
+        schema: String = "sales",
+        indexes: ObjectIndexRead?,
+        targetCarries: Bool = true
+    ) -> ObjectCopyDefinitionInput {
+        ObjectCopyDefinitionInput(
+            id: "totals",
+            identity: CompareObjectIdentity(kind: .materializedView, schema: schema, name: "totals"),
+            definition: definition,
+            read: RoutineSourceRead(
+                name: "totals", kind: .materializedView, schema: schema, signature: nil,
+                source: definition, indexes: indexes
+            ),
+            targetCarriesIndexes: targetCarries,
+            drop: nil
+        )
+    }
+
+    private func builder(indexSchema: String) -> SourceObjectSyncBuilder {
+        SourceObjectSyncBuilder(
+            targetDriver: IndexStatementStubDriver(indexSchema: indexSchema),
+            targetDatabaseType: .postgresql,
+            indexSchema: indexSchema
+        )
+    }
+
+    private let uniqueId = PluginIndexInfo(name: "totals_id_idx", columns: ["id"], isUnique: true)
+
+    func testACopiedMaterializedViewGetsItsIndexesAfterItIsCreated() throws {
+        let build = try ObjectCopyPlanner.definitionBuild(
+            for: input(indexes: .read([uniqueId])), using: builder(indexSchema: "sales")
+        )
+
+        guard case .built(_, let create, let note) = build else { return XCTFail("expected statements, got \(build)") }
+        XCTAssertEqual(create.map(\.sql), [
+            definition,
+            "CREATE UNIQUE INDEX \"totals_id_idx\" ON \"sales\".\"totals\" (\"id\")"
+        ])
+        XCTAssertNil(note)
+    }
+
+    /// A duplicated database is planned on the server's default database, so the index statements
+    /// name its schema while the definition names the schema the view came from. Written anyway,
+    /// they would index some other view of the same name or fail.
+    func testADuplicatedDatabaseWhoseIndexesWouldLandInAnotherSchemaCopiesTheViewAndSaysSo() throws {
+        let build = try ObjectCopyPlanner.definitionBuild(
+            for: input(indexes: .read([uniqueId])), using: builder(indexSchema: "public")
+        )
+
+        guard case .built(_, let create, let note) = build else { return XCTFail("expected statements, got \(build)") }
+        XCTAssertEqual(create.map(\.sql), [definition])
+        XCTAssertEqual(note, SourceObjectIndexes.otherSchemaNote)
+    }
+
+    func testATargetThatTakesNoIndexesGetsTheViewAndANote() throws {
+        let build = try ObjectCopyPlanner.definitionBuild(
+            for: input(indexes: .read([uniqueId]), targetCarries: false), using: builder(indexSchema: "sales")
+        )
+
+        guard case .built(_, let create, let note) = build else { return XCTFail("expected statements, got \(build)") }
+        XCTAssertEqual(create.map(\.sql), [definition])
+        XCTAssertEqual(note, SourceObjectIndexes.notCarriedByTargetNote)
+    }
+
+    func testAViewWhoseIndexesCouldNotBeReadIsLeftOutWithTheReason() throws {
+        let build = try ObjectCopyPlanner.definitionBuild(
+            for: input(indexes: .failed("permission denied for pg_index")), using: builder(indexSchema: "sales")
+        )
+
+        guard case .refused(let reason) = build else { return XCTFail("expected a refusal, got \(build)") }
+        XCTAssertTrue(reason.contains("permission denied for pg_index"), reason)
     }
 }

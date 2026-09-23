@@ -34,6 +34,8 @@ internal struct StructureGenerationInput: Hashable, Sendable {
     internal let changes: [SchemaChange]
     internal let sourceSnapshot: TableStructureSnapshot?
     internal let sourceDefinition: [String]
+    internal let sourceIndexes: [EditableIndexDefinition]?
+    internal let definitionMatches: Bool
 }
 
 internal enum StructureChangeGuard {
@@ -50,11 +52,13 @@ internal enum StructureChangeGuard {
                 qualifiedName: result.identity.qualifiedName,
                 action: action,
                 status: result.status,
-                changes: result.identity.kind == .table ? result.changes.map { $0.withoutIdentity() } : [],
+                changes: result.changes.map { $0.withoutIdentity() },
                 sourceSnapshot: result.identity.kind == .table
                     ? sourceSnapshots[result.identity.qualifiedName]?.withoutIdentity()
                     : nil,
-                sourceDefinition: result.identity.kind == .table ? [] : result.sourceDefinition
+                sourceDefinition: result.identity.kind == .table ? [] : result.sourceDefinition,
+                sourceIndexes: result.sourceIndexes?.map { $0.withoutIdentity() },
+                definitionMatches: result.definitionMatches
             )
         }
         return inputs

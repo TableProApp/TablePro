@@ -55,8 +55,15 @@ internal extension StructureDiffEngine {
         source: TableStructureSnapshot,
         target: TableStructureSnapshot
     ) -> MemberOutcome {
-        let sourceIndexes = source.indexes.filter { !$0.isPrimary }
-        let targetIndexes = target.indexes.filter { !$0.isPrimary }
+        indexChanges(source: source.indexes, target: target.indexes)
+    }
+
+    func indexChanges(
+        source: [EditableIndexDefinition],
+        target: [EditableIndexDefinition]
+    ) -> MemberOutcome {
+        let sourceIndexes = source.filter { !$0.isPrimary }
+        let targetIndexes = target.filter { !$0.isPrimary }
 
         var remaining = targetIndexes
         var changes: [SchemaChange] = []

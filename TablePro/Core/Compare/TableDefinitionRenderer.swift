@@ -22,18 +22,7 @@ internal enum TableDefinitionRenderer {
             result.append("  PRIMARY KEY (\(primaryKey.joined(separator: ", ")))")
         }
 
-        for index in snapshot.indexes.filter({ !$0.isPrimary })
-            .sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
-            let unique = index.isUnique ? "UNIQUE " : ""
-            var line = "  \(unique)INDEX \(index.name) (\(index.columns.joined(separator: ", "))) USING \(index.type.rawValue)"
-            if !index.includedColumns.isEmpty {
-                line += " INCLUDE (\(index.includedColumns.joined(separator: ", ")))"
-            }
-            if let whereClause = index.whereClause, !whereClause.isEmpty {
-                line += " WHERE \(whereClause)"
-            }
-            result.append(line)
-        }
+        result += indexLines(for: snapshot.indexes).map { "  " + $0 }
 
         for foreignKey in snapshot.foreignKeys
             .sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
@@ -52,6 +41,24 @@ internal enum TableDefinitionRenderer {
             result.append("  COLLATE \(collation)")
         }
         return result
+    }
+
+    internal static func indexLines(for indexes: [EditableIndexDefinition]) -> [String] {
+        indexes.filter { !$0.isPrimary }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map(indexLine)
+    }
+
+    private static func indexLine(_ index: EditableIndexDefinition) -> String {
+        let unique = index.isUnique ? "UNIQUE " : ""
+        var line = "\(unique)INDEX \(index.name) (\(index.columns.joined(separator: ", "))) USING \(index.type.rawValue)"
+        if !index.includedColumns.isEmpty {
+            line += " INCLUDE (\(index.includedColumns.joined(separator: ", ")))"
+        }
+        if let whereClause = index.whereClause, !whereClause.isEmpty {
+            line += " WHERE \(whereClause)"
+        }
+        return line
     }
 
     private static func columnAttributes(_ column: EditableColumnDefinition) -> String {

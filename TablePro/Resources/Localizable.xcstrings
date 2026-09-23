@@ -56002,40 +56002,6 @@
         }
       }
     },
-    "Dropping materialized view %@ discards its stored rows, which have to be rebuilt." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "구체화 뷰 %@을(를) 삭제하면 저장된 행이 버려지며, 다시 만들어야 합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ materyalize görünümünü silmek saklanan satırlarını atar; bunların yeniden oluşturulması gerekir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa materialized view %@ sẽ bỏ các dòng đã lưu của nó, và chúng phải được dựng lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除物化视图 %@ 会丢弃其存储的行，这些行必须重建。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刪除具體化檢視表 %@ 會捨棄其儲存的列，這些列必須重建。"
-          }
-        }
-      }
-    },
     "Dropping table %@ permanently removes the table and all of its rows." : {
       "localizations" : {
         "ko" : {
@@ -182741,6 +182707,36 @@
 
     },
     "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
+
+    },
+    "Its indexes are left out, because the target is not known to take indexes on this kind of object." : {
+
+    },
+    "Its indexes are left out, because the target's index statements would name a different schema than its definition." : {
+
+    },
+    "Its indexes could not be read: %@" : {
+
+    },
+    "The source's indexes could not be read: %@" : {
+
+    },
+    "The target's indexes could not be read: %@" : {
+
+    },
+    "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it." : {
+
+    },
+    "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges." : {
+
+    },
+    "Dropping materialized view %@ discards its stored rows, comments and privileges. The rows are computed again and the source's indexes are created on it." : {
+
+    },
+    "Concurrent refresh" : {
+
+    },
+    "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
 
     }
   },

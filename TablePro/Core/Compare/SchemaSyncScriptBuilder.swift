@@ -84,8 +84,8 @@ internal struct SchemaSyncScriptBuilder {
             return try createStatements(for: snapshot)
         case .dropTable(let name, let schema):
             return dropStatements(name: name, schema: schema)
-        case .alterTable(let name, let schema, let changes):
-            return try alterStatements(name: name, schema: schema, changes: changes)
+        case .alterTable(let name, _, let changes):
+            return try changeStatements(on: name, objectName: name, changes: changes)
         }
     }
 
@@ -135,19 +135,20 @@ internal struct SchemaSyncScriptBuilder {
         }
     }
 
-    private func alterStatements(
-        name: String,
-        schema: String?,
-        changes: [SchemaChange]
+    internal func changeStatements(
+        on relation: String,
+        objectName: String,
+        changes: [SchemaChange],
+        additionalHazards: (SchemaChange) -> [SyncHazard] = { _ in [] }
     ) throws -> [SyncStatement] {
-        let generator = SchemaStatementGenerator(tableName: name, pluginDriver: targetDriver)
+        let generator = SchemaStatementGenerator(tableName: relation, pluginDriver: targetDriver)
         var statements: [SyncStatement] = []
         for change in SchemaChangeOrdering.sorted(changes) {
-            let hazards = classifier.hazards(for: change, typeFamily: targetTypeFamily)
+            let hazards = classifier.hazards(for: change, typeFamily: targetTypeFamily) + additionalHazards(change)
             let generated = try generator.generate(changes: [change])
             for statement in generated {
                 statements += scriptText.sendableStatements(statement.sql).map { sql in
-                    SyncStatement(sql: sql, objectName: name, summary: statement.description, hazards: hazards)
+                    SyncStatement(sql: sql, objectName: objectName, summary: statement.description, hazards: hazards)
                 }
             }
         }

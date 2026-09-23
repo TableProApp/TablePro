@@ -29,7 +29,9 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         _ options: StructureCompareOptions = .default,
         databaseType: DatabaseType = .postgresql
     ) -> SourceObjectDiffEngine {
-        SourceObjectDiffEngine(options: options, sourceDatabaseType: databaseType, targetDatabaseType: databaseType)
+        SourceObjectDiffEngine(
+            options: options, sourceDatabaseType: databaseType, targetDatabaseType: databaseType, targetIndexedKinds: []
+        )
     }
 
     private func status(
