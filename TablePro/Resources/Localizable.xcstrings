@@ -6357,10 +6357,16 @@
         }
       }
     },
+    "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
+
+    },
     "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
 
     },
     "%@ does not allow NULL, so its default cannot be NULL" : {
+
+    },
+    "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
 
     },
     "%d added" : {
@@ -62567,6 +62573,9 @@
         }
       }
     },
+    "False for an index the engine reports as invalid, which queries skip and exports leave out" : {
+
+    },
     "expand" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75321,6 +75330,9 @@
           }
         }
       }
+    },
+    "Invalid indexes are not recreated: %@." : {
+
     },
     "hostname:%lld" : {
       "extractionState" : "stale",

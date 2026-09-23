@@ -48,7 +48,8 @@ extension IndexInfo {
             expressions: index.expressions,
             includedColumns: index.includedColumns,
             ddlMethodAndKeys: index.ddlMethodAndKeys,
-            ddlWhereClause: index.ddlWhereClause
+            ddlWhereClause: index.ddlWhereClause,
+            isValid: index.isValid ?? true
         )
     }
 }

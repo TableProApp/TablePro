@@ -299,7 +299,7 @@ internal struct CompareRunner {
         let targetTables = targetReads.filter { CompareTableKindClassifier.kind(of: $0.table) == .table }
 
         let sourceSnapshots = sourceTables.compactMap {
-            $0.snapshot?.droppingCatalogSpellings(ownSchema: context.source.schema)
+            $0.sourceSnapshot?.droppingCatalogSpellings(ownSchema: context.source.schema)
         }
         let targetSnapshots = targetTables.compactMap {
             $0.snapshot?.droppingCatalogSpellings(ownSchema: context.target.schema)

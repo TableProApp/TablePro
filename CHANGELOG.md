@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Version history for saved queries, with **Restore This Version**. (#2505)
 - Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
+- Invalid PostgreSQL indexes named on the table's **Indexes** tab.
 
 ### Changed
 
@@ -370,6 +371,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- PostgreSQL export and column reorder script failing on an index a failed `CREATE INDEX CONCURRENTLY` left behind.
+- PostgreSQL export and column reorder script failing on a foreign key that references a unique index.
+- PostgreSQL exclusion constraints missing from exports and the DDL tab.
+- PostgreSQL column reorder script dropping an index named like one of the table's check constraints.
+- Invalid PostgreSQL index recreated on the target by Compare & Sync and **Copy To**.
 - Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard.
 - Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.
