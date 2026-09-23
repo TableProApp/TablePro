@@ -192,6 +192,20 @@ struct OceanBaseColumnDefaultsTests {
         #expect(OceanBaseColumnDefaults.binaryLiteralDefault("A", dataType: "VARCHAR(4)") == nil)
     }
 
+    @Test("A catalog default with nothing to resolve against reads by OceanBase's rules, then MySQL's")
+    func catalogDefaultWithoutCreateTable() {
+        func read(_ value: String?, _ dataType: String, isNullable: Bool = true, extra: String = "") -> String? {
+            OceanBaseColumnDefaults.columnDefault(value, extra: extra, dataType: dataType, isNullable: isNullable)
+        }
+        #expect(read("CURRENT_TIMESTAMP", "TIMESTAMP(3)") == "CURRENT_TIMESTAMP(3)")
+        #expect(read("ab", "VARBINARY(4)") == "'ab'")
+        #expect(read("abc", "VARCHAR(10)") == "'abc'")
+        #expect(read("5", "INT(11)") == "5")
+        #expect(read(nil, "VARCHAR(10)") == "NULL")
+        #expect(read(nil, "VARCHAR(10)", isNullable: false) == nil)
+        #expect(read(nil, "INT(11)", extra: "auto_increment") == nil)
+    }
+
     @Test("A literal that does not close where the clause ends is not a literal", arguments: [
         #"'abc\'"#, "'(ab", "'a'b'", "'"
     ])

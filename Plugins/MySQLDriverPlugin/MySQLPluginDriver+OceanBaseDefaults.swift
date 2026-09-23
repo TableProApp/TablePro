@@ -42,32 +42,29 @@ internal extension MySQLPluginDriver {
         createTableClauses: [String: String]?,
         createTableDefaults: MySQLCreateTableDefaults?
     ) -> String? {
-        if flavor.isOceanBase, let catalogDefault {
-            if let currentTimestamp = OceanBaseColumnDefaults.currentTimestampDefault(catalogDefault, dataType: dataType) {
-                return currentTimestamp
-            }
-            if let createTableClauses,
-               OceanBaseColumnDefaults.catalogDefaultNeedsCreateTable(catalogDefault, dataType: dataType) {
-                let resolution = OceanBaseColumnDefaults.resolve(
-                    clause: createTableClauses[column], catalogDefault: catalogDefault
-                )
-                if case .value(let value) = resolution {
-                    return value
-                }
-                Self.logger.warning(
-                    "OceanBase default of \(column, privacy: .public) is not in SHOW CREATE TABLE as reported"
-                )
-            }
-            if let binaryLiteral = OceanBaseColumnDefaults.binaryLiteralDefault(catalogDefault, dataType: dataType) {
-                return binaryLiteral
-            }
+        guard flavor.isOceanBase else {
+            return mysqlColumnDefault(
+                createTableDefaults?.catalogDefault(forColumn: column, extra: extra)
+                    ?? (catalogQuotesDefaults ? .quoted(catalogDefault) : .bare(catalogDefault)),
+                extra: extra,
+                dataType: dataType,
+                isNullable: isNullable
+            )
         }
-        return mysqlColumnDefault(
-            createTableDefaults?.catalogDefault(forColumn: column, extra: extra)
-                ?? (catalogQuotesDefaults ? .quoted(catalogDefault) : .bare(catalogDefault)),
-            extra: extra,
-            dataType: dataType,
-            isNullable: isNullable
+        if let catalogDefault, let createTableClauses,
+           OceanBaseColumnDefaults.catalogDefaultNeedsCreateTable(catalogDefault, dataType: dataType) {
+            let resolution = OceanBaseColumnDefaults.resolve(
+                clause: createTableClauses[column], catalogDefault: catalogDefault
+            )
+            if case .value(let value) = resolution {
+                return value
+            }
+            Self.logger.warning(
+                "OceanBase default of \(column, privacy: .public) is not in SHOW CREATE TABLE as reported"
+            )
+        }
+        return OceanBaseColumnDefaults.columnDefault(
+            catalogDefault, extra: extra, dataType: dataType, isNullable: isNullable
         )
     }
 

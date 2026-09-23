@@ -77,10 +77,11 @@ internal extension MySQLPluginDriver {
                 ? dataType : upperType
             let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
             let detail = catalogDetails[name]
-            let defaultValue = mysqlColumnDefault(
-                detail?.catalogDefault
-                    ?? createTableDefaults?.catalogDefault(forColumn: name, extra: extra)
-                    ?? .bare(rawDefault),
+            let defaultValue = mysqlShowColumnsDefault(
+                rawDefault,
+                catalog: detail?.catalogDefault,
+                createTable: createTableDefaults,
+                column: name,
                 extra: extra,
                 dataType: normalizedType,
                 isNullable: isNullable

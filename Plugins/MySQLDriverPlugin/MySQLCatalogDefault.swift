@@ -12,7 +12,7 @@ import TableProPluginKit
 ///
 /// Nothing in the value alone says which form it is in, and the two forms disagree on what SQL NULL
 /// and a bare word mean, so the form travels with the value rather than as a flag beside it.
-internal enum MySQLCatalogDefault: Equatable, Sendable {
+nonisolated internal enum MySQLCatalogDefault: Equatable, Sendable {
     /// `SHOW FULL COLUMNS` on every server, and `INFORMATION_SCHEMA.COLUMNS` on MySQL and on MariaDB
     /// before 10.2.7. A literal arrives unquoted, MySQL marks an expression `DEFAULT_GENERATED` in
     /// `EXTRA`, and SQL NULL stands for both `DEFAULT NULL` and no default at all.
@@ -32,7 +32,7 @@ internal enum MySQLCatalogDefault: Equatable, Sendable {
 }
 
 /// The column defaults `SHOW CREATE TABLE` states, and which columns a column read takes them for.
-internal struct MySQLCreateTableDefaults: Equatable, Sendable {
+nonisolated internal struct MySQLCreateTableDefaults: Equatable, Sendable {
     enum Scope: Equatable, Sendable {
         /// A MariaDB whose catalog did not answer in its quoted form: the statement is the only exact
         /// source, for every column. A column with no `DEFAULT` clause there has none.
@@ -68,7 +68,7 @@ internal struct MySQLCreateTableDefaults: Equatable, Sendable {
 ///
 /// A generated or AUTO_INCREMENT column has no default whatever the catalog says. MariaDB reports a
 /// generated column's as `NULL`, and the server refuses a `DEFAULT` on either.
-internal func mysqlColumnDefault(
+nonisolated internal func mysqlColumnDefault(
     _ catalog: MySQLCatalogDefault,
     extra: String?,
     dataType: String,
@@ -80,7 +80,29 @@ internal func mysqlColumnDefault(
     return mysqlBareCatalogDefault(value, extra: extra, dataType: dataType)
 }
 
-private func mysqlBareCatalogDefault(_ value: String, extra: String?, dataType: String) -> String {
+/// The default a `SHOW FULL COLUMNS` row stands for, from the most exact source read for its column.
+///
+/// The catalog's quoted form comes first where the server has one, then `SHOW CREATE TABLE`, and the
+/// row's own bare value last. The bare value alone takes a MariaDB expression default for a string,
+/// and leaves a MySQL expression holding non-ASCII text as the catalog encoded it.
+nonisolated internal func mysqlShowColumnsDefault(
+    _ shown: String?,
+    catalog: MySQLCatalogDefault?,
+    createTable: MySQLCreateTableDefaults?,
+    column: String,
+    extra: String?,
+    dataType: String,
+    isNullable: Bool
+) -> String? {
+    mysqlColumnDefault(
+        catalog ?? createTable?.catalogDefault(forColumn: column, extra: extra) ?? .bare(shown),
+        extra: extra,
+        dataType: dataType,
+        isNullable: isNullable
+    )
+}
+
+nonisolated private func mysqlBareCatalogDefault(_ value: String, extra: String?, dataType: String) -> String {
     // MySQL 8.0.13 marks a plain `DEFAULT CURRENT_TIMESTAMP` DEFAULT_GENERATED like any other
     // expression, so this has to be answered before the marker is consulted or the one expression
     // MySQL insists on bare comes back parenthesised.
@@ -96,7 +118,7 @@ private func mysqlBareCatalogDefault(_ value: String, extra: String?, dataType: 
 }
 
 /// MySQL's marker for an expression default, in `EXTRA` of both catalog reads.
-internal func mysqlIsExpressionDefault(extra: String?) -> Bool {
+nonisolated internal func mysqlIsExpressionDefault(extra: String?) -> Bool {
     extra?.uppercased().contains("DEFAULT_GENERATED") == true
 }
 
@@ -106,7 +128,11 @@ internal func mysqlIsExpressionDefault(extra: String?) -> Bool {
 /// exactly, and any non-ASCII text in it encoded twice, which nothing can undo: measured on 8.4.11,
 /// `concat('日','x')` comes back with `日` as `æ\u{97}¥`. `SHOW CREATE TABLE` prints it exactly, so an
 /// expression holding non-ASCII text is read from there and every other one from the catalog.
-internal func mysqlExpressionDefaultNeedsCreateTable(_ value: String?, extra: String?, dataType: String) -> Bool {
+nonisolated internal func mysqlExpressionDefaultNeedsCreateTable(
+    _ value: String?,
+    extra: String?,
+    dataType: String
+) -> Bool {
     guard mysqlIsExpressionDefault(extra: extra), let value else { return false }
     return !value.unicodeScalars.allSatisfy(\.isASCII)
 }
@@ -115,7 +141,7 @@ internal func mysqlExpressionDefaultNeedsCreateTable(_ value: String?, extra: St
 /// as. Before 10.2.7 its catalog quotes nothing, so `uuid()` and `'uuid()'` both come back `uuid()`.
 /// A default with no parenthesis in it cannot be an expression there, and `CURRENT_TIMESTAMP` on a
 /// temporal column reads right either way.
-internal func mariaDBBareDefaultMayBeExpression(_ value: String?, dataType: String) -> Bool {
+nonisolated internal func mariaDBBareDefaultMayBeExpression(_ value: String?, dataType: String) -> Bool {
     guard let value, value.contains("(") else { return false }
     return !(mysqlTemporalType(dataType) && mysqlCurrentTimestampExpression(value, dataType: dataType) != nil)
 }
@@ -132,7 +158,7 @@ internal func mariaDBBareDefaultMayBeExpression(_ value: String?, dataType: Stri
 /// Non-ASCII text is returned as it came too. The catalog encodes it twice, so unescaping it would
 /// produce a statement the server accepts with different text in it, and a default that changes
 /// without a word is worse than an edit the server refuses.
-internal func mysqlUnescapedCatalogExpression(_ value: String) -> String {
+nonisolated internal func mysqlUnescapedCatalogExpression(_ value: String) -> String {
     guard value.unicodeScalars.allSatisfy(\.isASCII) else { return value }
     var result = ""
     var index = value.startIndex
@@ -157,7 +183,7 @@ internal func mysqlUnescapedCatalogExpression(_ value: String) -> String {
 /// A string default comes back stripped of its quotes and has to be given them again. A number, a
 /// `BIT` default (`b'1'`) and a binary default (`0x61`) all come back as the literal they are, and
 /// quoting one changes what it means: `0x61` quoted stores the four characters rather than the byte.
-internal func mysqlCatalogReportsLiteralAsSQL(dataType: String) -> Bool {
+nonisolated internal func mysqlCatalogReportsLiteralAsSQL(dataType: String) -> Bool {
     let base = dataType.uppercased().split(separator: "(", maxSplits: 1).first.map(String.init)?
         .trimmingCharacters(in: .whitespaces) ?? dataType.uppercased()
     switch base {
