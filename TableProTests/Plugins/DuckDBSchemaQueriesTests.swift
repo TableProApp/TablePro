@@ -22,7 +22,8 @@ import Testing
 struct DuckDBSchemaQueriesTests {
     private static let catalogScopedQueries: [(name: String, sql: String)] = [
         ("listSchemas", DuckDBSchemaQueries.listSchemas),
-        ("listTables", DuckDBSchemaQueries.listTables),
+        ("listTables(in: .schema)", DuckDBSchemaQueries.listTables(in: .schema)),
+        ("listTables(in: .allSchemas)", DuckDBSchemaQueries.listTables(in: .allSchemas)),
         ("columnsForTable", DuckDBSchemaQueries.columnsForTable),
         ("columnsForSchema", DuckDBSchemaQueries.columnsForSchema),
         ("primaryKeyColumnsForSchema", DuckDBSchemaQueries.primaryKeyColumnsForSchema),
@@ -116,9 +117,12 @@ struct DuckDBSchemaQueriesTests {
 
     // MARK: - Object listing
 
-    @Test("The table list reports views alongside tables and hides internal objects in both")
-    func tableListIncludesViews() {
-        let sql = DuckDBSchemaQueries.listTables
+    @Test(
+        "The table list reports views alongside tables and hides internal objects in both",
+        arguments: [DuckDBTableListingScope.schema, .allSchemas]
+    )
+    func tableListIncludesViews(scope: DuckDBTableListingScope) {
+        let sql = DuckDBSchemaQueries.listTables(in: scope)
         #expect(sql.contains("duckdb_tables()"))
         #expect(sql.contains("duckdb_views()"))
         #expect(sql.contains("'BASE TABLE'"))
@@ -127,6 +131,24 @@ struct DuckDBSchemaQueriesTests {
             sql.components(separatedBy: "internal = false").count == 3,
             "both the table branch and the view branch must hide internal objects"
         )
+    }
+
+    @Test("The one-schema listing binds the schema and projects no schema column")
+    func oneSchemaListingBindsTheSchema() {
+        let sql = DuckDBSchemaQueries.listTables(in: .schema)
+        #expect(sql.components(separatedBy: "schema_name = $2").count == 3)
+        #expect(!sql.contains(DuckDBSchemaQueries.listSchemas))
+        #expect(!sql.contains(", schema_name"))
+        #expect(sql.hasSuffix("ORDER BY 1"))
+    }
+
+    @Test("Every arm of the all-schema listing is filtered by the schema list query itself")
+    func allSchemaListingFiltersByTheSchemaList() {
+        let sql = DuckDBSchemaQueries.listTables(in: .allSchemas)
+        #expect(sql.components(separatedBy: "schema_name IN (\n\(DuckDBSchemaQueries.listSchemas)\n)").count == 3)
+        #expect(!sql.contains("$2"))
+        #expect(sql.components(separatedBy: ", schema_name\n").count == 3)
+        #expect(sql.hasSuffix("ORDER BY 3, 1"))
     }
 
     // MARK: - Keys

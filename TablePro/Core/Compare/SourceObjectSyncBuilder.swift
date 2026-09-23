@@ -16,9 +16,12 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct SourceObjectSyncBuilder {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SourceObjectSyncBuilder")
+
     private let targetDriver: any PluginDatabaseDriver
     private let targetDatabaseType: DatabaseType
     private let scriptText: SQLScriptText
@@ -30,13 +33,15 @@ internal struct SourceObjectSyncBuilder {
         self.scriptText = SQLScriptText(databaseType: targetDatabaseType)
     }
 
-    internal func build(for result: CompareObjectResult, action: TableSyncAction) -> [SyncStatement] {
+    internal func build(for result: CompareObjectResult, action: TableSyncAction) throws -> [SyncStatement] {
         switch action {
         case .skip:
             return []
         case .create:
+            try refuseWithoutACreateStatement(result)
             return createStatements(for: result, isReplacement: false)
         case .alter:
+            try refuseWithoutACreateStatement(result)
             guard replacesInPlace(result.identity, with: result) else {
                 return dropStatements(for: result, isReplacement: true)
                     + createStatements(for: result, isReplacement: false)
@@ -45,6 +50,20 @@ internal struct SourceObjectSyncBuilder {
         case .drop:
             return dropStatements(for: result, isReplacement: false)
         }
+    }
+
+    private func refuseWithoutACreateStatement(_ result: CompareObjectResult) throws {
+        let definition = result.sourceDefinition.joined(separator: "\n")
+        guard SourceDefinitionDefect.of(definition: definition, sentAs: scriptText) != nil else { return }
+        Self.logger.fault(
+            "Refused to script \(result.identity.kind.rawValue, privacy: .public) \(result.identity.name, privacy: .private(mask: .hash)) without a CREATE statement"
+        )
+        throw CompareSyncError.unsupportedOperation(
+            String(
+                format: String(localized: "%@ cannot be scripted, because its definition is not a statement that recreates it."),
+                result.identity.displayName
+            )
+        )
     }
 
     /// Whether running `replacement`'s definition alone replaces `existing` on the target. Measured on Oracle 23ai, a

@@ -49,6 +49,40 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertTrue(sql.contains("'VIEW'"))
     }
 
+    func testOneSchemaListingIsFilteredByTheSchemaAlone() {
+        let sql = MSSQLSchemaQueries.tables(in: .schema("sales"))
+        XCTAssertEqual(sql, MSSQLSchemaQueries.tables(schema: "sales"))
+        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA = N'sales'"))
+        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE\n"))
+        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_NAME"))
+        XCTAssertFalse(sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
+    }
+
+    /// The all-schema listing is filtered by the schema list query itself, so a table is listed exactly when its schema
+    /// is one `fetchSchemas()` returns. SQL Server rejects an `ORDER BY` inside that subquery, which is why the list is
+    /// split from its ordering.
+    func testAllSchemaListingIsFilteredByTheSchemaListQuery() {
+        let sql = MSSQLSchemaQueries.tables(in: .allSchemas)
+        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA IN (\n\(MSSQLSchemaQueries.listedSchemaNames)\n)"))
+        XCTAssertFalse(sql.contains("ORDER BY SCHEMA_NAME"))
+        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
+        XCTAssertTrue(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
+        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
+    }
+
+    func testSchemaListIsTheListedSchemasInOrder() {
+        XCTAssertEqual(MSSQLSchemaQueries.schemas, MSSQLSchemaQueries.listedSchemaNames + "\nORDER BY SCHEMA_NAME")
+        XCTAssertFalse(MSSQLSchemaQueries.listedSchemaNames.contains("ORDER BY"))
+    }
+
+    func testParseTableRowReadsTheSchemaColumnWhenPresent() {
+        XCTAssertEqual(
+            MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE", "sales"]),
+            MSSQLTableRow(name: "orders", isView: false, schema: "sales")
+        )
+        XCTAssertNil(MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE"])?.schema)
+    }
+
     func testColumnsQueryIncludesIdentityAndPrimaryKey() {
         let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
         XCTAssertTrue(sql.contains("IsIdentity"))

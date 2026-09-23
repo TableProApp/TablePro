@@ -71,6 +71,55 @@ struct MainContentCoordinatorAddRowTests {
         #expect(!makeCoordinator(hasAuthoritativeSchema: false).canAddRow)
         #expect(makeCoordinator(hasAuthoritativeSchema: true).canAddRow)
     }
+
+    @Test("A query tab offers a row only while its active result may be written")
+    func queryTabFollowsTheResultRefusal() throws {
+        let resolved = try makeQueryCoordinator(keysResolved: true)
+        #expect(resolved.activeResultEditRefusal == nil)
+        #expect(resolved.canAddRow)
+
+        let unresolved = try makeQueryCoordinator(keysResolved: false)
+        #expect(unresolved.activeResultEditRefusal == .keysUnresolved)
+        #expect(!unresolved.canAddRow)
+    }
+
+    private func makeQueryCoordinator(keysResolved: Bool) throws -> MainContentCoordinator {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        tabManager.addTab(databaseName: "")
+        let index = try #require(tabManager.selectedTabIndex)
+        let result = ResultSet(
+            label: "users",
+            tableRows: TableRows.from(queryRows: [], columns: ["id", "name"], columnTypes: [])
+        )
+        result.origin = ResultOrigin(
+            tableName: "users",
+            primaryKeyColumns: ["id"],
+            isEditable: true,
+            keysResolved: keysResolved
+        )
+        tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [result]
+            tab.display.activeResultSetId = result.id
+            tab.tableContext.tableName = "users"
+            tab.tableContext.isEditable = true
+        }
+        coordinator.setActiveTableRows(
+            TableRows.from(
+                queryRows: [[.text("1"), .text("Alice")]],
+                columns: ["id", "name"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)],
+                hasAuthoritativeSchema: true
+            ),
+            for: tabManager.tabs[index].id
+        )
+        return coordinator
+    }
 }
 
 @Suite("MainContentCommandActions result view")

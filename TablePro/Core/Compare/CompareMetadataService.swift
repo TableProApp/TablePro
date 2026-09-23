@@ -47,14 +47,6 @@ internal struct TableStructureRead: Sendable {
     }
 }
 
-internal struct RoutineSourceRead: Sendable {
-    internal let name: String
-    internal let kind: CompareObjectKind
-    internal let schema: String?
-    internal let signature: String?
-    internal let source: String
-}
-
 @MainActor
 internal struct CompareMetadataService {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CompareMetadataService")
@@ -167,44 +159,19 @@ internal struct CompareMetadataService {
         return try await (source, target)
     }
 
-    /// `fetchRoutines` supersedes the old per-kind pair and carries `identity`, which is what
-    /// `fetchRoutineDDL` needs to address an overloaded routine again. A routine whose DDL cannot
-    /// be read is still listed, with an empty definition, so it shows as present rather than
-    /// vanishing from the comparison.
     internal func routineReads(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
+        let endpointName = endpoint.qualifiedDescription
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
-            let routines = (try? await plugin.fetchRoutines(schema: schema)) ?? []
-            var reads: [RoutineSourceRead] = []
-            for routine in routines {
-                try Task.checkCancellation()
-                var source = routine.definition ?? ""
-                if source.isEmpty {
-                    source = (try? await plugin.fetchRoutineDDL(routine)) ?? ""
-                }
-                reads.append(RoutineSourceRead(
-                    name: routine.name,
-                    kind: routine.kind == .procedure ? .procedure : .function,
-                    schema: routine.schema ?? schema,
-                    signature: routine.argumentSignature,
-                    source: source
-                ))
-            }
-            return reads
+            return try await Self.readRoutineDefinitions(schema: schema, endpointName: endpointName, using: plugin)
         }
     }
 
-    /// A trigger on a table that is not in scope is not in scope either, so the tables the
-    /// structure read already listed are the ones kept.
-    ///
-    /// The whole-schema read is one query where the driver has one. Where it does not, the
-    /// protocol's default answers with nothing rather than looping, so the per-table read is the
-    /// only correct fallback and `providesBulkTriggerFetch` is what tells the two apart.
     internal func triggerReads(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
@@ -212,61 +179,13 @@ internal struct CompareMetadataService {
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
-        let inScope = Set(tables.map { $0.lowercased() })
+        let endpointName = endpoint.qualifiedDescription
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
-            guard plugin.providesBulkTriggerFetch else {
-                return try await Self.perTableTriggerReads(tables: tables, schema: schema, using: plugin)
-            }
-            /// A failed whole-schema query is not an answer of "no triggers". Swallowing it made an
-            /// empty set authoritative on one side, so every trigger on the other side read as a
-            /// real difference and the script offered to drop or create all of them.
-            let triggers: [PluginTriggerInfo]
-            do {
-                triggers = try await plugin.fetchAllTriggers(schema: schema)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                Self.logger.warning(
-                    "Whole-schema trigger read failed, falling back per table: \(error.publicLogShape, privacy: .public)"
-                )
-                return try await Self.perTableTriggerReads(tables: tables, schema: schema, using: plugin)
-            }
-            return triggers
-                .filter { trigger in
-                    guard let table = trigger.table?.lowercased() else { return true }
-                    return inScope.contains(table)
-                }
-                .map { Self.read($0, schema: schema, fallbackTable: nil) }
+            return try await Self.readTriggerDefinitions(
+                tables: tables, schema: schema, endpointName: endpointName, using: plugin
+            )
         }
-    }
-
-    nonisolated private static func perTableTriggerReads(
-        tables: [String],
-        schema: String?,
-        using plugin: any PluginDatabaseDriver
-    ) async throws -> [RoutineSourceRead] {
-        var reads: [RoutineSourceRead] = []
-        for table in tables {
-            try Task.checkCancellation()
-            guard let triggers = try? await plugin.fetchTriggers(table: table, schema: schema) else { continue }
-            reads += triggers.map { read($0, schema: schema, fallbackTable: table) }
-        }
-        return reads
-    }
-
-    nonisolated private static func read(
-        _ trigger: PluginTriggerInfo,
-        schema: String?,
-        fallbackTable: String?
-    ) -> RoutineSourceRead {
-        RoutineSourceRead(
-            name: trigger.name,
-            kind: .trigger,
-            schema: trigger.schema ?? schema,
-            signature: trigger.table ?? fallbackTable,
-            source: trigger.definition ?? trigger.statement
-        )
     }
 
     internal func viewDefinitions(
@@ -278,22 +197,7 @@ internal struct CompareMetadataService {
         let schema = endpoint.schema
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
-            var reads: [RoutineSourceRead] = []
-            for view in views {
-                try Task.checkCancellation()
-                let definition = try? await plugin.fetchViewDefinition(
-                    view: view.name, schema: view.schema ?? schema
-                )
-                let source = definition ?? ""
-                reads.append(RoutineSourceRead(
-                    name: view.name,
-                    kind: CompareTableKindClassifier.kind(of: view),
-                    schema: view.schema ?? schema,
-                    signature: nil,
-                    source: source
-                ))
-            }
-            return reads
+            return try await Self.readViewDefinitions(views, schema: schema, using: plugin)
         }
     }
 

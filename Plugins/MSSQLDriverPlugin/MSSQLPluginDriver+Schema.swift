@@ -14,20 +14,25 @@ extension MSSQLPluginDriver {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let resolved = effectiveSchema(schema)
-        let schemaLiteral = MSSQLStringLiteral.quoted(resolved)
-        let sql = """
-            SELECT t.TABLE_NAME, t.TABLE_TYPE
-            FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = \(schemaLiteral)
-              AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
-            ORDER BY t.TABLE_NAME
-            """
-        let result = try await execute(query: sql)
+        return try await listTables(in: .schema(resolved), schemaFallback: resolved)
+    }
+
+    func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? {
+        try await listTables(in: .allSchemas, schemaFallback: nil)
+    }
+
+    private func listTables(
+        in scope: MSSQLTableListingScope,
+        schemaFallback: String?
+    ) async throws -> [PluginTableInfo] {
+        let result = try await execute(query: MSSQLSchemaQueries.tables(in: scope))
         return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let rawType = row[safe: 1]?.asText
-            let tableType = (rawType == "VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: tableType, schema: resolved)
+            guard let table = MSSQLSchemaQueries.parseTableRow(row.map(\.asText)) else { return nil }
+            return PluginTableInfo(
+                name: table.name,
+                type: table.isView ? "VIEW" : "TABLE",
+                schema: table.schema ?? schemaFallback
+            )
         }
     }
 
@@ -545,17 +550,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchSchemas() async throws -> [String] {
-        let sql = """
-            SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
-            WHERE SCHEMA_NAME NOT IN (
-                'information_schema','sys','db_owner','db_accessadmin',
-                'db_securityadmin','db_ddladmin','db_backupoperator',
-                'db_datareader','db_datawriter','db_denydatareader',
-                'db_denydatawriter','guest'
-            )
-            ORDER BY SCHEMA_NAME
-            """
-        let result = try await execute(query: sql)
+        let result = try await execute(query: MSSQLSchemaQueries.schemas)
         return result.rows.compactMap { $0.first?.asText }
     }
 
@@ -619,5 +614,4 @@ extension MSSQLPluginDriver {
         ORDER BY t.name
         """
     }
-
 }

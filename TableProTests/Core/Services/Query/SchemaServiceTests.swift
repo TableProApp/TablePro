@@ -13,6 +13,10 @@ import Testing
 @Suite("SchemaService")
 @MainActor
 struct SchemaServiceTests {
+    private func unnamedDatabase(_ connectionId: UUID) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     @Test("allLoadedTables unions tables across loaded per-schema lists")
     func allLoadedTablesUnionsPerSchema() async {
         let connectionId = UUID()
@@ -28,8 +32,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "sales", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         let names = Set(service.allLoadedTables(for: connectionId).map(\.name))
         #expect(names == ["orders", "leads", "employees"])
@@ -46,8 +50,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "mirror", driver: driver)
+        await service.loadSchemaObjects(schema: "sales", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "mirror", in: unnamedDatabase(connectionId), driver: driver)
 
         let matching = service.allLoadedTables(for: connectionId).filter { $0.id == shared.id }
         #expect(matching.count == 1)
@@ -63,8 +67,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "a", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "a.b", driver: driver)
+        await service.loadSchemaObjects(schema: "a", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "a.b", in: unnamedDatabase(connectionId), driver: driver)
 
         let loaded = service.allLoadedTables(for: connectionId)
         #expect(loaded.count == 2)

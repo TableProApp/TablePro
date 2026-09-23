@@ -66,9 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
 - Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 
 ### Removed
@@ -82,7 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
+- Stale column and MongoDB field suggestions when a refresh ran while they were loading.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
+- Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
 - Schemas missing from Open Quickly on every reopen after one failed to load.
 - Unexpanded schemas hidden by the sidebar filter in the Tree layout.
 - Empty object sections opened as "No items" under every match while filtering the sidebar tree.
@@ -120,6 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved query longer than 500,000 characters silently cut short when saved.
 - A file the import panel dimmed still opening, and reaching the wrong importer.
 - Materialized view opened from Open Quickly edited as a plain view. (#2522)
+- Materialized view rows editable in the data grid, then refused at Save.
 - Index edits refused on a PGlite materialized view.
 - Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
 - **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
@@ -324,6 +330,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
+- Compare & Sync scripting a `DROP` with no `CREATE` for a view, routine or trigger whose definition it could not read.
+- Compare & Sync offering to drop every target procedure, function or trigger when the source's list could not be read.
+- DuckDB macro dropped and not recreated by a Compare & Sync replace.
+- Copy To giving no reason for a view, routine or trigger whose definition could not be read.
+- Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 - Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)

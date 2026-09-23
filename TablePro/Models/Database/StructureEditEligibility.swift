@@ -142,10 +142,9 @@ enum StructureEditAvailability: Sendable, Equatable {
 ///
 /// Pure, so the rule is testable without a connection, and ordered: an engine that cannot edit
 /// structure at all says that first, then the object's kind, then the engine's own statement for the
-/// operation. Reading the kind as one `isView` Bool is the defect this replaces, because
-/// `TableInfo.TableType.allowsRowEditing` is true for a materialized view, so the Structure tab
-/// offered `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits that PostgreSQL always
-/// refuses. (#2726)
+/// operation. Reading the kind as one `isView` Bool is the defect this replaces, because the Bool
+/// read false for a materialized view, so the Structure tab offered `ADD COLUMN`, `SET NOT NULL`,
+/// type changes and constraint edits that PostgreSQL always refuses. (#2726)
 enum StructureEditEligibility {
     static func allows(
         _ operation: StructureEditOperation,

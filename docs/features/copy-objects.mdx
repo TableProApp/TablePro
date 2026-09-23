@@ -191,8 +191,10 @@ own SQL text and nothing rewrites the objects it names, so anywhere else it woul
 source. They are left out with the reason shown, which is why duplicating a MySQL database carries
 its tables and not its views.
 
-A driver that answers with a view's `SELECT` rather than its `CREATE`, which ClickHouse, Oracle,
-Dameng and BigQuery do, has that view left out for the same reason.
+A driver that answers with a view's `SELECT` rather than its `CREATE`, which ClickHouse, Dameng and
+BigQuery do, has that view left out for the same reason. A definition the source refuses to return
+is left out with the server's reason. So is every selected procedure and function, or every selected
+trigger, when the source cannot list that kind; the rest of the copy goes ahead.
 
 ## Ordering and foreign keys
 

@@ -164,18 +164,6 @@ internal enum ObjectCopyEligibility {
         )
     }
 
-    /// A definition the driver reports as a bare body rather than as a statement.
-    ///
-    /// ClickHouse, Oracle, Dameng and BigQuery answer `fetchViewDefinition` with the view's SELECT,
-    /// not its `CREATE`. Executing that runs a read, which the runner would then report as the view
-    /// copied, after Replace had already dropped the target's.
-    internal static func isExecutableDefinition(_ definition: String) -> Bool {
-        definition
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-            .hasPrefix("CREATE")
-    }
-
     internal static var definitionNotExecutableRefusal: String {
         String(localized: "This driver reports its body rather than a statement that recreates it.")
     }
