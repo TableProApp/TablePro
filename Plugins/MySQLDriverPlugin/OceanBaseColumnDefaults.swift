@@ -5,7 +5,7 @@
 
 import Foundation
 
-internal enum OceanBaseColumnDefaults {
+nonisolated internal enum OceanBaseColumnDefaults {
     enum Resolution: Equatable {
         case value(String)
         case unverified
@@ -33,6 +33,24 @@ internal enum OceanBaseColumnDefaults {
     static func binaryLiteralDefault(_ catalogDefault: String, dataType: String) -> String? {
         guard textReportedBinaryBaseTypes.contains(baseType(of: dataType)) else { return nil }
         return "'\(mysqlEscapeStringLiteral(catalogDefault))'"
+    }
+
+    /// The default OceanBase's catalog text stands for, where `SHOW CREATE TABLE` has not settled it.
+    ///
+    /// The catalog drops the precision `CURRENT_TIMESTAMP(3)` was written with and reports a binary
+    /// default as the text it holds, so both are answered before the MySQL reading of a bare catalog.
+    static func columnDefault(
+        _ catalogDefault: String?,
+        extra: String?,
+        dataType: String,
+        isNullable: Bool
+    ) -> String? {
+        if let catalogDefault,
+           let literal = currentTimestampDefault(catalogDefault, dataType: dataType)
+               ?? binaryLiteralDefault(catalogDefault, dataType: dataType) {
+            return literal
+        }
+        return mysqlColumnDefault(.bare(catalogDefault), extra: extra, dataType: dataType, isNullable: isNullable)
     }
 
     static func resolve(clause: String?, catalogDefault: String) -> Resolution {

@@ -379,6 +379,23 @@ struct MySQLColumnDefinitionSQLTests {
         #expect(defaults.catalogDefault(forColumn: "b", extra: "") == .quoted(nil))
     }
 
+    /// MariaDB 13.0.2 reports `DEFAULT uuid()` and `DEFAULT 'uuid()'` as the same `uuid()` in `SHOW
+    /// FULL COLUMNS`, so the quoted catalog decides first, `SHOW CREATE TABLE` second, and the row last.
+    @Test("A SHOW FULL COLUMNS default takes the quoted catalog, then SHOW CREATE TABLE, then its own text")
+    func showColumnsDefaultPrecedence() {
+        let createTable = MySQLCreateTableDefaults(clauses: ["e": "uuid()"], scope: .everyColumn)
+        func read(_ catalog: MySQLCatalogDefault?, _ createTable: MySQLCreateTableDefaults?) -> String? {
+            mysqlShowColumnsDefault(
+                "uuid()", catalog: catalog, createTable: createTable,
+                column: "e", extra: "", dataType: "VARCHAR(36)", isNullable: true
+            )
+        }
+        #expect(read(.quoted("'uuid()'"), createTable) == "'uuid()'")
+        #expect(read(nil, createTable) == "uuid()")
+        #expect(read(nil, nil) == "'uuid()'")
+        #expect(read(.quoted("NULL"), nil) == "NULL")
+    }
+
     /// The catalog's escaping is undone exactly, its double encoding of non-ASCII text is not.
     @Test(
         "Only a MySQL expression default holding non-ASCII text needs SHOW CREATE TABLE",

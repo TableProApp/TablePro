@@ -353,6 +353,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query picked from Open Quickly's Recent list dropping out of it once the query ran again.
 - Table opened in one database shown in Open Quickly's Recent in every other database, and opened there.
 - Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half.
+- MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted.
 
 ### Security
 

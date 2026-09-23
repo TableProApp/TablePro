@@ -11,7 +11,7 @@ import Foundation
 /// One plugin serves MySQL and MariaDB, and they gained these catalogs at different releases.
 /// Reading one that does not exist is not a soft failure: the structure load surfaces the error
 /// and the whole Structure tab refuses to open, so each read is gated before it runs.
-enum MySQLServerVersion {
+nonisolated internal enum MySQLServerVersion {
     /// `(major, minor, patch)` from a version banner such as `8.0.36` or `10.6.16-MariaDB`.
     static func components(from banner: String) -> (major: Int, minor: Int, patch: Int)? {
         let leading = banner.prefix { $0.isNumber || $0 == "." }
@@ -49,24 +49,6 @@ enum MySQLServerVersion {
             return isAtLeast((10, 1, 1), banner: banner)
         case .tidb, .oceanbase, .databend:
             return true
-        }
-    }
-
-    /// Which account grammar this server takes. `CREATE USER ... WITH MAX_USER_CONNECTIONS`,
-    /// `ALTER USER ... WITH MAX_USER_CONNECTIONS` and `ALTER USER ... IDENTIFIED BY` all arrived in
-    /// MySQL 5.7.6 and MariaDB 10.2.0; measured, MySQL 5.5.62 and 5.6.51 and MariaDB 5.5.64,
-    /// 10.0.38 and 10.1.48 answer `ERROR 1064` to all three.
-    ///
-    /// TiDB and OceanBase ignore the banner, which lies about them: OceanBase handshakes as 5.7.25,
-    /// or 5.6.25 through OBProxy.
-    static func accountSyntax(banner: String?, flavor: MySQLServerFlavor) -> MySQLAccountSyntax {
-        switch flavor {
-        case .mysql:
-            return isKnownBelow((5, 7, 6), banner: banner) ? .grantUsage : .alterUser
-        case .mariadb:
-            return isKnownBelow((10, 2, 0), banner: banner) ? .grantUsage : .alterUser
-        case .tidb, .oceanbase, .databend:
-            return .alterUser
         }
     }
 
