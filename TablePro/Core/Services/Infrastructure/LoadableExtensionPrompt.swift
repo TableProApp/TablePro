@@ -38,12 +38,20 @@ internal enum LoadableExtensionPrompt {
         }
         let intro = String(
             format: String(localized: "Connection \"%@\" loads SQLite extensions that were not added on this Mac:"),
-            connection.name
+            singleLine(connection.name)
         )
         let warning = String(
             localized: "An extension runs inside TablePro with full access to your Mac. Load them only if you trust these files."
         )
         return [intro, files.joined(separator: "\n"), warning].joined(separator: "\n\n")
+    }
+
+    /// A connection name arrives with the connection, from an import or another Mac, so it may not
+    /// add lines of its own to an alert whose other lines name the code about to run.
+    private static func singleLine(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.map {
+            CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) ? " " : $0
+        }))
     }
 }
 

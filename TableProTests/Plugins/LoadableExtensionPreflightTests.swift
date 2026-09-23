@@ -47,7 +47,7 @@ struct LoadableExtensionPreflightTests {
 
     @Test("A path with a line break or another control character is refused")
     func refusesControlCharacters() {
-        for path in ["/tmp/a.dylib\n/tmp/b.dylib", "/tmp/a\t.dylib", "/tmp/a\u{7}.dylib"] {
+        for path in ["/tmp/a.dylib\n/tmp/b.dylib", "/tmp/a\t.dylib", "/tmp/a\u{7}.dylib", "/tmp/a\u{2028}b.dylib", "/tmp/a\u{2029}b.dylib"] {
             #expect(throws: LoadableExtensionError.controlCharacterInPath) {
                 try LoadableExtensionPreflight.validate([LoadableExtension(path: path)])
             }

@@ -182795,9 +182795,6 @@
     "Choose the extension's file again in Edit Connection." : {
 
     },
-    "Sign it again with: codesign --force --sign - \"%@\"" : {
-
-    },
     "Enter the entry point the extension's documentation names." : {
 
     },
@@ -182870,9 +182867,6 @@
     "The connection's SQLite extensions were not approved." : {
 
     },
-    "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine \"%@\"" : {
-
-    },
     "Connection \"%@\" loads SQLite extensions that were not added on this Mac:" : {
 
     },
@@ -182883,6 +182877,12 @@
 
     },
     "The path of an extension in the list contains a line break or another control character." : {
+
+    },
+    "Sign it again with: codesign --force --sign - %@" : {
+
+    },
+    "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
 
     }
   },

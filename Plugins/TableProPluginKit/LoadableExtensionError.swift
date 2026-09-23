@@ -94,13 +94,16 @@ extension LoadableExtensionError: LocalizedError {
         case .fileNotFound, .notAFile, .controlCharacterInPath:
             return String(localized: "Choose the extension's file again in Edit Connection.")
         case .damagedSignature(let item):
-            return String(format: String(localized: "Sign it again with: codesign --force --sign - \"%@\""), item.path)
+            return String(
+                format: String(localized: "Sign it again with: codesign --force --sign - %@"),
+                Self.shellQuoted(item.expandedPath)
+            )
         case .entryPointNotFound:
             return String(localized: "Enter the entry point the extension's documentation names.")
         case .libraryNotLoaded(let item, let detail) where detail.localizedCaseInsensitiveContains("system policy"):
             return String(
-                format: String(localized: "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine \"%@\""),
-                item.expandedPath
+                format: String(localized: "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@"),
+                Self.shellQuoted(item.expandedPath)
             )
         case .libraryNotLoaded(_, let detail) where detail.localizedCaseInsensitiveContains("incompatible architecture"):
             return String(localized: "Use the build of the extension made for this Mac's processor.")
@@ -110,5 +113,11 @@ extension LoadableExtensionError: LocalizedError {
              .loadingUnavailable, .loadingNotClosed:
             return nil
         }
+    }
+
+    /// One shell word, single-quoted, so a path that came from an import cannot add a command
+    /// substitution or a second command to a line the user pastes into Terminal.
+    static func shellQuoted(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

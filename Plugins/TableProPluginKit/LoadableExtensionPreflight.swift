@@ -16,7 +16,7 @@ public enum LoadableExtensionPreflight {
         var seen = Set<LoadableExtension>()
         for item in extensions {
             guard !item.path.isEmpty else { throw LoadableExtensionError.missingPath }
-            guard !item.path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+            guard !containsLineBreakOrControl(item.path) else {
                 throw LoadableExtensionError.controlCharacterInPath
             }
             guard item.expandedPath.hasPrefix("/") else { throw LoadableExtensionError.relativePath(item) }
@@ -43,6 +43,17 @@ public enum LoadableExtensionPreflight {
             return file
         }
         throw LoadableExtensionError.fileNotFound(item)
+    }
+
+    /// `.controlCharacters` leaves out U+2028 and U+2029, which an alert renders as line breaks.
+    public static func containsLineBreakOrControl(_ text: String) -> Bool {
+        text.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) }
+    }
+
+    /// The same file under two spellings, `/x/foo` beside `/x/foo.dylib` or a Homebrew symlink beside
+    /// its Cellar target, loads once: a second load of one library runs its initializer again.
+    public static func loadedFileKey(for file: String, entryPoint: String?) -> String {
+        (file as NSString).resolvingSymlinksInPath + "\u{0}" + (entryPoint ?? "")
     }
 
     public static func isCIdentifier(_ name: String) -> Bool {

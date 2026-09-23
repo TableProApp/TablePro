@@ -76,6 +76,35 @@ struct LoadableExtensionLoaderTests {
         #expect(handle.calls == ["enable", "load a.dylib", "disable"])
     }
 
+    @Test("One file listed under two spellings loads once, and the second spelling is refused")
+    func sameFileTwiceIsADuplicate() throws {
+        let library = try library("mod_spatialite.dylib")
+        let bare = LoadableExtension(path: String(library.path.dropLast(".dylib".count)))
+        let link = directory.appendingPathComponent("link.dylib")
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: library.path)
+        let linked = LoadableExtension(path: link.path)
+
+        for second in [bare, linked] {
+            let handle = FakeHandle()
+            #expect(throws: LoadableExtensionError.duplicate(second)) {
+                try run([library, second], on: handle)
+            }
+            #expect(handle.calls == ["enable", "load mod_spatialite.dylib", "disable"])
+        }
+    }
+
+    @Test("A command a recovery suggests quotes the path as one shell word")
+    func recoveryCommandsQuoteThePath() {
+        let hostile = LoadableExtension(path: "/tmp/it's $(touch pwned) `id`.dylib")
+        let quoted = "'/tmp/it'\\''s $(touch pwned) `id`.dylib'"
+        let damaged = LoadableExtensionError.damagedSignature(hostile).recoverySuggestion ?? ""
+        let quarantined = LoadableExtensionError.libraryNotLoaded(
+            hostile, detail: "library load disallowed by system policy"
+        ).recoverySuggestion ?? ""
+        #expect(damaged.hasSuffix(" " + quoted))
+        #expect(quarantined.hasSuffix(" " + quoted))
+    }
+
     @Test("A missing file fails before SQLite is asked, and loading is still closed")
     func missingFileClosesLoading() throws {
         let handle = FakeHandle()

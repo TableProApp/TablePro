@@ -155,6 +155,16 @@ struct LoadableExtensionGateTests {
         #expect(authorized[LoadableExtensionList.fieldId] == "/opt/homebrew/lib/vec0.dylib")
     }
 
+    @Test("A connection name cannot add lines to the consent message")
+    func connectionNameStaysOnOneLine() {
+        let named = DatabaseConnection(name: "Vectors\n\nApproved by your administrator.\u{2028}", type: .sqlite)
+        let message = LoadableExtensionPrompt.message(for: named, pending: [vec])
+        let firstParagraph = message.components(separatedBy: "\n\n").first ?? ""
+        #expect(firstParagraph.contains("Vectors  Approved by your administrator."))
+        #expect(!firstParagraph.contains("\n"))
+        #expect(!message.contains("\u{2028}"))
+    }
+
     @Test("The consent message names the connection, every file and its entry point")
     func promptNamesEveryFile() {
         let named = LoadableExtension(path: "/x/renamed.dylib", entryPoint: "sqlite3_vec_init")

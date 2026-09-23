@@ -24,9 +24,12 @@ public enum LoadableExtensionLoader {
         guard setLoadingEnabled(true) else { throw LoadableExtensionError.loadingUnavailable }
 
         var failure: Error?
+        var loadedFiles = Set<String>()
         for item in extensions {
             do {
                 let file = try LoadableExtensionPreflight.resolveFile(for: item)
+                let key = LoadableExtensionPreflight.loadedFileKey(for: file, entryPoint: item.entryPoint)
+                guard loadedFiles.insert(key).inserted else { throw LoadableExtensionError.duplicate(item) }
                 if let message = loadExtension(file, item.entryPoint) {
                     throw LoadableExtensionDiagnosis.error(
                         forSQLiteMessage: message,
