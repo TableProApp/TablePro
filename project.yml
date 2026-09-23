@@ -515,6 +515,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
+      - Plugins/MySQLDriverPlugin/MySQLLiteralSpelling.swift
       - Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift

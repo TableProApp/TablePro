@@ -148,7 +148,7 @@ internal extension MySQLPluginDriver {
                 AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'\(generatedOnly)
             """
         do {
-            let result = try await execute(query: query)
+            let result = try await execute(ownStatement: query)
             var details: [String: MySQLCatalogColumnDetail] = [:]
             for row in result.rows {
                 guard let name = row[safe: 0]?.asText else { continue }
@@ -298,7 +298,7 @@ internal extension MySQLPluginDriver {
                 ORDER BY cc.CONSTRAINT_NAME
                 """
         }
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
                   let clause = row[safe: 1]?.asText else { return nil }
@@ -343,7 +343,7 @@ internal extension MySQLPluginDriver {
             ORDER BY TABLE_NAME, ORDINAL_POSITION
             """
 
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         let createTableClausesByTable = try await oceanbaseDefaultClausesByTable(
             forRows: result.rows, tableColumn: 0, typeColumn: 2, defaultColumn: 6, schema: schema
         )

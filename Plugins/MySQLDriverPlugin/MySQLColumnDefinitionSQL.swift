@@ -11,6 +11,8 @@ internal func mysqlQuoteIdentifier(_ name: String) -> String {
     return "`\(escaped)`"
 }
 
+/// A form feed is written as itself: MySQL and MariaDB have no `\f` escape and read one as the
+/// letter `f`, measured on MySQL 8.4 and MariaDB 13.
 internal func mysqlEscapeStringLiteral(_ value: String) -> String {
     var result = value
     result = result.replacingOccurrences(of: "\\", with: "\\\\")
@@ -20,7 +22,6 @@ internal func mysqlEscapeStringLiteral(_ value: String) -> String {
     result = result.replacingOccurrences(of: "\t", with: "\\t")
     result = result.replacingOccurrences(of: "\0", with: "\\0")
     result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-    result = result.replacingOccurrences(of: "\u{0C}", with: "\\f")
     result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
     return result
 }
