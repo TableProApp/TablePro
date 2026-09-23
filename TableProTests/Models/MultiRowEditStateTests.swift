@@ -1033,6 +1033,23 @@ struct MultiRowEditStateTests {
             #expect(sut.selectedRowIndices == [2])
         }
 
+        @Test("A field the owning grid locks is shown without an editor")
+        func lockedSchemaFieldIsReadOnly() {
+            let sut = MultiRowEditState()
+            sut.configure(
+                schemaFields: [
+                    InspectorRowField(name: "Name", value: "email", editor: .schemaText),
+                    InspectorRowField(name: "Type", value: "text", editor: .typePicker, isEditable: false)
+                ],
+                displayRow: 0
+            )
+
+            #expect(sut.fields[0].isServerOwned == false)
+            #expect(sut.fields[1].isServerOwned)
+            #expect(InspectorFieldListView.isFieldEditable(sut.fields[0], kind: .schemaText, rowIsEditable: true))
+            #expect(!InspectorFieldListView.isFieldEditable(sut.fields[1], kind: .typePicker, rowIsEditable: true))
+        }
+
         @Test("A committed schema edit is not a pending sidebar edit")
         func schemaFieldsAreNotPendingEdits() {
             let sut = MultiRowEditState()

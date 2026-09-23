@@ -75,6 +75,11 @@ private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabase
         "ALTER TABLE \(qualified(table)) ADD COLUMN `\(column.name)` \(column.dataType)"
     }
 
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        let columns = definition.columns.map { "`\($0.name)` \($0.dataType)" }.joined(separator: ", ")
+        return "CREATE TABLE \(qualified(definition.tableName)) (\(columns))"
+    }
+
     private func qualified(_ table: String) -> String {
         guard let schema, !schema.isEmpty else { return "`\(table)`" }
         return "`\(schema)`.`\(table)`"
@@ -151,6 +156,19 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         return pluginDriver
     }
 
+    private static func composeAndSave(
+        changes: [SchemaChange],
+        databaseType: DatabaseType,
+        scope: DatabaseScope
+    ) async throws {
+        let statements = try await DatabaseManager.shared.schemaChangeStatements(
+            tableName: "orders",
+            changes: changes,
+            scope: scope
+        )
+        try await DatabaseManager.shared.executeSchemaChanges(statements, databaseType: databaseType, scope: scope)
+    }
+
     private static func tearDown(_ connections: DatabaseConnection...) {
         for connection in connections {
             MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
@@ -193,8 +211,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         let scope = try #require(Self.makeScope(connectionB, database: "beta"))
         let pooledB = try await Self.seedPooledDriver(connectionB, scope: scope)
-        try await DatabaseManager.shared.executeSchemaChanges(
-            tableName: "orders",
+        try await Self.composeAndSave(
             changes: [Self.makeAddColumnChange()],
             databaseType: .mysql,
             scope: scope
@@ -219,8 +236,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         let pooled = try await Self.seedPooledDriver(connection, scope: scope)
-        try await DatabaseManager.shared.executeSchemaChanges(
-            tableName: "orders",
+        try await Self.composeAndSave(
             changes: [Self.makeAddColumnChange()],
             databaseType: .mysql,
             scope: scope
@@ -241,8 +257,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         defer { Self.tearDown(connection) }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
-        try await DatabaseManager.shared.executeSchemaChanges(
-            tableName: "orders",
+        try await Self.composeAndSave(
             changes: [Self.makeAddColumnChange()],
             databaseType: Self.singleConnectionType,
             scope: scope
@@ -265,8 +280,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         await #expect(throws: DatabaseError.self) {
-            try await DatabaseManager.shared.executeSchemaChanges(
-                tableName: "orders",
+            try await Self.composeAndSave(
                 changes: [Self.makeAddColumnChange()],
                 databaseType: Self.singleConnectionType,
                 scope: scope
@@ -286,8 +300,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         let pooled = try await Self.seedPooledDriver(connection, scope: scope)
-        try await DatabaseManager.shared.executeSchemaChanges(
-            tableName: "orders",
+        try await Self.composeAndSave(
             changes: [Self.makeAddColumnChange()],
             databaseType: .postgresql,
             scope: scope
@@ -310,8 +323,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         let scope = try #require(Self.makeScope(connection, database: "orders", schema: "sales"))
         let pooled = try await Self.seedPooledDriver(connection, scope: scope)
-        try await DatabaseManager.shared.executeSchemaChanges(
-            tableName: "orders",
+        try await Self.composeAndSave(
             changes: [Self.makeAddColumnChange()],
             databaseType: .mssql,
             scope: scope
@@ -338,8 +350,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         _ = try await Self.seedPooledDriver(connection, scope: scope)
-        try await DatabaseManager.shared.executeSchemaChanges(
-            tableName: "orders",
+        try await Self.composeAndSave(
             changes: [Self.makeAddColumnChange()],
             databaseType: .mysql,
             scope: scope
@@ -349,6 +360,88 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         #expect(broadcast.count == 1)
         #expect(broadcast.first?.scope == scope)
         #expect(broadcast.first?.scope?.database == "orders")
+    }
+
+    private static func invoicesDefinition() -> PluginCreateTableDefinition {
+        PluginCreateTableDefinition(
+            tableName: "invoices",
+            columns: [PluginColumnDefinition(name: "id", dataType: "INT")],
+            primaryKeyColumns: []
+        )
+    }
+
+    @Test(
+        "The composer hands over a driver on the tab's schema while the session driver sits on another",
+        arguments: [true, false]
+    )
+    func composerDriverSitsOnTheScopeSchema(pooled: Bool) async throws {
+        let type = pooled ? DatabaseType.mssql : Self.singleConnectionType
+        let (connection, driver) = Self.makeSession(type: type, savedDatabase: "orders", browseSchema: "dbo")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders", schema: "sales"))
+        if pooled {
+            _ = try await Self.seedPooledDriver(connection, scope: scope)
+        }
+        let composedOn = try await DatabaseManager.shared.withSchemaComposer(
+            scope: scope,
+            route: DatabaseManager.shared.schemaChangeRoute(for: scope)
+        ) { _, pluginDriver in
+            pluginDriver.currentSchema
+        }
+
+        #expect(composedOn == "sales")
+        #expect(driver.currentSchema == (pooled ? "dbo" : "sales"))
+    }
+
+    @Test("A Create Table draft is composed on the tab's schema and runs unchanged on its own connection")
+    func createTableDraftComposesOnTheScopeSchema() async throws {
+        let (connection, driver) = Self.makeSession(type: .mssql, savedDatabase: "orders", browseSchema: "dbo")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders", schema: "sales"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        var column = EditableColumnDefinition.placeholder()
+        column.name = "id"
+        column.dataType = "INT"
+        let plan = CreateTableDraftBuilder.plan(
+            tableName: "invoices",
+            options: CreateTableOptions(),
+            columns: [column],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.mssql),
+            includesEngineOptions: false
+        )
+
+        let composed = try await DatabaseManager.shared.createTableStatements(plan: plan, scope: scope)
+        try await DatabaseManager.shared.executeCreateTable(
+            statements: composed.statements,
+            databaseType: .mssql,
+            scope: scope
+        )
+
+        #expect(composed.statements == ["CREATE TABLE `sales`.`invoices` (`id` INT)"])
+        #expect(pooled.executedQueries == composed.statements)
+        #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("An import's CREATE TABLE is composed on the route that runs it, pinned to the import's schema")
+    func importCreateTableComposesOnTheExecutionRoute() async throws {
+        let (connection, driver) = Self.makeSession(type: .postgresql, savedDatabase: "orders", browseSchema: "public")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders", schema: "sales"))
+        let route = DatabaseManager.shared.executionRoute(for: scope)
+        let statements = try await DatabaseManager.shared.createTableStatements(
+            definition: Self.invoicesDefinition(),
+            scope: scope,
+            route: route
+        )
+
+        #expect(route == .sessionDriver)
+        #expect(statements == ["CREATE TABLE `sales`.`invoices` (`id` INT)"])
+        #expect(driver.currentSchema == "sales")
     }
 }
 

@@ -2,7 +2,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.fetchTables across every schema")
+@Suite("PostgreSQLTableListing.query across every schema")
 struct PostgreSQLFetchTablesAllSchemasTests {
     private static let attempts = PostgreSQLTableListingLadder.degradableAttempts
         + [PostgreSQLTableListingLadder.leastCapableAttempt]
@@ -11,7 +11,7 @@ struct PostgreSQLFetchTablesAllSchemasTests {
         _ listing: PostgreSQLTableListingScope,
         _ attempt: PostgreSQLTableListingAttempt = PostgreSQLTableListingLadder.degradableAttempts[0]
     ) -> String {
-        PostgreSQLSchemaQueries.fetchTables(
+        PostgreSQLTableListing.query(
             in: listing,
             includeMaterializedViews: attempt.includeOptionalCatalogs,
             includeForeignTables: attempt.includeOptionalCatalogs,

@@ -23554,7 +23554,7 @@
         }
       }
     },
-    "Available once the view holds rows. Refresh it once without this option first." : {
+    "Available once the view is populated. Refresh it once without this option first." : {
 
     },
     "Average" : {
@@ -37188,6 +37188,12 @@
           }
         }
       }
+    },
+    "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+
+    },
+    "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
+
     },
     "Condition" : {
       "localizations" : {
@@ -168020,6 +168026,9 @@
           }
         }
       }
+    },
+    "This view can be refreshed concurrently." : {
+
     },
     "to view data" : {
       "localizations" : {
