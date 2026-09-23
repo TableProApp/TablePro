@@ -2,11 +2,11 @@
 //  InspectorJsonFieldEditUITests.swift
 //  TableProUITests
 //
-//  The row inspector's JSON field kept two mirrors of one value in two textual forms and
-//  reconciled them from an `onChange` action that re-read a context a render out of date. Typing
-//  one character made the editor put the previous value back and push it into the store again, at
-//  about 75 rounds a second: one keystroke produced 6,944 body evaluations in 30 seconds at 100%
-//  CPU, and the character was thrown away (#3051).
+//  The row inspector's JSON field kept two mirrors of one value and reconciled them from an
+//  `onChange` action that re-read a context a render out of date. Typing one character made the
+//  editor put the previous value back and push it into the store again, at about 75 rounds a
+//  second: one keystroke produced 6,944 body evaluations in 30 seconds at 100% CPU, and the
+//  character was thrown away (#3051).
 //
 //  So the assertion is not "the app is responsive", which is hard to state and easy to pass by
 //  accident. It is that the character is still there afterwards, which the loop could not manage.
@@ -26,16 +26,15 @@ final class InspectorJsonFieldEditUITests: UITestCase {
         let app = try launchWithSampleDatabase(environment: [jsonFixtureVariable: "1"])
         let window = app.windows.firstMatch
 
-        try openFixtureTable(in: app)
+        openFixtureTable(in: app)
         showInspector(in: app)
 
         let grid = window.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(grid.waitToExist(timeout: 30), "The fixture table must produce a result grid")
-        XCTAssertTrue(
-            waitForPredicate(timeout: 30) { grid.tableRows.firstMatch.exists },
-            "The fixture table must return a row"
-        )
-        gridPoint(in: grid, of: window, dy: 12).click()
+        XCTAssertTrue(waitForClickableRows(in: grid), "The fixture table must return a row")
+        /// Past the header, which is 28pt with no column comments, and inside the first row at
+        /// every row height the setting offers.
+        gridPoint(in: grid, of: window, dy: 40).click()
 
         let field = window.textViews.matching(identifier: "inspector-json-field").firstMatch
         XCTAssertTrue(field.waitToExist(timeout: 20), "The JSON column must open the JSON editor")
@@ -47,7 +46,7 @@ final class InspectorJsonFieldEditUITests: UITestCase {
         app.typeText(typedMarker)
 
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { (field.value as? String)?.contains(self.typedMarker) == true },
+            waitForPredicate(timeout: 20) { (field.value as? String)?.contains(self.typedMarker) ?? false },
             "Every typed character must survive; the editor holds '\(field.value as? String ?? "nil")'"
         )
 
@@ -64,16 +63,22 @@ final class InspectorJsonFieldEditUITests: UITestCase {
 
     // MARK: - Helpers
 
-    private func openFixtureTable(in app: XCUIApplication) throws {
-        let browser = app.windows.firstMatch.outlines.firstMatch
-        XCTAssertTrue(browser.waitToExist(timeout: 30), "The object browser must list the sample's tables")
-
-        let table = browser.staticTexts[fixtureTable].firstMatch
+    /// The object browser draws its rows as hosted cells, so the name arrives as the static text's
+    /// `value` behind the object kind, and the row takes a coordinate click rather than an
+    /// element one. `objectBrowserRow` carries both facts.
+    private func openFixtureTable(in app: XCUIApplication) {
+        let window = app.windows.firstMatch
         XCTAssertTrue(
-            table.waitToExist(timeout: 30),
+            window.outlines.firstMatch.waitToExist(timeout: 30),
+            "The object browser must list the sample's tables"
+        )
+
+        let row = objectBrowserRow(fixtureTable, in: window)
+        XCTAssertTrue(
+            row.waitToExist(timeout: 30),
             "The seeded fixture table must appear in the object browser"
         )
-        table.doubleClick()
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
     }
 
     /// The inspector remembers whether it was open, so the starting state is whatever the previous
