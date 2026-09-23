@@ -5,7 +5,7 @@ description: Connect to Turso cloud databases, self-hosted sqld, or local libSQL
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-**Connection Mode** decides every other field on the form. Remote speaks the Hrana HTTP protocol to Turso or a self-hosted sqld; Local File opens a libSQL file through the system SQLite engine.
+**Connection Mode** decides every other field on the form. Remote speaks the Hrana HTTP protocol to Turso or a self-hosted sqld; Local File opens a libSQL file with the SQLite engine the driver carries.
 
 <RegistryPlugin name="libSQL / Turso" plugin="libSQL / Turso Driver" />
 
@@ -35,7 +35,7 @@ There is no host, no port and no Database field: the URL names one database and 
 |-------|-------------|
 | **Database File** | Path to the file. **Browse…** picks one and `~` expands. A path that does not exist is created, along with any missing folders |
 
-The API Token field is hidden here; a local file needs no authentication.
+The API Token field is hidden here; a local file needs no authentication. **Options** gains an **Extensions** list in this mode, which loads SQLite extensions the way it does for [SQLite](/databases/sqlite#extensions).
 
 <Danger>
 Do not open a file that is being synced as a Turso embedded replica while the owning app is running. Concurrent access to a syncing replica can corrupt it.
@@ -73,7 +73,8 @@ There is no SSL/TLS section. A Remote connection is encrypted when its **Databas
 
 - Remote mode runs no transaction. Each statement is its own HTTP request and auto-commits, and `BEGIN` fails with `Transactions are not supported in this mode`. Use Local File mode for transactional work.
 - Local File mode does not sync. The file opens standalone, with no embedded-replica sync to a remote Turso database. Reach the remote copy through Remote mode.
-- libSQL-only SQL such as `ALTER TABLE ALTER COLUMN` does not run in Local File mode. The system SQLite engine gets the statement and rejects it. Rewrite it as standard SQLite DDL.
+- libSQL-only SQL such as `ALTER TABLE ALTER COLUMN` does not run in Local File mode. The SQLite engine gets the statement and rejects it. Rewrite it as standard SQLite DDL.
+- Remote mode loads no extensions. A Turso database runs the extensions its server was built with.
 - Encrypted libSQL files do not open in Local File mode.
 - The structure editor cannot rename a column, change its type, nullability or default, or edit a foreign key. Recreate the table instead.
 - One connection, one database. A switch returns `Switching databases is not supported`, and there is no create or drop.

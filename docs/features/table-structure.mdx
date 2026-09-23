@@ -54,6 +54,10 @@ The cell holds the SQL that follows `DEFAULT`, so a string literal carries its o
 
 Typing straight into the cell is the same as **SQL expression**, so `pending` is a column reference and `'pending'` is the string. **Text** does the quoting and escaping for you.
 
+On MySQL and MariaDB a nullable column declared without a default has `DEFAULT NULL`, so its cell reads **NULL**, and **No default** on a nullable column saves as **NULL**.
+
+Setting **Nullable** to NO, or **Primary Key** to YES, clears a NULL default. A column you change so that it refuses NULL and defaults to NULL is reported before anything is saved.
+
 Auto-increment has its own **Auto Inc** field.
 
 <Frame caption="Every Default cell carries the chevron that opens the list">
@@ -199,7 +203,7 @@ SQLite is the one engine where listing and editing part company. The tab appears
 [Change Tracking](/features/change-tracking) covers the queue, undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`). A save runs on the tab's own connection, database, and schema, the ones it was opened on, and never moves the sidebar or the toolbar.
 
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue. Changes that can lose data, dropping a column, changing a type, adding NOT NULL, changing the primary key, first show a confirmation listing each one.
-- **Preview SQL** (`Cmd+Shift+P`) shows the generated statements without executing them.
+- **Preview SQL** (`Cmd+Shift+P`) shows the statements **Save Changes** would run, on the tab's own schema, and runs none of them. A save that recreates the table previews as its rebuild script, with what the rebuild cannot carry over.
 
 The queue outlives everything short of an explicit discard: closing the tab, closing the window, quitting, and **Refresh** all ask first. A save that never reaches the server leaves the tab open with its queue intact.
 

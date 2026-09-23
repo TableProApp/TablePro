@@ -53,6 +53,7 @@ struct SyncErrorTests {
             .encodingFailed("detail"),
             .pushRejected(count: 2, detail: "detail"),
             .tokenExpired,
+            .pullNotSaved,
             .unknown("detail")
         ]
         for error in all {

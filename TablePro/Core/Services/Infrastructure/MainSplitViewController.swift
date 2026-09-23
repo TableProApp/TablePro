@@ -173,6 +173,10 @@ internal final class MainSplitViewController: NSSplitViewController {
 
     lazy var switcherPresenter = ToolbarSwitcherPresenter(panelController: quickSwitcherPanel)
 
+    /// Control-Tab, which walks every tab this window hosts across all of its connections, so it
+    /// belongs to the window and draws in the window's one panel.
+    lazy var recentTabSwitcher = RecentTabSwitcherController(presenter: quickSwitcherPanel)
+
     // MARK: - Toolbar
 
     internal var toolbarOwner: MainWindowToolbar?
@@ -357,7 +361,8 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// A connection joining or leaving the window changes what every rail in the app lists,
         /// which is what this event is for. Which row is current is a separate question, answered
         /// by the rail reading its host back, so a selection change must not come through here.
-        workspaces.onMembershipChange = {
+        workspaces.onMembershipChange = { [weak self] in
+            self?.recentTabSwitcher.cancel()
             AppEvents.shared.connectionWindowsChanged.send()
         }
 
@@ -636,9 +641,19 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// concerned. Only the selected one receives the real `windowDidBecomeKey`, so without
         /// this the outgoing connection keeps `isKeyWindow` true and never schedules the eviction
         /// that frees its row buffers.
+        ///
+        /// The outgoing side is read from each coordinator rather than from `lastActiveCoordinator`,
+        /// which only a switch sets. The window's first connection is made key by the window itself,
+        /// so the first switch away from it found no cached coordinator to resign: it kept
+        /// `isKeyWindow` and never scheduled the eviction.
         let incoming = workspaces.selected?.sessionState?.coordinator
+        for workspace in workspaces.workspaces {
+            guard let coordinator = workspace.sessionState?.coordinator,
+                  coordinator !== incoming,
+                  coordinator.isKeyWindow else { continue }
+            coordinator.handleWindowDidResignKey()
+        }
         if lastActiveCoordinator !== incoming {
-            lastActiveCoordinator?.handleWindowDidResignKey()
             incoming?.handleWindowDidBecomeKey()
             lastActiveCoordinator = incoming
         }
@@ -675,6 +690,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+        syncFrontmostTabManager()
 
         /// The toolbar's shape follows the workspace, not only its coordinator. Pointing the toolbar
         /// reaches it through a repoint, and a switch between two workspaces that both have no
@@ -689,6 +705,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         syncSelectedPanes()
         applyPaneChrome()
         applyWindowTitle()
+        syncFrontmostTabManager()
         SessionRecoveryTracker.sync()
     }
 
@@ -742,6 +759,7 @@ internal final class MainSplitViewController: NSSplitViewController {
             showSelectedContentPanes()
             showSelectedTrailingPane()
         }
+        syncFrontmostTabManager()
         guard phaseChanged else { return }
         if workspaces.selectedConnectionId == connectionId {
             applyPaneChrome()
@@ -1324,7 +1342,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource:
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory:
             return defaultDetailMinThickness
         }
     }

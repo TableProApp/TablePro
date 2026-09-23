@@ -207,4 +207,44 @@ final class ObjectCopyPlanTests: XCTestCase {
         /// The summary still counts the object once, which is the reason the ids had to collide.
         XCTAssertEqual(result.failedCount, 1)
     }
+
+    func testPartlyCopiedListsViewsAsWellAsTables() {
+        let table = ObjectCopyTableStep(
+            selection: ObjectCopySelection(kind: .table, name: "orders", schema: "public"),
+            dropStatements: [],
+            sequenceStatements: [],
+            createStatements: [statement("CREATE TABLE orders (id int)", "orders")],
+            truncateStatements: [],
+            columns: [],
+            primaryKeyColumns: [],
+            sourceQuery: "",
+            targetTable: "orders",
+            targetSchema: "public",
+            estimatedRows: nil,
+            copiesData: false,
+            copiesIdentityColumn: false,
+            note: "The source and the target share no writable column."
+        )
+        let view = ObjectCopyDefinitionStep(
+            selection: ObjectCopySelection(kind: .materializedView, name: "totals", schema: "public"),
+            dropStatements: [],
+            createStatements: [statement("CREATE MATERIALIZED VIEW totals AS SELECT 1", "totals")],
+            note: SourceObjectIndexes.notCarriedByTargetNote
+        )
+        let quiet = ObjectCopyDefinitionStep(
+            selection: ObjectCopySelection(kind: .view, name: "recent", schema: "public"),
+            dropStatements: [],
+            createStatements: [statement("CREATE VIEW recent AS SELECT 1", "recent")]
+        )
+
+        let copy = ObjectCopyPlan(
+            request: request(content: .structure),
+            createsDatabase: false,
+            tableSteps: [table],
+            definitionSteps: [view, quiet]
+        )
+
+        XCTAssertEqual(copy.partialNotes.map(\.selection.name), ["orders", "totals"])
+        XCTAssertEqual(copy.partialNotes.last?.text, SourceObjectIndexes.notCarriedByTargetNote)
+    }
 }

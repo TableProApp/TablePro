@@ -114,6 +114,8 @@ An SQL export writes those statements back for tables, views and materialized vi
 
 The Structure tab of a view, a materialized view or a foreign table offers only the edits PostgreSQL takes on that kind of object, which is fewer than a table's and different for each. See [Table Structure](/features/table-structure#what-each-object-accepts).
 
+PostgreSQL refuses `INSERT`, `UPDATE` and `DELETE` on a materialized view, so its rows open read-only in the data grid. Edit the tables it reads from, then choose **Refresh Materialized View…**.
+
 ## Invalid indexes
 
 A `CREATE INDEX CONCURRENTLY` or `REINDEX CONCURRENTLY` that fails or is cancelled leaves an invalid index on the table. The **Indexes** tab names it, and exports leave it out as `pg_dump` does. [Table Structure](/features/table-structure#invalid-indexes) covers dropping or rebuilding it.

@@ -88,7 +88,7 @@ extension MainContentCoordinator {
                 armPostConnectSchemaLoad()
             case .surface(let message):
                 Self.logger.error(
-                    "[schema] initial load failed connId=\(self.connectionId, privacy: .public) error=\(message, privacy: .public)"
+                    "[schema] initial load failed connId=\(self.connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public) \(message, privacy: .private)"
                 )
                 services.schemaService.markLoadFailed(connectionId: connectionId, message: message, scope: scope)
             }

@@ -83,6 +83,27 @@ for fragment in "FROM duckdb_tables()" "FROM duckdb_views()" "ORDER BY 2"; do
     fi
 done
 
+# The table listing is built for one schema or for every schema rather than declared as a
+# constant, so both forms are printed by compiling the query file itself.
+cat > "$WORK/builders.swift" <<'SWIFT'
+@main
+enum Builders {
+    static func main() {
+        let queries = [
+            ("listTablesInSchema", DuckDBSchemaQueries.listTables(in: .schema)),
+            ("listTablesInAllSchemas", DuckDBSchemaQueries.listTables(in: .allSchemas))
+        ]
+        for (name, sql) in queries {
+            print(name)
+            print(sql)
+            print("%%")
+        }
+    }
+}
+SWIFT
+xcrun swiftc -parse-as-library -module-name Builders "$SWIFT_FILE" "$WORK/builders.swift" -o "$WORK/builders"
+"$WORK/builders" >> "$WORK/queries.txt"
+
 cat > "$WORK/probe.c" <<'PROBE'
 #include <stdio.h>
 #include <string.h>

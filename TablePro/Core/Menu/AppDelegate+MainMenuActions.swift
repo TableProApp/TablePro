@@ -124,8 +124,21 @@ extension AppDelegate: NSMenuItemValidation {
         NSWorkspace.shared.open(url)
     }
 
+    /// The last stop for Control-Tab, reached from a window with no editor tabs of its own, a CSV
+    /// document above all, whose windows always join one tab group. There the chord switches the
+    /// window's tabs, as AppKit's own item would have.
+    @objc func switchToRecentTab(_ sender: Any?) {
+        NSApp.keyWindow?.selectNextTab(sender)
+    }
+
+    @objc func switchToLeastRecentTab(_ sender: Any?) {
+        NSApp.keyWindow?.selectPreviousTab(sender)
+    }
+
     public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(switchToRecentTab(_:)), #selector(switchToLeastRecentTab(_:)):
+            return (NSApp.keyWindow?.tabbedWindows?.count ?? 0) > 1
         case #selector(checkForUpdates(_:)):
             /// Menu validation is the one moment AppKit gives an already-built item, and a
             /// deferred update has no other way to reach this title.

@@ -52,7 +52,9 @@ Add Row and Duplicate Row stay dimmed until the table's schema has loaded, which
 
 ## When the grid will not edit
 
-A tab opened from the sidebar edits its table directly. A query tab edits only when the app can prove the rows came from exactly one table:
+A tab opened from the sidebar edits its table directly. Views, materialized views, sequences and external tables open read-only; to change what a view shows, edit the tables it reads from.
+
+A query tab edits only when the app can prove the rows came from exactly one table:
 
 | Query | Editable |
 |---|---|

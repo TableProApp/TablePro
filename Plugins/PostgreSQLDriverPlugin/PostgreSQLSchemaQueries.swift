@@ -50,12 +50,7 @@ enum PostgreSQLSchemaQueries {
     /// literally; without an `ESCAPE` clause, `_` would be SQL LIKE's
     /// single-char wildcard and `'pg_%'` would also exclude legitimate user
     /// schemas such as `pgboss`, `pgcrypto`, or `pgvector`.
-    static let listSchemas = """
-        SELECT schema_name FROM information_schema.schemata
-        WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
-          AND schema_name <> 'information_schema'
-        ORDER BY schema_name
-        """
+    static let listSchemas = PostgreSQLTableListing.visibleSchemas
 
     /// Redshift variant: queries `pg_namespace` directly and additionally
     /// requires the connected role to hold `USAGE` on the schema.
@@ -67,144 +62,6 @@ enum PostgreSQLSchemaQueries {
         ORDER BY nspname
         """
 
-    /// Lists tables and views, optionally including materialized views and
-    /// foreign tables. The optional unions reference `pg_matviews` and
-    /// `pg_foreign_table`, which some PostgreSQL-compatible engines do not
-    /// implement; the caller passes `false` when those catalogs are absent so
-    /// the whole query does not fail with `relation does not exist`.
-    ///
-    /// `includeComments` projects each table's comment via `obj_description`
-    /// over the relation's oid. Engines that lack that function fail the whole
-    /// listing, so the caller passes `false` to fall back to a comment-free
-    /// listing.
-    ///
-    /// `includePartitionAwareness` labels a declarative partition parent as
-    /// `PARTITIONED TABLE`, counts its partitions, and drops its partition
-    /// children, which `information_schema.tables` reports as plain
-    /// `BASE TABLE` rows indistinguishable from the parent. The test is
-    /// `pg_inherits` joined to the parent's `relkind`, not
-    /// `pg_class.relispartition`: `relispartition` only exists from PostgreSQL
-    /// 10, and referencing a missing column fails at parse time, which would
-    /// break the listing outright on older servers. Comparing `relkind` against
-    /// `'p'`/`'I'` is a value test on a column present since PostgreSQL 8, so it
-    /// parses everywhere and simply matches nothing before declarative
-    /// partitioning existed. Rows still come from `information_schema.tables`,
-    /// which keeps its privilege filtering; the catalog joins only label, count
-    /// and exclude rows it already returned. The caller passes `false` for
-    /// engines without these catalogs.
-    ///
-    /// A child is dropped only when its parent is itself listed. Keying the
-    /// exclusion on the child alone hid a partition whose parent the role cannot
-    /// read: granting `SELECT` on one partition and nothing on its parent left
-    /// the whole schema listing empty while that partition was perfectly
-    /// readable. The visibility test reuses `information_schema.tables` rather
-    /// than restating its privilege predicate, so the two cannot drift.
-    ///
-    /// Legacy `INHERITS` children stay listed on purpose. Their parent is an
-    /// ordinary table (`relkind = 'r'`), and they are independently useful
-    /// tables rather than an implementation detail of one parent.
-    static func fetchTables(
-        schema: String,
-        includeMaterializedViews: Bool,
-        includeForeignTables: Bool,
-        includeComments: Bool = true,
-        includePartitionAwareness: Bool = true
-    ) -> String {
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
-        func commentColumn(_ oidExpression: String) -> String {
-            includeComments ? "obj_description(\(oidExpression), 'pg_class')" : "NULL::text"
-        }
-
-        let classJoin = (includeComments || includePartitionAwareness) ? """
-
-            LEFT JOIN pg_catalog.pg_namespace pn ON pn.nspname = t.table_schema
-            LEFT JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = t.table_name
-            """ : ""
-
-        let tableTypeColumn = includePartitionAwareness
-            ? "CASE WHEN pc.relkind = 'p' THEN 'PARTITIONED TABLE' ELSE t.table_type END"
-            : "t.table_type"
-
-        let partitionCountColumn = includePartitionAwareness ? """
-            CASE WHEN pc.relkind = 'p' THEN (
-                       SELECT count(*)
-                       FROM pg_catalog.pg_inherits ci
-                       WHERE ci.inhparent = pc.oid) END
-            """ : "NULL::bigint"
-
-        let partitionFilter = includePartitionAwareness
-            ? "\n  " + partitionChildExclusion(childOidExpression: "pc.oid")
-            : ""
-
-        var unions: [String] = [
-            """
-            SELECT t.table_name, \(tableTypeColumn) AS table_type,
-                   \(commentColumn("pc.oid")) AS table_comment,
-                   \(partitionCountColumn) AS partition_count
-            FROM information_schema.tables t\(classJoin)
-            WHERE t.table_schema = \(schemaLiteral)
-              AND t.table_type IN ('BASE TABLE', 'VIEW')\(partitionFilter)
-            """
-        ]
-
-        if includeMaterializedViews {
-            let matviewJoin = includeComments ? """
-
-                LEFT JOIN pg_catalog.pg_namespace mn ON mn.nspname = m.schemaname
-                LEFT JOIN pg_catalog.pg_class mc ON mc.relnamespace = mn.oid AND mc.relname = m.matviewname
-                """ : ""
-            unions.append(
-                """
-                SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
-                       \(commentColumn("mc.oid")) AS table_comment,
-                       NULL::bigint AS partition_count
-                FROM pg_matviews m\(matviewJoin)
-                WHERE m.schemaname = \(schemaLiteral)
-                """
-            )
-        }
-
-        if includeForeignTables {
-            let foreignPartitionFilter = includePartitionAwareness
-                ? "\n  " + partitionChildExclusion(childOidExpression: "c.oid")
-                : ""
-            unions.append(
-                """
-                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
-                       \(commentColumn("c.oid")) AS table_comment,
-                       NULL::bigint AS partition_count
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = \(schemaLiteral)\(foreignPartitionFilter)
-                """
-            )
-        }
-
-        return unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
-    }
-
-    /// The predicate that keeps a partition out of a flat listing. A foreign
-    /// table can be a partition from PostgreSQL 11, so the foreign-table union
-    /// arm needs it as much as the base arm does: without it one relation was
-    /// listed flat under Foreign Tables and nested under its parent at once.
-    private static func partitionChildExclusion(childOidExpression: String) -> String {
-        """
-            AND NOT EXISTS (
-                  SELECT 1
-                  FROM pg_catalog.pg_inherits i
-                  JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                  JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
-                  WHERE i.inhrelid = \(childOidExpression)
-                    AND parent.relkind IN ('p', 'I')
-                    AND EXISTS (
-                          SELECT 1
-                          FROM information_schema.tables pt
-                          WHERE pt.table_schema = parentns.nspname
-                            AND pt.table_name = parent.relname))
-        """
-    }
-
     /// Lists one partitioned table's direct partitions with each one's own
     /// schema and bound, ordered so the DEFAULT partition sorts last. A child
     /// that is itself subpartitioned comes back with `relkind = 'p'` so it can
@@ -215,7 +72,7 @@ enum PostgreSQLSchemaQueries {
     /// public.orders` is legal, and stamping the parent's schema on the row
     /// pointed every statement built from it at a different relation.
     ///
-    /// `relpartbound` exists only from PostgreSQL 10, so unlike `fetchTables`
+    /// `relpartbound` exists only from PostgreSQL 10, so unlike `PostgreSQLTableListing.query`
     /// this query cannot be issued against an older server. The caller gates it
     /// on `PostgreSQLCapabilities.hasDeclarativePartitioning`.
     static func fetchPartitions(schema: String, table: String) -> String {
@@ -621,22 +478,15 @@ enum PostgreSQLSchemaQueries {
         capabilities: PostgreSQLCapabilities,
         includesTableName: Bool
     ) -> String {
+        let source = PostgreSQLMaterializedViewColumnSource.self
         let tableNameProjection = includesTableName ? "mvc.relname AS table_name,\n    " : ""
-        let tableFilter = table.map { "\n  AND mvc.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
         let identityProjection = capabilities.hasIdentityColumns ? "mva.attidentity" : "NULL::text"
         let generatedProjection = capabilities.hasGeneratedColumns ? "mva.attgenerated" : "NULL::text"
         return """
         SELECT
-            \(tableNameProjection)mva.attname AS column_name,
-            CASE WHEN mvt.typtype = 'd'
-                 THEN CASE WHEN mvbt.typelem <> 0 AND mvbt.typlen = -1 THEN 'ARRAY'
-                           WHEN mvbtn.nspname = 'pg_catalog' THEN pg_catalog.format_type(mvt.typbasetype, NULL)
-                           ELSE 'USER-DEFINED' END
-                 ELSE CASE WHEN mvt.typelem <> 0 AND mvt.typlen = -1 THEN 'ARRAY'
-                           WHEN mvtn.nspname = 'pg_catalog' THEN pg_catalog.format_type(mva.atttypid, NULL)
-                           ELSE 'USER-DEFINED' END
-            END AS data_type,
-            CASE WHEN mva.attnotnull OR (mvt.typtype = 'd' AND mvt.typnotnull) THEN 'NO' ELSE 'YES' END AS is_nullable,
+            \(tableNameProjection)\(source.columnName) AS column_name,
+            \(source.dataType) AS data_type,
+            \(source.isNullable) AS is_nullable,
             NULL::text AS column_default,
             CASE WHEN mvcon.nspname <> 'pg_catalog' OR mvco.collname <> 'default' THEN mvco.collname END AS collation_name,
             pg_catalog.col_description(mvc.oid, mva.attnum) AS column_comment,
@@ -648,26 +498,8 @@ enum PostgreSQLSchemaQueries {
             NULL::text AS generation_expression,
             \(declaredType(attribute: "mva")) AS declared_type,
             CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name,
-            mva.attnum AS ordinal_position
-        FROM pg_catalog.pg_class mvc
-        JOIN pg_catalog.pg_namespace mvn ON mvn.oid = mvc.relnamespace
-        JOIN pg_catalog.pg_attribute mva
-            ON mva.attrelid = mvc.oid
-            AND mva.attnum > 0
-            AND NOT mva.attisdropped
-        JOIN pg_catalog.pg_type mvt ON mvt.oid = mva.atttypid
-        JOIN pg_catalog.pg_namespace mvtn ON mvtn.oid = mvt.typnamespace
-        LEFT JOIN pg_catalog.pg_type mvbt
-            ON mvt.typtype = 'd'
-            AND mvbt.oid = mvt.typbasetype
-        LEFT JOIN pg_catalog.pg_namespace mvbtn ON mvbtn.oid = mvbt.typnamespace
-        LEFT JOIN pg_catalog.pg_collation mvco ON mvco.oid = mva.attcollation
-        LEFT JOIN pg_catalog.pg_namespace mvcon ON mvcon.oid = mvco.collnamespace
-        WHERE mvc.relkind = 'm'
-          AND mvn.nspname = \(schemaLiteral)\(tableFilter)
-          AND NOT pg_catalog.pg_is_other_temp_schema(mvn.oid)
-          AND (pg_catalog.pg_has_role(mvc.relowner, 'USAGE')
-               OR pg_catalog.has_column_privilege(mvc.oid, mva.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'))
+            \(source.ordinalPosition) AS ordinal_position
+        \(source.relation(schemaLiteral: schemaLiteral, table: table))
         """
     }
 }

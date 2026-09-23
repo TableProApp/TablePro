@@ -15,17 +15,57 @@ final class QueryTabManager: ObservableObject {
             _tabIndexMapDirty = true
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
+                pruneActivations(keeping: tabs)
             }
             publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
 
-    @Published var selectedTabId: UUID?
+    /// Every writer of the selection comes through here, which makes this the one place that sees
+    /// every tab the user switches to: a click in the strip, Command 1 to 9, a new tab, a table
+    /// opened from the sidebar, a reopened tab and the neighbour a close lands on alike. A view
+    /// modifier could not stand in for it, because a connection the window is not showing has its
+    /// views unparented.
+    @Published var selectedTabId: UUID? {
+        didSet {
+            guard selectedTabId != oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
+
+    /// Whether the window shows this connection's tabs, in the key window. The window sets it, for
+    /// every connection it hosts at once. Only then is a selection a tab the user switched to: a
+    /// restore that finishes for a connection in the background selects a tab nobody has seen, and
+    /// recording it would send the next Control-Tab there. Coming to the front records the selected
+    /// tab, because the user is now looking at it.
+    var isFrontmost = false {
+        didSet {
+            guard isFrontmost != oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
 
     @Published var tabStructureVersion: Int = 0
 
     var pendingFocusTabId: UUID?
+
+    /// When each open tab was last the selected one, as a sequence number rather than a time, so
+    /// two selections in one run-loop turn still order. The sequence is shared by every tab manager
+    /// so a window hosting several connections can order all of their tabs together.
+    private(set) var activationSequence: [UUID: UInt64] = [:]
+    private static var lastActivationSequence: UInt64 = 0
+    private var activationRecordPending = false
+
+    /// Held while the window is on its way to a tab across an await, such as the rail switching a
+    /// connection's database before it selects the tab that database holds. The tab shown in the
+    /// meantime is a waypoint, and the one landed on is recorded when the hold lifts.
+    var defersActivationRecord = false {
+        didSet {
+            guard !defersActivationRecord, oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
 
     private var _tabIndexMap: [UUID: Int] = [:]
     private var _tabIndexMapDirty = true
@@ -111,6 +151,37 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = tabs[((current + offset) % count + count) % count].id
     }
 
+    // MARK: - Recency
+
+    /// The tab is recorded once the turn settles, not at each write. Opening a table into another
+    /// connection brings that connection forward and then selects the new tab in the same turn, so
+    /// the tab it was showing is never drawn; recorded as it passed through, it would be what the
+    /// next Control-Tab went back to.
+    private func scheduleActivationRecord() {
+        guard isFrontmost, !defersActivationRecord, !activationRecordPending else { return }
+        activationRecordPending = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.recordSettledActivation() }
+        }
+    }
+
+    private func recordSettledActivation() {
+        activationRecordPending = false
+        guard isFrontmost, !defersActivationRecord, let id = selectedTab?.id else { return }
+        recordActivation(of: id)
+    }
+
+    private func recordActivation(of id: UUID) {
+        Self.lastActivationSequence += 1
+        activationSequence[id] = Self.lastActivationSequence
+    }
+
+    private func pruneActivations(keeping tabs: [QueryTab]) {
+        guard !activationSequence.isEmpty else { return }
+        let openIds = Set(tabs.map(\.id))
+        activationSequence = activationSequence.filter { openIds.contains($0.key) }
+    }
+
     func bindTabSessionRegistry(_ registry: TabSessionRegistry) {
         tabSessionRegistry = registry
         for tab in tabs where registry.session(for: tab.id) == nil {
@@ -186,11 +257,18 @@ final class QueryTabManager: ObservableObject {
 
     // MARK: - Tab Management
 
-    func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil, claimFocus: Bool = false) {
+    func addTab(
+        initialQuery: String? = nil,
+        title: String? = nil,
+        databaseName: String = "",
+        sourceFileURL: URL? = nil,
+        sourceFileStamp: FileStamp? = nil,
+        claimFocus: Bool = false
+    ) {
         if let sourceFileURL,
            let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
-                adoptReopenedFile(at: existingIndex, content: query, url: sourceFileURL)
+                adoptReopenedFile(at: existingIndex, content: query, stamp: sourceFileStamp)
             }
             selectedTabId = tabs[existingIndex].id
             return
@@ -213,9 +291,8 @@ final class QueryTabManager: ObservableObject {
 
         newTab.tableContext.databaseName = databaseName
         newTab.content.sourceFileURL = sourceFileURL
-        if let sourceFileURL {
-            newTab.content.savedFileContent = newTab.content.query
-            newTab.content.loadMtime = FileTextLoader.modificationDate(of: sourceFileURL)
+        if sourceFileURL != nil {
+            FileTabBaseline.adopt(text: newTab.content.query, stamp: sourceFileStamp, into: &newTab.content)
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -234,15 +311,12 @@ final class QueryTabManager: ObservableObject {
     /// The baseline moves with the buffer. Writing the text without it left the tab reading as
     /// dirty against content it had just loaded, and armed the same banner for a change it had
     /// already taken.
-    private func adoptReopenedFile(at index: Int, content: String, url: URL) {
+    private func adoptReopenedFile(at index: Int, content: String, stamp: FileStamp?) {
         /// An unknown baseline is not a licence to replace what the tab holds. `isFileDirty` reads a
         /// missing one as clean, so without this a tab that never learned what its file said would
         /// be overwritten by the very check meant to protect it.
         guard tabs[index].content.savedFileContent != nil, !tabs[index].content.isFileDirty else { return }
-        tabs[index].content.query = content
-        tabs[index].content.savedFileContent = content
-        tabs[index].content.loadMtime = FileTextLoader.modificationDate(of: url)
-        tabs[index].content.externalModificationDetected = false
+        FileTabBaseline.adopt(text: content, stamp: stamp, into: &tabs[index].content)
     }
 
     /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than
@@ -435,6 +509,30 @@ final class QueryTabManager: ObservableObject {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+    }
+
+    func addVersionHistoryTab(subject: VersionHistorySubject, title: String) {
+        if let existing = tabs.first(where: {
+            $0.tabType == .versionHistory && $0.display.versionHistorySubject == subject
+        }) {
+            selectedTabId = existing.id
+            return
+        }
+        var newTab = QueryTab(title: title, tabType: .versionHistory)
+        newTab.tableContext.isEditable = false
+        newTab.display.versionHistorySubject = subject
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
+    static var versionHistoryFallbackTitle: String {
+        String(localized: "History")
+    }
+
+    static func versionHistoryTitle(for name: String) -> String {
+        guard !name.isBlank else { return versionHistoryFallbackTitle }
+        return String(format: String(localized: "History: %@"), name)
     }
 
     static func objectSourceTitle(for objectRef: DatabaseObjectRef) -> String {

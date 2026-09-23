@@ -94,7 +94,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
 
 /// A single item in the quick switcher results list
 internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
-    let id: String
+    let frecencyKey: String
     let name: String
     let kind: QuickSwitcherItemKind
     let subtitle: String
@@ -106,7 +106,6 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var payload: String?
     var isOpenInTab: Bool = false
     var isReadOnly: Bool = false
-    var tableType: TableInfo.TableType?
     /// The schema of an object in the connection that opened the panel. `target` carries the schema
     /// for a result in another connection and is nil here, so without this a local result committed
     /// with no schema at all: the tab-reuse check compares schemas, so "Switch to Tab" opened a
@@ -115,21 +114,31 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     /// Set on a routine or trigger row, which opens its source rather than a table tab.
     var objectRef: DatabaseObjectRef?
     var target: QuickSwitcherTarget?
+    /// The database of an object in the connection that opened the panel, which a query like
+    /// `shop.public.orders` names. `target` carries it for a result in another connection.
+    var databaseName: String?
+    /// Carried to the tab so Recent remembers what the object is. A sequence opened as a plain
+    /// view came back from Recent offering Drop View.
+    var tableType: TableInfo.TableType?
+    /// A table in a schema other than the one being browsed, whose row names that schema even
+    /// while selected, because two such rows can differ in nothing else.
+    var isOutsideBrowsedSchema: Bool = false
 
-    /// The frecency identity of a table, produced identically by the two places that record one:
-    /// the quick switcher, which knows the object's `TableInfo.TableType`, and the tab open
-    /// chokepoint, which only ever learns a Bool.
-    ///
-    /// The type used to be part of this. It cannot be, because the two sides spell it differently
-    /// and one of them cannot spell it at all: the switcher used the full `TableType` raw value
-    /// while the tab derived `isView` from `allowsRowEditing`, so a materialized view was recorded
-    /// as `TABLE` and looked up as `MATERIALIZED VIEW`. Five of the seven table types disagreed,
-    /// and those objects could never reach the Recent section or earn a frecency boost no matter
-    /// how often they were opened. A name and a schema identify one object in a database whatever
-    /// its type, so the type buys nothing here.
-    static func tableItemId(name: String, schema: String?) -> String {
-        guard let schema, !schema.isEmpty else { return "table_\(name)" }
-        return "table_\(schema).\(name)"
+    /// Where the object lives, outermost first, for a qualified query to match.
+    var searchLocation: [String] {
+        guard let target else {
+            return QualifiedSearchQuery.location(database: databaseName, schema: schemaName)
+        }
+        return QualifiedSearchQuery.location(database: target.databaseName, schema: target.schemaName)
+    }
+
+    var id: String {
+        guard let target else { return frecencyKey }
+        return "\(target.connectionId.uuidString)/\(frecencyKey)"
+    }
+
+    func belongs(to connectionId: UUID) -> Bool {
+        target.map { $0.connectionId == connectionId } ?? true
     }
 
     /// SF Symbol name for this item's icon

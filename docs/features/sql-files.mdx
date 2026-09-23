@@ -25,9 +25,13 @@ Closing a query tab keeps its SQL either way. Reopen it with `Cmd+Shift+T` or **
 
 ## When the file changes underneath you
 
-A `git pull` or an edit in another editor puts a yellow banner across the top of the tab saying the file was modified on disk, with a **Reload** button that replaces your tab's contents with what is now on disk.
+An open file is compared with the copy on disk whenever its window becomes active, and whenever a [linked SQL folder](/features/favorites#linked-sql-folders) sees a change. Any difference counts: a `git pull`, an edit in another editor, or an older copy restored over it.
 
-Saving over a file that changed since you opened it opens a diff sheet instead of overwriting. **Your Changes** and **On Disk** sit side by side, and three buttons resolve it: **Keep My Changes**, **Reload from Disk**, or **Cancel**.
+A changed file puts a yellow banner across the top of the tab, with a **Reload** button that replaces your tab's contents with what is now on disk. Close the banner and it stays closed until the file changes again.
+
+Saving over a file that changed since you opened it opens a diff sheet instead of overwriting. **Your Changes** and **On Disk** sit side by side, with changed lines highlighted unless the changes span more than 2,000 lines. Three buttons resolve it: **Keep My Changes**, **Reload from Disk**, or **Cancel**.
+
+A file deleted, renamed, or moved to the Trash gets the same banner with **Save As** in place of **Reload**. The tab keeps its text, and `Cmd+S` opens Save As instead of writing the file back to its old path. Choosing **Save** as you close the tab opens Save As too, and the tab closes once the new file is written.
 
 ## A folder at a time
 

@@ -13,6 +13,26 @@ internal enum MySQLAccountSyntax: Equatable, Sendable {
     case grantUsage
 }
 
+internal extension MySQLServerVersion {
+    /// Which account grammar this server takes. `CREATE USER ... WITH MAX_USER_CONNECTIONS`,
+    /// `ALTER USER ... WITH MAX_USER_CONNECTIONS` and `ALTER USER ... IDENTIFIED BY` all arrived in
+    /// MySQL 5.7.6 and MariaDB 10.2.0; measured, MySQL 5.5.62 and 5.6.51 and MariaDB 5.5.64,
+    /// 10.0.38 and 10.1.48 answer `ERROR 1064` to all three.
+    ///
+    /// TiDB and OceanBase ignore the banner, which lies about them: OceanBase handshakes as 5.7.25,
+    /// or 5.6.25 through OBProxy.
+    static func accountSyntax(banner: String?, flavor: MySQLServerFlavor) -> MySQLAccountSyntax {
+        switch flavor {
+        case .mysql:
+            return isKnownBelow((5, 7, 6), banner: banner) ? .grantUsage : .alterUser
+        case .mariadb:
+            return isKnownBelow((10, 2, 0), banner: banner) ? .grantUsage : .alterUser
+        case .tidb, .oceanbase, .databend:
+            return .alterUser
+        }
+    }
+}
+
 /// `CREATE USER ... WITH MAX_USER_CONNECTIONS`, `ALTER USER ... WITH MAX_USER_CONNECTIONS` and
 /// `ALTER USER ... IDENTIFIED BY` all arrived in MySQL 5.7.6 and MariaDB 10.2.0, and MySQL 8
 /// removed every form that works below them, so no single spelling reaches both.

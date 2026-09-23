@@ -93,6 +93,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
+
+    /// What `fetchTables(schema:)` lists for every schema `fetchSchemas()` lists, in one call, each
+    /// row carrying its own schema. Nil means the engine has no single call for it, and the host
+    /// asks each schema in turn instead.
+    func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]?
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
 
     /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
@@ -641,6 +646,8 @@ public extension PluginDatabaseDriver {
     var supportsSchemas: Bool { false }
 
     func fetchSchemas() async throws -> [String] { [] }
+
+    func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? { nil }
 
     /// Schemas whose objects live in a catalog outside the database itself, such
     /// as Redshift external schemas backed by Glue, Hive, or a federated source.

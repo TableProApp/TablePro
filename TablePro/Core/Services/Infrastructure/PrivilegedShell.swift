@@ -64,7 +64,7 @@ internal struct OSAScriptPrivilegedShell: PrivilegedShellRunning {
         if message.contains("-128") || message.localizedCaseInsensitiveContains("cancel") {
             throw PrivilegedShellError.cancelled
         }
-        Self.logger.error("Privileged command failed: \(message, privacy: .public)")
+        Self.logger.error("Privileged command failed: \(message, privacy: .private)")
         throw PrivilegedShellError.failed(message)
     }
 }

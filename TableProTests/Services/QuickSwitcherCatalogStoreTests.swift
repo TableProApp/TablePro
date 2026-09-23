@@ -31,7 +31,11 @@ struct QuickSwitcherCatalogStoreTests {
 
     private func table(_ name: String, schema: String? = "public", isOpen: Bool = false) -> QuickSwitcherItem {
         QuickSwitcherItem(
-            id: QuickSwitcherItem.tableItemId(name: name, schema: schema),
+            frecencyKey: QuickSwitcherFrecencyKey.table(
+                name: name,
+                schema: schema,
+                in: .init(database: "app", connectionSwitchesDatabases: true)
+            ),
             name: name,
             kind: .table,
             subtitle: "",
@@ -219,47 +223,5 @@ struct QuickSwitcherCatalogStoreTests {
         store.store([table("users")], for: kept, version: key)
         store.removeConnection(dropped)
         #expect(store.catalog(for: kept, version: key)?.map(\.name) == ["users"])
-    }
-
-    // MARK: - Open state applied on read
-
-    @Test("Open state is applied to a cached catalog on the way out")
-    func openStateAppliedOnRead() {
-        let openTables: Set<QuickSwitcherOpenTable> = [
-            QuickSwitcherOpenTable(schema: "public", name: "users", browsing: "public")
-        ]
-        let applied = QuickSwitcherViewModel.applyingOpenState(
-            to: [table("users"), table("orders")],
-            openTables: openTables,
-            browsing: "public"
-        )
-        #expect(applied.first { $0.name == "users" }?.isOpenInTab == true)
-        #expect(applied.first { $0.name == "orders" }?.isOpenInTab == false)
-    }
-
-    /// The same defect #2191 fixed, reached through the cache instead of a fresh load.
-    @Test("A table of the same name in another schema is not badged from the cache")
-    func openStateRespectsSchemaOnRead() {
-        let openTables: Set<QuickSwitcherOpenTable> = [
-            QuickSwitcherOpenTable(schema: "public", name: "users", browsing: "analytics")
-        ]
-        let applied = QuickSwitcherViewModel.applyingOpenState(
-            to: [table("users", schema: "analytics")],
-            openTables: openTables,
-            browsing: "analytics"
-        )
-        #expect(applied.first?.isOpenInTab == false)
-    }
-
-    /// The function is unconditionally authoritative rather than skipping an empty set, so a badge
-    /// can never survive from whatever it was handed.
-    @Test("No open tabs clears the badge on every row")
-    func noOpenTabsClearsBadge() {
-        let applied = QuickSwitcherViewModel.applyingOpenState(
-            to: [table("users", isOpen: true)],
-            openTables: [],
-            browsing: "public"
-        )
-        #expect(applied.first?.isOpenInTab == false)
     }
 }

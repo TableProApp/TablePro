@@ -62,10 +62,12 @@ enum SessionStateFactory {
             },
             tabSessionRegistry: tabSessionRegistry
         )
+        let databaseType = connection.type
         tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, objectType, isPreview in
             SharedSidebarState.forConnection(connectionId).recordTableOpen(
                 database: databaseName, schema: schemaName, name: tableName,
-                isView: isView, objectType: objectType, isPreview: isPreview
+                isView: isView, objectType: objectType, isPreview: isPreview,
+                connectionSwitchesDatabases: PluginManager.shared.supportsDatabaseSwitching(for: databaseType)
             )
         }
         tabMgr.onTableSchemaResolved = { tableName, databaseName, schemaName in

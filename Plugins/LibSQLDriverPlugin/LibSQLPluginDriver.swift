@@ -3,9 +3,9 @@
 //  TablePro
 //
 
+import CSQLite
 import Foundation
 import os
-import SQLite3
 import TableProPluginKit
 
 // MARK: - Error
@@ -90,8 +90,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         }
 
+        let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
         let localBackend = SQLiteLocalBackend()
-        try await localBackend.open(path: path)
+        try await localBackend.open(path: path, loading: extensions)
         let rawHandle = await localBackend.dbHandleForInterrupt
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
         let version = versionResult.rows.first?.first?.asText ?? "SQLite"

@@ -3,9 +3,9 @@
 //  TablePro
 //
 
+import CSQLite
 import Foundation
 import os
-import SQLite3
 import TableProPluginKit
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -48,9 +48,11 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsCheckConstraints = true
 
+    static let additionalConnectionFields: [ConnectionField] = [.loadableExtensions()]
+
     /// ALTER TABLE ... ADD/DROP CONSTRAINT arrived in SQLite 3.53.0 (2026-04-09). The plugin links
-    /// the system libsqlite3, so this tracks the user's macOS rather than the app version, and it
-    /// is a per-process constant because one dylib is linked for the process's whole lifetime.
+    /// its own SQLite (scripts/build-sqlite.sh), so this follows the version pinned there rather
+    /// than the user's macOS.
     static let supportsCheckConstraintEditing = sqlite3_libversion_number() >= 3_053_000
 
     static let supportsGeneratedColumns = true
@@ -172,8 +174,9 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
         try await withTaskCancellationHandler {
-            try await backend.open()
+            try await backend.open(loading: extensions)
         } onCancel: {
             backend.abortConnect()
         }

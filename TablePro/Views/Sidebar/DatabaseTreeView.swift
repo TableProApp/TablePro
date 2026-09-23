@@ -12,7 +12,7 @@ struct DatabaseTreeRoutineRef: Identifiable, Equatable {
     let routine: RoutineInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(routine.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", routine.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -26,7 +26,7 @@ struct DatabaseTreeTriggerRef: Identifiable, Equatable {
     let trigger: TriggerInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(trigger.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", trigger.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -40,7 +40,7 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
     let type: UserDefinedTypeInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(type.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", type.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {

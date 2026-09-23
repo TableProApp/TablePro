@@ -63,6 +63,7 @@ internal enum ScriptQueryRunner {
                 connectionId: request.connectionId,
                 databaseType: snapshot.databaseType,
                 externalAccess: snapshot.externalAccess,
+                loadsExtensions: snapshot.loadsExtensions,
                 allowsDestructive: true
             )
         )
