@@ -494,12 +494,12 @@ struct QuickSwitcherPanelContent: View {
 #Preview("Browse tables") {
     let viewModel = QuickSwitcherViewModel(connectionId: UUID())
     viewModel.allItems = [
-        QuickSwitcherItem(id: "t1", name: "users", kind: .table, subtitle: "", isOpenInTab: true),
-        QuickSwitcherItem(id: "t2", name: "user_profiles", kind: .table, subtitle: ""),
-        QuickSwitcherItem(id: "t3", name: "orders", kind: .table, subtitle: ""),
-        QuickSwitcherItem(id: "v1", name: "active_users", kind: .view, subtitle: "View"),
-        QuickSwitcherItem(id: "d1", name: "analytics", kind: .database, subtitle: "Database"),
-        QuickSwitcherItem(id: "f1", name: "Monthly revenue", kind: .savedQuery, subtitle: "rev")
+        QuickSwitcherItem(frecencyKey: "t1", name: "users", kind: .table, subtitle: "", isOpenInTab: true),
+        QuickSwitcherItem(frecencyKey: "t2", name: "user_profiles", kind: .table, subtitle: ""),
+        QuickSwitcherItem(frecencyKey: "t3", name: "orders", kind: .table, subtitle: ""),
+        QuickSwitcherItem(frecencyKey: "v1", name: "active_users", kind: .view, subtitle: "View"),
+        QuickSwitcherItem(frecencyKey: "d1", name: "analytics", kind: .database, subtitle: "Database"),
+        QuickSwitcherItem(frecencyKey: "f1", name: "Monthly revenue", kind: .savedQuery, subtitle: "rev")
     ]
     viewModel.scope = .tables
     return QuickSwitcherPanelContent(viewModel: viewModel) { _, _ in }

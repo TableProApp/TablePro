@@ -12,7 +12,7 @@ internal enum IdentityPath {
         return joined([schema, name], separator: ".")
     }
 
-    private static func escaped(_ component: String, separator: Unicode.Scalar) -> String {
+    internal static func escaped(_ component: String, separator: Unicode.Scalar) -> String {
         guard component.unicodeScalars.contains(where: { $0 == separator || $0 == "\\" }) else {
             return component
         }
