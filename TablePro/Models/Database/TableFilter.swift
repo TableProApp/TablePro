@@ -222,6 +222,17 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
 }
 
 extension TableFilter {
+    /// Whether both rows select the same rows, whatever their id, position or enabled flag.
+    func hasSameCondition(as other: TableFilter) -> Bool {
+        columnName == other.columnName
+            && filterOperator == other.filterOperator
+            && value == other.value
+            && secondValue == other.secondValue
+            && rawSQL == other.rawSQL
+            && isCaseSensitive == other.isCaseSensitive
+            && elementScope == other.elementScope
+    }
+
     /// The joined `value` stays as it was for drivers that still read a `BETWEEN` as one
     /// comma-separated string; `secondValue` carries the upper bound intact for those that don't,
     /// so a bound holding a comma is no longer mistaken for the separator.

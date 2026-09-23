@@ -516,13 +516,7 @@ class DataGridRowView: NSTableRowView {
             menu.addItem(jsonViewItem)
         }
 
-        if dataColumnIndex >= 0,
-           let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
-               forRow: rowIndex,
-               dataColumn: dataColumnIndex
-           ) {
-            menu.addItem(highlightItem)
-        }
+        addCellValueMenuItems(to: menu, dataColumnIndex: dataColumnIndex, delegate: coordinator.delegate)
 
         let tableRows = coordinator.tableRowsProvider()
         addForeignKeyMenuItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
@@ -589,6 +583,20 @@ class DataGridRowView: NSTableRowView {
         }
 
         return menu
+    }
+
+    private func addCellValueMenuItems(
+        to menu: NSMenu,
+        dataColumnIndex: Int,
+        delegate: (any DataGridViewDelegate)?
+    ) {
+        guard dataColumnIndex >= 0, let delegate else { return }
+        if let filterItem = delegate.dataGridFilterMenuItem(forRow: rowIndex, dataColumn: dataColumnIndex) {
+            menu.addItem(filterItem)
+        }
+        if let highlightItem = delegate.dataGridHighlightMenuItem(forRow: rowIndex, dataColumn: dataColumnIndex) {
+            menu.addItem(highlightItem)
+        }
     }
 
     private func buildSetValueMenu(dataColumnIndex: Int, tableRows: TableRows) -> NSMenu {

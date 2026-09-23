@@ -4,14 +4,12 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
 import TableProPluginKit
+import Testing
 
 @Suite("Column Type SQL Quoting")
 struct ColumnTypeSQLQuotingTests {
-
     @Test("An integer column only treats a plain integer as numeric")
     func integerColumnNumericShapes() {
         let expectations: [String: Bool] = [
@@ -141,5 +139,32 @@ struct ColumnTypeSQLQuotingTests {
         #expect(!ColumnTypeSQLQuoting.supportsEmptyStringComparison(array))
         #expect(ColumnTypeSQLQuoting.isKnownTextLike(.text(rawType: "text")))
         #expect(ColumnTypeSQLQuoting.isKnownTextLike(.set(rawType: "SET", values: nil)))
+    }
+
+    @Test("Large objects, XML, JSON and binary have no equality comparison")
+    func typesWithoutEquality() {
+        for rawType in ["CLOB", "nclob", "NTEXT", "LONG", "xml", "XMLTYPE", "clob(1M)"] {
+            #expect(!ColumnTypeSQLQuoting.hasEqualityOperator(.text(rawType: rawType)), "\(rawType)")
+        }
+        #expect(!ColumnTypeSQLQuoting.hasEqualityOperator(.json(rawType: "json")))
+        #expect(!ColumnTypeSQLQuoting.hasEqualityOperator(.blob(rawType: "BLOB")))
+        #expect(!ColumnTypeSQLQuoting.hasEqualityOperator(.spatial(rawType: "GEOMETRY")))
+        #expect(!ColumnTypeSQLQuoting.hasEqualityOperator(
+            .array(rawType: "int[]", element: .integer(rawType: "int"))
+        ))
+    }
+
+    @Test("Character, numeric, temporal, boolean and enum columns compare by equality")
+    func typesWithEquality() {
+        for rawType in ["VARCHAR(255)", "TEXT", "uuid", "CITEXT", "String"] {
+            #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.text(rawType: rawType)), "\(rawType)")
+        }
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.text(rawType: nil)))
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.integer(rawType: "INT")))
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.decimal(rawType: "NUMERIC(10,2)")))
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.timestamp(rawType: "timestamptz")))
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.boolean(rawType: "bool")))
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.enumType(rawType: "ENUM", values: nil)))
+        #expect(ColumnTypeSQLQuoting.hasEqualityOperator(.set(rawType: "SET", values: nil)))
     }
 }

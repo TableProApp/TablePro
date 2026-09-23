@@ -160,6 +160,29 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return HighlightMenuBuilder.menuItem(for: context, actions: actions)
     }
 
+    /// Offered only for a value the server holds: a row the reader inserted, or a cell they edited,
+    /// is not on the server yet, so a filter built from it cannot find the row it came from.
+    func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
+        guard let coordinator, coordinator.canFilterRows,
+              let grid = tableViewCoordinator,
+              let tab = coordinator.tabManager.selectedTab,
+              let row = grid.displayRow(at: displayRow) else { return nil }
+        let visualState = grid.visualState(for: displayRow)
+        guard !visualState.isInserted, !visualState.isModified(columnIndex: dataColumn) else { return nil }
+        let tableRows = grid.tableRowsProvider()
+        let columns = tableRows.columns
+        guard columns.indices.contains(dataColumn), dataColumn < row.values.count else { return nil }
+
+        let tabId = tab.id
+        return CellFilterMenuBuilder.menuItem(
+            columnName: columns[dataColumn],
+            columnType: dataColumn < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumn] : nil,
+            value: row.values[dataColumn]
+        ) { [weak coordinator] filter in
+            coordinator?.applyCellFilter(filter, forTab: tabId)
+        }
+    }
+
     func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem? {
         guard coordinator != nil, let grid = tableViewCoordinator else { return nil }
         let columns = grid.tableRowsProvider().columns

@@ -32,6 +32,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem]
     func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem]
     func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem?
+    func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem?
     func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem?
     func dataGridVisualState(forRow row: Int) -> RowVisualState?
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView?
@@ -83,6 +84,7 @@ extension DataGridViewDelegate {
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem] { [] }
     func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] { [] }
     func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? { nil }
+    func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? { nil }
     func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem? { nil }
     func dataGridVisualState(forRow row: Int) -> RowVisualState? { nil }
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? { nil }

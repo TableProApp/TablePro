@@ -541,12 +541,79 @@ final class FilterCoordinator: ObservableObject {
         applyCommit(.solo(filter.id))
     }
 
+    /// Whether the selected tab's rows can be filtered from the grid: a table tab showing its rows,
+    /// on an engine that filters by column rather than by a key pattern.
+    var canFilterRows: Bool {
+        guard let tab = parent.tabManager.selectedTab,
+              tab.tabType == .table,
+              tab.tableContext.tableName != nil,
+              tab.display.resultsViewMode.showsRowFilters else { return false }
+        return !usesBrowseSearch
+    }
+
+    /// Narrows what the grid shows by one more condition, which a cell's Filter menu offers.
+    func applyCellFilter(_ filter: TableFilter) {
+        guard canFilterRows, filter.isValid,
+              !Self.isRunning(filter, in: selectedTabFilterState) else { return }
+        applyTransition { state in
+            state = Self.cellFilterState(state, adding: filter)
+        }
+    }
+
+    /// Whether the rows on screen were already fetched with this condition, so adding it would
+    /// change nothing but the page.
+    static func isRunning(_ filter: TableFilter, in state: TabFilterState) -> Bool {
+        guard state.executedFilters.contains(where: { $0.hasSameCondition(as: filter) }) else { return false }
+        return state.filterLogicMode == .and || state.executedFilters.count == 1
+    }
+
+    /// The filter state that shows what the grid showed, and only rows matching `filter` too.
+    ///
+    /// What the grid showed is `executedFilters`, never `appliedFilters`: rows typed and never
+    /// applied, and rows left in the panel by Clear, resolve as applied under `.all` without having
+    /// run. So a row stays checked only when it is running, every other row is unchecked rather than
+    /// removed, and the commit becomes `.all` over exactly the checked rows, which is also what the
+    /// saved state restores. A row that already holds the condition is checked instead of repeated.
+    ///
+    /// Under Match any, a condition can only be added to one running row or none, where the two
+    /// modes agree and the mode becomes Match all. With two or more running rows the condition
+    /// cannot join them, so it runs alone.
+    static func cellFilterState(_ state: TabFilterState, adding filter: TableFilter) -> TabFilterState {
+        let executedIDs = Set(state.executedFilters.map(\.id))
+        let runningIDs = Set(state.filters.lazy.map(\.id).filter(executedIDs.contains))
+        let keepsRunningRows = state.filterLogicMode == .and || runningIDs.count <= 1
+        let keptIDs = keepsRunningRows ? runningIDs : []
+        let existingID = state.filters.first { $0.hasSameCondition(as: filter) }?.id
+
+        var next = state
+        next.filters = state.filters.map { row in
+            var row = row
+            row.isEnabled = keptIDs.contains(row.id) || row.id == existingID
+            return row
+        }
+        if existingID == nil {
+            var added = filter
+            added.isEnabled = true
+            next.filters.append(added)
+        }
+        if keepsRunningRows {
+            next.filterLogicMode = .and
+        }
+        next.commit = .all
+        next.isVisible = true
+        return next
+    }
+
     /// Writes the commit, persists it and re-queries, all behind the discard guard.
     ///
     /// Behind it, because `commit` is the record of what the rows on screen were fetched with.
     /// Setting it first and taking the guard afterwards left a declined apply reporting a filter
     /// the grid had never run, saved to disk, and re-run by the next page turn.
     private func applyCommit(_ commit: FilterCommit) {
+        applyTransition { $0.commit = commit }
+    }
+
+    private func applyTransition(_ transition: @escaping (inout TabFilterState) -> Void) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               let tableName = tab.tableContext.tableName else { return }
 
@@ -555,7 +622,7 @@ final class FilterCoordinator: ObservableObject {
         parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard capturedTabIndex < parent.tabManager.tabs.count else { return }
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.filterState.commit = commit }
+            mutateFilterState(at: capturedTabIndex, transition)
             commitFilters(
                 parent.tabManager.tabs[capturedTabIndex].filterState.appliedFilters,
                 logicMode: nil,

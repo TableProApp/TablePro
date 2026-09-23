@@ -72,6 +72,15 @@ extension MainContentCoordinator {
         filterCoordinator.applySoloFilter(filter)
     }
 
+    var canFilterRows: Bool {
+        filterCoordinator.canFilterRows
+    }
+
+    func applyCellFilter(_ filter: TableFilter, forTab tabId: UUID) {
+        guard tabManager.selectedTab?.id == tabId else { return }
+        filterCoordinator.applyCellFilter(filter)
+    }
+
     func toggleFilterPanel() {
         filterCoordinator.toggleFilterPanel()
     }
