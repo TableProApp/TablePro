@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Global** on a saved query folder's menu, for a folder every connection shows.
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
+- **Filter** in a data grid cell's context menu, for narrowing a table to rows sharing that cell's value. (#3066)
 
 ### Changed
 
@@ -123,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A dropped database or schema leaving every one of its tables' saved settings behind.
 - Favorites rows left behind by a dropped table, schema or database.
 - Column and operator pull-downs in **Highlight Rules** snapping back to their previous value, leaving every rule on **equals** and on the column it was created with. (#3015)
+- Lines of a multi-line value run together in the cell menu's **Highlight** titles.
 - Favorite queries missing from the sidebar Favorites tab on the first switch to it. (#3016)
 - Favorites list silently dropping rows during a burst of iCloud favorites updates.
 - A favorite moved out of **Global** still listed, and its keyword still expanding, in every other connection.

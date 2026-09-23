@@ -27,6 +27,25 @@ Filters are saved per connection, database, schema, and table, and survive a rel
 Redis shows a key-pattern search bar (`user:*` and the like) with a key-type picker instead of the filter bar.
 </Info>
 
+## Filter by cell value
+
+Right-click a cell in a table and open **Filter**. The conditions it offers are built from that cell's stored value, not from its **Display As** text:
+
+| Cell | Conditions |
+|---|---|
+| A value | `status = “paid”`, `status != “paid”`, plus `>` and `<` on a number or date column |
+| NULL | **is NULL**, **is not NULL** |
+| Empty text | **is empty**, **is not empty** |
+
+<Frame caption="A number cell adds greater than and less than">
+  <img className="block dark:hidden" src="/images/cell-filter-menu.png" alt="Cell context menu with the Filter submenu open, listing AlbumId = 3, != 3, > 3 and < 3" />
+  <img className="hidden dark:block" src="/images/cell-filter-menu-dark.png" alt="Cell context menu with the Filter submenu open, listing AlbumId = 3, != 3, > 3 and < 3" />
+</Frame>
+
+Choose one and it lands in the filter bar as a checked row and runs. It narrows what the grid already shows: rows that were running stay checked, and every other row is unchecked, including the ones **Clear** left behind. Under **Match any**, with two or more rows running, the new condition runs alone. A `!=` condition also leaves out rows where the column is NULL.
+
+There is no **Filter** item on a query result, on Redis, or on a new row or an edited cell. Binary, JSON, XML, spatial, array and large-object columns have none either, and neither does text with a leading or trailing space or over 10,000 characters: type those conditions into the filter bar instead.
+
 ## Operators
 
 Eighteen of them, and the menu shows the SQL each one produces.
