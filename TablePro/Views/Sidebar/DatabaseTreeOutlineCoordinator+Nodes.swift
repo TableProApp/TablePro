@@ -284,7 +284,8 @@ extension DatabaseTreeOutlineCoordinator {
             tables: schemaService.tables(for: connectionId, schema: schema),
             routines: schemaService.routines(for: connectionId, schema: schema),
             triggers: schemaService.triggers(for: connectionId, schema: schema),
-            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema)
+            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
+            database: browsingDatabase
         )
     }
 
@@ -335,7 +336,8 @@ extension DatabaseTreeOutlineCoordinator {
             routines: schemaService.routines(for: connectionId, schema: schema),
             triggers: schemaService.triggers(for: connectionId, schema: schema),
             userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
-            searchText: searchText
+            searchText: searchText,
+            database: browsingDatabase
         )
     }
 

@@ -85,6 +85,60 @@ struct CatalogTableListingTests {
         #expect(merged.unlistedSchemas == ["payroll"])
     }
 
+    @Test("A retry that still cannot read a schema keeps what was known of it")
+    func mergingARetryThatFailsAgain() {
+        let first = CatalogTableListing.Result(
+            tables: [table("users", "public"), table("payslips", "payroll")],
+            unlistedSchemas: ["payroll"]
+        )
+        let retry = CatalogTableListing.Result(tables: [], unlistedSchemas: ["payroll"])
+
+        let merged = first.merging(retry, retried: ["payroll"])
+
+        #expect(merged.tables.map(\.name) == ["users", "payslips"])
+        #expect(merged.unlistedSchemas == ["payroll"])
+    }
+
+    @Test("A refresh that cannot read a schema carries that schema's earlier rows over")
+    func keepingRowsFromAnEarlierListing() {
+        let earlier = CatalogTableListing.Result(
+            tables: [table("users", "public"), table("timesheet", "attendance")],
+            unlistedSchemas: []
+        )
+        let refresh = CatalogTableListing.Result(tables: [table("orders", "public")], unlistedSchemas: ["attendance"])
+
+        let kept = refresh.keepingRows(from: earlier)
+
+        #expect(kept.tables.map(\.name) == ["orders", "timesheet"])
+        #expect(kept.unlistedSchemas == ["attendance"])
+    }
+
+    @Test("A lost connection fails the whole listing rather than reading as empty")
+    func lostConnectionFailsTheListing() async {
+        let driver = MockDatabaseDriver()
+        driver.schemasToReturn = ["public", "attendance"]
+        driver.schemaTablesErrors = ["attendance": DatabaseError.notConnected]
+
+        await #expect(throws: DatabaseError.self) {
+            try await CatalogTableListing.tables(
+                in: scope, excludingSchemas: [], metadata: RecordingMetadataProvider(driver: driver)
+            )
+        }
+    }
+
+    @Test("Every schema failing fails the whole listing")
+    func everySchemaFailingFailsTheListing() async {
+        let driver = MockDatabaseDriver()
+        driver.schemasToReturn = ["public", "attendance"]
+        driver.schemaTablesErrors = ["public": ListingFailed(), "attendance": ListingFailed()]
+
+        await #expect(throws: ListingFailed.self) {
+            try await CatalogTableListing.tables(
+                in: scope, excludingSchemas: [], metadata: RecordingMetadataProvider(driver: driver)
+            )
+        }
+    }
+
     @Test("A failed schema list fails the whole listing")
     func failedSchemaListThrows() async {
         let driver = MockDatabaseDriver()

@@ -92,12 +92,12 @@ The filter field matches any part of a name, so `sheet` finds `timesheet`. How f
 
 | Layout | Searches |
 |---|---|
-| **View > Sidebar as List** | The browsed schema, then every other schema holding a match, each listed below as a row to expand |
+| **View > Sidebar as List** | The browsed schema, then every other schema holding a match, listed below it and opened to show the matches |
 | **View > Sidebar as Tree** | Every schema of every database whose schemas the tree has shown, expanded or not |
 
 A schema whose tables have not been read yet stays in the tree, collapsed, until they arrive.
 
-Type a dot to filter by schema. `attendance.time` keeps the objects in `attendance` whose names contain `time`, `attendance.` shows everything in `attendance`, and `shop.attendance.time` names the database too. [Open Quickly](/features/open-quickly#other-schemas) takes the same form with fuzzy matching.
+Type a dot to filter by schema. `attendance.time` keeps the objects in `attendance` whose names contain `time`, `attendance.` shows everything in `attendance`, and `shop.attendance.time` names the database too. A table whose own name holds a dot, such as `audit.events`, still matches when you type that name. [Open Quickly](/features/open-quickly#other-schemas) takes the same form with fuzzy matching.
 
 ## The trailing pane
 

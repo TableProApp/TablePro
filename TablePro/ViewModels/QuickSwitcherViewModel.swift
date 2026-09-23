@@ -53,7 +53,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         let database: String?
         let browseSchema: String?
         let openTables: Set<QuickSwitcherOpenTable>
-        let listsTablesPerSchema: Bool
+        let grouping: GroupingStrategy
+
+        var listsTablesPerSchema: Bool {
+            DatabaseTreeMetadataService.listsTablesPerSchema(grouping)
+        }
     }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
@@ -207,9 +211,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             database: services.databaseManager.browseScope(for: connectionId)?.database,
             browseSchema: browseSchema,
             openTables: openTables,
-            listsTablesPerSchema: DatabaseTreeMetadataService.listsTablesPerSchema(
-                services.pluginManager.databaseGroupingStrategy(for: databaseType)
-            )
+            grouping: services.pluginManager.databaseGroupingStrategy(for: databaseType)
         )
         self.tableSource = tableSource
         observeTableSources()
@@ -403,9 +405,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             return DatabaseTreeMetadataService.shared
                 .allSchemaTablesLoadState(connectionId: connectionId, database: database).value?.tables
         } ?? []
+        let loadedScope = services.schemaService.loadedScope(for: connectionId)
         let tables = Self.mergedTables(
             local: services.schemaService.allLoadedTables(for: connectionId),
-            loadedFrom: services.schemaService.loadedScope(for: connectionId)?.database,
+            loadedFrom: loadedScope?.database,
+            coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
             allSchemas: allSchemaTables,
             browsing: tableSource.database
         )
@@ -635,17 +639,36 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// The schema service keeps its lists until a reload replaces them, so while a database switch
     /// settles it still holds the old database's tables, which would open against the new one.
     /// They count only once the database they were loaded from is the one being browsed.
+    ///
+    /// `coveredSchemas` names the schemas the schema service answers for even when it found them
+    /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
+    /// so no say, and the listing's stale copy of that table would come back.
     nonisolated static func mergedTables(
         local loaded: [TableInfo],
         loadedFrom loadedDatabase: String?,
+        coveredSchemas: Set<String>,
         allSchemas: [TableInfo],
         browsing database: String?
     ) -> [TableInfo] {
-        let local = loadedDatabase == database ? loaded : []
-        let localSchemas = Set(local.map { $0.schema ?? "" })
+        let isCurrent = loadedDatabase == database
+        let local = isCurrent ? loaded : []
+        let authoritative = (isCurrent ? coveredSchemas : []).union(local.map { $0.schema ?? "" })
         var seen: Set<TableIdentity> = []
-        return (local + allSchemas.filter { !localSchemas.contains($0.schema ?? "") })
+        return (local + allSchemas.filter { !authoritative.contains($0.schema ?? "") })
             .filter { seen.insert(TableIdentity(schema: $0.schema ?? "", name: $0.name)).inserted }
+    }
+
+    /// The schemas the schema service holds an answer for. On a schema-grouped engine its flat list
+    /// is the browsed schema's; on a hierarchical one each schema keeps a list of its own, and the
+    /// flat list is empty whatever the browsed schema holds.
+    private func coveredSchemas(loadedScope: DatabaseScope?, grouping: GroupingStrategy) -> Set<String> {
+        var covered = services.schemaService.schemasWithLoadedTables(for: connectionId)
+        if grouping != .hierarchicalSchema,
+           services.schemaService.hasLoadedContent(for: connectionId),
+           let schema = loadedScope?.schema {
+            covered.insert(schema)
+        }
+        return covered
     }
 
     private struct TableIdentity: Hashable {

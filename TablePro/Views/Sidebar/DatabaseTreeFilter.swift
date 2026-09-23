@@ -136,6 +136,9 @@ enum DatabaseTreeFilter {
     /// unloaded schema as an empty one hides it for the whole life of the filter and blanks the
     /// pane while the search-driven load is still running. A match on a procedure, trigger or type
     /// keeps the schema as surely as a match on a table.
+    ///
+    /// `database` is the one being browsed, when the engine has one, so a search that names it
+    /// (`shop.hr.employees`) can match.
     static func hierarchicalSchemaIsVisible(
         _ schema: String,
         searchText: String,
@@ -143,17 +146,19 @@ enum DatabaseTreeFilter {
         tables: [TableInfo],
         routines: [RoutineInfo],
         triggers: [TriggerInfo],
-        userTypes: [UserDefinedTypeInfo]
+        userTypes: [UserDefinedTypeInfo],
+        database: String? = nil
     ) -> Bool {
         let search = SidebarSearch(searchText)
-        if search.matchesContainer(database: nil, schema: schema) { return true }
-        guard isLoaded else { return search.admits(database: nil, schema: schema) }
+        if search.matchesContainer(database: database, schema: schema) { return true }
+        guard isLoaded else { return search.admits(database: database, schema: schema) }
         return !objectBuckets(
             tables: tables,
             routines: routines,
             triggers: triggers,
             userTypes: userTypes,
-            searchText: searchText
+            searchText: searchText,
+            database: database
         ).isEmpty
     }
 
@@ -165,14 +170,17 @@ enum DatabaseTreeFilter {
         routines: [RoutineInfo],
         triggers: [TriggerInfo],
         userTypes: [UserDefinedTypeInfo],
-        searchText: String
+        searchText: String,
+        database: String? = nil
     ) -> DatabaseTreeObjectBuckets {
-        objectBuckets(
+        let matchesSchema = SidebarSearch(searchText).matchesContainer(database: database, schema: schema)
+        return objectBuckets(
             tables: tables,
             routines: routines,
             triggers: triggers,
             userTypes: userTypes,
-            searchText: SidebarSearch(searchText).matchesContainer(database: nil, schema: schema) ? "" : searchText
+            searchText: matchesSchema ? "" : searchText,
+            database: database
         )
     }
 

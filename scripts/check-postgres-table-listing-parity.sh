@@ -28,10 +28,25 @@ HOST="${1:-127.0.0.1}"
 PORT="${2:-5432}"
 USER_NAME="${3:-postgres}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATABASE="tablepro_listing_parity_check"
-READER="tablepro_listing_reader"
+# Named per run and never dropped unless this run created them, so pointing the check at a shared
+# server cannot touch anything that was already there, and two runs cannot remove each other's.
+RUN_ID="$$_$RANDOM"
+DATABASE="tablepro_listing_parity_$RUN_ID"
+READER="tablepro_listing_reader_$RUN_ID"
+CREATED_DATABASE=0
+CREATED_READER=0
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+
+cleanup() {
+    rm -rf "$WORK"
+    if [ "$CREATED_DATABASE" -eq 1 ]; then
+        psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP DATABASE $DATABASE" > /dev/null 2>&1
+    fi
+    if [ "$CREATED_READER" -eq 1 ]; then
+        psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP ROLE $READER" > /dev/null 2>&1
+    fi
+}
+trap cleanup EXIT
 
 command -v psql > /dev/null || {
     echo "psql not found" >&2
@@ -103,13 +118,12 @@ HARNESS="$WORK/listing-sql"
 VERSION="$(psql_do postgres -Atc "SHOW server_version")"
 echo "Checking the all-schema table listing against PostgreSQL $VERSION at $HOST:$PORT"
 
-psql_do postgres -c "DROP DATABASE IF EXISTS $DATABASE" > /dev/null
-psql_do postgres -c "DROP ROLE IF EXISTS $READER" > /dev/null 2>&1
-psql_do postgres -c "CREATE DATABASE $DATABASE" > /dev/null
-psql_do postgres -c "CREATE ROLE $READER" > /dev/null
-trap 'rm -rf "$WORK"; psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP DATABASE IF EXISTS $DATABASE" > /dev/null 2>&1; psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP ROLE IF EXISTS $READER" > /dev/null 2>&1' EXIT
+psql_do postgres -c "CREATE DATABASE $DATABASE" > /dev/null || exit 3
+CREATED_DATABASE=1
+psql_do postgres -c "CREATE ROLE $READER" > /dev/null || exit 3
+CREATED_READER=1
 
-psql_do "$DATABASE" > /dev/null << SQL
+psql_do "$DATABASE" > /dev/null << SQL || exit 3
 CREATE SCHEMA attendance;
 CREATE SCHEMA "Attendance";
 CREATE SCHEMA "my.schema";

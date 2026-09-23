@@ -180,8 +180,13 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             )
         }
         guard allSchemaTablesFence.isCurrent(token, for: key) else { return }
-        if case .fetched = outcome, !allSchemaTablesFreshness.commit(revision, for: key) { return }
-        allSchemaTablesState[key] = (allSchemaTablesState[key] ?? .idle).settled(by: outcome, discardingValue: false)
+        let current = allSchemaTablesState[key] ?? .idle
+        guard case .fetched(let listing) = outcome else {
+            allSchemaTablesState[key] = current.settled(by: outcome, discardingValue: false)
+            return
+        }
+        guard allSchemaTablesFreshness.commit(revision, for: key) else { return }
+        allSchemaTablesState[key] = .loaded(listing.keepingRows(from: current.value))
     }
 
     /// A listing that could not read some schemas stays current for the rest, and only those are
@@ -208,10 +213,23 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         allSchemaTablesState[key] = .loaded(current.merging(retry, retried: schemas))
     }
 
+    /// Announced, so a search holding the listing on screen can ask for it again rather than keep
+    /// matching against rows a catalog change has overtaken.
     func markAllSchemaTablesChanged(_ keys: some Sequence<DatabaseKey>) {
+        var changed = false
         for key in keys {
             allSchemaTablesFreshness.markChanged(key)
+            changed = true
         }
+        if changed {
+            objectWillChange.send()
+        }
+    }
+
+    /// Moves with every catalog change that reaches the database, so a caller that asked for the
+    /// listing at one revision knows to ask again at the next and not before.
+    func allSchemaTablesRevision(connectionId: UUID, database: String) -> Int {
+        allSchemaTablesFreshness.revision(for: DatabaseKey(connectionId: connectionId, database: database))
     }
 
     /// System schemas stay out, as they stay out of the tree until Show System is on.

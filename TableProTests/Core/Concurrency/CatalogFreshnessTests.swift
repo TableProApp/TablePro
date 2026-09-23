@@ -19,7 +19,8 @@ struct CatalogFreshnessTests {
     func committedFetch() {
         var freshness = CatalogFreshness<String>()
         let revision = freshness.revision(for: "shop")
-        #expect(freshness.commit(revision, for: "shop"))
+        let committed = freshness.commit(revision, for: "shop")
+        #expect(committed)
         #expect(freshness.isCurrent("shop"))
     }
 
@@ -36,7 +37,8 @@ struct CatalogFreshnessTests {
         var freshness = CatalogFreshness<String>()
         let started = freshness.revision(for: "shop")
         freshness.markChanged("shop")
-        #expect(freshness.commit(started, for: "shop"))
+        let committed = freshness.commit(started, for: "shop")
+        #expect(committed)
         #expect(!freshness.isCurrent("shop"))
     }
 
@@ -46,8 +48,10 @@ struct CatalogFreshnessTests {
         let older = freshness.revision(for: "shop")
         freshness.markChanged("shop")
         let newer = freshness.revision(for: "shop")
-        #expect(freshness.commit(newer, for: "shop"))
-        #expect(!freshness.commit(older, for: "shop"))
+        let newerCommitted = freshness.commit(newer, for: "shop")
+        let olderCommitted = freshness.commit(older, for: "shop")
+        #expect(newerCommitted)
+        #expect(!olderCommitted)
         #expect(freshness.isCurrent("shop"))
     }
 

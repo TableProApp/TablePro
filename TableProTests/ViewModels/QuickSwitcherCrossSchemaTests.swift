@@ -101,10 +101,23 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("users", "public"), table("dropped", "public"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: local, loadedFrom: "shop", allSchemas: allSchemas, browsing: "shop"
+            local: local, loadedFrom: "shop", coveredSchemas: ["public"], allSchemas: allSchemas, browsing: "shop"
         )
 
         #expect(merged.map(\.name) == ["users", "timesheet"])
+    }
+
+    /// The last table of `public` was dropped: the schema service reloaded `public` as empty, and
+    /// the all-schema listing still holds the table until it is next asked.
+    @Test("A schema the schema service found empty keeps the listing's stale rows out")
+    func emptyCoveredSchemaKeepsStaleRowsOut() {
+        let allSchemas = [table("users", "public"), table("timesheet", "attendance")]
+
+        let merged = QuickSwitcherViewModel.mergedTables(
+            local: [], loadedFrom: "shop", coveredSchemas: ["public"], allSchemas: allSchemas, browsing: "shop"
+        )
+
+        #expect(merged.map(\.name) == ["timesheet"])
     }
 
     @Test("A table listed twice is merged once")
@@ -112,7 +125,7 @@ struct QuickSwitcherCrossSchemaTests {
         let allSchemas = [table("timesheet", "attendance"), table("timesheet", "attendance")]
 
         let merged = QuickSwitcherViewModel.mergedTables(
-            local: [], loadedFrom: "shop", allSchemas: allSchemas, browsing: "shop"
+            local: [], loadedFrom: "shop", coveredSchemas: [], allSchemas: allSchemas, browsing: "shop"
         )
 
         #expect(merged.count == 1)
@@ -125,11 +138,12 @@ struct QuickSwitcherCrossSchemaTests {
         let merged = QuickSwitcherViewModel.mergedTables(
             local: [table("invoices", "public")],
             loadedFrom: "billing",
-            allSchemas: [table("timesheet", "attendance")],
+            coveredSchemas: ["public"],
+            allSchemas: [table("orders", "public"), table("timesheet", "attendance")],
             browsing: "shop"
         )
 
-        #expect(merged.map(\.name) == ["timesheet"])
+        #expect(merged.map(\.name) == ["orders", "timesheet"])
     }
 
     // MARK: - Qualified queries

@@ -113,6 +113,27 @@ struct DatabaseTreeAllSchemaTablesTests {
         await disconnect(connection)
     }
 
+    @Test("A refresh that cannot read a schema keeps the rows it had for it")
+    func refreshKeepsRowsOfAnUnreadableSchema() async {
+        let (connection, driver) = connect { driver in
+            driver.schemasToReturn = ["public", "attendance"]
+            driver.schemaTablesToReturn = [
+                "public": [table("users", "public")],
+                "attendance": [table("timesheet", "attendance")]
+            ]
+        }
+        await load(connection)
+        await service.refreshCatalog(for: CatalogChange(connectionId: connection.id, kinds: .tables))
+
+        driver.schemaTablesToReturn["public"] = [table("users", "public"), table("orders", "public")]
+        driver.schemaTablesErrors = ["attendance": ListingFailed()]
+        await load(connection)
+
+        #expect(listing(connection)?.tables.map(\.name) == ["users", "orders", "timesheet"])
+        #expect(listing(connection)?.unlistedSchemas == ["attendance"])
+        await disconnect(connection)
+    }
+
     @Test("A second read is served without fetching again")
     func secondReadIsCached() async {
         let (connection, driver) = connect { $0.allSchemaTablesToReturn = [table("users", "public")] }

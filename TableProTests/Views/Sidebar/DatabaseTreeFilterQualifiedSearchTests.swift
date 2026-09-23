@@ -226,6 +226,21 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         #expect(named)
     }
 
+    @Test("A hierarchical search can name the browsed database, and only that one")
+    func hierarchicalThreeParts() {
+        let loaded = [table("EMPLOYEES", schema: "HR")]
+        let browsed = DatabaseTreeFilter.hierarchicalSchemaIsVisible(
+            "HR", searchText: "SHOP.HR.EMP", isLoaded: true,
+            tables: loaded, routines: [], triggers: [], userTypes: [], database: "SHOP"
+        )
+        let other = DatabaseTreeFilter.hierarchicalSchemaIsVisible(
+            "HR", searchText: "BLOG.HR.EMP", isLoaded: true,
+            tables: loaded, routines: [], triggers: [], userTypes: [], database: "SHOP"
+        )
+        #expect(browsed)
+        #expect(!other)
+    }
+
     @Test("A trailing dot shows everything in the hierarchical schema it names")
     func hierarchicalTrailingDot() {
         let buckets = DatabaseTreeFilter.hierarchicalObjectBuckets(
