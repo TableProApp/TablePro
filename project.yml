@@ -429,6 +429,7 @@ targets:
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift

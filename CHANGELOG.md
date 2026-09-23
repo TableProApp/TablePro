@@ -85,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
 - Raw Oracle driver error in the schema switch failure dialog. (#3053)
 - Oracle health check closing a connection a statement was still running on. (#3053)
+- Oracle column defaults missing from the Structure tab.
+- ORA-01442 when changing the default or type of a `NOT NULL` Oracle column.
+- Oracle `VARCHAR2(n CHAR)` column turned into a byte length when only its nullability was edited.
 - Global saved query inside a folder missing from every other connection. (#3045)
 - Saved query and folder drawn nowhere when the folder holding it was gone.
 - Keyword accepted for a global saved query while another connection already held it.
