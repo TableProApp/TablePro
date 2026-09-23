@@ -5,7 +5,7 @@ import Testing
 @Suite("PostgreSQLSchemaQueries partition awareness")
 struct PostgreSQLPartitionFilterTests {
     private func awareQuery() -> String {
-        PostgreSQLSchemaQueries.fetchTables(
+        PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false
@@ -41,7 +41,7 @@ struct PostgreSQLPartitionFilterTests {
 
     @Test("Partition awareness degrades independently of the optional catalogs")
     func partitionAwarenessDegradesIndependently() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true,
@@ -55,7 +55,7 @@ struct PostgreSQLPartitionFilterTests {
 
     @Test("Every union branch still projects four aligned columns when partition aware")
     func unionBranchesStayAligned() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true
@@ -79,7 +79,7 @@ struct PostgreSQLPartitionFilterTests {
 
     @Test("The foreign-table branch excludes partitions the same way the base branch does")
     func foreignTableBranchExcludesPartitions() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: true
@@ -98,7 +98,7 @@ struct PostgreSQLPartitionFilterTests {
 
     @Test("Dropping partition awareness drops the count with it and keeps the columns aligned")
     func unawareListingStillProjectsFourColumns() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true,

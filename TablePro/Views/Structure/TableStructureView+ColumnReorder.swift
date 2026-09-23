@@ -75,8 +75,7 @@ extension TableStructureView {
             tableName: tableName,
             scope: prepared.scope,
             plan: prepared.plan,
-            actionTitle: String(localized: "Rebuild Table"),
-            perform: {
+            action: TableRebuildReviewRequest.Action(title: String(localized: "Rebuild Table")) {
                 do {
                     try await StructureColumnReorderHandler.execute(
                         prepared, tableName: tableName, databaseType: connection.type

@@ -180,24 +180,29 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let safe = table.replacingOccurrences(of: "`", with: "``")
         let raw = try await actor.execute("SHOW FULL COLUMNS FROM `\(safe)`")
+        let source = MySQLColumnListing.defaultSource(
+            flavor: Self.serverFlavor(for: databaseType, banner: serverVersion),
+            banner: serverVersion
+        )
+        let catalog = await catalogDefaults(table: table, source: source)
+        return MySQLColumnListing.columns(fromShowFullColumns: raw.rows, catalogDefaults: catalog, source: source)
+    }
 
-        return raw.rows.enumerated().compactMap { index, row in
-            guard row.count >= 9, let name = row[0], let dataType = row[1] else { return nil }
-            let isPK = row[4]?.uppercased().contains("PRI") == true
-            let isNullable = row[3]?.uppercased() == "YES"
-            let extra = row[6]
-            return ColumnInfo(
-                name: name,
-                typeName: dataType,
-                isPrimaryKey: isPK,
-                isNullable: isNullable,
-                defaultValue: row[5],
-                comment: row[8],
-                characterMaxLength: nil,
-                ordinalPosition: index,
-                isAutoIncrement: ColumnMetadataRules.mySQLIsAutoIncrement(extra: extra),
-                isGenerated: ColumnMetadataRules.mySQLIsGenerated(extra: extra)
+    /// A catalog that refuses leaves every default on what `SHOW FULL COLUMNS` reported, as it does on
+    /// the Mac, rather than taking the column list down with it.
+    private func catalogDefaults(
+        table: String,
+        source: MySQLColumnListing.DefaultSource
+    ) async -> [String: MySQLCatalogDefault] {
+        guard let query = MySQLColumnListing.catalogDefaultsQuery(table: table, source: source) else { return [:] }
+        do {
+            let raw = try await actor.execute(query)
+            return MySQLColumnListing.catalogDefaults(fromRows: raw.rows, source: source)
+        } catch {
+            Self.logger.warning(
+                "Column default catalog read failed: \(error.localizedDescription, privacy: .private)"
             )
+            return [:]
         }
     }
 

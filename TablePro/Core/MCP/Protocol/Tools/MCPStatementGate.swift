@@ -19,6 +19,7 @@ enum MCPStatementGate {
                     connectionId: meta.connectionId,
                     databaseType: meta.databaseType,
                     externalAccess: meta.externalAccess,
+                    loadsExtensions: meta.loadsExtensions,
                     allowsDestructive: allowsDestructive,
                     allowsMultiStatement: allowsMultiStatement,
                     destructiveAlternative: String(

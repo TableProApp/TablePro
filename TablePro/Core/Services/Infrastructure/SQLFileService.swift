@@ -37,6 +37,12 @@ enum SQLFileService {
         }.value
     }
 
+    static func writeData(_ data: Data, to url: URL) async throws {
+        try await Task.detached {
+            try data.write(to: url, options: .atomic)
+        }.value
+    }
+
     /// Shows a save panel for .sql files.
     @MainActor
     static func showSavePanel(suggestedName: String = "query.sql") async -> URL? {

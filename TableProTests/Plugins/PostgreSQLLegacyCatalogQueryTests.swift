@@ -42,7 +42,7 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLPrincipalQueries.tableGrants(role: "r"),
             PostgreSQLPrincipalQueries.columnGrants(role: "r"),
             PostgreSQLSequenceQueries.sequenceList(schema: "public", dependentOnTable: "orders", source: .sequenceParameters),
-            PostgreSQLSchemaQueries.fetchTables(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
             PostgreSQLViewDefinition.catalogQuery(name: "v", schema: "public")
         ]
         for sql in queries {
@@ -59,7 +59,7 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: hostile, table: hostile),
             PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: hostile, table: hostile),
             PostgreSQLIndexQueries.standaloneIndexQuery(schema: hostile, table: hostile),
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
             )
         ]

@@ -238,7 +238,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -350,6 +350,9 @@ targets:
       - TablePro/Core/MCP/Transport/MCPUpstreamCredentials.swift
       - TablePro/Core/MCP/Wire
       - TablePro/Core/Services/Infrastructure/BackgroundLaunchFlag.swift
+    dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
     scheme: {}
     settings:
       base:
@@ -426,6 +429,7 @@ targets:
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
@@ -510,6 +514,9 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLLiteralSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
+      - Plugins/MySQLDriverPlugin/MySQLLiteralSpelling.swift
       - Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
@@ -580,6 +587,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaterializedViewColumnSource.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPartitionBound.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
@@ -591,6 +599,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceReference.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListing.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableRebuild.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
@@ -599,6 +608,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLVersionedStatements.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/RedshiftTableCatalog.swift
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift
@@ -714,7 +724,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -770,6 +780,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProGeometry
+      - package: TableProCore
+        product: TableProLogRedaction
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -798,6 +810,9 @@ targets:
     templateAttributes:
       folder: PostgreSQLDriverPlugin
       principalClass: PostgreSQLPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -822,16 +837,24 @@ targets:
           - -lz
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ
 
+  # Links its own SQLite (scripts/build-sqlite.sh), never -lsqlite3: macOS's library is built without
+  # extension loading.
   SQLiteDriver:
     templates: [DriverPlugin]
     templateAttributes:
       folder: SQLiteDriverPlugin
       principalClass: SQLitePlugin
+    dependencies:
+      - package: TableProCore
+        product: CSQLite
+      - package: TableProCore
+        product: TableProSQLiteCore
     settings:
       base:
         OTHER_LDFLAGS:
           - $(inherited)
-          - -lsqlite3
+          - -force_load
+          - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
   ClickHouseDriver:
     templates: [DriverPlugin]
@@ -1017,6 +1040,9 @@ targets:
     templateAttributes:
       folder: CSVInspectorPlugin
       principalClass: CSVInspectorPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
 
   # ─── Plugins published to the registry ────────────────────────────────────────
 
@@ -1042,6 +1068,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProGoogleCloud
+      - package: TableProCore
+        product: TableProLogRedaction
 
   SpannerDriverPlugin:
     templates: [DriverPlugin]
@@ -1221,11 +1249,17 @@ targets:
     templateAttributes:
       folder: LibSQLDriverPlugin
       principalClass: LibSQLPlugin
+    dependencies:
+      - package: TableProCore
+        product: CSQLite
+      - package: TableProCore
+        product: TableProSQLiteCore
     settings:
       base:
         OTHER_LDFLAGS:
           - $(inherited)
-          - -lsqlite3
+          - -force_load
+          - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
   MSSQLDriver:
     templates: [DriverPlugin]
@@ -1234,7 +1268,7 @@ targets:
       principalClass: MSSQLPlugin
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProMSSQLCore]
+        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1266,6 +1300,8 @@ targets:
       folder: MongoDBDriverPlugin
       principalClass: MongoDBPlugin
     dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
       - package: TableProCore
         product: TableProNumberFormatting
     settings:
@@ -1301,6 +1337,8 @@ targets:
       folder: OracleDriverPlugin
       principalClass: OraclePlugin
     dependencies:
+      - package: TableProCore
+        product: TableProLogRedaction
       - package: TableProOracle
         product: TableProOracleCore
 

@@ -229,6 +229,15 @@ final class SchemaService: ObservableObject {
         perSchemaSideObjects[connectionId]?[schema]?.userDefinedTypes ?? .idle
     }
 
+    /// The schemas whose own table list is loaded, empty ones included, which is what a caller
+    /// merging another source needs: an empty schema here is an answer, not a gap.
+    func schemasWithLoadedTables(for connectionId: UUID) -> Set<String> {
+        Set((perSchemaStates[connectionId] ?? [:]).compactMap { schema, state in
+            guard case .loaded = state else { return nil }
+            return schema
+        })
+    }
+
     /// Flat tables plus the union of every loaded per-schema table list. For
     /// hierarchicalSchema plugins the flat list is empty and this is the only
     /// way to see tables across schemas (e.g. for autocomplete).

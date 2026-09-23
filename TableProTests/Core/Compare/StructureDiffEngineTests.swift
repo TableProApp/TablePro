@@ -225,6 +225,24 @@ final class StructureDiffEngineTests: XCTestCase {
         XCTAssertEqual(result.status, .identical)
     }
 
+    func testNullDefaultOnANullableColumnMatchesNoDefault() {
+        let result = StructureDiffEngine().compareTable(
+            source: table("users", columns: [column("nickname", defaultValue: "NULL")]),
+            target: table("users", columns: [column("nickname")])
+        )
+
+        XCTAssertEqual(result.status, .identical)
+    }
+
+    func testNullDefaultOnANotNullColumnIsStillADifference() {
+        let result = StructureDiffEngine().compareTable(
+            source: table("users", columns: [column("nickname", nullable: false, defaultValue: "NULL")]),
+            target: table("users", columns: [column("nickname", nullable: false)])
+        )
+
+        XCTAssertNotEqual(result.status, .identical)
+    }
+
     func testCollationOnlyDifferenceIsIgnoredByDefaultAndReportedWhenOptionOff() {
         let source = table("users", columns: [column("name", "varchar(20)", collation: "utf8mb4_general_ci")])
         let target = table("users", columns: [column("name", "varchar(20)", collation: "utf8mb4_unicode_ci")])

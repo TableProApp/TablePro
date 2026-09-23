@@ -152,7 +152,7 @@ build_for_arch() {
 
     # Prepare architecture-specific libraries
     echo "📦 Preparing static libraries for $arch..."
-    prepare_arch_libs "$arch" libmariadb libpq libpgcommon libpgport libssl libcrypto libmongoc libbson libhiredis libhiredis_ssl
+    prepare_arch_libs "$arch" libmariadb libpq libpgcommon libpgport libssl libcrypto libmongoc libbson libhiredis libhiredis_ssl libsqlite3_vendored
 
     # Create OpenSSL shared dylibs for this architecture
     echo "📦 Creating OpenSSL shared dylibs for $arch..."

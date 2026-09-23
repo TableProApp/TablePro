@@ -134,6 +134,12 @@ enum CreateTableDraftBuilder {
                 ))
                 continue
             }
+            if !column.isNullable, column.hasNullDefault {
+                issues.append(SchemaDraftIssue(
+                    tab: .columns, row: row,
+                    message: String(localized: "This column does not allow NULL, so its default cannot be NULL.")
+                ))
+            }
             var normalized = column
             normalized.name = name
             normalized.dataType = type
@@ -145,7 +151,7 @@ enum CreateTableDraftBuilder {
            resolved.contains(where: { $0.autoIncrement }) {
             for index in resolved.indices where resolved[index].autoIncrement {
                 resolved[index].isPrimaryKey = true
-                resolved[index].isNullable = false
+                resolved[index].setNullable(false)
             }
         }
 

@@ -1,6 +1,7 @@
 import AppKit
-import TableProPluginKit
 import os
+import TableProLogRedaction
+import TableProPluginKit
 
 public final class CSVDocument: NSDocument, CSVConfigurableDocument {
     static let logger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
@@ -105,7 +106,7 @@ public final class CSVDocument: NSDocument, CSVConfigurableDocument {
         do {
             try revert(toContentsOf: url, ofType: fileType ?? "public.comma-separated-values-text")
         } catch {
-            Self.logger.error("Auto-revert failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Auto-revert failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

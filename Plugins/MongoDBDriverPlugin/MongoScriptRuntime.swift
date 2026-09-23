@@ -230,7 +230,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
         context.setObject(execute, forKeyedSubscript: "__tp_exec" as NSString)
         context.setObject(emit, forKeyedSubscript: "__tp_print" as NSString)
         context.exceptionHandler = { _, exception in
-            Self.logger.debug("Script exception: \(exception?.toString() ?? "unknown", privacy: .public)")
+            Self.logger.debug("Script exception: \(exception?.toString() ?? "unknown", privacy: .private)")
         }
 
         context.evaluateScript(MongoScriptPrelude.source)

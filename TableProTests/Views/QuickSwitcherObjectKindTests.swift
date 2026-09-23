@@ -50,8 +50,8 @@ struct QuickSwitcherObjectKindTests {
             kind: .view,
             subtitle: String(localized: "Materialized View"),
             isReadOnly: false,
-            tableType: .materializedView,
-            schemaName: "public"
+            schemaName: "public",
+            tableType: .materializedView
         )
         coordinator.handleQuickSwitcherSelection(item)
 
@@ -78,8 +78,8 @@ struct QuickSwitcherObjectKindTests {
             name: "events",
             kind: .table,
             subtitle: String(localized: "Partitioned Table"),
-            tableType: .partitionedTable,
-            schemaName: "public"
+            schemaName: "public",
+            tableType: .partitionedTable
         )
         coordinator.handleQuickSwitcherSelection(item)
 
