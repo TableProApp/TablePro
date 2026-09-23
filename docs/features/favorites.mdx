@@ -68,7 +68,7 @@ There is no plus button. The same right-click menu carries **New Query**, **New 
 
 A keyword is what you type instead of the query. Type its first letters, in any case, and the favorite appears in the completion popup with a star; `Tab` or `Return` inserts the SQL. See [Autocomplete](/features/autocomplete).
 
-Two favorites that reach the same connection cannot share a keyword, and the dialog says so as you type.
+Two favorites that reach the same connection cannot share a keyword, and the dialog says so as you type. If two Macs give one keyword to two queries saved to the same connection before either syncs, the older query keeps it and the other loses it on every Mac. A global query and a connection's own query can end up with the same keyword this way; inside that connection, its own query wins.
 
 <Frame caption="Keyword expansion in the editor autocomplete">
   <img className="block dark:hidden" src="/images/sql-favorite-keyword.png" alt="A completion popup with a starred favorite matching the typed keyword" />

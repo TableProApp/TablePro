@@ -408,6 +408,56 @@ internal actor SQLFavoriteStorage {
         return existingScope.write
     }
 
+    func applyRemoteFavorites(_ incoming: [SQLFavorite]) -> RemoteFavoriteWrites? {
+        guard !incoming.isEmpty else { return RemoteFavoriteWrites(writes: [], releasedKeywordIds: []) }
+
+        return inTransaction { () -> RemoteFavoriteWrites? in
+            let resolution = RemoteFavoriteKeywordResolver.resolve(incoming: incoming, local: keywordHolders())
+            let vacated = resolution.vacatedLocalIds
+            guard vacated.isEmpty || run(
+                "UPDATE favorites SET keyword = NULL WHERE id IN (\(placeholders(vacated)));",
+                bindings: vacated.map(\.uuidString)
+            ) else {
+                return nil
+            }
+
+            var writes: [RemoteFavoriteWrite] = []
+            for favorite in resolution.upserts {
+                let write = upsertFavorite(favorite)
+                guard write.succeeded else { return nil }
+                writes.append(RemoteFavoriteWrite(connectionId: favorite.connectionId, write: write))
+            }
+            return RemoteFavoriteWrites(writes: writes, releasedKeywordIds: resolution.releasedIds)
+        }
+    }
+
+    private func keywordHolders() -> [SQLFavorite] {
+        let sql = """
+            SELECT id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at
+            FROM favorites WHERE keyword IS NOT NULL AND connection_id IS NOT NULL;
+            """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(statement) }
+
+        var holders: [SQLFavorite] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let favorite = parseFavorite(from: statement) else { continue }
+            holders.append(favorite)
+        }
+        return holders
+    }
+
+    private func inTransaction<Value>(_ body: () -> Value?) -> Value? {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return nil }
+        guard let result = body(), sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
+            Self.logger.error("Rolled back a transaction: \(String(cString: sqlite3_errmsg(self.db)))")
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return nil
+        }
+        return result
+    }
+
     func deleteFavorite(id: UUID) -> Bool {
         let sql = "DELETE FROM favorites WHERE id = ?;"
         var statement: OpaquePointer?
