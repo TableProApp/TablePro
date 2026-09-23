@@ -13,41 +13,20 @@ import TableProPluginKit
 // MARK: - Schema Changes
 
 extension DatabaseManager {
-    /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction of their own,
+    /// Execute schema statements (ALTER TABLE, CREATE INDEX, etc.) in a transaction of their own,
     /// on the schema change route rather than the session driver a query tab may have left
     /// mid-transaction. The connection, database and schema all come from the editing tab's
     /// own scope, never from ambient session state that another window or tab can move.
     ///
-    /// Authorization sits between two scoped blocks rather than inside one: it awaits a
-    /// confirmation sheet and Touch ID, and holding the connection's driver gate across a
-    /// human prompt would freeze every other tab on that connection.
+    /// Authorization sits outside the scoped block: it awaits a confirmation sheet and Touch ID,
+    /// and holding the connection's driver gate across a human prompt would freeze every other
+    /// tab on that connection.
     func executeSchemaChanges(
-        tableName: String,
-        changes: [SchemaChange],
+        _ statements: [SchemaStatement],
         databaseType: DatabaseType,
         scope: DatabaseScope
     ) async throws {
         let route = schemaChangeRoute(for: scope)
-
-        let statements = try await withScopedDriver(
-            scope: scope, route: route, cancellation: .untracked
-        ) { driver in
-            let pkConstraintName = await Self.fetchPrimaryKeyConstraintName(
-                tableName: tableName,
-                databaseType: databaseType,
-                changes: changes,
-                driver: driver
-            )
-            guard let resolvedPluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-                throw DatabaseError.unsupportedOperation
-            }
-            let generator = SchemaStatementGenerator(
-                tableName: tableName,
-                primaryKeyConstraintName: pkConstraintName,
-                pluginDriver: resolvedPluginDriver
-            )
-            return try generator.generate(changes: changes)
-        }
 
         let combinedSQL = statements.map(\.sql).joined(separator: "\n")
         let schemaKind: OperationKind =
@@ -228,60 +207,5 @@ extension DatabaseManager {
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
         )
-    }
-
-    /// Query the actual primary key constraint name for PostgreSQL.
-    /// Returns nil if the database is not PostgreSQL, no PK modification is pending,
-    /// or the query fails (caller falls back to `{table}_pkey` convention).
-    private static func fetchPrimaryKeyConstraintName(
-        tableName: String,
-        databaseType: DatabaseType,
-        changes: [SchemaChange],
-        driver: DatabaseDriver
-    ) async -> String? {
-        // Only needed for PostgreSQL PK modifications
-        guard databaseType == .postgresql || databaseType == .redshift
-            || databaseType == .cockroachdb || databaseType == .duckdb else { return nil }
-        guard
-            changes.contains(where: {
-                if case .modifyPrimaryKey = $0 { return true }
-                return false
-            })
-        else {
-            return nil
-        }
-
-        let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
-        let schema: String
-        if let schemaDriver = driver as? SchemaSwitchable,
-           let escaped = schemaDriver.escapedSchema {
-            schema = escaped
-        } else {
-            schema = "public"
-        }
-        let query = """
-            SELECT con.conname
-            FROM pg_constraint con
-            JOIN pg_class rel ON rel.oid = con.conrelid
-            JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-            WHERE rel.relname = '\(escapedTable)'
-              AND nsp.nspname = '\(schema)'
-              AND con.contype = 'p'
-            LIMIT 1
-            """
-
-        do {
-            let result = try await driver.execute(query: query)
-            if let row = result.rows.first, let name = row[0].asText, !name.isEmpty {
-                return name
-            }
-        } catch {
-            // Query failed - fall back to convention in SchemaStatementGenerator
-            Self.logger.warning(
-                "Failed to query PK constraint name for '\(tableName)': \(error.localizedDescription)"
-            )
-        }
-
-        return nil
     }
 }
