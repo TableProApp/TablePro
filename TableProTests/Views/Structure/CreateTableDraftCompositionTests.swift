@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -202,6 +203,39 @@ struct CreateTableDraftCompositionTests {
         await draft.recompose(databaseType: .pglite, scope: scope)
 
         #expect(driver.createTableRequests == 1)
+    }
+
+    @Test(
+        "A grid edit reaches whoever observes the draft, so the preview and Create Table follow it",
+        arguments: [StructureTab.columns, StructureTab.indexes, StructureTab.foreignKeys]
+    )
+    func gridEditPublishesTheDraft(tab: StructureTab) {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
+        let draft = Self.makeDraft(tableName: "sales")
+        draft.changeManager.addNewIndex()
+        draft.changeManager.addNewForeignKey()
+        let delegate = CreateTableGridDelegate(
+            structureChangeManager: draft.changeManager,
+            structureTab: tab,
+            connection: connection
+        )
+        delegate.orderedFields = StructureRowProvider(
+            changeManager: draft.changeManager,
+            tab: tab,
+            databaseType: connection.type,
+            additionalFields: [.primaryKey],
+            serverSupport: .unrestricted
+        ).orderedColumnFields
+        let keyBefore = draft.compositionKey(scope: scope)
+
+        var published = 0
+        let observation = draft.objectWillChange.sink { published += 1 }
+        defer { observation.cancel() }
+        delegate.dataGridDidEditCell(row: 0, column: 0, newValue: "email")
+
+        #expect(published > 0)
+        #expect(draft.compositionKey(scope: scope) != keyBefore)
     }
 
     @Test("A draft with nothing to create names what is missing without a connection")

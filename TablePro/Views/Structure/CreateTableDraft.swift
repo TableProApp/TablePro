@@ -33,6 +33,12 @@ internal final class CreateTableDraft: ObservableObject {
 
     private var composedKey: CreateTableCompositionKey?
     private var compositionGeneration = 0
+    private var changeManagerForwarding: AnyCancellable?
+
+    internal init() {
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+    }
 
     /// Whether the draft holds anything worth losing. A tab that has only just opened does not: the
     /// editor seeds one blank column so the grid has a row to show, which registers as a pending
