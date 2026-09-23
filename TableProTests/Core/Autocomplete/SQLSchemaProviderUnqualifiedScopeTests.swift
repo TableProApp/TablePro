@@ -241,6 +241,44 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         #expect(await joining.value == ["buyer.email"])
         #expect(script.calls == 2)
     }
+
+    @Test("A column fetch a refresh overtook leaves the cache and the fetch after the refresh alone")
+    func overtakenColumnFetchLeavesTheRefreshedScopeAlone() async {
+        let script = ScriptedFetch<[ColumnInfo]>(
+            [
+                .success([TestFixtures.makeColumnInfo(name: "before_refresh")]),
+                .success([TestFixtures.makeColumnInfo(name: "after_refresh")]),
+                .success([TestFixtures.makeColumnInfo(name: "unexpected_third_fetch")])
+            ],
+            holdingCalls: 2
+        )
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in try await script.fetch() },
+            fetchAllColumns: { [:] }
+        )
+        let driver = MockDatabaseDriver()
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+
+        let overtaken = Task { await provider.getColumns(for: "orders").map(\.name) }
+        await script.waitForCalls(1)
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+        let current = Task { await provider.getColumns(for: "orders").map(\.name) }
+        await script.waitForCalls(2)
+        script.releaseNextHeldCall()
+        let overtakenColumns = await overtaken.value
+
+        let joining = Task { await provider.getColumns(for: "orders").map(\.name) }
+        for _ in 0..<50 where script.calls < 3 {
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        script.releaseNextHeldCall()
+
+        #expect(overtakenColumns == ["before_refresh"])
+        #expect(await current.value == ["after_refresh"])
+        #expect(await joining.value == ["after_refresh"])
+        #expect(script.calls == 2)
+    }
 }
 
 private final class ScriptedFetch<Value: Sendable>: @unchecked Sendable {
