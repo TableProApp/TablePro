@@ -220,6 +220,16 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         }
     }
 
+    /// A MySQL or MariaDB nullable column reads back with a NULL default. Carried across, SQL Server
+    /// turns it into a named default constraint on every such column, and a later DROP COLUMN on the
+    /// target then fails on each one. No default means the same thing on every engine.
+    func testANullDefaultIsNotCarriedAcross() {
+        let source = snapshot(columns: [column("nickname", "VARCHAR(50)", defaultValue: "NULL")])
+        let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mssql)
+        XCTAssertNil(result.snapshot.columns[0].defaultValue)
+        XCTAssertFalse(result.notes.contains { $0.subject == "nickname" })
+    }
+
     func testAPostgresCastIsStrippedFromALiteralDefault() {
         let source = snapshot(columns: [column("state", "character varying(10)", defaultValue: "'new'::character varying")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)

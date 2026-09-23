@@ -37,8 +37,10 @@ internal extension MySQLPluginDriver {
         catalogDefault: String?,
         extra: String?,
         dataType: String,
+        isNullable: Bool,
         column: String,
-        createTableClauses: [String: String]?
+        createTableClauses: [String: String]?,
+        createTableDefaults: MySQLCreateTableDefaults?
     ) -> String? {
         if flavor.isOceanBase, let catalogDefault {
             if let currentTimestamp = OceanBaseColumnDefaults.currentTimestampDefault(catalogDefault, dataType: dataType) {
@@ -60,8 +62,12 @@ internal extension MySQLPluginDriver {
                 return binaryLiteral
             }
         }
-        return mysqlDefaultValueFromCatalog(
-            catalogDefault, extra: extra, dataType: dataType, quotesLiterals: catalogQuotesDefaults
+        return mysqlColumnDefault(
+            createTableDefaults?.catalogDefault(forColumn: column, extra: extra)
+                ?? (catalogQuotesDefaults ? .quoted(catalogDefault) : .bare(catalogDefault)),
+            extra: extra,
+            dataType: dataType,
+            isNullable: isNullable
         )
     }
 
@@ -79,6 +85,6 @@ internal extension MySQLPluginDriver {
     private func oceanbaseDefaultClauses(table: String, schema: String?) async throws -> [String: String] {
         let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
         guard let createTable = result.rows.first?[safe: 1]?.asText else { return [:] }
-        return OceanBaseColumnDefaults.defaultClauses(fromCreateTable: createTable) ?? [:]
+        return MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: createTable) ?? [:]
     }
 }

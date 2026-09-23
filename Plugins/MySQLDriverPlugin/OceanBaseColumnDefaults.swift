@@ -35,20 +35,6 @@ internal enum OceanBaseColumnDefaults {
         return "'\(mysqlEscapeStringLiteral(catalogDefault))'"
     }
 
-    static func defaultClauses(fromCreateTable sql: String) -> [String: String]? {
-        let lines = sql.split(separator: "\n", omittingEmptySubsequences: false)
-        guard let header = lines.first, declaresTable(header) else { return nil }
-        var clauses: [String: String] = [:]
-        for line in lines.dropFirst() {
-            var definition = line.drop(while: \.isWhitespace)
-            guard let name = columnName(consumingFrom: &definition),
-                  let operand = defaultOperand(in: withoutTrailingSeparator(definition))
-            else { continue }
-            clauses[name] = operand
-        }
-        return clauses
-    }
-
     static func resolve(clause: String?, catalogDefault: String) -> Resolution {
         guard let clause, clause.uppercased() != "NULL" else { return .unverified }
         if clause.hasPrefix("'") {
@@ -61,48 +47,6 @@ internal enum OceanBaseColumnDefaults {
         }
         guard clause.caseInsensitiveCompare(catalogDefault) == .orderedSame else { return .unverified }
         return .value(clause)
-    }
-
-    private static func declaresTable(_ header: Substring) -> Bool {
-        let words = header.prefix { $0 != "`" && $0 != "\"" && $0 != "(" }
-            .split(whereSeparator: \.isWhitespace)
-            .map { $0.uppercased() }
-        guard words.first == "CREATE", let tableIndex = words.firstIndex(of: "TABLE") else { return false }
-        return !words[..<tableIndex].contains("VIEW")
-    }
-
-    private static func columnName(consumingFrom definition: inout Substring) -> String? {
-        if let quote = definition.first, quote == "`" || quote == "\"" {
-            return MySQLCreateTableScanner.consumeQuotedName(from: &definition, quote: quote)
-        }
-        guard let first = definition.first, first.isLetter || first.isNumber || first == "_" || first == "$" else {
-            return nil
-        }
-        let name = definition.prefix { !$0.isWhitespace }
-        definition = definition.dropFirst(name.count)
-        return String(name)
-    }
-
-    private static func withoutTrailingSeparator(_ definition: Substring) -> Substring {
-        var trimmed = definition
-        while let last = trimmed.last, last.isWhitespace {
-            trimmed = trimmed.dropLast()
-        }
-        return trimmed.last == "," ? trimmed.dropLast() : trimmed
-    }
-
-    private static func defaultOperand(in definition: Substring) -> String? {
-        let tokens = MySQLCreateTableScanner.topLevelTokens(of: definition)
-        for (index, token) in tokens.enumerated() {
-            let upper = token.uppercased()
-            if upper == "DEFAULT" {
-                return tokens.indices.contains(index + 1) ? String(tokens[index + 1]) : nil
-            }
-            if upper.hasPrefix("DEFAULT("), token.count > "DEFAULT".count {
-                return String(token.dropFirst("DEFAULT".count))
-            }
-        }
-        return nil
     }
 
     private static func decodedStringLiteral(_ operand: String) -> String? {

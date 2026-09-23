@@ -108,12 +108,23 @@ enum MySQLServerVersion {
         return isAtLeast((8, 0, 0), banner: banner) ? "NO ACTION" : "RESTRICT"
     }
 
-    /// Whether a literal default comes back from the catalog already quoted.
+    /// Whether a literal default comes back from `INFORMATION_SCHEMA.COLUMNS` already quoted.
     ///
     /// MariaDB began quoting `COLUMN_DEFAULT` in 10.2.7, alongside expression defaults. Before that,
     /// and on every MySQL, a literal arrives bare and is indistinguishable from an expression by its
     /// text alone. MySQL never quotes, and marks an expression `DEFAULT_GENERATED` in `EXTRA` instead.
+    ///
+    /// It describes that catalog table and nothing else. MariaDB's `SHOW FULL COLUMNS` kept the old
+    /// bare form, so a `SHOW` answer is never read this way whatever the server version.
     static func quotesColumnDefault(banner: String?, flavor: MySQLServerFlavor) -> Bool {
         flavor.isMariaDB && isAtLeast((10, 2, 7), banner: banner)
+    }
+
+    /// Whether a MariaDB default can be an expression other than `CURRENT_TIMESTAMP`, which MariaDB
+    /// allows from 10.2.1. From then on its `SHOW FULL COLUMNS` reports `uuid()` and the string
+    /// `'uuid()'` alike, so the bare form alone cannot recreate a default. An unreadable banner is
+    /// not an old server.
+    static func mariaDBDefaultsCanBeExpressions(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        flavor.isMariaDB && !isKnownBelow((10, 2, 1), banner: banner)
     }
 }
