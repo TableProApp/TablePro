@@ -59,7 +59,14 @@ Type a dot to search by where a table lives:
 | `shop.attendance.timesheet` | The table, when `shop` is the database the connection is browsing |
 | `"my.schema".orders` | `orders` in a schema whose name holds a dot. Backticks and square brackets quote too |
 
-The browsed schema's tables are listed as the panel opens, and the rest arrive after one catalog query on PostgreSQL or one query per schema on other engines. Until then the panel reads **Loading…** rather than reporting no results.
+The browsed schema's tables are listed as the panel opens. Until the rest arrive the panel reads **Loading…** rather than reporting no results.
+
+| Engine | The other schemas' tables arrive after |
+|---|---|
+| PostgreSQL, PGlite | One query |
+| SQL Server | One query |
+| DuckDB | One query, or one per schema on a [remote Quack connection](/databases/duckdb#remote-quack) |
+| Every other engine | One query per schema |
 
 ## Across connections
 
