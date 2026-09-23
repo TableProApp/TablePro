@@ -328,6 +328,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.
 - Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
 - Shift-Tab and Control-Tab accepting an inline AI suggestion instead of outdenting or reaching the menu.
+- Closing a background tab with unsaved work landing on its neighbour instead of the tab you were on.
+- Show Previous Tab, Show Next Tab and Select Tab 1 to 9 enabled in Agent mode and with no tab to go to.
+- Row data of a window's first connection kept in memory after switching to another connection.
 
 ### Security
 
