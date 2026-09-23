@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProPluginKit
 
 internal struct CreateTableCompositionKey: Hashable {
     let scope: DatabaseScope
@@ -25,8 +26,22 @@ internal struct CreateTableCompositionKey: Hashable {
 internal final class CreateTableDraft: ObservableObject {
     internal let changeManager = StructureChangeManager()
 
-    @Published internal var tableName = ""
+    /// A new name answers whatever the driver said about the last one, so its error goes with it.
+    @Published internal var tableName = "" {
+        didSet {
+            guard tableName != oldValue else { return }
+            form?.clearSubmissionError()
+        }
+    }
     @Published internal var tableOptions = CreateTableOptions()
+    @Published internal var form: CreateTableFormState?
+    @Published internal private(set) var hasResolvedForm = false
+
+    internal func resolveForm(from spec: @autoclosure () -> PluginCreateTableFormSpec?) {
+        guard !hasResolvedForm else { return }
+        hasResolvedForm = true
+        form = spec().map(CreateTableFormState.init(spec:))
+    }
 
     @Published internal private(set) var composed: CreateTableStatements?
     @Published internal private(set) var compositionFailure: String?
@@ -48,6 +63,7 @@ internal final class CreateTableDraft: ObservableObject {
     /// holding nothing but foreign keys closed on Cmd+W with no prompt and the draft was dropped.
     internal var holdsWork: Bool {
         !tableName.isEmpty
+            || form?.holdsWork == true
             || changeManager.workingColumns.contains { !$0.name.isEmpty }
             || changeManager.workingIndexes.contains { !$0.name.isEmpty || !$0.columns.isEmpty }
             || changeManager.workingForeignKeys.contains {

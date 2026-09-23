@@ -93,6 +93,12 @@ final class PluginManager: ObservableObject {
     /// `SQLIndexKeyList` it and DuckDB read a stored `CREATE INDEX` with. The requirement defaults
     /// to nil, so an already-built plugin keeps loading and the app splits the change into a drop
     /// and an add as before.
+    ///
+    /// 33 also adds `createTableFormSpec(schema:)` and `createTableStatements(for:schema:)`, the
+    /// Create Table form a driver describes for tables that are not a list of typed columns. The
+    /// defaults answer nil and throw, so an already-built plugin keeps the column grid. It adds the
+    /// `modifyIndex` and `dropIndex` cases to the non-frozen `PluginSchemaOperation`, which an
+    /// already-built plugin answers through its `@unknown default`.
     nonisolated static let currentPluginKitVersion = 33
 
     /// Still 19, so every plugin already published for the previous release keeps loading.

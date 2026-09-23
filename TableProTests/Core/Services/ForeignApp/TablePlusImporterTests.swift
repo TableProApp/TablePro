@@ -949,6 +949,46 @@ struct TablePlusImporterTests {
         #expect(connection.additionalFields?["promptForPassword"] == nil)
     }
 
+    @Test("importConnections carries a DynamoDB connection's region and access key into its sign-in fields")
+    func testImportConnections_dynamoDB_mapsRegionAndAccessKey() throws {
+        try writeConnections([
+            makeConnection(
+                name: "Orders", driver: "DynamoDB", host: " eu-west-1 ", port: "", user: "AKIAEXAMPLE",
+                database: "", id: "c1"
+            )
+        ])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+
+        #expect(connection.type == "DynamoDB")
+        #expect(connection.additionalFields?["awsRegion"] == "eu-west-1")
+        #expect(connection.additionalFields?["awsAccessKeyId"] == "AKIAEXAMPLE")
+        #expect(connection.additionalFields?["awsAuthMethod"] == "credentials")
+    }
+
+    @Test("importConnections leaves the region unset when the DynamoDB connection names none")
+    func testImportConnections_dynamoDBWithoutRegion_leavesRegionUnset() throws {
+        try writeConnections([
+            makeConnection(name: "Orders", driver: "DynamoDB", host: "", port: "", user: "", database: "", id: "c1")
+        ])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+
+        #expect(connection.additionalFields?["awsRegion"] == nil)
+        #expect(connection.additionalFields?["awsAccessKeyId"] == nil)
+        #expect(connection.additionalFields?["awsAuthMethod"] == "credentials")
+    }
+
+    @Test("importConnections gives no other driver AWS sign-in fields")
+    func testImportConnections_otherDrivers_getNoAWSFields() throws {
+        try writeConnections([makeConnection(name: "Shop", driver: "MySQL", host: "eu-west-1", id: "c1")])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+
+        #expect(connection.additionalFields?["awsRegion"] == nil)
+        #expect(connection.additionalFields?["awsAuthMethod"] == nil)
+    }
+
     @MainActor
     @Test("importConnections keeps the prompt flag through analyze and into the connection")
     func testImportConnections_promptFlagSurvivesTheImportPipeline() throws {

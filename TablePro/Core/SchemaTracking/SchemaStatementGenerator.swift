@@ -44,11 +44,11 @@ struct SchemaStatementGenerator {
     func generate(changes: [SchemaChange]) throws -> [SchemaStatement] {
         var statements: [SchemaStatement] = []
 
-        let sortedChanges = sortByDependency(changes)
-        let refusals = sortedChanges.lazy.compactMap { SchemaOperationRefusal.reason(for: $0, driver: pluginDriver) }
+        let refusals = changes.lazy.compactMap { SchemaOperationRefusal.reason(for: $0, driver: pluginDriver) }
         if let reason = refusals.first {
             throw SchemaOperationRefusedError(reason: reason)
         }
+        let sortedChanges = sortByDependency(changes)
 
         for change in sortedChanges {
             let stmts = try generateStatements(for: change)

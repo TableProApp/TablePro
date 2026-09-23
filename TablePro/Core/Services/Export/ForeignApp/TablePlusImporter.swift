@@ -197,6 +197,9 @@ struct TablePlusImporter: ForeignAppImporter {
         default:
             database = entry["DatabaseName"] as? String ?? ""
         }
+        if dbType == DatabaseType.dynamodb.rawValue {
+            additionalFields.merge(Self.dynamoDBFields(entry)) { _, imported in imported }
+        }
 
         let databaseMode = TablePlusPasswordMode.resolve(entry["DatabasePasswordMode"])
         if databaseMode.promptsForPassword, !Self.hidesBuiltInPassword(dbType, fields: additionalFields) {
@@ -327,6 +330,26 @@ struct TablePlusImporter: ForeignAppImporter {
             return true
         }
         return snapshot.connection.additionalConnectionFields.hidesPassword(forValues: fields)
+    }
+
+    /// A DynamoDB connection keeps its AWS region where a server connection keeps its host, and its access key ID
+    /// where a server connection keeps its user, both signed in with an access key.
+    private static func dynamoDBFields(_ entry: [String: Any]) -> [String: String] {
+        var fields = ["awsAuthMethod": "credentials"]
+        if let region = trimmedValue(entry["DatabaseHost"]) {
+            fields["awsRegion"] = region
+        }
+        if let accessKeyId = trimmedValue(entry["DatabaseUser"]) {
+            fields["awsAccessKeyId"] = accessKeyId
+        }
+        return fields
+    }
+
+    private static func trimmedValue(_ raw: Any?) -> String? {
+        guard let text = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+        return text
     }
 
     private static func databaseType(forDriver driver: String) -> String {

@@ -136,7 +136,7 @@
       "bundleId": "com.TablePro.DynamoDBDriverPlugin",
       "bundled": false,
       "displayName": "DynamoDB Driver",
-      "summary": "Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication",
+      "summary": "Amazon DynamoDB: index-aware browsing, typed editing, PartiQL, the DynamoDB API and table management",
       "databaseTypeIds": [
         "DynamoDB"
       ],
