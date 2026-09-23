@@ -622,8 +622,9 @@ struct TabQueryContent: Equatable {
     var isParameterPanelVisible: Bool = false
     var sourceFileURL: URL?
     var savedFileContent: String?
-    var loadMtime: Date?
-    var externalModificationDetected: Bool = false
+    var savedFileStamp: FileStamp?
+    var diskChange: SourceFileDiskChange?
+    var dismissedDiskChange: SourceFileDiskChange?
 
     static let maxPersistableQuerySize = 500_000
 
@@ -633,16 +634,18 @@ struct TabQueryContent: Equatable {
         isParameterPanelVisible: Bool = false,
         sourceFileURL: URL? = nil,
         savedFileContent: String? = nil,
-        loadMtime: Date? = nil,
-        externalModificationDetected: Bool = false
+        savedFileStamp: FileStamp? = nil,
+        diskChange: SourceFileDiskChange? = nil,
+        dismissedDiskChange: SourceFileDiskChange? = nil
     ) {
         self.queryStorage = QueryStorage(query)
         self.queryParameters = queryParameters
         self.isParameterPanelVisible = isParameterPanelVisible
         self.sourceFileURL = sourceFileURL
         self.savedFileContent = savedFileContent
-        self.loadMtime = loadMtime
-        self.externalModificationDetected = externalModificationDetected
+        self.savedFileStamp = savedFileStamp
+        self.diskChange = diskChange
+        self.dismissedDiskChange = dismissedDiskChange
     }
 
     var isFileDirty: Bool {
@@ -658,9 +661,10 @@ struct TabQueryContent: Equatable {
         // bridged from NSTextStorage, so they are compared last and with `sameText` to avoid Swift's canonical Unicode
         // comparison (O(n) on the bridged text); the same-box identity check makes an unchanged query O(1).
         lhs.isParameterPanelVisible == rhs.isParameterPanelVisible
-            && lhs.externalModificationDetected == rhs.externalModificationDetected
+            && lhs.diskChange == rhs.diskChange
+            && lhs.dismissedDiskChange == rhs.dismissedDiskChange
             && lhs.sourceFileURL == rhs.sourceFileURL
-            && lhs.loadMtime == rhs.loadMtime
+            && lhs.savedFileStamp == rhs.savedFileStamp
             && lhs.queryParameters == rhs.queryParameters
             && (lhs.queryStorage === rhs.queryStorage || sameText(lhs.query, rhs.query))
             && sameText(lhs.savedFileContent, rhs.savedFileContent)

@@ -31,7 +31,7 @@ internal struct LinkedFileVersionHistoryProvider: VersionHistoryProvider {
         let records = try await gitCall { try await client.status(in: directory, pathspec: fileURL.lastPathComponent) }
         let current = VersionHistoryEntry(
             reference: .current,
-            date: FileTextLoader.modificationDate(of: fileURL),
+            date: FileStamp.read(fileURL)?.modificationDate,
             hasUncommittedChanges: !records.isEmpty
         )
         guard try await gitCall({ try await client.hasCommits(in: directory) }) else {
