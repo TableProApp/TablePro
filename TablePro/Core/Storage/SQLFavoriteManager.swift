@@ -212,31 +212,58 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         return true
     }
 
-    // MARK: - Remote Apply (does not mark dirty, to avoid sync loops)
+    // MARK: - Remote Apply
 
-    func applyRemoteFavorite(_ favorite: SQLFavorite) async {
-        let result = await storage.upsertFavorite(favorite)
-        guard result.succeeded else { return }
-        postUpdateNotification(for: result, newConnectionId: favorite.connectionId)
-    }
-
-    func applyRemoteFolder(_ folder: SQLFavoriteFolder) async {
-        let result = await storage.upsertFolder(folder)
-        guard result.succeeded else { return }
-        postUpdateNotification(for: result, newConnectionId: folder.connectionId)
-    }
-
-    func applyRemoteDeleteFavorite(id: UUID) async {
-        if await storage.deleteFavorite(id: id) {
-            postUpdateNotification(connectionId: nil)
+    func applyRemote(_ batch: RemoteSQLFavoriteBatch) async -> RemoteApplyOutcome {
+        guard !batch.isEmpty else { return .skipped }
+        guard await applyRemoteFavoriteDeletions(batch.deletedFavoriteIds),
+              await applyRemoteFolders(batch.folders),
+              await applyRemoteFavorites(batch.favoritesToUpsert),
+              await applyRemoteFolderDeletions(batch.deletedFolderIds)
+        else {
+            return .failed
         }
+        return .applied
     }
 
-    /// The reparenting this does is the same write the other device already made and pushed, so
-    /// the moved records are not marked dirty here: that would send their own change back.
-    func applyRemoteDeleteFolder(id: UUID) async {
-        guard await storage.deleteFolder(id: id) != nil else { return }
+    private func applyRemoteFavoriteDeletions(_ ids: Set<UUID>) async -> Bool {
+        guard !ids.isEmpty else { return true }
+        guard await storage.deleteFavorites(ids: Array(ids)) else { return false }
+        syncTracker.discardDirty(.favorite, ids: ids.map(\.uuidString))
         postUpdateNotification(connectionId: nil)
+        return true
+    }
+
+    private func applyRemoteFolders(_ folders: [SQLFavoriteFolder]) async -> Bool {
+        for folder in folders {
+            let write = await storage.upsertFolder(folder)
+            guard write.succeeded else { return false }
+            postUpdateNotification(for: write, newConnectionId: folder.connectionId)
+        }
+        return true
+    }
+
+    private func applyRemoteFavorites(_ favorites: [SQLFavorite]) async -> Bool {
+        guard !favorites.isEmpty else { return true }
+        guard let result = await storage.applyRemoteFavorites(favorites) else { return false }
+        for write in result.writes {
+            postUpdateNotification(for: write.write, newConnectionId: write.connectionId)
+        }
+        if !result.releasedKeywordIds.isEmpty {
+            Self.logger.info("Keyword conflicts resolved: \(result.releasedKeywordIds.count)")
+            syncTracker.markDirty(.favorite, ids: result.releasedKeywordIds.map(\.uuidString))
+        }
+        return true
+    }
+
+    private func applyRemoteFolderDeletions(_ ids: Set<UUID>) async -> Bool {
+        guard !ids.isEmpty else { return true }
+        defer { postUpdateNotification(connectionId: nil) }
+        for id in ids {
+            guard await storage.deleteFolder(id: id) != nil else { return false }
+            syncTracker.discardDirty(.favoriteFolder, ids: [id.uuidString])
+        }
+        return true
     }
 
     // MARK: - Keyword Support
