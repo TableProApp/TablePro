@@ -13,6 +13,13 @@ import TableProPluginKit
 /// first, and what the rebuild cannot carry over is named beside it.
 @MainActor
 struct TableRebuildReviewRequest: Identifiable {
+    struct Action {
+        /// What the confirming button says, which is the only thing that differs between a reorder
+        /// and a constraint change: both recreate the table, and the user is reading the same script.
+        let title: String
+        let perform: () async -> Void
+    }
+
     let id = UUID()
     let tableName: String
 
@@ -24,17 +31,17 @@ struct TableRebuildReviewRequest: Identifiable {
 
     let plan: PluginColumnReorderPlan
 
-    /// What the confirming button says, which is the only thing that differs between a reorder and
-    /// a constraint change: both recreate the table, and the user is reading the same script.
-    let actionTitle: String
-
-    let perform: () async -> Void
+    let action: Action?
 
     var warning: String? {
         plan.caveats.isEmpty ? nil : plan.caveats.joined(separator: " ")
     }
 
     var isRunnable: Bool { plan.isRunnable }
+
+    var runnableAction: Action? {
+        isRunnable ? action : nil
+    }
 
     var scriptStatements: [String] { plan.scriptStatements }
 }
