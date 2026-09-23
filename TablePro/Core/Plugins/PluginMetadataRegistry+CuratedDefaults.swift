@@ -713,6 +713,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: sqliteColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [.loadableExtensions()],
                     category: .relational,
                     tagline: String(localized: "Embedded zero-config SQL database")
                 )

@@ -29,6 +29,47 @@ struct DatabaseTreeNodeTests {
         #expect(Set([databaseId, schemaId, tableId, tableGroupId, otherSchemaGroupId]).count == 5)
     }
 
+    @Test("A pipe inside a database or schema name does not merge two object rows")
+    func pipeInsideContainerNameKeepsRowsApart() {
+        let routine = RoutineInfo(name: "f", kind: .function)
+        let trigger = TriggerInfo(name: "audit", timing: "AFTER", event: "INSERT", statement: "")
+        let type = UserDefinedTypeInfo(name: "mood", kind: .enumeration)
+
+        let routineIds = [
+            DatabaseTreeRoutineRef(database: "a|b", schema: nil, routine: routine).id,
+            DatabaseTreeRoutineRef(database: "a", schema: "b|", routine: routine).id
+        ]
+        let triggerIds = [
+            DatabaseTreeTriggerRef(database: "a|b", schema: nil, trigger: trigger).id,
+            DatabaseTreeTriggerRef(database: "a", schema: "b|", trigger: trigger).id
+        ]
+        let typeIds = [
+            DatabaseTreeUserTypeRef(database: "a|b", schema: nil, type: type).id,
+            DatabaseTreeUserTypeRef(database: "a", schema: "b|", type: type).id
+        ]
+
+        #expect(Set(routineIds).count == 2)
+        #expect(Set(triggerIds).count == 2)
+        #expect(Set(typeIds).count == 2)
+        #expect(
+            DatabaseTreeRoutineRef(database: "shop", schema: "public", routine: routine).id
+                == "shop|public|FUNCTION_f"
+        )
+    }
+
+    @Test("A table row keeps its id apart from one whose schema holds the period instead")
+    func periodInsideTableNameKeepsTableRowsApart() {
+        let dottedTable = DatabaseTreeTableRef(
+            database: "shop", schema: nil, table: TableInfo(name: "b.c", type: .table, rowCount: 0, schema: "a")
+        )
+        let dottedSchema = DatabaseTreeTableRef(
+            database: "shop", schema: nil, table: TableInfo(name: "c", type: .table, rowCount: 0, schema: "a.b")
+        )
+        #expect(dottedTable.id != dottedSchema.id)
+        #expect(DatabaseTreeNode.tableId(dottedTable) != DatabaseTreeNode.tableId(dottedSchema))
+        #expect(tableRef("users").id == "shop|public|users_TABLE")
+    }
+
     private func partitionRef(
         _ name: String,
         parent: String = "orders",

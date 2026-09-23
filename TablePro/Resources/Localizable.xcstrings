@@ -171,6 +171,176 @@
         }
       }
     },
+    "Recent Tabs" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "최근 탭",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Son Sekmeler",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Tab gần đây",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "最近的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "最近的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Show Next Window Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다음 윈도우 탭 보기",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Sonraki Pencere Sekmesini Göster",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hiện tab cửa sổ tiếp theo",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "显示下一个窗口标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "顯示下一個視窗分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Show Previous Window Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이전 윈도우 탭 보기",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Önceki Pencere Sekmesini Göster",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hiện tab cửa sổ trước",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "显示上一个窗口标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "顯示上一個視窗分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch to Least Recent Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "가장 오래전에 사용한 탭으로 전환",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "En Eski Kullanılan Sekmeye Geç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển đến tab dùng lâu nhất",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "切换到最久未用的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "切換到最久未用的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch to Recent Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "최근 탭으로 전환",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Son Sekmeye Geç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển đến tab gần đây",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "切换到最近的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "切換到最近的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {
@@ -182736,6 +182906,156 @@
 
     },
     "The Oracle driver reported an error (%@)." : {
+
+    },
+    "Extensions" : {
+
+    },
+    "The SQLite extensions for this connection could not be loaded." : {
+
+    },
+    "Could not load the extension \"%@\"." : {
+
+    },
+    "The saved extension list is not in a format TablePro can read." : {
+
+    },
+    "An extension in the list has no file." : {
+
+    },
+    "\"%@\" is not a full path." : {
+
+    },
+    "The path \"%@\" is too long." : {
+
+    },
+    "\"%@\" is not a valid entry point name." : {
+
+    },
+    "\"%@\" is in the list more than once." : {
+
+    },
+    "There is no file at \"%@\"." : {
+
+    },
+    "\"%@\" is not a file." : {
+
+    },
+    "The code signature of \"%@\" is damaged, so macOS would stop TablePro when it loads." : {
+
+    },
+    "SQLite did not allow extension loading on this connection." : {
+
+    },
+    "SQLite did not turn extension loading off again after loading." : {
+
+    },
+    "Extensions load only for a database file on this Mac, not for a database on a server." : {
+
+    },
+    "Choose the file again, or type a path that starts with / or ~." : {
+
+    },
+    "Use the name of a C function, such as sqlite3_vec_init, or leave it empty." : {
+
+    },
+    "Remove the second entry." : {
+
+    },
+    "Choose the extension's file again in Edit Connection." : {
+
+    },
+    "Enter the entry point the extension's documentation names." : {
+
+    },
+    "Use the build of the extension made for this Mac's processor." : {
+
+    },
+    "Remove the extensions from this connection in Edit Connection." : {
+
+    },
+    "The file has no function named %@." : {
+
+    },
+    "The extension failed to start: %@" : {
+
+    },
+    "This connection loads SQLite extensions that have not been approved on this Mac." : {
+
+    },
+    "Connect from the connection's window in TablePro to review them." : {
+
+    },
+    "Load Extensions" : {
+
+    },
+    "%@ (entry point %@)" : {
+
+    },
+    "The saved list could not be read. Adding an extension replaces it." : {
+
+    },
+    "No Extensions" : {
+
+    },
+    "Add Extension…" : {
+
+    },
+    "Remove Extension" : {
+
+    },
+    "Add Extension" : {
+
+    },
+    "Choose the SQLite extension libraries to load when this connection opens." : {
+
+    },
+    "Extension File" : {
+
+    },
+    "Entry Point" : {
+
+    },
+    "Default entry point" : {
+
+    },
+    "The initialization function to call. Leave empty to use the one SQLite derives from the file name." : {
+
+    },
+    "\"%@\" is not a library." : {
+
+    },
+    "Not a full path. Use a path that starts with / or ~." : {
+
+    },
+    "No file at this path." : {
+
+    },
+    "This file is not a library." : {
+
+    },
+    "The connection's SQLite extensions were not approved." : {
+
+    },
+    "Connection \"%@\" loads SQLite extensions that were not added on this Mac:" : {
+
+    },
+    "Loaded in this order each time the database file opens on this Mac. An extension runs with full access to your Mac, so add only files you trust." : {
+
+    },
+    "An extension runs inside TablePro with full access to your Mac. Load them only if you trust these files." : {
+
+    },
+    "The path of an extension in the list contains a line break or another control character." : {
+
+    },
+    "Sign it again with: codesign --force --sign - %@" : {
+
+    },
+    "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
+
+    },
+    "This connection loads SQLite extensions, and their functions can read and write files. A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead." : {
 
     }
   },

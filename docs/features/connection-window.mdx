@@ -86,6 +86,24 @@ The palette offers a tile for a control the tab you are on has hidden. Drag **Re
 
 In [Agent mode](/features/agent-mode) the chooser and the filter field go, and the session list takes their height.
 
+## Filtering the sidebar
+
+The filter field matches any part of a name, so `sheet` finds `timesheet`. How far it reaches depends on the layout:
+
+| Layout | Searches |
+|---|---|
+| **View > Sidebar as List** | The browsed schema, then every other schema holding a match, listed below it and opened to show the matches |
+| **View > Sidebar as Tree** | Every schema of every database whose schemas the tree has shown, expanded or not |
+
+A schema whose tables have not been read yet stays in the tree, collapsed, until they arrive.
+
+<Frame caption="The List layout filtered by timesheet">
+  <img className="block dark:hidden" src="/images/sidebar-filter-other-schemas.png" alt="Sidebar with timesheet in public at the top, and attendance and payroll below it, each opened to its timesheet table" />
+  <img className="hidden dark:block" src="/images/sidebar-filter-other-schemas-dark.png" alt="Sidebar with timesheet in public at the top, and attendance and payroll below it, each opened to its timesheet table" />
+</Frame>
+
+Type a dot to filter by schema. `attendance.time` keeps the objects in `attendance` whose names contain `time`, `attendance.` shows everything in `attendance`, and `shop.attendance.time` names the database too. A table whose own name holds a dot, such as `audit.events`, still matches when you type that name. [Open Quickly](/features/open-quickly#other-schemas) takes the same form with fuzzy matching.
+
 ## The trailing pane
 
 One column on the trailing edge, holding one surface at a time. Its header keeps one height across all three, so switching surface moves nothing beneath it.
