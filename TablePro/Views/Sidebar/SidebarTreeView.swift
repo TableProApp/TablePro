@@ -114,7 +114,8 @@ struct SidebarTreeView: View {
             tables: schemaService.tables(for: connectionId, schema: schema),
             routines: schemaService.routines(for: connectionId, schema: schema),
             triggers: schemaService.triggers(for: connectionId, schema: schema),
-            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema)
+            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
+            database: activeDatabase
         )
     }
 

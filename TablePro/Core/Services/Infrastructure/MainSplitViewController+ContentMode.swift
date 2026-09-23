@@ -108,6 +108,7 @@ internal extension MainSplitViewController {
     /// column, so all three follow the swap rather than whichever tab is selected behind it.
     func applyContentMode(for workspace: ConnectionWorkspace) {
         syncPanes(of: workspace)
+        syncFrontmostTabManager()
         guard workspaces.selectedConnectionId == workspace.connectionId else { return }
         showSelectedContentPanes()
         showSelectedTrailingPane()

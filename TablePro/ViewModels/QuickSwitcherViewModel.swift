@@ -14,6 +14,8 @@ private enum QuickSwitcherRanking {
     static let keywordMatchWeight = 1.0
     static let frecencyBoost = 0.5
     static let openTabBoost = 1.2
+    static let containerMatchWeight = 0.5
+    static let otherSchemaWeight = 0.97
 }
 
 @MainActor
@@ -46,6 +48,18 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         let items: [QuickSwitcherItem]
     }
 
+    /// What the panel's own connection is browsing, which is what its table rows are built for.
+    struct TableSource {
+        let database: String?
+        let browseSchema: String?
+        let openTables: Set<QuickSwitcherOpenTable>
+        let grouping: GroupingStrategy
+
+        var listsTablesPerSchema: Bool {
+            DatabaseTreeMetadataService.listsTablesPerSchema(grouping)
+        }
+    }
+
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
     private static let recentLimit = 10
     private static let filterDebounceNanoseconds: UInt64 = 40_000_000
@@ -71,6 +85,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     internal var crossConnectionQueryItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
     }
+    private var baseItems: [QuickSwitcherItem]?
+    private var tableItems: [QuickSwitcherItem] = []
+    private var tableSource: TableSource?
+    private var tableSourceObservations: [AnyCancellable] = []
+    private var listingDemand = AllSchemaTablesDemand()
     private var filterTask: Task<Void, Never>?
     private var selectionQuery: String?
     private var selectionScope: QuickSwitcherScope?
@@ -86,6 +105,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// for a beat after the catalog arrives. Without this the panel calls that emptiness "no
     /// results" and says so, for the whole first sort.
     @Published private(set) var isFiltering = false
+    /// The tables of schemas other than the browsed one arrive after the rest of the catalog, so a
+    /// search that finds nothing yet is still loading rather than a miss.
+    @Published private(set) var isLoadingTables = false
     @Published private(set) var isLoadingCrossConnections = false
     @Published private(set) var isLoadingCrossConnectionQueries = false
     @Published private(set) var crossConnectionQueryContentRevision = 0
@@ -129,7 +151,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             return isLoadingCrossConnectionQueries
         }
         guard scope != .all || !trimmedSearchText.isEmpty else { return false }
-        return isLoading || isFiltering
+        let awaitsTables = isLoadingTables && scope.includedKinds.map { $0.contains(.table) } ?? true
+        return isLoading || isFiltering || awaitsTables
     }
 
     private var trimmedSearchText: String {
@@ -172,8 +195,10 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         self.init(connectionId: connectionId, services: .live)
     }
 
+    /// Tables are not part of the cached catalog. They are merged in from the services that own
+    /// them, every time either one changes while the panel is open, so a list the sidebar loads or
+    /// the all-schema listing arriving after the panel opened still reaches it.
     func loadItems(
-        schemaProvider: SQLSchemaProvider,
         databaseType: DatabaseType,
         openTables: Set<QuickSwitcherOpenTable> = [],
         browseSchema: String? = nil
@@ -183,41 +208,45 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         let loadId = UUID()
         activeLoadId = loadId
 
+        let tableSource = TableSource(
+            database: services.databaseManager.browseScope(for: connectionId)?.database,
+            browseSchema: browseSchema,
+            openTables: openTables,
+            grouping: services.pluginManager.databaseGroupingStrategy(for: databaseType)
+        )
+        self.tableSource = tableSource
+        observeTableSources()
+        async let tablesLoaded: Void = loadTables(from: tableSource, loadId: loadId)
+
         /// Read once and used both to key the catalog and to build it. Reading it again after the
         /// awaits below let the two disagree: the items were filtered by whatever the sidebar held
         /// when the fetches finished, and stored under whatever it held when they started.
         let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
         let catalogVersion = self.catalogVersion(databaseFilter: databaseFilter)
         if let cached = catalogStore.catalog(for: connectionId, version: catalogVersion) {
-            allItems = Self.applyingOpenState(to: cached, openTables: openTables, browsing: browseSchema)
-            return
+            baseItems = cached
+        } else {
+            let catalog = await loadBaseCatalog(databaseType: databaseType, databaseFilter: databaseFilter)
+            guard activeLoadId == loadId, !Task.isCancelled else { return }
+            if catalog.isComplete {
+                catalogStore.store(catalog.items, for: connectionId, version: catalogVersion)
+            }
+            baseItems = catalog.items
         }
+        tableItems = currentTableItems()
+        publishItems()
+        await tablesLoaded
+    }
 
+    /// Everything but the tables, which is what the catalog store keeps. Incomplete when a fetch
+    /// failed, and then it is not stored: a cached catalog is served without fetching anything, so
+    /// a schema list that timed out once would have stayed missing on every reopen.
+    private func loadBaseCatalog(
+        databaseType: DatabaseType,
+        databaseFilter: Set<String>
+    ) async -> (items: [QuickSwitcherItem], isComplete: Bool) {
         var items: [QuickSwitcherItem] = []
-
-        if let scope = services.databaseManager.browseScope(for: connectionId) {
-            await SchemaProviderRegistry.shared.prepare(
-                for: scope,
-                connection: services.databaseManager.session(for: connectionId)?.connection
-            )
-        }
-
-        let tables = await schemaProvider.getTables()
-        for table in tables {
-            let presentation = Self.tablePresentation(for: table.type)
-            items.append(QuickSwitcherItem(
-                id: QuickSwitcherItem.tableItemId(name: table.name, schema: table.schema),
-                name: table.name,
-                kind: presentation.kind,
-                subtitle: presentation.subtitle,
-                isOpenInTab: openTables.contains(
-                    QuickSwitcherOpenTable(schema: table.schema, name: table.name, browsing: browseSchema)
-                ),
-                isReadOnly: !table.type.allowsRowEditing,
-                tableType: table.type,
-                schemaName: table.schema
-            ))
-        }
+        var isComplete = true
 
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let activeDatabase = services.databaseManager.session(for: connectionId)
@@ -250,6 +279,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     ))
                 }
             } catch {
+                isComplete = false
                 Self.logger.warning("Failed to fetch databases: \(error.publicLogShape, privacy: .public)")
             }
         }
@@ -271,6 +301,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     ))
                 }
             } catch {
+                isComplete = false
                 Self.logger.warning("Failed to fetch schemas: \(error.publicLogShape, privacy: .public)")
             }
         }
@@ -305,10 +336,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             ))
         }
 
-        guard activeLoadId == loadId, !Task.isCancelled else { return }
-
-        catalogStore.store(items, for: connectionId, version: catalogVersion)
-        allItems = items
+        return (items, isComplete)
     }
 
     /// The catalog is a function of these, so a presentation that finds them unchanged can serve
@@ -339,21 +367,84 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return names
     }
 
-    /// Which tables have a tab is not part of the catalog's version, so it is applied on the way
-    /// out rather than stored. A cached flag would badge a table the user has since closed.
-    nonisolated static func applyingOpenState(
-        to catalog: [QuickSwitcherItem],
-        openTables: Set<QuickSwitcherOpenTable>,
-        browsing browseSchema: String?
-    ) -> [QuickSwitcherItem] {
-        catalog.map { item in
-            guard item.kind == .table || item.kind == .view || item.kind == .systemTable else { return item }
-            var updated = item
-            updated.isOpenInTab = openTables.contains(
-                QuickSwitcherOpenTable(schema: item.schemaName, name: item.name, browsing: browseSchema)
-            )
-            return updated
+    /// The browse schema's tables come from the schema service, which the sidebar loaded on
+    /// connect; every other schema's come from the all-schema listing, which is asked for here.
+    private func loadTables(from source: TableSource, loadId: UUID) async {
+        isLoadingTables = true
+        defer {
+            if activeLoadId == loadId { isLoadingTables = false }
         }
+        _ = await services.schemaRefreshService.loadBrowseCatalogs(connectionIds: [connectionId])
+        guard activeLoadId == loadId else { return }
+        mergeTableItems()
+        guard source.listsTablesPerSchema, let database = source.database else { return }
+        let service = DatabaseTreeMetadataService.shared
+        listingDemand.noteRequested(connectionId: connectionId, database: database, service: service)
+        await service.loadAllSchemaTables(connectionId: connectionId, database: database)
+        guard activeLoadId == loadId else { return }
+        mergeTableItems()
+    }
+
+    /// A change to either source while the panel is open reaches it. A change that leaves the
+    /// tables as they were costs a comparison and no refilter. A catalog change or a reconnect
+    /// while it is open asks for the listing again.
+    private func observeTableSources() {
+        tableSourceObservations = [
+            services.schemaService.onMainActorChange { [weak self] in self?.mergeTableItems() },
+            DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in
+                self?.requestListingIfStale()
+                self?.mergeTableItems()
+            },
+            services.databaseManager.onMainActorChange { [weak self] in self?.requestListingIfStale() }
+        ]
+    }
+
+    private func requestListingIfStale() {
+        guard let tableSource, tableSource.listsTablesPerSchema, let database = tableSource.database else { return }
+        listingDemand.requestIfNeeded(
+            connectionId: connectionId,
+            database: database,
+            isConnected: services.databaseManager.session(for: connectionId)?.status == .connected,
+            service: DatabaseTreeMetadataService.shared
+        )
+    }
+
+    private func mergeTableItems() {
+        let items = currentTableItems()
+        guard items != tableItems else { return }
+        tableItems = items
+        publishItems()
+    }
+
+    private func currentTableItems() -> [QuickSwitcherItem] {
+        guard let tableSource else { return [] }
+        let listing = tableSource.database.flatMap { database -> [TableInfo]? in
+            guard tableSource.listsTablesPerSchema else { return nil }
+            return DatabaseTreeMetadataService.shared
+                .allSchemaTablesLoadState(connectionId: connectionId, database: database).value?.tables
+        }
+        let loadedScope = services.schemaService.loadedScope(for: connectionId)
+        let tables = Self.mergedTables(
+            local: services.schemaService.allLoadedTables(for: connectionId),
+            loadedFrom: loadedScope?.database,
+            coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
+            listing: listing,
+            browsing: tableSource.database,
+            grouping: tableSource.grouping
+        )
+        return Self.makeTableItems(
+            tables,
+            database: tableSource.database,
+            browseSchema: tableSource.browseSchema,
+            openTables: tableSource.openTables
+        )
+    }
+
+    /// Nothing is shown before the rest of the catalog has arrived, as before tables were merged
+    /// separately: assigning `allItems` is what ends the load.
+    private func publishItems() {
+        guard let baseItems else { return }
+        allItems = tableItems + baseItems
     }
 
     /// Loading is keyed on a version of the world, so it must always record the version it
@@ -560,6 +651,88 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         )
     }
 
+    /// The schema service answers for every schema it holds a list of, because it refreshes that
+    /// list the moment the catalog changes. The all-schema listing fills in the schemas it does not
+    /// hold, and may be a read behind for those until it is next asked.
+    ///
+    /// The schema service keeps its lists until a reload replaces them, so while a database switch
+    /// settles it still holds the old database's tables, which would open against the new one.
+    /// They count only once the database they were loaded from is the one being browsed.
+    ///
+    /// `coveredSchemas` names the schemas the schema service answers for even when it found them
+    /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
+    /// so no say, and the listing's stale copy of that table would come back.
+    ///
+    /// A hierarchical engine is the exception. Its per-schema lists are keyed by schema alone and
+    /// keep the rows of a database the connection has just switched away from until each one
+    /// reloads, so once the listing, which is keyed by database, has arrived it answers for every
+    /// schema, and the schema service only stands in until then.
+    nonisolated static func mergedTables(
+        local loaded: [TableInfo],
+        loadedFrom loadedDatabase: String?,
+        coveredSchemas: Set<String>,
+        listing: [TableInfo]?,
+        browsing database: String?,
+        grouping: GroupingStrategy
+    ) -> [TableInfo] {
+        let listingAnswersAll = grouping == .hierarchicalSchema && listing != nil
+        let isCurrent = loadedDatabase == database && !listingAnswersAll
+        let local = isCurrent ? loaded : []
+        let authoritative = (isCurrent ? coveredSchemas : []).union(local.map { $0.schema ?? "" })
+        var seen: Set<TableIdentity> = []
+        return (local + (listing ?? []).filter { !authoritative.contains($0.schema ?? "") })
+            .filter { seen.insert(TableIdentity(schema: $0.schema ?? "", name: $0.name)).inserted }
+    }
+
+    /// The schemas the schema service holds an answer for. On a schema-grouped engine its flat list
+    /// is the browsed schema's; on a hierarchical one each schema keeps a list of its own, and the
+    /// flat list is empty whatever the browsed schema holds.
+    private func coveredSchemas(loadedScope: DatabaseScope?, grouping: GroupingStrategy) -> Set<String> {
+        var covered = services.schemaService.schemasWithLoadedTables(for: connectionId)
+        if grouping != .hierarchicalSchema,
+           services.schemaService.hasLoadedContent(for: connectionId),
+           let schema = loadedScope?.schema {
+            covered.insert(schema)
+        }
+        return covered
+    }
+
+    private struct TableIdentity: Hashable {
+        let schema: String
+        let name: String
+    }
+
+    /// A table outside the browsed schema names its schema, and one inside it does not, the way
+    /// SQL written against the browsed schema would spell them.
+    nonisolated static func makeTableItems(
+        _ tables: [TableInfo],
+        database: String?,
+        browseSchema: String?,
+        openTables: Set<QuickSwitcherOpenTable>
+    ) -> [QuickSwitcherItem] {
+        tables.map { table in
+            let presentation = tablePresentation(for: table.type)
+            let otherSchema = SchemaQualifiedName.explicitSchema(table.schema, implicitSchemaName: browseSchema)
+            let subtitle = [otherSchema, presentation.subtitle]
+                .compactMap { $0?.isEmpty == false ? $0 : nil }
+                .joined(separator: " · ")
+            return QuickSwitcherItem(
+                id: QuickSwitcherItem.tableItemId(name: table.name, schema: table.schema),
+                name: table.name,
+                kind: presentation.kind,
+                subtitle: subtitle,
+                isOpenInTab: openTables.contains(
+                    QuickSwitcherOpenTable(schema: table.schema, name: table.name, browsing: browseSchema)
+                ),
+                isReadOnly: !table.type.allowsRowEditing,
+                schemaName: table.schema,
+                databaseName: database,
+                tableType: table.type,
+                isOutsideBrowsedSchema: otherSchema != nil
+            )
+        }
+    }
+
     nonisolated static func makeCrossConnectionItems(
         tables: [TableInfo],
         target: QuickSwitcherTarget
@@ -580,8 +753,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 kind: presentation.kind,
                 subtitle: connectionPath(for: resolvedTarget),
                 isReadOnly: !table.type.allowsRowEditing,
-                tableType: table.type,
-                target: resolvedTarget
+                target: resolvedTarget,
+                tableType: table.type
             )
         }
     }
@@ -796,7 +969,10 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         for kind in QuickSwitcherItemKind.displayOrder {
             let kindItems = items
                 .filter { $0.kind == kind && !recentIdSet.contains($0.id) }
-                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                .sorted { lhs, rhs in
+                    if lhs.isOutsideBrowsedSchema != rhs.isOutsideBrowsedSchema { return rhs.isOutsideBrowsedSchema }
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
             guard !kindItems.isEmpty else { continue }
             result.append(Group(
                 id: "kind-\(kind.rawValue)",
@@ -847,13 +1023,18 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         query: String,
         frecencyScores: [String: Double]
     ) async -> [Group] {
+        let qualified = QualifiedSearchQuery(query)
+        let prefersShorterNames = qualified.map { !$0.name.isEmpty } ?? true
         var ranked = items.compactMap { item -> (item: QuickSwitcherItem, rank: Double)? in
-            guard let (matchScore, matchedIndices) = bestMatch(for: item, query: query) else { return nil }
+            guard let (matchScore, matchedIndices) = bestMatch(for: item, query: query, qualified: qualified) else {
+                return nil
+            }
             var matched = item
             matched.matchedIndices = matchedIndices
             let frecency = 1 + (frecencyScores[item.id] ?? 0) * QuickSwitcherRanking.frecencyBoost
             let openBoost = item.isOpenInTab ? QuickSwitcherRanking.openTabBoost : 1
-            return (matched, matchScore * item.kind.rankWeight * frecency * openBoost)
+            let location = item.isOutsideBrowsedSchema ? QuickSwitcherRanking.otherSchemaWeight : 1
+            return (matched, matchScore * item.kind.rankWeight * frecency * openBoost * location)
         }
         ranked.sort { lhs, rhs in
             if lhs.rank != rhs.rank { return lhs.rank > rhs.rank }
@@ -862,7 +1043,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
             let lhsLength = (lhs.item.name as NSString).length
             let rhsLength = (rhs.item.name as NSString).length
-            if lhsLength != rhsLength { return lhsLength < rhsLength }
+            if prefersShorterNames, lhsLength != rhsLength { return lhsLength < rhsLength }
             return lhs.item.name.localizedStandardCompare(rhs.item.name) == .orderedAscending
         }
         let items = Array(ranked.prefix(QuickSwitcherRanking.maxResults).map(\.item))
@@ -870,7 +1051,39 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return [Group(id: "results", header: nil, items: items)]
     }
 
+    /// A dotted query is read both ways and the better reading wins: as a path, and as plain text,
+    /// which is what still finds a table literally named `b.c` and a connection path in a subtitle.
     nonisolated private static func bestMatch(
+        for item: QuickSwitcherItem,
+        query: String,
+        qualified: QualifiedSearchQuery?
+    ) -> (score: Double, matchedIndices: [Int])? {
+        let plain = plainMatch(for: item, query: query)
+        guard let qualified, let path = pathMatch(for: item, query: qualified) else { return plain }
+        guard let plain, plain.score >= path.score else { return path }
+        return plain
+    }
+
+    /// Each container the query names has to match the part of the item's location it lines up
+    /// with, and the name has to match the item's name. An empty name, `attendance.`, takes every
+    /// item in the matched container.
+    nonisolated static func pathMatch(
+        for item: QuickSwitcherItem,
+        query: QualifiedSearchQuery
+    ) -> (score: Double, matchedIndices: [Int])? {
+        guard let pairs = query.containerPairs(with: item.searchLocation) else { return nil }
+        var containerScore = 0.0
+        for pair in pairs {
+            guard let match = FuzzyMatcher.match(query: pair.query, candidate: pair.candidate) else { return nil }
+            containerScore += Double(match.score)
+        }
+        let weightedContainers = containerScore * QuickSwitcherRanking.containerMatchWeight
+        guard !query.name.isEmpty else { return (weightedContainers, []) }
+        guard let nameMatch = FuzzyMatcher.match(query: query.name, candidate: item.name) else { return nil }
+        return (Double(nameMatch.score) + weightedContainers, nameMatch.matchedIndices)
+    }
+
+    nonisolated private static func plainMatch(
         for item: QuickSwitcherItem,
         query: String
     ) -> (score: Double, matchedIndices: [Int])? {
@@ -955,7 +1168,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 kind: routine.kind == .procedure ? .procedure : .function,
                 subtitle: routine.schema ?? database ?? "",
                 schemaName: routine.schema,
-                objectRef: DatabaseObjectRef(routine: routine, database: database ?? "")
+                objectRef: DatabaseObjectRef(routine: routine, database: database ?? ""),
+                databaseName: database
             )
         }
     }
@@ -968,7 +1182,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 kind: .trigger,
                 subtitle: trigger.table ?? trigger.schema ?? database ?? "",
                 schemaName: trigger.schema,
-                objectRef: DatabaseObjectRef(trigger: trigger, database: database ?? "")
+                objectRef: DatabaseObjectRef(trigger: trigger, database: database ?? ""),
+                databaseName: database
             )
         }
     }
@@ -981,7 +1196,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 kind: .userType,
                 subtitle: type.schema ?? database ?? "",
                 schemaName: type.schema,
-                objectRef: DatabaseObjectRef(userType: type, database: database ?? "")
+                objectRef: DatabaseObjectRef(userType: type, database: database ?? ""),
+                databaseName: database
             )
         }
     }

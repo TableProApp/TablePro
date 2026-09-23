@@ -97,7 +97,7 @@ internal final class TabRouter {
             .first(where: { $0.id == entry.connectionId }) else {
             throw TabRouterError.connectionNotFound(entry.connectionId)
         }
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
         try await DatabaseManager.shared.ensureConnected(connection)
         RecentlyClosedTabReopener.reopen(entry)
         WindowOpener.shared.closeWelcome()
@@ -172,7 +172,7 @@ internal final class TabRouter {
             if let host, host.workspaces.contains(id) {
                 host.reconnectWorkspace(id)
             } else {
-                try await runPreConnectScriptIfNeeded(connection)
+                try await confirmConnectConsent(connection)
                 try await DatabaseManager.shared.ensureConnected(connection)
             }
             return
@@ -234,7 +234,7 @@ internal final class TabRouter {
             return
         }
 
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
 
         let payload = EditorTabPayload(
             connectionId: connectionId,
@@ -306,7 +306,7 @@ internal final class TabRouter {
             return
         }
 
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
 
         let payload = EditorTabPayload(
             connectionId: connectionId,
@@ -398,7 +398,7 @@ internal final class TabRouter {
             return
         }
 
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
@@ -525,8 +525,8 @@ internal final class TabRouter {
         await coordinator.switchContainers(database: database, schema: schema)
     }
 
-    private func runPreConnectScriptIfNeeded(_ connection: DatabaseConnection) async throws {
-        guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
+    private func confirmConnectConsent(_ connection: DatabaseConnection) async throws {
+        guard await ConnectConsent.confirmIfNeeded(for: connection) else {
             throw TabRouterError.userCancelled
         }
     }

@@ -66,6 +66,12 @@ actor SQLSchemaProvider {
     private var fieldPathCache: [String: [PluginFieldPath]] = [:]
     private var fieldPathTasks: [String: Task<[PluginFieldPath], Never>] = [:]
 
+    /// Another schema's tables, fetched when a statement names that schema and a dot. They are
+    /// held apart from `tables`, which the scope's owner writes and every unqualified reader
+    /// trusts, so completing `attendance.` cannot make `timesheet` an answer for a bare name.
+    private var onDemandSchemaTables: [String: [TableInfo]] = [:]
+    private var onDemandSchemaTableTasks: [String: Task<[TableInfo]?, Never>] = [:]
+
     private var knownSchemas: [String] = []
     private var knownDatabases: [String] = []
 
@@ -207,6 +213,8 @@ actor SQLSchemaProvider {
         self.columnAccessOrder.removeAll()
         self.fieldPathCache.removeAll()
         self.fieldPathTasks.removeAll()
+        self.onDemandSchemaTables.removeAll()
+        self.onDemandSchemaTableTasks.removeAll()
         self.cachedDriver = driver
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
@@ -329,13 +337,24 @@ actor SQLSchemaProvider {
             }
         }
 
-        for table in tables {
+        for table in tablesResolvableUnqualified {
             if table.name.lowercased() == lowerName {
                 return table.name
             }
         }
 
         return nil
+    }
+
+    /// `tables` is every table the scope's owner loaded, which for the browse scope includes each
+    /// schema the sidebar has expanded. A bare name only reaches the schema unqualified names
+    /// resolve in, so only its tables may be offered or matched without their schema.
+    private var tablesResolvableUnqualified: [TableInfo] {
+        guard let defaultSchema = getDefaultSchema(), !defaultSchema.isEmpty else { return tables }
+        return tables.filter { table in
+            guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+            return tableSchema.caseInsensitiveCompare(defaultSchema) == .orderedSame
+        }
     }
 
     // MARK: - AI Schema Context
@@ -381,9 +400,9 @@ actor SQLSchemaProvider {
 
     // MARK: - Completion Items
 
-    /// Get completion items for tables
+    /// Tables a statement can name without their schema.
     func tableCompletionItems() async -> [SQLCompletionItem] {
-        let tableData = tables.map { (name: $0.name, isView: $0.type == .view) }
+        let tableData = tablesResolvableUnqualified.map { (name: $0.name, isView: $0.type == .view) }
         return await MainActor.run {
             tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
         }
@@ -430,29 +449,49 @@ actor SQLSchemaProvider {
     /// Tables of one schema — suggested after a schema-qualified dot (e.g. "DBT_MARTS.").
     /// Falls back to fetching from the database when that schema's tables aren't loaded yet.
     func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
-        var matching = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
-        if matching.isEmpty, let fetchSchemaTables = metadataSource?.fetchSchemaTables {
-            if let fetched = try? await fetchSchemaTables(schema), !fetched.isEmpty {
-                matching = fetched.filter { belongsToSchema($0, schema) }
-                mergeTables(fetched)
-            }
-        }
-        let tableData = matching.map { (name: $0.name, isView: $0.type == .view) }
+        let listed = await knownTables(inSchema: schema)
+        let tableData = listed.map { (name: $0.name, isView: $0.type == .view) }
         return await MainActor.run {
             tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
         }
     }
 
-    private func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
-        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
-        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
+    private func knownTables(inSchema schema: String) async -> [TableInfo] {
+        let loaded = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
+        guard loaded.isEmpty else { return loaded }
+        return await onDemandTables(inSchema: schema)
     }
 
-    private func mergeTables(_ newTables: [TableInfo]) {
-        var seen = Set(tables.map(\.id))
-        for table in newTables where seen.insert(table.id).inserted {
-            tables.append(table)
+    /// Concurrent callers await the fetch already in flight, and a fetch that a reset overtook
+    /// answers its own caller without writing into the scope that replaced it. An empty schema is
+    /// an answer and is kept; a failed fetch is not, so the next keystroke asks again.
+    private func onDemandTables(inSchema schema: String) async -> [TableInfo] {
+        let key = schema.lowercased()
+        if let cached = onDemandSchemaTables[key] { return cached }
+        if let inFlight = onDemandSchemaTableTasks[key] { return await inFlight.value ?? [] }
+        guard let fetchSchemaTables = metadataSource?.fetchSchemaTables else { return [] }
+
+        let task = Task<[TableInfo]?, Never> {
+            do {
+                return try await fetchSchemaTables(schema).filter { Self.belongsToSchema($0, schema) }
+            } catch {
+                Self.logger.debug(
+                    "[schema] on-demand schema tables failed: \(error.publicLogShape, privacy: .public)"
+                )
+                return nil
+            }
         }
+        onDemandSchemaTableTasks[key] = task
+        let fetched = await task.value
+        guard onDemandSchemaTableTasks[key] == task else { return fetched ?? [] }
+        onDemandSchemaTableTasks[key] = nil
+        if let fetched { onDemandSchemaTables[key] = fetched }
+        return fetched ?? []
+    }
+
+    private static func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
+        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
     }
 
     /// Get completion items for columns of a specific table

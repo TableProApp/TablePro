@@ -85,6 +85,14 @@ struct ExecuteQueryChatTool: ChatTool {
             )
         }
 
+        if let refusal = ExternalStatementGate.extensionCallRefusal(
+            sql: query,
+            databaseType: meta.databaseType,
+            loadsExtensions: meta.loadsExtensions
+        ) {
+            return ChatToolResult(content: refusal, isError: true)
+        }
+
         if classification.tier == .destructive {
             return ChatToolResult(
                 content: "Destructive queries (DROP, TRUNCATE, ALTER...DROP) are blocked here. Use confirm_destructive_operation with the explicit confirmation phrase.",

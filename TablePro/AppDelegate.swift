@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         /// Installed before any window exists, so the bar is correct from the first frame.
         /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
         MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
+        MainMenuBuilder.syncKeyEquivalentsOnKeyWindowChange()
         LaunchTracer.shared.mark(.menuInstalled)
 
         _ = InspectorDocumentController()
@@ -82,6 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
         WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
         KeyRepeatFilter.shared.install()
+        RecentTabSwitcherController.installEditorKeyClaim()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
         AppStorageEnvironment.shared.defaults.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
