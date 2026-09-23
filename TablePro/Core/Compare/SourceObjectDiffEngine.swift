@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal struct SourceObjectDiffEngine {
     private let options: StructureCompareOptions
@@ -47,52 +48,51 @@ internal struct SourceObjectDiffEngine {
         for read in source {
             let key = matchKey(for: read)
             handled.insert(key)
-            guard let counterpart = targetByKey[key] else {
-                results.append(result(for: read, counterpart: nil, status: .onlyInSource))
-                continue
-            }
-            let equal = normalize(read.source, scriptText: sourceScriptText)
-                == normalize(counterpart.source, scriptText: targetScriptText)
-            results.append(result(for: read, counterpart: counterpart, status: equal ? .identical : .differs))
+            results.append(result(identifiedBy: read, source: read, target: targetByKey[key]))
         }
 
         for read in target where !handled.contains(matchKey(for: read)) {
-            results.append(result(for: read, counterpart: nil, status: .onlyInTarget))
+            results.append(result(identifiedBy: read, source: nil, target: read))
         }
 
         return results
     }
 
     private func result(
-        for read: RoutineSourceRead,
-        counterpart: RoutineSourceRead?,
-        status: TableDiffStatus
+        identifiedBy read: RoutineSourceRead,
+        source: RoutineSourceRead?,
+        target: RoutineSourceRead?
     ) -> CompareObjectResult {
-        let identity = CompareObjectIdentity(
-            kind: read.kind, schema: read.schema, name: read.name, signature: read.signature
-        )
-        let sourceLines = status == .onlyInTarget ? [] : SqlNormalizer.lines(read.source)
-        let targetLines: [String]
-        switch status {
-        case .onlyInTarget:
-            targetLines = SqlNormalizer.lines(read.source)
-        case .onlyInSource:
-            targetLines = []
-        case .differs, .identical:
-            targetLines = SqlNormalizer.lines(counterpart?.source ?? "")
-        }
+        let sourceDefect = source.flatMap { SourceDefinitionDefect.of($0, sentAs: sourceScriptText) }
+        let targetDefect = target.flatMap { SourceDefinitionDefect.of($0, sentAs: targetScriptText) }
+        let comparisonError = sourceDefect.map { $0.reason(on: .source) } ?? targetDefect.map { $0.reason(on: .target) }
         return CompareObjectResult(
-            identity: identity,
-            status: status,
-            sourceDefinition: sourceLines,
-            targetDefinition: targetLines,
-            notes: notes(for: read, status: status)
+            identity: CompareObjectIdentity(
+                kind: read.kind, schema: read.schema, name: read.name, signature: read.signature
+            ),
+            status: status(source: source, target: target, comparable: comparisonError == nil),
+            sourceDefinition: source.map(displayedLines) ?? [],
+            targetDefinition: target.map(displayedLines) ?? [],
+            comparisonError: comparisonError
         )
     }
 
-    private func notes(for read: RoutineSourceRead, status: TableDiffStatus) -> [String] {
-        guard status != .identical, read.source.isEmpty else { return [] }
-        return [String(localized: "The driver did not return this object's definition, so only its name was compared.")]
+    private func status(
+        source: RoutineSourceRead?,
+        target: RoutineSourceRead?,
+        comparable: Bool
+    ) -> TableDiffStatus {
+        guard let source else { return .onlyInTarget }
+        guard let target else { return .onlyInSource }
+        guard comparable else { return .differs }
+        let equal = normalize(source.source, scriptText: sourceScriptText)
+            == normalize(target.source, scriptText: targetScriptText)
+        return equal ? .identical : .differs
+    }
+
+    private func displayedLines(_ read: RoutineSourceRead) -> [String] {
+        guard read.failure == nil, StatementBlank.hasContent(read.source) else { return [] }
+        return SqlNormalizer.lines(read.source)
     }
 
     private func matchKey(for read: RoutineSourceRead) -> String {

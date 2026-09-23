@@ -65,7 +65,11 @@ Each object lands in one of four states: **only in source**, **only in target**,
 
 Every row carries an **Include** checkbox, and a group header carries one for everything under it. **Select > All** covers everything the pane is currently showing, so the search field and **Show Identical Objects** narrow what it reaches. Nothing is included until it is checked.
 
-An object whose metadata could not be read keeps its own **Could Not Compare** section with the driver's reason. One unreadable object never stops the rest of the comparison.
+An object that could not be read keeps its own **Could Not Compare** section with the reason, and no script touches it. A view, procedure, function or trigger lands there when the server refuses its definition, returns an empty one, or returns a body rather than a `CREATE` statement. On MySQL, an account without the `SHOW VIEW` privilege lists every view and is refused each definition. One unreadable object never stops the rest of the comparison.
+
+A procedure, function or trigger list that cannot be read stops the comparison and names the connection. To compare everything else, deselect that kind under **Objects to Compare** in **Options**.
+
+On MySQL a list that is short is not an error. An account without `EXECUTE` lists no procedures or functions, and one without `TRIGGER` lists no triggers, so the other side's copies show as only on that side. Compare from accounts that hold both privileges.
 
 The detail pane on the right has three tabs. **Definitions** shows the source and target side by side, split or unified, rendered from the same function so a formatting difference cannot appear as a real one. **Rows** is the data comparison. **Script** is the generated SQL.
 

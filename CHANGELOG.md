@@ -323,6 +323,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
+- Compare & Sync scripting a `DROP` with no `CREATE` for a view, routine or trigger whose definition it could not read.
+- Compare & Sync offering to drop every target procedure, function or trigger when the source's list could not be read.
+- DuckDB macro dropped and not recreated by a Compare & Sync replace.
+- Copy To giving no reason for a view, routine or trigger whose definition could not be read.
+- Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 - Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)

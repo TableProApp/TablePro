@@ -65,12 +65,23 @@ internal enum StructureChangeGuard {
     /// would make a busy database impossible to sync.
     internal static func refusal(
         expected: [String: StructureGenerationInput],
-        actual: [String: StructureGenerationInput]
+        actual: [String: StructureGenerationInput],
+        unreadable: [String: String] = [:]
     ) -> CompareSyncError? {
         for (id, input) in expected.sorted(by: { $0.key < $1.key }) {
+            if let reason = unreadable[id] { return unreadableAgain(input.qualifiedName, reason: reason) }
             guard let current = actual[id], current == input else { return changed(input.qualifiedName) }
         }
         return nil
+    }
+
+    private static func unreadableAgain(_ name: String, reason: String) -> CompareSyncError {
+        .objectsChangedSinceComparison(
+            String(
+                format: String(localized: "%1$@ could not be read again before generating the script. %2$@"),
+                name, reason
+            )
+        )
     }
 
     private static func changed(_ name: String) -> CompareSyncError {
