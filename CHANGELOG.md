@@ -331,6 +331,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.
 - Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
 - Shift-Tab and Control-Tab accepting an inline AI suggestion instead of outdenting or reaching the menu.
