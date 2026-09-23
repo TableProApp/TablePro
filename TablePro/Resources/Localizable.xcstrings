@@ -171,6 +171,176 @@
         }
       }
     },
+    "Recent Tabs" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "최근 탭",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Son Sekmeler",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Tab gần đây",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "最近的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "最近的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Show Next Window Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다음 윈도우 탭 보기",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Sonraki Pencere Sekmesini Göster",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hiện tab cửa sổ tiếp theo",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "显示下一个窗口标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "顯示下一個視窗分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Show Previous Window Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이전 윈도우 탭 보기",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Önceki Pencere Sekmesini Göster",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hiện tab cửa sổ trước",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "显示上一个窗口标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "顯示上一個視窗分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch to Least Recent Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "가장 오래전에 사용한 탭으로 전환",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "En Eski Kullanılan Sekmeye Geç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển đến tab dùng lâu nhất",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "切换到最久未用的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "切換到最久未用的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch to Recent Tab" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "최근 탭으로 전환",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Son Sekmeye Geç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển đến tab gần đây",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "切换到最近的标签页",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "切換到最近的分頁",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {

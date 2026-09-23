@@ -50,14 +50,15 @@ struct ShortcutUniquenessTests {
         }
     }
 
-    /// Fourteen actions ship with nothing bound: the six that always did, and the eight the connection
-    /// window's revamp made rebindable for the first time. Counted rather than listed, because the
-    /// number is the claim: adding a default to one of them is a decision about a combo that is
-    /// already taken, and it has to be made on purpose.
-    @Test("Fourteen actions ship unbound")
+    /// Sixteen actions ship with nothing bound: the six that always did, the eight the connection
+    /// window's revamp made rebindable for the first time, and the two window-tab commands, whose
+    /// Control-Tab went to the recent-tab switcher. Counted rather than listed, because the number is
+    /// the claim: adding a default to one of them is a decision about a combo that is already taken,
+    /// and it has to be made on purpose.
+    @Test("Sixteen actions ship unbound")
     func unboundActionsAreCounted() {
         let unbound = ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil }
-        #expect(unbound.count == 14, "Unbound: \(unbound.map(\.rawValue).sorted())")
+        #expect(unbound.count == 16, "Unbound: \(unbound.map(\.rawValue).sorted())")
         for action in unbound {
             #expect(KeyboardSettings.default.shortcut(for: action) == nil, "\(action.rawValue)")
         }
