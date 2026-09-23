@@ -35,6 +35,23 @@ internal enum FileTextLoader {
         return nil
     }
 
+    static func decode(_ data: Data) -> String? {
+        let utf8ByteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]
+        if data.starts(with: utf8ByteOrderMark) {
+            return String(data: data.dropFirst(utf8ByteOrderMark.count), encoding: .utf8)
+        }
+        if data.starts(with: [0xFF, 0xFE, 0x00, 0x00]) || data.starts(with: [0x00, 0x00, 0xFE, 0xFF]) {
+            return String(data: data, encoding: .utf32)
+        }
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
+            return String(data: data, encoding: .utf16)
+        }
+        if let content = String(data: data, encoding: .utf8) {
+            return content
+        }
+        return String(data: data, encoding: .isoLatin1)
+    }
+
     static func modificationDate(of url: URL) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }

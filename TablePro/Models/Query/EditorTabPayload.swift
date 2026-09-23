@@ -58,6 +58,7 @@ internal struct EditorTabPayload: Codable, Hashable {
     internal let erDiagramSchemaKey: String?
     /// The routine or trigger a .objectSource tab shows
     internal let objectRef: DatabaseObjectRef?
+    internal let versionHistorySubject: VersionHistorySubject?
     /// Tab title (for restoring persisted tabs with their original names)
     internal let tabTitle: String?
     /// The intent behind creating this tab
@@ -68,7 +69,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         case initialQuery, isView, objectType, showStructure, skipAutoExecute, isPreview
         case forcesNewTab
         case tabTitle
-        case initialFilterState, sourceFileURL, erDiagramSchemaKey, objectRef, intent
+        case initialFilterState, sourceFileURL, erDiagramSchemaKey, objectRef, versionHistorySubject, intent
         // Legacy key for backward decoding only
         case isNewTab
     }
@@ -91,6 +92,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         sourceFileURL: URL? = nil,
         erDiagramSchemaKey: String? = nil,
         objectRef: DatabaseObjectRef? = nil,
+        versionHistorySubject: VersionHistorySubject? = nil,
         tabTitle: String? = nil,
         intent: TabIntent = .openContent
     ) {
@@ -111,6 +113,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.sourceFileURL = sourceFileURL
         self.erDiagramSchemaKey = erDiagramSchemaKey
         self.objectRef = objectRef
+        self.versionHistorySubject = versionHistorySubject
         self.tabTitle = tabTitle
         self.intent = intent
     }
@@ -137,6 +140,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
+        versionHistorySubject = try container.decodeIfPresent(VersionHistorySubject.self, forKey: .versionHistorySubject)
         tabTitle = try container.decodeIfPresent(String.self, forKey: .tabTitle)
         if let decodedIntent = try container.decodeIfPresent(TabIntent.self, forKey: .intent) {
             intent = decodedIntent
@@ -165,6 +169,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         try container.encodeIfPresent(sourceFileURL, forKey: .sourceFileURL)
         try container.encodeIfPresent(erDiagramSchemaKey, forKey: .erDiagramSchemaKey)
         try container.encodeIfPresent(objectRef, forKey: .objectRef)
+        try container.encodeIfPresent(versionHistorySubject, forKey: .versionHistorySubject)
         try container.encodeIfPresent(tabTitle, forKey: .tabTitle)
         try container.encode(intent, forKey: .intent)
     }
@@ -188,6 +193,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.sourceFileURL = tab.content.sourceFileURL
         self.erDiagramSchemaKey = tab.display.erDiagramSchemaKey
         self.objectRef = tab.display.objectRef
+        self.versionHistorySubject = tab.display.versionHistorySubject
         self.tabTitle = tab.title
         self.intent = .openContent
     }

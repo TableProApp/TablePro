@@ -91,9 +91,19 @@ The cursor lands right after `orders.`, ready for a column name. Only the first 
 
 ## Working with saved queries
 
-Double-click a favorite, or press `Return`, to insert it into the editor. The right-click menu has **Insert in Editor**, **Run in New Tab**, **Copy Query**, **Edit…**, **Move to**, and **Delete**. Arrow keys move between rows, typing jumps to a name, and `Delete` asks first.
+Double-click a favorite, or press `Return`, to insert it into the editor. The right-click menu has **Insert in Editor**, **Run in New Tab**, **Copy Query**, **Edit…**, **Show History**, **Move to**, and **Delete**. Arrow keys move between rows, typing jumps to a name, and `Delete` asks first.
 
 Folders come from the same background menu. A folder's own menu has **New Favorite…**, **New Subfolder**, **Rename**, **Global**, and **Delete Folder**; deleting one moves what was inside up to the parent level. A global folder carries a globe, and **Global** changes that folder alone: the queries inside keep the scope they had, so mark them global too if you want them everywhere. Anything kept in a folder a connection cannot see is listed at that connection's top level, whether it is a global query or a global subfolder. Drag a query or a linked file out of the sidebar to drop its SQL into the editor or another app.
+
+## Saved query versions
+
+Each time a saved query's SQL changes, the text it replaced is kept. That includes an edit arriving from another Mac through iCloud, so a sync that overwrites your change leaves it recoverable.
+
+Right-click a saved query and choose **Show History**. A tab opens with the versions down the left, newest first. **Changes** compares the selected version with the current SQL; **Content** shows it read-only, with **Copy**, **Export…**, and **Open in Editor**.
+
+Choose **Restore This Version** to put it back. The SQL it replaces becomes a version too, so a restore is undone the same way.
+
+Each query keeps its last 50 versions, on this Mac only: versions never sync. Renaming, moving, or changing a keyword records nothing, and deleting a saved query deletes its versions.
 
 ## Team Library
 
@@ -146,8 +156,43 @@ Right-click a row and choose **Edit Metadata…** to change frontmatter without 
 
 ### Managing linked files
 
-Press `Delete` on a linked file, or right-click and choose **Move File to Trash**: it goes to the macOS Trash and stays recoverable. The rest of that menu is **Open in Editor**, **Edit Metadata…**, **Copy Query**, and **Show in Finder**.
+Press `Delete` on a linked file, or right-click and choose **Move File to Trash**: it goes to the macOS Trash and stays recoverable. The rest of that menu is **Open in Editor**, **Edit Metadata…**, **Copy Query**, and **Show in Finder**, plus the [Git commands](#git-status-and-history) inside a repository.
 
 A folder's root row carries **Show in Finder**, **Copy Path**, **Disable**, **Reload**, **Add Another SQL Folder…**, and **Remove from Sidebar**. Removing unlinks the folder and leaves the files where they are.
 
 Linked folder paths are the one part of Favorites that does not sync, so each Mac links its own copy.
+
+### Git status and history
+
+When a linked folder sits inside a Git working copy, a changed file carries a letter at the end of its row. Hover it to see whether the change is staged.
+
+| Letter | Meaning |
+|--------|---------|
+| M | Modified |
+| A | Added to the index, not yet committed |
+| R | Renamed in the index |
+| U | Untracked |
+| ! | Merge conflict |
+
+A file with no letter matches its last commit. Letters refresh when a file changes, when the repository changes, and when you switch back to TablePro.
+
+<Frame caption="Comparing a commit of a linked file with the current version">
+  <img className="block dark:hidden" src="/images/linked-file-history.png" alt="Sidebar with M and U letters beside linked files, next to a history tab listing three commits and a split diff" />
+  <img className="hidden dark:block" src="/images/linked-file-history-dark.png" alt="Sidebar with M and U letters beside linked files, next to a history tab listing three commits and a split diff" />
+</Frame>
+
+Right-click a file for the Git commands:
+
+- **Show History** opens a tab listing the commits that changed the file, following it across renames, up to the 200 most recent. The top row is the file on disk; select it to see what changed since the last commit.
+- **Restore This Version**, in that tab, writes the selected commit's text into the file. It asks first when the file has uncommitted changes, because those are lost.
+- **Discard Changes…** puts the file back to its staged version, or to its last commit when nothing is staged. It cannot be undone.
+
+Both write the text exactly as Git stores it, without line-ending conversion or filters. A file stored with Git LFS cannot be restored or discarded here; use your Git client. If the file, or for Discard its staged version, changes while you confirm, nothing is written.
+
+Stage, commit, and push in your Git client. The sidebar reads the repository and never touches the index.
+
+Git comes from Xcode, the Command Line Tools, or Homebrew. When none is installed the letters and commands stay hidden, and the Command Line Tools installer never opens.
+
+<Warning>
+Link only repositories you trust. Reading a file's status runs the repository's own content filters, exactly as `git status` in Terminal does.
+</Warning>

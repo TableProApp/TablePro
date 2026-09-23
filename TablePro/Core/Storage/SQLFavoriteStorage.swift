@@ -75,6 +75,7 @@ internal actor SQLFavoriteStorage {
 
         createTables()
         migrateIfNeeded()
+        Self.versionSchemaStatements.forEach { execute($0) }
     }
 
     // MARK: - Schema Migration

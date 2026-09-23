@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
+- Version history for saved queries, with **Restore This Version**. (#2505)
+- Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
 
 ### Changed
 

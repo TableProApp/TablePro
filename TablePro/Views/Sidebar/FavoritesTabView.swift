@@ -5,6 +5,7 @@ internal struct FavoritesTabView: View {
     @ObservedObject private var teamLibrarySync = TeamLibrarySyncCoordinator.shared
     @ObservedObject private var licenseManager = LicenseManager.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
     @Environment(\.sidebarRowSize) private var systemRowSize
 
     @StateObject private var viewModel: FavoritesSidebarViewModel
@@ -300,7 +301,8 @@ internal struct FavoritesTabView: View {
                 },
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
-                teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary)
+                teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary),
+                linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items))
             ),
             selection: $sharedSidebarState.selectedFavorite,
             rowSizePreference: settingsManager.general.sidebarRowSize,
@@ -396,7 +398,13 @@ internal struct FavoritesTabView: View {
         case .linkedSubfolder(_, let displayName, _):
             LinkedSubfolderRowLabel(displayName: displayName)
         case .linkedFavorite(let linked):
-            LinkedFavoriteRowView(favorite: linked)
+            LinkedFavoriteRowView(favorite: linked, gitState: gitStatusStore.state(for: linked))
+        }
+    }
+
+    private static func linkedFavorites(in nodes: [FavoriteNode]) -> [LinkedSQLFavorite] {
+        nodes.flatMap { node in
+            [node.asLinkedFavorite].compactMap { $0 } + linkedFavorites(in: node.children ?? [])
         }
     }
 
@@ -547,6 +555,8 @@ internal struct FavoritesTabView: View {
             }
         case .deleteFavorite(let favorite):
             viewModel.deleteFavorite(favorite)
+        case .showFavoriteHistory(let favorite):
+            coordinator?.showVersionHistory(of: favorite)
         case .openLinkedFavorite(let favorite):
             coordinator?.openLinkedFavorite(favorite)
         case .editLinkedMetadata(let favorite):
@@ -559,6 +569,10 @@ internal struct FavoritesTabView: View {
         case .trashLinkedFavorite(let favorite):
             linkedFileToTrash = favorite
             showTrashLinkedFileAlert = true
+        case .showLinkedFileHistory(let favorite):
+            coordinator?.showVersionHistory(of: favorite)
+        case .discardLinkedFileChanges(let favorite):
+            discardChanges(to: favorite)
         case .revealLinkedFolder(let folder):
             viewModel.revealLinkedFolder(folder)
         case .setLinkedFolderEnabled(let folder, let isEnabled):
@@ -585,6 +599,21 @@ internal struct FavoritesTabView: View {
             coordinator?.commandActions?.newTab()
         case .publishSavedQueriesToTeam:
             publishSavedQueriesToTeam()
+        }
+    }
+
+    private func discardChanges(to favorite: LinkedSQLFavorite) {
+        let keepsStagedChanges = gitStatusStore.state(for: favorite)?.status?.hasStagedChanges == true
+        Task { @MainActor in
+            await coordinator?.discardChanges(to: favorite) {
+                await AlertHelper.confirmDestructive(
+                    title: String(format: String(localized: "Discard changes to \"%@\"?"), favorite.fileURL.lastPathComponent),
+                    message: keepsStagedChanges
+                        ? String(localized: "The file goes back to its staged version. You can't undo this action.")
+                        : String(localized: "The file goes back to its last committed version. You can't undo this action."),
+                    confirmButton: String(localized: "Discard Changes")
+                )
+            }
         }
     }
 

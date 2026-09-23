@@ -7,6 +7,7 @@ import SwiftUI
 
 internal struct LinkedFavoriteRowView: View {
     let favorite: LinkedSQLFavorite
+    var gitState: LinkedFileGitState?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -38,6 +39,15 @@ internal struct LinkedFavoriteRowView: View {
                     .background(Capsule().fill(.quaternary))
                     .accessibilityHidden(true)
             }
+
+            if let status = gitState?.status {
+                Text(verbatim: status.badge.letter)
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 12)
+                    .help(status.accessibilityDescription)
+                    .accessibilityHidden(true)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
@@ -50,6 +60,9 @@ internal struct LinkedFavoriteRowView: View {
         }
         if let keyword = favorite.keyword, !keyword.isEmpty {
             desc += ", " + String(format: String(localized: "keyword: %@"), keyword)
+        }
+        if let status = gitState?.status {
+            desc += ", " + status.accessibilityDescription
         }
         return desc
     }
