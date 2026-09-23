@@ -25,12 +25,15 @@ internal enum FavoritesMenuCommand: Equatable {
     case editFavorite(SQLFavorite)
     case moveFavorite(id: UUID, toFolder: UUID?)
     case deleteFavorite(SQLFavorite)
+    case showFavoriteHistory(SQLFavorite)
 
     case openLinkedFavorite(LinkedSQLFavorite)
     case editLinkedMetadata(LinkedSQLFavorite)
     case copyLinkedFavoriteQuery(LinkedSQLFavorite)
     case revealLinkedFavorite(LinkedSQLFavorite)
     case trashLinkedFavorite(LinkedSQLFavorite)
+    case showLinkedFileHistory(LinkedSQLFavorite)
+    case discardLinkedFileChanges(LinkedSQLFavorite)
 
     case revealLinkedFolder(LinkedSQLFolder)
     case setLinkedFolderEnabled(LinkedSQLFolder, Bool)

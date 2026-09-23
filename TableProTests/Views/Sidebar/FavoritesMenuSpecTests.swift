@@ -279,4 +279,64 @@ struct FavoritesMenuSpecTests {
         #expect(enabled.contains(.setLinkedFolderEnabled(folder, false)) == false)
         #expect(disabled.contains(.setLinkedFolderEnabled(folder, true)))
     }
+
+    @Test("A saved query offers its history")
+    func savedQueryOffersHistory() {
+        let query = favorite()
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .query(.favorite(query)))))
+        #expect(issued.contains(.showFavoriteHistory(query)))
+    }
+
+    private func linkedFile() -> LinkedSQLFavorite {
+        LinkedSQLFavorite(
+            folderId: UUID(),
+            fileURL: URL(fileURLWithPath: "/tmp/queries/orders.sql"),
+            relativePath: "orders.sql",
+            name: "orders",
+            mtime: Date(),
+            fileSize: 10
+        )
+    }
+
+    private func linkedCommands(_ file: LinkedSQLFavorite, gitState: LinkedFileGitState?) -> [FavoritesMenuCommand] {
+        let states = gitState.map { [file.id: $0] } ?? [:]
+        return commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.linkedFavorite(file)),
+            linkedFileGitStates: states
+        )))
+    }
+
+    @Test("A linked file outside a repository offers no Git commands")
+    func linkedFileOutsideRepository() {
+        let file = linkedFile()
+        let issued = linkedCommands(file, gitState: nil)
+        #expect(!issued.contains(.showLinkedFileHistory(file)))
+        #expect(!issued.contains(.discardLinkedFileChanges(file)))
+        #expect(issued.contains(.openLinkedFavorite(file)))
+    }
+
+    @Test("A clean tracked file offers history but nothing to discard")
+    func cleanTrackedFile() {
+        let file = linkedFile()
+        let issued = linkedCommands(file, gitState: .clean)
+        #expect(issued.contains(.showLinkedFileHistory(file)))
+        #expect(!issued.contains(.discardLinkedFileChanges(file)))
+    }
+
+    @Test("A modified file offers history and Discard Changes")
+    func modifiedFile() {
+        let file = linkedFile()
+        let issued = linkedCommands(file, gitState: .changed(GitFileStatus(staged: .unmodified, unstaged: .modified)))
+        #expect(issued.contains(.showLinkedFileHistory(file)))
+        #expect(issued.contains(.discardLinkedFileChanges(file)))
+    }
+
+    @Test("An untracked file offers neither history nor Discard Changes")
+    func untrackedFile() {
+        let file = linkedFile()
+        let issued = linkedCommands(file, gitState: .changed(.untracked))
+        #expect(!issued.contains(.showLinkedFileHistory(file)))
+        #expect(!issued.contains(.discardLinkedFileChanges(file)))
+        #expect(issued.contains(.trashLinkedFavorite(file)))
+    }
 }

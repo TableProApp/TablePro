@@ -193,8 +193,13 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return columnsToReturn[table.lowercased()] ?? []
     }
 
+    var fetchAllColumnsError: Error?
+
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         fetchAllColumnsCallCount += 1
+        if let fetchAllColumnsError {
+            throw fetchAllColumnsError
+        }
         return allColumnsToReturn
     }
 

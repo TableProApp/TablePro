@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
+- Version history for saved queries, with **Restore This Version**. (#2505)
+- Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 
 ### Changed
@@ -66,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
+- Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 
 ### Removed
 
@@ -90,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NULL default on a MySQL `TEXT`, `BLOB`, `JSON` or `GEOMETRY` column saved as the expression `(NULL)`.
 - Backslashes and line breaks mangled in MySQL defaults, comments, enum values and passwords under `NO_BACKSLASH_ESCAPES`.
 - Form feed in a MySQL comment, default or SQL export saved as the letter `f`.
+- Saved query from iCloud dropped for good when a query on this Mac held its keyword.
 - Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
 - Raw Oracle driver error in the schema switch failure dialog. (#3053)
 - Oracle health check closing a connection a statement was still running on. (#3053)
@@ -97,16 +101,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ORA-01442 when changing the default or type of a `NOT NULL` Oracle column.
 - Oracle `VARCHAR2(n CHAR)` column turned into a byte length when only its nullability was edited.
 - Global saved query inside a folder missing from every other connection. (#3045)
+- Edit Metadata deleting a linked SQL file's other `-- @key: value` header lines.
 - Saved query and folder drawn nowhere when the folder holding it was gone.
 - Keyword accepted for a global saved query while another connection already held it.
+- Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files.
 - Cleared keyword, folder or **Global** on a saved query or its folder never reaching another device.
 - Renaming a folder putting back the scope another window had just set.
+- No changed-on-disk notice for an SQL file outside a linked folder or replaced by an older copy, and Save overwriting it.
 - Saved queries and their folders deleted at launch when their connection had not arrived from iCloud.
 - Saved queries left naming a deleted folder on other devices after that folder was deleted.
+- Unresponsive app when saving over a large SQL file that changed on disk.
 - A keyword two linked SQL files both declared reaching a different file on each launch.
 - A keyword a saved query shared with a global one reaching either query, depending on the connection.
+- Silent failure moving a linked SQL file to the Trash, and an open tab recreating a deleted file on save.
 - AI chat's saved query mentions missing a query saved earlier in the same session.
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
+- Saved query longer than 500,000 characters silently cut short when saved.
 - A file the import panel dimmed still opening, and reaching the wrong importer.
 - Materialized view opened from Open Quickly edited as a plain view. (#2522)
 - Index edits refused on a PGlite materialized view.
@@ -360,6 +370,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table opened in one database shown in Open Quickly's Recent in every other database, and opened there.
 - Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half.
 - MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted.
+- Structure and Create Table SQL Preview disagreeing with Save on the schema, primary key name or a SQLite foreign key.
+- Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
+- PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
+- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
 
 ### Security
 

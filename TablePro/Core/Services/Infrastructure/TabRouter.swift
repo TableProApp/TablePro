@@ -488,18 +488,21 @@ internal final class TabRouter {
         }
 
         if let session = DatabaseManager.shared.lastActiveSession {
-            let content = await Task.detached(priority: .userInitiated) { () -> String? in
-                try? String(contentsOf: url, encoding: .utf8)
+            let read = await Task.detached(priority: .userInitiated) { () -> (content: String, stamp: FileStamp?)? in
+                let stamp = FileStamp.read(url)
+                guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+                return (content, stamp)
             }.value
-            guard let content else {
+            guard let read else {
                 Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
                 return
             }
             let payload = EditorTabPayload(
                 connectionId: session.connection.id,
                 tabType: .query,
-                initialQuery: content,
-                sourceFileURL: url
+                initialQuery: read.content,
+                sourceFileURL: url,
+                sourceFileStamp: read.stamp
             )
             WindowManager.shared.openTab(payload: payload)
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)

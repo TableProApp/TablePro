@@ -21,6 +21,7 @@ internal struct FavoritesOutlineInput {
     internal let renamingFolderId: UUID?
     internal let allFolders: [SQLFavoriteFolder]
     internal let teamLibraryAvailable: Bool
+    internal var linkedFileGitStates: [UUID: LinkedFileGitState] = [:]
 }
 
 internal struct FavoritesOutlineTeamQuery {

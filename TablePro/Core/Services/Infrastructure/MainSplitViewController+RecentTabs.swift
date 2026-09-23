@@ -198,6 +198,8 @@ internal extension MainSplitViewController {
             return "chart.bar"
         case .objectSource:
             return "curlybraces.square"
+        case .versionHistory:
+            return "clock.arrow.circlepath"
         }
     }
 }
