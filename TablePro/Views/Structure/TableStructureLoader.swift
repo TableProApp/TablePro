@@ -59,6 +59,13 @@ struct TableStructureLoader {
         return try await perform { try await $0.fetchTriggers(table: table) }
     }
 
+    func concurrentRefreshAvailability() async throws -> PluginConcurrentRefreshAvailability? {
+        try await MaterializedViewRefreshing.concurrentRefreshAvailability(
+            of: DatabaseObjectTarget(name: tableName, type: .materializedView, schema: scope.schema, scope: scope),
+            provider: provider
+        )
+    }
+
     func coreTabs(includingForeignKeys: Bool) async throws -> CoreTabs {
         let table = tableName
         return try await perform { driver in

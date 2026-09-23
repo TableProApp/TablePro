@@ -93,7 +93,7 @@ struct MaterializedViewRefreshPromptTests {
     @Test("Each unavailable reason explains itself")
     func reasonsAreExplained() {
         #expect(prompt(.requiresUniqueIndex).concurrentOptionDescription.contains("unique index"))
-        #expect(prompt(.requiresPopulatedView).concurrentOptionDescription.contains("rows"))
+        #expect(prompt(.requiresPopulatedView).concurrentOptionDescription.contains("populated"))
         #expect(!prompt(nil, checkFailed: true).concurrentOptionDescription.isEmpty)
         #expect(prompt(nil).concurrentOptionDescription.isEmpty)
     }

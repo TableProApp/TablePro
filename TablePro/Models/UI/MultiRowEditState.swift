@@ -35,9 +35,10 @@ struct FieldEditState: Identifiable {
     /// A schema field has no data type, so it offers no type badge and no NULL or DEFAULT state.
     var isSchemaField: Bool = false
 
-    /// The server owns the value, so the field is shown without an editor. Refusing the edit further
-    /// down instead would leave a pending value here that nothing can clear, and the inspector would
-    /// go on reporting an unsaved change that Save never writes.
+    /// The server owns the value, or refuses to change it on this kind of object, so the field is
+    /// shown without an editor. Refusing the edit further down instead would leave a pending value
+    /// here that nothing can clear, and the inspector would go on reporting an unsaved change that
+    /// Save never writes.
     var isServerOwned: Bool = false
 
     /// The value already differs from the loaded schema because the edit is recorded elsewhere.
@@ -249,6 +250,7 @@ final class MultiRowEditState: ObservableObject {
                     originalValue: field.value
                 )
             }
+            state.isServerOwned = !field.isEditable
             return state
         }
     }

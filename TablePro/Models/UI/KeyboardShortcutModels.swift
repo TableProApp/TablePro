@@ -155,6 +155,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case focusAssistant
     case showPreviousTab
     case showNextTab
+    case switchToRecentTab
+    case switchToLeastRecentTab
+    case showPreviousWindowTab
+    case showNextWindowTab
     case toggleWorkspaceRail
     case showPreviousWorkspace
     case showNextWorkspace
@@ -187,7 +191,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .focusObjectList, .focusEditor, .focusResults, .focusInspector, .focusAssistant,
-             .showPreviousTab, .showNextTab,
+             .showPreviousTab, .showNextTab, .switchToRecentTab, .switchToLeastRecentTab,
+             .showPreviousWindowTab, .showNextWindowTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
         }
@@ -216,6 +221,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         default:
             return .global
         }
+    }
+
+    var switchesRecentTabs: Bool {
+        self == .switchToRecentTab || self == .switchToLeastRecentTab
     }
 
     var allowsBareKey: Bool {
@@ -316,6 +325,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .focusAssistant: return String(localized: "Focus Assistant")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
+        case .switchToRecentTab: return String(localized: "Switch to Recent Tab")
+        case .switchToLeastRecentTab: return String(localized: "Switch to Least Recent Tab")
+        case .showPreviousWindowTab: return String(localized: "Show Previous Window Tab")
+        case .showNextWindowTab: return String(localized: "Show Next Window Tab")
         case .toggleWorkspaceRail: return String(localized: "Toggle Connections")
         case .showPreviousWorkspace: return String(localized: "Show Previous Connection")
         case .showNextWorkspace: return String(localized: "Show Next Connection")
@@ -645,6 +658,12 @@ struct KeyboardSettings: Codable, Equatable {
         .focusAssistant: .character("a", command: true, option: true, control: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
+        /// The one Control chord among the defaults. Control-Tab is not a system hotkey, it is the
+        /// chord AppKit itself gives tab switching in every app with window tabs, and it is what
+        /// DataGrip, VS Code and Zed switch recent tabs with. Show Previous and Next Window Tab
+        /// have no default, since this is the chord AppKit would otherwise give them.
+        .switchToRecentTab: .special(.tab, control: true),
+        .switchToLeastRecentTab: .special(.tab, shift: true, control: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),
         .showPreviousWorkspace: .special(.upArrow, command: true, control: true),
         .showNextWorkspace: .special(.downArrow, command: true, control: true)

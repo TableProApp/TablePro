@@ -44,20 +44,47 @@ final class SharedSidebarState: ObservableObject {
         name: String,
         isView: Bool,
         objectType: TableInfo.TableType?,
-        isPreview: Bool
+        isPreview: Bool,
+        connectionSwitchesDatabases: Bool
     ) {
+        let frecencyKey = Self.tableFrecencyKey(
+            database: database, schema: schema, name: name,
+            connectionSwitchesDatabases: connectionSwitchesDatabases
+        )
         guard isPreview else {
             pendingRecordTask?.cancel()
             pendingRecordTask = nil
-            commitTableOpen(database: database, schema: schema, name: name, isView: isView, objectType: objectType)
+            commitTableOpen(
+                database: database, schema: schema, name: name,
+                isView: isView, objectType: objectType, frecencyKey: frecencyKey
+            )
             return
         }
         pendingRecordTask?.cancel()
         pendingRecordTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard let self, !Task.isCancelled else { return }
-            self.commitTableOpen(database: database, schema: schema, name: name, isView: isView, objectType: objectType)
+            self.commitTableOpen(
+                database: database, schema: schema, name: name,
+                isView: isView, objectType: objectType, frecencyKey: frecencyKey
+            )
         }
+    }
+
+    nonisolated static func tableFrecencyKey(
+        database: String?,
+        schema: String?,
+        name: String,
+        connectionSwitchesDatabases: Bool
+    ) -> String {
+        QuickSwitcherFrecencyKey.table(
+            name: name,
+            schema: schema,
+            in: QuickSwitcherFrecencyKey.DatabaseQualifier(
+                database: database,
+                connectionSwitchesDatabases: connectionSwitchesDatabases
+            )
+        )
     }
 
     private func commitTableOpen(
@@ -65,11 +92,10 @@ final class SharedSidebarState: ObservableObject {
         schema: String?,
         name: String,
         isView: Bool,
-        objectType: TableInfo.TableType?
+        objectType: TableInfo.TableType?,
+        frecencyKey: String
     ) {
-        QuickSwitcherFrecencyStore(connectionId: connectionId).recordAccess(
-            itemId: QuickSwitcherItem.tableItemId(name: name, schema: schema)
-        )
+        QuickSwitcherFrecencyStore(connectionId: connectionId).recordAccess(itemId: frecencyKey)
         guard AppSettingsManager.shared.general.showRecentTables else { return }
         recentTables = RecentTablesStore.shared.record(
             connectionId: connectionId, database: normalizedDatabase(database),

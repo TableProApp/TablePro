@@ -93,7 +93,7 @@ struct TableKindListBehaviourTests {
     /// happened to a MariaDB sequence. Every kind lands in a section now.
     @Test("every kind lands in a section")
     func everyKindHasASection() {
-        let tables: Set<TableInfo.TableKind> = [.table, .systemTable, .externalTable, .sequence]
+        let tables: Set<TableInfo.TableKind> = [.table, .foreignTable, .systemTable, .externalTable, .sequence]
         for kind in TableInfo.TableKind.allCases {
             let expected: TableInfo.TableKind.ListSection = tables.contains(kind) ? .tables : .views
             #expect(kind.listSection == expected, "\(kind.rawValue) landed in the wrong section")
@@ -115,7 +115,7 @@ struct TableKindListBehaviourTests {
     /// 4.4.2.1. A system table is the catalog's own and stays editable, as it is on Mac.
     @Test("row editing follows the kind")
     func rowEditingFollowsTheKind() {
-        let editable: Set<TableInfo.TableKind> = [.table, .systemTable]
+        let editable: Set<TableInfo.TableKind> = [.table, .foreignTable, .systemTable]
         for kind in TableInfo.TableKind.allCases {
             #expect(kind.allowsRowEditing == editable.contains(kind), "\(kind.rawValue) is wrongly editable")
         }

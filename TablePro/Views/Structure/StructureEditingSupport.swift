@@ -29,13 +29,13 @@ enum StructureEditingSupport {
         switch orderedFields[index] {
         case .name: column.name = value
         case .type: column.dataType = value
-        case .nullable: column.isNullable = parseBool(value) && !column.isPrimaryKey
+        case .nullable: column.setNullable(parseBool(value) && !column.isPrimaryKey)
         case .defaultValue: column.defaultValue = value.isEmpty ? nil : value
         case .onUpdate:
             column.onUpdate = parseBool(value) ? EditableColumnDefinition.currentTimestampExpression : nil
         case .primaryKey:
             column.isPrimaryKey = parseBool(value)
-            if column.isPrimaryKey { column.isNullable = false }
+            if column.isPrimaryKey { column.setNullable(false) }
         case .autoIncrement: column.autoIncrement = parseBool(value)
         case .comment: column.comment = value.isEmpty ? nil : value
         case .charset: column.charset = value.isEmpty ? nil : value

@@ -485,6 +485,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                 return
             }
             clearedSecrets.forEach { $0() }
+            approveEditedExtensions(for: connectionToSave.id)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -510,6 +511,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                 return
             }
             clearedSecrets.forEach { $0() }
+            approveEditedExtensions(for: connectionToSave.id)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -619,6 +621,14 @@ final class ConnectionFormCoordinator: ObservableObject {
         )
 
         testTask = Task { [weak self, services] in
+            guard await self?.authorizeExtensionsForTest(testConnectionId: testConn.id) == true else {
+                await MainActor.run {
+                    self?.cleanupTestSecrets(for: testConn.id)
+                    self?.isTesting = false
+                    self?.testTask = nil
+                }
+                return
+            }
             do {
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
@@ -794,6 +804,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         services.connectionStorage.deleteSOCKSProxyPassword(for: testId)
         let secureFieldIds = services.pluginManager.secureConnectionFieldIds(for: network.type)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
+        LoadableExtensionApprovalStore.shared.revoke(for: [testId])
         temporaryTestIds.remove(testId)
     }
 

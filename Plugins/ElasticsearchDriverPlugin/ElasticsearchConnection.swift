@@ -145,15 +145,15 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         let response = try await request(method: "GET", path: "/\(encode(index))/_mapping")
         guard response.statusCode == 200 else { throw mapError(response, fallback: "Failed to fetch mapping") }
         guard let json = response.json as? [String: Any] else {
-            Self.logger.error("mappingProperties \(index, privacy: .public): response.json not a dictionary; raw=\(response.rawText.prefix(300), privacy: .public)")
+            Self.logger.error("mappingProperties \(index, privacy: .private(mask: .hash)): response.json not a dictionary; raw=\(response.rawText.prefix(300), privacy: .private)")
             return []
         }
         let properties = ElasticsearchMappingFlattener.properties(fromMappingResponse: json, index: index)
         let columns = ElasticsearchMappingFlattener.flattenMapping(properties: properties)
         Self.logger.debug("""
-        mappingProperties \(index, privacy: .public): topKeys=[\(json.keys.joined(separator: ","), privacy: .public)] \
+        mappingProperties \(index, privacy: .private(mask: .hash)): topKeys=[\(json.keys.joined(separator: ","), privacy: .private)] \
         propertyCount=\(properties.count) columnCount=\(columns.count) \
-        columns=[\(columns.map { "\($0.name):\($0.type)\($0.hasKeywordSubfield ? "+kw" : "")" }.joined(separator: ","), privacy: .public)]
+        columns=[\(columns.map { "\($0.name):\($0.type)\($0.hasKeywordSubfield ? "+kw" : "")" }.joined(separator: ","), privacy: .private)]
         """)
         return columns
     }

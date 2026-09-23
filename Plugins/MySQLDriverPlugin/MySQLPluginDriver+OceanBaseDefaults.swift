@@ -37,37 +37,40 @@ internal extension MySQLPluginDriver {
         catalogDefault: String?,
         extra: String?,
         dataType: String,
+        isNullable: Bool,
         column: String,
-        createTableClauses: [String: String]?
+        createTableClauses: [String: String]?,
+        createTableDefaults: MySQLCreateTableDefaults?
     ) -> String? {
-        if flavor.isOceanBase, let catalogDefault {
-            if let currentTimestamp = OceanBaseColumnDefaults.currentTimestampDefault(catalogDefault, dataType: dataType) {
-                return currentTimestamp
-            }
-            if let createTableClauses,
-               OceanBaseColumnDefaults.catalogDefaultNeedsCreateTable(catalogDefault, dataType: dataType) {
-                let resolution = OceanBaseColumnDefaults.resolve(
-                    clause: createTableClauses[column], catalogDefault: catalogDefault
-                )
-                if case .value(let value) = resolution {
-                    return value
-                }
-                Self.logger.warning(
-                    "OceanBase default of \(column, privacy: .public) is not in SHOW CREATE TABLE as reported"
-                )
-            }
-            if let binaryLiteral = OceanBaseColumnDefaults.binaryLiteralDefault(catalogDefault, dataType: dataType) {
-                return binaryLiteral
-            }
+        guard flavor.isOceanBase else {
+            return mysqlColumnDefault(
+                createTableDefaults?.catalogDefault(forColumn: column, extra: extra)
+                    ?? (catalogQuotesDefaults ? .quoted(catalogDefault) : .bare(catalogDefault)),
+                extra: extra,
+                dataType: dataType,
+                isNullable: isNullable
+            )
         }
-        return mysqlDefaultValueFromCatalog(
-            catalogDefault, extra: extra, dataType: dataType, quotesLiterals: catalogQuotesDefaults
+        if let catalogDefault, let createTableClauses,
+           OceanBaseColumnDefaults.catalogDefaultNeedsCreateTable(catalogDefault, dataType: dataType) {
+            let resolution = OceanBaseColumnDefaults.resolve(
+                clause: createTableClauses[column], catalogDefault: catalogDefault
+            )
+            if case .value(let value) = resolution {
+                return value
+            }
+            Self.logger.warning(
+                "OceanBase default of \(column, privacy: .public) is not in SHOW CREATE TABLE as reported"
+            )
+        }
+        return OceanBaseColumnDefaults.columnDefault(
+            catalogDefault, extra: extra, dataType: dataType, isNullable: isNullable
         )
     }
 
     private func baseTableNames(among tables: Set<String>, schema: String?) async throws -> Set<String> {
         let names = tables.sorted().map { "'\(mysqlEscapeStringLiteral($0))'" }.joined(separator: ", ")
-        let result = try await execute(query: """
+        let result = try await execute(ownStatement: """
             SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
                 AND TABLE_TYPE = 'BASE TABLE'
@@ -79,6 +82,6 @@ internal extension MySQLPluginDriver {
     private func oceanbaseDefaultClauses(table: String, schema: String?) async throws -> [String: String] {
         let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
         guard let createTable = result.rows.first?[safe: 1]?.asText else { return [:] }
-        return OceanBaseColumnDefaults.defaultClauses(fromCreateTable: createTable) ?? [:]
+        return MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: createTable) ?? [:]
     }
 }

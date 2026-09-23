@@ -215,11 +215,9 @@ struct TableListView: View {
 private struct TableRow: View {
     let table: TableInfo
 
-    private var isView: Bool { table.type.listSection == .views }
-
     var body: some View {
         RowItemLabel(title: table.name) {
-            Image(systemName: isView ? "eye" : "tablecells")
+            Image(systemName: TableKindPresentation.systemImage(for: table.type))
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
         } trailing: {
@@ -233,7 +231,7 @@ private struct TableRow: View {
     }
 
     private var accessibilityLabel: Text {
-        let kind = isView ? String(localized: "View") : String(localized: "Table")
+        let kind = TableKindPresentation.accessibilityKind(for: table.type)
         if let rowCount = table.rowCount {
             return Text("\(kind), \(table.name), \(rowCount) rows")
         }

@@ -68,9 +68,14 @@ struct TableRows: Sendable {
     /// default at all: PostgreSQL reports the generation in `pg_attribute.attidentity` and leaves
     /// `column_default` null, so asking about the default alone answers "no" for every identity
     /// column and the new row goes out carrying NULL.
+    ///
+    /// A default of NULL is not one of them. The value is already known, so sending it gives the
+    /// same row, and it keeps working on a MySQL column whose default was dropped, which the catalog
+    /// reports exactly like `DEFAULT NULL` but which fails an INSERT that leaves it out.
     func serverAssignsValue(forColumn name: String) -> Bool {
         if columnIdentity[name] != nil { return true }
-        return (columnDefaults[name] ?? nil) != nil
+        guard let defaultValue = columnDefaults[name] ?? nil else { return false }
+        return !ColumnDefaultLiteral.isNull(defaultValue)
     }
 
     func value(at row: Int, column: Int) -> PluginCellValue {

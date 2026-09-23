@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProGoogleCloud
+import TableProLogRedaction
 import TableProPluginKit
 
 internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -200,7 +201,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
                 }
             }
         } catch {
-            Self.logger.info("Could not auto-select a dataset: \(error.localizedDescription, privacy: .public)")
+            Self.logger.info("Could not auto-select a dataset: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -380,7 +381,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             return try await bulkColumns(datasetId: datasetId)
         } catch {
             Self.logger.info(
-                "Bulk column fetch failed, reading tables one by one: \(error.localizedDescription, privacy: .public)"
+                "Bulk column fetch failed, reading tables one by one: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             var columns: [String: [PluginColumnInfo]] = [:]
             for table in try await fetchTables(schema: schema) {

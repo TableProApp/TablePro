@@ -30,6 +30,15 @@ struct UserDefinedTypeInfoTests {
         #expect(one.qualifiedName == "app.mood")
     }
 
+    @Test("A period inside a quoted schema or type name keeps two types apart")
+    func periodInsideNameKeepsTypesApart() {
+        let dottedName = UserDefinedTypeInfo(name: "b.c", kind: .enumeration, schema: "a")
+        let dottedSchema = UserDefinedTypeInfo(name: "c", kind: .enumeration, schema: "a.b")
+        #expect(dottedName != dottedSchema)
+        #expect(Set([dottedName, dottedSchema]).count == 2)
+        #expect(dottedName.qualifiedName == dottedSchema.qualifiedName)
+    }
+
     @Test("A type with no schema is named bare")
     func bareName() {
         let type = UserDefinedTypeInfo(name: "mood", kind: .enumeration)
