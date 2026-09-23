@@ -282,6 +282,39 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         XCTAssertEqual(results[0].status, .identical)
     }
 
+    func testEachSideIsReadInItsOwnEnginesGrammar() {
+        let mysqlDefinition = "# reporting view\nCREATE VIEW v AS SELECT 1"
+        let postgresDefinition = "CREATE VIEW v AS SELECT 1"
+
+        let fromMySQL = SourceObjectDiffEngine(sourceDatabaseType: .mysql, targetDatabaseType: .postgresql).compare(
+            source: [read("v", kind: .view, schema: nil, source: mysqlDefinition)],
+            target: [read("v", kind: .view, schema: nil, source: postgresDefinition)]
+        )
+        let intoMySQL = SourceObjectDiffEngine(sourceDatabaseType: .postgresql, targetDatabaseType: .mysql).compare(
+            source: [read("v", kind: .view, schema: nil, source: postgresDefinition)],
+            target: [read("v", kind: .view, schema: nil, source: mysqlDefinition)]
+        )
+
+        XCTAssertNil(fromMySQL[0].comparisonError)
+        XCTAssertNil(intoMySQL[0].comparisonError)
+    }
+
+    func testASQLServerModuleStoredAfterAlterOrCreateOrAlterIsReadable() {
+        let altered = "/* comment */  CREATE PROCEDURE Test1A  AS  SELECT 3;"
+        let createdOrAltered = "CrEaTe /*Y*/ PROCEDURE Test1B AS SELECT 2;"
+
+        let results = engine(databaseType: .mssql).compare(
+            source: [
+                read("Test1A", kind: .procedure, schema: "dbo", source: altered),
+                read("Test1B", kind: .procedure, schema: "dbo", source: createdOrAltered)
+            ],
+            target: []
+        )
+
+        XCTAssertEqual(results.map(\.comparisonError), [nil, nil])
+        XCTAssertEqual(results.map(\.suggestedAction), [.create, .create])
+    }
+
     func testAnUnreadableObjectIsNeitherADifferenceNorSelectable() {
         let report = CompareReport(results: engine().compare(
             source: [read("v", kind: .view, source: "", failure: "denied")],

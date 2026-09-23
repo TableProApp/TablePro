@@ -63,7 +63,7 @@ internal struct SourceObjectDiffEngine {
         source: RoutineSourceRead?,
         target: RoutineSourceRead?
     ) -> CompareObjectResult {
-        let sourceDefect = source.flatMap { SourceDefinitionDefect.of($0, sentAs: targetScriptText) }
+        let sourceDefect = source.flatMap { SourceDefinitionDefect.of($0, sentAs: sourceScriptText) }
         let targetDefect = target.flatMap { SourceDefinitionDefect.of($0, sentAs: targetScriptText) }
         let comparisonError = sourceDefect.map { $0.reason(on: .source) } ?? targetDefect.map { $0.reason(on: .target) }
         return CompareObjectResult(
