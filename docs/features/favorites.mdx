@@ -150,9 +150,9 @@ WHERE last_seen > NOW() - INTERVAL 24 HOUR;
 | `@keyword` | Autocomplete trigger, exactly as for a saved favorite. |
 | `@description` | Shown in tooltips. Optional. |
 
-The parser stops at the first line that is not one of these, so they go at the very top. Keys are case-insensitive and a UTF-8 BOM is handled. A file without frontmatter appears under its filename with no keyword. The `;;` [cursor marker](#cursor-placement) works here too.
+The block ends at the first line that is not a `-- @key: value` comment, so these go at the very top. Other keys, such as `-- @author: alice`, may share the block and are ignored. Keys are case-insensitive and a UTF-8 BOM is handled. A file without frontmatter appears under its filename with no keyword. The `;;` [cursor marker](#cursor-placement) works here too.
 
-Right-click a row and choose **Edit Metadata…** to change frontmatter without opening the file. The dialog rewrites the leading comment block and leaves the rest, and the encoding, alone.
+Right-click a row and choose **Edit Metadata…** to change frontmatter without opening the file. Only the `@name`, `@keyword`, and `@description` lines change. Every other line in the block stays where it was, exactly as written, and the file keeps its line endings. A description typed over several lines is saved as one.
 
 ### Managing linked files
 
