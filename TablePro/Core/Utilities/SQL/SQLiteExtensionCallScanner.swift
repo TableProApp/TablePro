@@ -34,8 +34,9 @@ enum SQLiteExtensionCallScanner {
                 continue
             case .unnamed:
                 return false
-            case .named(let name):
-                guard isBuiltinOrSyntax(name) else { return false }
+            case .named(let name, let start):
+                guard isBuiltinOrSyntax(name) || isColumnList(nameStart: start, parenthesis: index, code: code)
+                else { return false }
             }
         }
         return true
@@ -52,7 +53,7 @@ enum SQLiteExtensionCallScanner {
     private enum Callee {
         case none
         case unnamed
-        case named(String)
+        case named(String, start: Int)
     }
 
     private static let openParenthesis = UInt16(UnicodeScalar("(").value)
@@ -70,19 +71,105 @@ enum SQLiteExtensionCallScanner {
         if blankStart < index {
             let skipped = source.substring(with: NSRange(location: blankStart, length: index - blankStart))
             if skipped.utf16.contains(where: quoteClosers.contains) {
-                return quotedName(in: skipped).map(Callee.named) ?? .unnamed
+                let leading = skipped.utf16.prefix { isBlank($0) }.count
+                return quotedName(in: skipped).map { .named($0, start: blankStart + leading) } ?? .unnamed
             }
         }
         guard cursor >= 0 else { return .none }
         if quoteClosers.contains(code.character(at: cursor)) {
-            return quotedName(endingAt: cursor, in: code).map(Callee.named) ?? .unnamed
+            return quotedName(endingAt: cursor, in: code).map { .named($0.name, start: $0.start) } ?? .unnamed
         }
         guard isIdentifierUnit(code.character(at: cursor)) else { return .none }
         var start = cursor
         while start > 0, isIdentifierUnit(code.character(at: start - 1)) {
             start -= 1
         }
-        return .named(code.substring(with: NSRange(location: start, length: cursor - start + 1)))
+        return .named(code.substring(with: NSRange(location: start, length: cursor - start + 1)), start: start)
+    }
+
+    /// A parenthesis that opens a column list rather than a call: `INSERT INTO t(id)`,
+    /// `CREATE TABLE t(...)`, `CREATE VIEW v(x)`, `REFERENCES t(id)`, `IF NOT EXISTS t(...)`, and a
+    /// common table expression's `WITH ids(id) AS (...)`. SQLite rejects a call after each of those
+    /// words (measured), and a call followed by `AS` names a column, never a `(`. A virtual table's
+    /// `USING module(` is not among them: an extension's module can read files.
+    private static let columnListIntroducers: Set<String> = ["INTO", "TABLE", "VIEW", "REFERENCES", "EXISTS"]
+
+    private static func isColumnList(nameStart: Int, parenthesis: Int, code: NSString) -> Bool {
+        if let previous = wordBefore(nameStart, code: code), columnListIntroducers.contains(previous) {
+            return true
+        }
+        return opensCommonTableExpressionColumns(parenthesis, code: code)
+    }
+
+    /// The keyword in front of a name, past a `schema.` qualifier.
+    private static func wordBefore(_ start: Int, code: NSString) -> String? {
+        var cursor = skipBlanksBackward(from: start - 1, code: code)
+        if cursor >= 0, code.character(at: cursor) == UInt16(UnicodeScalar(".").value) {
+            cursor = skipBlanksBackward(from: cursor - 1, code: code)
+            while cursor >= 0, isIdentifierUnit(code.character(at: cursor)) {
+                cursor -= 1
+            }
+            cursor = skipBlanksBackward(from: cursor, code: code)
+        }
+        guard cursor >= 0, isIdentifierUnit(code.character(at: cursor)) else { return nil }
+        var wordStart = cursor
+        while wordStart > 0, isIdentifierUnit(code.character(at: wordStart - 1)) {
+            wordStart -= 1
+        }
+        return code.substring(with: NSRange(location: wordStart, length: cursor - wordStart + 1)).uppercased()
+    }
+
+    private static func opensCommonTableExpressionColumns(_ parenthesis: Int, code: NSString) -> Bool {
+        guard let close = matchingClose(of: parenthesis, code: code) else { return false }
+        var cursor = close + 1
+        guard wordAfter(&cursor, code: code) == "AS" else { return false }
+        cursor = skipBlanksForward(from: cursor, code: code)
+        guard cursor < code.length else { return false }
+        if code.character(at: cursor) == openParenthesis { return true }
+        let next = wordAfter(&cursor, code: code)
+        return next == "MATERIALIZED" || next == "NOT"
+    }
+
+    private static func matchingClose(of open: Int, code: NSString) -> Int? {
+        let close = UInt16(UnicodeScalar(")").value)
+        var depth = 0
+        var cursor = open
+        while cursor < code.length {
+            let unit = code.character(at: cursor)
+            if unit == openParenthesis { depth += 1 }
+            if unit == close {
+                depth -= 1
+                if depth == 0 { return cursor }
+            }
+            cursor += 1
+        }
+        return nil
+    }
+
+    private static func wordAfter(_ cursor: inout Int, code: NSString) -> String? {
+        cursor = skipBlanksForward(from: cursor, code: code)
+        let start = cursor
+        while cursor < code.length, isIdentifierUnit(code.character(at: cursor)) {
+            cursor += 1
+        }
+        guard cursor > start else { return nil }
+        return code.substring(with: NSRange(location: start, length: cursor - start)).uppercased()
+    }
+
+    private static func skipBlanksBackward(from index: Int, code: NSString) -> Int {
+        var cursor = index
+        while cursor >= 0, isBlank(code.character(at: cursor)) {
+            cursor -= 1
+        }
+        return cursor
+    }
+
+    private static func skipBlanksForward(from index: Int, code: NSString) -> Int {
+        var cursor = index
+        while cursor < code.length, isBlank(code.character(at: cursor)) {
+            cursor += 1
+        }
+        return cursor
     }
 
     /// The name inside the one quoted identifier a stretch holds, and nothing else but blanks and
@@ -100,15 +187,17 @@ enum SQLiteExtensionCallScanner {
 
     /// A quoted name a reading left as code, which happens for `[name]` under a grammar without
     /// bracket quoting.
-    private static func quotedName(endingAt closer: Int, in code: NSString) -> String? {
+    private static func quotedName(endingAt closer: Int, in code: NSString) -> (name: String, start: Int)? {
         let closing = code.character(at: closer)
         let opening = closing == 0x5D ? UInt16(UnicodeScalar("[").value) : closing
         var cursor = closer - 1
         while cursor >= 0, code.character(at: cursor) != opening {
             cursor -= 1
         }
-        guard cursor >= 0 else { return nil }
-        return quotedName(in: code.substring(with: NSRange(location: cursor, length: closer - cursor + 1)))
+        guard cursor >= 0,
+              let name = quotedName(in: code.substring(with: NSRange(location: cursor, length: closer - cursor + 1)))
+        else { return nil }
+        return (name: name, start: cursor)
     }
 
     private static func isBlank(_ unit: UInt16) -> Bool {
