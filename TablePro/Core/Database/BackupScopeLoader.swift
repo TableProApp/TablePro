@@ -92,32 +92,26 @@ enum BackupScopeLoader {
         }
     }
 
+    /// A schema that could not be listed fails the whole list, as it did when each schema was read
+    /// in turn: a picker that silently lacks a schema would back up less than the user chose.
     @MainActor
     private static func schemaQualifiedObjects(scope: DatabaseScope) async throws -> [NativeDumpObject] {
-        let schemas = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchSchemas()
-        }
-        var objects: [NativeDumpObject] = []
-        for schema in schemas {
-            let qualified = DatabaseScope(
-                connectionId: scope.connectionId, database: scope.database, schema: schema
-            )
-            let tables = try await DatabaseManager.shared.withMetadataDriver(
-                scope: qualified, workload: .bulk
-            ) { driver in
-                try await driver.fetchTables(schema: schema)
+        let listing = try await CatalogTableListing.tables(in: scope, excludingSchemas: [])
+        guard listing.unlistedSchemas.isEmpty else { throw BackupScopeLoadError.schemasNotListed }
+        return listing.tables
+            .filter(\.type.isBackupSelectable)
+            .compactMap { table in
+                guard let schema = table.schema else { return nil }
+                return NativeDumpObject(
+                    name: table.name,
+                    schema: schema,
+                    isPartitionedParent: table.type == .partitionedTable
+                )
             }
-            objects += tables
-                .filter(\.type.isBackupSelectable)
-                .map {
-                    NativeDumpObject(
-                        name: $0.name,
-                        schema: schema,
-                        isPartitionedParent: $0.type == .partitionedTable
-                    )
-                }
-        }
-        return objects
+    }
+
+    private enum BackupScopeLoadError: Error {
+        case schemasNotListed
     }
 
     /// Everything the dump tool has to be told about to reproduce the chosen objects.

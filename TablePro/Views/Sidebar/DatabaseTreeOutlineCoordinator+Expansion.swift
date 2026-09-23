@@ -25,9 +25,15 @@ extension DatabaseTreeOutlineCoordinator {
                 if outlineView.isItemExpanded(sectionNode) { restorePartitionExpansion(under: sectionNode) }
             case .redisKeysSection:
                 setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
+            case .schema:
+                setExpanded(sectionNode, true)
+                if outlineView.isItemExpanded(sectionNode) {
+                    triggerLoad(for: sectionNode)
+                    restoreObjectGroupExpansion(under: sectionNode)
+                }
             case .hierarchicalSchemaSection(let schema):
                 let want = searching
-                    ? hierarchicalSchemaMatches(schema)
+                    ? hierarchicalSchemaVerdict(schema) == .match
                     : windowState?.expandedTreeSchemas.contains(schema) ?? false
                 setExpanded(sectionNode, want)
                 if outlineView.isItemExpanded(sectionNode) {
@@ -53,7 +59,7 @@ extension DatabaseTreeOutlineCoordinator {
             for schemaNode in resolvedChildren(of: databaseNode) {
                 guard case .schema(let database, let schema) = schemaNode.kind else { continue }
                 let wantSchema = searching
-                    ? DatabaseTreeFilter.matches(searchText, schema) || schemaContentMatchesSearch(database: database, schema: schema)
+                    ? schemaSearchVerdict(database: database, schema: schema) == .match
                     : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
                 setExpanded(schemaNode, wantSchema)
                 if outlineView.isItemExpanded(schemaNode) {
@@ -118,7 +124,11 @@ extension DatabaseTreeOutlineCoordinator {
         let searching = !searchText.isEmpty
         for groupNode in resolvedChildren(of: parent) {
             guard case .containerObjectKindSection(let group) = groupNode.kind else { continue }
-            let expanded = searching || (windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault)
+            let expanded = DatabaseTreeFilter.objectGroupIsExpanded(
+                searching: searching,
+                matchCount: searching ? matchCount(in: group) : 0,
+                stored: windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault
+            )
             setExpanded(groupNode, expanded)
             if outlineView.isItemExpanded(groupNode) { restorePartitionExpansion(under: groupNode) }
         }
@@ -218,8 +228,10 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// An expanded schema is the reader a catalog change waits for: it reads a schema never read,
+    /// and one a change has overtaken, once per change.
     private func loadHierarchicalSchemaObjects(_ schema: String) {
-        guard case .idle = schemaService.schemaState(for: connectionId, schema: schema) else { return }
+        guard schemaService.schemaObjectsNeedFetch(for: connectionId, schema: schema) else { return }
         let connectionId = connectionId
         let database = browsingDatabase
         Task {

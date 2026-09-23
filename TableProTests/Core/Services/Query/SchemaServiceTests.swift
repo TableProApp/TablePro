@@ -13,6 +13,10 @@ import Testing
 @Suite("SchemaService")
 @MainActor
 struct SchemaServiceTests {
+    private func unnamedDatabase(_ connectionId: UUID) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     @Test("allLoadedTables unions tables across loaded per-schema lists")
     func allLoadedTablesUnionsPerSchema() async {
         let connectionId = UUID()
@@ -28,8 +32,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "sales", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         let names = Set(service.allLoadedTables(for: connectionId).map(\.name))
         #expect(names == ["orders", "leads", "employees"])
@@ -46,11 +50,29 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "mirror", driver: driver)
+        await service.loadSchemaObjects(schema: "sales", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "mirror", in: unnamedDatabase(connectionId), driver: driver)
 
         let matching = service.allLoadedTables(for: connectionId).filter { $0.id == shared.id }
         #expect(matching.count == 1)
+    }
+
+    @Test("allLoadedTables keeps two tables whose names differ only in where a period sits")
+    func allLoadedTablesKeepsDottedNamesApart() async {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        driver.schemaTablesToReturn = [
+            "a": [TableInfo(name: "b.c", type: .table, rowCount: 0, schema: "a")],
+            "a.b": [TableInfo(name: "c", type: .table, rowCount: 0, schema: "a.b")]
+        ]
+
+        let service = SchemaService()
+        await service.loadSchemaObjects(schema: "a", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "a.b", in: unnamedDatabase(connectionId), driver: driver)
+
+        let loaded = service.allLoadedTables(for: connectionId)
+        #expect(loaded.count == 2)
+        #expect(Set(loaded.map(\.schema)) == ["a", "a.b"])
     }
 
     @Test("allLoadedTables is empty for a connection with no loaded state")

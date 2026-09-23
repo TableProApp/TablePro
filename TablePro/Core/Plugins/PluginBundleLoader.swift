@@ -17,7 +17,7 @@ enum PluginBundleLoader {
             let reason = describeLoadFailure(nsError)
             let detail = nsError.userInfo[NSDebugDescriptionErrorKey] as? String ?? nsError.localizedDescription
             logger.error(
-                "Bundle load failed for \(bundle.bundleURL.lastPathComponent, privacy: .public) [\(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)]: \(reason, privacy: .public) [\(detail, privacy: .public)]"
+                "Bundle load failed for \(bundle.bundleURL.lastPathComponent, privacy: .public) [\(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)]: \(reason, privacy: .public) [\(detail, privacy: .private)]"
             )
             throw PluginError.invalidBundle(reason)
         }

@@ -52,6 +52,26 @@ struct TableInfoTests {
         #expect(info.id == "analytics.events_TABLE")
     }
 
+    @Test("A period inside a quoted schema or table name does not merge two tables' ids")
+    func periodInsideNameKeepsIdsDistinct() {
+        let dottedTable = TableInfo(name: "b.c", type: .table, rowCount: nil, schema: "a")
+        let dottedSchema = TableInfo(name: "c", type: .table, rowCount: nil, schema: "a.b")
+        let unqualified = TableInfo(name: "a.b", type: .table, rowCount: nil)
+        let qualified = TableInfo(name: "b", type: .table, rowCount: nil, schema: "a")
+        let trailingBackslash = TableInfo(name: "b", type: .table, rowCount: nil, schema: "a\\")
+
+        let ids = [dottedTable, dottedSchema, unqualified, qualified, trailingBackslash].map(\.id)
+        #expect(Set(ids).count == ids.count)
+        #expect(Dictionary(grouping: [dottedTable, dottedSchema], by: \.id).count == 2)
+    }
+
+    @Test("A name with no period or backslash keeps the id it always had")
+    func plainNamesKeepTheirId() {
+        #expect(TableInfo(name: "events", type: .view, rowCount: nil, schema: "analytics").id == "analytics.events_VIEW")
+        #expect(TableInfo(name: "user_log", type: .materializedView, rowCount: nil).id == "user_log_MATERIALIZED VIEW")
+        #expect(TableInfo(name: "orders", type: .table, rowCount: nil, schema: "").id == "orders_TABLE")
+    }
+
     @Test("Same table name in different schemas has distinct id, equality, and hash")
     func testCrossSchemaDistinctIdentity() {
         let a = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "dataset_a")
@@ -205,10 +225,14 @@ struct TableInfoTests {
         #expect(!TableInfo.TableType.externalTable.allowsRowEditing)
     }
 
+    @Test("A materialized view does not allow row editing")
+    func materializedViewDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.materializedView.allowsRowEditing)
+    }
+
     @Test("Local relations still allow row editing")
     func localRelationsAllowRowEditing() {
         #expect(TableInfo.TableType.table.allowsRowEditing)
-        #expect(TableInfo.TableType.materializedView.allowsRowEditing)
         #expect(TableInfo.TableType.foreignTable.allowsRowEditing)
         #expect(TableInfo.TableType.systemTable.allowsRowEditing)
         #expect(TableInfo.TableType.partitionedTable.allowsRowEditing)

@@ -12,7 +12,7 @@ extension PluginMetadataRegistry {
         [
             ("DynamoDB", PluginMetadataSnapshot(
                 displayName: "Amazon DynamoDB", iconName: "dynamodb-icon", defaultPort: 0,
-                requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
+                requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [],
                 pathFieldRole: .database,
@@ -31,7 +31,15 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false
+                    supportsDropDatabase: false,
+                    supportsAddColumn: false,
+                    supportsModifyColumn: false,
+                    supportsDropColumn: false,
+                    supportsRenameColumn: false,
+                    supportsAddIndex: true,
+                    supportsDropIndex: true,
+                    supportsModifyPrimaryKey: false,
+                    exactRowCountIsBilledScan: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -44,110 +52,15 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .flat,
-                    structureColumnFields: [.name, .type]
+                    structureColumnFields: [.name, .type, .primaryKey]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: SQLDialectDescriptor(
-                        identifierQuote: "\"",
-                        keywords: [
-                            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUE", "SET",
-                            "UPDATE", "DELETE", "AND", "OR", "NOT", "IN", "BETWEEN",
-                            "EXISTS", "MISSING", "IS", "NULL", "LIMIT",
-                        ],
-                        functions: [
-                            "begins_with", "contains", "size", "attribute_type",
-                            "attribute_exists", "attribute_not_exists",
-                        ],
-                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"],
-                        caseSensitivityStyle: .driverManaged
-                    ),
-                    statementCompletions: [
-                        CompletionEntry(label: "SELECT", insertText: "SELECT"),
-                        CompletionEntry(label: "INSERT INTO", insertText: "INSERT INTO"),
-                        CompletionEntry(label: "UPDATE", insertText: "UPDATE"),
-                        CompletionEntry(label: "DELETE FROM", insertText: "DELETE FROM"),
-                        CompletionEntry(label: "VALUE", insertText: "VALUE"),
-                        CompletionEntry(label: "SET", insertText: "SET"),
-                        CompletionEntry(label: "WHERE", insertText: "WHERE"),
-                        CompletionEntry(label: "begins_with", insertText: "begins_with"),
-                        CompletionEntry(label: "contains", insertText: "contains"),
-                        CompletionEntry(label: "size", insertText: "size"),
-                        CompletionEntry(label: "attribute_type", insertText: "attribute_type"),
-                        CompletionEntry(label: "attribute_exists", insertText: "attribute_exists"),
-                        CompletionEntry(label: "attribute_not_exists", insertText: "attribute_not_exists"),
-                    ],
-                    columnTypesByCategory: [
-                        "String": ["S"],
-                        "Number": ["N"],
-                        "Binary": ["B"],
-                        "Boolean": ["BOOL"],
-                        "Null": ["NULL"],
-                        "List": ["L"],
-                        "Map": ["M"],
-                        "String Set": ["SS"],
-                        "Number Set": ["NS"],
-                        "Binary Set": ["BS"],
-                    ]
+                    sqlDialect: DynamoDBCuratedDefaults.sqlDialect,
+                    statementCompletions: DynamoDBCuratedDefaults.statementCompletions,
+                    columnTypesByCategory: DynamoDBCuratedDefaults.columnTypesByCategory
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
-                        ConnectionField(
-                            id: "awsAuthMethod",
-                            label: String(localized: "Auth Method"),
-                            defaultValue: "credentials",
-                            fieldType: .dropdown(options: [
-                                .init(value: "credentials", label: "Access Key + Secret Key"),
-                                .init(value: "profile", label: "AWS Profile"),
-                                .init(value: "sso", label: "AWS SSO"),
-                            ]),
-                            section: .authentication
-                        ),
-                        ConnectionField(
-                            id: "awsAccessKeyId",
-                            label: String(localized: "Access Key ID"),
-                            placeholder: "AKIA...",
-                            section: .authentication,
-                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
-                        ),
-                        ConnectionField(
-                            id: "awsSecretAccessKey",
-                            label: String(localized: "Secret Access Key"),
-                            placeholder: "wJalr...",
-                            fieldType: .secure,
-                            section: .authentication,
-                            hidesPassword: true,
-                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
-                        ),
-                        ConnectionField(
-                            id: "awsSessionToken",
-                            label: String(localized: "Session Token"),
-                            placeholder: "Optional (for temporary credentials)",
-                            fieldType: .secure,
-                            section: .authentication,
-                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
-                        ),
-                        ConnectionField(
-                            id: "awsProfileName",
-                            label: String(localized: "Profile Name"),
-                            placeholder: "default",
-                            section: .authentication,
-                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"])
-                        ).withDynamicOptions(.awsProfiles),
-                        ConnectionField(
-                            id: "awsRegion",
-                            label: String(localized: "AWS Region"),
-                            placeholder: "us-east-1",
-                            defaultValue: "us-east-1",
-                            fieldType: .text,
-                            section: .authentication
-                        ),
-                        ConnectionField(
-                            id: "awsEndpointUrl",
-                            label: String(localized: "Custom Endpoint"),
-                            placeholder: "http://localhost:8000 (DynamoDB Local)",
-                            section: .authentication
-                        ),
-                    ],
+                    additionalConnectionFields: DynamoDBCuratedDefaults.connectionFields,
                     category: .cloud,
                     tagline: String(localized: "AWS managed key-value/document store"),
                     hidesBuiltInPassword: true
@@ -854,4 +767,129 @@ func snowflakeConnectionFields() -> [ConnectionField] {
             section: .advanced
         )
     ]
+}
+
+/// The DynamoDB plugin's own declarations, copied because the app cannot import the plugin. A registry plugin may be
+/// older than the app, so these are what a connection shows until one loads.
+private enum DynamoDBCuratedDefaults {
+    static let attributeTypeNames = [
+        "String", "Number", "Binary", "Boolean", "Null", "List", "Map", "String Set", "Number Set", "Binary Set"
+    ]
+
+    static let sqlDialect = SQLDialectDescriptor(
+        identifierQuote: "\"",
+        keywords: [
+            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUE", "SET", "REMOVE", "UPDATE", "DELETE",
+            "AND", "OR", "NOT", "IN", "BETWEEN", "EXISTS", "MISSING", "IS", "NULL", "TRUE", "FALSE",
+            "ORDER", "BY", "ASC", "DESC", "RETURNING", "ALL", "OLD", "NEW", "MODIFIED"
+        ],
+        functions: [
+            "begins_with", "contains", "size", "attribute_type", "attribute_exists", "attribute_not_exists", "EXISTS"
+        ],
+        dataTypes: Set(attributeTypeNames),
+        booleanLiteralStyle: .truefalse,
+        autoLimitStyle: .none,
+        caseSensitivityStyle: .driverManaged
+    )
+
+    static let columnTypesByCategory: [String: [String]] = [
+        "Key": ["String", "Number", "Binary"],
+        "Scalar": ["Boolean", "Null"],
+        "Document": ["List", "Map"],
+        "Set": ["String Set", "Number Set", "Binary Set"]
+    ]
+
+    static var statementCompletions: [CompletionEntry] {
+        let partiQL = [
+            "SELECT", "INSERT INTO", "UPDATE", "DELETE FROM", "VALUE", "SET", "REMOVE", "WHERE", "AND", "OR",
+            "BETWEEN", "IN", "IS", "NOT", "NULL", "MISSING", "EXISTS", "ORDER BY", "RETURNING ALL OLD *",
+            "begins_with", "contains", "size", "attribute_type"
+        ].map { CompletionEntry(label: $0, insertText: $0) }
+        let requests: [CompletionEntry] = [
+            requestTemplate("Scan", #"{"TableName": ""}"#),
+            requestTemplate("Query", ##"{"TableName": "", "KeyConditionExpression": "#pk = :pk", "##,
+                            ##""ExpressionAttributeNames": {"#pk": ""}, "ExpressionAttributeValues": {":pk": {"S": ""}}}"##),
+            requestTemplate("GetItem", #"{"TableName": "", "Key": {"": {"S": ""}}}"#),
+            requestTemplate("PutItem", #"{"TableName": "", "Item": {"": {"S": ""}}}"#),
+            requestTemplate("UpdateItem", #"{"TableName": "", "Key": {"": {"S": ""}}, "UpdateExpression": ""}"#),
+            requestTemplate("DeleteItem", #"{"TableName": "", "Key": {"": {"S": ""}}}"#),
+            requestTemplate("DescribeTable", #"{"TableName": ""}"#),
+            requestTemplate("CreateTable", #"{"TableName": "", "BillingMode": "PAY_PER_REQUEST", "#,
+                            #""AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}], "#,
+                            #""KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}]}"#),
+            requestTemplate("UpdateTable", #"{"TableName": ""}"#),
+            requestTemplate("UpdateTimeToLive", #"{"TableName": "", "TimeToLiveSpecification": "#,
+                            #"{"Enabled": true, "AttributeName": "expiresAt"}}"#)
+        ]
+        return partiQL + requests
+    }
+
+    static var connectionFields: [ConnectionField] {
+        let accessKey = "credentials"
+        let profile = "profile"
+        let singleSignOn = "sso"
+        let local = "local"
+        return [
+            ConnectionField(
+                id: "awsAuthMethod",
+                label: String(localized: "Auth Method"),
+                defaultValue: accessKey,
+                fieldType: .dropdown(options: [
+                    .init(value: accessKey, label: String(localized: "Access Key + Secret Key")),
+                    .init(value: profile, label: String(localized: "AWS Profile")),
+                    .init(value: singleSignOn, label: String(localized: "AWS SSO")),
+                    .init(value: local, label: String(localized: "DynamoDB Local (no credentials)"))
+                ]),
+                section: .authentication
+            ),
+            ConnectionField(
+                id: "awsAccessKeyId",
+                label: String(localized: "Access Key ID"),
+                placeholder: "AKIA...",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: [accessKey])
+            ),
+            ConnectionField(
+                id: "awsSecretAccessKey",
+                label: String(localized: "Secret Access Key"),
+                placeholder: "wJalr...",
+                fieldType: .secure,
+                section: .authentication,
+                hidesPassword: true,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: [accessKey])
+            ),
+            ConnectionField(
+                id: "awsSessionToken",
+                label: String(localized: "Session Token"),
+                placeholder: String(localized: "Optional, for temporary credentials"),
+                fieldType: .secure,
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: [accessKey])
+            ),
+            ConnectionField(
+                id: "awsProfileName",
+                label: String(localized: "Profile Name"),
+                placeholder: "default",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: [profile, singleSignOn])
+            ).withDynamicOptions(.awsProfiles),
+            ConnectionField(
+                id: "awsRegion",
+                label: String(localized: "AWS Region"),
+                placeholder: String(localized: "The profile's region, or us-east-1"),
+                fieldType: .text,
+                section: .authentication
+            ),
+            ConnectionField(
+                id: "awsEndpointUrl",
+                label: String(localized: "Custom Endpoint"),
+                placeholder: String(localized: "Optional, such as http://localhost:8000"),
+                section: .authentication
+            )
+        ]
+    }
+
+    private static func requestTemplate(_ operation: String, _ parts: String...) -> CompletionEntry {
+        CompletionEntry(label: "\(operation) {…}", insertText: "\(operation) " + parts.joined())
+    }
 }

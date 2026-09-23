@@ -7,7 +7,7 @@ Dropping a table cannot be undone, and **Cascade** in the confirmation dialog wi
 
 ## Create a table or view
 
-**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)). **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, where [safe mode](/features/safe-mode) removes them rather than dimming them.
+**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)); on [DynamoDB](/databases/dynamodb#creating-and-changing-tables) it opens a form for the keys, capacity and indexes instead. **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, where [safe mode](/features/safe-mode) removes them rather than dimming them.
 
 ## Drop and truncate
 
@@ -77,6 +77,7 @@ Each operation lists the object kinds it applies to, so a view offers only the o
 | PostgreSQL | VACUUM, ANALYZE, REINDEX, CLUSTER |
 | MySQL / MariaDB | OPTIMIZE TABLE, ANALYZE TABLE, CHECK TABLE, REPAIR TABLE |
 | SQLite | VACUUM, ANALYZE, REINDEX, Integrity Check |
+| DynamoDB | Point-in-Time Recovery, Deletion Protection, Stream, Table Class, Switch to On-Demand Capacity, Turn Off Time to Live |
 
 PostgreSQL VACUUM carries FULL (rewrites the table and blocks access), ANALYZE, and VERBOSE toggles. MySQL CHECK TABLE offers QUICK, FAST, MEDIUM (the default), EXTENDED, and CHANGED. The options come from the driver, so an engine that adds one shows it without an app change. No other engine reports maintenance operations, so the submenu is hidden there, and in read-only safe mode.
 
@@ -88,7 +89,7 @@ Right-click empty space and choose **New View…** to write a new one; right-cli
 
 **Show DDL** opens the definition in a read-only tab, with **Copy**, **Export** and **Open in Editor** on it; **Copy DDL** puts the same statement straight on the clipboard. Both stay available on a read-only connection, where **Edit View Definition** is hidden.
 
-A materialized view holds stored rows, so refreshing it is a server operation. Right-click one and choose **Refresh Materialized View…**, or use **Database > Refresh Materialized View…**. The confirmation names the view and warns that other sessions cannot read it while the refresh runs. **Refresh concurrently** leaves readers alone; it is available on PostgreSQL for a view that holds rows and carries a unique index on plain columns with no `WHERE` clause, and the alert says which of the two is missing when it is dimmed. Tabs showing the view reload when the refresh finishes. A plain view stores nothing, so `Cmd+R` re-runs its query instead.
+A materialized view holds stored rows, so refreshing it is a server operation. Right-click one and choose **Refresh Materialized View…**, or use **Database > Refresh Materialized View…**. The confirmation names the view and warns that other sessions cannot read it while the refresh runs. **Refresh concurrently** leaves readers alone; it is available on PostgreSQL for a view that has been populated and carries a unique index on plain columns with no `WHERE` clause, and the alert says which of the two is missing when it is dimmed. Tabs showing the view reload when the refresh finishes. A plain view stores nothing, so `Cmd+R` re-runs its query instead.
 
 Comments are edited per object. Right-click a table, view, materialized view or foreign table, choose **Edit Comment…**, and type the text; saving an empty field removes the comment. Column comments live in the [Columns tab](/features/table-structure#columns-tab). Both need an engine that writes comments, which today means PostgreSQL and PGlite.
 

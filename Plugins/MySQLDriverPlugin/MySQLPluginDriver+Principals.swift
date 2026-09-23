@@ -150,7 +150,7 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             ORDER BY TABLE_SCHEMA, TABLE_NAME
             LIMIT \(max(1, limit))
             """
-        let result = try await execute(query: sql)
+        let result = try await execute(ownStatement: sql)
 
         return result.rows.compactMap { row in
             guard let database = row[safe: 0]?.asText,

@@ -17,16 +17,20 @@ internal enum SchemaOperationRefusal {
         switch change {
         case .addColumn(let column):
             return driver.schemaOperationRefusal(.addColumn(column.toPlugin()))
-        case .addIndex(let index), .modifyIndex(_, let index):
+        case .addIndex(let index):
             return driver.schemaOperationRefusal(.addIndex(index.toPlugin()))
+        case .modifyIndex(let old, let new):
+            return driver.schemaOperationRefusal(.modifyIndex(old: old.toPlugin(), new: new.toPlugin()))
+                ?? driver.schemaOperationRefusal(.addIndex(new.toPlugin()))
+        case .deleteIndex(let index):
+            return driver.schemaOperationRefusal(.dropIndex(index.toPlugin()))
         case .modifyCheckConstraint(let old, let new):
             if let refusal = driver.checkConstraintRefusal { return refusal }
             guard old.expression == new.expression, old.name != new.name else { return nil }
             return driver.schemaOperationRefusal(.renameCheckConstraint(from: old.name, to: new.name))
         case .addCheckConstraint, .deleteCheckConstraint:
             return driver.checkConstraintRefusal
-        case .modifyColumn, .deleteColumn, .deleteIndex, .addForeignKey, .modifyForeignKey,
-             .deleteForeignKey, .modifyPrimaryKey:
+        case .modifyColumn, .deleteColumn, .addForeignKey, .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey:
             return nil
         }
     }

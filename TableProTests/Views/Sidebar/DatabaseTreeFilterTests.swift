@@ -20,6 +20,32 @@ struct DatabaseTreeFilterTests {
         #expect(result.map(\.name) == ["users", "orders"])
     }
 
+    @Test("filteredTables keeps two tables whose qualified names differ only in where a period sits")
+    func filteredTablesKeepsDottedNamesApart() {
+        let tables = [
+            TableInfo(name: "b.c", type: .table, rowCount: 0, schema: "a"),
+            TableInfo(name: "c", type: .table, rowCount: 0, schema: "a.b"),
+            TableInfo(name: "a.b", type: .table, rowCount: 0),
+            TableInfo(name: "b", type: .table, rowCount: 0, schema: "a")
+        ]
+        #expect(DatabaseTreeFilter.filteredTables(tables, searchText: "").count == 4)
+        #expect(DatabaseTreeFilter.filteredTables(tables, searchText: "c").count == 2)
+    }
+
+    @Test("filteredRoutines and filteredUserTypes keep objects whose schema holds a period")
+    func filteredRoutinesAndTypesKeepDottedNamesApart() {
+        let routines = [
+            RoutineInfo(name: "b.c", kind: .function, schema: "a"),
+            RoutineInfo(name: "c", kind: .function, schema: "a.b")
+        ]
+        let types = [
+            UserDefinedTypeInfo(name: "b.c", kind: .enumeration, schema: "a"),
+            UserDefinedTypeInfo(name: "c", kind: .enumeration, schema: "a.b")
+        ]
+        #expect(DatabaseTreeFilter.filteredRoutines(routines, searchText: "").count == 2)
+        #expect(DatabaseTreeFilter.filteredUserTypes(types, searchText: "").count == 2)
+    }
+
     @Test("filteredTables keeps only substring matches when searching")
     func filteredTablesSearch() {
         let tables = [table("users"), table("orders"), table("invoices")]
@@ -140,15 +166,26 @@ struct DatabaseTreeFilterTests {
         routines: [RoutineInfo] = [],
         triggers: [TriggerInfo] = []
     ) -> Bool {
-        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            schema,
+        let content = isLoaded
+            ? DatabaseTreeFilter.LoadedSchemaContent(
+                buckets: DatabaseTreeFilter.objectBuckets(
+                    tables: tables,
+                    routines: routines,
+                    triggers: triggers,
+                    searchText: searchText
+                ),
+                isSettled: true,
+                isCurrent: true
+            )
+            : nil
+        return DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
+            schema: schema,
+            database: nil,
             searchText: searchText,
-            isLoaded: isLoaded,
-            tables: tables,
-            routines: routines,
-            triggers: triggers,
-            userTypes: []
-        )
+            loadedContent: content,
+            listingMatches: nil,
+            listingCoversSchema: true
+        ).isVisible
     }
 
     private func buckets(
@@ -167,7 +204,7 @@ struct DatabaseTreeFilterTests {
         )
     }
 
-    /// A search fires a per-schema load, and the pane must not blank out while it runs.
+    /// Nothing has read it and no listing has answered for it, so hiding it would hide the match.
     @Test("An unloaded schema stays visible during a search")
     func unloadedSchemaStaysVisible() {
         #expect(isVisible("analytics", searchText: "invoice", isLoaded: false))

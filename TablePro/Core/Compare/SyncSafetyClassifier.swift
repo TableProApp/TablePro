@@ -90,19 +90,18 @@ internal struct SyncSafetyClassifier {
     /// A view or a routine holds no rows, so dropping one is recoverable from the source and only
     /// warns. A materialized view does hold rows, so it is refused like a table. Either way a drop
     /// can break something that depends on it, which is what the second hazard says.
-    internal func hazards(forDropping identity: CompareObjectIdentity, isReplacement: Bool) -> [SyncHazard] {
+    internal func hazards(
+        forDropping identity: CompareObjectIdentity,
+        isReplacement: Bool,
+        recreatesIndexes: Bool = false
+    ) -> [SyncHazard] {
         var hazards: [SyncHazard] = []
 
         if identity.kind == .materializedView {
             hazards.append(SyncHazard(
                 kind: .dataLoss,
                 severity: .refusedByDefault,
-                explanation: String(
-                    format: String(
-                        localized: "Dropping materialized view %@ discards its stored rows, which have to be rebuilt."
-                    ),
-                    identity.displayName
-                )
+                explanation: materializedViewDropExplanation(identity, recreatesIndexes: recreatesIndexes)
             ))
         }
 
@@ -129,6 +128,47 @@ internal struct SyncSafetyClassifier {
             )
         ))
         return hazards
+    }
+
+    internal func concurrentRefreshHazard(
+        on identity: CompareObjectIdentity,
+        from current: [EditableIndexDefinition],
+        to resulting: [EditableIndexDefinition]
+    ) -> SyncHazard? {
+        guard identity.kind == .materializedView,
+              ConcurrentRefreshIndexRule.allowsConcurrentRefresh(current),
+              !ConcurrentRefreshIndexRule.allowsConcurrentRefresh(resulting)
+        else { return nil }
+        return SyncHazard(
+            kind: .concurrentRefresh,
+            severity: .warning,
+            explanation: String(
+                format: String(
+                    localized: "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it."
+                ),
+                identity.displayName
+            )
+        )
+    }
+
+    private func materializedViewDropExplanation(_ identity: CompareObjectIdentity, recreatesIndexes: Bool) -> String {
+        guard recreatesIndexes else {
+            return String(
+                format: String(
+                    localized: "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges."
+                ),
+                identity.displayName
+            )
+        }
+        return String(
+            format: String(
+                localized: """
+                Dropping materialized view %@ discards its stored rows, comments and privileges. \
+                The rows are computed again and the source's indexes are created on it.
+                """
+            ),
+            identity.displayName
+        )
     }
 
     private func modifyColumnHazards(

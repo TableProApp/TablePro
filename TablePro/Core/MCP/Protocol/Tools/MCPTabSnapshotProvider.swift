@@ -138,6 +138,7 @@ private extension TabType {
         case .insights: "insights"
         case .usersRoles: "usersRoles"
         case .objectSource: "objectSource"
+        case .versionHistory: "versionHistory"
         }
     }
 }

@@ -115,7 +115,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridEmptySpaceMenu() -> NSMenu? {
-        guard let onAddRow else { return nil }
+        guard let onAddRow, coordinator?.canAddRow == true else { return nil }
         let menu = NSMenu()
         let target = StructureMenuTarget { onAddRow() }
         let item = NSMenuItem(

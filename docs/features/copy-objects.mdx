@@ -40,12 +40,18 @@ written until you have read the script.
 | Kind | Structure | Data |
 |---|---|---|
 | Tables | Columns, primary key, indexes, foreign keys, storage engine and collation | Every row, streamed in batches |
-| Views, materialized views | The source's definition | None to carry |
+| Views | The source's definition | None to carry |
+| Materialized views | The source's definition, plus its indexes into PostgreSQL and PGlite | None to carry |
 | Procedures, functions | The source's definition | None to carry |
 | Triggers | The source's definition | None to carry |
 
 A data-only copy leaves views, routines and triggers out and says so in the review step: they hold
 no rows.
+
+A materialized view's indexes are created right after the view. A target other than PostgreSQL or
+PGlite gets the view without them, and so does a duplicate whose index statements would name a
+schema other than the view's own; both are listed under **Partly copied**. A view whose indexes the
+source refuses to list is left out with the server's reason when the target would take them.
 
 Within one engine, generated and computed columns are dropped from the write. The server recomputes
 them, and every engine that has them rejects an `INSERT` that names one. Crossing to another engine
@@ -191,8 +197,10 @@ own SQL text and nothing rewrites the objects it names, so anywhere else it woul
 source. They are left out with the reason shown, which is why duplicating a MySQL database carries
 its tables and not its views.
 
-A driver that answers with a view's `SELECT` rather than its `CREATE`, which ClickHouse, Oracle,
-Dameng and BigQuery do, has that view left out for the same reason.
+A driver that answers with a view's `SELECT` rather than its `CREATE`, which ClickHouse, Dameng and
+BigQuery do, has that view left out for the same reason. A definition the source refuses to return
+is left out with the server's reason. So is every selected procedure and function, or every selected
+trigger, when the source cannot list that kind; the rest of the copy goes ahead.
 
 ## Ordering and foreign keys
 
@@ -200,7 +208,8 @@ Everything is torn down children first, so a foreign key is gone before the tabl
 built parents first, both in one pass so a stop between them cannot leave objects dropped with
 nothing put back. Rows are copied after that. Triggers and materialized views go in last: a trigger
 installed before the rows fires on the copy itself, and a materialized view is filled at the moment
-it is created.
+it is created. Its indexes follow it, and a unique index its rows violate fails with the view named
+in the result.
 
 A copied foreign key is repointed at the copy. A key that referenced the source's own schema
 references the target's afterwards, so the duplicate stands on its own; one that referenced a third

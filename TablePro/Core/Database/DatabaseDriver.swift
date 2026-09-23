@@ -99,6 +99,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
+    /// Every schema's tables in one call, or nil when the engine has no such call and the caller
+    /// has to ask each schema itself. `CatalogTableListing` is the caller that does.
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]?
+
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
     /// a MySQL or Oracle partition name is unique only within its own table.
@@ -251,6 +255,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec?
 
     func createDatabase(_ request: CreateDatabaseRequest) async throws
+
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec?
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String]
 
     func dropDatabase(name: String) async throws
 
@@ -540,6 +548,12 @@ extension DatabaseDriver {
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
 
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec? { nil }
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String] {
+        throw PluginCreateTableFormError(message: String(localized: "This database has no Create Table form"))
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
 
     func switchSessionContext(id: String, to value: String) async throws {}
@@ -703,6 +717,8 @@ extension DatabaseDriver {
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         try await fetchTables()
     }
+
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 

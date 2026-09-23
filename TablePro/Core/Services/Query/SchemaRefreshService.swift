@@ -165,7 +165,7 @@ final class SchemaRefreshService {
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                await schemaService.loadSchemaObjects(connectionId: connectionId, schema: schema, driver: driver)
+                await schemaService.loadSchemaObjects(schema: schema, in: scope, driver: driver)
             }
         } catch {
             Self.logger.warning(
@@ -299,6 +299,7 @@ final class SchemaRefreshService {
             guard let scope = browseScope else {
                 throw DatabaseError.notConnected
             }
+            let awaitedSchemas = schemasAwaitingJudgement(in: scope)
             try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
@@ -310,7 +311,8 @@ final class SchemaRefreshService {
                     scope: scope
                 )
                 await schemaService.refreshLoadedSchemaObjects(
-                    connectionId: connectionId,
+                    in: scope,
+                    fetchingNow: awaitedSchemas,
                     driver: driver
                 )
             }
@@ -331,6 +333,20 @@ final class SchemaRefreshService {
             await treeMetadataService.refreshLoadedTables(connectionId: connectionId, database: database)
         }
         await syncAutocompleteProvider(connectionId: connectionId)
+    }
+
+    /// The schemas judged against the refreshed catalog as soon as it settles: the browsed one, and
+    /// every one holding a queued truncate or drop, which a catalog change prunes when it finishes.
+    private func schemasAwaitingJudgement(in scope: DatabaseScope) -> Set<String> {
+        var schemas = Set([scope.schema].compactMap { $0 })
+        guard let session = databaseManager?.session(for: scope.connectionId) else { return schemas }
+        for ref in session.pendingTruncates.union(session.pendingDeletes) {
+            guard (ref.database ?? scope.database) == scope.database, let schema = ref.qualifyingSchema else {
+                continue
+            }
+            schemas.insert(schema)
+        }
+        return schemas
     }
 }
 

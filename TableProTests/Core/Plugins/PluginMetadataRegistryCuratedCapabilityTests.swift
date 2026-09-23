@@ -77,6 +77,22 @@ private final class MockMySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockDynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock DynamoDB"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed DynamoDB plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "DynamoDB"
+    static let databaseDisplayName = "Amazon DynamoDB"
+    static let iconName = "dynamodb-icon"
+    static let defaultPort = 0
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockUnknownPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock Unknown"
     static let pluginVersion = "1.0.0"
@@ -126,6 +142,18 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         let built = registry.buildMetadataSnapshot(from: MockMongoDBPlugin.self)
 
         #expect(built.capabilities.authenticationIsDatabaseScoped == true)
+    }
+
+    @Test("DynamoDB keeps its billed-scan count when its plugin registers")
+    func dynamoDBKeepsItsBilledScanCount() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockDynamoDBPlugin.self)
+
+        #expect(
+            built.capabilities.exactRowCountIsBilledScan == true,
+            "Every automatic count would be a Scan of the whole table that AWS bills for"
+        )
     }
 
     @Test("MySQL keeps browsing only inside a selected database when its plugin registers")
@@ -187,6 +215,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.supportsConnectionPooling == true)
         #expect(built.capabilities.authenticationIsDatabaseScoped == false)
         #expect(built.capabilities.browsingRequiresSelectedDatabase == false)
+        #expect(built.capabilities.exactRowCountIsBilledScan == false)
         #expect(built.schema.implicitSchemaName == nil)
     }
 }

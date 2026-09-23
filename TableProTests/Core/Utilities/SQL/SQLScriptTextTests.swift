@@ -283,4 +283,21 @@ struct SQLScriptTextTests {
         #expect(Self.sqlServer.comparableText("CREATE VIEW v AS SELECT 1;")
             == Self.sqlServer.comparableText("CREATE VIEW v AS SELECT 1"))
     }
+
+    // MARK: - Leading keyword
+
+    @Test("The leading keyword is read past blanks and every comment the grammar knows")
+    func leadingKeywordSkipsCommentsAndBlanks() {
+        #expect(Self.sqlServer.leadingKeyword(of: "-- Author: ops\n/* audit */\n  create procedure dbo.p AS SELECT 1") == "CREATE")
+        #expect(Self.mysql.leadingKeyword(of: "# note\nCREATE VIEW v AS SELECT 1") == "CREATE")
+        #expect(Self.postgres.leadingKeyword(of: "SELECT 1") == "SELECT")
+        #expect(Self.postgres.leadingKeyword(of: "(a + b)") == "")
+    }
+
+    @Test("Text with no code in it has no leading keyword")
+    func leadingKeywordOfCommentOnlyTextIsNil() {
+        #expect(Self.postgres.leadingKeyword(of: "") == nil)
+        #expect(Self.postgres.leadingKeyword(of: "  \n\t") == nil)
+        #expect(Self.sqlServer.leadingKeyword(of: "-- nothing\n/* at all */") == nil)
+    }
 }

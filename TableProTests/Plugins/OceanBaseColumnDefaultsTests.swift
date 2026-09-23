@@ -81,7 +81,7 @@ struct OceanBaseColumnDefaultsTests {
 
     @Test("Each column's DEFAULT clause is read as written, and a column without one has none")
     func clausesAsWritten() throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.awkwardLiterals))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.awkwardLiterals))
         #expect(clauses["id"] == nil)
         #expect(clauses["gen"] == nil)
         #expect(clauses["q"] == #"'it\'s'"#)
@@ -103,7 +103,7 @@ struct OceanBaseColumnDefaultsTests {
         ("d", "curdate()", "(curdate())")
     ])
     func expressionOrLiteral(column: String, catalogDefault: String, expected: String) throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.expressionAndLiteral))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.expressionAndLiteral))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses[column], catalogDefault: catalogDefault) == .value(expected))
     }
 
@@ -118,7 +118,7 @@ struct OceanBaseColumnDefaultsTests {
         ("nn", "", "''")
     ])
     func literalsAsSQL(column: String, catalogDefault: String, expected: String) throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.awkwardLiterals))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.awkwardLiterals))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses[column], catalogDefault: catalogDefault) == .value(expected))
     }
 
@@ -130,22 +130,22 @@ struct OceanBaseColumnDefaultsTests {
         ("ch", "abc", "'abc'")
     ])
     func escapesDecode(column: String, catalogDefault: String, expected: String) throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.escapes))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.escapes))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses[column], catalogDefault: catalogDefault) == .value(expected))
     }
 
     @Test("A set member printed with a bare quote does not disturb the columns after it")
     func malformedMemberListStaysOnItsLine() throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.escapes))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.escapes))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["ch"], catalogDefault: "abc") == .value("'abc'"))
-        let partitioned = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.partitionedWithEnum))
+        let partitioned = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.partitionedWithEnum))
         #expect(OceanBaseColumnDefaults.resolve(clause: partitioned["note"], catalogDefault: "x") == .value("'x'"))
         #expect(partitioned["p0"] == nil)
     }
 
     @Test("Backtick-escaped table and column names are read")
     func quotedNames() throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.quotedNames))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.quotedNames))
         #expect(clauses["a`b"] == "'1'")
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["c d"], catalogDefault: "x") == .value("'x'"))
     }
@@ -166,9 +166,9 @@ struct OceanBaseColumnDefaultsTests {
     @Test("A view's CREATE statement yields nothing to resolve against")
     func viewIsNotATable() {
         let view = "CREATE VIEW `v` AS select `tp_def2`.`p`.`id` AS `id`,`tp_def2`.`p`.`kind` AS `kind` from `tp_def2`.`p`"
-        #expect(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: view) == nil)
+        #expect(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: view) == nil)
         let definer = "CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW `v` AS select 1 AS `a`"
-        #expect(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: definer) == nil)
+        #expect(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: definer) == nil)
     }
 
     private static let unquotedIdentifiers = #"""
@@ -192,6 +192,20 @@ struct OceanBaseColumnDefaultsTests {
         #expect(OceanBaseColumnDefaults.binaryLiteralDefault("A", dataType: "VARCHAR(4)") == nil)
     }
 
+    @Test("A catalog default with nothing to resolve against reads by OceanBase's rules, then MySQL's")
+    func catalogDefaultWithoutCreateTable() {
+        func read(_ value: String?, _ dataType: String, isNullable: Bool = true, extra: String = "") -> String? {
+            OceanBaseColumnDefaults.columnDefault(value, extra: extra, dataType: dataType, isNullable: isNullable)
+        }
+        #expect(read("CURRENT_TIMESTAMP", "TIMESTAMP(3)") == "CURRENT_TIMESTAMP(3)")
+        #expect(read("ab", "VARBINARY(4)") == "'ab'")
+        #expect(read("abc", "VARCHAR(10)") == "'abc'")
+        #expect(read("5", "INT(11)") == "5")
+        #expect(read(nil, "VARCHAR(10)") == "NULL")
+        #expect(read(nil, "VARCHAR(10)", isNullable: false) == nil)
+        #expect(read(nil, "INT(11)", extra: "auto_increment") == nil)
+    }
+
     @Test("A literal that does not close where the clause ends is not a literal", arguments: [
         #"'abc\'"#, "'(ab", "'a'b'", "'"
     ])
@@ -204,7 +218,7 @@ struct OceanBaseColumnDefaultsTests {
     func bareNameStartingWithDigit() throws {
         let statement = "CREATE TABLE t (\n  id int(11) NOT NULL,\n  1st_id varchar(36) DEFAULT (uuid()),\n"
             + "  `$col` varchar(9) DEFAULT (upper('x')),\n  PRIMARY KEY (id)\n) ORGANIZATION INDEX"
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: statement))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: statement))
         #expect(clauses["1st_id"] == "(uuid())")
         #expect(clauses["$col"] == "(upper('x'))")
     }
@@ -235,7 +249,7 @@ struct OceanBaseColumnDefaultsTests {
 
     @Test("Identifiers in double quotes, as ANSI_QUOTES prints them, are read")
     func ansiQuotedIdentifiersAreRead() throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.ansiQuotedIdentifiers))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.ansiQuotedIdentifiers))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["e"], catalogDefault: "uuid()") == .value("(uuid())"))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["l"], catalogDefault: "it's (x)") == .value("'it''s (x)'"))
         #expect(
@@ -249,7 +263,7 @@ struct OceanBaseColumnDefaultsTests {
 
     @Test("Identifiers printed without backticks, as sql_quote_show_create = 0 leaves them, are read")
     func unquotedIdentifiersAreRead() throws {
-        let clauses = try #require(OceanBaseColumnDefaults.defaultClauses(fromCreateTable: Self.unquotedIdentifiers))
+        let clauses = try #require(MySQLCreateTableScanner.columnDefaultClauses(fromCreateTable: Self.unquotedIdentifiers))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["a"], catalogDefault: "(1 + 2)") == .value("((1 + 2))"))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["c"], catalogDefault: "now()") == .value("(now())"))
         #expect(OceanBaseColumnDefaults.resolve(clause: clauses["g"], catalogDefault: "A") == .value("'A'"))

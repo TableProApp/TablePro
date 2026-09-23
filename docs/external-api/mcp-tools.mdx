@@ -10,7 +10,7 @@ If a dedicated tool covers the job, it beats hand-written SQL. It quotes identif
 In the tables below, required arguments come first and optional ones follow in parentheses. Unless a row says otherwise:
 
 - `connection_id` is a connection UUID from `list_connections`.
-- `database` and `schema` default to whatever the connection is currently browsing. Passing them targets somewhere else **without moving the app's selection**.
+- `database` and `schema` default to whatever the connection is currently browsing, except that `search_schema` without `schema` looks in every schema. Passing them targets somewhere else **without moving the app's selection**.
 - An unknown argument is rejected with `-32602`. There is no silent ignoring.
 - The result comes back twice: as JSON text in `content[0]`, and as a typed object in `structuredContent`. Read `structuredContent`.
 - Timestamps are ISO 8601, error text is redacted, and "a result set" means `columns[]`, `rows[][]`, `row_count`, `rows_affected`, `execution_time_ms`, `is_truncated`, plus `status_message`, `database` and `schema` when they apply.
@@ -67,7 +67,7 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 | `list_tables` | `connection_id` (`database`, `schema`, `include_row_counts`) | `tables[]` (`name`, `type`, `schema`, `comment`, `row_count`), `database`, `schema`, `row_counts_included`, `row_counts_are_approximate` |
 | `describe_table` | `connection_id`, `table` (`database`, `schema`) | `table`, `database`, `schema`, `columns[]`, `indexes[]`, `foreign_keys[]`, `ddl`, `approximate_row_count` |
 | `get_table_ddl` | `connection_id`, `table` (`database`, `schema`) | `table`, `schema`, `ddl` |
-| `search_schema` | `connection_id`, `term` (`limit`, `database`, `schema`) | `term`, `matches[]` (`kind` is `table` or `column`, plus `name`, `table`, `schema`, `object_type`, `data_type`), `is_truncated`. Table matches first |
+| `search_schema` | `connection_id`, `term` (`limit`, `database`, `schema`) | `term`, `database`, `schema`, `matches[]` (`kind` is `table` or `column`, plus `name`, `schema`, `table`, `object_type`, `data_type`), `is_truncated`, `unlisted_schemas[]`, `column_search`, `columns_schema` |
 | `list_indexes` | `connection_id` (`table`, `database`, `schema`) | `database`, `schema`, `tables[]` of `{ table, indexes[] }`. Tables with no index are left out |
 | `list_foreign_keys` | `connection_id` (`table`, `database`, `schema`) | `database`, `schema`, `tables[]` of `{ table, foreign_keys[] }` |
 | `list_triggers` | `connection_id` (`table`, `database`, `schema`) | `triggers[]` (`name`, `table`, `schema`, `timing`, `event`, `orientation`, `statement`, `definition`, `is_enabled`), sorted by table then name, plus `table` when one was named |
@@ -78,11 +78,26 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 | `get_table_statistics` | `connection_id`, `table` (`database`, `schema`) | `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at` |
 | `get_database_statistics` | `connection_id` (`database`) | `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name |
 
-`describe_table` is the one call to make before writing SQL against an unfamiliar table. A column always carries `name`, `data_type`, `is_nullable` and `is_primary_key`, and picks up `is_generated`, `default_value`, `extra`, `comment` and `allowed_values` where the engine reports them; indexes and foreign keys work the same way.
+`describe_table` is the one call to make before writing SQL against an unfamiliar table. A column always carries `name`, `data_type`, `is_nullable` and `is_primary_key`, and picks up `is_generated`, `default_value`, `extra`, `comment` and `allowed_values` where the engine reports them; indexes and foreign keys work the same way. An index always carries `name`, `columns`, `is_unique`, `is_primary`, `is_valid` and `type`. `is_valid` is `false` for a PostgreSQL index whose build did not finish, such as one a failed `CREATE INDEX CONCURRENTLY` left behind: queries skip it and `get_table_ddl` leaves it out.
 
 `include_row_counts` defaults to `false`. Counts come from engine statistics rather than `COUNT(*)`, and are fetched one table at a time, so `list_tables` skips them when the schema holds more than 200 objects.
 
-`search_schema` locates a column without describing every table; its `limit` runs 1 to 500, default 50. `list_routines` takes `kind` as `procedure` or `function`, omitted for both, and its `signature` is the argument list, not the return type. `list_triggers` takes `table` to scope to one table, omitted for every trigger in the schema. `list_types` takes `kind` as `enum`, `composite`, `domain` or `range`, omitted for all four; `labels` is set for an enum, `fields` for a composite and `base_type` for a domain or range, and only PostgreSQL and PGlite answer with rows.
+`list_routines` takes `kind` as `procedure` or `function`, omitted for both, and its `signature` is the argument list, not the return type. `list_triggers` takes `table` to scope to one table, omitted for every trigger in the schema. `list_types` takes `kind` as `enum`, `composite`, `domain` or `range`, omitted for all four; `labels` is set for an enum, `fields` for a composite and `base_type` for a domain or range, and only PostgreSQL and PGlite answer with rows.
+
+### `search_schema`
+
+Leave out `schema` to ask where something lives. Tables, views and other table-like objects are then searched in every schema of the database except the system ones such as `pg_catalog`, and columns in the current schema alone. Name a schema to search only that one, its columns included. On an engine without schemas, such as MySQL or SQLite, the search covers the whole database.
+
+Table matches come first, those in the current schema ahead of the rest, then column matches. Every match carries its `schema`, `null` on an engine without schemas. `limit` runs 1 to 500, default 50, and `is_truncated` is set only when more matches existed than it allowed.
+
+Two fields report what the search could not cover:
+
+| Field | Meaning |
+|-------|---------|
+| `unlisted_schemas` | Schemas whose tables could not be read, usually for lack of privileges. A table in one of them is missing from `matches` |
+| `column_search` | `searched`, with `columns_schema` naming the schema. `limit_reached` when table matches alone filled `limit`. `failed` when the columns could not be read, leaving table matches only |
+
+A lost connection, or a database where no schema could be read, fails the call instead of returning part of an answer.
 
 ## Reading data
 

@@ -199,7 +199,7 @@ struct StructureEditingSupportBooleanParsingTests {
         var definition = EditableIndexDefinition.placeholder()
         definition.name = "idx"
         definition.columns = ["id"]
-        StructureEditingSupport.updateIndex(&definition, at: 3, with: token)
+        StructureEditingSupport.updateIndex(&definition, at: 3, with: token, keys: .testing(.postgresql))
         #expect(definition.isUnique)
     }
 }

@@ -55,6 +55,21 @@ struct ShortcutActionDefaultsTests {
     }
 }
 
+@Suite("Editor built-in shortcut names")
+struct EditorBuiltInNameTests {
+    @Test("Command-[ is Outdent and Command-] is Indent")
+    func bracketsAreNamedAsTheEditorMapsThem() {
+        #expect(
+            ShortcutAction.reservedConflict(for: .character("[", command: true), context: .editor)
+                == String(localized: "Outdent")
+        )
+        #expect(
+            ShortcutAction.reservedConflict(for: .character("]", command: true), context: .editor)
+                == String(localized: "Indent")
+        )
+    }
+}
+
 @Suite("Default shortcut hygiene")
 struct DefaultShortcutHygieneTests {
     /// Control-Tab is not a system hotkey the way Control-1 is (that one switches Spaces, which is

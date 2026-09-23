@@ -234,6 +234,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
     }
 
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
+        guard let pluginTables = try await pluginDriver.fetchTablesInAllSchemas() else { return nil }
+        return pluginTables.map { mapPluginTable($0, schemaFallback: nil) }
+    }
+
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         let partitions = try await pluginDriver.fetchPartitionDetails(table: table, schema: resolvedSchema)
@@ -899,7 +904,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     // MARK: - Result Mapping
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
-        let columnTypes = mapColumnTypes(rawTypeNames: pluginResult.columnTypeNames)
+        let columnTypes = mapColumnTypes(
+            rawTypeNames: pluginResult.columnTypeNames,
+            classificationHints: PluginResultColumnHints.hints(
+                from: pluginResult.columnMeta,
+                columnCount: pluginResult.columns.count
+            )
+        )
         var result = QueryResult(
             columns: pluginResult.columns,
             columnTypes: columnTypes,
@@ -917,15 +928,21 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return result
     }
 
-    private func mapColumnTypes(rawTypeNames: [String]) -> [ColumnType] {
+    private func mapColumnTypes(rawTypeNames: [String], classificationHints: [String?]) -> [ColumnType] {
         state.withLock { state in
-            rawTypeNames.map { rawTypeName in
-                if let cached = state.columnTypeCache[rawTypeName] { return cached }
-                let mapped = classifier.classify(rawTypeName: rawTypeName)
-                state.columnTypeCache[rawTypeName] = mapped
-                return mapped
+            rawTypeNames.enumerated().map { index, rawTypeName in
+                let hint = index < classificationHints.count ? classificationHints[index] : nil
+                guard let hint else { return classified(rawTypeName, cache: &state.columnTypeCache) }
+                return classified(hint, cache: &state.columnTypeCache).declared(as: rawTypeName)
             }
         }
+    }
+
+    private func classified(_ typeName: String, cache: inout [String: ColumnType]) -> ColumnType {
+        if let cached = cache[typeName] { return cached }
+        let mapped = classifier.classify(rawTypeName: typeName)
+        cache[typeName] = mapped
+        return mapped
     }
 }
 

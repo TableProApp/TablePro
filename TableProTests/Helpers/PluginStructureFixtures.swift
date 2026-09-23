@@ -17,9 +17,9 @@ enum PluginStructureFixtures {
     ]
 
     static let indexes: [PluginIndexInfo] = [
-        index("a", unique: true, primary: false, prefix: 1),
-        index("b", unique: false, primary: true, prefix: 2),
-        index("c", unique: false, primary: false, prefix: 3)
+        index("a", unique: true, primary: false, valid: true, prefix: 1),
+        index("b", unique: false, primary: true, valid: true, prefix: 2),
+        index("c", unique: false, primary: false, valid: false, prefix: 3)
     ]
 
     static let foreignKeys: [PluginForeignKeyInfo] = ["a", "b", "c"].map(foreignKey)
@@ -67,7 +67,13 @@ enum PluginStructureFixtures {
         )
     }
 
-    private static func index(_ suffix: String, unique: Bool, primary: Bool, prefix: Int) -> PluginIndexInfo {
+    private static func index(
+        _ suffix: String,
+        unique: Bool,
+        primary: Bool,
+        valid: Bool,
+        prefix: Int
+    ) -> PluginIndexInfo {
         PluginIndexInfo(
             name: "name-\(suffix)",
             columns: ["columns-\(suffix)"],
@@ -79,7 +85,8 @@ enum PluginStructureFixtures {
             expressions: ["expressions-\(suffix)"],
             includedColumns: ["includedColumns-\(suffix)"],
             ddlMethodAndKeys: "ddlMethodAndKeys-\(suffix)",
-            ddlWhereClause: "ddlWhereClause-\(suffix)"
+            ddlWhereClause: "ddlWhereClause-\(suffix)",
+            isValid: valid
         )
     }
 

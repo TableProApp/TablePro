@@ -113,6 +113,16 @@ struct PartitionCountRefreshTests {
         #expect(!DatabaseTreeMetadataService.partitionCountsChanged(from: before, to: after))
     }
 
+    @Test("Two tables whose names differ only in where a period sits keep their own counts")
+    func dottedNamesKeepTheirOwnCounts() {
+        let tables = [
+            TableInfo(name: "c", type: .table, rowCount: nil, schema: "a.b", partitionCount: 1),
+            TableInfo(name: "b.c", type: .table, rowCount: nil, schema: "a", partitionCount: 2)
+        ]
+
+        #expect(!DatabaseTreeMetadataService.partitionCountsChanged(from: .loaded(tables), to: .loaded(tables)))
+    }
+
     @Test("A first load is a change, and a failed refresh is not")
     func absentAndFailedStates() {
         let loaded: MetadataLoadState<[TableInfo]> = .loaded([table("events", partitionCount: 1)])

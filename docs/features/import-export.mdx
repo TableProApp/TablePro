@@ -124,7 +124,7 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
 
     Structure (CREATE TABLE), Drop (DROP TABLE IF EXISTS), and Data (INSERT statements) are per-table checkboxes, and a multi-table export can mix them.
 
-    Structure carries the table's indexes. They are written after the rows, next to the deferred foreign keys, which is where `pg_dump` and `sqlite3 .dump` put them: a bulk load into an indexed table pays to maintain an index the restore is about to build anyway. On MySQL, MariaDB, ClickHouse, Trino and CockroachDB the server writes them inside `CREATE TABLE`, so they arrive with the table instead. A materialized view's indexes follow the view.
+    Structure carries the table's indexes. They are written after the rows and before the deferred foreign keys, the order `pg_dump` uses, so the rows load without index upkeep and a foreign key that references a unique index finds it in place. On MySQL, MariaDB, ClickHouse, Trino and CockroachDB the server writes them inside `CREATE TABLE`, so they arrive with the table instead. A materialized view's indexes follow the view. An invalid PostgreSQL index, which a failed `CREATE INDEX CONCURRENTLY` leaves behind, is left out, as `pg_dump` leaves it out.
 
     On PostgreSQL, Structure carries comments as well. Each table, view and materialized view gets its own `COMMENT ON` and one `COMMENT ON COLUMN` per commented column, directly after its `CREATE`. A foreign table is the exception: its comments are dropped, because the dump writes `CREATE TABLE` for it and PostgreSQL then refuses `COMMENT ON FOREIGN TABLE`. Where the server's own `CREATE TABLE` already carries the comment, MySQL and MariaDB among them, it arrives with the table instead.
 

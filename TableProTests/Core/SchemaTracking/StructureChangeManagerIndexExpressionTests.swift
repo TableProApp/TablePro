@@ -46,6 +46,10 @@ struct StructureChangeManagerIndexExpressionTests {
         return new
     }
 
+    private func keys(_ manager: StructureChangeManager) -> IndexKeyContext {
+        .testing(.postgresql, columns: manager.workingColumns.map(\.name))
+    }
+
     @Test("Renaming an expression index raises no missing-column error and recreates it from its spelling")
     func renameKeepsTheExpression() throws {
         let manager = loadedManager()
@@ -64,16 +68,49 @@ struct StructureChangeManagerIndexExpressionTests {
     func reenteredColumnsKeepTheExpression() throws {
         let manager = loadedManager()
         var edited = manager.workingIndexes[0]
-        StructureEditingSupport.updateIndex(&edited, at: 1, with: "tenant_id, lower(email)")
+        StructureEditingSupport.updateIndex(&edited, at: 1, with: "tenant_id, lower(email)", keys: keys(manager))
         #expect(edited == manager.workingIndexes[0])
 
-        StructureEditingSupport.updateIndex(&edited, at: 1, with: "lower(email), tenant_id")
+        StructureEditingSupport.updateIndex(&edited, at: 1, with: "lower(email), tenant_id", keys: keys(manager))
         manager.updateIndex(id: edited.id, with: edited)
         #expect(manager.validationErrors.isEmpty)
         let new = try #require(stagedIndex(manager))
         #expect(new.ddlMethodAndKeys == nil)
         let sql = PostgreSQLIndexClauses.createStatement(for: new.toPlugin(), qualifiedTable: #""public"."users""#)
         #expect(sql == #"CREATE UNIQUE INDEX "users_tenant_lower_email" ON "public"."users" USING btree ((lower(email)), "tenant_id") INCLUDE ("name")"#)
+    }
+
+    @Test("A new index typed with an expression validates and writes the expression in parentheses")
+    func typedExpressionOnANewIndex() throws {
+        let manager = loadedManager()
+        manager.addNewIndex()
+        var added = try #require(manager.workingIndexes.last)
+        StructureEditingSupport.updateIndex(&added, at: 0, with: "ix", keys: keys(manager))
+        StructureEditingSupport.updateIndex(&added, at: 1, with: "tenant_id, lower(email)", keys: keys(manager))
+        manager.updateIndex(id: added.id, with: added)
+
+        #expect(manager.validationErrors.isEmpty)
+        #expect(manager.canCommit)
+        guard case .addIndex(let staged)? = manager.getChangesArray().last else {
+            Issue.record("Expected a staged index add")
+            return
+        }
+        let sql = PostgreSQLIndexClauses.createStatement(for: staged.toPlugin(), qualifiedTable: #""public"."users""#)
+        #expect(sql == #"CREATE INDEX "ix" ON "public"."users" USING btree ("tenant_id", (lower(email)))"#)
+    }
+
+    @Test("An expression typed with a sort order is refused before anything runs")
+    func typedSortOrderIsRefused() throws {
+        let manager = loadedManager()
+        manager.addNewIndex()
+        var added = try #require(manager.workingIndexes.last)
+        StructureEditingSupport.updateIndex(&added, at: 0, with: "ix", keys: keys(manager))
+        StructureEditingSupport.updateIndex(&added, at: 1, with: "lower(email) DESC", keys: keys(manager))
+        manager.updateIndex(id: added.id, with: added)
+
+        #expect(manager.validationErrors[.index(added.id)]
+            == "Index references a column that does not exist: lower(email) DESC")
+        #expect(!manager.canCommit)
     }
 
     @Test("An INCLUDE column the table does not have is reported")

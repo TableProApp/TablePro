@@ -10,9 +10,9 @@ nonisolated internal enum MariaDBCharacterSet {
         if mysql_set_character_set(mysql, MySQLConnectionEncoding.sessionCharacterSetName) != 0 {
             let refusal = errorSummary(of: mysql, encoding: encoding)
             if run(MySQLConnectionEncoding.sessionFallbackStatement, on: mysql) {
-                logger.notice("Server refused utf8mb4 (\(refusal, privacy: .public)), so the session uses utf8")
+                logger.notice("Server refused utf8mb4 (\(refusal, privacy: .private)), so the session uses utf8")
             } else {
-                logger.warning("Server refused a UTF-8 session (\(refusal, privacy: .public)); keeping its own")
+                logger.warning("Server refused a UTF-8 session (\(refusal, privacy: .private)); keeping its own")
             }
         }
         for statement in encoding.sessionStatements where !run(statement, on: mysql) {

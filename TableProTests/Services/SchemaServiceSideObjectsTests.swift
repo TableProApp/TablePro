@@ -106,6 +106,10 @@ struct SchemaServiceSideObjectsTests {
         return (connectionId, connection, SideObjectsMockDriver(connection: connection))
     }
 
+    private func unnamedDatabase(_ connectionId: UUID) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     private func procedure(_ name: String, schema: String = "public") -> RoutineInfo {
         RoutineInfo(name: name, kind: .procedure, schema: schema)
     }
@@ -248,7 +252,7 @@ struct SchemaServiceSideObjectsTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "hr").isEmpty)
         #expect(service.routines(for: connectionId, schema: "hr").map(\.name) == ["raise_salary"])
@@ -267,7 +271,7 @@ struct SchemaServiceSideObjectsTests {
         driver.routinesError = boom
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "hr").map(\.name) == ["pay"])
         #expect(service.routinesLoadState(for: connectionId, schema: "hr") == .failed("boom"))
@@ -281,7 +285,7 @@ struct SchemaServiceSideObjectsTests {
         driver.routinesError = boom
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(service.hasLoadedContent(for: connectionId, schema: "hr"))
         #expect(!service.isSchemaSettled(for: connectionId, schema: "hr"))
@@ -292,10 +296,10 @@ struct SchemaServiceSideObjectsTests {
         let (connectionId, _, driver) = makeDriver()
         driver.routinesBySchema["hr"] = [procedure("raise_salary", schema: "hr")]
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         driver.routinesError = boom
-        await service.reloadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.reloadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         #expect(service.routines(for: connectionId, schema: "hr").map(\.name) == ["raise_salary"])
     }
@@ -305,7 +309,7 @@ struct SchemaServiceSideObjectsTests {
         let (connectionId, _, driver) = makeDriver()
         driver.routinesBySchema["hr"] = [procedure("raise_salary", schema: "hr")]
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         await service.invalidate(connectionId: connectionId)
 

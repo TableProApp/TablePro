@@ -57,7 +57,7 @@ struct TableStructureView: View {
     /// The real `TableInfo.TableType`, read from the session rather than passed in beside it, so the
     /// grid delegate the session owns and the footer this view publishes can never disagree about
     /// what they are looking at. It used to be an `isView` Bool derived from `allowsRowEditing`,
-    /// which is true for a materialized view, so a matview reached here as a table and was offered
+    /// which was true for a materialized view, so a matview reached here as a table and was offered
     /// `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits the server always refuses.
     /// (#2726)
     var objectKind: TableInfo.TableType { session.objectKind }
@@ -359,10 +359,15 @@ struct TableStructureView: View {
         case .columns:
             structureGrid
         case .indexes:
-            if shouldShowIndexesEmptyState {
-                EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
-            } else {
-                structureGrid
+            Group {
+                if shouldShowIndexesEmptyState {
+                    EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+                } else {
+                    structureGrid
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                indexesTabNotes
             }
         case .foreignKeys:
             if shouldShowForeignKeysEmptyState {
@@ -383,6 +388,7 @@ struct TableStructureView: View {
                 connection: connection,
                 tableName: tableName,
                 isLoading: !tabData.hasData(.triggers),
+                canEdit: editGate.allowsTriggerEditing,
                 onOpenInEditor: openTriggerInEditor
             )
         case .ddl:
@@ -394,6 +400,26 @@ struct TableStructureView: View {
                 connection: connection,
                 reloadToken: partsReloadToken
             )
+        }
+    }
+
+    private var indexesTabNotes: some View {
+        VStack(spacing: 0) {
+            if let note = InvalidIndexNote(indexes: indexes) {
+                StructureTabNoteView(
+                    systemImage: note.systemImage,
+                    text: note.text,
+                    identifier: "structure-invalid-index-note"
+                )
+            }
+            if objectKind == .materializedView,
+               let note = MaterializedViewConcurrentRefreshNote(state: session.concurrentRefresh) {
+                StructureTabNoteView(
+                    systemImage: note.systemImage,
+                    text: note.text,
+                    identifier: "structure-concurrent-refresh-note"
+                )
+            }
         }
     }
 
@@ -492,7 +518,7 @@ struct TableStructureView: View {
                 databaseName: databaseName,
                 schemaName: schemaName,
                 tabType: .table,
-                lockedColumns: lockedStructureColumns,
+                lockedColumns: lockedStructureColumns(for: provider),
                 editRefusalMessage: structureEditRefusal
             ),
             delegate: gridDelegate,

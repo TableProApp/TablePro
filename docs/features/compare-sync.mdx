@@ -36,7 +36,8 @@ Nothing is written until **Apply**. Until then the strip along the top reads **C
 | Kind | Compared as |
 |---|---|
 | Tables | Parsed columns, indexes, foreign keys, storage engine and collation |
-| Views, materialized views | Normalized definition text |
+| Views | Normalized definition text |
+| Materialized views | Normalized definition text, plus parsed indexes on PostgreSQL and PGlite |
 | Procedures, functions | Normalized definition text, matched on name and argument list |
 | Triggers | Normalized definition text, per table |
 
@@ -65,9 +66,13 @@ Each object lands in one of four states: **only in source**, **only in target**,
 
 Every row carries an **Include** checkbox, and a group header carries one for everything under it. **Select > All** covers everything the pane is currently showing, so the search field and **Show Identical Objects** narrow what it reaches. Nothing is included until it is checked.
 
-An object whose metadata could not be read keeps its own **Could Not Compare** section with the driver's reason. One unreadable object never stops the rest of the comparison.
+An object that could not be read keeps its own **Could Not Compare** section with the reason, and no script touches it. A view, procedure, function or trigger lands there when the server refuses its definition, returns an empty one, or returns a body rather than a `CREATE` statement. On MySQL, an account without the `SHOW VIEW` privilege lists every view and is refused each definition. One unreadable object never stops the rest of the comparison.
 
-The detail pane on the right has three tabs. **Definitions** shows the source and target side by side, split or unified, rendered from the same function so a formatting difference cannot appear as a real one. **Rows** is the data comparison. **Script** is the generated SQL.
+A procedure, function or trigger list that cannot be read stops the comparison and names the connection. To compare everything else, deselect that kind under **Objects to Compare** in **Options**.
+
+On MySQL a list that is short is not an error. An account without `EXECUTE` lists no procedures or functions, and one without `TRIGGER` lists no triggers, so the other side's copies show as only on that side. Compare from accounts that hold both privileges.
+
+The detail pane on the right has three tabs. **Definitions** shows the source and target side by side, split or unified, rendered from the same function so a formatting difference cannot appear as a real one. A PostgreSQL or PGlite materialized view shows its indexes under its definition, and one whose text matches but whose indexes differ is listed as **different**. **Rows** is the data comparison. **Script** is the generated SQL.
 
 ## Comparing rows
 
@@ -120,6 +125,8 @@ A data comparison needs both sides open at once. On an engine that pools connect
 Statements are ordered by foreign key dependency, not alphabetically. Tables are created parent-first and dropped child-first; row inserts run parent-first and row deletes child-first.
 
 A view, routine or trigger that differs is dropped and created again. On Oracle it is replaced by its own `CREATE OR REPLACE` instead, with no `DROP` first, so a definition the server refuses leaves the target's object in place.
+
+A PostgreSQL or PGlite materialized view whose definition matches and whose indexes differ keeps its rows: only its indexes are dropped and created. One whose definition differs is dropped, created again and computed again, then given the source's indexes. Its comments and privileges are not recreated. A change that leaves it with no unique index `REFRESH MATERIALIZED VIEW CONCURRENTLY` can use is listed among the warnings. The script stops at a materialized view whose indexes would be written into a schema other than the one its definition names: exclude it, or compare two schemas with the same name.
 
 A saved script is written for the target engine's own client, so each statement ends the way that client reads it:
 

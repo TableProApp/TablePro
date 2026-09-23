@@ -10,6 +10,7 @@ import os
 import TableProPluginKit
 
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
+private let exactCountLog = Logger(subsystem: "com.TablePro", category: "ExactRowCount")
 
 @MainActor
 final class PaginationCoordinator: ObservableObject {
@@ -189,7 +190,7 @@ final class PaginationCoordinator: ObservableObject {
         let token = UUID()
         parent.claimExactCount(for: tabId, token: token)
         let task = Task(priority: .userInitiated) { [parent] in
-            let count = await Self.exactRowCount(
+            let outcome = await Self.exactRowCount(
                 scope: scope,
                 tableName: tableName,
                 filters: filters,
@@ -210,25 +211,50 @@ final class PaginationCoordinator: ObservableObject {
                 if ownsIndicator {
                     tab.pagination.isCountingExact = false
                 }
-                guard isCurrent, let count, count >= 0 else { return }
-                tab.pagination.totalRowCount = count
-                tab.pagination.isApproximateRowCount = false
+                guard isCurrent else { return }
+                Self.applyExactCount(outcome, to: &tab)
             }
         }
         parent.setRowCountTask(task, token: token, for: tabId)
     }
 
+    static func applyExactCount(_ outcome: Result<Int?, Error>, to tab: inout QueryTab) {
+        switch outcome {
+        case .success(let count):
+            if let shown = tab.pagination.exactCountError, tab.execution.errorMessage == shown {
+                tab.execution.errorMessage = nil
+            }
+            tab.pagination.exactCountError = nil
+            guard let count, count >= 0 else { return }
+            tab.pagination.totalRowCount = count
+            tab.pagination.isApproximateRowCount = false
+        case .failure(let error):
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return }
+            let message = DatabaseWriteRejectionDiagnosis.formatted(error)
+            tab.execution.errorMessage = message
+            tab.pagination.exactCountError = message
+        }
+    }
+
+    /// The user asked for this count, so a failure is shown on the tab rather than dropped: an engine whose count
+    /// only its driver can run, such as a throttled DynamoDB scan, has no other answer to fall back on.
     private static func exactRowCount(
         scope: DatabaseScope,
         tableName: String,
         filters: [TableFilter],
         logicMode: FilterLogicMode,
         countSQL: String?
-    ) async -> Int? {
-        try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-            try await ExactRowCounter.count(
-                on: driver, table: tableName, filters: filters, logicMode: logicMode, countSQL: countSQL
-            )
+    ) async -> Result<Int?, Error> {
+        do {
+            let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                try await ExactRowCounter.count(
+                    on: driver, table: tableName, filters: filters, logicMode: logicMode, countSQL: countSQL
+                )
+            }
+            return .success(count)
+        } catch {
+            exactCountLog.warning("Exact row count failed: \(error.publicLogShape, privacy: .public)")
+            return .failure(error)
         }
     }
 

@@ -481,6 +481,16 @@ extension PluginManager {
         PaginationCapability.of(databaseType)
     }
 
+    func exactRowCountIsBilledScan(for databaseType: DatabaseType) -> Bool {
+        databaseType.exactRowCountIsBilledScan
+    }
+
+    /// An engine that cannot skip rows has no pages for a total to bound, and one whose count is a billed scan
+    /// would charge for every table it opens, so neither is counted until the user asks.
+    func countsRowsAutomatically(for databaseType: DatabaseType) -> Bool {
+        paginationCapability(for: databaseType).allowsSeeking && !exactRowCountIsBilledScan(for: databaseType)
+    }
+
     func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.isEngineReadOnly ?? false

@@ -112,10 +112,7 @@ enum DatabaseError: Error, LocalizedError {
 /// Information about a database table
 struct TableInfo: Identifiable, Hashable, Sendable {
     var id: String {
-        if let schema, !schema.isEmpty {
-            return "\(schema).\(name)_\(type.rawValue)"
-        }
-        return "\(name)_\(type.rawValue)"
+        "\(IdentityPath.qualified(name: name, schema: schema))_\(type.rawValue)"
     }
     let name: String
     let type: TableType
@@ -170,9 +167,9 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         /// that the server always refuses.
         var allowsRowEditing: Bool {
             switch self {
-            case .view, .externalTable, .sequence:
+            case .view, .materializedView, .externalTable, .sequence:
                 return false
-            case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
+            case .table, .foreignTable, .systemTable, .partitionedTable:
                 return true
             }
         }
@@ -351,6 +348,7 @@ struct IndexInfo: Identifiable, Hashable {
     /// `PluginIndexInfo.ddlMethodAndKeys` says why they differ from the fields.
     let ddlMethodAndKeys: String?
     let ddlWhereClause: String?
+    let isValid: Bool
 
     init(
         name: String,
@@ -363,7 +361,8 @@ struct IndexInfo: Identifiable, Hashable {
         expressions: [String]? = nil,
         includedColumns: [String]? = nil,
         ddlMethodAndKeys: String? = nil,
-        ddlWhereClause: String? = nil
+        ddlWhereClause: String? = nil,
+        isValid: Bool = true
     ) {
         self.name = name
         self.columns = columns
@@ -376,6 +375,7 @@ struct IndexInfo: Identifiable, Hashable {
         self.includedColumns = includedColumns
         self.ddlMethodAndKeys = ddlMethodAndKeys
         self.ddlWhereClause = ddlWhereClause
+        self.isValid = isValid
     }
 }
 
@@ -433,7 +433,10 @@ struct TriggerInfo: Identifiable, Hashable {
     let attributes: [ObjectAttribute]
 
     var id: String {
-        [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ".")
+        IdentityPath.joined(
+            [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil },
+            separator: "."
+        )
     }
 
     init(

@@ -73,7 +73,7 @@ internal struct MaterializedViewRefreshPrompt: Equatable {
         case .requiresUniqueIndex:
             return String(localized: "Needs a valid unique index on the view's columns, with no WHERE clause and no expressions.")
         case .requiresPopulatedView:
-            return String(localized: "Available once the view holds rows. Refresh it once without this option first.")
+            return String(localized: "Available once the view is populated. Refresh it once without this option first.")
         case .none:
             return ""
         @unknown default:

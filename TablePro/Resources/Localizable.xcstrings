@@ -35,6 +35,9 @@
         }
       }
     },
+    "%1$@ could not be read again before generating the script. %2$@" : {
+
+    },
     "A sequence" : {
       "localizations" : {
         "ko" : {
@@ -1063,6 +1066,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%@」已在磁碟上被修改。"
+          }
+        }
+      }
+    },
+    "\"%@\" was deleted or moved." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목이 삭제되었거나 이동되었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" silindi veya taşındı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" đã bị xoá hoặc di chuyển."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\"已被删除或移动。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」已被刪除或移動。"
+          }
+        }
+      }
+    },
+    "Couldn't Move File to Trash" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일을 휴지통으로 이동할 수 없음"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dosya Çöp Kutusu'na Taşınamadı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể chuyển tệp vào Thùng rác"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将文件移到废纸篓"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將檔案移到垃圾桶"
           }
         }
       }
@@ -6285,6 +6356,27 @@
           }
         }
       }
+    },
+    "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
+
+    },
+    "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
+
+    },
+    "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
+
+    },
+    "%@ cannot index an expression. Index a generated column instead." : {
+
+    },
+    "%@ does not allow NULL, so its default cannot be NULL" : {
+
+    },
+    "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
+
+    },
+    "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it." : {
+
     },
     "%d added" : {
       "localizations" : {
@@ -23483,7 +23575,7 @@
         }
       }
     },
-    "Available once the view holds rows. Refresh it once without this option first." : {
+    "Available once the view is populated. Refresh it once without this option first." : {
 
     },
     "Average" : {
@@ -37117,6 +37209,15 @@
           }
         }
       }
+    },
+    "Concurrent refresh" : {
+
+    },
+    "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+
+    },
+    "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
+
     },
     "Condition" : {
       "localizations" : {
@@ -56172,39 +56273,11 @@
         }
       }
     },
-    "Dropping materialized view %@ discards its stored rows, which have to be rebuilt." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "구체화 뷰 %@을(를) 삭제하면 저장된 행이 버려지며, 다시 만들어야 합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ materyalize görünümünü silmek saklanan satırlarını atar; bunların yeniden oluşturulması gerekir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa materialized view %@ sẽ bỏ các dòng đã lưu của nó, và chúng phải được dựng lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除物化视图 %@ 会丢弃其存储的行，这些行必须重建。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刪除具體化檢視表 %@ 會捨棄其儲存的列，這些列必須重建。"
-          }
-        }
-      }
+    "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges." : {
+
+    },
+    "Dropping materialized view %@ discards its stored rows, comments and privileges. The rows are computed again and the source's indexes are created on it." : {
+
     },
     "Dropping table %@ permanently removes the table and all of its rows." : {
       "localizations" : {
@@ -62483,6 +62556,9 @@
           }
         }
       }
+    },
+    "False for an index the engine reports as invalid, which queries skip and exports leave out" : {
+
     },
     "expand" : {
       "extractionState" : "stale",
@@ -74785,6 +74861,12 @@
         }
       }
     },
+    "Indexing an expression needs MySQL 8.0.13 or later." : {
+
+    },
+    "Its indexes are left out, because the target is not known to take indexes on this kind of object." : {
+
+    },
     "history entries" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75239,6 +75321,9 @@
         }
       }
     },
+    "Invalid indexes are not recreated: %@." : {
+
+    },
     "hostname:%lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75546,6 +75631,9 @@
           }
         }
       }
+    },
+    "Its indexes are left out, because the target's index statements would name a different schema than its definition." : {
+
     },
     "hyphen" : {
       "extractionState" : "manual",
@@ -81441,6 +81529,9 @@
           }
         }
       }
+    },
+    "Its indexes could not be read: %@" : {
+
     },
     "is empty" : {
       "localizations" : {
@@ -106219,6 +106310,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在磁碟上"
+          }
+        }
+      }
+    },
+    "Too many lines differ to compare line by line." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "달라진 줄이 너무 많아 줄 단위로 비교할 수 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satır satır karşılaştırmak için çok fazla satır farklı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có quá nhiều dòng khác nhau để so sánh từng dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，无法逐行比较。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不同的行太多，無法逐行比較。"
           }
         }
       }
@@ -150479,6 +150604,21 @@
         }
       }
     },
+    "The procedures and functions in %1$@ could not be listed: %2$@" : {
+
+    },
+    "The source returned a body rather than a statement that recreates it." : {
+
+    },
+    "The source returned an empty definition." : {
+
+    },
+    "The target returned a body rather than a statement that recreates it." : {
+
+    },
+    "The target's definition could not be read: %@" : {
+
+    },
     "switch %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -154014,6 +154154,9 @@
       }
     },
     "Table Type" : {
+
+    },
+    "The source's definition could not be read: %@" : {
 
     },
     "table_name" : {
@@ -158453,40 +158596,6 @@
         }
       }
     },
-    "The driver did not return this object's definition, so only its name was compared." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "드라이버가 이 객체의 정의를 반환하지 않아 이름만 비교했습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sürücü bu nesnenin tanımını döndürmedi, bu yüzden yalnızca adı karşılaştırıldı."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Driver không trả về định nghĩa của đối tượng này, nên chỉ tên của nó được so sánh."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "驱动未返回此对象的定义，因此只比较了它的名称。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "驅動程式未傳回此物件的定義，因此只比較了它的名稱。"
-          }
-        }
-      }
-    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
 
     },
@@ -161453,6 +161562,9 @@
     "The batch is committing and cannot be stopped." : {
 
     },
+    "The source's indexes could not be read: %@" : {
+
+    },
     "The statement before it stays applied." : {
 
     },
@@ -161982,6 +162094,12 @@
     "The target keeps what it has and the object is left out." : {
 
     },
+    "The target returned an empty definition." : {
+
+    },
+    "The target's indexes could not be read: %@" : {
+
+    },
     "The target's object is dropped and built again from the source." : {
 
     },
@@ -162225,6 +162343,9 @@
           }
         }
       }
+    },
+    "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
+
     },
     "the tunnel command" : {
 
@@ -163024,6 +163145,9 @@
       }
     },
     "This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them." : {
+
+    },
+    "This column does not allow NULL, so its default cannot be NULL." : {
 
     },
     "This column holds %@, which the map cannot draw." : {
@@ -167913,6 +168037,9 @@
         }
       }
     },
+    "This view can be refreshed concurrently." : {
+
+    },
     "to view data" : {
       "localizations" : {
         "ko" : {
@@ -168992,6 +169119,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "待處理的配對碼過多。請稍後再試。"
+          }
+        }
+      }
+    },
+    "Saved queries are limited to %@ so they fit in iCloud. Save a query this large as a .sql file instead." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 쿼리는 iCloud에 맞도록 %@(으)로 제한됩니다. 이렇게 큰 쿼리는 .sql 파일로 저장하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı sorgular iCloud'a sığması için %@ ile sınırlıdır. Bu kadar büyük bir sorguyu .sql dosyası olarak kaydedin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đã lưu bị giới hạn ở %@ để vừa với iCloud. Hãy lưu truy vấn lớn như thế này thành tệp .sql."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为适配 iCloud，已保存的查询最大为 %@。请将这么大的查询另存为 .sql 文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為配合 iCloud，已儲存的查詢最大為 %@。請將這麼大的查詢另存為 .sql 檔案。"
           }
         }
       }
@@ -183057,6 +183218,473 @@
     },
     "This connection loads SQLite extensions, and their functions can read and write files. A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead." : {
 
+    },
+    "Query on the table" : {
+
+    },
+    "Query on index %@" : {
+
+    },
+    "Scan with filters" : {
+
+    },
+    "Scan" : {
+
+    },
+    "Get by key" : {
+
+    },
+    "No read needed" : {
+
+    },
+    "An attribute value must name exactly one type" : {
+
+    },
+    "Unknown attribute type \"%@\"" : {
+
+    },
+    "A %@ attribute has a payload of the wrong shape" : {
+
+    },
+    "A set member must be a string" : {
+
+    },
+    "A binary value is not valid base64" : {
+
+    },
+    "An item must be a JSON object" : {
+
+    },
+    "Browse needs a TableName" : {
+
+    },
+    "Each Browse filter needs an Attribute and an Operator" : {
+
+    },
+    "\"%@\" is not a DynamoDB number" : {
+
+    },
+    "\"%@\" is not true or false" : {
+
+    },
+    "A Binary value must be base64" : {
+
+    },
+    "A %@ value must be JSON: %@" : {
+
+    },
+    "A set can't be empty. Clear the cell to remove it." : {
+
+    },
+    "A set can't contain the same value twice" : {
+
+    },
+    "The endpoint did not answer over HTTP" : {
+
+    },
+    "The endpoint answered with a redirect, which DynamoDB never sends. Check the Custom Endpoint." : {
+
+    },
+    "\"%@\" is not an AWS region" : {
+
+    },
+    "\"%@\" is not a URL. Enter an endpoint such as http://localhost:8000." : {
+
+    },
+    "The endpoint must start with https:// or http://" : {
+
+    },
+    "Plain HTTP is only allowed for an endpoint on this Mac (localhost). Use https:// for any other host." : {
+
+    },
+    "Stopped after %d seconds, the query timeout" : {
+
+    },
+    "The item %@ changed after it was loaded. Refresh the table and edit it again." : {
+
+    },
+    "The item %@ no longer exists." : {
+
+    },
+    "%1$d of %2$d were applied." : {
+
+    },
+    "HTTP %d with a body of %d bytes" : {
+
+    },
+    "DynamoDB error: [%1$@] %2$@" : {
+
+    },
+    "Action %1$d: %2$@%3$@" : {
+
+    },
+    "Raw filters aren't available for DynamoDB. Write the condition in PartiQL in the editor." : {
+
+    },
+    "Not valid JSON at character %d" : {
+
+    },
+    "The key \"%@\" appears twice in one JSON object" : {
+
+    },
+    "The JSON is nested more deeply than DynamoDB allows" : {
+
+    },
+    "Unexpected text after the JSON at character %d" : {
+
+    },
+    "Access Key + Secret Key" : {
+
+    },
+    "AWS SSO" : {
+
+    },
+    "DynamoDB Local (no credentials)" : {
+
+    },
+    "The profile's region, or us-east-1" : {
+
+    },
+    "Optional, such as http://localhost:8000" : {
+
+    },
+    "The request must be a JSON object" : {
+
+    },
+    "The transaction was applied" : {
+
+    },
+    "More tables follow. Pass LastEvaluatedTableName as ExclusiveStartTableName." : {
+
+    },
+    "%@ succeeded" : {
+
+    },
+    "%1$@ accepted. Table status: %2$@" : {
+
+    },
+    "%d requests were not processed after 10 attempts" : {
+
+    },
+    "%d requests applied" : {
+
+    },
+    "Statement %1$d: %2$@ %3$@" : {
+
+    },
+    "%d statements applied" : {
+
+    },
+    "No item read so far holds \"%@\" as a key type. Create this index from the editor with its AttributeDefinitions." : {
+
+    },
+    "Time to Live is not on for this table" : {
+
+    },
+    "Parameters apply only to PartiQL statements" : {
+
+    },
+    "DynamoDB is still creating this table. Refresh in a moment." : {
+
+    },
+    "In DynamoDB order: sorting by %@ needs the whole result, or a Query on that sort key" : {
+
+    },
+    "The request needs a TableName" : {
+
+    },
+    "This SELECT reads the whole table" : {
+
+    },
+    "Could not create a temporary file for the export" : {
+
+    },
+    "DynamoDB left some keys unread after 10 attempts" : {
+
+    },
+    "%@ returned" : {
+
+    },
+    "%@ read" : {
+
+    },
+    "%@ RCU" : {
+
+    },
+    "Partition key" : {
+
+    },
+    "Sort key" : {
+
+    },
+    "Key of %@" : {
+
+    },
+    "DynamoDB indexes are never unique" : {
+
+    },
+    "A global secondary index takes a partition key and an optional sort key" : {
+
+    },
+    "A DynamoDB table declares only its keys. Add the attribute by writing it to an item." : {
+
+    },
+    "A DynamoDB index can't be changed. Delete it and save, then add the new one once the old one is gone." : {
+
+    },
+    "The primary key is part of the table and can't be dropped." : {
+
+    },
+    "A local secondary index is part of its table and is removed only with the table." : {
+
+    },
+    "Point-in-Time Recovery" : {
+
+    },
+    "Deletion Protection" : {
+
+    },
+    "Stream" : {
+
+    },
+    "Table Class" : {
+
+    },
+    "Switch to On-Demand Capacity" : {
+
+    },
+    "Turn Off Time to Live" : {
+
+    },
+    "Keys only" : {
+
+    },
+    "New image" : {
+
+    },
+    "Old image" : {
+
+    },
+    "New and old images" : {
+
+    },
+    "Standard" : {
+
+    },
+    "Standard-Infrequent Access" : {
+
+    },
+    "On" : {
+
+    },
+    "Class" : {
+
+    },
+    "An item with this key already exists" : {
+
+    },
+    "DELETE ran. DynamoDB reports whether an item was deleted only with RETURNING ALL OLD *." : {
+
+    },
+    "%d item(s) affected" : {
+
+    },
+    "A key attribute needs a value" : {
+
+    },
+    "DynamoDB has no views" : {
+
+    },
+    "The %1$@ request is not valid JSON: %2$@" : {
+
+    },
+    "The %@ request must be a JSON object" : {
+
+    },
+    "\"%@\" is not a DynamoDB action this editor runs" : {
+
+    },
+    "%@ takes no ORDER BY, LIMIT or OFFSET" : {
+
+    },
+    "Unexpected text after the %1$@ request: %2$@" : {
+
+    },
+    "On-demand capacity" : {
+
+    },
+    "Provisioned: %1$lld read, %2$lld write" : {
+
+    },
+    "Deletion protection on" : {
+
+    },
+    "Stream: %@" : {
+
+    },
+    "Status: %@" : {
+
+    },
+    "Item count is approximate, updated about every six hours" : {
+
+    },
+    "Capacity" : {
+
+    },
+    "Billing" : {
+
+    },
+    "On-demand" : {
+
+    },
+    "Provisioned" : {
+
+    },
+    "Read capacity units" : {
+
+    },
+    "Write capacity units" : {
+
+    },
+    "Table class" : {
+
+    },
+    "Deletion protection" : {
+
+    },
+    "Global Secondary Indexes" : {
+
+    },
+    "Add Global Index" : {
+
+    },
+    "Local Secondary Indexes" : {
+
+    },
+    "Add Local Index" : {
+
+    },
+    "A DynamoDB table declares only its key attributes. The items you write add every other attribute." : {
+
+    },
+    "All attributes" : {
+
+    },
+    "Keys and chosen attributes" : {
+
+    },
+    "Chosen attributes" : {
+
+    },
+    "Comma-separated names" : {
+
+    },
+    "A table name is 3 to 255 characters of letters, digits, underscore, hyphen and period." : {
+
+    },
+    "\"%@\" is declared as two different types" : {
+
+    },
+    "Enter the partition key's name" : {
+
+    },
+    "A local secondary index needs a table with a sort key" : {
+
+    },
+    "An index name is 3 to 255 characters of letters, digits, underscore, hyphen and period." : {
+
+    },
+    "Enter the partition key of index %@" : {
+
+    },
+    "Enter the sort key of index %@" : {
+
+    },
+    "Name the attributes index %@ includes" : {
+
+    },
+    "Read capacity must be a whole number of at least 1" : {
+
+    },
+    "Write capacity must be a whole number of at least 1" : {
+
+    },
+    "DescribeTable returned no table" : {
+
+    },
+    "DynamoDB can't change a key. Duplicate the row with the new key, then delete the old one." : {
+
+    },
+    "This key is a %@, not binary data" : {
+
+    },
+    "This database has no Create Table form" : {
+
+    },
+    "Form" : {
+
+    },
+    "%1$@ must be at least %2$lld." : {
+
+    },
+    "%1$@ must be at most %2$lld." : {
+
+    },
+    "%1$@ must be between %2$lld and %3$lld." : {
+
+    },
+    "%1$@, entry %2$lld: %3$@" : {
+
+    },
+    "%@ is required." : {
+
+    },
+    "%@ must be a whole number." : {
+
+    },
+    "Entry %1$lld: %2$@" : {
+
+    },
+    "Entry %lld" : {
+
+    },
+    "The form produced no statements to run." : {
+
+    },
+    "Changes from iCloud could not be saved on this device. They will download again on the next sync." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud의 변경 사항을 이 기기에 저장하지 못했습니다. 다음 동기화 때 다시 다운로드됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud'daki değişiklikler bu cihaza kaydedilemedi. Bir sonraki eşitlemede yeniden indirilecek."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể lưu các thay đổi từ iCloud trên thiết bị này. Chúng sẽ được tải lại ở lần đồng bộ tiếp theo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在本设备上保存来自 iCloud 的更改。下次同步时会重新下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在本裝置上儲存來自 iCloud 的變更。下次同步時會重新下載。"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

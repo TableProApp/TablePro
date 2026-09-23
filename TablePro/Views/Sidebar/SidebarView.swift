@@ -16,6 +16,7 @@ struct SidebarView: View {
     @State private var showsSchemaProgress = false
 
     @ObservedObject private var schemaService = SchemaService.shared
+    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
 
     @ObservedObject var sidebarState: SharedSidebarState
     @ObservedObject var windowState: WindowSidebarState
@@ -44,7 +45,33 @@ struct SidebarView: View {
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
-        }
+        } || !otherSchemaMatches.isEmpty
+    }
+
+    /// The schemas the flat outline lists below its own sections. Counted here too, or a search
+    /// whose only matches are in another schema is shown as "No Results" and the outline that would
+    /// have listed them is never drawn.
+    private var otherSchemaMatches: [String] {
+        guard rootShape == .flat, !viewModel.filterQuery.isEmpty, let database = activeDatabase,
+              DatabaseTreeMetadataService.listsTablesPerSchema(groupingStrategy) else { return [] }
+        let searchText = viewModel.filterQuery
+        let systemSchemas = Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
+        return DatabaseTreeFilter.otherSchemaMatches(
+            database: database,
+            browsedSchema: coordinator?.toolbarState.currentSchema,
+            searchText: searchText,
+            hiddenSchemas: settingsManager.general.showSystemContainers ? [] : systemSchemas,
+            allSchemaTables: treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database),
+            loadedContent: { schema in
+                DatabaseTreeFilter.loadedObjectBuckets(
+                    in: treeMetadata,
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema,
+                    searchText: searchText
+                )
+            }
+        )
     }
 
     private var groupingStrategy: GroupingStrategy {

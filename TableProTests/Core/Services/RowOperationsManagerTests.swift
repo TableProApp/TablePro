@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -139,6 +139,20 @@ struct RowOperationsManagerTests {
 
         #expect(result?.values[2] == "__DEFAULT__")
         #expect(result?.values[1] == .null)
+    }
+
+    /// A nullable MySQL column reads back with a NULL default (#3058), and one whose default was
+    /// dropped reads back the same way while failing an INSERT that omits it with ERROR 1364.
+    @Test("addNewRow sends NULL rather than DEFAULT for a column whose default is NULL", arguments: ["NULL", "null"])
+    func addNewRowSendsNullForNullDefault(spelling: String) {
+        let (manager, _) = makeManager()
+        var tableRows = emptyTableRows(columnDefaults: ["name": spelling, "email": "'x'"])
+
+        let result = manager.addNewRow(tableRows: &tableRows)
+
+        #expect(result?.values[1] == .null)
+        #expect(result?.values[2] == "__DEFAULT__")
+        #expect(tableRows.serverAssignsValue(forColumn: "name") == false)
     }
 
     @Test("addNewRow uses nil for columns without defaults")

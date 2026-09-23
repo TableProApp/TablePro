@@ -641,9 +641,19 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// concerned. Only the selected one receives the real `windowDidBecomeKey`, so without
         /// this the outgoing connection keeps `isKeyWindow` true and never schedules the eviction
         /// that frees its row buffers.
+        ///
+        /// The outgoing side is read from each coordinator rather than from `lastActiveCoordinator`,
+        /// which only a switch sets. The window's first connection is made key by the window itself,
+        /// so the first switch away from it found no cached coordinator to resign: it kept
+        /// `isKeyWindow` and never scheduled the eviction.
         let incoming = workspaces.selected?.sessionState?.coordinator
+        for workspace in workspaces.workspaces {
+            guard let coordinator = workspace.sessionState?.coordinator,
+                  coordinator !== incoming,
+                  coordinator.isKeyWindow else { continue }
+            coordinator.handleWindowDidResignKey()
+        }
         if lastActiveCoordinator !== incoming {
-            lastActiveCoordinator?.handleWindowDidResignKey()
             incoming?.handleWindowDidBecomeKey()
             lastActiveCoordinator = incoming
         }
@@ -1332,7 +1342,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource:
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory:
             return defaultDetailMinThickness
         }
     }

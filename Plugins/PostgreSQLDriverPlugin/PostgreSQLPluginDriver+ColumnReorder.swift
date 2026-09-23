@@ -28,163 +28,28 @@ extension PostgreSQLPluginDriver {
               Set(parts.columnNames) == Set(desiredOrder),
               parts.columnNames.count == desiredOrder.count else { return nil }
 
-        let qualified = "\(quoteIdentifier(resolvedSchema)).\(quoteIdentifier(table))"
-        let staging = "\(quoteIdentifier(resolvedSchema)).\(quoteIdentifier("\(table)_tablepro_reorder"))"
-        let copyList = parts.copyableColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-
-        let body = desiredOrder.compactMap { parts.columnDefinitions[$0] }
-
-        /// The order here is the whole difficulty, and every step of it was measured against
-        /// PostgreSQL 17. The old table is renamed rather than dropped, so a foreign key in another
-        /// table keeps pointing at real rows while the copy runs. But a rename moves nothing else:
-        /// the staging table still owns every index name and every constraint name the original
-        /// had, and both live in the schema rather than on the table. Declaring the constraints
-        /// inside the `CREATE TABLE` therefore silently renames them, which shipped as `x_pkey1`,
-        /// `x_a_b_key1` and `x_c_check1`; creating an index before the staging table goes fails
-        /// outright with "relation already exists". So nothing that carries a name is created until
-        /// the staging table is dropped, and the staging table cannot be dropped until every
-        /// inbound foreign key has let go of it.
-        var statements: [String] = []
-        statements.append("ALTER TABLE \(qualified) RENAME TO \(quoteIdentifier("\(table)_tablepro_reorder"))")
-        statements.append("CREATE TABLE \(qualified) (\n  " + body.joined(separator: ",\n  ") + "\n)")
-        statements.append(PostgreSQLVersionedStatements.copyRows(
-            into: qualified,
-            from: staging,
-            columnList: copyList,
-            capabilities: versionedCapabilities
-        ))
-        statements.append(contentsOf: parts.identityResets(qualified: qualified, quote: quoteIdentifier))
-        statements.append(contentsOf: parts.inboundForeignKeyDrops)
-        /// A `serial` column's default still calls the sequence the staging table owns, so `DROP
-        /// TABLE` tries to take that sequence with it and PostgreSQL refuses, rolling the whole
-        /// script back. Measured: handing ownership to the rebuilt table first lets the drop
-        /// through, and the sequence keeps its original name.
-        statements.append(contentsOf: parts.serialSequenceHandovers)
-        statements.append("DROP TABLE \(staging)")
-        statements.append(contentsOf: parts.tableConstraints.map { "ALTER TABLE \(qualified) ADD \($0)" })
-        statements.append(contentsOf: parts.outboundForeignKeys.map { "ALTER TABLE \(qualified) ADD \($0)" })
-        statements.append(contentsOf: parts.inboundForeignKeyAdds)
-        statements.append(contentsOf: parts.indexes)
-        statements.append(contentsOf: parts.triggers)
-        statements.append(contentsOf: parts.triggerModes)
-        statements.append(contentsOf: parts.comments)
-
         return PluginColumnReorderPlan(
-            statements: statements,
+            statements: parts.statements(
+                table: table,
+                schema: resolvedSchema,
+                desiredOrder: desiredOrder,
+                quote: quoteIdentifier,
+                capabilities: versionedCapabilities
+            ),
             isTransactional: true,
             cost: .tableRebuild,
-            caveats: parts.dependentViewCaveat + [
-                String(localized: "Grants, row-level security policies, publications, extended statistics, partitioning and table inheritance are not carried over."),
-                String(localized: "An identity column keeps its value, but its sequence is recreated under a new name because the old table still holds the original name when the new one is created.")
-            ],
+            caveats: parts.caveats,
             isRunnable: false
         )
     }
 
-    private struct RebuildParts {
-        var columnNames: [String] = []
-        var columnDefinitions: [String: String] = [:]
-        var copyableColumns: [String] = []
-        var identityColumns: [String] = []
-        var tableConstraints: [String] = []
-        var outboundForeignKeys: [String] = []
-        var inboundForeignKeyDrops: [String] = []
-        var inboundForeignKeyAdds: [String] = []
-        var indexes: [String] = []
-        var triggers: [String] = []
-        var triggerModes: [String] = []
-        var comments: [String] = []
-        var dependentViews: [String] = []
-        var serialSequenceHandovers: [String] = []
-
-        /// PostgreSQL binds a view to the table's OID, not its name, so a view follows the rename
-        /// onto the staging table and then refuses to let it be dropped. Measured: the rebuild
-        /// stops at `DROP TABLE` with "cannot drop table … because other objects depend on it" and
-        /// the whole transaction rolls back. Naming them here is what stops that being discovered
-        /// three quarters of the way through the script.
-        var dependentViewCaveat: [String] {
-            guard !dependentViews.isEmpty else { return [] }
-            return [
-                String(
-                    format: String(
-                        localized: "Drop and recreate these views first, or the script stops when it drops the old table: %@."
-                    ),
-                    dependentViews.joined(separator: ", ")
-                )
-            ]
-        }
-
-        /// A new identity column starts its sequence at one, so it is wound forward to the rows the
-        /// copy just wrote. Without this the next insert collides with an existing key.
-        ///
-        /// `qualified` is already a quoted identifier pair, and `pg_get_serial_sequence` takes the
-        /// whole pair as one literal, so it is composed first and quoted once. A schema, table or
-        /// column name may legally contain an apostrophe or a backslash, and both land inside a
-        /// literal here.
-        func identityResets(qualified: String, quote: (String) -> String) -> [String] {
-            let relationLiteral = PostgreSQLObjectQueries.quoteLiteral(qualified)
-            return identityColumns.map { column in
-                let columnLiteral = PostgreSQLObjectQueries.quoteLiteral(column)
-                return """
-                SELECT setval(
-                  pg_get_serial_sequence(\(relationLiteral), \(columnLiteral)),
-                  GREATEST(COALESCE((SELECT MAX(\(quote(column))) FROM \(qualified)), 0), 1),
-                  true
-                )
-                """
-            }
-        }
-    }
-
-    private func fetchRebuildParts(table: String, schema: String) async throws -> RebuildParts {
+    private func fetchRebuildParts(table: String, schema: String) async throws -> PostgreSQLTableRebuild {
         let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         let caps = versionedCapabilities
-        var parts = RebuildParts()
+        var parts = PostgreSQLTableRebuild()
 
-        let identityClause = caps.hasIdentityColumns ? """
-            CASE
-              WHEN a.attidentity = 'a' THEN ' GENERATED ALWAYS AS IDENTITY'
-              WHEN a.attidentity = 'd' THEN ' GENERATED BY DEFAULT AS IDENTITY'
-              ELSE ''
-            END ||
-            """ : ""
-        let generatedClause = caps.hasGeneratedColumns ? """
-            CASE
-              WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED'
-              WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'
-              ELSE ''
-            END ||
-            """ : ""
-        let defaultGuard = [
-            caps.hasIdentityColumns ? "AND a.attidentity = ''" : "",
-            caps.hasGeneratedColumns ? "AND a.attgenerated = ''" : ""
-        ].filter { !$0.isEmpty }.joined(separator: " ")
-        let identityFlag = caps.hasIdentityColumns ? "a.attidentity <> ''" : "false"
-        let generatedFlag = caps.hasGeneratedColumns ? "a.attgenerated <> ''" : "false"
-
-        let columnRows = try await execute(query: """
-            SELECT
-                a.attname,
-                quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) || \(PostgreSQLSchemaQueries.columnCollateClause) ||
-                \(identityClause)
-                \(generatedClause)
-                CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
-                CASE
-                  WHEN a.atthasdef \(defaultGuard)
-                    THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid)
-                  ELSE ''
-                END,
-                \(identityFlag),
-                \(generatedFlag)
-            FROM pg_attribute a
-            JOIN pg_class c ON c.oid = a.attrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
-              AND a.attnum > 0 AND NOT a.attisdropped
-            ORDER BY a.attnum
-            """).rows
+        let columnRows = try await rebuildColumnRows(tableLiteral: tableLiteral, schemaLiteral: schemaLiteral)
 
         for row in columnRows {
             guard let name = row[safe: 0]?.asText, let definition = row[safe: 1]?.asText else { continue }
@@ -242,17 +107,9 @@ extension PostgreSQLPluginDriver {
 
         /// The indexes a constraint owns come back with the constraint, so listing them again would
         /// fail on a duplicate name.
-        parts.indexes = try await textRows("""
-            SELECT indexdef FROM pg_indexes
-            WHERE tablename = \(tableLiteral) AND schemaname = \(schemaLiteral)
-              AND indexname NOT IN (
-                SELECT con.conname FROM pg_constraint con
-                JOIN pg_class c ON c.oid = con.conrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
-              )
-            ORDER BY indexname
-            """)
+        let standaloneIndexes = try await fetchStandaloneIndexes(table: table, schema: schema)
+        parts.indexes = standaloneIndexes.definitions
+        parts.invalidIndexes = standaloneIndexes.invalidNames
 
         parts.triggers = try await textRows("""
             SELECT pg_get_triggerdef(t.oid, true)
@@ -338,6 +195,53 @@ extension PostgreSQLPluginDriver {
             """)
 
         return parts
+    }
+
+    private func rebuildColumnRows(tableLiteral: String, schemaLiteral: String) async throws -> [[PluginCellValue]] {
+        let caps = versionedCapabilities
+        let identityClause = caps.hasIdentityColumns ? """
+            CASE
+              WHEN a.attidentity = 'a' THEN ' GENERATED ALWAYS AS IDENTITY'
+              WHEN a.attidentity = 'd' THEN ' GENERATED BY DEFAULT AS IDENTITY'
+              ELSE ''
+            END ||
+            """ : ""
+        let generatedClause = caps.hasGeneratedColumns ? """
+            CASE
+              WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED'
+              WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'
+              ELSE ''
+            END ||
+            """ : ""
+        let defaultGuard = [
+            caps.hasIdentityColumns ? "AND a.attidentity = ''" : "",
+            caps.hasGeneratedColumns ? "AND a.attgenerated = ''" : ""
+        ].filter { !$0.isEmpty }.joined(separator: " ")
+        let identityFlag = caps.hasIdentityColumns ? "a.attidentity <> ''" : "false"
+        let generatedFlag = caps.hasGeneratedColumns ? "a.attgenerated <> ''" : "false"
+
+        return try await execute(query: """
+            SELECT
+                a.attname,
+                quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) || \(PostgreSQLSchemaQueries.columnCollateClause) ||
+                \(identityClause)
+                \(generatedClause)
+                CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
+                CASE
+                  WHEN a.atthasdef \(defaultGuard)
+                    THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid)
+                  ELSE ''
+                END,
+                \(identityFlag),
+                \(generatedFlag)
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
+              AND a.attnum > 0 AND NOT a.attisdropped
+            ORDER BY a.attnum
+            """).rows
     }
 
     private func textRows(_ query: String) async throws -> [String] {

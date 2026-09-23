@@ -151,7 +151,40 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         }
         guard let schema else { return tablesToReturn }
         fetchSchemaTablesCalls.append(schema)
+        if let error = schemaTablesErrors[schema] {
+            throw error
+        }
         return schemaTablesToReturn[schema] ?? tablesToReturn
+    }
+
+    /// Nil leaves the driver without a single call, so the host lists each schema itself.
+    var allSchemaTablesToReturn: [TableInfo]?
+    var allSchemaTablesError: Error?
+    var schemaTablesErrors: [String: Error] = [:]
+    var fetchTablesInAllSchemasCallCount = 0
+    var pausesNextAllSchemaTablesFetch = false
+    var onAllSchemaTablesFetchPaused: (@Sendable () -> Void)?
+    private var allSchemaTablesGate: CheckedContinuation<Void, Never>?
+
+    func resumeAllSchemaTablesFetch() {
+        allSchemaTablesGate?.resume()
+        allSchemaTablesGate = nil
+    }
+
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
+        fetchTablesInAllSchemasCallCount += 1
+        if let allSchemaTablesError {
+            throw allSchemaTablesError
+        }
+        let snapshot = allSchemaTablesToReturn
+        if pausesNextAllSchemaTablesFetch {
+            pausesNextAllSchemaTablesFetch = false
+            await withCheckedContinuation { continuation in
+                allSchemaTablesGate = continuation
+                onAllSchemaTablesFetchPaused?()
+            }
+        }
+        return snapshot
     }
 
     func fetchColumns(table: String) async throws -> [ColumnInfo] {
@@ -160,14 +193,34 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return columnsToReturn[table.lowercased()] ?? []
     }
 
+    var fetchAllColumnsError: Error?
+
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         fetchAllColumnsCallCount += 1
+        if let fetchAllColumnsError {
+            throw fetchAllColumnsError
+        }
         return allColumnsToReturn
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+
+    var concurrentRefreshAvailabilityToReturn: PluginConcurrentRefreshAvailability?
+    var concurrentRefreshAvailabilityError: Error?
+    var concurrentRefreshAvailabilityCalls: [(name: String, schema: String?)] = []
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        concurrentRefreshAvailabilityCalls.append((materializedView, schema))
+        if let concurrentRefreshAvailabilityError {
+            throw concurrentRefreshAvailabilityError
+        }
+        return concurrentRefreshAvailabilityToReturn
+    }
 
     func fetchTableDDL(table: String) async throws -> String { "" }
     func fetchViewDefinition(view: String) async throws -> String { "" }

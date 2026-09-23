@@ -94,7 +94,7 @@ enum QueryClassifier {
         }
         return readings.distinct(for: sql).contains { grammar in
             statements(of: sql, grammar: grammar).contains { statement in
-                statementDeletesEverything(statement, grammar: grammar)
+                statementDeletesEverything(statement, grammar: grammar, databaseType: databaseType)
             }
         }
     }
@@ -128,13 +128,23 @@ enum QueryClassifier {
         grammar: SQLLexicalGrammar,
         databaseType: DatabaseType
     ) -> QueryClassification {
+        if let request = dynamoDBClassification(statement, databaseType: databaseType) {
+            return request
+        }
         if runsPLSQL(statement, grammar: grammar) {
             return plsqlBlockClassification(statement, grammar: grammar, databaseType: databaseType)
         }
         return sqlClassification(statement, grammar: grammar, databaseType: databaseType)
     }
 
-    private static func statementDeletesEverything(_ statement: String, grammar: SQLLexicalGrammar) -> Bool {
+    private static func statementDeletesEverything(
+        _ statement: String,
+        grammar: SQLLexicalGrammar,
+        databaseType: DatabaseType
+    ) -> Bool {
+        if let request = dynamoDBDeletesEverything(statement, databaseType: databaseType) {
+            return request
+        }
         if runsPLSQL(statement, grammar: grammar) {
             return plsqlBlockDeletesEverything(statement, grammar: grammar)
         }

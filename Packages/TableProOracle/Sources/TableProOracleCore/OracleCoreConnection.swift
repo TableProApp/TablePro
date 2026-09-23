@@ -106,12 +106,19 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var sessionSchema: String?
         var capturesServerOutput = false
         var close = OracleCloseRecord()
+        var serverRelease: OracleServerRelease?
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
 
     public var isConnected: Bool {
         state.withLock { $0.isConnected }
+    }
+
+    /// The release the server reported in its login reply, or nil before the first login. It outlives a dropped
+    /// channel, because the redial that replaces the channel reaches the same server.
+    public var serverRelease: OracleServerRelease? {
+        state.withLock { $0.serverRelease }
     }
 
     public init(options: OracleConnectionOptions) {
@@ -176,6 +183,8 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 return connection
             }
 
+            let release = OracleServerRelease(major: connection.serverVersion.majorDatabaseReleaseNumber)
+
             /// A dial the app gave up on while it was in flight has nowhere to land: the plugin
             /// dropped this connection and built another, so installing the handle here would
             /// leave a session open on the server that nothing can reach or close.
@@ -185,6 +194,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 current.sessionID = connectionId
                 current.isConnected = true
                 current.hasEverConnected = true
+                current.serverRelease = release
                 current.close.clearOnConnect()
                 return true
             }
@@ -203,16 +213,14 @@ public final class OracleCoreConnection: @unchecked Sendable {
             throw connectError(from: sqlError)
         } catch let nioSslError as NIOSSLError {
             let detail = String(describing: nioSslError)
-            osLogger.error("Oracle TLS error: \(detail, privacy: .public)")
-            throw OracleCoreError.tlsHandshakeFailed(
-                kind: OracleSSLClassifier.classifyTLSFailure(detail) ?? .unknown,
-                serverMessage: detail
-            )
+            let kind = OracleSSLClassifier.classifyTLSFailure(detail) ?? .unknown
+            osLogger.error("Oracle TLS error: \(String(describing: kind), privacy: .public) \(detail, privacy: .private)")
+            throw OracleCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
         } catch let coreError as OracleCoreError {
             throw coreError
         } catch {
             let detail = String(describing: error)
-            osLogger.error("Oracle connection failed: \(detail, privacy: .public)")
+            osLogger.error("Oracle connection failed: \(String(describing: type(of: error)), privacy: .public) \(detail, privacy: .private)")
             if let kind = OracleSSLClassifier.classifyTLSFailure(detail) {
                 throw OracleCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
             }
@@ -612,7 +620,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             code, serverErrorNumber: sqlError.serverInfo.map { Int($0.number) }
         ) else {
             guard let serverMessage = sqlError.serverInfo?.message else {
-                osLogger.error("Oracle statement failed: \(String(describing: sqlError), privacy: .public)")
+                osLogger.error("Oracle statement failed with \(code, privacy: .public): \(String(describing: sqlError), privacy: .private)")
                 return .queryFailed(String(format: OracleCoreError.driverErrorFormat, code))
             }
             return .queryFailed(serverMessage)
@@ -655,7 +663,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         default:
             markConnectionDead(reason: .transportError)
             let detail = String(describing: error)
-            osLogger.error("Oracle connection reset after a transport error: \(detail, privacy: .public)")
+            osLogger.error("Oracle connection reset after a transport error: \(String(describing: type(of: error)), privacy: .public) \(detail, privacy: .private)")
             return OracleCoreError.queryFailed(detail)
         }
     }
@@ -894,7 +902,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 return unsupportedPlaceholder(for: cell.dataType)
             }
         } catch {
-            osLogger.error("Oracle decode failed for column '\(cell.columnName, privacy: .public)': \(String(describing: error), privacy: .public)")
+            osLogger.error("Oracle decode failed for column '\(cell.columnName, privacy: .private(mask: .hash))': \(String(describing: type(of: error)), privacy: .public) \(String(describing: error), privacy: .private)")
             return "<decode error>"
         }
     }
