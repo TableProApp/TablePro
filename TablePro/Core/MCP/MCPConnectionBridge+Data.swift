@@ -166,45 +166,65 @@ extension MCPConnectionBridge {
         return pagination.clampedRowCount(request.limit)
     }
 
-    func searchSchema(scope: DatabaseScope, term: String, limit: Int) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-        let schema = scope.schema
-        let needle = term.lowercased()
-
-        let matches = try await DatabaseManager.shared.withMetadataDriver(
-            scope: scope,
-            workload: .bulk
-        ) { driver -> [JsonValue] in
-            let tables = MCPConnectionBridge.sortedTables(try await driver.fetchTables(schema: schema))
-            var found: [JsonValue] = []
-            for table in tables where table.name.lowercased().contains(needle) {
-                found.append(.object([
-                    "kind": .string("table"),
-                    "name": .string(table.name),
-                    "object_type": .string(table.type.rawValue),
-                    "schema": table.schema.map(JsonValue.string) ?? JsonValue.null
-                ]))
-                if found.count >= limit { return found }
-            }
-            let allColumns = (try? await driver.fetchAllColumns()) ?? [:]
-            for tableName in allColumns.keys.sorted() {
-                for column in allColumns[tableName] ?? [] where column.name.lowercased().contains(needle) {
-                    found.append(.object([
-                        "kind": .string("column"),
-                        "name": .string(column.name),
-                        "table": .string(tableName),
-                        "data_type": .string(column.dataType)
-                    ]))
-                    if found.count >= limit { return found }
-                }
-            }
-            return found
+    func searchSchema(scope: DatabaseScope, term: String, limit: Int, schemaIsNamed: Bool) async throws -> JsonValue {
+        let databaseType = try await ensureConnected(scope.connectionId)
+        let tableReach = await MainActor.run {
+            MCPSchemaSearch.tableReach(
+                schemaIsNamed: schemaIsNamed,
+                grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
+                systemSchemas: Set(PluginManager.shared.systemSchemaNames(for: databaseType))
+            )
         }
-        return .object([
+        let result = try await MCPSchemaSearch.run(
+            MCPSchemaSearch.Request(scope: scope, term: term, limit: limit, tableReach: tableReach),
+            metadata: DatabaseManager.shared
+        )
+        return Self.encode(search: result, term: term, scope: scope, schemaIsNamed: schemaIsNamed)
+    }
+
+    static func encode(
+        search result: MCPSchemaSearch.Result,
+        term: String,
+        scope: DatabaseScope,
+        schemaIsNamed: Bool
+    ) -> JsonValue {
+        var payload: [String: JsonValue] = [
             "term": .string(term),
-            "matches": .array(matches),
-            "is_truncated": .bool(matches.count >= limit)
-        ])
+            "database": .string(scope.database),
+            "schema": schemaIsNamed ? nullable(scope.schema) : .null,
+            "matches": .array(result.matches.map(encode(match:))),
+            "is_truncated": .bool(result.isTruncated),
+            "unlisted_schemas": .array(result.unlistedSchemas.map(JsonValue.string)),
+            "column_search": .string(result.columnSearch.outcome)
+        ]
+        if case .searched(let schema) = result.columnSearch {
+            payload["columns_schema"] = nullable(schema)
+        }
+        return .object(payload)
+    }
+
+    static func encode(match: MCPSchemaSearch.Match) -> JsonValue {
+        switch match {
+        case .table(let name, let schema, let type):
+            return .object([
+                "kind": .string("table"),
+                "name": .string(name),
+                "schema": nullable(schema),
+                "object_type": .string(type.rawValue)
+            ])
+        case .column(let name, let table, let schema, let dataType):
+            return .object([
+                "kind": .string("column"),
+                "name": .string(name),
+                "table": .string(table),
+                "schema": nullable(schema),
+                "data_type": .string(dataType)
+            ])
+        }
+    }
+
+    private static func nullable(_ value: String?) -> JsonValue {
+        value.map(JsonValue.string) ?? .null
     }
 
     func insertRows(

@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
+- Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 
 ### Removed
 
