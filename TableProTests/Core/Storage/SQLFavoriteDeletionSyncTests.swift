@@ -209,7 +209,7 @@ struct SQLFavoriteDeletionSyncTests {
         metadata.clearDirty(type: .favorite)
         metadata.clearDirty(type: .favoriteFolder)
 
-        await manager.applyRemoteDeleteFolder(id: folder.id)
+        #expect(await manager.applyRemote(RemoteSQLFavoriteBatch(deletedFolderIds: [folder.id])) == .applied)
 
         #expect(metadata.dirtyIds(for: .favorite).isEmpty)
         #expect(tombstonedIds(.favoriteFolder).isEmpty)

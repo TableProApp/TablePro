@@ -30,24 +30,8 @@ extension TableStructureView {
             return
         }
 
-        guard let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver else {
-            toolbarState.previewStatements = ["-- Error: no plugin driver available for DDL generation"]
-            coordinator?.activeSheet = .sqlPreview
-            return
-        }
-
-        let generator = SchemaStatementGenerator(
-            tableName: tableName,
-            pluginDriver: pluginDriver
-        )
-
-        do {
-            let schemaStatements = try generator.generate(changes: changes)
-            toolbarState.previewStatements = schemaStatements.map(\.sql)
-        } catch {
-            toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
-        }
-        coordinator?.activeSheet = .sqlPreview
+        guard let coordinator else { return }
+        Task { await session.previewStagedChanges(coordinator: coordinator) }
     }
 
     /// The part of a save only a mounted view can do: refetch the sub-tab the user is looking at

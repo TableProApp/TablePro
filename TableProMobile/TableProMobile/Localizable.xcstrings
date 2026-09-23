@@ -6376,6 +6376,9 @@
         }
       }
     },
+    "External Table" : {
+
+    },
     "Failed" : {
       "localizations" : {
         "ko" : {
@@ -7026,6 +7029,9 @@
           }
         }
       }
+    },
+    "Foreign Table" : {
+
     },
     "Get Started" : {
       "extractionState" : "stale",
@@ -9001,6 +9007,9 @@
           }
         }
       }
+    },
+    "Materialized View" : {
+
     },
     "Microsoft Entra ID Sign-In Required" : {
       "localizations" : {
@@ -14061,6 +14070,9 @@
         }
       }
     },
+    "Sequence" : {
+
+    },
     "Server" : {
       "localizations" : {
         "ko" : {
@@ -15218,6 +15230,9 @@
           }
         }
       }
+    },
+    "System Table" : {
+
     },
     "TLS handshake failed: %@" : {
       "extractionState" : "stale",
@@ -21023,20 +21038,34 @@
     "The Oracle driver reported an error (%@)." : {
 
     },
-    "Materialized View" : {
-
-    },
-    "System Table" : {
-
-    },
-    "External Table" : {
-
-    },
-    "Sequence" : {
-
-    },
-    "Foreign Table" : {
-
+    "Changes from iCloud could not be saved on this device. They will download again on the next sync." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud의 변경 사항을 이 기기에 저장하지 못했습니다. 다음 동기화 때 다시 다운로드됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể lưu các thay đổi từ iCloud trên thiết bị này. Chúng sẽ được tải lại ở lần đồng bộ tiếp theo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在本设备上保存来自 iCloud 的更改。下次同步时会重新下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在本裝置上儲存來自 iCloud 的變更。下次同步時會重新下載。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

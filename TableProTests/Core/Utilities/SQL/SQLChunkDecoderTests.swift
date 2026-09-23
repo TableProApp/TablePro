@@ -38,6 +38,24 @@ struct SQLChunkDecoderTests {
         }
     }
 
+    @Test("A UTF-32 file keeps its byte order past the first chunk")
+    func utf32KeepsItsByteOrder() throws {
+        let text = "SELECT '\u{1F600}';\n"
+        for encoding in [String.Encoding.utf32LittleEndian, .utf32BigEndian] {
+            let mark: [UInt8] = encoding == .utf32LittleEndian ? [0xFF, 0xFE, 0x00, 0x00] : [0x00, 0x00, 0xFE, 0xFF]
+            let data = try Data(mark) + #require(text.data(using: encoding))
+            #expect(decodeInChunks(data, encoding: .utf32, chunk: 8) == text, "\(encoding)")
+            #expect(decodeInChunks(data, encoding: encoding, chunk: 8) == text, "\(encoding)")
+        }
+    }
+
+    @Test("Declared UTF-16 reads a UTF-32 little-endian mark as its own mark followed by a null")
+    func utf16TakesOnlyItsOwnMark() throws {
+        let data = try Data([0xFF, 0xFE, 0x00, 0x00]) + #require("ab".data(using: .utf16LittleEndian))
+        #expect(decodeInChunks(data, encoding: .utf16, chunk: 4_096) == "\u{0}ab")
+        #expect(decodeInChunks(data, encoding: .utf16LittleEndian, chunk: 3) == "\u{0}ab")
+    }
+
     /// Without a mark there is nothing to read the order from, and big-endian is what Foundation
     /// itself assumes.
     @Test("UTF-16 with no mark stays big-endian, and an explicit choice is honoured")
@@ -55,7 +73,7 @@ struct SQLChunkDecoderTests {
     func markIsStripped() throws {
         let data = try Data([0xFF, 0xFE]) + #require("SELECT 1;".data(using: .utf16LittleEndian))
         for encoding in [String.Encoding.utf16, .utf16LittleEndian] {
-            let decoded = decodeInChunks(data, encoding: encoding, chunk: 4096)
+            let decoded = decodeInChunks(data, encoding: encoding, chunk: 4_096)
             #expect(decoded == "SELECT 1;", "\(encoding)")
         }
     }
@@ -107,6 +125,6 @@ struct SQLChunkDecoderTests {
     @Test("Bytes that decode in no chunking fail rather than being dropped")
     func undecodableBytesFail() {
         let data = Data([0x53, 0xC3, 0x28, 0x54])
-        #expect(decodeInChunks(data, encoding: .utf8, chunk: 4096) == nil)
+        #expect(decodeInChunks(data, encoding: .utf8, chunk: 4_096) == nil)
     }
 }

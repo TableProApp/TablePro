@@ -29,11 +29,11 @@ A control the tab cannot use leaves the toolbar rather than standing there dimme
 | Where you are | Not there |
 |---|---|
 | A new table's tab | Refresh. The definition is not on the server yet |
-| ER diagram, Server Dashboard, Query Insights, a DDL tab | The commit control. None of the four stages an edit of its own |
+| ER diagram, Server Dashboard, Query Insights, a DDL tab, a history tab | The commit control. None of them stages an edit of its own |
 | [Agent mode](/features/agent-mode) | Refresh and the commit control. The grid and the object browser are behind the conversation |
 | An engine with nothing to switch between | The database control. On [SQLite](/databases/sqlite) and [DuckDB](/databases/duckdb) the file beside it is the database; on an engine with a single namespace there is no second level to name |
 
-That needs macOS 15. On macOS 13 and 14 the same eight stand in every context and dim where they cannot act, except in two places. Refresh stays enabled on a new table's tab. So does the commit control on an ER diagram, Server Dashboard, Query Insights or DDL tab while a **Truncate** or a **Delete** is staged in the sidebar: that queue belongs to the connection, not to the tab in front of it.
+That needs macOS 15. On macOS 13 and 14 the same eight stand in every context and dim where they cannot act, except in two places. Refresh stays enabled on a new table's tab. So does the commit control on an ER diagram, Server Dashboard, Query Insights, DDL or history tab while a **Truncate** or a **Delete** is staged in the sidebar: that queue belongs to the connection, not to the tab in front of it.
 
 The shape settles on a tab switch, a mode switch and a connection switch, and at no other moment. A staged edit, a running query or a dropped connection dims a control; it never moves one.
 

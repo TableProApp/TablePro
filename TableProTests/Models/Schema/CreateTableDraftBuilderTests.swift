@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @testable import TablePro
 
@@ -235,6 +235,25 @@ struct CreateTableDraftBuilderTests {
         let definition = try #require(result.definition)
         #expect(definition.primaryKeyColumns == ["id"])
         #expect(definition.columns.first?.isPrimaryKey == true)
+    }
+
+    @Test("an auto-increment column made the primary key drops a NULL default with its nullability")
+    func promotedPrimaryKeyDropsNullDefault() throws {
+        var id = column("id", autoIncrement: true)
+        id.defaultValue = "NULL"
+        let result = plan(columns: [id, column("parent_id")])
+        let definition = try #require(result.definition)
+        #expect(definition.columns.first?.isNullable == false)
+        #expect(definition.columns.first?.defaultValue == nil)
+    }
+
+    @Test("a NOT NULL column with a NULL default is reported rather than sent")
+    func notNullColumnWithNullDefaultIsReported() {
+        var name = column("name", "VARCHAR(255)")
+        name.isNullable = false
+        name.defaultValue = "NULL"
+        let result = plan(columns: [column("id", primaryKey: true), name])
+        #expect(result.issues.contains { $0.row == 1 })
     }
 
     @Test("an explicit primary key is left alone")

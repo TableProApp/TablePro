@@ -282,17 +282,17 @@ struct MainContentView: View {
                     statements: request.scriptStatements,
                     databaseType: connection.type,
                     warning: request.warning,
-                    primaryAction: request.isRunnable
-                        ? SQLReviewSheet.PrimaryAction(
-                            title: request.actionTitle,
+                    primaryAction: request.runnableAction.map { action in
+                        SQLReviewSheet.PrimaryAction(
+                            title: action.title,
                             isDestructive: true,
                             perform: {
-                                await request.perform()
+                                await action.perform()
                                 coordinator.tableRebuildRequest = nil
                                 coordinator.activeSheet = nil
                             }
                         )
-                        : nil,
+                    },
                     onOpenInEditor: {
                         coordinator.openTableRebuildScriptInEditor(request)
                     }

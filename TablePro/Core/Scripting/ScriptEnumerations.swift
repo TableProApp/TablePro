@@ -42,6 +42,7 @@ internal enum ScriptEnumerations {
         case .usersRoles: fourCharCode("TPk6")
         case .insights: fourCharCode("TPk7")
         case .objectSource: fourCharCode("TPk8")
+        case .versionHistory: fourCharCode("TPk9")
         }
     }
 
