@@ -7,7 +7,7 @@ Point the connection at a file that does not exist yet and it is created on conn
 
 ## Quick setup
 
-Click **New Connection…**, select **SQLite**, pick the file with **Browse…**, and click **Save & Connect**. There is no host, port, or credential to fill in. The driver ships inside TablePro and reads the file through the SQLite that macOS supplies, so there is no server version to match.
+Click **New Connection…**, select **SQLite**, pick the file with **Browse…**, and click **Save & Connect**. There is no host, port, or credential to fill in. The driver ships inside TablePro with its own SQLite 3.53.4, whatever macOS version you run, so there is no server version to match.
 
 `.db`, `.db3`, `.s3db`, `.sl3`, `.sqlite`, `.sqlite3`, and `.sqlitedb` files list TablePro under Finder's **Open With**, as an alternate handler rather than the default one. To make a double-click open them here, select one in Finder, press `Cmd+I`, set **Open with** to TablePro, and click **Change All…**.
 
@@ -51,6 +51,47 @@ Change the file outside TablePro and the object list reloads on its own. Rows al
 
 One connection is one file, with no database to switch between, and the object list reads the main database only: a file you `ATTACH` in the editor is queryable as `alias.table` but never appears in the sidebar.
 
+## Extensions
+
+A database built with sqlite-vec, SpatiaLite or another loadable extension cannot be read until that extension is loaded: a statement touching its tables fails with `no such module: vec0` or `no such function: ST_AsText`.
+
+<Steps>
+  <Step title="Open the connection's Options">
+    Right-click the connection in the welcome window, choose **Edit…**, and select **Options**.
+  </Step>
+  <Step title="Add the library">
+    Click **+** under **Extensions** and choose the file: `vec0.dylib` from a [sqlite-vec release](https://github.com/asg017/sqlite-vec/releases), or `/opt/homebrew/lib/mod_spatialite.dylib` after `brew install libspatialite`. Typing or pasting a full path into a row works too.
+  </Step>
+  <Step title="Save and connect">
+    Click **Save**, then connect. The extension's functions and virtual tables answer in the editor, the sidebar and the Structure tab.
+  </Step>
+</Steps>
+
+<Frame caption="Two extensions, loaded top to bottom">
+  <img className="block dark:hidden" src="/images/sqlite-extensions.png" alt="The Options tab of a SQLite connection with an Extensions list holding mod_spatialite.dylib and vec0.dylib, an Entry Point column, and add and remove buttons under the list" />
+  <img className="hidden dark:block" src="/images/sqlite-extensions-dark.png" alt="The Options tab of a SQLite connection with an Extensions list holding mod_spatialite.dylib and vec0.dylib, an Entry Point column, and add and remove buttons under the list" />
+</Frame>
+
+The list loads in order every time the connection opens, Test Connection and reconnects included. Drag a row to reorder it when one extension needs another loaded first. The first file that fails stops the connect, and the connection window names the file and the reason.
+
+Leave **Entry Point** empty for most libraries: SQLite derives it from the file name, `sqlite3_vec_init` for `vec0.dylib`. Fill it in for a renamed file, or to call a second function the same library exports, such as sqlite-vec's `sqlite3_vec_numpy_init`.
+
+Only this list loads code. The `load_extension()` SQL function stays refused, so a statement in the editor, an import or an AI client cannot load a library.
+
+### A list from somewhere else
+
+An extension runs inside TablePro with full access to your Mac. A list that arrived through iCloud, an imported connection file, a `tablepro://` link, a linked folder or the team library therefore loads nothing until you approve it: connecting shows a **Load Extensions** alert naming every file, and **Load Extensions** records the answer for that connection on this Mac. At launch such a window waits with a **Connect** button instead of asking. Files added in the form on this Mac need no approval.
+
+### A library downloaded in a browser
+
+macOS refuses a library that still carries the quarantine flag a browser sets, and the connect fails with `library load disallowed by system policy`. If you trust the file, clear the flag:
+
+```bash
+xattr -d com.apple.quarantine ~/Downloads/vec0.dylib
+```
+
+A release built for the other processor fails with `mach-o file, but is an incompatible architecture`. sqlite-vec publishes separate `macos-aarch64` and `macos-x86_64` archives.
+
 ## A database on another machine
 
 The **Remote File** pane points the connection at a database on an SSH server, and the **Open** menu beside the path decides how it is reached. **On the Server** runs your statements on the server against the live file, so reads and writes land on the database the server's own programs are using. **As a Read-Only Copy** fetches a snapshot over SFTP and opens it on this Mac, and the original is never touched.
@@ -71,7 +112,8 @@ A virtual table, such as an FTS5 table, cannot be recreated from what SQLite sto
 
 ## Limitations
 
-- Encrypted databases do not open. The driver uses the system SQLite, which takes no key, and the form has nowhere to put one. Decrypt a SQLCipher file with the `sqlcipher` tool first.
+- Encrypted databases do not open. The driver's SQLite takes no key, and the form has nowhere to put one. Decrypt a SQLCipher file with the `sqlcipher` tool first.
+- Extensions load only for a file opened on this Mac. A connection that runs **On the Server** refuses a list with `Extensions load only for a database file on this Mac`: remove the list, or open the file **As a Read-Only Copy**, which loads it.
 - A column that is `INTEGER PRIMARY KEY` cannot be retyped: the key would stop generating values and start storing NULL. The save is refused and names the column.
 - A primary key cannot be added, removed or moved.
 
@@ -88,3 +130,11 @@ The path is wrong, or the folder is one you cannot read. For anything under `~/L
 ### file is not a database
 
 The file is encrypted or is not SQLite at all. `file database.db` names what it actually is.
+
+### no such module: …
+
+The database has a virtual table from an extension the connection does not load, such as `vec0` from sqlite-vec. Add the library under [Extensions](#extensions).
+
+### Could not load the extension "…".
+
+The line under it is the reason. `There is no file at "…"` means the path is wrong or the file moved. `The file has no function named …` means the entry point SQLite derived is not in the library: set **Entry Point** to the name its documentation gives. For a download or the wrong architecture, see [A library downloaded in a browser](#a-library-downloaded-in-a-browser).

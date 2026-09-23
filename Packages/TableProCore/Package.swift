@@ -30,7 +30,9 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
-        .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"])
+        .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
+        .library(name: "CSQLite", targets: ["CSQLite"]),
+        .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"])
     ],
     targets: [
         .target(
@@ -142,6 +144,16 @@ let package = Package(
             name: "TableProSSHTransport",
             dependencies: [],
             path: "Sources/TableProSSHTransport"
+        ),
+        .target(
+            name: "CSQLite",
+            dependencies: [],
+            path: "Sources/CSQLite"
+        ),
+        .target(
+            name: "TableProSQLiteCore",
+            dependencies: ["CSQLite"],
+            path: "Sources/TableProSQLiteCore"
         ),
         .testTarget(
             name: "TableProConnectionLibraryTests",
