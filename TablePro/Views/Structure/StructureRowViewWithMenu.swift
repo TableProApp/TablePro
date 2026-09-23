@@ -15,7 +15,8 @@ import AppKit
 /// disagree.
 final class StructureRowViewWithMenu: DataGridRowView {
     var structureTab: StructureTab = .columns
-    var isStructureEditable: Bool = true
+    var canDuplicate: Bool = true
+    var canDelete: Bool = true
     var referencedTableName: String?
 
     var onCopyName: ((Set<Int>) -> Void)?
@@ -129,9 +130,11 @@ final class StructureRowViewWithMenu: DataGridRowView {
 
         addColumnMoveItems(to: menu)
 
-        if isStructureEditable {
+        if canDuplicate || canDelete {
             menu.addItem(NSMenuItem.separator())
+        }
 
+        if canDuplicate {
             /// No key equivalent. This showed `Cmd+D`, which is not the binding `duplicateRow`
             /// carries, and the real one does not reach here either: `MainContentCommandActions`
             /// guards it on `dataGridOwnsSelection` and returns for a schema grid. There is no
@@ -143,7 +146,9 @@ final class StructureRowViewWithMenu: DataGridRowView {
             )
             dupItem.target = self
             menu.addItem(dupItem)
+        }
 
+        if canDelete {
             /// Read from the binding rather than typed in, because this one genuinely works:
             /// `KeyHandlingTableView.keyDown` routes it to the delegate's row delete, and it can
             /// be rebound in Settings, at which point a literal here would start lying.

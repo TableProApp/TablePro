@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
 - Version history for saved queries, with **Restore This Version**. (#2505)
 - Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
+- Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 
 ### Changed
 
@@ -117,6 +118,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
 - Saved query longer than 500,000 characters silently cut short when saved.
 - A file the import panel dimmed still opening, and reaching the wrong importer.
+- Materialized view opened from Open Quickly edited as a plain view. (#2522)
+- Index edits refused on a PGlite materialized view.
+- Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
+- **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
+- **New Trigger** offered on a materialized view.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.

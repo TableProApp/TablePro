@@ -207,6 +207,21 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
 
+    var concurrentRefreshAvailabilityToReturn: PluginConcurrentRefreshAvailability?
+    var concurrentRefreshAvailabilityError: Error?
+    var concurrentRefreshAvailabilityCalls: [(name: String, schema: String?)] = []
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        concurrentRefreshAvailabilityCalls.append((materializedView, schema))
+        if let concurrentRefreshAvailabilityError {
+            throw concurrentRefreshAvailabilityError
+        }
+        return concurrentRefreshAvailabilityToReturn
+    }
+
     func fetchTableDDL(table: String) async throws -> String { "" }
     func fetchViewDefinition(view: String) async throws -> String { "" }
 

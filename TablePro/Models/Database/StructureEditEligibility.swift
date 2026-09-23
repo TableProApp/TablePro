@@ -109,6 +109,17 @@ struct StructureObjectEditMatrix: Sendable, Equatable {
     ])
 }
 
+enum TriggerEditEligibility {
+    static func kindAcceptsTriggers(_ kind: TableInfo.TableType) -> Bool {
+        switch kind {
+        case .table, .partitionedTable, .view, .foreignTable:
+            return true
+        case .materializedView, .systemTable, .externalTable, .sequence:
+            return false
+        }
+    }
+}
+
 /// Whether the Structure tab may offer one edit right now, and what to say when it may not.
 ///
 /// Mirrors `ForeignKeyEditAvailability` so every refusal in this tab carries its own sentence. A

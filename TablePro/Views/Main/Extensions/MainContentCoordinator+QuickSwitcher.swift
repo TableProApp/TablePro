@@ -144,7 +144,8 @@ extension MainContentCoordinator {
                     database: target.databaseName,
                     schema: target.schemaName,
                     table: item.name,
-                    isView: item.kind == .view || item.isReadOnly
+                    isView: item.kind == .view || item.isReadOnly,
+                    objectType: item.tableType
                 ))
             } catch {
                 guard let self else { return }
