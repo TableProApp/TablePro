@@ -788,6 +788,7 @@ enum DatabaseDriverFactory {
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
         additionalFields["connectionId"] = connection.id.uuidString
+        additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,

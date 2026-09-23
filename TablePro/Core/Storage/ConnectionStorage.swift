@@ -493,6 +493,7 @@ final class ConnectionStorage {
                 savePluginSecureField(value, fieldId: fieldId, for: newId)
             }
         }
+        LoadableExtensionApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
 
         appEventsProvider().connectionUpdated.send(nil)
         return placedDuplicate

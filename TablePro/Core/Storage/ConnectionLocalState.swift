@@ -50,6 +50,7 @@ internal enum ConnectionLocalState {
             store.purgeConnections(connectionIds, leavesTombstones: origin == .local)
         }
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
+        LoadableExtensionApprovalStore.shared.revoke(for: connectionIds)
         RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
         Task {

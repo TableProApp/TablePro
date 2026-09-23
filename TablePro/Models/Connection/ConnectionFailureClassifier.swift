@@ -27,6 +27,9 @@ internal enum ConnectionFailureClassifier {
     }
 
     internal static func recoveryAction(for error: Error, canEditConnection: Bool = true) -> ConnectionRecoveryAction? {
+        if error is LoadableExtensionError {
+            return canEditConnection ? .editConnection : nil
+        }
         guard let pluginError = error as? PluginError else { return nil }
         switch pluginError {
         case .pluginNotInstalled:

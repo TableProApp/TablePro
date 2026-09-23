@@ -386,6 +386,20 @@
     "Copyright (c) 2011 Mark Hamlin." Ships as a dynamically linked framework: Contents/Frameworks/Sparkle.framework,
     confirmed by otool -L on the app dylib (current version 2.10.0), which is why it contributes no Swift
     mangled symbols to the app dylib.'
+- id: sqlite
+  name: SQLite
+  version: 3.53.4
+  spdx: blessing
+  copyrights: []
+  homepageURL: https://sqlite.org
+  licenseTextURL: https://sqlite.org/copyright.html
+  textFile: texts/sqlite.txt
+  source: sh:SQLITE_VERSION
+  patched: false
+  notes: 'Built from the canonical source tree by scripts/build-sqlite.sh and linked statically into the
+    SQLite and libSQL driver plugins, with its symbols hidden. The app itself still uses the macOS
+    libsqlite3 for its own storage. Public domain; the SPDX id "blessing" names the notice the sources
+    carry in place of a license.'
 - id: swift-asn1
   name: swift-asn1
   version: 1.5.1, 1.7.1

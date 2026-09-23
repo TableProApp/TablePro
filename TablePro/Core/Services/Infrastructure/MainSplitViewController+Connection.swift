@@ -47,10 +47,11 @@ internal extension MainSplitViewController {
         }
 
         /// Reopening a session at launch is the app's gesture, not the user's, so it never runs a
-        /// saved script on its own. The window waits in its not-connected state instead, where
-        /// Connect asks first. Prompting here would also put one modal per restored connection on
-        /// screen at startup, which the HIG rules out twice over.
-        guard !connection.hasPreConnectScript else {
+        /// saved script or loads extensions this Mac has not approved on its own. The window waits
+        /// in its not-connected state instead, where Connect asks first. Prompting here would also
+        /// put one modal per restored connection on screen at startup, which the HIG rules out
+        /// twice over.
+        guard !ConnectConsent.requiresPrompt(for: connection) else {
             transition(to: .unavailable(.notConnected))
             return
         }
@@ -146,7 +147,7 @@ internal extension MainSplitViewController {
         )
 
         Task { [weak self] in
-            guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
+            guard await ConnectConsent.confirmIfNeeded(for: connection) else {
                 self?.finishAttempt(token, for: connection.id, outcome: .cancelled)
                 return
             }

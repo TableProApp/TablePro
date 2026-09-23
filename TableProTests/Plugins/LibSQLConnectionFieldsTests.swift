@@ -16,10 +16,33 @@ struct LibSQLConnectionFieldsTests {
         return entry.snapshot.connection.additionalConnectionFields
     }
 
-    @Test("Registry entry declares mode, URL, and file path fields")
+    @Test("Registry entry declares mode, URL, file path and extension fields")
     func registryDeclaresAllFields() throws {
         let fields = try libsqlFields()
-        #expect(fields.map(\.id) == ["libsqlMode", "databaseUrl", "libsqlFilePath"])
+        #expect(fields.map(\.id) == ["libsqlMode", "databaseUrl", "libsqlFilePath", LoadableExtensionList.fieldId])
+    }
+
+    @Test("Extensions are offered only for a local database file")
+    func extensionsVisibleOnlyForLocal() throws {
+        let fields = try libsqlFields()
+        let extensions = try #require(fields.first { $0.id == LoadableExtensionList.fieldId })
+        #expect(extensions.content == .loadableExtensions)
+        #expect(extensions.visibleWhen == FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"]))
+    }
+
+    @Test("The Turso alias declares the same fields as libSQL")
+    func tursoMatchesLibSQL() throws {
+        let turso = try #require(
+            PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: "Turso"))?
+                .connection.additionalConnectionFields
+        )
+        let libsql = try libsqlFields()
+        let tursoIds = turso.map { $0.id }
+        let libsqlIds = libsql.map { $0.id }
+        let tursoContent = turso.map { $0.content }
+        let libsqlContent = libsql.map { $0.content }
+        #expect(tursoIds == libsqlIds)
+        #expect(tursoContent == libsqlContent)
     }
 
     @Test("Mode dropdown defaults to remote and offers a local option")

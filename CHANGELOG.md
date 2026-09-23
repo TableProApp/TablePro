@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
 - **Global** on a saved query folder's menu, for a folder every connection shows.
 - Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
+- **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
 
 ### Changed
 
@@ -61,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
+- SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 
 ### Removed
 
@@ -348,6 +350,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
 - Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 - A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
+- `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
 
 ## [0.75.0] - 2026-09-18
 
