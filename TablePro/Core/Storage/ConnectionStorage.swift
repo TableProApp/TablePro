@@ -27,6 +27,8 @@ final class ConnectionStorage {
     /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
 
+    private(set) var lastLoadFailed = false
+
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
     var storeIsTrusted: Bool { file.isTrusted }
@@ -90,7 +92,11 @@ final class ConnectionStorage {
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
-        guard let storedConnections = file.load() else { return [] }
+        guard let storedConnections = file.load() else {
+            lastLoadFailed = true
+            return []
+        }
+        lastLoadFailed = false
 
         let connections = storedConnections.map { stored in
             stored.toConnection()

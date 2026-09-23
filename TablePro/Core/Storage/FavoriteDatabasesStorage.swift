@@ -117,6 +117,7 @@ internal final class FavoriteDatabasesStorage {
         persist(favorites)
 
         guard !skipSync else {
+            syncTracker.discardDirty(.favoriteDatabase, ids: removed.map(Self.syncId(for:)))
             postChangeNotification()
             return
         }
@@ -169,7 +170,9 @@ internal final class FavoriteDatabasesStorage {
             }
             postChangeNotification()
         case .removed(let entry):
-            if !skipSync {
+            if skipSync {
+                syncTracker.discardDirty(.favoriteDatabase, ids: [Self.syncId(for: entry)])
+            } else {
                 syncTracker.markDeleted(.favoriteDatabase, id: Self.syncId(for: entry))
             }
             postChangeNotification()

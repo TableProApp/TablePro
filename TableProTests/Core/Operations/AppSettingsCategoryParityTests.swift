@@ -16,7 +16,7 @@ import Testing
 @Suite("AppSettingsCategory parity")
 struct AppSettingsCategoryParityTests {
     private static let managerSource = sourceFile("TablePro/Core/Storage/AppSettingsManager.swift")
-    private static let syncSource = sourceFile("TablePro/Core/Sync/SyncCoordinator.swift")
+    private static let syncSource = sourceFile("TablePro/Core/Sync/Extensions/SyncCoordinator+Settings.swift")
 
     @Test("Every synced category can be encoded and decoded")
     func syncedCategoriesRoundTrip() throws {

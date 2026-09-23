@@ -50,6 +50,10 @@ public enum SyncError: Error, LocalizedError, Equatable, Sendable {
             return syncError
         }
 
+        if let interruption = error as? SyncPushInterruption {
+            return from(interruption.cause)
+        }
+
         if let ckError = error as? CKError {
             switch ckError.code {
             case .networkUnavailable, .networkFailure:

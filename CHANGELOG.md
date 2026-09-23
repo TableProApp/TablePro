@@ -101,6 +101,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Edits made while an iCloud sync was running reverted by that sync and never uploaded.
+- Saved queries unavailable until relaunch after their store failed to open once.
+- SQL files saved as UTF-8 whatever their encoding, and non-UTF-8 SQL files not opening from Finder or **File > Open File…**.
+- Unresponsive app while comparing large query plans.
+- Slow definition diff in Compare & Sync for large tables.
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
 - Stale column and MongoDB field suggestions when a refresh ran while they were loading.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.

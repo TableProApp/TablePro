@@ -1090,14 +1090,15 @@ final class MainContentCommandActions: ObservableObject {
         let tabId = tab.id
         guard let url = await chooseSaveURL(suggestedName) else { return false }
         do {
-            try await SQLFileService.writeFile(content: content, to: url)
+            try await SQLFileService.writeFile(content: content, to: url, encoding: .utf8)
         } catch {
-            Self.logger.error("Failed to save file: \(error.localizedDescription)")
+            Self.logger.error("Failed to save file: \(error.publicLogShape, privacy: .public)")
+            reportFileSaveFailures([Self.saveFailureMessage(for: error, fileName: url.lastPathComponent)])
             return false
         }
         coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
             mutTab.content.sourceFileURL = url
-            FileTabBaseline.recordWrite(of: content, to: url, in: &mutTab.content)
+            FileTabBaseline.recordWrite(of: content, to: url, as: .utf8, in: &mutTab.content)
             mutTab.title = url.deletingPathExtension().lastPathComponent
         }
         coordinator?.tabManager.markTabRenamed(tabId)
@@ -1538,7 +1539,15 @@ final class MainContentCommandActions: ObservableObject {
     private func handleOpenSQLFiles(_ urls: [URL]) {
         Task {
             for url in urls {
-                try? await TabRouter.shared.route(.openSQLFile(url))
+                do {
+                    try await TabRouter.shared.route(.openSQLFile(url))
+                } catch {
+                    coordinator?.presentError(
+                        String(localized: "Could Not Open File"),
+                        error.localizedDescription,
+                        closeAnchorWindow
+                    )
+                }
             }
         }
     }

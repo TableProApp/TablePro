@@ -22,11 +22,16 @@ internal struct LinkedFavoriteRowView: View {
 
             Spacer()
 
-            if !favorite.isUTF8 {
+            if favorite.encodingCannotRepresentEveryCharacter {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .selectionAwareTint(.yellow)
-                    .help(String(format: String(localized: "Non-UTF-8 file (%@). Saving may change the encoding."), favorite.encodingName))
+                    .help(String(
+                        format: String(
+                            localized: "Encoded as %@. Saving keeps this encoding, and a character it can't represent stops the save."
+                        ),
+                        favorite.encodingDisplayName
+                    ))
                     .accessibilityHidden(true)
             }
 
@@ -56,7 +61,7 @@ internal struct LinkedFavoriteRowView: View {
     private var accessibilityDescription: String {
         var desc = favorite.name + ", " + String(localized: "linked file")
         if !favorite.isUTF8 {
-            desc += ", " + String(format: String(localized: "encoding: %@"), favorite.encodingName)
+            desc += ", " + String(format: String(localized: "encoding: %@"), favorite.encodingDisplayName)
         }
         if let keyword = favorite.keyword, !keyword.isEmpty {
             desc += ", " + String(format: String(localized: "keyword: %@"), keyword)

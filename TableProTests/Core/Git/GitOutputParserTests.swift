@@ -307,4 +307,20 @@ struct FileTextLoaderDecodeTests {
         #expect(FileTextLoader.decode(Data([0x00, 0x00, 0xFE, 0xFF]) + utf32) == text)
         #expect(FileTextLoader.decode(Data()) == "")
     }
+
+    @Test("A blob with no mark reads in the declared encoding, and a mark still outranks it")
+    func declaredEncoding() throws {
+        let text = "SELECT '\u{65E5}\u{672C}';"
+        let shiftJIS = try #require(text.data(using: .shiftJIS))
+        let utf16 = try #require(text.data(using: .utf16BigEndian))
+        #expect(FileTextLoader.decode(shiftJIS, declaredEncoding: .shiftJIS) == text)
+        #expect(FileTextLoader.decode(shiftJIS) != text)
+        #expect(FileTextLoader.decode(Data([0xFE, 0xFF]) + utf16, declaredEncoding: .shiftJIS) == text)
+    }
+
+    @Test("An older version saved as UTF-8 reads as UTF-8 under a working copy recorded as Latin-1")
+    func utf8BlobOutranksASingleByteDeclaration() {
+        let text = "SELECT 'café';"
+        #expect(FileTextLoader.decode(Data(text.utf8), declaredEncoding: .isoLatin1) == text)
+    }
 }

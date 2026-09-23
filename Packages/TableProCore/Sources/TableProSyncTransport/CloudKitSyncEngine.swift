@@ -88,11 +88,15 @@ public actor CloudKitSyncEngine {
         )
 
         for plan in plans {
-            outcome.merge(try await push(
-                plan: plan,
-                records: publishableRecords,
-                deletions: publishableDeletions
-            ))
+            do {
+                outcome.merge(try await push(
+                    plan: plan,
+                    records: publishableRecords,
+                    deletions: publishableDeletions
+                ))
+            } catch {
+                throw SyncPushInterruption.after(outcome, failingWith: error)
+            }
         }
 
         let saved = outcome.savedRecords.count
@@ -129,7 +133,11 @@ public actor CloudKitSyncEngine {
 
             var outcome = PushOutcome()
             for half in halves {
-                outcome.merge(try await push(plan: half, records: records, deletions: deletions))
+                do {
+                    outcome.merge(try await push(plan: half, records: records, deletions: deletions))
+                } catch {
+                    throw SyncPushInterruption.after(outcome, failingWith: error)
+                }
             }
             return outcome
         }

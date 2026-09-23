@@ -54,6 +54,7 @@ internal struct EditorTabPayload: Codable, Hashable {
     /// Source file URL for .sql files opened from disk (used for deduplication)
     internal let sourceFileURL: URL?
     internal let sourceFileStamp: FileStamp?
+    internal let sourceFileEncoding: FileTextEncoding?
     /// Schema key for ER diagram tabs
     internal let erDiagramSchemaKey: String?
     /// The routine or trigger a .objectSource tab shows
@@ -69,7 +70,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         case initialQuery, isView, objectType, showStructure, skipAutoExecute, isPreview
         case forcesNewTab
         case tabTitle
-        case initialFilterState, sourceFileURL, sourceFileStamp, erDiagramSchemaKey, objectRef, versionHistorySubject, intent
+        case initialFilterState, sourceFileURL, sourceFileStamp, sourceFileEncoding
+        case erDiagramSchemaKey, objectRef, versionHistorySubject, intent
         // Legacy key for backward decoding only
         case isNewTab
     }
@@ -91,6 +93,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         initialFilterState: TabFilterState? = nil,
         sourceFileURL: URL? = nil,
         sourceFileStamp: FileStamp? = nil,
+        sourceFileEncoding: FileTextEncoding? = nil,
         erDiagramSchemaKey: String? = nil,
         objectRef: DatabaseObjectRef? = nil,
         versionHistorySubject: VersionHistorySubject? = nil,
@@ -113,6 +116,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.initialFilterState = initialFilterState
         self.sourceFileURL = sourceFileURL
         self.sourceFileStamp = sourceFileStamp
+        self.sourceFileEncoding = sourceFileEncoding
         self.erDiagramSchemaKey = erDiagramSchemaKey
         self.objectRef = objectRef
         self.versionHistorySubject = versionHistorySubject
@@ -141,6 +145,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         initialFilterState = try container.decodeIfPresent(TabFilterState.self, forKey: .initialFilterState)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
         sourceFileStamp = try container.decodeIfPresent(FileStamp.self, forKey: .sourceFileStamp)
+        sourceFileEncoding = try container.decodeIfPresent(FileTextEncoding.self, forKey: .sourceFileEncoding)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         versionHistorySubject = try container.decodeIfPresent(VersionHistorySubject.self, forKey: .versionHistorySubject)
@@ -171,6 +176,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         try container.encodeIfPresent(initialFilterState, forKey: .initialFilterState)
         try container.encodeIfPresent(sourceFileURL, forKey: .sourceFileURL)
         try container.encodeIfPresent(sourceFileStamp, forKey: .sourceFileStamp)
+        try container.encodeIfPresent(sourceFileEncoding, forKey: .sourceFileEncoding)
         try container.encodeIfPresent(erDiagramSchemaKey, forKey: .erDiagramSchemaKey)
         try container.encodeIfPresent(objectRef, forKey: .objectRef)
         try container.encodeIfPresent(versionHistorySubject, forKey: .versionHistorySubject)
@@ -196,6 +202,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.initialFilterState = nil
         self.sourceFileURL = tab.content.sourceFileURL
         self.sourceFileStamp = nil
+        self.sourceFileEncoding = nil
         self.erDiagramSchemaKey = tab.display.erDiagramSchemaKey
         self.objectRef = tab.display.objectRef
         self.versionHistorySubject = tab.display.versionHistorySubject

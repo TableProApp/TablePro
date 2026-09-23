@@ -222,7 +222,9 @@ struct SourceFileDiskChangeHandlingTests {
         let monitor = SourceFileDiskChangeMonitor(tabManager: tabManager) { urls in
             await MainActor.run {
                 try? "SELECT 2".write(to: url, atomically: true, encoding: .utf8)
-                tabManager.mutate(tabId: id) { FileTabBaseline.recordWrite(of: "SELECT 2", to: url, in: &$0.content) }
+                tabManager.mutate(tabId: id) {
+                    FileTabBaseline.recordWrite(of: "SELECT 2", to: url, as: .utf8, in: &$0.content)
+                }
             }
             return urls.map { _ in nil }
         }
@@ -254,7 +256,7 @@ struct SourceFileDiskChangeHandlingTests {
             [.modificationDate: Date(timeIntervalSinceNow: -3_600)],
             ofItemAtPath: url.path
         )
-        let saved = await harness.actions.saveFile(of: restoredTab, to: url)
+        let saved = await harness.actions.saveFiles([(tab: restoredTab, url: url)]).contains(restoredTab.id)
 
         #expect(!saved)
         #expect(try String(contentsOf: url, encoding: .utf8) == "SELECT 0")
@@ -293,7 +295,7 @@ struct SourceFileDiskChangeHandlingTests {
         let dirty = try #require(tab(id, in: harness.coordinator))
 
         try FileManager.default.removeItem(at: url)
-        let saved = await harness.actions.saveFile(of: dirty, to: url)
+        let saved = await harness.actions.saveFiles([(tab: dirty, url: url)]).contains(dirty.id)
 
         #expect(!saved)
         #expect(!FileManager.default.fileExists(atPath: url.path))
@@ -310,7 +312,7 @@ struct SourceFileDiskChangeHandlingTests {
         let id = try openFileTab(at: url, editedTo: "SELECT 2", in: harness.coordinator)
         let dirty = try #require(tab(id, in: harness.coordinator))
 
-        let saved = await harness.actions.saveFile(of: dirty, to: url)
+        let saved = await harness.actions.saveFiles([(tab: dirty, url: url)]).contains(dirty.id)
 
         #expect(saved)
         #expect(try String(contentsOf: url, encoding: .utf8) == "SELECT 2")

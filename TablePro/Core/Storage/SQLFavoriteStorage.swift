@@ -15,11 +15,9 @@ internal actor SQLFavoriteStorage {
     }
 
     private var dbHandle = DatabaseHandle()
-    private var isPrepared = false
 
     internal var db: OpaquePointer? {
-        if !isPrepared {
-            isPrepared = true
+        if dbHandle.pointer == nil {
             setupDatabase()
         }
         return dbHandle.pointer
@@ -65,10 +63,14 @@ internal actor SQLFavoriteStorage {
 
         let dbPath = databaseURL.path(percentEncoded: false)
 
-        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
-            Self.logger.error("Error opening database")
+        var pointer: OpaquePointer?
+        let openResult = sqlite3_open(dbPath, &pointer)
+        guard openResult == SQLITE_OK else {
+            Self.logger.error("Error opening database: \(String(cString: sqlite3_errstr(openResult)), privacy: .public)")
+            sqlite3_close_v2(pointer)
             return
         }
+        dbHandle.pointer = pointer
 
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
@@ -1156,7 +1158,7 @@ internal actor SQLFavoriteStorage {
 
     // MARK: - Parsing Helpers
 
-    private func parseFavorite(from statement: OpaquePointer?) -> SQLFavorite? {
+    internal func parseFavorite(from statement: OpaquePointer?) -> SQLFavorite? {
         guard let statement = statement else { return nil }
 
         guard let idString = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),

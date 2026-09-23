@@ -250,4 +250,51 @@ struct LinkedSQLFavoriteWriterTests {
         let written = try Data(contentsOf: url)
         #expect(written == nameLine + Data("-- @keyword: revenue\nSELECT 1;\n".utf8))
     }
+
+    @Test(
+        "Editing a file's metadata keeps its encoding, byte order mark and encoding attribute",
+        arguments: EncodedSQLFileFixture.allCases
+    )
+    func writeMetadataKeepsTheFileEncoding(fixture: EncodedSQLFileFixture) throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("linked-favorite-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try fixture.write("-- @name: Old\n" + fixture.original, to: url)
+
+        try LinkedSQLFavoriteWriter.writeMetadata(
+            Metadata(name: "New", keyword: "kw", description: nil),
+            to: url
+        )
+
+        let expected = try #require(fixture.bytes(of: "-- @name: New\n-- @keyword: kw\n" + fixture.original))
+        #expect(try Data(contentsOf: url) == expected)
+        #expect(EncodedSQLFileFixture.attributeValue(of: url) == fixture.attributeValue)
+        let reloaded = try #require(FileTextLoader.load(url))
+        #expect(reloaded.encoding == fixture.reportedEncoding)
+        #expect(SQLFrontmatter.parse(reloaded.content) == Metadata(name: "New", keyword: "kw", description: nil))
+    }
+
+    @Test("Metadata the file's encoding cannot hold is refused with that encoding and the file is left alone")
+    func writeMetadataRefusesUnrepresentableText() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("linked-favorite-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fixture = EncodedSQLFileFixture.windowsCyrillicByAttribute
+        try fixture.write("-- @name: Old\n" + fixture.original, to: url)
+        let before = try Data(contentsOf: url)
+
+        do {
+            try LinkedSQLFavoriteWriter.writeMetadata(
+                Metadata(name: "\u{1F600}", keyword: nil, description: nil),
+                to: url
+            )
+            Issue.record("A name the file's encoding cannot hold was written")
+        } catch LinkedSQLFavoriteWriter.WriteError.encodingMismatch(let encoding) {
+            #expect(encoding.encoding == .windowsCP1251)
+            #expect(encoding.displayName == String.localizedName(of: .windowsCP1251))
+        }
+
+        #expect(try Data(contentsOf: url) == before)
+        #expect(EncodedSQLFileFixture.attributeValue(of: url) == fixture.attributeValue)
+    }
 }

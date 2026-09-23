@@ -629,6 +629,7 @@ struct TabQueryContent: Equatable {
     var sourceFileURL: URL?
     var savedFileContent: String?
     var savedFileStamp: FileStamp?
+    var sourceFileEncoding: FileTextEncoding?
     var diskChange: SourceFileDiskChange?
     var dismissedDiskChange: SourceFileDiskChange?
 
@@ -641,6 +642,7 @@ struct TabQueryContent: Equatable {
         sourceFileURL: URL? = nil,
         savedFileContent: String? = nil,
         savedFileStamp: FileStamp? = nil,
+        sourceFileEncoding: FileTextEncoding? = nil,
         diskChange: SourceFileDiskChange? = nil,
         dismissedDiskChange: SourceFileDiskChange? = nil
     ) {
@@ -650,6 +652,7 @@ struct TabQueryContent: Equatable {
         self.sourceFileURL = sourceFileURL
         self.savedFileContent = savedFileContent
         self.savedFileStamp = savedFileStamp
+        self.sourceFileEncoding = sourceFileEncoding
         self.diskChange = diskChange
         self.dismissedDiskChange = dismissedDiskChange
     }
@@ -671,6 +674,7 @@ struct TabQueryContent: Equatable {
             && lhs.dismissedDiskChange == rhs.dismissedDiskChange
             && lhs.sourceFileURL == rhs.sourceFileURL
             && lhs.savedFileStamp == rhs.savedFileStamp
+            && lhs.sourceFileEncoding == rhs.sourceFileEncoding
             && lhs.queryParameters == rhs.queryParameters
             && (lhs.queryStorage === rhs.queryStorage || sameText(lhs.query, rhs.query))
             && sameText(lhs.savedFileContent, rhs.savedFileContent)

@@ -60,7 +60,8 @@ extension MainContentCoordinator {
             tabManager.addTab(
                 initialQuery: loaded.content,
                 sourceFileURL: favorite.fileURL,
-                sourceFileStamp: loaded.stamp
+                sourceFileStamp: loaded.stamp,
+                sourceFileEncoding: loaded.textEncoding
             )
             registerWindowForSourceFile(favorite.fileURL)
             return
@@ -87,7 +88,8 @@ extension MainContentCoordinator {
             databaseName: browseDatabaseName,
             initialQuery: loaded.content,
             sourceFileURL: favorite.fileURL,
-            sourceFileStamp: loaded.stamp
+            sourceFileStamp: loaded.stamp,
+            sourceFileEncoding: loaded.textEncoding
         )
         WindowManager.shared.openTab(payload: payload)
     }

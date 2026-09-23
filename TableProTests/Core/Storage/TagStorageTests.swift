@@ -113,8 +113,6 @@ final class TagStorageTests: XCTestCase {
 
     // MARK: - Remote Apply
 
-    /// saveTags marks every tag dirty and the push uploads every dirty tag, so writing a record
-    /// that changed nothing re-uploads the whole library to the device it came from.
     func testApplyingAnUnchangedRemoteTagWritesNothing() throws {
         let tag = customTag
         try storage.addTag(tag)
