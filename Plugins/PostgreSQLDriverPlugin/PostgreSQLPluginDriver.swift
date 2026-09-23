@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProPluginKit
 
 class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
@@ -166,10 +167,17 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaName = schema ?? core.currentSchema
+        try await listTables(in: .schema(schema ?? core.currentSchema))
+    }
+
+    func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? {
+        try await listTables(in: .allSchemas)
+    }
+
+    private func listTables(in listing: PostgreSQLTableListingScope) async throws -> [PluginTableInfo] {
         func query(_ attempt: PostgreSQLTableListingAttempt) -> String {
             PostgreSQLSchemaQueries.fetchTables(
-                schema: schemaName,
+                in: listing,
                 includeMaterializedViews: attempt.includeOptionalCatalogs && includesMaterializedViews(),
                 includeForeignTables: attempt.includeOptionalCatalogs && includesForeignTables(),
                 includeComments: attempt.includeComments,
@@ -203,7 +211,13 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             }
             let comment = row[safe: 2]?.asText?.nilIfEmpty
             let partitionCount = row[safe: 3]?.asText.flatMap(Int.init)
-            return PluginTableInfo(name: name, type: type, comment: comment, partitionCount: partitionCount)
+            return PluginTableInfo(
+                name: name,
+                type: type,
+                schema: row[safe: 4]?.asText,
+                comment: comment,
+                partitionCount: partitionCount
+            )
         }
     }
 
@@ -826,7 +840,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             )
         } catch {
             Self.logger.error(
-                "Failed to read template1 defaults: \(error.localizedDescription, privacy: .public)"
+                "Failed to read template1 defaults: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return nil
         }
@@ -851,7 +865,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             return (libc: libc, icu: icu)
         } catch {
             Self.logger.error(
-                "Failed to read pg_collation: \(error.localizedDescription, privacy: .public)"
+                "Failed to read pg_collation: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return (libc: [], icu: [])
         }

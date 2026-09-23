@@ -234,6 +234,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
     }
 
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
+        guard let pluginTables = try await pluginDriver.fetchTablesInAllSchemas() else { return nil }
+        return pluginTables.map { mapPluginTable($0, schemaFallback: nil) }
+    }
+
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         let partitions = try await pluginDriver.fetchPartitionDetails(table: table, schema: resolvedSchema)

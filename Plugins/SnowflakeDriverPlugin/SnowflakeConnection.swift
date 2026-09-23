@@ -830,7 +830,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         guard (200..<300).contains(http.statusCode) else {
             let bodyText = String(data: data, encoding: .utf8) ?? ""
             Self.logger.error(
-                "HTTP \(http.statusCode, privacy: .public) from \(request.url?.path ?? "?", privacy: .public): \(String(bodyText.prefix(160)), privacy: .public)"
+                "HTTP \(http.statusCode, privacy: .public) from \(request.url?.path ?? "?", privacy: .public): \(String(bodyText.prefix(160)), privacy: .private)"
             )
             throw SnowflakeError.invalidResponse("Snowflake returned HTTP \(http.statusCode) for \(request.url?.path ?? "request"): \(bodyText.prefix(300))")
         }

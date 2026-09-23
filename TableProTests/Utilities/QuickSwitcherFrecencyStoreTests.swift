@@ -94,14 +94,24 @@ struct QuickSwitcherFrecencyStoreTests {
         #expect(scores["item_0"] == nil)
     }
 
-    @Test("recentItemIds orders by last access, newest first")
+    @Test("recentItemIds orders every tracked item by last access, newest first")
     func recentItemIdsOrdered() {
         let (store, _, _) = makeStore()
         let now = Date()
         store.recordAccess(itemId: "first", at: now.addingTimeInterval(-300))
         store.recordAccess(itemId: "second", at: now.addingTimeInterval(-200))
         store.recordAccess(itemId: "third", at: now.addingTimeInterval(-100))
-        #expect(store.recentItemIds(limit: 2) == ["third", "second"])
+        #expect(store.recentItemIds() == ["third", "second", "first"])
+    }
+
+    @Test("recentItemIds is not cut to the Recent section's length")
+    func recentItemIdsReturnsEveryTrackedItem() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        for index in 0..<25 {
+            store.recordAccess(itemId: "item_\(index)", at: now.addingTimeInterval(TimeInterval(index)))
+        }
+        #expect(store.recentItemIds().count == 25)
     }
 
     @Test("Legacy MRU list migrates preserving order and removes the old key")
@@ -112,7 +122,7 @@ struct QuickSwitcherFrecencyStoreTests {
         suite.set(["newest", "middle", "oldest"], forKey: legacyKey)
 
         let store = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: suite)
-        #expect(store.recentItemIds(limit: 10) == ["newest", "middle", "oldest"])
+        #expect(store.recentItemIds() == ["newest", "middle", "oldest"])
         #expect(suite.stringArray(forKey: legacyKey) == nil)
     }
 
@@ -122,7 +132,7 @@ struct QuickSwitcherFrecencyStoreTests {
         store.recordAccess(itemId: "table_users")
         store.clearHistory()
         #expect(store.scores().isEmpty)
-        #expect(store.recentItemIds(limit: 10).isEmpty)
+        #expect(store.recentItemIds().isEmpty)
     }
 
     @Test("Stores for different connections are isolated")
