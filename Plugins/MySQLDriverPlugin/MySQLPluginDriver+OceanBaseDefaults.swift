@@ -73,7 +73,7 @@ internal extension MySQLPluginDriver {
 
     private func baseTableNames(among tables: Set<String>, schema: String?) async throws -> Set<String> {
         let names = tables.sorted().map { "'\(mysqlEscapeStringLiteral($0))'" }.joined(separator: ", ")
-        let result = try await execute(query: """
+        let result = try await execute(ownStatement: """
             SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
                 AND TABLE_TYPE = 'BASE TABLE'

@@ -54,7 +54,7 @@ extension MySQLPluginDriver {
         database: String,
         table: String?
     ) async throws -> [String: [PluginForeignKeyInfo]] {
-        let columns = try await execute(query: MySQLObjectQueries.foreignKeyColumns(schema: database, table: table))
+        let columns = try await execute(ownStatement: MySQLObjectQueries.foreignKeyColumns(schema: database, table: table))
         let columnRows = columns.rows.compactMap { row -> MySQLForeignKeyCatalog.ColumnRow? in
             guard let tableName = row[safe: 0]?.asText,
                   let constraint = row[safe: 1]?.asText,
@@ -73,7 +73,7 @@ extension MySQLPluginDriver {
         }
         guard !columnRows.isEmpty else { return [:] }
 
-        let actions = try await execute(query: MySQLObjectQueries.referentialActions(schema: database, table: table))
+        let actions = try await execute(ownStatement: MySQLObjectQueries.referentialActions(schema: database, table: table))
         let actionRows = actions.rows.compactMap { row -> MySQLForeignKeyCatalog.ActionRow? in
             guard let tableName = row[safe: 0]?.asText,
                   let constraint = row[safe: 1]?.asText

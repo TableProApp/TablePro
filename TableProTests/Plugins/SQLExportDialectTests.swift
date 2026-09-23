@@ -70,8 +70,10 @@ struct SQLExportDialectTests {
     }
 
     /// A dump taken without a driver has to be the same file as one taken with it. The MySQL
-    /// driver escapes nine characters; escaping only the backslash and the quote left a raw
-    /// `\u{1A}` in the output, which truncates a dump fed to the Windows `mysql` client.
+    /// driver escapes eight characters; escaping only the backslash and the quote left a raw
+    /// `\u{1A}` in the output, which truncates a dump fed to the Windows `mysql` client. A form feed
+    /// stays raw: MySQL has no `\f` escape and reads one as the letter `f`, measured on MySQL 8.4 and
+    /// MariaDB 13, so a dump that wrote it lost the character on import.
     @Test("The dialect escaper writes what the MySQL driver writes")
     func mysqlEscaperMatchesTheDriver() throws {
         let escape = escapeStringLiteralFromDialect(try #require(dialect(for: .mysql)))
@@ -80,7 +82,7 @@ struct SQLExportDialectTests {
         #expect(escape("a\rb") == "a\\rb")
         #expect(escape("a\u{1A}b") == "a\\Zb")
         #expect(escape("a\u{08}b") == "a\\bb")
-        #expect(escape("a\u{0C}b") == "a\\fb")
+        #expect(escape("a\u{0C}b") == "a\u{0C}b")
     }
 
     /// PostgreSQL reads a backslash literally in a standard-conforming string, so doubling it
