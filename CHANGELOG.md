@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Global saved query inside a folder missing from every other connection. (#3045)
 - Saved query and folder drawn nowhere when the folder holding it was gone.
 - Keyword accepted for a global saved query while another connection already held it.
+- Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files.
 - Cleared keyword, folder or **Global** on a saved query or its folder never reaching another device.
 - Renaming a folder putting back the scope another window had just set.
 - Saved queries and their folders deleted at launch when their connection had not arrived from iCloud.

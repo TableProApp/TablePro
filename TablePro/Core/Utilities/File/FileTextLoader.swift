@@ -22,6 +22,9 @@ internal enum FileTextLoader {
 
     static func load(_ url: URL) -> LoadedText? {
         let modifiedAt = modificationDate(of: url)
+        if startsWithByteOrderMark(url) {
+            return loadByteOrderMarked(url, modifiedAt: modifiedAt)
+        }
         var detected: String.Encoding = .utf8
         if let content = try? String(contentsOf: url, usedEncoding: &detected) {
             return LoadedText(content: content, encoding: detected, modifiedAt: modifiedAt)
@@ -36,20 +39,8 @@ internal enum FileTextLoader {
     }
 
     static func decode(_ data: Data) -> String? {
-        let utf8ByteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]
-        if data.starts(with: utf8ByteOrderMark) {
-            return String(data: data.dropFirst(utf8ByteOrderMark.count), encoding: .utf8)
-        }
-        if data.starts(with: [0xFF, 0xFE, 0x00, 0x00]) || data.starts(with: [0x00, 0x00, 0xFE, 0xFF]) {
-            return String(data: data, encoding: .utf32)
-        }
-        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
-            return String(data: data, encoding: .utf16)
-        }
-        if let content = String(data: data, encoding: .utf8) {
-            return content
-        }
-        return String(data: data, encoding: .isoLatin1)
+        guard !data.isEmpty else { return "" }
+        return TextPrefixDecoder.decode(data, prefixLength: data.count)?.content
     }
 
     static func modificationDate(of url: URL) -> Date? {
@@ -59,16 +50,23 @@ internal enum FileTextLoader {
     static func loadHeader(_ url: URL, maxBytes: Int = 4_096) -> LoadedText? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: maxBytes), !data.isEmpty else { return nil }
+        guard let bytes = try? handle.read(upToCount: maxBytes + TextPrefixDecoder.lookaheadLength),
+              let decoded = TextPrefixDecoder.decode(bytes, prefixLength: maxBytes) else { return nil }
         let modifiedAt = modificationDate(of: url)
+        return LoadedText(content: decoded.content, encoding: decoded.encoding, modifiedAt: modifiedAt)
+    }
 
-        if let content = String(data: data, encoding: .utf8) {
-            return LoadedText(content: content, encoding: .utf8, modifiedAt: modifiedAt)
-        }
-        if let content = String(data: data, encoding: .isoLatin1) {
-            return LoadedText(content: content, encoding: .isoLatin1, modifiedAt: modifiedAt)
-        }
-        return nil
+    private static func startsWithByteOrderMark(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let bytes = try? handle.read(upToCount: ByteOrderMark.longestLength) else { return false }
+        return ByteOrderMark.leading(bytes) != nil
+    }
+
+    private static func loadByteOrderMarked(_ url: URL, modifiedAt: Date?) -> LoadedText? {
+        guard let bytes = try? Data(contentsOf: url),
+              let decoded = TextPrefixDecoder.decode(bytes, prefixLength: bytes.count) else { return nil }
+        return LoadedText(content: decoded.content, encoding: decoded.encoding, modifiedAt: modifiedAt)
     }
 }
 
