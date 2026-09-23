@@ -17,9 +17,12 @@ final class SourceObjectDiffEngineTests: XCTestCase {
         kind: CompareObjectKind = .function,
         schema: String? = "public",
         signature: String? = nil,
-        source: String
+        source: String,
+        failure: String? = nil
     ) -> RoutineSourceRead {
-        RoutineSourceRead(name: name, kind: kind, schema: schema, signature: signature, source: source)
+        RoutineSourceRead(
+            name: name, kind: kind, schema: schema, signature: signature, source: source, failure: failure
+        )
     }
 
     private func engine(
@@ -45,7 +48,7 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     func testAnObjectOnlyOnTheSourceIsCreated() {
         let results = engine().compare(
-            source: [read("audit", source: "BEGIN END")],
+            source: [read("audit", source: "CREATE FUNCTION audit() BEGIN END")],
             target: []
         )
 
@@ -57,7 +60,7 @@ final class SourceObjectDiffEngineTests: XCTestCase {
     func testAnObjectOnlyOnTheTargetIsDropped() {
         let results = engine().compare(
             source: [],
-            target: [read("stale", source: "BEGIN END")]
+            target: [read("stale", source: "CREATE FUNCTION stale() BEGIN END")]
         )
 
         XCTAssertEqual(results[0].status, .onlyInTarget)
@@ -66,8 +69,8 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     func testAMatchingDefinitionIsIdentical() {
         let results = engine().compare(
-            source: [read("audit", source: "BEGIN\n  SELECT 1;\nEND")],
-            target: [read("audit", source: "BEGIN\n  SELECT 1;\nEND")]
+            source: [read("audit", source: "CREATE FUNCTION audit()\nBEGIN\n  SELECT 1;\nEND")],
+            target: [read("audit", source: "CREATE FUNCTION audit()\nBEGIN\n  SELECT 1;\nEND")]
         )
 
         XCTAssertEqual(results[0].status, .identical)
@@ -76,8 +79,8 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     func testADifferentDefinitionIsAlter() {
         let results = engine().compare(
-            source: [read("audit", source: "BEGIN SELECT 1; END")],
-            target: [read("audit", source: "BEGIN SELECT 2; END")]
+            source: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END")],
+            target: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 2; END")]
         )
 
         XCTAssertEqual(results[0].status, .differs)
@@ -90,8 +93,8 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     func testTrailingSemicolonsAndLineEndingsAreNotADifference() {
         let results = engine().compare(
-            source: [read("audit", source: "BEGIN SELECT 1; END;")],
-            target: [read("audit", source: "BEGIN SELECT 1; END\r\n")]
+            source: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END;")],
+            target: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END\r\n")]
         )
 
         XCTAssertEqual(results[0].status, .identical)
@@ -133,8 +136,8 @@ final class SourceObjectDiffEngineTests: XCTestCase {
     }
 
     func testWhitespaceIsADifferenceUntilItIsIgnored() {
-        let source = [read("audit", source: "BEGIN\n    SELECT 1;\nEND")]
-        let target = [read("audit", source: "BEGIN SELECT 1; END")]
+        let source = [read("audit", source: "CREATE FUNCTION audit()\nBEGIN\n    SELECT 1;\nEND")]
+        let target = [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END")]
 
         XCTAssertEqual(engine(strict()).compare(source: source, target: target)[0].status, .differs)
 
@@ -144,8 +147,8 @@ final class SourceObjectDiffEngineTests: XCTestCase {
     }
 
     func testIdentifierCaseIsADifferenceUntilItIsIgnored() {
-        let source = [read("audit", source: "BEGIN SELECT 1; END")]
-        let target = [read("audit", source: "begin select 1; end")]
+        let source = [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END")]
+        let target = [read("audit", source: "create function audit() begin select 1; end")]
 
         XCTAssertEqual(engine(strict()).compare(source: source, target: target)[0].status, .differs)
 
@@ -161,11 +164,11 @@ final class SourceObjectDiffEngineTests: XCTestCase {
     func testTwoOverloadsOfOneNameAreMatchedBySignature() {
         let results = engine().compare(
             source: [
-                read("area", signature: "(integer)", source: "SELECT 1"),
-                read("area", signature: "(geometry)", source: "SELECT 2")
+                read("area", signature: "(integer)", source: "CREATE FUNCTION area(integer) BEGIN SELECT 1; END"),
+                read("area", signature: "(geometry)", source: "CREATE FUNCTION area(geometry) BEGIN SELECT 2; END")
             ],
             target: [
-                read("area", signature: "(geometry)", source: "SELECT 2")
+                read("area", signature: "(geometry)", source: "CREATE FUNCTION area(geometry) BEGIN SELECT 2; END")
             ]
         )
 
@@ -176,8 +179,8 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     func testTwoKindsSharingOneNameAreNotMatched() {
         let results = engine().compare(
-            source: [read("audit", kind: .function, source: "SELECT 1")],
-            target: [read("audit", kind: .procedure, source: "SELECT 1")]
+            source: [read("audit", kind: .function, source: "CREATE FUNCTION audit() BEGIN END")],
+            target: [read("audit", kind: .procedure, source: "CREATE PROCEDURE audit() BEGIN END")]
         )
 
         XCTAssertEqual(results.count, 2)
@@ -186,24 +189,141 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     func testTwoSchemasSharingOneNameAreNotMatched() {
         let results = engine().compare(
-            source: [read("audit", schema: "public", source: "SELECT 1")],
-            target: [read("audit", schema: "sales", source: "SELECT 1")]
+            source: [read("audit", schema: "public", source: "CREATE FUNCTION audit() BEGIN END")],
+            target: [read("audit", schema: "sales", source: "CREATE FUNCTION audit() BEGIN END")]
         )
 
         XCTAssertEqual(results.count, 2)
     }
 
-    // MARK: - Missing definitions
+    // MARK: - Unreadable definitions
 
-    /// A driver that lists a routine but cannot return its body must not report it as identical to
-    /// another routine whose body is also empty.
-    func testAnObjectWithNoDefinitionCarriesANote() {
+    func testASourceWhoseReadFailedIsNotComparedAgainstAReadableTarget() {
+        let denied = "SHOW VIEW command denied to user 'reader'@'%' for table 'v'"
+        let results = engine(databaseType: .mysql).compare(
+            source: [read("v", kind: .view, schema: nil, source: "", failure: denied)],
+            target: [read("v", kind: .view, schema: nil, source: "CREATE VIEW v AS SELECT 1")]
+        )
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.unreadable(denied).reason(on: .source))
+        XCTAssertEqual(results[0].suggestedAction, .skip)
+        XCTAssertEqual(results[0].availableActions, [.skip])
+        XCTAssertEqual(results[0].sourceDefinition, [])
+        XCTAssertEqual(results[0].targetDefinition, ["CREATE VIEW v AS SELECT 1"])
+    }
+
+    func testTwoFailedReadsOfOneObjectAreNotIdentical() {
         let results = engine().compare(
-            source: [read("audit", source: "")],
+            source: [read("v", kind: .view, source: "", failure: "denied")],
+            target: [read("v", kind: .view, source: "", failure: "denied")]
+        )
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertNotEqual(results[0].status, .identical)
+        XCTAssertFalse(results[0].isComparable)
+    }
+
+    func testAnUnreadableObjectOnlyOnTheSourceIsNeverCreated() {
+        let results = engine().compare(
+            source: [read("audit", source: "", failure: "permission denied")],
             target: []
         )
 
-        XCTAssertFalse(results[0].notes.isEmpty)
+        XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.unreadable("permission denied").reason(on: .source))
+        XCTAssertEqual(results[0].suggestedAction, .skip)
+        XCTAssertEqual(results[0].availableActions, [.skip])
+    }
+
+    func testAnUnreadableObjectOnlyOnTheTargetNamesTheTargetAndIsNeverDropped() {
+        let results = engine().compare(
+            source: [],
+            target: [read("stale", source: "", failure: "permission denied")]
+        )
+
+        XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.unreadable("permission denied").reason(on: .target))
+        XCTAssertEqual(results[0].availableActions, [.skip])
+    }
+
+    func testADefinitionWithNothingToRunIsUnreadable() {
+        for blank in ["", "   \n\t", "-- nothing here", "/* nothing */", "# nothing"] {
+            let results = engine(databaseType: .mysql).compare(
+                source: [read("audit", source: blank)],
+                target: [read("audit", source: "CREATE FUNCTION audit() RETURNS INT RETURN 1")]
+            )
+
+            XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.empty.reason(on: .source), blank)
+            XCTAssertEqual(results[0].availableActions, [.skip], blank)
+        }
+    }
+
+    func testABodyThatIsNotACreateStatementIsUnreadable() {
+        for body in ["(a + b)", "SELECT 1 AS x"] {
+            let results = engine(databaseType: .duckdb).compare(
+                source: [read("add", source: body)],
+                target: []
+            )
+
+            XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.notACreateStatement.reason(on: .source), body)
+            XCTAssertEqual(results[0].availableActions, [.skip], body)
+            XCTAssertEqual(results[0].sourceDefinition, [body], body)
+        }
+    }
+
+    func testALeadingCommentDoesNotHideTheCreate() {
+        let definition = "-- Author: ops\n/* audit */\nCREATE PROCEDURE dbo.audit AS SET NOCOUNT ON; SELECT 1;"
+
+        let results = engine(databaseType: .mssql).compare(
+            source: [read("audit", schema: "dbo", source: definition)],
+            target: [read("audit", schema: "dbo", source: definition)]
+        )
+
+        XCTAssertNil(results[0].comparisonError)
+        XCTAssertEqual(results[0].status, .identical)
+    }
+
+    func testEachSideIsReadInItsOwnEnginesGrammar() {
+        let mysqlDefinition = "# reporting view\nCREATE VIEW v AS SELECT 1"
+        let postgresDefinition = "CREATE VIEW v AS SELECT 1"
+
+        let fromMySQL = SourceObjectDiffEngine(sourceDatabaseType: .mysql, targetDatabaseType: .postgresql).compare(
+            source: [read("v", kind: .view, schema: nil, source: mysqlDefinition)],
+            target: [read("v", kind: .view, schema: nil, source: postgresDefinition)]
+        )
+        let intoMySQL = SourceObjectDiffEngine(sourceDatabaseType: .postgresql, targetDatabaseType: .mysql).compare(
+            source: [read("v", kind: .view, schema: nil, source: postgresDefinition)],
+            target: [read("v", kind: .view, schema: nil, source: mysqlDefinition)]
+        )
+
+        XCTAssertNil(fromMySQL[0].comparisonError)
+        XCTAssertNil(intoMySQL[0].comparisonError)
+    }
+
+    func testASQLServerModuleStoredAfterAlterOrCreateOrAlterIsReadable() {
+        let altered = "/* comment */  CREATE PROCEDURE Test1A  AS  SELECT 3;"
+        let createdOrAltered = "CrEaTe /*Y*/ PROCEDURE Test1B AS SELECT 2;"
+
+        let results = engine(databaseType: .mssql).compare(
+            source: [
+                read("Test1A", kind: .procedure, schema: "dbo", source: altered),
+                read("Test1B", kind: .procedure, schema: "dbo", source: createdOrAltered)
+            ],
+            target: []
+        )
+
+        XCTAssertEqual(results.map(\.comparisonError), [nil, nil])
+        XCTAssertEqual(results.map(\.suggestedAction), [.create, .create])
+    }
+
+    func testAnUnreadableObjectIsNeitherADifferenceNorSelectable() {
+        let report = CompareReport(results: engine().compare(
+            source: [read("v", kind: .view, source: "", failure: "denied")],
+            target: [read("v", kind: .view, source: "CREATE VIEW v AS SELECT 1")]
+        ))
+
+        XCTAssertEqual(report.uncomparable.count, 1)
+        XCTAssertTrue(report.comparable.isEmpty)
+        XCTAssertEqual(report.differenceCount, 0)
     }
 
     private func strict() -> StructureCompareOptions {

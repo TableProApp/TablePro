@@ -167,9 +167,9 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         /// that the server always refuses.
         var allowsRowEditing: Bool {
             switch self {
-            case .view, .externalTable, .sequence:
+            case .view, .materializedView, .externalTable, .sequence:
                 return false
-            case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
+            case .table, .foreignTable, .systemTable, .partitionedTable:
                 return true
             }
         }

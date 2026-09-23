@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
 - Version history for saved queries, with **Restore This Version**. (#2505)
 - Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
+- Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 
 ### Changed
 
@@ -64,9 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
+- Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 - Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read.
 
 ### Removed
@@ -80,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
+- Stale column and MongoDB field suggestions when a refresh ran while they were loading.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
 - Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
 - Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery.
@@ -120,6 +126,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
 - Saved query longer than 500,000 characters silently cut short when saved.
 - A file the import panel dimmed still opening, and reaching the wrong importer.
+- Materialized view opened from Open Quickly edited as a plain view. (#2522)
+- Materialized view rows editable in the data grid, then refused at Save.
+- Index edits refused on a PGlite materialized view.
+- Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
+- **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
+- **New Trigger** offered on a materialized view.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
@@ -320,6 +332,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
 - Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
 - Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
+- Compare & Sync scripting a `DROP` with no `CREATE` for a view, routine or trigger whose definition it could not read.
+- Compare & Sync offering to drop every target procedure, function or trigger when the source's list could not be read.
+- DuckDB macro dropped and not recreated by a Compare & Sync replace.
+- Copy To giving no reason for a view, routine or trigger whose definition could not be read.
+- Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
 - SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
 - An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
 - Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)
@@ -356,6 +373,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Destination folder and the first database reading as one path in the backup result sheet. (#3046)
 - Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
 - Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
+- Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard.
 - Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
 - Show Previous Tab and Show Next Tab listed twice in the Window menu.
 - Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
@@ -367,6 +385,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table opened in one database shown in Open Quickly's Recent in every other database, and opened there.
 - Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half.
 - MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted.
+- Structure and Create Table SQL Preview disagreeing with Save on the schema, primary key name or a SQLite foreign key.
+- Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
+- PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
+- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
 
 ### Security
 

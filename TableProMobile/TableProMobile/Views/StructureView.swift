@@ -152,6 +152,18 @@ struct StructureView: View {
                             Text(index.columns.joined(separator: ", "))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+
+                            if !index.includedColumns.isEmpty {
+                                Text(verbatim: "INCLUDE (\(index.includedColumns.joined(separator: ", ")))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            if let whereClause = index.whereClause, !whereClause.isEmpty {
+                                Text(verbatim: "WHERE \(whereClause)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         .padding(.vertical, 2)
                     }

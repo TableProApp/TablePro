@@ -61,10 +61,10 @@ internal final class TabRouter {
         case .openConnection(let id):
             try await openConnection(id: id)
 
-        case .openTable(let id, let database, let schema, let table, let isView):
+        case .openTable(let id, let database, let schema, let table, let isView, let objectType):
             try await openTable(
                 connectionId: id, transientConnection: nil,
-                database: database, schema: schema, table: table, isView: isView
+                database: database, schema: schema, table: table, isView: isView, objectType: objectType
             )
 
         case .openQuery(let id, let sql):
@@ -217,6 +217,7 @@ internal final class TabRouter {
     private func openTable(
         connectionId: UUID, transientConnection: DatabaseConnection? = nil,
         database: String?, schema: String?, table: String, isView: Bool,
+        objectType: TableInfo.TableType? = nil,
         passwordOverride: String? = nil, sshPasswordOverride: String? = nil
     ) async throws {
         let connection: DatabaseConnection
@@ -241,7 +242,8 @@ internal final class TabRouter {
             tableName: table,
             databaseName: database,
             schemaName: schema,
-            isView: isView
+            isView: isView,
+            objectType: objectType
         )
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)

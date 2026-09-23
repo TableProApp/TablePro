@@ -83,6 +83,7 @@ The CA file may be PEM or DER. If **Verify CA** cannot read it, the connection f
 ## Limitations
 
 - No foreign keys and no multi-statement transactions.
+- A materialized view opens read-only in the data grid. Edit the table a `TO` view writes into, or run `ALTER TABLE … UPDATE` and `ALTER TABLE … DELETE` on a view that stores its own rows from the SQL editor.
 - No auto-increment, and the primary key and sorting key are fixed at creation. Structure editing covers adding, modifying, and dropping columns, and dropping data-skipping indexes. Add or change a data-skipping index with `ALTER TABLE … ADD INDEX` in the SQL editor, and recreate the table for anything else.
 - A `SET` does not carry to the next statement. Every statement is its own HTTP request with no session id, and the setting is gone by the next one. Put it in a `SETTINGS` clause on the query itself.
 - A query with its own `FORMAT` clause, such as `SELECT 1 FORMAT JSON`, shows the server's raw output in one column instead of a parsed table. Drop the clause to get a grid.

@@ -143,7 +143,7 @@ struct FileTabExternalChangeTests {
         var tab = hydratedTab(for: url)
 
         try "SELECT 1 -- saved".write(to: url, atomically: true, encoding: .utf8)
-        FileTabBaseline.recordWrite(of: "SELECT 1 -- saved", encoding: .utf8, to: url, in: &tab.content)
+        FileTabBaseline.recordWrite(of: "SELECT 1 -- saved", to: url, in: &tab.content)
 
         #expect(tab.content.savedFileContent == "SELECT 1 -- saved")
         #expect(FileTabBaseline.diskChange(in: tab.content) == nil)

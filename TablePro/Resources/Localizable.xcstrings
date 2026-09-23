@@ -35,6 +35,9 @@
         }
       }
     },
+    "%1$@ could not be read again before generating the script. %2$@" : {
+
+    },
     "A sequence" : {
       "localizations" : {
         "ko" : {
@@ -6353,6 +6356,9 @@
           }
         }
       }
+    },
+    "%@ cannot be scripted, because its definition is not a statement that recreates it." : {
+
     },
     "%@ does not allow NULL, so its default cannot be NULL" : {
 
@@ -23554,7 +23560,7 @@
         }
       }
     },
-    "Available once the view holds rows. Refresh it once without this option first." : {
+    "Available once the view is populated. Refresh it once without this option first." : {
 
     },
     "Average" : {
@@ -37188,6 +37194,12 @@
           }
         }
       }
+    },
+    "Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+
+    },
+    "Concurrent refresh needs the view to be populated first. Refresh it once without that option." : {
+
     },
     "Condition" : {
       "localizations" : {
@@ -150584,6 +150596,21 @@
         }
       }
     },
+    "The procedures and functions in %1$@ could not be listed: %2$@" : {
+
+    },
+    "The source returned a body rather than a statement that recreates it." : {
+
+    },
+    "The source returned an empty definition." : {
+
+    },
+    "The target returned a body rather than a statement that recreates it." : {
+
+    },
+    "The target's definition could not be read: %@" : {
+
+    },
     "switch %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -154119,6 +154146,9 @@
       }
     },
     "Table Type" : {
+
+    },
+    "The source's definition could not be read: %@" : {
 
     },
     "table_name" : {
@@ -158558,40 +158588,6 @@
         }
       }
     },
-    "The driver did not return this object's definition, so only its name was compared." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "드라이버가 이 객체의 정의를 반환하지 않아 이름만 비교했습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sürücü bu nesnenin tanımını döndürmedi, bu yüzden yalnızca adı karşılaştırıldı."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Driver không trả về định nghĩa của đối tượng này, nên chỉ tên của nó được so sánh."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "驱动未返回此对象的定义，因此只比较了它的名称。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "驅動程式未傳回此物件的定義，因此只比較了它的名稱。"
-          }
-        }
-      }
-    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
 
     },
@@ -162087,6 +162083,9 @@
     "The target keeps what it has and the object is left out." : {
 
     },
+    "The target returned an empty definition." : {
+
+    },
     "The target's object is dropped and built again from the source." : {
 
     },
@@ -162330,6 +162329,9 @@
           }
         }
       }
+    },
+    "The triggers on %1$@ in %2$@ could not be listed: %3$@" : {
+
     },
     "the tunnel command" : {
 
@@ -168020,6 +168022,9 @@
           }
         }
       }
+    },
+    "This view can be refreshed concurrently." : {
+
     },
     "to view data" : {
       "localizations" : {

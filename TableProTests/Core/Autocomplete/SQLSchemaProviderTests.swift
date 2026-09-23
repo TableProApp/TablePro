@@ -193,14 +193,34 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return columnsToReturn[table.lowercased()] ?? []
     }
 
+    var fetchAllColumnsError: Error?
+
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         fetchAllColumnsCallCount += 1
+        if let fetchAllColumnsError {
+            throw fetchAllColumnsError
+        }
         return allColumnsToReturn
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+
+    var concurrentRefreshAvailabilityToReturn: PluginConcurrentRefreshAvailability?
+    var concurrentRefreshAvailabilityError: Error?
+    var concurrentRefreshAvailabilityCalls: [(name: String, schema: String?)] = []
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        concurrentRefreshAvailabilityCalls.append((materializedView, schema))
+        if let concurrentRefreshAvailabilityError {
+            throw concurrentRefreshAvailabilityError
+        }
+        return concurrentRefreshAvailabilityToReturn
+    }
 
     func fetchTableDDL(table: String) async throws -> String { "" }
     func fetchViewDefinition(view: String) async throws -> String { "" }

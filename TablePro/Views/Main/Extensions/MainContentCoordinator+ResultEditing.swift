@@ -30,7 +30,7 @@ extension MainContentCoordinator {
     var canEditActiveResult: Bool {
         guard let tab = tabManager.selectedTab else { return false }
         return tab.tableContext.isEditable
-            && !tab.tableContext.isView
+            && tab.tableContext.allowsRowEditing
             && !safeModeLevel.blocksAllWrites
             && activeResultEditRefusal == nil
     }

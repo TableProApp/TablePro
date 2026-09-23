@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("SQLSchemaProvider unqualified scope")
@@ -15,7 +16,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         return driver
     }
 
-    private static func source(_ script: ScriptedSchemaTablesFetch) -> SQLSchemaProvider.ColumnMetadataSource {
+    private static func source(_ script: ScriptedFetch<[TableInfo]>) -> SQLSchemaProvider.ColumnMetadataSource {
         SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { _, _ in [] },
             fetchAllColumns: { [:] },
@@ -41,7 +42,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
 
     @Test("Completing another schema's tables leaves bare completion and the scope's tables alone")
     func qualifiedCompletionDoesNotWidenTheScope() async {
-        let script = ScriptedSchemaTablesFetch([.success([Self.timesheet])])
+        let script = ScriptedFetch<[TableInfo]>([.success([Self.timesheet])])
         let driver = Self.postgresDriver()
         let provider = SQLSchemaProvider(metadataSource: Self.source(script))
         await provider.resetForDatabase("db", tables: [Self.users], driver: driver, connection: driver.connection)
@@ -57,7 +58,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
 
     @Test("A bare FROM prefix never offers a table only another schema holds")
     func bareFromPrefixAfterQualifiedCompletion() async {
-        let script = ScriptedSchemaTablesFetch([.success([Self.timesheet])])
+        let script = ScriptedFetch<[TableInfo]>([.success([Self.timesheet])])
         let driver = Self.postgresDriver()
         let schemaProvider = SQLSchemaProvider(metadataSource: Self.source(script))
         await schemaProvider.resetForDatabase(
@@ -135,7 +136,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
 
     @Test("A schema with no tables is fetched once, not on every keystroke")
     func emptySchemaIsFetchedOnce() async {
-        let script = ScriptedSchemaTablesFetch([.success([])])
+        let script = ScriptedFetch<[TableInfo]>([.success([])])
         let provider = SQLSchemaProvider(metadataSource: Self.source(script))
 
         let first = await provider.tableCompletionItems(inSchema: "archive")
@@ -148,7 +149,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
 
     @Test("A failed fetch of another schema's tables is asked again")
     func failedSchemaFetchIsRetried() async {
-        let script = ScriptedSchemaTablesFetch([
+        let script = ScriptedFetch<[TableInfo]>([
             .failure(DatabaseError.queryFailed("timeout")),
             .success([Self.timesheet])
         ])
@@ -164,7 +165,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
 
     @Test("Concurrent completions of one schema share a single fetch")
     func concurrentSchemaCompletionsShareOneFetch() async {
-        let script = ScriptedSchemaTablesFetch([.success([Self.timesheet])], holdsFirstCall: true)
+        let script = ScriptedFetch<[TableInfo]>([.success([Self.timesheet])], holdingCalls: 1)
         let provider = SQLSchemaProvider(metadataSource: Self.source(script))
 
         let first = Task { await provider.tableCompletionItems(inSchema: "attendance").map(\.label) }
@@ -173,25 +174,25 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         for _ in 0..<50 where script.calls < 2 {
             try? await Task.sleep(nanoseconds: 2_000_000)
         }
-        script.releaseHeldCall()
+        script.releaseNextHeldCall()
 
         #expect(await first.value == ["timesheet"])
         #expect(await second.value == ["timesheet"])
         #expect(script.calls == 1)
     }
 
-    @Test("A fetch a database switch overtook answers its caller and nothing after the switch")
+    @Test("A fetch a refresh overtook answers its caller and nothing after the refresh")
     func overtakenFetchDoesNotAnswerForTheNewScope() async {
         let roster = TestFixtures.makeTableInfo(name: "roster", schema: "attendance")
-        let script = ScriptedSchemaTablesFetch([.success([Self.timesheet]), .success([roster])], holdsFirstCall: true)
+        let script = ScriptedFetch<[TableInfo]>([.success([Self.timesheet]), .success([roster])], holdingCalls: 1)
         let driver = Self.postgresDriver()
         let provider = SQLSchemaProvider(metadataSource: Self.source(script))
-        await provider.resetForDatabase("first", tables: [Self.users], driver: driver, connection: driver.connection)
+        await provider.resetForDatabase("db", tables: [Self.users], driver: driver, connection: driver.connection)
 
         let overtaken = Task { await provider.tableCompletionItems(inSchema: "attendance").map(\.label) }
         await script.waitForCalls(1)
-        await provider.resetForDatabase("second", tables: [Self.users], driver: driver, connection: driver.connection)
-        script.releaseHeldCall()
+        await provider.resetForDatabase("db", tables: [Self.users], driver: driver, connection: driver.connection)
+        script.releaseNextHeldCall()
         let overtakenLabels = await overtaken.value
 
         let fresh = await provider.tableCompletionItems(inSchema: "attendance").map(\.label)
@@ -202,22 +203,96 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         #expect(bare == ["users"])
         #expect(script.calls == 2)
     }
+
+    @Test("A field path sample a refresh overtook leaves the cache and the sample after the refresh alone")
+    func overtakenFieldPathSampleLeavesTheRefreshedScopeAlone() async {
+        let beforeRefresh = PluginFieldPath(path: "customer.name", typeName: "string", depth: 2)
+        let afterRefresh = PluginFieldPath(path: "buyer.email", typeName: "string", depth: 2)
+        let unexpectedThirdSample = PluginFieldPath(path: "third.sample", typeName: "string", depth: 2)
+        let script = ScriptedFetch<[PluginFieldPath]>(
+            [.success([beforeRefresh]), .success([afterRefresh]), .success([unexpectedThirdSample])],
+            holdingCalls: 2
+        )
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { [:] },
+            sampleFieldPaths: { _, _ in try await script.fetch() }
+        )
+        let driver = MockDatabaseDriver()
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+
+        let overtaken = Task { await provider.fieldPaths(for: "orders").map(\.path) }
+        await script.waitForCalls(1)
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+        let current = Task { await provider.fieldPaths(for: "orders").map(\.path) }
+        await script.waitForCalls(2)
+        script.releaseNextHeldCall()
+        let overtakenPaths = await overtaken.value
+
+        let joining = Task { await provider.fieldPaths(for: "orders").map(\.path) }
+        for _ in 0..<50 where script.calls < 3 {
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        script.releaseNextHeldCall()
+
+        #expect(overtakenPaths == ["customer.name"])
+        #expect(await current.value == ["buyer.email"])
+        #expect(await joining.value == ["buyer.email"])
+        #expect(script.calls == 2)
+    }
+
+    @Test("A column fetch a refresh overtook leaves the cache and the fetch after the refresh alone")
+    func overtakenColumnFetchLeavesTheRefreshedScopeAlone() async {
+        let script = ScriptedFetch<[ColumnInfo]>(
+            [
+                .success([TestFixtures.makeColumnInfo(name: "before_refresh")]),
+                .success([TestFixtures.makeColumnInfo(name: "after_refresh")]),
+                .success([TestFixtures.makeColumnInfo(name: "unexpected_third_fetch")])
+            ],
+            holdingCalls: 2
+        )
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in try await script.fetch() },
+            fetchAllColumns: { [:] }
+        )
+        let driver = MockDatabaseDriver()
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+
+        let overtaken = Task { await provider.getColumns(for: "orders").map(\.name) }
+        await script.waitForCalls(1)
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+        let current = Task { await provider.getColumns(for: "orders").map(\.name) }
+        await script.waitForCalls(2)
+        script.releaseNextHeldCall()
+        let overtakenColumns = await overtaken.value
+
+        let joining = Task { await provider.getColumns(for: "orders").map(\.name) }
+        for _ in 0..<50 where script.calls < 3 {
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        script.releaseNextHeldCall()
+
+        #expect(overtakenColumns == ["before_refresh"])
+        #expect(await current.value == ["after_refresh"])
+        #expect(await joining.value == ["after_refresh"])
+        #expect(script.calls == 2)
+    }
 }
 
-/// Answers `fetchSchemaTables` from a list, one answer per call with the last repeated, and can
-/// hold the first call until the test releases it.
-private final class ScriptedSchemaTablesFetch: @unchecked Sendable {
+private final class ScriptedFetch<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private let answers: [Result<[TableInfo], any Error>]
-    private let holdsFirstCall: Bool
+    private let answers: [Result<Value, any Error>]
+    private let holdingCalls: Int
     private var startedCalls = 0
     private var arrivedCalls = 0
-    private var heldCall: CheckedContinuation<Void, Never>?
+    private var heldCalls: [CheckedContinuation<Void, Never>] = []
     private var callWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
-    init(_ answers: [Result<[TableInfo], any Error>], holdsFirstCall: Bool = false) {
+    init(_ answers: [Result<Value, any Error>], holdingCalls: Int = 0) {
         self.answers = answers
-        self.holdsFirstCall = holdsFirstCall
+        self.holdingCalls = holdingCalls
     }
 
     var calls: Int {
@@ -226,10 +301,10 @@ private final class ScriptedSchemaTablesFetch: @unchecked Sendable {
         return arrivedCalls
     }
 
-    func fetch() async throws -> [TableInfo] {
+    func fetch() async throws -> Value {
         let index = reserveCall()
         let answer = answers[min(index, answers.count - 1)]
-        if index == 0 && holdsFirstCall {
+        if index < holdingCalls {
             await withCheckedContinuation { continuation in
                 hold(continuation)
                 noteArrival()
@@ -246,10 +321,9 @@ private final class ScriptedSchemaTablesFetch: @unchecked Sendable {
         }
     }
 
-    func releaseHeldCall() {
+    func releaseNextHeldCall() {
         lock.lock()
-        let held = heldCall
-        heldCall = nil
+        let held = heldCalls.isEmpty ? nil : heldCalls.removeFirst()
         lock.unlock()
         held?.resume()
     }
@@ -264,7 +338,7 @@ private final class ScriptedSchemaTablesFetch: @unchecked Sendable {
 
     private func hold(_ continuation: CheckedContinuation<Void, Never>) {
         lock.lock()
-        heldCall = continuation
+        heldCalls.append(continuation)
         lock.unlock()
     }
 

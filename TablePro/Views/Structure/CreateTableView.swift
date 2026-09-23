@@ -136,6 +136,7 @@ struct CreateTableView: View {
         .onChange(of: selectedRows) { newRows in selectionState.indices = newRows }
         .onChange(of: selectedTab) { _ in updateGridDelegate() }
         .onChange(of: isReadyToCreate) { _ in updateCreateTablePendingState() }
+        .task(id: compositionKey) { await recomposeAfterPause() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
@@ -194,7 +195,7 @@ struct CreateTableView: View {
     }
 
     private var showMySQLOptions: Bool {
-        connection.type == .mysql || connection.type == .mariadb
+        CreateTableDraft.offersEngineOptions(for: connection.type)
     }
 
     // MARK: - Toolbar
@@ -215,7 +216,7 @@ struct CreateTableView: View {
         /// The composed issues, not the plan's. A driver that cannot spell one of the statements,
         /// as Snowflake and Trino cannot spell `CREATE INDEX`, reports it only here, and reading the
         /// plan alone left Create Table enabled over a preview the app would then refuse to run.
-        let issues = currentStatements().issues
+        let issues = draft.composed?.issues ?? draft.plan(for: connection.type).issues
 
         return HStack(spacing: 8) {
             Button(action: { gridDelegate.dataGridAddRow() }) {
@@ -369,70 +370,67 @@ struct CreateTableView: View {
 
     // MARK: - SQL Preview
 
-    /// Derived from the working rows rather than refreshed by an event.
-    ///
-    /// It used to be `@State` written by `onChange(of: reloadVersion)`, and `reloadVersion` is bumped
-    /// only by a schema load and a discard, never by an edit. What kept the preview honest was the
-    /// segment switch remounting this branch, so anything that changed the draft while the preview
-    /// was already on screen, undo among them, left a statement on screen that would not be run.
+    @ViewBuilder
     private var sqlPreviewView: some View {
-        let composed = currentStatements()
-        return Group {
+        if let composed = draft.composed {
             if composed.statements.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "doc.plaintext")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text(composed.issues.first?.qualifiedMessage
-                        ?? String(localized: "Add columns to see the CREATE TABLE statement"))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                sqlPreviewPlaceholder(composed.issues.first?.qualifiedMessage)
             } else {
                 DDLTextView(ddl: composed.preview, fontSize: .constant(13))
             }
+        } else if let failure = draft.compositionFailure {
+            sqlPreviewPlaceholder(failure)
+        } else {
+            uncomposedPreview(plan: draft.plan(for: connection.type))
         }
+    }
+
+    @ViewBuilder
+    private func uncomposedPreview(plan: CreateTablePlan) -> some View {
+        if plan.definition == nil {
+            sqlPreviewPlaceholder(plan.issues.first?.qualifiedMessage)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func sqlPreviewPlaceholder(_ message: String?) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "doc.plaintext")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(message ?? String(localized: "Add columns to see the CREATE TABLE statement"))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // Cell editing, row operations, undo/redo handled by CreateTableGridDelegate
 
     // MARK: - SQL Generation
 
-    /// Pure, so the toolbar can ask on every keystroke without touching the driver.
-    private var currentPlan: CreateTablePlan {
-        CreateTableDraftBuilder.plan(
-            tableName: draft.tableName,
-            options: draft.tableOptions,
-            columns: structureChangeManager.workingColumns,
-            indexes: structureChangeManager.workingIndexes,
-            foreignKeys: structureChangeManager.workingForeignKeys,
-            dialect: ForeignKeyDialect.forType(connection.type),
-            includesEngineOptions: showMySQLOptions
-        )
+    private static let compositionPause: Duration = .milliseconds(150)
+
+    private var compositionKey: CreateTableCompositionKey? {
+        scope.map { draft.compositionKey(scope: $0) }
     }
 
-    private func currentStatements() -> CreateTableStatements {
-        statements(composedWith: DatabaseManager.shared.driver(for: connection.id))
-    }
-
-    /// Several visual-editor drivers write their own current schema or catalog into the statement as
-    /// an explicit qualifier, so the driver the SQL is composed on decides where the table lands.
-    /// Composing on the session driver and executing on the tab's scope pinned only half of it.
-    private func statements(composedWith driver: DatabaseDriver?) -> CreateTableStatements {
-        let plan = currentPlan
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-            return CreateTableStatements(statements: [], issues: plan.issues, tableName: nil)
-        }
-        return CreateTableStatementComposer.compose(plan: plan, driver: pluginDriver)
+    private func recomposeAfterPause() async {
+        guard let scope else { return }
+        try? await Task.sleep(for: Self.compositionPause)
+        guard !Task.isCancelled else { return }
+        await draft.recompose(databaseType: connection.type, scope: scope)
     }
 
     // MARK: - Create Table
 
     private var isReadyToCreate: Bool {
-        let composed = currentStatements()
-        return !isCreating && composed.issues.isEmpty && !composed.statements.isEmpty
+        guard !isCreating, let composed = draft.composed else { return false }
+        return composed.issues.isEmpty && !composed.statements.isEmpty
     }
 
     private func updateCreateTablePendingState() {
@@ -448,8 +446,9 @@ struct CreateTableView: View {
     /// keep the app's own DDL off the user's connection.
     private func createTable() {
         guard !isCreating else { return }
-        guard currentStatements().issues.isEmpty else {
-            errorMessage = currentStatements().issues.map(\.qualifiedMessage).joined(separator: "\n")
+        let plan = draft.plan(for: connection.type)
+        guard plan.issues.isEmpty else {
+            errorMessage = plan.issues.map(\.qualifiedMessage).joined(separator: "\n")
             showError = true
             return
         }
@@ -466,9 +465,7 @@ struct CreateTableView: View {
         Task {
             defer { isCreating = false }
             do {
-                let composed = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                    await MainActor.run { statements(composedWith: driver) }
-                }
+                let composed = try await DatabaseManager.shared.createTableStatements(plan: plan, scope: scope)
                 guard composed.issues.isEmpty, !composed.statements.isEmpty else {
                     errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
                     showError = true

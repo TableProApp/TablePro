@@ -40,6 +40,7 @@ actor SQLSchemaProvider {
     private var tables: [TableInfo] = []
     private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
     private var columnAccessOrder: [ColumnCacheKey] = []
+    private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
     private var loadTask: Task<Void, Never>?
     private var eagerColumnTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
@@ -148,27 +149,35 @@ actor SQLSchemaProvider {
             return cached
         }
 
-        do {
-            let columns: [ColumnInfo]
-            if let metadataSource {
-                columns = try await metadataSource.fetchColumns(tableName, schema)
-            } else if let driver = cachedDriver {
-                columns = schema != nil
+        if let inFlight = columnTasks[key] { return await inFlight.value ?? [] }
+        let source = metadataSource
+        let driver = cachedDriver
+        guard source != nil || driver != nil else { return [] }
+
+        let task = Task<[ColumnInfo]?, Never> {
+            do {
+                if let source { return try await source.fetchColumns(tableName, schema) }
+                guard let driver else { return nil }
+                return schema != nil
                     ? try await driver.fetchColumns(table: tableName, schema: schema)
                     : try await driver.fetchColumns(table: tableName)
-            } else {
-                return []
+            } catch {
+                Self.logger.error(
+                    "Column fetch failed for autocomplete table=\(tableName) error=\(error.publicLogShape, privacy: .public)"
+                )
+                return nil
             }
-            columnCache[key] = columns
-            columnAccessOrder.append(key)
-            evictIfNeeded()
-            return columns
-        } catch {
-            Self.logger.error(
-                "Column fetch failed for autocomplete table=\(tableName) error=\(error.publicLogShape, privacy: .public)"
-            )
-            return []
         }
+        columnTasks[key] = task
+        let fetched = await task.value
+        guard columnTasks[key] == task else { return fetched ?? [] }
+        columnTasks[key] = nil
+        guard let columns = fetched else { return [] }
+        if columnCache.updateValue(columns, forKey: key) == nil {
+            columnAccessOrder.append(key)
+        }
+        evictIfNeeded()
+        return columns
     }
 
     private func evictIfNeeded() {
@@ -211,6 +220,7 @@ actor SQLSchemaProvider {
         self.tables = newTables
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
+        self.columnTasks.removeAll()
         self.fieldPathCache.removeAll()
         self.fieldPathTasks.removeAll()
         self.onDemandSchemaTables.removeAll()
@@ -229,6 +239,7 @@ actor SQLSchemaProvider {
         eagerColumnTask = nil
         columnCache.removeAll()
         columnAccessOrder.removeAll()
+        columnTasks.removeAll()
         fieldPathCache.removeAll()
         fieldPathTasks.removeAll()
     }
@@ -520,9 +531,17 @@ actor SQLSchemaProvider {
         if let inFlight = fieldPathTasks[key] { return await inFlight.value }
         guard let sample = metadataSource?.sampleFieldPaths else { return [] }
 
-        let task = Task { (try? await sample(tableName, sampleSize)) ?? [] }
+        let task = Task {
+            do {
+                return try await sample(tableName, sampleSize)
+            } catch {
+                Self.logger.debug("[schema] field path sample failed: \(error.publicLogShape, privacy: .public)")
+                return [PluginFieldPath]()
+            }
+        }
         fieldPathTasks[key] = task
         let paths = await task.value
+        guard fieldPathTasks[key] == task else { return paths }
         fieldPathTasks[key] = nil
         if !paths.isEmpty { fieldPathCache[key] = paths }
         return paths

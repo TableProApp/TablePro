@@ -279,7 +279,6 @@ extension MainContentView {
             splitVC.pointToolbar(at: coordinator)
         }
 
-        ScreenshotEnvironment.pinWindowSize(window)
         MainContentView.lifecycleLogger.info(
             "[open] configureWindow done windowId=\(windowId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )

@@ -448,8 +448,9 @@ public struct SearchSchemaTool: MCPToolImplementation {
     public static let title: String? = String(localized: "Search Schema")
     public static let description = String(
         localized: """
-        Find tables and columns whose name contains a substring, so a column can be located without \
-        describing every table.
+        Find tables, views and columns whose name contains a substring, and the schema each one is in. \
+        Without 'schema', tables and views are searched in every schema and columns in the current \
+        one; name a schema to search only that schema, columns included.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
@@ -471,7 +472,9 @@ public struct SearchSchemaTool: MCPToolImplementation {
                 maximum: 500
             ),
             "database": MCPToolSchema.database,
-            "schema": MCPToolSchema.schema
+            "schema": MCPToolSchema.string(
+                String(localized: "Schema to search, columns included. Omit to search tables and views in every schema.")
+            )
         ],
         required: ["connection_id", "term"]
     )
@@ -479,8 +482,12 @@ public struct SearchSchemaTool: MCPToolImplementation {
     public static let outputSchema: JsonValue? = MCPToolSchema.object(
         properties: [
             "term": MCPToolSchema.string(String(localized: "Term that was searched")),
+            "database": MCPToolSchema.string(String(localized: "Database that was searched")),
+            "schema": MCPToolSchema.nullableString(
+                String(localized: "Schema the search was narrowed to, null when none was named")
+            ),
             "matches": MCPToolSchema.array(
-                String(localized: "Matching tables first, then matching columns"),
+                String(localized: "Matching tables and views first, those in the current schema leading, then matching columns"),
                 of: MCPToolSchema.object(
                     properties: [
                         "kind": MCPToolSchema.string(
@@ -489,16 +496,31 @@ public struct SearchSchemaTool: MCPToolImplementation {
                         ),
                         "name": MCPToolSchema.string(String(localized: "Matched name")),
                         "table": MCPToolSchema.string(String(localized: "Owning table, for a column match")),
-                        "schema": MCPToolSchema.nullableString(String(localized: "Schema, for a table match")),
-                        "object_type": MCPToolSchema.string(String(localized: "Object type, for a table match")),
+                        "schema": MCPToolSchema.nullableString(
+                            String(localized: "Schema the match is in, null on an engine without schemas")
+                        ),
+                        "object_type": MCPToolSchema.string(
+                            String(localized: "Object type, such as TABLE or VIEW, for a table match")
+                        ),
                         "data_type": MCPToolSchema.string(String(localized: "Column type, for a column match"))
                     ],
-                    required: ["kind", "name"]
+                    required: ["kind", "name", "schema"]
                 )
             ),
-            "is_truncated": MCPToolSchema.boolean(String(localized: "Whether the limit clipped the matches"))
+            "is_truncated": MCPToolSchema.boolean(String(localized: "Whether the limit clipped the matches")),
+            "unlisted_schemas": MCPToolSchema.array(
+                String(localized: "Schemas whose tables could not be listed, so a match in them may be missing"),
+                of: MCPToolSchema.string(String(localized: "Schema name"))
+            ),
+            "column_search": MCPToolSchema.string(
+                String(localized: "Whether columns were searched, or left out because the table matches reached the limit or the column read failed"),
+                enumValues: MCPSchemaSearch.ColumnSearchOutcome.allCases.map(\.rawValue)
+            ),
+            "columns_schema": MCPToolSchema.nullableString(
+                String(localized: "Schema whose columns were searched, when they were")
+            )
         ],
-        required: ["term", "matches", "is_truncated"]
+        required: ["term", "database", "schema", "matches", "is_truncated", "unlisted_schemas", "column_search"]
     )
 
     public init() {}
@@ -514,11 +536,13 @@ public struct SearchSchemaTool: MCPToolImplementation {
         )
         let term = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "term")
         let limit = try MCPArgumentDecoder.optionalInt(arguments, key: "limit", range: 1...500) ?? 50
+        let namedSchema = try MCPScopeArguments.namedSchema(arguments)
         let scope = try await MCPScopeArguments.resolve(arguments, services: services)
         let payload = try await services.connectionBridge.searchSchema(
             scope: scope,
             term: term,
-            limit: limit
+            limit: limit,
+            schemaIsNamed: namedSchema != nil
         )
         return .structured(payload)
     }

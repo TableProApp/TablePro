@@ -582,16 +582,30 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaName = resolveSchema(schema)
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.listTables,
-            parameters: [.text(try requireCatalog()), .text(schemaName)]
+            query: DuckDBSchemaQueries.listTables(in: .schema),
+            parameters: [.text(try requireCatalog()), .text(resolveSchema(schema))]
         )
-        return result.rows.compactMap { row in
+        return Self.tableInfos(from: result)
+    }
+
+    /// A remote catalog answers its schema list best-effort, falling back to `main` when it cannot,
+    /// and one query filtered by that list has no such fallback, so it keeps the per-schema listing.
+    func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? {
+        guard remoteAlias == nil else { return nil }
+        let result = try await executeParameterized(
+            query: DuckDBSchemaQueries.listTables(in: .allSchemas),
+            parameters: [.text(try requireCatalog())]
+        )
+        return Self.tableInfos(from: result)
+    }
+
+    private static func tableInfos(from result: PluginQueryResult) -> [PluginTableInfo] {
+        result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeString = (row[safe: 1]?.asText) ?? "BASE TABLE"
             let tableType = typeString.uppercased().contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: tableType)
+            return PluginTableInfo(name: name, type: tableType, schema: row[safe: 2]?.asText)
         }
     }
 
@@ -1155,7 +1169,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             } else if character == ")" {
                 depth -= 1
                 if depth == 0 { break }
-            } else if character == "," , depth == 1 {
+            } else if character == ",", depth == 1 {
                 keys.append(current)
                 current = ""
                 continue
