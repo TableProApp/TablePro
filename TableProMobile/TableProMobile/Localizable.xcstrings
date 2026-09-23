@@ -6376,6 +6376,9 @@
         }
       }
     },
+    "External Table" : {
+
+    },
     "Failed" : {
       "localizations" : {
         "ko" : {
@@ -7026,6 +7029,9 @@
           }
         }
       }
+    },
+    "Foreign Table" : {
+
     },
     "Get Started" : {
       "extractionState" : "stale",
@@ -9001,6 +9007,9 @@
           }
         }
       }
+    },
+    "Materialized View" : {
+
     },
     "Microsoft Entra ID Sign-In Required" : {
       "localizations" : {
@@ -14061,6 +14070,9 @@
         }
       }
     },
+    "Sequence" : {
+
+    },
     "Server" : {
       "localizations" : {
         "ko" : {
@@ -15218,6 +15230,9 @@
           }
         }
       }
+    },
+    "System Table" : {
+
     },
     "TLS handshake failed: %@" : {
       "extractionState" : "stale",

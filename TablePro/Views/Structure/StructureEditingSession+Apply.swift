@@ -75,20 +75,41 @@ internal extension StructureEditingSession {
             return .refused
         }
 
-        /// An engine that cannot express this save as `ALTER` statements recreates the table
-        /// instead, and a rebuild is never run from a Save press. It is shown in full, with what it
-        /// cannot carry over, and confirmed before anything is dropped.
-        ///
-        /// Ahead of the destructive-changes prompt, not after it. The review sheet is already that
-        /// confirmation and shows the exact script rather than a list of descriptions, so asking
-        /// first would be two dialogs for one decision. The HIG's rule is one alert at a time.
-        if StructureTableRebuildHandler.requiresRebuild(
-            changes: changes,
-            support: PluginManager.shared.foreignKeyEditSupport(for: connection.type)
-        ) {
-            return await presentRebuildReview(changes: changes, coordinator: coordinator)
+        let planStart = ContinuousClock.Instant.now
+        let plan: StructureSavePlan
+        do {
+            plan = try await stagedSavePlan(for: changes)
+        } catch {
+            report(.failed(reason: error.localizedDescription), startedAt: planStart, coordinator: coordinator)
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Error Applying Changes"),
+                message: error.localizedDescription,
+                window: coordinator?.contentWindow
+            )
+            return .failed(error.localizedDescription)
         }
 
+        switch plan {
+        case .rebuild(let prepared):
+            /// An engine that cannot express this save as `ALTER` statements recreates the table
+            /// instead, and a rebuild is never run from a Save press. It is shown in full, with what
+            /// it cannot carry over, and confirmed before anything is dropped.
+            ///
+            /// Ahead of the destructive-changes prompt, not after it. The review sheet is already
+            /// that confirmation and shows the exact script rather than a list of descriptions, so
+            /// asking first would be two dialogs for one decision. The HIG's rule is one alert at a
+            /// time.
+            return presentRebuildReview(prepared, startedAt: planStart, coordinator: coordinator)
+        case .alter(let statements):
+            return await applyAlterStatements(statements, changes: changes, coordinator: coordinator)
+        }
+    }
+
+    private func applyAlterStatements(
+        _ statements: [SchemaStatement],
+        changes: [SchemaChange],
+        coordinator: MainContentCoordinator?
+    ) async -> StructureSaveOutcome {
         let destructiveChanges = changes.filter(\.requiresDataMigration)
         if !destructiveChanges.isEmpty {
             let message = String(
@@ -113,8 +134,7 @@ internal extension StructureEditingSession {
 
         do {
             try await DatabaseManager.shared.executeSchemaChanges(
-                tableName: tableName,
-                changes: changes,
+                statements,
                 databaseType: connection.type,
                 scope: scope
             )
@@ -138,49 +158,30 @@ internal extension StructureEditingSession {
         }
     }
 
-    /// Builds the rebuild script and hands it to the review sheet.
+    /// Hands the rebuild script to the review sheet.
     ///
     /// Returns `.refused` because at this point nothing has run and the edits are still staged,
     /// which is exactly what a close has to be stood down for. The apply happens in the sheet's own
     /// action if the user confirms it there.
     private func presentRebuildReview(
-        changes: [SchemaChange],
+        _ prepared: StructureRebuildPlanRunner.Prepared,
+        startedAt operationStart: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
-    ) async -> StructureSaveOutcome {
+    ) -> StructureSaveOutcome {
         guard let coordinator else { return .refused }
-        let operationStart = ContinuousClock.Instant.now
-        let reviewScope = scope
-
-        do {
-            let prepared = try await StructureTableRebuildHandler.prepare(
-                changes: changes,
-                tableName: tableName,
-                scope: reviewScope
-            )
-            coordinator.tableRebuildRequest = TableRebuildReviewRequest(
-                tableName: tableName,
-                scope: reviewScope,
-                plan: prepared.plan,
-                actionTitle: String(localized: "Apply and Rebuild"),
+        coordinator.tableRebuildRequest = TableRebuildReviewRequest(
+            tableName: prepared.tableName,
+            scope: prepared.scope,
+            plan: prepared.plan,
+            action: TableRebuildReviewRequest.Action(
+                title: String(localized: "Apply and Rebuild"),
                 perform: { [weak coordinator] in
-                    await self.runRebuild(
-                        prepared,
-                        startedAt: operationStart,
-                        coordinator: coordinator
-                    )
+                    await self.runRebuild(prepared, startedAt: operationStart, coordinator: coordinator)
                 }
             )
-            coordinator.activeSheet = .tableRebuildReview
-            return .refused
-        } catch {
-            report(.failed(reason: error.localizedDescription), startedAt: operationStart, coordinator: coordinator)
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Error Applying Changes"),
-                message: error.localizedDescription,
-                window: coordinator.contentWindow
-            )
-            return .failed(error.localizedDescription)
-        }
+        )
+        coordinator.activeSheet = .tableRebuildReview
+        return .refused
     }
 
     /// Runs a confirmed rebuild and does everything a save owes the rest of the app afterwards.

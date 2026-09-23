@@ -587,6 +587,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaterializedViewColumnSource.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPartitionBound.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
@@ -598,6 +599,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceReference.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListing.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
@@ -605,6 +607,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLVersionedStatements.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/RedshiftTableCatalog.swift
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift

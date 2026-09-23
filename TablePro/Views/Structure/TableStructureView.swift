@@ -359,10 +359,18 @@ struct TableStructureView: View {
         case .columns:
             structureGrid
         case .indexes:
-            if shouldShowIndexesEmptyState {
-                EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
-            } else {
-                structureGrid
+            Group {
+                if shouldShowIndexesEmptyState {
+                    EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+                } else {
+                    structureGrid
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if objectKind == .materializedView,
+                   let note = MaterializedViewConcurrentRefreshNote(state: session.concurrentRefresh) {
+                    ConcurrentRefreshNoteView(note: note)
+                }
             }
         case .foreignKeys:
             if shouldShowForeignKeysEmptyState {
@@ -383,6 +391,7 @@ struct TableStructureView: View {
                 connection: connection,
                 tableName: tableName,
                 isLoading: !tabData.hasData(.triggers),
+                canEdit: editGate.allowsTriggerEditing,
                 onOpenInEditor: openTriggerInEditor
             )
         case .ddl:
@@ -492,7 +501,7 @@ struct TableStructureView: View {
                 databaseName: databaseName,
                 schemaName: schemaName,
                 tabType: .table,
-                lockedColumns: lockedStructureColumns,
+                lockedColumns: lockedStructureColumns(for: provider),
                 editRefusalMessage: structureEditRefusal
             ),
             delegate: gridDelegate,

@@ -20,7 +20,7 @@ The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Trig
 
 A view is not a table, and the grid offers only the edits the server will take on the object open in front of it. A refused **+** or **-** stays on screen, dimmed, with the reason in its tooltip; a cell the object will not let you change beeps instead of opening an editor.
 
-PostgreSQL answers this per operation, so the tab does too:
+PostgreSQL and PGlite answer this per operation, so the tab does too:
 
 | Object | What it accepts |
 |--------|-----------------|
@@ -111,6 +111,23 @@ Everything that runs goes to query history rather than the change queue.
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |
 
+### Materialized views
+
+A materialized view's indexes list, add and drop the same way a table's do. The line under the list says whether **Refresh Materialized View** can refresh it concurrently, which keeps other sessions reading the view while it runs:
+
+| Line | What to do |
+|------|------------|
+| This view can be refreshed concurrently. | Nothing. Select **Refresh concurrently** in the refresh dialog |
+| Concurrent refresh needs a valid unique index on the view's columns, with no WHERE clause and no expressions. | Add an index here with **Unique** set to YES, listing plain columns only, and save |
+| Concurrent refresh needs the view to be populated first. Refresh it once without that option. | Refresh the view once without the option. A view created `WITH NO DATA` stays unpopulated until its first refresh |
+
+The server answers the question, so an index left invalid by a failed `CREATE UNIQUE INDEX CONCURRENTLY` does not count, even though it lists with **Unique** set to YES. The line updates after every save and every refresh.
+
+<Frame caption="The unique index on day and region is what qualifies the view">
+  <img className="block dark:hidden" src="/images/structure-matview-indexes.png" alt="Indexes tab of the daily_totals materialized view: a unique index on day and region, an index on lower(region), and a line under the list saying the view can be refreshed concurrently" />
+  <img className="hidden dark:block" src="/images/structure-matview-indexes-dark.png" alt="Indexes tab of the daily_totals materialized view: a unique index on day and region, an index on lower(region), and a line under the list saying the view can be refreshed concurrently" />
+</Frame>
+
 ## Foreign keys tab
 
 | Field | Description |
@@ -168,7 +185,7 @@ SQLite is the one engine where listing and editing part company. The tab appears
 [Change Tracking](/features/change-tracking) covers the queue, undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`). A save runs on the tab's own connection, database, and schema, the ones it was opened on, and never moves the sidebar or the toolbar.
 
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue. Changes that can lose data, dropping a column, changing a type, adding NOT NULL, changing the primary key, first show a confirmation listing each one.
-- **Preview SQL** (`Cmd+Shift+P`) shows the generated statements without executing them.
+- **Preview SQL** (`Cmd+Shift+P`) shows the statements **Save Changes** would run, on the tab's own schema, and runs none of them. A save that recreates the table previews as its rebuild script, with what the rebuild cannot carry over.
 
 The queue outlives everything short of an explicit discard: closing the tab, closing the window, quitting, and **Refresh** all ask first. A save that never reaches the server leaves the tab open with its queue intact.
 
@@ -185,7 +202,7 @@ A save is often several statements, run in order. Engines with transactional DDL
 
 ## Triggers tab
 
-Lists **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the engine reports it. Select one to read its `CREATE TRIGGER` statement from the catalog, with **Copy** and **Open in Editor**. **New Trigger**, **Edit**, and **Delete** sit in the action bar; the editor opens the trigger's real DDL, including the trigger function on PostgreSQL. Trigger changes run on their own connection, like a structure save.
+Lists **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the engine reports it. Select one to read its `CREATE TRIGGER` statement from the catalog, with **Copy** and **Open in Editor**. **New Trigger**, **Edit**, and **Delete** sit in the action bar; the editor opens the trigger's real DDL, including the trigger function on PostgreSQL. Trigger changes run on their own connection, like a structure save. A materialized view or a system table cannot carry a trigger, so the tab has no action bar there.
 
 <Info>
 Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so the viewer and the editor start from the trigger header alone.

@@ -12,11 +12,11 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.fetchTables")
+@Suite("PostgreSQLTableListing.query")
 struct PostgreSQLFetchTablesQueryTests {
     @Test("Always selects base tables and views from information_schema")
     func alwaysIncludesBaseTables() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true
@@ -26,7 +26,7 @@ struct PostgreSQLFetchTablesQueryTests {
 
     @Test("Omits the pg_matviews union when materialized views are unavailable")
     func omitsMatviewsWhenAbsent() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: true
@@ -36,7 +36,7 @@ struct PostgreSQLFetchTablesQueryTests {
 
     @Test("Includes the pg_matviews union when materialized views are available")
     func includesMatviewsWhenPresent() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: false
@@ -46,7 +46,7 @@ struct PostgreSQLFetchTablesQueryTests {
 
     @Test("Omits the pg_foreign_table union when foreign tables are unavailable")
     func omitsForeignTablesWhenAbsent() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: false
@@ -56,7 +56,7 @@ struct PostgreSQLFetchTablesQueryTests {
 
     @Test("With no optional catalogs, only the base query remains")
     func baseOnlyWhenNoOptionalCatalogs() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false
