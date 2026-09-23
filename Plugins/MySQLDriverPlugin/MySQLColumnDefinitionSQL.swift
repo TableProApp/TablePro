@@ -11,37 +11,6 @@ internal func mysqlQuoteIdentifier(_ name: String) -> String {
     return "`\(escaped)`"
 }
 
-internal func mysqlEscapeStringLiteral(_ value: String) -> String {
-    var result = value
-    result = result.replacingOccurrences(of: "\\", with: "\\\\")
-    result = result.replacingOccurrences(of: "'", with: "''")
-    result = result.replacingOccurrences(of: "\n", with: "\\n")
-    result = result.replacingOccurrences(of: "\r", with: "\\r")
-    result = result.replacingOccurrences(of: "\t", with: "\\t")
-    result = result.replacingOccurrences(of: "\0", with: "\\0")
-    result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-    result = result.replacingOccurrences(of: "\u{0C}", with: "\\f")
-    result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
-    return result
-}
-
-/// MySQL rejects a CURRENT_TIMESTAMP expression whose fractional-second precision differs
-/// from the column's own, so the precision is always taken from the declared type.
-internal func mysqlFractionalSecondsSuffix(forDataType dataType: String) -> String {
-    let upper = dataType.uppercased()
-    guard upper.hasPrefix("TIMESTAMP(") || upper.hasPrefix("DATETIME(") else { return "" }
-    guard let open = dataType.firstIndex(of: "("),
-          let close = dataType[open...].firstIndex(of: ")") else { return "" }
-    return String(dataType[open...close])
-}
-
-internal func mysqlCurrentTimestampExpression(_ value: String, dataType: String) -> String? {
-    let upper = value.uppercased()
-    guard upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-        || upper.hasPrefix("CURRENT_TIMESTAMP(") else { return nil }
-    return "CURRENT_TIMESTAMP" + mysqlFractionalSecondsSuffix(forDataType: dataType)
-}
-
 /// MySQL and MariaDB take a `BLOB`, `TEXT`, `JSON` or `GEOMETRY` default "only if the value is
 /// written as an expression, even if the expression value is a literal", so the parentheses are
 /// required by the grammar rather than chosen by the caller.
@@ -100,11 +69,14 @@ internal func mysqlWholeStringLiteral(_ value: String) -> String? {
 /// column's own fractional-second precision, because MySQL rejects the pair when they differ, and
 /// is the one expression MySQL accepts bare. Every other expression is parenthesised on MySQL,
 /// which is what its grammar requires from 8.0.13; MariaDB takes them either way and writes them
-/// bare itself. A type that cannot carry a bare default is parenthesised whatever the value is.
+/// bare itself. A type that cannot carry a bare default is parenthesised whatever the value is, with
+/// one exception: `NULL`. Every type takes it bare, and parenthesised it is no longer the literal:
+/// MySQL 8 stores `DEFAULT (NULL)` as an expression default and MySQL 5.7 refuses the syntax.
 ///
 /// Nothing else is rewritten: the value already holds the SQL, and re-quoting it is what turned
 /// `(UUID())` into the six-character string `uuid()`.
 internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMariaDB: Bool) -> String {
+    if mysqlIsNullLiteral(value) { return "NULL" }
     if mysqlTemporalType(dataType), let expression = mysqlCurrentTimestampExpression(value, dataType: dataType) {
         return expression
     }
@@ -114,61 +86,8 @@ internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMari
     return value.hasPrefix("(") ? value : "(\(value))"
 }
 
-/// A column default as the catalog reports it, turned into the SQL that recreates it.
-///
-/// The two servers report it differently and neither says which it is in the value alone. MySQL
-/// leaves a literal bare and marks an expression `DEFAULT_GENERATED` in `EXTRA`. MariaDB from 10.2.7
-/// quotes literals and leaves expressions bare, with `EXTRA` empty; before that it quotes nothing,
-/// so it reads like MySQL without the marker and every default is a literal.
-internal func mysqlDefaultValueFromCatalog(
-    _ value: String?,
-    extra: String?,
-    dataType: String,
-    quotesLiterals: Bool
-) -> String? {
-    guard let value else { return nil }
-    if quotesLiterals { return value }
-
-    // MySQL 8.0.13 marks a plain `DEFAULT CURRENT_TIMESTAMP` DEFAULT_GENERATED like any other
-    // expression, so this has to be answered before the marker is consulted or the one expression
-    // MySQL insists on bare comes back parenthesised.
-    if mysqlTemporalType(dataType), mysqlCurrentTimestampExpression(value, dataType: dataType) != nil {
-        return value
-    }
-
-    guard extra?.uppercased().contains("DEFAULT_GENERATED") != true else {
-        return value.hasPrefix("(") ? value : "(\(value))"
-    }
-    return mysqlCatalogReportsLiteralAsSQL(dataType: dataType)
-        ? value : "'\(mysqlEscapeStringLiteral(value))'"
-}
-
-/// Whether this column type's catalog default is already the SQL that recreates it.
-///
-/// A string default comes back stripped of its quotes and has to be given them again. A number, a
-/// `BIT` default (`b'1'`) and a binary default (`0x61`) all come back as the literal they are, and
-/// quoting one changes what it means: `0x61` quoted stores the four characters rather than the byte.
-internal func mysqlCatalogReportsLiteralAsSQL(dataType: String) -> Bool {
-    let base = dataType.uppercased().split(separator: "(", maxSplits: 1).first.map(String.init)?
-        .trimmingCharacters(in: .whitespaces) ?? dataType.uppercased()
-    switch base {
-    case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT",
-         "DECIMAL", "DEC", "NUMERIC", "FIXED", "FLOAT", "DOUBLE", "REAL", "YEAR",
-         "BIT", "BINARY", "VARBINARY", "BOOL", "BOOLEAN":
-        return true
-    default:
-        return false
-    }
-}
-
-/// The only types on which a bare `CURRENT_TIMESTAMP` is the temporal expression rather than the
-/// seventeen-character string. On a `VARCHAR`, MySQL reports a literal of that text the same way and
-/// with no `DEFAULT_GENERATED` marker, so reading it as the expression turns a stored string into a
-/// clock reading on the next edit to the column.
-internal func mysqlTemporalType(_ dataType: String) -> Bool {
-    let base = dataType.uppercased().split(separator: "(", maxSplits: 1).first.map(String.init)?
-        .trimmingCharacters(in: .whitespaces) ?? dataType.uppercased()
-    return base == "TIMESTAMP" || base == "DATETIME"
+internal func mysqlIsNullLiteral(_ value: String) -> Bool {
+    value.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("NULL") == .orderedSame
 }
 
 internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition, isMariaDB: Bool) -> String {

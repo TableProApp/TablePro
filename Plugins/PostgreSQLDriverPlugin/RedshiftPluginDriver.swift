@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 import TableProPluginKit
 
 final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
@@ -58,7 +59,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             externalSchemaCache = Set(result.rows.compactMap { $0.first?.asText })
         } catch {
             Self.logger.warning(
-                "Could not read svv_external_schemas; external schemas stay unresolved: \(error.localizedDescription, privacy: .public)"
+                "Could not read svv_external_schemas; external schemas stay unresolved: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
         }
     }
@@ -117,7 +118,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             }
         } catch {
             Self.logger.warning(
-                "svv_external_tables failed for schema \(schema, privacy: .public); listing local tables only: \(error.localizedDescription, privacy: .public)"
+                "svv_external_tables failed for schema \(schema, privacy: .private(mask: .hash)); listing local tables only: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return []
         }
@@ -147,7 +148,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             }
         } catch {
             Self.logger.warning(
-                "svv_external_columns failed for schema \(schema, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "svv_external_columns failed for schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return []
         }
@@ -250,7 +251,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             return allColumns
         } catch {
             Self.logger.warning(
-                "svv_external_columns failed for schema \(schema, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "svv_external_columns failed for schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return [:]
         }

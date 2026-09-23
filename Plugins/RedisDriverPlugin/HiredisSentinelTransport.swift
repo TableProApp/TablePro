@@ -60,14 +60,14 @@ struct HiredisSentinelTransport: RedisSentinelTransport {
         do {
             try await connection.connect()
         } catch let error as RedisPluginError where error.refusedByServer {
-            logger.debug("Sentinel \(sentinel.identifier, privacy: .public) refused: \(error.message, privacy: .public)")
+            logger.debug("Sentinel \(sentinel.identifier, privacy: .public) refused: \(RedisConnectProbe.errorClass(of: error.message), privacy: .public) \(error.message, privacy: .private)")
             throw RedisSentinelError.refused(sentinel, detail: error.message)
         }
         defer { connection.disconnect() }
 
         let reply = try await connection.executeCommand(command)
         if let message = reply.errorMessage {
-            logger.debug("Sentinel \(sentinel.identifier, privacy: .public) refused: \(message, privacy: .public)")
+            logger.debug("Sentinel \(sentinel.identifier, privacy: .public) refused: \(RedisConnectProbe.errorClass(of: message), privacy: .public) \(message, privacy: .private)")
             throw RedisSentinelError.refused(sentinel, detail: message)
         }
         return reply

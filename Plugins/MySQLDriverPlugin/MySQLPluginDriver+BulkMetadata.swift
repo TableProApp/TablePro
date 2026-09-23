@@ -47,7 +47,7 @@ extension MySQLPluginDriver {
             ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
             """
 
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let table = row[safe: 0]?.asText,
                   let index = row[safe: 1]?.asText,
