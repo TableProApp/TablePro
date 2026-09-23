@@ -546,7 +546,9 @@ internal final class WorkspaceRailViewController: NSViewController {
             to=\(Self.describe(workspace), privacy: .public)
             """
         )
+        coordinator.tabManager.defersActivationRecord = true
         Task { @MainActor in
+            defer { coordinator.tabManager.defersActivationRecord = false }
             await coordinator.switchContainer(to: workspace.container)
             let landed = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
             if landed == workspace {

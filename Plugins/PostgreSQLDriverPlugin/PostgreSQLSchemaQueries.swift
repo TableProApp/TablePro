@@ -15,6 +15,11 @@ enum PostgreSQLSchemaProbe: Equatable {
     case failed
 }
 
+enum PostgreSQLTableListingScope: Sendable, Equatable {
+    case schema(String)
+    case allSchemas
+}
+
 enum PostgreSQLSchemaQueries {
     /// Returns the first schema on the effective search path, or SQL NULL
     /// when the path is empty (neither `$user` nor `public` exists).
@@ -110,7 +115,38 @@ enum PostgreSQLSchemaQueries {
         includeComments: Bool = true,
         includePartitionAwareness: Bool = true
     ) -> String {
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        fetchTables(
+            in: .schema(schema),
+            includeMaterializedViews: includeMaterializedViews,
+            includeForeignTables: includeForeignTables,
+            includeComments: includeComments,
+            includePartitionAwareness: includePartitionAwareness
+        )
+    }
+
+    /// The same listing over one schema or over every schema `listSchemas` returns. The second
+    /// filters by that query itself rather than restating its predicate, so a table is listed here
+    /// exactly when its schema is listed there, and projects each row's schema, which the
+    /// one-schema listing leaves to the caller.
+    static func fetchTables(
+        in listing: PostgreSQLTableListingScope,
+        includeMaterializedViews: Bool,
+        includeForeignTables: Bool,
+        includeComments: Bool = true,
+        includePartitionAwareness: Bool = true
+    ) -> String {
+        func schemaFilter(_ column: String) -> String {
+            switch listing {
+            case .schema(let schema):
+                return "\(column) = \(PostgreSQLObjectQueries.quoteLiteral(schema))"
+            case .allSchemas:
+                return "\(column) IN (\n\(listSchemas)\n)"
+            }
+        }
+        func schemaColumn(_ column: String) -> String {
+            listing == .allSchemas ? ",\n       \(column) AS schema_name" : ""
+        }
+        let orderBy = listing == .allSchemas ? "ORDER BY schema_name, table_name" : "ORDER BY table_name"
         func commentColumn(_ oidExpression: String) -> String {
             includeComments ? "obj_description(\(oidExpression), 'pg_class')" : "NULL::text"
         }
@@ -140,9 +176,9 @@ enum PostgreSQLSchemaQueries {
             """
             SELECT t.table_name, \(tableTypeColumn) AS table_type,
                    \(commentColumn("pc.oid")) AS table_comment,
-                   \(partitionCountColumn) AS partition_count
+                   \(partitionCountColumn) AS partition_count\(schemaColumn("t.table_schema"))
             FROM information_schema.tables t\(classJoin)
-            WHERE t.table_schema = \(schemaLiteral)
+            WHERE \(schemaFilter("t.table_schema"))
               AND t.table_type IN ('BASE TABLE', 'VIEW')\(partitionFilter)
             """
         ]
@@ -157,9 +193,9 @@ enum PostgreSQLSchemaQueries {
                 """
                 SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
                        \(commentColumn("mc.oid")) AS table_comment,
-                       NULL::bigint AS partition_count
+                       NULL::bigint AS partition_count\(schemaColumn("m.schemaname"))
                 FROM pg_matviews m\(matviewJoin)
-                WHERE m.schemaname = \(schemaLiteral)
+                WHERE \(schemaFilter("m.schemaname"))
                 """
             )
         }
@@ -172,16 +208,16 @@ enum PostgreSQLSchemaQueries {
                 """
                 SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
                        \(commentColumn("c.oid")) AS table_comment,
-                       NULL::bigint AS partition_count
+                       NULL::bigint AS partition_count\(schemaColumn("n.nspname"))
                 FROM pg_foreign_table ft
                 JOIN pg_class c ON c.oid = ft.ftrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = \(schemaLiteral)\(foreignPartitionFilter)
+                WHERE \(schemaFilter("n.nspname"))\(foreignPartitionFilter)
                 """
             )
         }
 
-        return unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
+        return unions.joined(separator: "\nUNION ALL\n") + "\n" + orderBy
     }
 
     /// The predicate that keeps a partition out of a flat listing. A foreign

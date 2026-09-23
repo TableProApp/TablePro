@@ -3,10 +3,11 @@
 //  TablePro
 //
 
+import CSQLite
 import Foundation
 import os
-import SQLite3
 import TableProPluginKit
+import TableProSQLiteCore
 
 struct LibSQLLocalRawResult: Sendable {
     let columns: [String]
@@ -24,7 +25,7 @@ actor SQLiteLocalBackend {
 
     var isConnected: Bool { db != nil }
 
-    func open(path: String) throws {
+    func open(path: String, loading extensions: [LoadableExtension]) throws {
         let result = sqlite3_open(path, &db)
 
         if result != SQLITE_OK {
@@ -32,6 +33,25 @@ actor SQLiteLocalBackend {
                 ?? "Unknown SQLite error"
             throw LibSQLError(message: errorMessage)
         }
+        guard let db else { throw LibSQLError.notConnected }
+        do {
+            try loadExtensions(extensions, into: db)
+        } catch {
+            close()
+            throw error
+        }
+        SQLiteAuthorizer.install(on: db)
+    }
+
+    private func loadExtensions(_ extensions: [LoadableExtension], into db: OpaquePointer) throws {
+        guard !extensions.isEmpty else { return }
+        let loading = SQLiteExtensionLoading(db: db)
+        try LoadableExtensionLoader.load(
+            extensions,
+            setLoadingEnabled: loading.setEnabled,
+            loadExtension: loading.load(file:entryPoint:)
+        )
+        Self.logger.info("Loaded \(extensions.count, privacy: .public) SQLite extension(s)")
     }
 
     func close() {

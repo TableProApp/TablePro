@@ -61,6 +61,7 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 |-------|-------------|
 | **Startup Commands** | SQL to run after every connect. See [Startup commands](#startup-commands) |
 | **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
+| **Extensions** | SQLite, and libSQL in Local File mode. Libraries loaded into the database file on every connect. See [Extensions](/databases/sqlite#extensions) |
 | **Safe Mode** | Confirmation prompts before writes. See [Safe Mode](/features/safe-mode) |
 | **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients |
 | **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. See [AI Assistant](/features/ai-assistant) |

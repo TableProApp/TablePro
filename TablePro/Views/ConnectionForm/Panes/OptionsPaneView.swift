@@ -22,6 +22,7 @@ struct OptionsPaneView: View {
     var body: some View {
         Form {
             driverSection
+            extensionsSection
             startupSection
             preConnectSection
             safetySection
@@ -65,12 +66,30 @@ struct OptionsPaneView: View {
         )
     }
 
+    // MARK: - Extensions
+
+    @ViewBuilder
+    private var extensionsSection: some View {
+        if let field = coordinator.advanced.extensionListField {
+            Section {
+                LoadableExtensionListEditor(value: advancedFieldBinding(for: field))
+            } header: {
+                Text(field.label)
+            } footer: {
+                Text("Loaded in this order each time the database file opens on this Mac. An extension runs with full access to your Mac, so add only files you trust.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: - Startup
 
     private var startupSection: some View {
         Section {
             StartupCommandsEditor(text: $coordinator.advanced.startupCommands)
                 .frame(height: 80)
+                .accessibilityIdentifier("connection-form-startup-commands")
         } header: {
             Text(String(localized: "Startup Commands"))
         } footer: {
