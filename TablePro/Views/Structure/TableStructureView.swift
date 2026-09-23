@@ -57,7 +57,7 @@ struct TableStructureView: View {
     /// The real `TableInfo.TableType`, read from the session rather than passed in beside it, so the
     /// grid delegate the session owns and the footer this view publishes can never disagree about
     /// what they are looking at. It used to be an `isView` Bool derived from `allowsRowEditing`,
-    /// which is true for a materialized view, so a matview reached here as a table and was offered
+    /// which was true for a materialized view, so a matview reached here as a table and was offered
     /// `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits the server always refuses.
     /// (#2726)
     var objectKind: TableInfo.TableType { session.objectKind }

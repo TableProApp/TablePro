@@ -579,11 +579,10 @@ struct TabTableContext: Equatable {
 
     /// The object's own kind, carried beside `isView` rather than replacing it.
     ///
-    /// The two answer different questions. `isView` decides whether the *rows* may be written, which
-    /// a dozen Bool-only carriers already speak (deeplinks, the URL parser, scripting, recents), and
-    /// it comes from `allowsRowEditing`, which is deliberately true for a materialized view because
-    /// a matview does hold rows. This says which of seven kinds the object is, which is the only
-    /// thing that can say which *structure* edits it accepts. Conflating them is the defect. (#2726)
+    /// `isView` is a read-only mark that a dozen Bool-only carriers already speak (deeplinks, the URL
+    /// parser, scripting, recents), and a tab saved by an older build can carry it false over a
+    /// materialized view. It cannot say which of seven kinds the object is. This can, and only the
+    /// kind says which *structure* edits the object accepts. (#2726)
     ///
     /// Nil on a tab restored from a file written before this existed, and on any path that never
     /// learned the kind; `resolvedObjectKind()` falls back to what `isView` can still tell us.
@@ -591,6 +590,10 @@ struct TabTableContext: Equatable {
 
     func resolvedObjectKind() -> TableInfo.TableType {
         objectType ?? (isView ? .view : .table)
+    }
+
+    var allowsRowEditing: Bool {
+        !isView && resolvedObjectKind().allowsRowEditing
     }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }

@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
+- ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
@@ -123,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved query longer than 500,000 characters silently cut short when saved.
 - A file the import panel dimmed still opening, and reaching the wrong importer.
 - Materialized view opened from Open Quickly edited as a plain view. (#2522)
+- Materialized view rows editable in the data grid, then refused at Save.
 - Index edits refused on a PGlite materialized view.
 - Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
 - **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.

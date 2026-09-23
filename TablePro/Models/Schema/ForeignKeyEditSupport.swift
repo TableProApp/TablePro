@@ -68,7 +68,7 @@ enum ForeignKeyEditPolicy {
     /// - Parameter kindRefusal: Why the object's own kind refuses a foreign key edit, nil when it
     ///   accepts one. Supplied by `StructureEditEligibility`, because only the per-kind matrix knows
     ///   which of seven object kinds is in front of the user. This used to be an `isTable` Bool
-    ///   derived from `allowsRowEditing`, which is true for a materialized view, so the "+" was
+    ///   derived from `allowsRowEditing`, which was true for a materialized view, so the "+" was
     ///   offered over an `ADD CONSTRAINT` PostgreSQL always refuses. (#2726)
     static func resolve(
         support: ForeignKeyEditSupport,
