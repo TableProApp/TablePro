@@ -189,7 +189,6 @@ struct MainEditorContentView: View {
             updateHasQueryText()
             cachedChangeManager = AnyChangeManager(changeManager)
             wireDataTabDelegateStableRefs()
-            refreshDataTabDelegateMutableRefs()
             coordinator.dataTabDelegate = dataTabDelegate
         }
         .onDisappear {
@@ -204,18 +203,6 @@ struct MainEditorContentView: View {
         .onChange(of: selectionState.indices) { newIndices in
             onSelectionChange(newIndices)
         }
-        .onChange(of: tabManager.selectedTab?.tableContext.isEditable) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
-        .onChange(of: tabManager.selectedTab?.tableContext.isView) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
-        .onChange(of: tabManager.selectedTab?.tableContext.tableName) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
-        .onChange(of: coordinator.safeModeLevel) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
     }
 
     private func wireDataTabDelegateStableRefs() {
@@ -223,15 +210,8 @@ struct MainEditorContentView: View {
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSortStateChanged = onSortStateChanged
+        dataTabDelegate.onAddRow = onAddRow
         dataTabDelegate.onFilterColumn = onFilterColumn
-    }
-
-    private func refreshDataTabDelegateMutableRefs() {
-        dataTabDelegate.onAddRow = currentTabAllowsAddRow ? onAddRow : nil
-    }
-
-    private var currentTabAllowsAddRow: Bool {
-        coordinator.canAddRow
     }
 
     // MARK: - Tab Content

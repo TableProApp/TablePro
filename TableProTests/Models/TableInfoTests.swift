@@ -205,10 +205,14 @@ struct TableInfoTests {
         #expect(!TableInfo.TableType.externalTable.allowsRowEditing)
     }
 
+    @Test("A materialized view does not allow row editing")
+    func materializedViewDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.materializedView.allowsRowEditing)
+    }
+
     @Test("Local relations still allow row editing")
     func localRelationsAllowRowEditing() {
         #expect(TableInfo.TableType.table.allowsRowEditing)
-        #expect(TableInfo.TableType.materializedView.allowsRowEditing)
         #expect(TableInfo.TableType.foreignTable.allowsRowEditing)
         #expect(TableInfo.TableType.systemTable.allowsRowEditing)
         #expect(TableInfo.TableType.partitionedTable.allowsRowEditing)

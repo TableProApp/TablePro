@@ -38,8 +38,7 @@ internal struct EditorTabPayload: Codable, Hashable {
     /// Whether this tab displays a database view (read-only)
     internal let isView: Bool
     /// The object's own kind, which decides which structure edits the tab may offer. Carried beside
-    /// `isView` because that Bool answers a different question and cannot tell a materialized view
-    /// from a table. (#2726)
+    /// `isView` because that Bool cannot say which of seven kinds the object is. (#2726)
     internal let objectType: TableInfo.TableType?
     /// Whether to show the structure view instead of data (for "Show Structure" context menu)
     internal let showStructure: Bool

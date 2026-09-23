@@ -42,9 +42,8 @@ final class RowEditingCoordinator: ObservableObject {
     // MARK: - Row Operations
 
     func addNewRow() {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
@@ -69,9 +68,8 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               !indices.isEmpty else { return }
 
         let tabId = tab.id
@@ -113,9 +111,8 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func duplicateSelectedRow(index: Int) {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
@@ -337,7 +334,7 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func pasteRows() {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tabType == .table else { return }
 
