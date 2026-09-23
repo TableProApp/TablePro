@@ -17,24 +17,39 @@ extension MainContentCommandActions {
     nonisolated private static let fileLogger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
 
     func saveFileToSourceURL() {
-        guard let tab = coordinator?.tabManager.selectedTab,
-              let url = tab.content.sourceFileURL else { return }
+        Task { await saveSelectedFileAwaiting() }
+    }
 
-        if isExternallyModified(tab: tab, url: url) {
-            requestConflictResolution(tab: tab, url: url)
-            return
+    @discardableResult
+    func saveSelectedFileAwaiting() async -> Bool {
+        guard let tab = coordinator?.tabManager.selectedTab,
+              let url = tab.content.sourceFileURL else { return true }
+
+        guard let change = FileTabBaseline.diskChange(in: tab.content) else {
+            return await writeOrSaveAs(tabId: tab.id, content: tab.content.query, to: url)
         }
 
-        writeTabContent(tabId: tab.id, content: tab.content.query, to: url)
+        coordinator?.tabManager.mutate(tabId: tab.id) { FileTabBaseline.showDiskChange(change, in: &$0.content) }
+        switch change {
+        case .missing:
+            Self.fileLogger.info("Save of a file no longer on disk went to Save As: \(url.lastPathComponent, privacy: .private(mask: .hash))")
+            return await saveFileAsAwaiting()
+        case .modified:
+            requestConflictResolution(tab: tab, url: url)
+            return false
+        }
     }
 
     func writeTabContent(tabId: UUID, content: String, to url: URL) {
-        Task {
-            guard await writeTabContentAwaiting(tabId: tabId, content: content, to: url) else {
-                saveFileAs()
-                return
-            }
+        Task { await writeOrSaveAs(tabId: tabId, content: content, to: url) }
+    }
+
+    @discardableResult
+    private func writeOrSaveAs(tabId: UUID, content: String, to url: URL) async -> Bool {
+        guard await writeTabContentAwaiting(tabId: tabId, content: content, to: url) else {
+            return await saveFileAsAwaiting()
         }
+        return true
     }
 
     /// The write itself, awaited and answering whether it landed.
@@ -47,12 +62,8 @@ extension MainContentCommandActions {
     func writeTabContentAwaiting(tabId: UUID, content: String, to url: URL) async -> Bool {
         do {
             try await SQLFileService.writeFile(content: content, to: url)
-            let mtime = (try? FileManager.default
-                .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             coordinator?.tabManager.mutate(tabId: tabId) { tab in
-                tab.content.savedFileContent = content
-                tab.content.loadMtime = mtime
-                tab.content.externalModificationDetected = false
+                FileTabBaseline.recordWrite(of: content, to: url, in: &tab.content)
             }
             return true
         } catch {
@@ -65,19 +76,12 @@ extension MainContentCommandActions {
     /// alone: resolving that needs the conflict sheet, which is a single window-level slot with no
     /// queue, so the batch keeps the tab open and the user answers it there.
     func saveFile(of tab: QueryTab, to url: URL) async -> Bool {
-        guard !isExternallyModified(tab: tab, url: url) else {
+        if let change = FileTabBaseline.diskChange(in: tab.content) {
             Self.fileLogger.info("Batch save skipped a file changed on disk: \(url.lastPathComponent, privacy: .private(mask: .hash))")
+            coordinator?.tabManager.mutate(tabId: tab.id) { FileTabBaseline.showDiskChange(change, in: &$0.content) }
             return false
         }
         return await writeTabContentAwaiting(tabId: tab.id, content: tab.content.query, to: url)
-    }
-
-    func isExternallyModified(tab: QueryTab, url: URL) -> Bool {
-        guard let loadMtime = tab.content.loadMtime,
-              let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date else {
-            return false
-        }
-        return currentMtime > loadMtime.addingTimeInterval(0.5)
     }
 
     private func requestConflictResolution(tab: QueryTab, url: URL) {
@@ -96,16 +100,12 @@ extension MainContentCommandActions {
         let queryAtRequestTime = coordinator?.tabManager.tabs[beforeIndex].content.query
         Task {
             guard let loaded = FileTextLoader.load(url) else { return }
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             await MainActor.run {
                 guard let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
                 let liveQuery = coordinator?.tabManager.tabs[index].content.query
                 guard liveQuery == queryAtRequestTime else { return }
                 coordinator?.tabManager.mutate(at: index) { tab in
-                    tab.content.query = loaded.content
-                    tab.content.savedFileContent = loaded.content
-                    tab.content.loadMtime = mtime
-                    tab.content.externalModificationDetected = false
+                    FileTabBaseline.adopt(loaded, into: &tab.content)
                 }
             }
         }

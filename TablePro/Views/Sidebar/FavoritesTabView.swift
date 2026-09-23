@@ -182,8 +182,9 @@ internal struct FavoritesTabView: View {
                 linkedFileToTrash = nil
             }
             Button(String(localized: "Move to Trash"), role: .destructive) {
-                coordinator?.trashLinkedFavorite(file)
-                viewModel.reloadLinkedFolders()
+                if coordinator?.trashLinkedFavorite(file) == true {
+                    viewModel.reloadLinkedFolders()
+                }
                 linkedFileToTrash = nil
             }
         } message: { file in

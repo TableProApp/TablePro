@@ -103,10 +103,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files.
 - Cleared keyword, folder or **Global** on a saved query or its folder never reaching another device.
 - Renaming a folder putting back the scope another window had just set.
+- No changed-on-disk notice for an SQL file outside a linked folder or replaced by an older copy, and Save overwriting it.
 - Saved queries and their folders deleted at launch when their connection had not arrived from iCloud.
 - Saved queries left naming a deleted folder on other devices after that folder was deleted.
 - A keyword two linked SQL files both declared reaching a different file on each launch.
 - A keyword a saved query shared with a global one reaching either query, depending on the connection.
+- Silent failure moving a linked SQL file to the Trash, and an open tab recreating a deleted file on save.
 - AI chat's saved query mentions missing a query saved earlier in the same session.
 - **File > Import > Import Data…** importing every file as SQL. (#3047)
 - A file the import panel dimmed still opening, and reaching the wrong importer.
