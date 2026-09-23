@@ -82,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unexpanded schemas hidden by the sidebar filter in the Tree layout.
 - Empty object sections opened as "No items" under every match while filtering the sidebar tree.
 - **Drop View** offered in Recent for a sequence or materialized view opened from Open Quickly.
+- Column default of NULL shown as Empty on MySQL and MariaDB, and a NULL default that never stuck. (#3058)
+- String column defaults misread on MariaDB 10.2.7 and later, and expression defaults on MariaDB 10.2.1 to 10.2.6.
+- `ERROR 1064` editing a MySQL 8 column whose expression default holds a quoted string.
+- `ERROR 1067` saving a column made NOT NULL while its default was NULL.
+- NULL default on a MySQL `TEXT`, `BLOB`, `JSON` or `GEOMETRY` column saved as the expression `(NULL)`.
 - Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
 - Raw Oracle driver error in the schema switch failure dialog. (#3053)
 - Oracle health check closing a connection a statement was still running on. (#3053)

@@ -100,11 +100,14 @@ internal func mysqlWholeStringLiteral(_ value: String) -> String? {
 /// column's own fractional-second precision, because MySQL rejects the pair when they differ, and
 /// is the one expression MySQL accepts bare. Every other expression is parenthesised on MySQL,
 /// which is what its grammar requires from 8.0.13; MariaDB takes them either way and writes them
-/// bare itself. A type that cannot carry a bare default is parenthesised whatever the value is.
+/// bare itself. A type that cannot carry a bare default is parenthesised whatever the value is, with
+/// one exception: `NULL`. Every type takes it bare, and parenthesised it is no longer the literal:
+/// MySQL 8 stores `DEFAULT (NULL)` as an expression default and MySQL 5.7 refuses the syntax.
 ///
 /// Nothing else is rewritten: the value already holds the SQL, and re-quoting it is what turned
 /// `(UUID())` into the six-character string `uuid()`.
 internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMariaDB: Bool) -> String {
+    if mysqlIsNullLiteral(value) { return "NULL" }
     if mysqlTemporalType(dataType), let expression = mysqlCurrentTimestampExpression(value, dataType: dataType) {
         return expression
     }
@@ -114,51 +117,8 @@ internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMari
     return value.hasPrefix("(") ? value : "(\(value))"
 }
 
-/// A column default as the catalog reports it, turned into the SQL that recreates it.
-///
-/// The two servers report it differently and neither says which it is in the value alone. MySQL
-/// leaves a literal bare and marks an expression `DEFAULT_GENERATED` in `EXTRA`. MariaDB from 10.2.7
-/// quotes literals and leaves expressions bare, with `EXTRA` empty; before that it quotes nothing,
-/// so it reads like MySQL without the marker and every default is a literal.
-internal func mysqlDefaultValueFromCatalog(
-    _ value: String?,
-    extra: String?,
-    dataType: String,
-    quotesLiterals: Bool
-) -> String? {
-    guard let value else { return nil }
-    if quotesLiterals { return value }
-
-    // MySQL 8.0.13 marks a plain `DEFAULT CURRENT_TIMESTAMP` DEFAULT_GENERATED like any other
-    // expression, so this has to be answered before the marker is consulted or the one expression
-    // MySQL insists on bare comes back parenthesised.
-    if mysqlTemporalType(dataType), mysqlCurrentTimestampExpression(value, dataType: dataType) != nil {
-        return value
-    }
-
-    guard extra?.uppercased().contains("DEFAULT_GENERATED") != true else {
-        return value.hasPrefix("(") ? value : "(\(value))"
-    }
-    return mysqlCatalogReportsLiteralAsSQL(dataType: dataType)
-        ? value : "'\(mysqlEscapeStringLiteral(value))'"
-}
-
-/// Whether this column type's catalog default is already the SQL that recreates it.
-///
-/// A string default comes back stripped of its quotes and has to be given them again. A number, a
-/// `BIT` default (`b'1'`) and a binary default (`0x61`) all come back as the literal they are, and
-/// quoting one changes what it means: `0x61` quoted stores the four characters rather than the byte.
-internal func mysqlCatalogReportsLiteralAsSQL(dataType: String) -> Bool {
-    let base = dataType.uppercased().split(separator: "(", maxSplits: 1).first.map(String.init)?
-        .trimmingCharacters(in: .whitespaces) ?? dataType.uppercased()
-    switch base {
-    case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT",
-         "DECIMAL", "DEC", "NUMERIC", "FIXED", "FLOAT", "DOUBLE", "REAL", "YEAR",
-         "BIT", "BINARY", "VARBINARY", "BOOL", "BOOLEAN":
-        return true
-    default:
-        return false
-    }
+internal func mysqlIsNullLiteral(_ value: String) -> Bool {
+    value.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("NULL") == .orderedSame
 }
 
 /// The only types on which a bare `CURRENT_TIMESTAMP` is the temporal expression rather than the

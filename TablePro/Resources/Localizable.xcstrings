@@ -6286,6 +6286,9 @@
         }
       }
     },
+    "%@ does not allow NULL, so its default cannot be NULL" : {
+
+    },
     "%d added" : {
       "localizations" : {
         "ko" : {
@@ -163024,6 +163027,9 @@
       }
     },
     "This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them." : {
+
+    },
+    "This column does not allow NULL, so its default cannot be NULL." : {
 
     },
     "This column holds %@, which the map cannot draw." : {
