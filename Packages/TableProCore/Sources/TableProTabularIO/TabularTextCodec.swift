@@ -50,13 +50,17 @@ public enum TabularTextCodec {
         }
     }
 
+    public static func utf8String<Bytes: Collection>(_ bytes: Bytes) -> String where Bytes.Element == UInt8 {
+        String(decoding: bytes, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+    }
+
     public static func string(from bytes: UnsafeBufferPointer<UInt8>, encoding: TabularTextEncoding) -> String {
         guard !bytes.isEmpty else { return "" }
-        guard encoding != .utf8 else { return String(decoding: bytes, as: UTF8.self) }
+        guard encoding != .utf8 else { return TabularTextCodec.utf8String(bytes) }
         var utf8: [UInt8] = []
         utf8.reserveCapacity(bytes.count + bytes.count / 4)
         appendUTF8(of: bytes, from: encoding, into: &utf8)
-        return String(decoding: utf8, as: UTF8.self)
+        return TabularTextCodec.utf8String(utf8)
     }
 
     public static func isASCII(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {

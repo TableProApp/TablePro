@@ -38,7 +38,7 @@ final class DelimitedParityTests: XCTestCase {
                 try DelimitedRowIndexer.index($0, dialect: dialect, contentStart: hasBOM ? 3 : 0)
             }
             let actual = (0..<index.rowCount).map { index.range(ofRow: $0) }
-            XCTAssertEqual(actual, expected, "trial \(trial): \(String(decoding: bytes, as: UTF8.self).debugDescription)")
+            XCTAssertEqual(actual, expected, "trial \(trial): \(TabularTextCodec.utf8String(bytes).debugDescription)")
 
             let expectedFields = bytes.withUnsafeBufferPointer { buffer in
                 expected.map { CSVStreamingParser(dialect: legacy).parseRow(buffer, range: $0) }
@@ -47,7 +47,7 @@ final class DelimitedParityTests: XCTestCase {
                 guard let base = buffer.baseAddress else { return actual.map { _ in [""] } }
                 return actual.map { DelimitedFieldReader(dialect: dialect).fields(in: base, range: $0) }
             }
-            XCTAssertEqual(actualFields, expectedFields, "trial \(trial): \(String(decoding: bytes, as: UTF8.self).debugDescription)")
+            XCTAssertEqual(actualFields, expectedFields, "trial \(trial): \(TabularTextCodec.utf8String(bytes).debugDescription)")
         }
     }
 

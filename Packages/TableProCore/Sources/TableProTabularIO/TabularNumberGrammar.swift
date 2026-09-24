@@ -54,7 +54,7 @@ public enum TabularNumberGrammar {
 
     public static func doubleValue(of bytes: UnsafeBufferPointer<UInt8>) -> Double? {
         guard shape(of: bytes) != nil else { return nil }
-        return Double(String(decoding: bytes, as: UTF8.self))
+        return Double(TabularTextCodec.utf8String(bytes))
     }
 
     private static func isDigit(_ byte: UInt8) -> Bool {

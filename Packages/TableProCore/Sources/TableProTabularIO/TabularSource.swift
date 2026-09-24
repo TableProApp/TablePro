@@ -121,7 +121,7 @@ public struct TabularRowCells {
     public var count: Int { kinds.count }
 
     public func string(at index: Int) -> String {
-        String(decoding: bytes[index], as: UTF8.self)
+        TabularTextCodec.utf8String(bytes[index])
     }
 }
 

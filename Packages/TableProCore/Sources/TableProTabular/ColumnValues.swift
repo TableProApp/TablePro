@@ -57,7 +57,7 @@ public struct TabularValueStore: Sendable, Equatable {
 
     public func cell(at slot: Int) -> TabularCell {
         withValue(at: slot) { kind, value in
-            TabularCell(kind: kind, text: String(decoding: value, as: UTF8.self))
+            TabularCell(kind: kind, text: TabularTextCodec.utf8String(value))
         }
     }
 }

@@ -7,7 +7,14 @@ public extension TabularTable {
         rows logicalRows: Range<Int>,
         _ body: (Int, TabularRowCells) -> Bool
     ) {
-        let clamped = logicalRows.clamped(to: 0..<rowCount)
+        scan(columns: ids, logicalRows: logicalRows.clamped(to: 0..<rowCount), body)
+    }
+
+    func scan<Rows: Collection>(
+        columns ids: [TabularColumnID],
+        logicalRows clamped: Rows,
+        _ body: (Int, TabularRowCells) -> Bool
+    ) where Rows.Element == Int {
         guard !ids.isEmpty, !clamped.isEmpty else { return }
         let plan = ScanPlan(table: self, ids: ids)
         var buffer = TabularCellBuffer()
@@ -38,6 +45,7 @@ public extension TabularTable {
 
         for logicalRow in clamped {
             if stopped { return }
+            guard logicalRow >= 0, logicalRow < rowCount else { continue }
             let key = rowOrder.key(at: logicalRow)
             if isSourceKey(key), !plan.sourceColumns.isEmpty {
                 batch.append(key)

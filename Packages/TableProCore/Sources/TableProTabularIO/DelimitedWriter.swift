@@ -146,7 +146,7 @@ public struct DelimitedWriter {
     }
 
     private func encodedLineEnding() throws -> [UInt8] {
-        let text = String(decoding: dialect.lineEnding.bytes, as: UTF8.self)
+        let text = TabularTextCodec.utf8String(dialect.lineEnding.bytes)
         return try encode(text, row: 0, column: 0)
     }
 
