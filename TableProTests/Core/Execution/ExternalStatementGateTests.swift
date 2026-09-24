@@ -75,6 +75,31 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement("SELECT 1; SELECT 2", allowsMultiStatement: true)) == nil)
     }
 
+    /// SQL Server runs whatever one request carries as one batch, `;` or not, and a variable lives only in the batch
+    /// that declares it, so a caller that takes scripts may send one there (#3078). Nowhere else.
+    @Test("Only an engine that cuts scripts into GO batches takes a script in one call")
+    func scriptsAreTakenWhereBatchesAreTheUnit() {
+        #expect(ExternalStatementGate.acceptsScripts(on: .mssql))
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle, .clickhouse] {
+            #expect(!ExternalStatementGate.acceptsScripts(on: engine), "\(engine.rawValue) takes one statement per call")
+        }
+    }
+
+    @Test("A SQL Server script clears the gate for a caller that takes scripts, and is still tiered by its worst statement")
+    func sqlServerScriptIsGatedWhole() {
+        let script = "DECLARE @sn NVARCHAR(50) = 'x';\nSELECT * FROM a WHERE sn = @sn;\nGO\nSELECT * FROM b"
+        let takesScripts = ExternalStatementGate.acceptsScripts(on: .mssql)
+        #expect(refusal(statement(script, databaseType: .mssql, allowsMultiStatement: takesScripts)) == nil)
+        #expect(refusal(statement(script, databaseType: .mssql, externalAccess: .readOnly, allowsMultiStatement: takesScripts))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+        #expect(refusal(statement(
+            "SELECT 1;\nGO\nDROP TABLE orders",
+            databaseType: .mssql,
+            allowsDestructive: false,
+            allowsMultiStatement: takesScripts
+        )) == .denied(String(localized: "This statement drops or truncates data.")))
+    }
+
     /// The connection setting a user reaches for when they want a script to look but not touch.
     @Test("A write is refused when the connection is read only for external clients", arguments: [
         ExternalAccessLevel.readOnly, ExternalAccessLevel.blocked

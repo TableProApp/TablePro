@@ -45,21 +45,23 @@ internal enum ScriptResultEncoder {
             rowsAffected: metadata.rowsAffected,
             truncated: metadata.truncated,
             executionTimeMs: metadata.executionTimeMs,
-            statusMessage: metadata.statusMessage
+            statusMessage: metadata.statusMessage,
+            results: []
         )
     }
 
-    internal static func encode(
-        _ result: QueryResult,
-        executionTimeMs: Double
-    ) -> [String: Any] {
-        record(
-            columns: result.columns,
-            rows: result.rows,
-            rowsAffected: result.rowsAffected,
-            truncated: result.isTruncated,
-            executionTimeMs: executionTimeMs,
-            statusMessage: result.statusMessage
+    /// What `run query` answered. The record itself is the first result, as it always was; `results` lists every
+    /// result set once a SQL Server script returned more than one, and is empty otherwise.
+    internal static func encode(_ outcome: DatabaseAccessBridge.ScriptOutcome) -> [String: Any] {
+        let primary = outcome.primary
+        return record(
+            columns: primary.columns,
+            rows: primary.rows,
+            rowsAffected: primary.rowsAffected,
+            truncated: primary.isTruncated,
+            executionTimeMs: outcome.executionTimeMs,
+            statusMessage: primary.statusMessage,
+            results: outcome.resultSets.count > 1 ? outcome.resultSets.map(resultSet(of:)) : []
         )
     }
 
@@ -70,7 +72,8 @@ internal enum ScriptResultEncoder {
             rowsAffected: 0,
             truncated: false,
             executionTimeMs: 0,
-            statusMessage: nil
+            statusMessage: nil,
+            results: []
         )
     }
 
@@ -80,20 +83,33 @@ internal enum ScriptResultEncoder {
         rowsAffected: Int,
         truncated: Bool,
         executionTimeMs: Double,
-        statusMessage: String?
+        statusMessage: String?,
+        results: [[String: Any]]
     ) -> [String: Any] {
-        var fields: [String: Any] = [
+        [
             ScriptingKeys.QueryResult.columns: columns,
-            ScriptingKeys.QueryResult.rows: rows.map { row in
-                [ScriptingKeys.ResultRow.values: row.map(text(of:))]
-            },
+            ScriptingKeys.QueryResult.rows: rowRecords(rows),
             ScriptingKeys.QueryResult.rowCount: rows.count,
             ScriptingKeys.QueryResult.rowsAffected: rowsAffected,
             ScriptingKeys.QueryResult.truncated: truncated,
-            ScriptingKeys.QueryResult.executionTime: executionTimeMs
+            ScriptingKeys.QueryResult.executionTime: executionTimeMs,
+            ScriptingKeys.QueryResult.statusMessage: statusMessage ?? "",
+            ScriptingKeys.QueryResult.results: results
         ]
-        fields[ScriptingKeys.QueryResult.statusMessage] = statusMessage ?? ""
-        return fields
+    }
+
+    private static func resultSet(of result: QueryResult) -> [String: Any] {
+        [
+            ScriptingKeys.QueryResult.columns: result.columns,
+            ScriptingKeys.QueryResult.rows: rowRecords(result.rows),
+            ScriptingKeys.QueryResult.rowCount: result.rows.count,
+            ScriptingKeys.QueryResult.truncated: result.isTruncated,
+            ScriptingKeys.QueryResult.statusMessage: result.statusMessage ?? ""
+        ]
+    }
+
+    private static func rowRecords(_ rows: [[PluginCellValue]]) -> [[String: Any]] {
+        rows.map { row in [ScriptingKeys.ResultRow.values: row.map(text(of:))] }
     }
 
     internal static func text(of cell: PluginCellValue) -> String {
