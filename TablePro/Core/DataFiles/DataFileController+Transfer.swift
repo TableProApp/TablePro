@@ -81,7 +81,7 @@ extension DataFileController {
                 completion(snapshot)
             } catch {
                 self?.finishTransfer(activityID)
-                guard !(error is CancellationError) else { return }
+                guard !error.isDataFileCancellation else { return }
                 Self.logger.error("Import snapshot failed: \(error.localizedDescription, privacy: .public)")
                 self?.showMessage(error.localizedDescription)
             }

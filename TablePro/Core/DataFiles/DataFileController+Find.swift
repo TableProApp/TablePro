@@ -110,7 +110,7 @@ extension DataFileController {
                 self?.finishFind(matches, activityID: activityID)
             } catch {
                 self?.endActivity(activityID)
-                if !(error is CancellationError) {
+                if !error.isDataFileCancellation {
                     self?.find.isSearching = false
                 }
             }

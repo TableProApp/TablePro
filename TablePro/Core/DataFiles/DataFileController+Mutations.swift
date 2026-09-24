@@ -76,7 +76,7 @@ extension DataFileController {
     private func abandonMutation(error: Error, activityID: UUID) {
         endActivity(activityID)
         setMutationTask(nil)
-        guard !(error is CancellationError) else { return }
+        guard !error.isDataFileCancellation else { return }
         Self.logger.error("Data file operation failed: \(error.localizedDescription, privacy: .public)")
         showMessage(error.localizedDescription)
     }

@@ -14,11 +14,15 @@ import Testing
 @Suite("Data file controller")
 struct DataFileControllerTests {
     private func loaded(_ text: String, fileExtension: String = "csv") async throws -> (DataFileController, URL) {
+        try await loaded(data: Data(text.utf8), fileExtension: fileExtension)
+    }
+
+    private func loaded(data: Data, fileExtension: String) async throws -> (DataFileController, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("DataFileControllerTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("people.\(fileExtension)")
-        try Data(text.utf8).write(to: url)
+        try data.write(to: url)
         let controller = DataFileController()
         controller.undoManager = UndoManager()
         let kind = try #require(DataFileKind.classify(url))
@@ -26,6 +30,12 @@ struct DataFileControllerTests {
         await controller.waitForPendingWork()
         #expect(controller.loadState == .loaded)
         return (controller, url)
+    }
+
+    private func loaded(workbook base64: String) async throws -> DataFileController {
+        let data = try #require(Data(base64Encoded: base64))
+        let (controller, _) = try await loaded(data: data, fileExtension: "xlsx")
+        return controller
     }
 
     private func column(_ controller: DataFileController, _ index: Int) -> [String] {
@@ -254,5 +264,58 @@ struct DataFileControllerTests {
         defer { try? FileManager.default.removeItem(at: snapshot.url) }
         #expect(snapshot.formatId == "csv")
         #expect(try String(contentsOf: snapshot.url, encoding: .utf8) == "amount,amount (2)\n2,x;y\n")
+    }
+
+    private static let twoSheetWorkbook = [
+        "UEsDBBQAAAAIALxpOF3xqbA++QAAAKQCAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbLWSzU7DMBCEX8XytYo37QEhlKSHAkfgUB5g",
+        "cTaJFf/Jdkt4e5y04oAKCAlOK3tm9htZrraT0exIISpna74WJWdkpWuV7Wv+vL8vrvm2qfZvniLLVhtrPqTkbwCiHMhgFM6TzUrn",
+        "gsGUj6EHj3LEnmBTllcgnU1kU5HmHbypbqnDg07sbsrXJ2wgHTnbnYwzq+bovVYSU9bhaNtPlOJMEDm5eOKgfFxlA4eLhFn5GnDO",
+        "PeZ3CKol9oQhPaDJLpg0vLowvjg3iu+XXGjpuk5Jap08mBwR0QfCNg5EyWixTGFQ2dXP/MUcYRnrPy7ysf+XPTb/3QOWb9e8A1BL",
+        "AwQUAAAACAC8aThd/luGcooAAADwAAAACwAAAF9yZWxzLy5yZWxzjc8xDsIwDAXQq1Q+QF0YGFDaiaUr4gImddqqTRw5QZTbk7Eg",
+        "Bkbrf70vmyuvlGcJaZpjqja/htTClHM8IyY7sadUS+RQEifqKZdTR4xkFxoZj01zQt0b0Jm9WfVDC9oPB6hur8j/2OLcbPki9uE5",
+        "5B8TX40ik46cW9hWfIoud5GlLihgZ/Djwe4NUEsDBBQAAAAIALxpOF2wlELfnwAAABIBAAAPAAAAeGwvd29ya2Jvb2sueG1sjZBN",
+        "DoIwEEav0vQADrBwQYCNbtx5hQqDbWg7zUyNHl8ESXDnav5e3pdM8ySebkSTegUfpdU251QDSG8xGDlQwjhfRuJg8jzyHSQxmkEs",
+        "Yg4eqqI4QjAu6tVQ8z8OGkfX45n6R8CYVwmjN9lRFOuS6K5ZEuRbVTQBW31FSh61WnaXodWlVly7ueHLUGr4pU8uO5QdXe3o6kPD",
+        "FgLbH7o3UEsDBBQAAAAIALxpOF3A8Bp1lwAAAH4BAAAaAAAAeGwvX3JlbHMvd29ya2Jvb2sueG1sLnJlbHO9kD0KwzAMRq8SfIAo",
+        "ydChxJm6ZC29gHFkOyT+wVJpe/uaQksKGTp1EvoE73uoP+OqeI6B3Jyouvs1kBSOOR0BSDv0iuqYMJSLidkrLmu2kJRelEXomuYA",
+        "ecsQQ79lVuMkRR6nVlSXR8Jf2NGYWeMp6qvHwDsVcIt5IYfIBaqyRZbiExG8RlsXqoB9me7PMt1bBr7ePTwBUEsDBBQAAAAIALxp",
+        "OF3Xe6U+wgAAAOQBAAAYAAAAeGwvd29ya3NoZWV0cy9zaGVldDEueG1sdZFRCoMwEESvIjlAV6O0UGJA2xv0BKlNVWoSSRZtb98o",
+        "JRSJf7uTmTeQZbOxL9dJiclbDdqVpEMczwCu6aQS7mBGqf3L01gl0K+2BTdaKR5rSA1A0/QISvSacLZqV4GCM2vmxJYk82qzDFVG",
+        "EixJr4deyxtar/eOM+RaKMkAOYNlh+bnr/f8ot3YwVeFPhr66E6+0jpWtwQnnmcMpgg2D9h8B1ubewybr9iCxrFFwBY72MsnRi1W",
+        "Kj1tqPD3/xAOy79QSwMEFAAAAAgAvGk4Xcvg48a/AAAA9wEAABgAAAB4bC93b3Jrc2hlZXRzL3NoZWV0Mi54bWx90UsKwjAQBuCr",
+        "lBzAqX0tJA0I7hQUPUGo0QbzKMlg7e1NuwguTBcDM/8w32boaN3L90Jg9tHK+Jb0iMMOwHe90Nxv7CBM2Dys0xzD6J7gByf4fTnS",
+        "Coo8b0BzaQijS3bgyBl1dsxcS7Yh7eZmvyUZtkQaJY24oQu59Iwi6yROFJBRmGfoQoXbCBQRKBLAhTvpV4QyCmVCuFotVoAqAlUC",
+        "OHtlV4A6AnUCOEnNV4AmAk0COE7y/Q+An5dA/DX7AlBLAQIUAxQAAAAIALxpOF3xqbA++QAAAKQCAAATAAAAAAAAAAAAAACAAQAA",
+        "AABbQ29udGVudF9UeXBlc10ueG1sUEsBAhQDFAAAAAgAvGk4Xf5bhnKKAAAA8AAAAAsAAAAAAAAAAAAAAIABKgEAAF9yZWxzLy5y",
+        "ZWxzUEsBAhQDFAAAAAgAvGk4XbCUQt+fAAAAEgEAAA8AAAAAAAAAAAAAAIAB3QEAAHhsL3dvcmtib29rLnhtbFBLAQIUAxQAAAAI",
+        "ALxpOF3A8Bp1lwAAAH4BAAAaAAAAAAAAAAAAAACAAakCAAB4bC9fcmVscy93b3JrYm9vay54bWwucmVsc1BLAQIUAxQAAAAIALxp",
+        "OF3Xe6U+wgAAAOQBAAAYAAAAAAAAAAAAAACAAXgDAAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWxQSwECFAMUAAAACAC8aThdy+Dj",
+        "xr8AAAD3AQAAGAAAAAAAAAAAAAAAgAFwBAAAeGwvd29ya3NoZWV0cy9zaGVldDIueG1sUEsFBgAAAAAGAAYAiwEAAGUFAAAAAA=="
+    ].joined()
+
+    @Test("A workbook opens read-only on its first sheet and reads another sheet when chosen")
+    func workbookSheets() async throws {
+        let controller = try await loaded(workbook: Self.twoSheetWorkbook)
+        #expect(controller.sheets.map(\.name) == ["People", "Cities"])
+        #expect(!controller.isEditable)
+        #expect(controller.columnNames.displayNames == ["name", "age"])
+        #expect(column(controller, 0) == ["Ann", "Bob", "Cy"])
+        #expect(controller.sheets[1].table == nil)
+        controller.selectSheet(1)
+        await controller.waitForPendingWork()
+        #expect(controller.loadState == .loaded)
+        #expect(controller.columnNames.displayNames == ["city"])
+        #expect(controller.totalRowCount == 5)
+        controller.selectSheet(0)
+        #expect(column(controller, 0) == ["Ann", "Bob", "Cy"])
+    }
+
+    @Test("A workbook sheet saves as CSV")
+    func workbookSavesAsCSV() async throws {
+        let data = try #require(Data(base64Encoded: Self.twoSheetWorkbook))
+        let (controller, url) = try await loaded(data: data, fileExtension: "xlsx")
+        let output = url.deletingLastPathComponent().appendingPathComponent("people.csv")
+        try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
+        #expect(try String(contentsOf: output, encoding: .utf8) == "name,age\nAnn,31\nBob,42\nCy,27\n")
     }
 }

@@ -146,9 +146,11 @@ final class DataFileController: ObservableObject {
             try Task.checkCancellation()
             self.workingCopy = workingCopy
             install(content)
-        } catch is CancellationError {
-            Self.logger.debug("Data file load cancelled")
         } catch {
+            guard !error.isDataFileCancellation, !Task.isCancelled else {
+                Self.logger.debug("Data file load cancelled")
+                return
+            }
             Self.logger.error("Data file load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
         }
@@ -159,33 +161,59 @@ final class DataFileController: ObservableObject {
         sheets = content.sheets
         dialect = content.dialect
         raggedRowCount = content.raggedRowCount
-        selectedSheetIndex = 0
+        selectedSheetIndex = content.initialSheetIndex
         undoManager?.removeAllActions()
-        installSheet(at: 0)
-        loadState = .loaded
+        installSheet(at: content.initialSheetIndex)
     }
 
     func selectSheet(_ index: Int) {
-        guard sheets.indices.contains(index), index != selectedSheetIndex else { return }
+        guard sheets.indices.contains(index), index != selectedSheetIndex, !isBusy else { return }
         storeCurrentSheet()
         selectedSheetIndex = index
-        installSheet(at: index)
+        guard sheets[index].table == nil else {
+            installSheet(at: index)
+            return
+        }
+        loadSheet(at: index)
     }
 
     private func storeCurrentSheet() {
         guard let table, sheets.indices.contains(selectedSheetIndex) else { return }
-        let current = sheets[selectedSheetIndex]
-        sheets[selectedSheetIndex] = DataFileSheet(
-            name: current.name,
-            isHidden: current.isHidden,
-            table: table,
-            kinds: current.kinds
-        )
+        sheets[selectedSheetIndex].table = table
+        sheets[selectedSheetIndex].kinds = inferredKinds
+    }
+
+    private func loadSheet(at index: Int) {
+        guard let workbook = content?.workbook, let workbookSheet = sheets[index].workbookSheet else { return }
+        queryTask?.cancel()
+        findTask?.cancel()
+        loadTask?.cancel()
+        table = nil
+        loadState = .loading
+        loadProgress = 0
+        loadTask = Task { [weak self] in
+            do {
+                let loaded = try await DataFileLoader.loadSheet(workbookSheet, of: workbook) { fraction in
+                    Task { @MainActor [weak self] in
+                        self?.loadProgress = fraction
+                    }
+                }
+                guard let self, self.selectedSheetIndex == index else { return }
+                self.sheets[index].table = loaded.table
+                self.sheets[index].kinds = loaded.kinds
+                self.installSheet(at: index)
+            } catch {
+                guard let self, !error.isDataFileCancellation, self.selectedSheetIndex == index else { return }
+                Self.logger.error("Sheet load failed: \(error.localizedDescription, privacy: .public)")
+                self.loadState = .failed(error.localizedDescription)
+            }
+        }
     }
 
     private func installSheet(at index: Int) {
         let sheet = sheets[index]
-        table = sheet.table
+        guard let sheetTable = sheet.table else { return }
+        table = sheetTable
         inferredKinds = sheet.kinds
         kindOverrides = [:]
         filterState = TabFilterState()
@@ -196,6 +224,7 @@ final class DataFileController: ObservableObject {
         selectedRowIndices = []
         refreshColumnNames()
         refreshPage()
+        loadState = .loaded
     }
 
     func refreshColumnNames() {
@@ -420,13 +449,7 @@ final class DataFileController: ObservableObject {
     func replaceTable(_ newTable: TabularTable) {
         table = newTable
         if sheets.indices.contains(selectedSheetIndex) {
-            let current = sheets[selectedSheetIndex]
-            sheets[selectedSheetIndex] = DataFileSheet(
-                name: current.name,
-                isHidden: current.isHidden,
-                table: newTable,
-                kinds: current.kinds
-            )
+            sheets[selectedSheetIndex].table = newTable
         }
         refreshColumnNames()
     }

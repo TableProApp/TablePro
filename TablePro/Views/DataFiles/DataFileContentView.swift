@@ -104,25 +104,36 @@ struct DataFileContentView: View {
 }
 
 struct DataFileSheetTabs: View {
+    static let segmentedSheetLimit = 8
+
     @ObservedObject var controller: DataFileController
 
     var body: some View {
         HStack {
-            Picker(String(localized: "Sheet"), selection: Binding(
-                get: { controller.selectedSheetIndex },
-                set: { controller.selectSheet($0) }
-            )) {
-                ForEach(Array(controller.sheets.enumerated()), id: \.offset) { index, sheet in
-                    Text(sheet.isHidden ? String(format: String(localized: "%@ (hidden)"), sheet.name) : sheet.name)
-                        .tag(index)
-                }
+            if controller.sheets.count <= Self.segmentedSheetLimit {
+                picker.pickerStyle(.segmented)
+            } else {
+                picker.pickerStyle(.menu)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel(String(localized: "Sheet"))
             Spacer()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
+        .disabled(controller.isBusy)
+    }
+
+    private var picker: some View {
+        Picker(String(localized: "Sheet"), selection: Binding(
+            get: { controller.selectedSheetIndex },
+            set: { controller.selectSheet($0) }
+        )) {
+            ForEach(Array(controller.sheets.enumerated()), id: \.offset) { index, sheet in
+                Text(sheet.isHidden ? String(format: String(localized: "%@ (hidden)"), sheet.name) : sheet.name)
+                    .tag(index)
+            }
+        }
+        .labelsHidden()
+        .fixedSize()
+        .accessibilityLabel(String(localized: "Sheet"))
     }
 }

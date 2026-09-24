@@ -16,16 +16,30 @@ struct DataFileLoadRequest: Sendable {
 struct DataFileSheet: Sendable {
     let name: String
     let isHidden: Bool
-    let table: TabularTable
-    let kinds: [TabularColumnID: TabularInferredKind]
+    var table: TabularTable?
+    var kinds: [TabularColumnID: TabularInferredKind]
+    let workbookSheet: XLSXSheet?
 }
 
 struct DataFileContent: Sendable {
     let kind: DataFileKind
     let sheets: [DataFileSheet]
+    let initialSheetIndex: Int
     let delimitedSource: DelimitedSource?
+    let workbook: XLSXWorkbook?
     let dialect: DelimitedDialect?
     let raggedRowCount: Int
+}
+
+struct DataFileLoadedSheet: Sendable {
+    let table: TabularTable
+    let kinds: [TabularColumnID: TabularInferredKind]
+}
+
+extension Error {
+    var isDataFileCancellation: Bool {
+        self is CancellationError || self is TabularCancellation
+    }
 }
 
 enum DataFileLoadError: LocalizedError, Equatable {
@@ -62,9 +76,60 @@ enum DataFileLoader {
         switch request.kind.format {
         case .delimited:
             return try await loadDelimited(request, snapshotURL: snapshotURL, workingCopy: workingCopy, progress: progress)
-        case .json, .jsonLines, .workbook:
+        case .workbook:
+            return try loadWorkbook(request, snapshotURL: snapshotURL, progress: progress)
+        case .json, .jsonLines:
             throw DataFileLoadError.unsupported(String(localized: "This kind of file cannot be opened yet."))
         }
+    }
+
+    @concurrent
+    static func loadSheet(
+        _ sheet: XLSXSheet,
+        of workbook: XLSXWorkbook,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> DataFileLoadedSheet {
+        let source = try workbook.source(for: sheet, progress: progress, isCancelled: { Task.isCancelled })
+        let table = TabularTable(source: source, usesFirstRowAsHeader: source.firstRowLooksLikeHeader)
+        return DataFileLoadedSheet(table: table, kinds: TabularTypeInference.inferKinds(of: table))
+    }
+
+    private static func loadWorkbook(
+        _ request: DataFileLoadRequest,
+        snapshotURL: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) throws -> DataFileContent {
+        let workbook = try XLSXWorkbook(
+            contentsOf: snapshotURL,
+            progress: { progress($0 * 0.1) },
+            isCancelled: { Task.isCancelled }
+        )
+        guard let initial = workbook.sheets.firstIndex(where: { !$0.isHidden }) ?? workbook.sheets.indices.first else {
+            throw DataFileLoadError.unsupported(String(localized: "This workbook has no worksheets."))
+        }
+        let first = workbook.sheets[initial]
+        let source = try workbook.source(for: first, progress: { progress(0.1 + $0 * 0.9) }, isCancelled: { Task.isCancelled })
+        let table = TabularTable(source: source, usesFirstRowAsHeader: source.firstRowLooksLikeHeader)
+        let kinds = TabularTypeInference.inferKinds(of: table)
+        let sheets = workbook.sheets.map { sheet in
+            DataFileSheet(
+                name: sheet.name,
+                isHidden: sheet.isHidden,
+                table: sheet == first ? table : nil,
+                kinds: sheet == first ? kinds : [:],
+                workbookSheet: sheet
+            )
+        }
+        progress(1)
+        return DataFileContent(
+            kind: request.kind,
+            sheets: sheets,
+            initialSheetIndex: initial,
+            delimitedSource: nil,
+            workbook: workbook,
+            dialect: nil,
+            raggedRowCount: 0
+        )
     }
 
     static func mappedData(at url: URL) throws -> Data {
@@ -128,11 +193,19 @@ enum DataFileLoader {
         let table = TabularTable(source: source, usesFirstRowAsHeader: dialect.hasHeaderRow)
         let kinds = TabularTypeInference.inferKinds(of: table)
         progress(1)
-        let sheet = DataFileSheet(name: request.url.lastPathComponent, isHidden: false, table: table, kinds: kinds)
+        let sheet = DataFileSheet(
+            name: request.url.lastPathComponent,
+            isHidden: false,
+            table: table,
+            kinds: kinds,
+            workbookSheet: nil
+        )
         return DataFileContent(
             kind: request.kind,
             sheets: [sheet],
+            initialSheetIndex: 0,
             delimitedSource: source,
+            workbook: nil,
             dialect: dialect,
             raggedRowCount: source.raggedRowCount
         )

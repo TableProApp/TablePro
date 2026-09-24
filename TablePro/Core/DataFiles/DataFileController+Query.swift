@@ -113,7 +113,7 @@ extension DataFileController {
         endActivity(activityID)
         guard isCurrentQuery(revision) else { return }
         setQueryRunning(false)
-        if !(error is CancellationError) {
+        if !error.isDataFileCancellation {
             Self.logger.error("Data file query failed: \(error.localizedDescription, privacy: .public)")
         }
     }

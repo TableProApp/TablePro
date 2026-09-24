@@ -41,9 +41,8 @@ final class DataFileStatisticsModel: ObservableObject {
             do {
                 let summary = try await request.summarize(progress: reportProgress)
                 self?.state = .ready(summary)
-            } catch is CancellationError {
-                return
             } catch {
+                guard !error.isDataFileCancellation else { return }
                 self?.state = .failed(error.localizedDescription)
             }
         }
