@@ -291,6 +291,48 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 0)
     }
 
+    /// T-SQL needs no `;` between statements, and Azure SQL Edge 15.0 ran the second statement of each text whole.
+    @Test("Read-only denies a statement SQL Server runs without a terminator", arguments: [
+        "SELECT 1\nDROP TABLE t",
+        "SELECT 1 DELETE FROM t",
+        "PRINT 'x' UPDATE t SET c = 1",
+        "SELECT 1DELETE FROM t",
+        "SELECT 1 EXEC('DELETE FROM t')",
+    ])
+    func readOnlyDeniesUnterminatedStatement(sql: String) async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .readOnly, confirm: confirm, auth: auth)
+        let statements = QueryClassifier.statements(of: sql, grammar: DatabaseType.mssql.lexicalGrammar)
+
+        let declared = await gate.authorize(makeRequest(
+            sql: sql,
+            kind: OperationKind.worst(of: statements, databaseType: .mssql),
+            databaseType: .mssql
+        ))
+        let understated = await gate.authorize(makeRequest(sql: sql, kind: .readQuery, databaseType: .mssql))
+
+        #expect(declared.deniedReason?.contains("read-only") == true)
+        #expect(understated.deniedReason?.contains("read-only") == true)
+        #expect(confirm.callCount == 0)
+    }
+
+    @Test("Read-only runs a SQL Server read that only names a statement keyword", arguments: [
+        "SELECT deleted_at, last_update FROM t WHERE id IN (SELECT id FROM s)",
+        "SELECT 1\nSELECT 2",
+        "SELECT CASE WHEN a = 1 THEN 'x' ELSE 'y' END FROM t OPTION (MERGE JOIN)",
+    ])
+    func readOnlyRunsUnterminatedRead(sql: String) async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .readOnly, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(makeRequest(sql: sql, kind: .readQuery, databaseType: .mssql))
+
+        #expect(decision.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
     @Test("Read-only blocks destructive without prompting")
     func readOnlyBlocksDestructiveBeforeConfirm() async {
         let confirm = StubConfirming(answer: true)
@@ -453,6 +495,25 @@ struct ExecutionGateTests {
                 sql: "DROP TABLE t",
                 kind: .destructiveQuery,
                 capabilities: [.mayWrite],
+                caller: .mcpClient(label: nil)
+            )
+        )
+
+        #expect(decision.deniedReason?.contains("Destructive") == true)
+    }
+
+    @Test("A DROP written after a read without a terminator is destructive for a caller that may only write")
+    func unterminatedDropNeedsTheDestructiveCapability() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .silent, confirm: confirm, auth: auth)
+
+        let decision = await gate.authorize(
+            makeRequest(
+                sql: "SELECT 1 DROP TABLE t",
+                kind: .readQuery,
+                capabilities: [.mayWrite],
+                databaseType: .mssql,
                 caller: .mcpClient(label: nil)
             )
         )

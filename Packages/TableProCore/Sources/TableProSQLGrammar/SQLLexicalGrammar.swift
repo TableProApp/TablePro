@@ -86,6 +86,10 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// sees it. The line may add a repeat count and a `--` comment, and nothing else.
     public static let batchSeparatorLines = SQLLexicalGrammar(rawValue: 1 << 22)
 
+    /// A statement ends where the engine's parser can begin another, with or without a `;`, so `SELECT 1` followed by
+    /// `DROP TABLE t` is two statements. ``SQLUnterminatedStatements`` finds where they begin.
+    public static let unterminatedStatements = SQLLexicalGrammar(rawValue: 1 << 23)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

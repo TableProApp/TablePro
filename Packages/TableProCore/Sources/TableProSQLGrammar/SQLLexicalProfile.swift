@@ -63,14 +63,16 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// Every reading of every curated engine, the readings a gate has to take for an engine it knows nothing about.
     /// A PL/SQL unit grammar is left out: it chooses statement boundaries rather than token rules, and an unknown
-    /// engine keeps the routine-body boundaries every non-Oracle engine has.
+    /// engine keeps the routine-body boundaries every non-Oracle engine has. So is T-SQL's statement that needs no
+    /// terminator, which would make every `open`, `close` or `return` column an unknown engine names a statement of its
+    /// own; an engine that runs statements without one says so through its plugin.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
         for typeId in profiles.keys.sorted() {
             guard let profile = profiles[typeId] else { continue }
             for reading in profile.readings {
-                let unitless = reading.subtracting([.plsqlBlocks, .delimiterDirective])
+                let unitless = reading.subtracting([.plsqlBlocks, .delimiterDirective, .unterminatedStatements])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
                 }
@@ -122,10 +124,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// Azure SQL Edge 15.0 (the SQL Server 2019 engine), measured: brackets quote identifiers and `]]` escapes, block
     /// comments nest, a backslash is literal, a carriage return ends `--`, and T-SQL has no `$$`, `#` or `//` comment.
-    /// A `GO` line is sqlcmd's, not the server's: sent to it, Azure SQL Edge answers Msg 102 and runs nothing.
+    /// A `GO` line is sqlcmd's, not the server's: sent to it, Azure SQL Edge answers Msg 102 and runs nothing. A
+    /// statement needs no `;`: `SELECT 1` followed by `DROP TABLE t` runs both.
     static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
-        .carriageReturnEndsLineComments, .batchSeparatorLines,
+        .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements,
     ]
 
     /// Spanner's GoogleSQL dialect on the emulator, measured, and BigQuery by the ZetaSQL grammar the two share: a
