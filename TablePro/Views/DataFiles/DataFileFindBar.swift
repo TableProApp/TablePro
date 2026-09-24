@@ -118,12 +118,12 @@ struct DataFileFindBar: View {
             Toggle(String(localized: "Whole Words"), isOn: option(\.matchesWholeWords))
             Toggle(String(localized: "Regular Expression"), isOn: option(\.isRegularExpression))
         } label: {
-            Image(systemName: "slider.horizontal.3")
+            Label { Text("Find Options") } icon: { Image(systemName: "slider.horizontal.3") }
         }
+        .labelStyle(.iconOnly)
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help(String(localized: "Find Options"))
-        .accessibilityLabel(String(localized: "Find Options"))
     }
 
     private func option(_ keyPath: WritableKeyPath<DataFileFindState, Bool>) -> Binding<Bool> {
