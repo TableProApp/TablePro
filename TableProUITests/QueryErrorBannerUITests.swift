@@ -56,6 +56,47 @@ final class QueryErrorBannerUITests: UITestCase {
         )
     }
 
+    /// A failed Run All leaves its error result active, and an error result has no columns. The grid
+    /// under the banner kept the headings of the previous run's last result over no rows, where the
+    /// same failure in a fresh tab shows the row-number heading alone.
+    func testAFailedRunAllKeepsNoHeadingFromThePreviousRun() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+        app.typeKey("t", modifierFlags: .command)
+
+        typeQuery("SELECT 1 AS first_col, 2 AS second_col; SELECT 3 AS third_col;", in: app)
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+
+        let grid = window.tables.matching(identifier: "data-grid").firstMatch
+        let previousHeading = columnHeading(beginningWith: "Column: third_col", in: grid)
+        XCTAssertTrue(
+            previousHeading.waitToExist(timeout: 20),
+            "The first run must end on its last result, headed third_col"
+        )
+
+        typeQuery("SELECT 1 AS x; SELECT * FROM missing_table;", in: app)
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+
+        let banner = window.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(banner.waitToExist(timeout: 20), "The failed statement must show its error")
+        XCTAssertTrue(
+            (banner.value as? String ?? banner.label).localizedCaseInsensitiveContains("missing_table"),
+            "The banner must name the failure of the second run"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { !previousHeading.exists },
+            "The grid under the error must not keep the previous run's third_col heading"
+        )
+        XCTAssertFalse(
+            columnHeading(beginningWith: "Column: ", in: grid).exists,
+            "An error result has no columns, so the grid under it heads none"
+        )
+    }
+
+    private func columnHeading(beginningWith prefix: String, in grid: XCUIElement) -> XCUIElement {
+        grid.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+    }
+
     private func runQuery(_ sql: String, in app: XCUIApplication) {
         openQueryEditor(in: app)
         app.typeText(sql)

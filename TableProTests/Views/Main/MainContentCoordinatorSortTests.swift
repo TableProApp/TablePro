@@ -208,7 +208,6 @@ struct MainContentCoordinatorSortTests {
 
         coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
 
-        #expect(tabManager.tabs[idx].pagination.sortExecutionOverride == nil)
         #expect(tabManager.tabs[idx].content.query == script)
         #expect(tabManager.tabs[idx].sortState.columns == [SortColumn(columnIndex: 0, direction: .ascending)])
         let sorted = coordinator.tabSessionRegistry.tableRows(for: tabId).rows.map { $0[0].asText }
@@ -218,7 +217,6 @@ struct MainContentCoordinatorSortTests {
 
         let restored = coordinator.tabSessionRegistry.tableRows(for: tabId).rows.map { $0[0].asText }
         #expect(restored == ["b", "c", "a"])
-        #expect(tabManager.tabs[idx].pagination.sortExecutionOverride == nil)
     }
 
     // MARK: - Results produced with query parameters
@@ -297,6 +295,40 @@ struct MainContentCoordinatorSortTests {
         #expect(rerun.parameters == ["hello"])
     }
 
+    /// A result stays on screen, headers and all, while the next run is in flight, and a re-run cannot start until
+    /// that run ends. The click used to leave its re-run on the tab, and the next Run sent it in place of the
+    /// statement at the caret, bound to the values of the result that was clicked rather than the panel's.
+    @Test("A header click while the tab runs is dropped, and the next Run binds the panel's values", arguments: [
+        InFlightRunEnding.stopped,
+        InFlightRunEnding.settled
+    ])
+    func headerClickDuringRunLeavesNothingForTheNextRun(ending: InFlightRunEnding) async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+        let alreadySent = harness.driver.sent.count
+        let inFlight = harness.coordinator.beginTabExecution(for: harness.tabId).claim
+
+        harness.coordinator.handleSortStateChanged(sortState([(1, .ascending)]))
+
+        #expect(harness.driver.sent.count == alreadySent)
+        let idx = try #require(harness.tabManager.tabs.firstIndex { $0.id == harness.tabId })
+        #expect(harness.tabManager.tabs[idx].sortState.columns.isEmpty)
+        ending.end(inFlight, in: harness.coordinator)
+        harness.tabManager.mutate(tabId: harness.tabId) {
+            $0.content.queryParameters = [QueryParameter(name: "m", value: "bye")]
+        }
+
+        let sent = try await harness.runAtCaret()
+
+        let run = try #require(ParameterizedRunHarness.onlyRerun(in: sent))
+        #expect(run.sql.hasPrefix("SELECT id, msg FROM audit WHERE msg = ?"))
+        #expect(!run.sql.contains("ORDER BY"))
+        #expect(run.parameters == ["bye"])
+    }
+
     /// Fetch All clears the pagination copy of the query once every row is in, and the sort used to fall back from
     /// that copy to the whole editor text.
     @Test("After Fetch All, sorting a result re-runs its own statement alone", arguments: [
@@ -335,7 +367,6 @@ struct MainContentCoordinatorSortTests {
 
         coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
 
-        #expect(tabManager.tabs[idx].pagination.sortExecutionOverride == nil)
         let sorted = coordinator.tabSessionRegistry.tableRows(for: tabId).rows.map { $0[0].asText }
         #expect(sorted == ["a", "b", "c"])
     }
@@ -423,6 +454,24 @@ struct MainContentCoordinatorSortTests {
     }
 }
 
+/// How a run in flight ends without applying a result of its own.
+enum InFlightRunEnding: Sendable {
+    /// Stop, or `Cmd+.`.
+    case stopped
+    /// A failure, or a result past the row cap, which ends the claim and leaves pagination as it was.
+    case settled
+
+    @MainActor
+    func end(_ claim: TabExecutionClaim, in coordinator: MainContentCoordinator) {
+        switch self {
+        case .stopped:
+            coordinator.stopExecution(for: claim.tabId)
+        case .settled:
+            _ = coordinator.tabExecution.settle(claim)
+        }
+    }
+}
+
 /// One statement as it reached the driver, with the values bound to it.
 private struct SentStatement: Equatable {
     let sql: String
@@ -499,6 +548,16 @@ private struct ParameterizedRunHarness {
         var state = SortState()
         state.columns = [SortColumn(columnIndex: column, direction: .ascending)]
         coordinator.handleSortStateChanged(state)
+        try await waitUntilIdle {
+            driver.sent.dropFirst(alreadySent).contains { $0.sql.hasPrefix(Self.resultPrefix) }
+        }
+        return Array(driver.sent.dropFirst(alreadySent))
+    }
+
+    /// Presses Run with the caret where it is and returns every statement the run sent.
+    func runAtCaret() async throws -> [SentStatement] {
+        let alreadySent = driver.sent.count
+        coordinator.runQuery(viewport: .firstRow)
         try await waitUntilIdle {
             driver.sent.dropFirst(alreadySent).contains { $0.sql.hasPrefix(Self.resultPrefix) }
         }
