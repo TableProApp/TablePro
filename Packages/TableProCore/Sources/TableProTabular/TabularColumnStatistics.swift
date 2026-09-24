@@ -227,7 +227,13 @@ public enum TabularColumnStatistics {
     private static func select(_ rank: Int, in numbers: inout [Double]) -> Double {
         var low = 0
         var high = numbers.count - 1
+        var roundsLeft = 2 * (Int.bitWidth - numbers.count.leadingZeroBitCount) + 8
         while low < high {
+            roundsLeft -= 1
+            guard roundsLeft > 0 else {
+                numbers[low...high].sort()
+                return numbers[rank]
+            }
             let pivot = medianOfThree(numbers[low], numbers[(low + high) / 2], numbers[high])
             var left = low
             var right = high

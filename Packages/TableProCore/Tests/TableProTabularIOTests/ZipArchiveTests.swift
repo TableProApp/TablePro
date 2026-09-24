@@ -12,6 +12,39 @@ final class ZipArchiveTests: XCTestCase {
         return try ZipArchive(bytes: builder.build())
     }
 
+    func testAnEntryLargerThanTheBufferLimitIsRefusedBeforeInflating() throws {
+        let archive = try archive([("xl/styles.xml", String(repeating: "a", count: 4_096), .deflate)])
+        let entry = try XCTUnwrap(archive.entry(named: "xl/styles.xml"))
+        XCTAssertThrowsError(try archive.data(for: entry, limit: 1_024)) { error in
+            XCTAssertEqual(error as? ZipArchive.Failure, .entryTooLarge("xl/styles.xml"))
+        }
+    }
+
+    func testAnEntryThatInflatesPastItsDeclaredSizeIsRefused() throws {
+        var builder = TestZipBuilder()
+        builder.add("xl/workbook.xml", String(repeating: "<sheet/>", count: 10_000), method: .deflate)
+        var bytes = [UInt8](builder.build())
+        let signature: [UInt8] = [0x50, 0x4B, 0x01, 0x02]
+        let header = try XCTUnwrap((0...(bytes.count - 4)).first { Array(bytes[$0..<($0 + 4)]) == signature })
+        bytes.replaceSubrange((header + 24)..<(header + 28), with: [0x10, 0x00, 0x00, 0x00])
+        let archive = try ZipArchive(bytes: Data(bytes))
+        XCTAssertThrowsError(try archive.data(named: "xl/workbook.xml")) { error in
+            XCTAssertEqual(error as? ZipArchive.Failure, .corruptEntry("xl/workbook.xml"))
+        }
+    }
+
+    func testAnEntryThatExpandsFarBeyondItsCompressedSizeIsRefused() throws {
+        let policy = ZipExpansionPolicy(ratioLimit: ZipExpansionPolicy.standard.ratioLimit, grace: 1 << 20)
+        let body = String(repeating: "A", count: 4 << 20)
+        let archive = try archive([("xl/worksheets/sheet1.xml", body, .deflate)])
+        let entry = try XCTUnwrap(archive.entry(named: "xl/worksheets/sheet1.xml"))
+        XCTAssertGreaterThan(entry.uncompressedSize / max(entry.compressedSize, 1), policy.ratioLimit)
+        XCTAssertEqual(try archive.data(for: entry).count, body.utf8.count)
+        XCTAssertThrowsError(try archive.data(for: entry, policy: policy)) { error in
+            XCTAssertEqual(error as? ZipArchive.Failure, .entryTooLarge("xl/worksheets/sheet1.xml"))
+        }
+    }
+
     func testStoredEntryReadsBackByteForByte() throws {
         let archive = try archive([("a.xml", "<xml>stored</xml>", .stored)])
         XCTAssertEqual(try archive.data(named: "a.xml"), Data("<xml>stored</xml>".utf8))

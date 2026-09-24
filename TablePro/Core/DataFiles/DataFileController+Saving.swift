@@ -114,8 +114,28 @@ extension DataFileController {
         if let delimiter = DataFileKind.delimiter(forSaveType: typeName) {
             output.delimiter = delimiter
         }
+        if let saveEncoding, saveEncoding != output.encoding {
+            output.encoding = saveEncoding
+            output.hasByteOrderMark = !saveEncoding.byteOrderMark.isEmpty && saveEncoding != .utf8
+        }
         output.hasHeaderRow = table.headerRowKey != nil
         return output
+    }
+
+    var offersSaveEncoding: Bool {
+        switch kind?.format {
+        case .delimited?, .workbook?:
+            return true
+        case .json?, .jsonLines?, nil:
+            return false
+        }
+    }
+
+    func adoptSaveEncoding() {
+        guard let saveEncoding, var updated = dialect, updated.encoding != saveEncoding else { return }
+        updated.encoding = saveEncoding
+        updated.hasByteOrderMark = !saveEncoding.byteOrderMark.isEmpty && saveEncoding != .utf8
+        setDialect(updated)
     }
 
     private func writeDelimited(_ table: TabularTable, to url: URL, typeName: String) throws {

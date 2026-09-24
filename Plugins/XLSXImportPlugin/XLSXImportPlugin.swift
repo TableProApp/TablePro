@@ -143,11 +143,11 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
 
         var strings: [String] = []
         if let sharedEntry = archive.entry(named: "xl/sharedStrings.xml") {
-            strings = XLSXSheetParser.sharedStrings(from: try archive.data(for: sharedEntry))
+            strings = XLSXSheetParser.sharedStrings(from: try archive.data(for: sharedEntry, limit: .max))
         }
 
         var rows = XLSXSheetParser.rows(
-            from: try archive.data(for: worksheet),
+            from: try archive.data(for: worksheet, limit: .max),
             sharedStrings: strings
         )
 

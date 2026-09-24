@@ -172,4 +172,27 @@ final class TabularEditingTests: XCTestCase {
         XCTAssertEqual(TabularTypeInference.infer([(.text, "2024-01-05"), (.text, "2024-02-10T10:00:00Z")]), .date)
         XCTAssertEqual(TabularTypeInference.infer([(.text, "05/01/2024")]), .text)
     }
+
+    func testARunawayRegularExpressionStopsWhenItsTaskIsCancelled() async throws {
+        let expression = try NSRegularExpression(pattern: "(a+)+b")
+        let text = String(repeating: "a", count: 64)
+        let task = Task { TabularRegex.firstMatch(expression, in: text) != nil }
+        try await Task.sleep(for: .milliseconds(200))
+        let cancelled = ContinuousClock.now
+        task.cancel()
+        let matched = await task.value
+        XCTAssertFalse(matched)
+        XCTAssertLessThan(ContinuousClock.now - cancelled, .seconds(2))
+    }
+
+    func testRegularExpressionReplaceMatchesFoundationsOwnReplacement() throws {
+        let query = TabularFindQuery(text: "(\\w+)@(\\w+)", isRegularExpression: true, columns: [])
+        let matcher = try TabularFindMatcher(query)
+        let text = "ann@x, bob@y and café@z"
+        let expected = try NSRegularExpression(pattern: "(\\w+)@(\\w+)")
+            .stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "$2:$1")
+        let replaced = matcher.replacing(in: text, with: "$2:$1")
+        XCTAssertEqual(replaced.text, expected)
+        XCTAssertEqual(replaced.replacements, 3)
+    }
 }

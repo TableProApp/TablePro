@@ -28,6 +28,7 @@ public struct DelimitedWriter {
             && source.dialect.delimiter == dialect.delimiter
             && source.dialect.quote == dialect.quote
             && source.dialect.escape == dialect.escape
+            && source.dialect.lineEnding == dialect.lineEnding
     }
 
     public func write<Rows: Sequence>(

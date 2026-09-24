@@ -1,16 +1,31 @@
 import Compression
 import Foundation
 
+public struct ZipExpansionPolicy: Sendable, Equatable {
+    public let ratioLimit: Int
+    public let grace: Int
+
+    public init(ratioLimit: Int, grace: Int) {
+        self.ratioLimit = ratioLimit
+        self.grace = grace
+    }
+
+    public static let standard = ZipExpansionPolicy(ratioLimit: 250, grace: 64 << 20)
+}
+
 public struct ZipEntryReader: ~Copyable {
     public let entry: ZipArchive.Entry
+    private let policy: ZipExpansionPolicy
     private let payload: UnsafeBufferPointer<UInt8>
     private let inflater: UnsafeMutablePointer<compression_stream>?
     private var storedOffset = 0
     private var isFinished: Bool
+    public private(set) var bytesProduced = 0
 
-    init(entry: ZipArchive.Entry, payload: UnsafeBufferPointer<UInt8>) throws {
+    init(entry: ZipArchive.Entry, payload: UnsafeBufferPointer<UInt8>, policy: ZipExpansionPolicy = .standard) throws {
         self.entry = entry
         self.payload = payload
+        self.policy = policy
         switch entry.compressionMethod {
         case ZipArchive.storedMethod:
             inflater = nil
@@ -63,12 +78,28 @@ public struct ZipEntryReader: ~Copyable {
         switch status {
         case COMPRESSION_STATUS_END:
             isFinished = true
+            try account(produced)
             return produced
         case COMPRESSION_STATUS_OK where produced > 0:
+            try account(produced)
             return produced
         default:
             isFinished = true
             throw ZipArchive.Failure.corruptEntry(entry.path)
+        }
+    }
+
+    private mutating func account(_ produced: Int) throws {
+        bytesProduced += produced
+        guard bytesProduced <= entry.uncompressedSize else {
+            isFinished = true
+            throw ZipArchive.Failure.corruptEntry(entry.path)
+        }
+        guard bytesProduced > policy.grace else { return }
+        let consumed = max(compressedBytesConsumed, 1)
+        guard bytesProduced / consumed <= policy.ratioLimit else {
+            isFinished = true
+            throw ZipArchive.Failure.entryTooLarge(entry.path)
         }
     }
 

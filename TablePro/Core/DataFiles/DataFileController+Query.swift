@@ -48,7 +48,11 @@ extension DataFileController {
     }
 
     func updateSort(_ state: SortState) {
-        sortState = state
+        sortReferences = state.columns.compactMap { column in
+            guard columnNames.ids.indices.contains(column.columnIndex) else { return nil }
+            return DataFileSortReference(column: columnNames.ids[column.columnIndex], direction: column.direction)
+        }
+        sortState = resolvedSortState()
         runQuery()
     }
 
@@ -163,13 +167,12 @@ extension DataFileController {
     }
 
     func currentSortKeys() -> [TabularSortKey] {
-        sortState.columns.compactMap { column in
-            guard columnNames.ids.indices.contains(column.columnIndex) else { return nil }
-            let id = columnNames.ids[column.columnIndex]
+        sortReferences.compactMap { reference in
+            guard columnNames.index(of: reference.column) != nil else { return nil }
             return TabularSortKey(
-                column: id,
-                ascending: column.direction == .ascending,
-                numeric: kind(of: id).sortsNumerically
+                column: reference.column,
+                ascending: reference.direction == .ascending,
+                numeric: kind(of: reference.column).sortsNumerically
             )
         }
     }

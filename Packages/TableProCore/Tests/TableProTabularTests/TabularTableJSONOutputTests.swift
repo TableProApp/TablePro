@@ -17,7 +17,7 @@ final class TabularTableJSONOutputTests: XCTestCase {
         let writer = JSONTableWriter(source: source, keyChanges: table.jsonKeyChanges(sourceKeys: source.keys))
         let bytes = try writer.encoded(rows: rows)
         XCTAssertNil(rows.status.failure)
-        return String(decoding: bytes, as: UTF8.self)
+        return try XCTUnwrap(String(bytes: bytes, encoding: .utf8))
     }
 
     func testAnUntouchedTableWritesTheSourceBackByteForByte() async throws {
@@ -83,7 +83,7 @@ final class TabularTableJSONOutputTests: XCTestCase {
         let delimited = try await TabularTableTests.delimitedSource("a,b\n1,x\n")
         let table = TabularTable(source: delimited, usesFirstRowAsHeader: true)
         let rows = table.jsonOutputRows(sourceKeys: nil) { cell, _ in JSONText.stringLiteral(cell.text) }
-        let output = String(decoding: try JSONTableWriter(shape: .array).encoded(rows: rows), as: UTF8.self)
+        let output = try XCTUnwrap(String(bytes: try JSONTableWriter(shape: .array).encoded(rows: rows), encoding: .utf8))
         let parsed = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(output.utf8)) as? [[String: String]])
         XCTAssertEqual(parsed, [["a": "1", "b": "x"]])
     }

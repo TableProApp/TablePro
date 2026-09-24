@@ -38,6 +38,9 @@
     "%1$@ could not be read again before generating the script. %2$@" : {
 
     },
+    "%@ in the workbook expands to far more data than it holds, so it was not read." : {
+
+    },
     "A sequence" : {
       "localizations" : {
         "ko" : {
@@ -156770,6 +156773,12 @@
           }
         }
       }
+    },
+    "Text Encoding" : {
+
+    },
+    "Text Encoding:" : {
+
     },
     "Text matched against the recorded statement" : {
       "localizations" : {

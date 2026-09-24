@@ -22,6 +22,7 @@ public struct ZipArchive: Sendable {
         case entryNotFound(String)
         case unsupportedCompression(UInt16)
         case corruptEntry(String)
+        case entryTooLarge(String)
 
         public var errorDescription: String? {
             switch self {
@@ -36,12 +37,15 @@ public struct ZipArchive: Sendable {
                 )
             case .corruptEntry(let name):
                 return String(format: String(localized: "Could not read %@ from the workbook."), name)
+            case .entryTooLarge(let name):
+                return String(format: String(localized: "%@ in the workbook expands to far more data than it holds, so it was not read."), name)
             }
         }
     }
 
     public static let storedMethod: UInt16 = 0
     public static let deflateMethod: UInt16 = 8
+    public static let bufferedEntryLimit = 256 << 20
 
     public let bytes: Data
     public let entries: [String: Entry]
@@ -78,10 +82,15 @@ public struct ZipArchive: Sendable {
         return try data(for: entry)
     }
 
-    public func data(for entry: Entry) throws -> Data {
-        try withReader(for: entry) { reader in
+    public func data(
+        for entry: Entry,
+        limit: Int = bufferedEntryLimit,
+        policy: ZipExpansionPolicy = .standard
+    ) throws -> Data {
+        guard entry.uncompressedSize <= limit else { throw Failure.entryTooLarge(entry.path) }
+        return try withReader(for: entry, policy: policy) { reader in
             var output = Data()
-            output.reserveCapacity(min(max(entry.uncompressedSize, 0), 64 * 1_024 * 1_024))
+            output.reserveCapacity(max(entry.uncompressedSize, 0))
             let chunk = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: 256 * 1_024)
             defer { chunk.deallocate() }
             while true {
@@ -92,11 +101,15 @@ public struct ZipArchive: Sendable {
         }
     }
 
-    public func withReader<Result>(for entry: Entry, _ body: (inout ZipEntryReader) throws -> Result) throws -> Result {
+    public func withReader<Result>(
+        for entry: Entry,
+        policy: ZipExpansionPolicy = .standard,
+        _ body: (inout ZipEntryReader) throws -> Result
+    ) throws -> Result {
         try bytes.withUnsafeBytes { raw in
             let archive = raw.bindMemory(to: UInt8.self)
             let payload = try ZipCentralDirectory.payload(of: entry, in: archive)
-            var reader = try ZipEntryReader(entry: entry, payload: payload)
+            var reader = try ZipEntryReader(entry: entry, payload: payload, policy: policy)
             return try body(&reader)
         }
     }

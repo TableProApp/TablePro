@@ -66,18 +66,23 @@ public final class TabularFindMatcher: @unchecked Sendable {
         if let literalNeedle {
             return TabularTextMatching.contains(bytes, literalNeedle, caseSensitive: query.matchesCase)
         }
-        let text = TabularTextMatching.string(bytes) as NSString
-        return expression.firstMatch(in: text as String, options: [], range: NSRange(location: 0, length: text.length)) != nil
+        return TabularRegex.firstMatch(expression, in: TabularTextMatching.string(bytes)) != nil
     }
 
     public func replacing(in text: String, with template: String) -> (text: String, replacements: Int) {
-        let source = text as NSString
-        let range = NSRange(location: 0, length: source.length)
-        let count = expression.numberOfMatches(in: text, options: [], range: range)
-        guard count > 0 else { return (text, 0) }
+        guard let matches = TabularRegex.matches(expression, in: text), !matches.isEmpty else { return (text, 0) }
         let effectiveTemplate = query.isRegularExpression ? template : NSRegularExpression.escapedTemplate(for: template)
-        let replaced = expression.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: effectiveTemplate)
-        return (replaced, count)
+        let result = NSMutableString(string: text)
+        var offset = 0
+        for match in matches {
+            let replacement = expression.replacementString(for: match, in: text, offset: offset, template: effectiveTemplate)
+            result.replaceCharacters(
+                in: NSRange(location: match.range.location + offset, length: match.range.length),
+                with: replacement
+            )
+            offset += (replacement as NSString).length - match.range.length
+        }
+        return (result as String, matches.count)
     }
 }
 

@@ -15,6 +15,7 @@ final class DataFileDocument: NSDocument {
     private var lastOwnWrite: Date?
     private var lastReadModificationDate: Date?
     private var isPromptingExternalChange = false
+    private var encodingPopUp: NSPopUpButton?
 
     override init() {
         controller = MainActor.assumeIsolated { DataFileController() }
@@ -76,6 +77,48 @@ final class DataFileDocument: NSDocument {
         MainActor.assumeIsolated {
             lastReadModificationDate = modificationDate
             controller.load(url: url, kind: kind)
+        }
+    }
+
+    override func prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
+        encodingPopUp = nil
+        guard controller.offersSaveEncoding else { return super.prepareSavePanel(savePanel) }
+        let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
+        for encoding in TabularTextEncoding.allCases {
+            popUp.addItem(withTitle: DataFileEncodingNames.name(for: encoding))
+            popUp.lastItem?.representedObject = encoding.rawValue
+        }
+        let current = controller.dialect?.encoding ?? .utf8
+        popUp.selectItem(withTitle: DataFileEncodingNames.name(for: current))
+        popUp.setAccessibilityLabel(String(localized: "Text Encoding"))
+        let row = NSStackView(views: [NSTextField(labelWithString: String(localized: "Text Encoding:")), popUp])
+        row.orientation = .horizontal
+        row.spacing = 8
+        let container = NSStackView(views: [savePanel.accessoryView, row].compactMap { $0 })
+        container.orientation = .vertical
+        container.alignment = .centerX
+        container.spacing = 8
+        container.edgeInsets = NSEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        savePanel.accessoryView = container
+        encodingPopUp = popUp
+        return super.prepareSavePanel(savePanel)
+    }
+
+    override func save(
+        to url: URL,
+        ofType typeName: String,
+        for saveOperation: NSDocument.SaveOperationType,
+        completionHandler: @escaping (Error?) -> Void
+    ) {
+        let chosen = (encodingPopUp?.selectedItem?.representedObject as? String).flatMap(TabularTextEncoding.init(rawValue:))
+        encodingPopUp = nil
+        controller.saveEncoding = saveOperation == .saveOperation ? nil : chosen
+        super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+            if error == nil, saveOperation == .saveAsOperation {
+                self?.controller.adoptSaveEncoding()
+            }
+            self?.controller.saveEncoding = nil
+            completionHandler(error)
         }
     }
 

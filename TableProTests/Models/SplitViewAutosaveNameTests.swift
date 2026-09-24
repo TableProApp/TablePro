@@ -86,6 +86,7 @@ struct SplitViewAutosaveNameTests {
             "TablePro/Extensions/NSWindow+FrameAutosave.swift",
             "TablePro/Core/Services/Infrastructure/MainSplitViewController.swift",
             "TablePro/Views/DataFiles/DataFileSplitViewController.swift",
+            "TablePro/Views/DataFiles/DataFileWindowController.swift",
         ]
 
         var offenders: [String] = []

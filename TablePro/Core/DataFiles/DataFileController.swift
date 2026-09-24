@@ -39,11 +39,13 @@ final class DataFileController: ObservableObject {
     @Published private(set) var sheets: [DataFileSheet] = []
     @Published private(set) var selectedSheetIndex = 0
     @Published private(set) var dialect: DelimitedDialect?
+    var saveEncoding: TabularTextEncoding?
     @Published private(set) var raggedRowCount = 0
 
     @Published var filterState = TabFilterState()
     @Published var searchText = ""
     @Published var sortState = SortState()
+    var sortReferences: [DataFileSortReference] = []
     @Published private(set) var displayKeys: [Int]?
     @Published private(set) var isQueryRunning = false
 
@@ -220,6 +222,7 @@ final class DataFileController: ObservableObject {
         filterState = TabFilterState()
         searchText = ""
         sortState = SortState()
+        sortReferences = []
         displayKeys = nil
         pageOffset = 0
         selectedRowIndices = []
@@ -234,9 +237,19 @@ final class DataFileController: ObservableObject {
             return
         }
         let updated = DataFileColumnNames(columns: table.columns)
-        if updated != columnNames {
-            columnNames = updated
+        guard updated != columnNames else { return }
+        columnNames = updated
+        let resolved = resolvedSortState()
+        if resolved != sortState {
+            sortState = resolved
         }
+    }
+
+    func resolvedSortState() -> SortState {
+        SortState(columns: sortReferences.compactMap { reference in
+            guard let index = columnNames.index(of: reference.column) else { return nil }
+            return SortColumn(columnIndex: index, direction: reference.direction, columnName: columnNames.name(for: reference.column))
+        })
     }
 
     func key(forPageRow pageRow: Int) -> Int? {

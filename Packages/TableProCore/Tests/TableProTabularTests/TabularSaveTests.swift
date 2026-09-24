@@ -55,6 +55,13 @@ final class TabularSaveTests: XCTestCase {
         XCTAssertEqual(try save(table, source: source), original)
     }
 
+    func testAChangedLineEndingRewritesEveryRow() async throws {
+        let (source, table) = try await open(Array("id,name\r\n1,a\r\n2,b\r\n".utf8))
+        var dialect = source.dialect
+        dialect.lineEnding = .lf
+        XCTAssertEqual(try save(table, source: source, dialect: dialect), Array("id,name\n1,a\n2,b\n".utf8))
+    }
+
     func testAppendingToAFileWithoutAFinalNewlineKeepsRowsApart() async throws {
         let (source, original) = try await open(Array("name,age\nAlice,30".utf8))
         var table = original

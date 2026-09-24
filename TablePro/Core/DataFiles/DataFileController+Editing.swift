@@ -160,15 +160,16 @@ extension DataFileController {
         let removedNames = ids.compactMap { columnNames.name(for: $0) }
         updated.deleteColumns(ids)
         let referencedFilters = filterState.filters.contains { removedNames.contains($0.columnName) }
+        let referencedSort = sortReferences.contains { ids.contains($0.column) }
         commit(
             updated,
-            actionName: ids.count == 1 ? String(localized: "Delete Column") : String(localized: "Delete Columns")
+            actionName: ids.count == 1 ? String(localized: "Delete Column") : String(localized: "Delete Columns"),
+            includesFilters: referencedFilters
         ) { controller in
             controller.columnLayout.hiddenColumns.subtract(removedNames)
+            controller.filterState.filters.removeAll { removedNames.contains($0.columnName) }
         }
-        if referencedFilters || sortState.columns.contains(where: { removedNames.contains($0.columnName ?? "") }) {
-            filterState.filters.removeAll { removedNames.contains($0.columnName) }
-            sortState = SortState()
+        if referencedFilters || referencedSort {
             runQuery()
         }
     }
@@ -179,13 +180,16 @@ extension DataFileController {
             adoptDisplayNamesAsHeader(in: &updated)
         }
         updated.renameColumn(id, to: name)
-        commit(updated, actionName: String(localized: "Rename Column"))
-        guard let newName = columnNames.name(for: id), newName != oldName else { return }
-        for index in filterState.filters.indices where filterState.filters[index].columnName == oldName {
-            filterState.filters[index].columnName = newName
-        }
-        if columnLayout.hiddenColumns.remove(oldName) != nil {
-            columnLayout.hiddenColumns.insert(newName)
+        let referencedFilters = filterState.filters.contains { $0.columnName == oldName }
+        commit(updated, actionName: String(localized: "Rename Column"), includesFilters: referencedFilters) { controller in
+            guard let newName = controller.columnNames.name(for: id), newName != oldName else { return }
+            for index in controller.filterState.filters.indices
+                where controller.filterState.filters[index].columnName == oldName {
+                controller.filterState.filters[index].columnName = newName
+            }
+            if controller.columnLayout.hiddenColumns.remove(oldName) != nil {
+                controller.columnLayout.hiddenColumns.insert(newName)
+            }
         }
     }
 

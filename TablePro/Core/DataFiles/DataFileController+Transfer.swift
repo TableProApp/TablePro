@@ -150,7 +150,7 @@ extension DataFileController {
         return DataFileImportSnapshot(url: url, formatId: format.formatId)
     }
 
-    private nonisolated static func writeJSONLinesSnapshot(of table: TabularTable, to url: URL) throws {
+    nonisolated private static func writeJSONLinesSnapshot(of table: TabularTable, to url: URL) throws {
         let rows = table.jsonOutputRows(sourceKeys: nil) { cell, _ in
             try JSONValueTyping.literal(for: cell.text, originalKind: cell.kind)
         }

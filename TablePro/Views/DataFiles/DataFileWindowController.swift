@@ -47,7 +47,16 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
         window.contentViewController = splitController
         window.setContentSize(NSSize(width: 1_100, height: 680))
         window.center()
-        windowFrameAutosaveName = Self.frameAutosaveName
+        if let pinnedSize = ScreenshotEnvironment.windowSize {
+            let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame
+            window.setFrame(
+                visibleFrame.map { ScreenshotEnvironment.pinnedFrame(size: pinnedSize, in: $0) }
+                    ?? NSRect(origin: window.frame.origin, size: pinnedSize),
+                display: false
+            )
+        } else {
+            windowFrameAutosaveName = SplitViewAutosaveName.current(Self.frameAutosaveName)
+        }
 
         let toolbar = NSToolbar(identifier: "com.TablePro.DataFileToolbar")
         toolbar.delegate = self

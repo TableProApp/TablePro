@@ -428,4 +428,66 @@ struct DataFileControllerTests {
         #expect(DataFileController.changedCellsMessage(2) == "Changed 2 cells.")
         #expect(DataFileCountPhrase.raggedRows(1) == "1 row has a different number of fields")
     }
+
+    @Test("A sort stays on its column when a column is inserted before it")
+    func sortFollowsItsColumn() async throws {
+        let (controller, _) = try await loaded("a,b\nx,3\ny,1\nz,2\n")
+        controller.updateSort(SortState(columns: [SortColumn(columnIndex: 1, direction: .ascending)]))
+        await controller.waitForPendingWork()
+        #expect(column(controller, 1) == ["1", "2", "3"])
+        controller.insertColumn(named: "new", at: 0)
+        #expect(controller.sortState.columns.map(\.columnIndex) == [2])
+        controller.runQuery()
+        await controller.waitForPendingWork()
+        #expect(column(controller, 2) == ["1", "2", "3"])
+    }
+
+    @Test("Undoing a rename puts the filter back on the old name")
+    func undoRenameRestoresFilter() async throws {
+        let (controller, _) = try await loaded("amount\n5\n50\n")
+        controller.filterState.filters = [TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "10")]
+        controller.applyAllFilters()
+        await controller.waitForPendingWork()
+        controller.renameColumn(controller.columnNames.ids[0], to: "total")
+        #expect(controller.filterState.filters.map(\.columnName) == ["total"])
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+        #expect(controller.columnNames.displayNames == ["amount"])
+        #expect(controller.filterState.filters.map(\.columnName) == ["amount"])
+        #expect(controller.visibleRowCount == 1)
+    }
+
+    @Test("Undoing a column delete brings back its filter and sort")
+    func undoDeleteRestoresFilterAndSort() async throws {
+        let (controller, _) = try await loaded("n,tag\n3,a\n1,b\n2,a\n")
+        controller.filterState.filters = [TableFilter(columnName: "tag", filterOperator: .equal, value: "a")]
+        controller.applyAllFilters()
+        await controller.waitForPendingWork()
+        controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)]))
+        await controller.waitForPendingWork()
+        #expect(column(controller, 0) == ["2", "3"])
+        controller.deleteColumns([controller.columnNames.ids[1]])
+        await controller.waitForPendingWork()
+        #expect(controller.filterState.filters.isEmpty)
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+        #expect(controller.filterState.filters.map(\.columnName) == ["tag"])
+        #expect(column(controller, 0) == ["2", "3"])
+    }
+
+    @Test("A character the file's encoding cannot hold saves once a UTF-8 save encoding is chosen")
+    func saveEncodingOverridesTheFilesEncoding() async throws {
+        let (controller, url) = try await loaded(data: Data([0x6E, 0x0A, 0x63, 0x61, 0x66, 0xE9, 0x0A]), fileExtension: "csv")
+        #expect(controller.dialect?.encoding == .windows1252)
+        controller.setCell(pageRow: 0, column: 0, text: "漢")
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.csv")
+        #expect(throws: DataFileSaveError.self) {
+            try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
+        }
+        controller.saveEncoding = .utf8
+        try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
+        #expect(try String(contentsOf: output, encoding: .utf8) == "n\n漢\n")
+        controller.adoptSaveEncoding()
+        #expect(controller.dialect?.encoding == .utf8)
+    }
 }

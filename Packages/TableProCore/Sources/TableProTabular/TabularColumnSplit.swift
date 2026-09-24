@@ -11,11 +11,11 @@ public enum TabularSplitSeparator {
             guard !separator.isEmpty else { return [text] }
             return text.components(separatedBy: separator)
         case .regularExpression(let expression):
+            guard let matches = TabularRegex.matches(expression, in: text) else { return [text] }
             let source = text as NSString
             var pieces: [String] = []
             var location = 0
-            for match in expression.matches(in: text, range: NSRange(location: 0, length: source.length))
-                where match.range.length > 0 {
+            for match in matches where match.range.length > 0 {
                 pieces.append(source.substring(with: NSRange(location: location, length: match.range.location - location)))
                 location = match.range.location + match.range.length
             }
