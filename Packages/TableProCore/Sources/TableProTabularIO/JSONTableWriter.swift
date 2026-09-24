@@ -2,6 +2,7 @@ import Foundation
 
 public struct JSONTableWriter {
     private static let flushThreshold = 1 << 20
+    private static let bufferSlack = 1 << 16
 
     public let shape: JSONTableShape
     public let source: JSONSource?
@@ -61,7 +62,8 @@ public struct JSONTableWriter {
                 bytes: raw.bindMemory(to: UInt8.self),
                 index: source?.index,
                 shape: shape,
-                columnChanges: columnChanges
+                columnChanges: columnChanges,
+                capacity: min(raw.count, Self.flushThreshold) + Self.bufferSlack
             )
             for row in rows {
                 try emitter.append(row)
@@ -113,23 +115,27 @@ private struct JSONDocumentEmitter {
     let index: JSONTableIndex?
     let shape: JSONTableShape
     let columnChanges: [JSONMemberChange?]
+    let hasColumnChanges: Bool
     let rules: JSONLiteralRules
     var output: [UInt8] = []
     private var predictor = JSONKeyPredictor()
     private var pending: RenderedRow?
     private var arraySeparator: [UInt8]?
 
-    init(bytes: UnsafeBufferPointer<UInt8>, index: JSONTableIndex?, shape: JSONTableShape, columnChanges: [JSONMemberChange?]) {
+    init(
+        bytes: UnsafeBufferPointer<UInt8>,
+        index: JSONTableIndex?,
+        shape: JSONTableShape,
+        columnChanges: [JSONMemberChange?],
+        capacity: Int
+    ) {
         self.bytes = bytes
         self.index = index
         self.shape = shape
         self.columnChanges = columnChanges
+        hasColumnChanges = columnChanges.contains { $0 != nil }
         rules = JSONLiteralRules(forbidsLineBreaks: shape == .lines)
-        output.reserveCapacity(1 << 20 + 65_536)
-    }
-
-    private var hasColumnChanges: Bool {
-        columnChanges.contains { $0 != nil }
+        output.reserveCapacity(capacity)
     }
 
     mutating func append(_ row: JSONOutputRow) throws {
