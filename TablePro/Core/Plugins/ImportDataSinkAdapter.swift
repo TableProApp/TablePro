@@ -59,9 +59,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         try await execute(statement: statement, line: 1)
     }
 
-    /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, and goes to the server whole: T-SQL scopes a
-    /// variable, a table variable and a `TRY...CATCH` to one batch, and a routine's body runs to the end of its batch.
-    /// A driver that cannot send a batch whole runs its statements one by one, as the editor does.
+    /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, or a statement at a time when it holds no `GO`
+    /// line, and each goes to the server whole: T-SQL scopes a variable, a table variable and a `TRY...CATCH` to one
+    /// batch, and a routine's body runs to the end of its batch. A driver that cannot send a batch whole runs its
+    /// statements one by one, as the editor does.
     func execute(statement: String, line: Int) async throws {
         guard grammar.contains(.batchSeparatorLines) else {
             _ = try await driver.execute(query: statement)

@@ -123,7 +123,7 @@ Every result set a batch returns opens in its own result tab. In a batch of plai
 - The run stops at the first batch that fails, and the error names the line in the editor: `Line 12: Invalid object name 'orders'.` An error raised inside a procedure names the procedure and the line inside it instead.
 - `Cmd+Enter` with nothing selected runs only the statement at the insertion point. Select the `DECLARE` along with a statement that reads its variable.
 
-**File > Import** runs a `.sql` file the same way, `GO 5` included, and never sends a `GO` line. A failed batch is reported at the line it starts on, and its error names the line in the file: `Failed at line 3. Line 5: Invalid object name 'orders'.` A batch past 64 million characters, about half of what SQL Server takes in one request, ends at its next `;`, so a dump written with no `GO` line still imports.
+**File > Import** runs a `.sql` file that holds a `GO` line the same way, `GO 5` included, and never sends a `GO` line. A file with no `GO` line runs one statement at a time, split at each `;`: dumps from TablePro 0.75 and earlier have none and import this way. End such a file with a `GO` line to run it as one batch instead. A failure is reported at the line its batch or statement starts on, and its error names the line in the file: `Failed at line 3. Line 5: Invalid object name 'orders'.` A batch past 64 million characters, about half of what SQL Server takes in one request, ends at its next `;`.
 
 ## SSL/TLS
 
@@ -150,6 +150,7 @@ SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connecti
 - A result set from a batch offers **Fetch All**, and sorts on the server, only when its query can run again on its own. One that reads a variable, or comes from a procedure call or a loop, stays at the row limit and sorts the rows already shown: raise **Row cap** in [Settings](/customization/settings), or run the query by itself.
 - A batch keeps its first 100 result sets. The statements behind the rest still run, and the status bar says how many result sets were not kept.
 - With a transaction open under `SET XACT_ABORT ON`, a query cut at the row limit reads its whole result before any rows appear. Stop ends it, and SQL Server then rolls the transaction back.
+- Imported from a file with no `GO` line, a procedure, function or trigger whose body is not wrapped in `BEGIN...END` keeps only the first statement of its body, and the statements after it run on their own. Wrap the body in `BEGIN` and `END`, or give every statement of the file a `GO` line after it.
 
 ## Troubleshooting
 

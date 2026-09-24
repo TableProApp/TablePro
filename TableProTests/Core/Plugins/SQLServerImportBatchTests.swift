@@ -5,6 +5,7 @@
 //  A SQL file imported into SQL Server reaches the server a batch at a time, the way sqlcmd sends it. The import used
 //  to split it at every `;` and send each `GO` line on to the server, which ran the statement after a `GO`, refused the
 //  `GO` itself with Msg 2812 or Msg 102, and lost every variable between the statement that declared it and the next.
+//  A file with no `GO` line still goes a statement at a time, each statement a batch of its own.
 //
 
 import Foundation
@@ -180,10 +181,44 @@ struct SQLServerImportBatchTests {
         }
     }
 
-    @Test("A script with no GO line keeps a declared variable for the statement that reads it")
+    @Test("A script with a GO line keeps a declared variable for the statement that reads it")
     func declaredVariableReachesItsReader() async throws {
         let (sink, driver) = makeSink(declaresBatches: true)
-        _ = try await runImport("DECLARE @x INT = 1;\nINSERT INTO t (v) VALUES (@x);\n", sink: sink)
+        _ = try await runImport("DECLARE @x INT = 1;\nINSERT INTO t (v) VALUES (@x);\nGO\n", sink: sink)
         #expect(driver.sentBatches.map(\.query) == ["DECLARE @x INT = 1;\nINSERT INTO t (v) VALUES (@x);"])
+    }
+
+    /// The shape of every SQL Server dump TablePro wrote before it wrote `GO` lines. Sent as one batch, SQL Server
+    /// refuses it with Msg 111 because the view is not the first statement of its batch, and runs none of it.
+    @Test("A dump with no GO line sends each statement as a batch of its own")
+    func dumpWithoutGoSendsEachStatement() async throws {
+        let (sink, driver) = makeSink(declaresBatches: true)
+        let dump = """
+        CREATE TABLE [dbo].[t] ([a] int);
+        INSERT INTO [dbo].[t] ([a]) VALUES (1), (2);
+        -- View: v
+        CREATE VIEW [dbo].[v] AS SELECT a FROM dbo.t;
+        """
+        let result = try await runImport(dump, sink: sink)
+        #expect(driver.sentBatches.map(\.query) == [
+            "CREATE TABLE [dbo].[t] ([a] int)",
+            "INSERT INTO [dbo].[t] ([a]) VALUES (1), (2)",
+            "CREATE VIEW [dbo].[v] AS SELECT a FROM dbo.t",
+        ])
+        #expect(result.executedStatements == 3)
+    }
+
+    @Test("A failed statement in a file with no GO line names the file's own line, past a comment inside it")
+    func failedStatementReportsTheFileLine() async throws {
+        let (sink, _) = makeSink(declaresBatches: true)
+        let script = "SELECT 1;\n-- lead\nSELECT 2\n-- inner\nFROM missing;\nSELECT 3;"
+        do {
+            _ = try await runImport(script, sink: sink)
+            Issue.record("An import whose statement raised an error completed")
+        } catch let PluginImportError.statementFailed(statement, line, underlying) {
+            #expect(statement == "SELECT 2\n-- inner\nFROM missing")
+            #expect(line == 3)
+            #expect(underlying.localizedDescription == "Line 5: Invalid object name 'missing'.")
+        }
     }
 }

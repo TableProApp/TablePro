@@ -356,6 +356,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let conn: FreeTDSConnection
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
+            var connectionOwnsKerberosCache = false
+            defer {
+                if !connectionOwnsKerberosCache, let kerberosCachePath {
+                    try? FileManager.default.removeItem(atPath: kerberosCachePath)
+                }
+            }
             let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
             let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
             var options = MSSQLConnectionOptions(
@@ -374,6 +380,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             options.caCertificatePath = config.ssl.caCertificatePath
             options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options)
+            connectionOwnsKerberosCache = true
             try await conn.connect()
         } catch let error as MSSQLCoreError {
             switch error {

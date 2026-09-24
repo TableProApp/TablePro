@@ -128,6 +128,90 @@ struct TransferFailureReportTests {
         #expect(shown == "Line 3: unrecognized token: \"<BS>\"")
         #expect(clipboard.text == report)
     }
+
+    /// A failed SQL Server batch can run to tens of millions of units, and the box lays its text out on the main
+    /// thread, so it shows the start of it and leaves the rest to the copy.
+    @Test("The box shows the start of a long report and the copy carries all of it")
+    func longReportIsCutInTheBoxButCopiedWhole() {
+        let original = ClipboardService.shared
+        defer { ClipboardService.shared = original }
+        let clipboard = TransferReportClipboard()
+        ClipboardService.shared = clipboard
+
+        let statement = "INSERT INTO files VALUES (1, 0x" + String(repeating: "A1", count: 500_000) + ");"
+        let view = TransferReportView(shown: statement, copied: statement)
+        view.copyReport()
+
+        let shown = view.subviews
+            .compactMap { ($0 as? NSScrollView)?.documentView as? NSTextView }
+            .first?
+            .string ?? ""
+        #expect((shown as NSString).length == TransferReportView.shownLengthLimit + 1)
+        #expect(shown.hasSuffix("\u{2026}"))
+        #expect(statement.hasPrefix(String(shown.dropLast())))
+        #expect(clipboard.text == statement)
+    }
+
+    @Test("A cut report never splits a character in two")
+    func cutKeepsCharactersWhole() {
+        let lead = String(repeating: "a", count: TransferReportView.shownLengthLimit - 1)
+        #expect(TransferReportView.shownText(lead + "\u{1F600}tail") == lead + "\u{2026}")
+    }
+
+    @Test("A report within the limit is shown as it is")
+    func shortReportIsShownWhole() {
+        let report = String(repeating: "b", count: TransferReportView.shownLengthLimit)
+        #expect(TransferReportView.shownText(report) == report)
+    }
+
+    /// A SQL Server batch raises one error per statement that failed, up to a thousand, one line each, and an alert
+    /// grows to fit its text, so the alert names the first few and Copy Details carries them all.
+    @Test("A failure with many errors names the first few in the alert and copies them all")
+    func manyErrorsAreCutInTheAlertButCopiedWhole() throws {
+        let errors = (1...1_000).map { "Line \($0 + 2): Violation of PRIMARY KEY constraint 'PK_t'. Key (\($0))." }
+        let failure = PluginImportError.statementFailed(
+            statement: "INSERT t VALUES (1)",
+            line: 3,
+            underlyingError: TransferReportStubError(message: errors.joined(separator: "\n"))
+        )
+
+        let text = TransferResultAlert.importFailureText(for: failure)
+        let limit = TransferResultAlert.shownErrorLineLimit
+        #expect(text.components(separatedBy: "\n").count == limit + 1)
+        #expect(text.contains(errors[limit - 1]))
+        #expect(!text.contains(errors[limit]))
+
+        let copied = try #require(TransferResultAlert.failureReport(for: failure))
+        #expect(copied.contains(errors[999]))
+    }
+
+    @Test("An error line too long for the alert is cut there and copied whole")
+    func longErrorLineIsCutInTheAlertButCopiedWhole() throws {
+        let reason = "Line 4: Incorrect syntax near '" + String(repeating: "x", count: 100_000) + "'."
+        let failure = PluginImportError.statementFailed(
+            statement: "SELECT 1",
+            line: 3,
+            underlyingError: TransferReportStubError(message: reason)
+        )
+
+        let text = TransferResultAlert.importFailureText(for: failure)
+        #expect((text as NSString).length < TransferResultAlert.shownErrorLengthLimit + 200)
+        #expect(text.contains("Line 4: Incorrect syntax near 'xxx"))
+
+        let copied = try #require(TransferResultAlert.failureReport(for: failure))
+        #expect(copied.contains(reason))
+    }
+
+    @Test("A failure with a few errors names each of them")
+    func fewErrorsAreShownWhole() {
+        let failure = PluginImportError.statementFailed(
+            statement: "SELECT 1",
+            line: 3,
+            underlyingError: TransferReportStubError(message: "Line 4: first\nLine 5: second")
+        )
+        let text = TransferResultAlert.importFailureText(for: failure)
+        #expect(text.hasSuffix("Line 4: first\nLine 5: second"))
+    }
 }
 
 private struct TransferReportStubError: LocalizedError {

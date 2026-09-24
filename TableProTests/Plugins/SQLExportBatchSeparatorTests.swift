@@ -4,8 +4,8 @@
 //
 //  SQL Server's client runs a script in batches cut at lines holding only `GO`, and SQL Server refuses a view, a
 //  routine or a trigger that is not the first statement of its batch with Msg 111. A dump written with only `;`
-//  between statements is one batch, so its first view failed the whole batch in sqlcmd, in SQL Server Management
-//  Studio, and in TablePro's own import once that import read SQL Server scripts in batches.
+//  between statements is one batch, so its first view failed the whole batch in sqlcmd and in SQL Server Management
+//  Studio.
 //
 
 import Foundation
@@ -14,17 +14,47 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
+/// Holds an export inside its first table definition fetch until the test lets it go, so a second export can run to
+/// its end on the same plugin in between.
+private actor ExportPause {
+    private var reached = false
+    private var arrival: CheckedContinuation<Void, Never>?
+    private var released = false
+    private var release: CheckedContinuation<Void, Never>?
+
+    func hold() async {
+        reached = true
+        arrival?.resume()
+        arrival = nil
+        guard !released else { return }
+        await withCheckedContinuation { release = $0 }
+    }
+
+    func untilReached() async {
+        guard !reached else { return }
+        await withCheckedContinuation { arrival = $0 }
+    }
+
+    func resume() {
+        released = true
+        release?.resume()
+        release = nil
+    }
+}
+
 @Suite("SQL export for an engine that runs scripts in batches")
 struct SQLExportBatchSeparatorTests {
     private final class ServerDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String
         let lexicalFeatures: SQLLexicalFeatures
         private let scriptTextOwner: SQLScriptText
+        private let pause: ExportPause?
 
-        init(databaseType: DatabaseType) {
+        init(databaseType: DatabaseType, pause: ExportPause? = nil) {
             self.databaseTypeId = databaseType.rawValue
             self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
             self.scriptTextOwner = SQLScriptText(databaseType: databaseType)
+            self.pause = pause
         }
 
         func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -45,7 +75,8 @@ struct SQLExportBatchSeparatorTests {
         }
 
         func fetchTableDDL(table: String, databaseName: String) async throws -> String {
-            "CREATE TABLE [orders] ([id] INT IDENTITY(1,1) NOT NULL, [name] NVARCHAR(10) NULL)"
+            await pause?.hold()
+            return "CREATE TABLE [orders] ([id] INT IDENTITY(1,1) NOT NULL, [name] NVARCHAR(10) NULL)"
         }
 
         func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
@@ -88,15 +119,23 @@ struct SQLExportBatchSeparatorTests {
             kind: kind)
     }
 
+    private var objects: [PluginExportTable] {
+        [
+            object("orders", kind: .table),
+            object("v_orders", kind: .view),
+            object("p_orders", kind: .routine),
+        ]
+    }
+
     private func dump(_ databaseType: DatabaseType) async throws -> String {
         try await SQLExportHarness.shared.dump(
-            tables: [
-                object("orders", kind: .table),
-                object("v_orders", kind: .view),
-                object("p_orders", kind: .routine),
-            ],
+            tables: objects,
             dataSource: ServerDataSource(databaseType: databaseType)
         ).text
+    }
+
+    private func goLines(in dump: String) -> Int {
+        dump.components(separatedBy: "\n").filter { $0 == "GO" }.count
     }
 
     /// What SQL Server's client would send, with the comment lines the dump writes around each statement set aside.
@@ -149,5 +188,35 @@ struct SQLExportBatchSeparatorTests {
     func otherEnginesGetNoGoLine() async throws {
         let dump = try await dump(.mysql)
         #expect(!dump.components(separatedBy: "\n").contains("GO"))
+    }
+
+    /// Every window gets the same plugin instance, so an export can start while another is still writing. Its engine
+    /// must not change how the first one ends its statements: a SQL Server dump that lost its GO lines partway fails
+    /// its first view on restore with Msg 111, and a MySQL dump that gained them fails at the first `GO`.
+    @Test("Two exports on one plugin each end their statements the way their own engine reads them")
+    func exportsSharingThePluginKeepTheirOwnStatementEnds() async throws {
+        let expectedGoLines = [
+            DatabaseType.mssql: goLines(in: try await dump(.mssql)),
+            DatabaseType.mysql: goLines(in: try await dump(.mysql)),
+        ]
+        #expect(expectedGoLines[.mssql, default: 0] > 0)
+
+        for (heldType, otherType) in [(DatabaseType.mssql, DatabaseType.mysql), (.mysql, .mssql)] {
+            let pause = ExportPause()
+            let tables = objects
+            let (held, other) = try await SQLExportHarness.shared.withPlugin { plugin in
+                async let held = SQLExportHarness.dump(
+                    on: plugin, tables: tables, dataSource: ServerDataSource(databaseType: heldType, pause: pause)
+                )
+                await pause.untilReached()
+                let other = try await SQLExportHarness.dump(
+                    on: plugin, tables: tables, dataSource: ServerDataSource(databaseType: otherType)
+                )
+                await pause.resume()
+                return (try await held, other)
+            }
+            #expect(goLines(in: held) == expectedGoLines[heldType], "\(heldType.rawValue) held while another ran")
+            #expect(goLines(in: other) == expectedGoLines[otherType], "\(otherType.rawValue) run during another")
+        }
     }
 }

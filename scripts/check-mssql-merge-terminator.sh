@@ -292,8 +292,9 @@ enum Check {
         return nil
     }
 
-    /// What SQL import reads from the text saved as a file: a batch at a time, each sent whole, the way sqlcmd reads it.
-    static func importedBatches(of text: String) async throws -> [String] {
+    /// What SQL import reads from the text saved as a file, each piece of which it sends whole: a statement at a time
+    /// for a text with no GO line, as these are, and a batch at a time for one with.
+    static func imported(_ text: String) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
         try text.write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -345,16 +346,18 @@ enum Check {
                            "\(check.name): statement by statement it runs",
                            "error \(failure ?? "none"), answer \(afterStatements)")
 
-                    _ = try await runBatch(driver, reset)
-                    let imported = try await importedBatches(of: check.text)
-                    var importErrors: [PluginBatchError] = []
-                    for importedBatch in imported {
-                        importErrors += try await runBatch(driver, importedBatch)
+                    for (file, reading) in [(check.text, "a statement at a time"), (check.text + "\nGO\n", "as a batch")] {
+                        _ = try await runBatch(driver, reset)
+                        let pieces = try await imported(file)
+                        var importErrors: [PluginBatchError] = []
+                        for piece in pieces {
+                            importErrors += try await runBatch(driver, piece)
+                        }
+                        let afterImport = try await answer(driver, check.expectation)
+                        expect(importErrors.isEmpty && afterImport == check.expected,
+                               "\(check.name): imported from a file \(reading) it runs",
+                               "pieces \(pieces), errors \(importErrors.map(\.message)), answer \(afterImport)")
                     }
-                    let afterImport = try await answer(driver, check.expectation)
-                    expect(importErrors.isEmpty && afterImport == check.expected,
-                           "\(check.name): imported from a file it runs",
-                           "batches \(imported), errors \(importErrors.map(\.message)), answer \(afterImport)")
                 }
 
                 guard check.needsTerminator else { continue }

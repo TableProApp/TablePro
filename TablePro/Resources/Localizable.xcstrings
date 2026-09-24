@@ -184092,9 +184092,6 @@
     "FreeTDS could not set up the login." : {
 
     },
-    "The Kerberos service principal name is longer than the 128 bytes FreeTDS takes." : {
-
-    },
     "The user name is longer than the 128 bytes FreeTDS takes." : {
 
     },
@@ -184111,6 +184108,12 @@
 
     },
     "The CA certificate path cannot be passed to FreeTDS. Use a shorter path, without “;”, “#” or repeated spaces." : {
+
+    },
+    "The Kerberos service principal name for this server cannot be passed to FreeTDS. Connect through a shorter host name." : {
+
+    },
+    "Another connection to %@ with other settings is still logging in. Try again once it finishes." : {
 
     },
     "The FreeTDS configuration could not be written: %@" : {

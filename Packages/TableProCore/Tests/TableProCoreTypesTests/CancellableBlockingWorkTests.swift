@@ -127,6 +127,19 @@ struct CancellableBlockingWorkTests {
             #expect(discardCount.value <= 1)
         }
     }
+
+    @Test("A gate reports itself settled once the caller has an answer, whichever side gave it")
+    func gateReportsSettled() {
+        let won = SingleResumeGate<Int>()
+        #expect(!won.isSettled)
+        #expect(won.win(1))
+        #expect(won.isSettled)
+
+        let failed = SingleResumeGate<Int>()
+        failed.fail(CancellationError())
+        #expect(failed.isSettled)
+        #expect(!failed.win(1))
+    }
 }
 
 private final class CountBox: @unchecked Sendable {

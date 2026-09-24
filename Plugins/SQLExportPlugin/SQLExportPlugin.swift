@@ -88,13 +88,6 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     /// says so rather than shipping a dump whose three phases disagree.
     var exportSpansContainers = false
 
-    /// What ends every statement of the dump: a line break, and on an engine whose client runs a
-    /// script in batches cut at `GO` lines, that line too. SQL Server refuses a view, a routine or a
-    /// trigger that is not the first statement of its batch, and a routine's body runs to the end
-    /// of its batch, so each statement is written as a batch of its own, the way SQL Server
-    /// Management Studio writes a script.
-    private var statementEnd = "\n"
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLExportPlugin")
 
     required init() { loadSettings() }
@@ -141,7 +134,6 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         exportSpansContainers = false
         tablesUnorderedByCycle = []
         emittedSequenceNames = []
-        statementEnd = dataSource.lexicalFeatures.contains(.batchSeparatorLines) ? "\nGO\n" : "\n"
 
         /// Read once, because `PluginManager` hands every window the same plugin instance and a
         /// second window's options pane can write `settings` while this export is still running. A
@@ -478,7 +470,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         guard !dropTargets.isEmpty else { return }
         for object in dropTargets {
             guard let statement = dropStatement(for: object, dataSource: dataSource) else { continue }
-            try writer.write(statement + statementEnd)
+            try writer.write(statement + dataSource.dumpStatementEnd)
         }
         try writer.write("\n")
     }
@@ -525,6 +517,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     ) async throws {
         var emittedTypeNames: Set<String> = []
         let structureTables = tables.filter { optionValue($0, at: 0) }
+        let statementEnd = dataSource.dumpStatementEnd
 
         for table in structureTables {
             do {
@@ -597,7 +590,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(dataSource.scriptText(for: ddl) + statementEnd)
+                try writer.write(dataSource.scriptText(for: ddl) + dataSource.dumpStatementEnd)
                 try writer.write("\n")
             } catch {
                 ddlFailures.append(sanitizedName)
@@ -640,7 +633,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 table: object.name, databaseName: object.databaseName)
             guard !statements.isEmpty else { return }
             for statement in statements {
-                try writer.write(dataSource.scriptText(for: statement) + statementEnd)
+                try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
             }
             try writer.write("\n")
         } catch {
@@ -683,7 +676,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(dataSource.scriptText(for: ddl) + statementEnd)
+                try writer.write(dataSource.scriptText(for: ddl) + dataSource.dumpStatementEnd)
                 try writer.write("\n")
             } catch {
                 ddlFailures.append(sanitizedName)
@@ -717,7 +710,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     principal: principal.name, host: principal.identity)
                 guard !statements.isEmpty else { continue }
                 for statement in statements {
-                    try writer.write(dataSource.scriptText(for: statement) + statementEnd)
+                    try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
                 }
             } catch {
                 let sanitized = PluginExportUtilities.sanitizeForSQLComment(principal.name)
@@ -787,7 +780,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 let grouped = groupForeignKeysByConstraint(fks)
                 for group in grouped {
                     let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
-                    try writer.write(alter + statementEnd)
+                    try writer.write(alter + dataSource.dumpStatementEnd)
                     emittedAnything = true
                 }
             }
@@ -802,7 +795,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 for column in columns where column.isIdentity {
                     let setval = renderIdentitySetval(
                         table: table, columnName: column.name, dataSource: dataSource)
-                    try writer.write(setval + statementEnd)
+                    try writer.write(setval + dataSource.dumpStatementEnd)
                     emittedAnything = true
                 }
             }
@@ -838,7 +831,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 let statements = try await dataSource.fetchIndexDDL(
                     table: object.name, databaseName: object.databaseName)
                 for statement in statements {
-                    try writer.write(dataSource.scriptText(for: statement) + statementEnd)
+                    try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
                     emittedAnything = true
                 }
             } catch {
@@ -959,7 +952,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         let needsIdentityInsert = dataSource.databaseTypeId == "SQL Server"
             && columnInfo.contains(where: \.isIdentity)
         let identityInsert = needsIdentityInsert
-            ? SQLExportSessionScope.identityInsert(tableRef: tableRef, statementEnd: statementEnd)
+            ? SQLExportSessionScope.identityInsert(tableRef: tableRef, statementEnd: dataSource.dumpStatementEnd)
             : nil
 
         if !table.rowScope.isUnrestricted {
@@ -1103,7 +1096,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             prefix: rendered.prefix,
             suffix: rendered.suffix,
             budget: statementBudget(for: dataSource.databaseTypeId, options: options),
-            terminator: ";\(statementEnd)\n")
+            terminator: ";\(dataSource.dumpStatementEnd)\n")
         return (accumulator, rendered.warning)
     }
 

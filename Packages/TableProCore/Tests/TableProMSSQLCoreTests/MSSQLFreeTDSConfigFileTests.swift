@@ -1,5 +1,5 @@
 import Foundation
-import TableProMSSQLCore
+@testable import TableProMSSQLCore
 import Testing
 
 @Suite("MSSQL FreeTDS config file")
@@ -34,7 +34,7 @@ struct MSSQLFreeTDSConfigFileTests {
     @Test("The entry is in the file while the body runs, and the file is gone after")
     func entryLivesForTheBody() throws {
         let server = try entry("db.example.com")
-        let seen = try file.withEntry(server) { contents() }
+        let seen = try file.withEntry(server, waitingAtMost: 10) { contents() }
 
         #expect(seen == server.text)
         #expect(!FileManager.default.fileExists(atPath: file.path))
@@ -42,7 +42,7 @@ struct MSSQLFreeTDSConfigFileTests {
 
     @Test("Only the owner can read the file")
     func fileIsPrivate() throws {
-        let permissions = try file.withEntry(try entry("db.example.com")) {
+        let permissions = try file.withEntry(try entry("db.example.com"), waitingAtMost: 10) {
             try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
         }
 
@@ -54,8 +54,8 @@ struct MSSQLFreeTDSConfigFileTests {
         let first = try entry("alpha.example.com", encryption: .request)
         let second = try entry("beta.example.com", encryption: .require)
 
-        let seen = try file.withEntry(first) {
-            try file.withEntry(second) { contents() }
+        let seen = try file.withEntry(first, waitingAtMost: 10) {
+            try file.withEntry(second, waitingAtMost: 10) { contents() }
         }
 
         #expect(seen?.contains(first.text) == true)
@@ -66,8 +66,8 @@ struct MSSQLFreeTDSConfigFileTests {
     func sharedEntryOutlivesTheInnerHolder() throws {
         let server = try entry("db.example.com")
 
-        let afterInner = try file.withEntry(server) {
-            try file.withEntry(server) {}
+        let afterInner = try file.withEntry(server, waitingAtMost: 10) {
+            try file.withEntry(server, waitingAtMost: 10) {}
             return contents()
         }
 
@@ -85,7 +85,7 @@ struct MSSQLFreeTDSConfigFileTests {
         let released = DispatchSemaphore(value: 0)
 
         let holder = runOnOwnThread {
-            try? file.withEntry(lower) {
+            try? file.withEntry(lower, waitingAtMost: 10) {
                 order.append("lower in")
                 holding.open()
                 released.wait()
@@ -94,7 +94,7 @@ struct MSSQLFreeTDSConfigFileTests {
         }
         await holding.wait()
         let waiter = runOnOwnThread {
-            try? file.withEntry(upper) { order.append("upper in") }
+            try? file.withEntry(upper, waitingAtMost: 10) { order.append("upper in") }
         }
         try await Task.sleep(for: .milliseconds(200))
         released.signal()
@@ -115,7 +115,7 @@ struct MSSQLFreeTDSConfigFileTests {
         let seenByEncrypted = Box<String?>(nil)
 
         let holder = runOnOwnThread {
-            try? file.withEntry(plain) {
+            try? file.withEntry(plain, waitingAtMost: 10) {
                 order.append("plain in")
                 holding.open()
                 released.wait()
@@ -124,9 +124,9 @@ struct MSSQLFreeTDSConfigFileTests {
         }
         await holding.wait()
         let waiter = runOnOwnThread {
-            try? file.withEntry(encrypted) {
+            try? file.withEntry(encrypted, waitingAtMost: 10) {
                 order.append("encrypted in")
-                seenByEncrypted.value = try? String(contentsOfFile: file.path, encoding: .utf8)
+                seenByEncrypted.value = contents()
             }
         }
         try await Task.sleep(for: .milliseconds(200))
@@ -148,17 +148,147 @@ struct MSSQLFreeTDSConfigFileTests {
         let released = DispatchSemaphore(value: 0)
 
         let holder = runOnOwnThread {
-            try? file.withEntry(slow) {
+            try? file.withEntry(slow, waitingAtMost: 10) {
                 holding.open()
                 released.wait()
             }
         }
         await holding.wait()
-        let ranWhileSlowHeld = try file.withEntry(fast) { contents()?.contains(fast.text) == true }
+        let ranWhileSlowHeld = try file.withEntry(fast, waitingAtMost: 10) { contents()?.contains(fast.text) == true }
         released.signal()
         await holder.wait()
 
         #expect(ranWhileSlowHeld)
+    }
+
+    @Test("Connects to two ports on one address, as every SSH tunnel is, do not wait on each other")
+    func portsOnOneAddressDoNotWait() async throws {
+        let silent = try entry("127.0.0.1", port: 50_001)
+        let live = try entry("127.0.0.1", port: 50_002, encryption: .request)
+        let file = file
+        let holding = Latch()
+        let released = DispatchSemaphore(value: 0)
+        let seen = Box<String?>(nil)
+
+        let silentConnect = runOnOwnThread {
+            try? file.withEntry(silent, waitingAtMost: 10) {
+                holding.open()
+                released.wait()
+            }
+        }
+        await holding.wait()
+        let liveConnect = runOnOwnThread {
+            try? file.withEntry(live, waitingAtMost: 10) { seen.value = contents() }
+        }
+        let liveRanWhileSilentHeld = await liveConnect.opens(within: .seconds(2))
+        released.signal()
+        await silentConnect.wait()
+        await liveConnect.wait()
+
+        #expect(liveRanWhileSilentHeld)
+        #expect(seen.value?.contains(silent.text) == true)
+        #expect(seen.value?.contains(live.text) == true)
+    }
+
+    @Test("A connect waiting for a name goes before a later one that matches the entry holding it")
+    func waitingEntryIsNotOvertaken() async throws {
+        let plain = try entry("db.example.com", encryption: .request)
+        let encrypted = try entry("db.example.com", encryption: .require)
+        let file = file
+        let order = OrderLog()
+        let holding = Latch()
+        let released = DispatchSemaphore(value: 0)
+
+        let holder = runOnOwnThread {
+            try? file.withEntry(plain, waitingAtMost: 10) {
+                order.append("first plain in")
+                holding.open()
+                released.wait()
+                order.append("first plain out")
+            }
+        }
+        await holding.wait()
+        let encryptedConnect = runOnOwnThread {
+            try? file.withEntry(encrypted, waitingAtMost: 10) { order.append("encrypted in") }
+        }
+        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 1 })
+        let secondPlainConnect = runOnOwnThread {
+            try? file.withEntry(plain, waitingAtMost: 10) { order.append("second plain in") }
+        }
+        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 2 })
+        #expect(order.entries == ["first plain in"])
+        released.signal()
+        await holder.wait()
+        await encryptedConnect.wait()
+        await secondPlainConnect.wait()
+
+        #expect(order.entries == ["first plain in", "first plain out", "encrypted in", "second plain in"])
+    }
+
+    @Test("A connect that cannot have the name in time gives up with the reason and leaves the line")
+    func boundedWaitGivesUp() async throws {
+        let plain = try entry("db.example.com", encryption: .request)
+        let encrypted = try entry("db.example.com", encryption: .require)
+        let file = file
+        let holding = Latch()
+        let released = DispatchSemaphore(value: 0)
+
+        let holder = runOnOwnThread {
+            try? file.withEntry(plain, waitingAtMost: 10) {
+                holding.open()
+                released.wait()
+            }
+        }
+        await holding.wait()
+        #expect(throws: MSSQLFreeTDSConfigError.nameInUse("db.example.com")) {
+            try file.withEntry(encrypted, waitingAtMost: 0.2) {}
+        }
+        let waitingAfterGivingUp = file.waitingConnections(named: "db.example.com")
+        let joinedTheHolder = try file.withEntry(plain, waitingAtMost: 0.2) { true }
+        released.signal()
+        await holder.wait()
+
+        #expect(waitingAfterGivingUp == 0)
+        #expect(joinedTheHolder)
+    }
+
+    @Test("A connect whose caller gave up leaves the line as soon as the waits are interrupted")
+    func abandonedWaitLeavesTheLine() async throws {
+        let plain = try entry("db.example.com", encryption: .request)
+        let encrypted = try entry("db.example.com", encryption: .require)
+        let file = file
+        let holding = Latch()
+        let released = DispatchSemaphore(value: 0)
+        let abandoned = Box(false)
+        let waiterError = Box<Error?>(nil)
+        let ran = Box(false)
+
+        let holder = runOnOwnThread {
+            try? file.withEntry(plain, waitingAtMost: 10) {
+                holding.open()
+                released.wait()
+            }
+        }
+        await holding.wait()
+        let waiter = runOnOwnThread {
+            do {
+                try file.withEntry(encrypted, waitingAtMost: 30, givingUpWhen: { abandoned.value }) { ran.value = true }
+            } catch {
+                waiterError.value = error
+            }
+        }
+        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 1 })
+        abandoned.value = true
+        file.interruptWaits()
+        let leftInTime = await waiter.opens(within: .seconds(2))
+        released.signal()
+        await holder.wait()
+        await waiter.wait()
+
+        #expect(leftInTime)
+        #expect(waiterError.value is CancellationError)
+        #expect(!ran.value)
+        #expect(file.waitingConnections(named: "db.example.com") == 0)
     }
 
     @Test("A file that cannot be written fails the connect and runs nothing")
@@ -167,10 +297,19 @@ struct MSSQLFreeTDSConfigFileTests {
         var ran = false
 
         #expect(throws: MSSQLFreeTDSConfigError.self) {
-            try missing.withEntry(try entry("db.example.com")) { ran = true }
+            try missing.withEntry(try entry("db.example.com"), waitingAtMost: 10) { ran = true }
         }
         #expect(!ran)
     }
+}
+
+private func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+    let deadline = ContinuousClock.now + limit
+    while !condition() {
+        guard ContinuousClock.now < deadline else { return false }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return true
 }
 
 private func runOnOwnThread(_ work: @escaping @Sendable () -> Void) -> Latch {
@@ -187,6 +326,12 @@ private final class Latch: @unchecked Sendable {
     private let lock = NSLock()
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var opened: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isOpen
+    }
 
     func open() {
         lock.lock()
@@ -210,6 +355,10 @@ private final class Latch: @unchecked Sendable {
             waiters.append(continuation)
             lock.unlock()
         }
+    }
+
+    func opens(within limit: Duration) async -> Bool {
+        await eventually(within: limit) { opened }
     }
 }
 

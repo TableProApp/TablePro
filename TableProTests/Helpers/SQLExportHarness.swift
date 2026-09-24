@@ -48,6 +48,37 @@ internal actor SQLExportHarness {
         return (try String(contentsOf: destination, encoding: .utf8), result)
     }
 
+    /// A plugin holding `options` for as long as `body` runs, for a suite that runs several exports on one instance at
+    /// once, the way two windows do with the one instance `PluginManager` hands every window.
+    internal func withPlugin<Result: Sendable>(
+        options: SQLExportOptions = SQLExportOptions(),
+        _ body: @Sendable (SQLExportPlugin) async throws -> Result
+    ) async throws -> Result {
+        let plugin = SQLExportPlugin()
+        let storedSettings = plugin.settings
+        plugin.settings = options
+        defer { plugin.settings = storedSettings }
+        return try await body(plugin)
+    }
+
+    /// One export on `plugin`, read back as text. Only for a plugin `withPlugin` hands out, which holds known settings.
+    internal static func dump(
+        on plugin: SQLExportPlugin,
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource
+    ) async throws -> String {
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        _ = try await plugin.export(
+            tables: tables,
+            dataSource: dataSource,
+            destination: destination,
+            progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
+        )
+        return try String(contentsOf: destination, encoding: .utf8)
+    }
+
     /// The parts a split export wrote, in restore order, and the whole dump as one part when it did
     /// not split. A split export never writes the name the user chose, so reading that path back
     /// finds nothing at all.
