@@ -507,6 +507,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row numbers of a longer previous result left beside the rows of a shorter one.
 - Run executing an old sorted query after a column header was clicked while a query ran.
 - SQL Server scripts refused, or cut to their first result set, over MCP, AppleScript and the AI assistant.
+- SQL import into SQL Server sending `GO` lines to the server and splitting batches at each semicolon.
+- SQL Server dumps failing on their first view, routine or trigger when restored with sqlcmd or imported.
 
 ### Security
 
