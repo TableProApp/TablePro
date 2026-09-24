@@ -53,7 +53,6 @@ typedef struct loginrec LOGINREC;
 #define DBSETNATLANG    7
 #define DBSETCHARSET    10
 #define DBSETPACKET     11
-#define DBSETENCRYPT    12
 #define DBSETDBNAME     14
 #define DBSETSERVERPRINCIPAL 103
 
@@ -65,9 +64,6 @@ typedef struct loginrec LOGINREC;
 
 // TDS version constants — verified against FreeTDS 1.4 sybdb.h
 #define DBVERSION_74    8   // TDS 7.4 (SQL Server 2012+)
-
-// Encryption
-#define ENCRYPT_OFF     0
 
 // Error handler return codes
 #define INT_CANCEL  2
@@ -98,6 +94,10 @@ extern LOGINREC *dblogin(void);
 extern void dbloginfree(LOGINREC *loginrec);
 extern RETCODE dbsetlname(LOGINREC *loginrec, const char *value, int which);
 extern RETCODE dbsetlversion(LOGINREC *loginrec, BYTE version);
+
+// The file libtds reads a server's freetds.conf entry from before any other: the encryption level, the CA file and
+// the hostname check exist only there, because dbsetlname has no field for them.
+extern void dbsetifile(char *filename);
 
 // Microsoft Entra ID access token, sent in the LOGIN7 FEDAUTH feature extension instead of a
 // user name and password. Added by scripts/patches/freetds/freetds-fedauth.patch; upstream

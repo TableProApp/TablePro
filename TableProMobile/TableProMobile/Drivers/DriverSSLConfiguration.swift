@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProMSSQLCore
 import TableProOracleCore
 
 nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
@@ -58,10 +59,10 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         }
     }
 
-    var freetdsEncryptionFlag: String {
+    var mssqlEncryptionLevel: MSSQLEncryptionLevel {
         switch mode {
-        case .disable: return "off"
-        case .require, .verifyCa, .verifyFull: return "require"
+        case .disable: return .request
+        case .require, .verifyCa, .verifyFull: return .require
         }
     }
 

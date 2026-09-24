@@ -137,8 +137,8 @@ final class ConnectionFormViewModel {
         username = conn.username
         database = conn.database
         sslEnabled = conn.sslEnabled
-        // Coerce verify modes to .require: FreeTDS doesn't honor per-connection cert verification
-        // (MSSQLSSLMapping treats verify* as "require"). Matches what the driver actually does.
+        // Coerce verify modes to .require: the iOS driver encrypts without checking the certificate
+        // (DriverSSLConfiguration maps verify* to "require"). Matches what the driver actually does.
         let storedMode = conn.sslConfiguration?.mode ?? .disable
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
         oracleSSLMode = storedMode

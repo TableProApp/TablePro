@@ -365,7 +365,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 password: config.password,
                 database: config.database,
                 schema: _currentSchema,
-                encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
+                encryptionLevel: MSSQLSSLMapping.encryptionLevel(for: config.ssl.mode),
                 authMethod: authMethod,
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal

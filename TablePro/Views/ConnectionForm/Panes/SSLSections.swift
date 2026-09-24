@@ -59,9 +59,8 @@ struct SSLSections: View {
                 if !supportsPerConnectionCertPaths {
                     Section {
                         Text(String(localized: """
-                            SQL Server connections use the system trust store. Per-connection CA and client certificate \
-                            paths are not supported by FreeTDS dblib; configure them in `freetds.conf` if you need a \
-                            custom trust anchor.
+                            Verify CA and Verify Identity check the server certificate against the system trust \
+                            store. A custom CA and client certificates are not available for SQL Server.
                             """))
                             .font(.caption)
                             .foregroundStyle(.secondary)

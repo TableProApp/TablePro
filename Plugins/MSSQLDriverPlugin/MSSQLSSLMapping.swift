@@ -2,15 +2,16 @@ import Foundation
 import TableProMSSQLCore
 import TableProPluginKit
 
-/// FreeTDS dblib reads the encryption level via DBSETENCRYPT. Accepted values come from libtds:
-/// "off", "request", "require", "strict". Certificate validation is not reachable through dblib
-/// at all, so a verifying mode also produces a generated freetds.conf; see MSSQLFreeTDSConfig.
+/// The FreeTDS encryption level and certificate checks behind each SSL mode. libtds reads both from the connection's
+/// freetds.conf entry and from nowhere else; see MSSQLFreeTDSServerEntry.
+///
+/// Disabled asks for `request`, as SQL Server's own drivers do with encryption off: the login is encrypted and the rest
+/// of the session is not, unless the server forces encryption.
 enum MSSQLSSLMapping {
-    static func freetdsEncryptionFlag(for mode: SSLMode) -> String {
+    static func encryptionLevel(for mode: SSLMode) -> MSSQLEncryptionLevel {
         switch mode {
-        case .disabled: return "off"
-        case .preferred: return "request"
-        case .required, .verifyCa, .verifyIdentity: return "require"
+        case .disabled, .preferred: return .request
+        case .required, .verifyCa, .verifyIdentity: return .require
         }
     }
 

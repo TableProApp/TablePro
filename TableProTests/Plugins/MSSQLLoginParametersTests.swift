@@ -13,7 +13,6 @@ struct MSSQLLoginParametersTests {
             user: "carrier",
             password: "secret",
             applicationName: "TablePro",
-            encryptionFlag: "require",
             database: database
         )
     }
@@ -30,12 +29,17 @@ struct MSSQLLoginParametersTests {
         #expect(!fields.contains(.database))
     }
 
-    @Test("carries the credentials and encryption flag")
+    @Test("carries the credentials")
     func carriesCredentials() {
         let parameters = build(database: "tmsdevdb1")
         #expect(parameters.contains(MSSQLLoginParameter(field: .user, value: "carrier")))
         #expect(parameters.contains(MSSQLLoginParameter(field: .password, value: "secret")))
-        #expect(parameters.contains(MSSQLLoginParameter(field: .encryption, value: "require")))
+    }
+
+    @Test("sets only fields dbsetlname accepts: db-lib refuses an encryption level there with error 20043")
+    func setsOnlyFieldsDbLibAccepts() {
+        let fields = build(database: "tmsdevdb1").map(\.field)
+        #expect(fields == [.user, .password, .application, .nationalLanguage, .charset, .database])
     }
 
     @Test("sets us_english language to settle the initial login state")
@@ -50,7 +54,6 @@ struct MSSQLLoginParametersTests {
             user: "",
             password: "",
             applicationName: "TablePro",
-            encryptionFlag: "require",
             database: "app"
         )
         #expect(parameters.contains(MSSQLLoginParameter(field: .user, value: "")))
