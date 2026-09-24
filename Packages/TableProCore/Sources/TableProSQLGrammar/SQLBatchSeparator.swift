@@ -40,10 +40,25 @@ public struct SQLBatchSeparator: Sendable, Equatable {
         length: Int,
         grammar: SQLLexicalGrammar
     ) -> SQLBatchSeparator? {
+        guard startsLine(text, at: offset) else { return nil }
+        return line(startingAt: offset, in: text, length: length, grammar: grammar)
+    }
+
+    /// The separator whose `GO` starts at `offset`, for a reader that has already seen that nothing but spaces and
+    /// tabs stand before it on its line, such as one reading a file a chunk at a time whose buffer no longer holds
+    /// the start of the line.
+    ///
+    /// `text` has to hold the whole line, its line break included, unless the line ends the text: the rest of the
+    /// line is what decides, and a line cut short at `length` reads as ending there.
+    public static func line(
+        startingAt offset: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> SQLBatchSeparator? {
         guard offset + 1 < length,
               isG(text.character(at: offset)),
-              isO(text.character(at: offset + 1)),
-              startsLine(text, at: offset)
+              isO(text.character(at: offset + 1))
         else {
             return nil
         }

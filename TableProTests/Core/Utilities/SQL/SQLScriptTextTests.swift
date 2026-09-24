@@ -257,6 +257,24 @@ struct SQLScriptTextTests {
         #expect(try await Self.imported(script, grammar: TestGrammar.mysql) == statements)
     }
 
+    /// The import reads a SQL Server script a batch at a time, the way sqlcmd reads it, so each statement a saved
+    /// script ends with a `GO` line comes back as a batch of its own with nothing cut out of it.
+    @Test("A SQL Server script imports one batch per statement it was written from")
+    func sqlServerScriptImports() async throws {
+        let statements = [
+            "DROP PROCEDURE p",
+            "CREATE PROCEDURE p AS SET NOCOUNT ON; SELECT 1;",
+            "INSERT INTO t (a) VALUES ('a;b')",
+        ]
+        let script = Self.sqlServer.script(statements)
+
+        #expect(try await Self.imported(script, grammar: TestGrammar.sqlServer) == [
+            "DROP PROCEDURE p;",
+            "CREATE PROCEDURE p AS SET NOCOUNT ON; SELECT 1;",
+            "INSERT INTO t (a) VALUES ('a;b');",
+        ])
+    }
+
     private static func imported(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
         try sql.write(to: url, atomically: true, encoding: .utf8)

@@ -123,6 +123,8 @@ Every result set a batch returns opens in its own result tab. In a batch of plai
 - The run stops at the first batch that fails, and the error names the line in the editor: `Line 12: Invalid object name 'orders'.` An error raised inside a procedure names the procedure and the line inside it instead.
 - `Cmd+Enter` with nothing selected runs only the statement at the insertion point. Select the `DECLARE` along with a statement that reads its variable.
 
+**File > Import** runs a `.sql` file the same way, `GO 5` included, and never sends a `GO` line. A failed batch is reported at the line it starts on, and its error names the line in the file: `Failed at line 3. Line 5: Invalid object name 'orders'.` A batch past 64 million characters, about half of what SQL Server takes in one request, ends at its next `;`, so a dump written with no `GO` line still imports.
+
 ## SSL/TLS
 
 New connections start on **Preferred**, which encrypts the login and leaves queries and results in plain TCP unless the server forces encryption. Pick **Required (skip verify)** or stricter to encrypt the whole session.
