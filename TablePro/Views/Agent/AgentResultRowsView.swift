@@ -113,7 +113,8 @@ internal struct AgentResultRowsView: View {
             configuration: DataGridConfiguration(
                 databaseType: connection?.type,
                 showRowNumbers: true,
-                supportsColumnCommands: false
+                supportsColumnCommands: false,
+                supportsValueFilter: false
             ),
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
