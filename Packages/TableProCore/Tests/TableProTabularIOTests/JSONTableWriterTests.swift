@@ -64,6 +64,31 @@ final class JSONTableWriterTests: XCTestCase {
         XCTAssertEqual(written, "{\"a\":1, \"b\":2, \"a\":9}\n")
     }
 
+    func testNullEmptyStringAndMissingAreWrittenDistinctly() async throws {
+        let edit = JSONObjectEdit(
+            edits: [
+                JSONMemberEdit(sourceKey: "a", change: .replace(with: try JSONValueTyping.literal(for: "null", originalKind: .null))),
+                JSONMemberEdit(sourceKey: "b", change: .replace(with: try JSONValueTyping.literal(for: "", originalKind: .text))),
+                JSONMemberEdit(sourceKey: "c", change: .remove)
+            ]
+        )
+        let written = try await rewrite(#"{"a":1,"b":"x","c":true,"d":1}"#) { _ in [.edited(0, edit)] }
+        XCTAssertEqual(written, #"{"a":null,"b":"","d":1}"#)
+        let reread = try await JSONFixtures.source(written)
+        XCTAssertEqual(reread.cells(row: 0).map(\.kind), [.null, .text, .number])
+    }
+
+    func testNumberLexemesAreWrittenExactly() async throws {
+        let lexemes = ["1.0", "-0", "1e5", "12345678901234567890", "0.1"]
+        let appended = try lexemes.enumerated().map { offset, lexeme in
+            JSONNewMember(key: "n\(offset)", literal: try JSONValueTyping.literal(for: lexeme, originalKind: .number))
+        }
+        let written = try await rewrite(#"{"n":5}"#) { _ in [.edited(0, JSONObjectEdit(appended: appended))] }
+        XCTAssertEqual(written, #"{"n":5,"n0":1.0,"n1":-0,"n2":1e5,"n3":12345678901234567890,"n4":0.1}"#)
+        let reread = try await JSONFixtures.source(written)
+        XCTAssertEqual(Array(JSONFixtures.texts(reread, row: 0).dropFirst()), lexemes)
+    }
+
     func testReplacingANestedValueWritesTheNewLiteral() async throws {
         let written = try await rewrite(Self.pretty, kind: .json) { _ in
             [.edited(0, replace("tags", with: #"["c"]"#)), .source(1)]

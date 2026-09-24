@@ -37,6 +37,12 @@ final class JSONSourceTests: XCTestCase {
         XCTAssertEqual(source.cell(row: 0, column: 0), TabularCell(kind: .text, text: "Hà Nội 🇻🇳"))
     }
 
+    func testEscapedAndPlainSpellingsOfAKeyFillOneColumn() async throws {
+        let source = try await JSONFixtures.source("{\"a\\u0062\":1,\"z\":0}\n{\"z\":0,\"ab\":2}\n{\"\\u0061b\":3}\n")
+        XCTAssertEqual(source.intrinsicColumnNames, ["ab", "z"])
+        XCTAssertEqual((0..<3).map { source.cell(row: $0, column: 0).text }, ["1", "2", "3"])
+    }
+
     func testDuplicateKeysShowTheLastOccurrence() async throws {
         let source = try await JSONFixtures.source(#"{"a":1,"b":2,"a":"three"}"#)
         XCTAssertEqual(source.intrinsicColumnNames, ["a", "b"])
