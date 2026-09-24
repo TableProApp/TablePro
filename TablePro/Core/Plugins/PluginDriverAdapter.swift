@@ -222,6 +222,28 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return mapQueryResult(pluginResult)
     }
 
+    var supportsResultSetBatches: Bool {
+        pluginDriver.capabilities.contains(.resultSetBatches)
+    }
+
+    func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? {
+        try StatementTextValidator.validate(query)
+        guard let batch = try await pluginDriver.executeBatch(
+            query: query,
+            rowCap: rowCap,
+            parameters: parameters?.map(Self.cellValue(for:))
+        ) else {
+            return nil
+        }
+        return QueryBatchResult(
+            resultSets: batch.resultSets.map(mapQueryResult),
+            rowsAffected: batch.rowsAffected,
+            errors: batch.errors,
+            discardedResultSetCount: batch.discardedResultSetCount,
+            executionTime: batch.executionTime
+        )
+    }
+
     // MARK: - Schema Operations
 
     func fetchTables() async throws -> [TableInfo] {

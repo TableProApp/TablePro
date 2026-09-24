@@ -214,6 +214,26 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Orders a result that has no query of its own to send again, over the rows the grid already holds.
+    ///
+    /// A SQL Server batch can return a result no single statement stands behind, or one read by a statement that
+    /// needs a variable the batch declared. Re-running with `ORDER BY` would mean re-sending the whole script, writes
+    /// and all, so the rows are ordered here instead.
+    func sortHeldRows(by state: SortState, tabId: UUID) {
+        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            let rows = self.tabSessionRegistry.tableRows(for: tabId)
+            let sorted = state.columns.isEmpty
+                ? TableRowsSorting.inArrivalOrder(rows)
+                : TableRowsSorting.sorted(rows, by: state)
+            guard self.tabManager.mutate(tabId: tabId, { tab in
+                tab.sortState = state
+                tab.hasUserInteraction = true
+            }) else { return }
+            self.setActiveTableRows(sorted, for: tabId)
+        }
+    }
+
     private func syncLoadMoreState(from resultSet: ResultSet, at tabIdx: Int) {
         guard tabManager.tabs[tabIdx].tabType == .query else { return }
         tabManager.mutate(at: tabIdx) { tab in

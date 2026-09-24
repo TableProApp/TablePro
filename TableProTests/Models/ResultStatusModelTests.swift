@@ -104,10 +104,21 @@ struct ResultStatusModelTests {
     func truncatedQueryReportsPartialLoad() {
         var pagination = PaginationState(pageSize: 1_000)
         pagination.hasMoreRows = true
+        pagination.setBaseQueryForMore("SELECT * FROM orders", parameterValues: nil)
         let snapshot = makeSnapshot(tabType: .query, rowCount: 1_000, pagination: pagination)
         let result = model(snapshot)
         #expect(result.readout == .partialLoad(1_000))
         #expect(result.controls.showsFetchAll)
+    }
+
+    @Test("A truncated result with no query to run again reports a partial load and offers no Fetch All")
+    func truncatedResultWithoutReplayableQueryOffersNoFetchAll() {
+        var pagination = PaginationState(pageSize: 1_000)
+        pagination.hasMoreRows = true
+        let snapshot = makeSnapshot(tabType: .query, rowCount: 1_000, pagination: pagination)
+        let result = model(snapshot)
+        #expect(result.readout == .partialLoad(1_000))
+        #expect(!result.controls.showsFetchAll)
     }
 
     // MARK: - Selection

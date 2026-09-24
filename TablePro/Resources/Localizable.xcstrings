@@ -183821,6 +183821,12 @@
           }
         }
       }
+    },
+    "Showing the first of %d result sets. End each statement with a semicolon to see every result." : {
+
+    },
+    "%d more errors were not kept." : {
+
     }
   },
   "version" : "1.1"

@@ -153,6 +153,19 @@ public enum SQLStatementScanner {
         return found
     }
 
+    /// Every `GO` line in the document, in document order, each ending the batch before it.
+    ///
+    /// The scan that finds them is the one that divides statements, so a separator can never fall inside a statement
+    /// and no statement can run across one. Empty for an engine whose scripts have no batches.
+    public static func batchSeparators(in sql: String, grammar: SQLLexicalGrammar) -> [SQLBatchSeparator] {
+        guard grammar.contains(.batchSeparatorLines) else { return [] }
+        var separators: [SQLBatchSeparator] = []
+        scan(sql: sql, cursorPosition: nil, grammar: grammar, onBatchSeparator: { separators.append($0) }) { _ in
+            true
+        }
+        return separators
+    }
+
     /// Returns statements as the driver receives them, for driver execution.
     public static func allStatements(in sql: String, grammar: SQLLexicalGrammar) -> [String] {
         executableStatements(in: sql, grammar: grammar).map(\.sql)
@@ -245,11 +258,14 @@ public enum SQLStatementScanner {
     /// Segments tile the document: a statement runs from the end of the previous one to its terminator, so it carries
     /// the whitespace before it. With a `cursorPosition`, only the segment holding it is reported, or the last one
     /// when the cursor sits past every terminator. Where a statement ends is the tracker's decision; this loop only
-    /// lexes, so a `;` inside a string, a comment or a quoted body never reaches it.
+    /// lexes, so a `;` inside a string, a comment or a quoted body never reaches it. A `GO` line is the exception: it
+    /// ends the batch, so it ends whatever statement is open whatever the tracker thinks, and is a segment of its own
+    /// that holds nothing to run.
     private static func scan(
         sql: String,
         cursorPosition: Int?,
         grammar: SQLLexicalGrammar,
+        onBatchSeparator: (SQLBatchSeparator) -> Void = { _ in },
         onStatement: (LocatedStatement) -> Bool
     ) {
         let nsQuery = sql as NSString
@@ -268,8 +284,9 @@ public enum SQLStatementScanner {
         /// Reports the segment ending at `end` and starts the next one there. Returns false when the scan is done.
         ///
         /// A caret on a SQL*Plus `/` line stands for the statement the slash ends, which is where a reader who has
-        /// just typed the slash expects `Cmd+Enter` to act.
-        func finishSegment(at end: Int, hasContent: Bool, endsWithSlash: Bool = false) -> Bool {
+        /// just typed the slash expects `Cmd+Enter` to act. A caret on a `GO` line stands for the last statement of the
+        /// batch it ends, and for nothing when that batch is empty: the batch before is not the one the line ends.
+        func finishSegment(at end: Int, hasContent: Bool, standsForEndedStatement: Bool = false) -> Bool {
             let statement = LocatedStatement(
                 sql: nsQuery.substring(with: NSRange(location: currentStart, length: end - currentStart)),
                 offset: currentStart,
@@ -285,7 +302,7 @@ public enum SQLStatementScanner {
                     currentStart = end
                     return true
                 }
-                _ = onStatement(endsWithSlash ? lastStatementWithContent ?? statement : statement)
+                _ = onStatement(standsForEndedStatement ? lastStatementWithContent ?? statement : statement)
                 return false
             }
             currentStart = end
@@ -306,6 +323,21 @@ public enum SQLStatementScanner {
                     tracker.observeOpaqueToken()
                 }
                 i = max(span.end, i + 1)
+                continue
+            }
+
+            if grammar.contains(.batchSeparatorLines),
+               let separator = SQLBatchSeparator.line(at: i, in: nsQuery, length: length, grammar: grammar) {
+                onBatchSeparator(separator)
+                if hasStatementContent {
+                    guard finishSegment(at: i, hasContent: true) else { return }
+                }
+                let separatorEnd = NSMaxRange(separator.range)
+                guard finishSegment(at: separatorEnd, hasContent: false, standsForEndedStatement: true) else { return }
+                lastStatementWithContent = nil
+                tracker.reset()
+                hasStatementContent = false
+                i = separatorEnd
                 continue
             }
 
@@ -341,7 +373,7 @@ public enum SQLStatementScanner {
                 if hasStatementContent {
                     guard finishSegment(at: i, hasContent: true) else { return }
                 }
-                guard finishSegment(at: i + 1, hasContent: false, endsWithSlash: true) else { return }
+                guard finishSegment(at: i + 1, hasContent: false, standsForEndedStatement: true) else { return }
                 tracker.reset()
                 hasStatementContent = false
                 i += 1

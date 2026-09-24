@@ -23,7 +23,7 @@ struct SQLLexicalFeatureMappingTests {
         #expect(pairs.allSatisfy { $0.0.rawValue == $0.1.rawValue })
         #expect(grammarBits.rawValue == featureBits.rawValue)
         #expect(Set(pairs.map(\.1.rawValue)).count == pairs.count)
-        #expect(grammarBits.rawValue == (1 << 22) - 1)
+        #expect(grammarBits.rawValue == (1 << 23) - 1)
     }
 
     @Test("A grammar survives the trip through the kit's features")
@@ -76,7 +76,7 @@ struct SQLLexicalFeatureMappingTests {
 
     @Test("The kit's splitter and the app's scanner split every corpus text alike", arguments: engines)
     func kitSplitterAgreesWithTheScanner(engine: DatabaseType) {
-        let grammar = engine.lexicalGrammar.subtracting([.plsqlBlocks, .slashLineTerminators])
+        let grammar = engine.lexicalGrammar.subtracting([.plsqlBlocks, .slashLineTerminators, .batchSeparatorLines])
         for sql in Self.corpus {
             let scanned = SQLStatementScanner.executableStatements(in: sql, grammar: grammar).count
             let split = SQLStatementSplitting.statements(in: sql, lexicalFeatures: grammar.pluginFeatures).count

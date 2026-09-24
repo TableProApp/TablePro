@@ -119,6 +119,7 @@ struct ResultStatusModel: Equatable {
         controls.showsFetchAll = controls.showsReadout
             && snapshot.tabType == .query
             && pagination.hasMoreRows
+            && pagination.baseQueryForMore != nil
             && !pagination.isLoadingMore
 
         controls.showsColumns = viewMode.showsColumnControls && describesAResult

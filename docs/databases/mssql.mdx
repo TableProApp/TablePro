@@ -104,6 +104,25 @@ FreeTDS leaves all of them at Sybase's defaults, and a session that misses any o
 
 Two things change in the SQL editor as a result. `col = NULL` matches nothing, so compare with `col IS NULL`. And `'total: ' + @value` is NULL when `@value` is, so wrap it in `ISNULL(@value, '')` to keep the rest of the string.
 
+## Scripts and batches
+
+A script run with `Cmd+Shift+Enter`, or a selection of several statements run with `Cmd+Enter`, reaches the server one batch at a time, the way `sqlcmd` and SQL Server Management Studio send it. A line holding only `GO` ends a batch, and a script with no `GO` line is one batch. A variable, a table variable or a `TRY...CATCH` lasts until the end of its batch:
+
+```sql
+DECLARE @sn NVARCHAR(50) = N'2404GQV000066A00105';
+
+SELECT * FROM serialnew WHERE [S/N] = @sn;
+SELECT * FROM serial_existed WHERE sn_code = @sn;
+```
+
+Every result set a batch returns opens in its own result tab. In a batch of plain queries each tab is named after its query; a procedure call, a loop or an `IF` numbers them **Result 1**, **Result 2** instead. `PRINT` output and messages up to severity 10 appear in the **Output** view.
+
+- Give `CREATE PROCEDURE`, `CREATE VIEW`, `CREATE FUNCTION`, `CREATE TRIGGER` and `CREATE SCHEMA` a batch of their own. The server refuses each of them after another statement in the same batch.
+- `GO 5` runs the batch before it five times.
+- No transaction is opened around a script. Put `BEGIN TRAN` and `COMMIT` in it when a failure has to undo what ran before it. A script that leaves a transaction open ends with a notice saying so.
+- The run stops at the first batch that fails, and the error names the line in the editor: `Line 12: Invalid object name 'orders'.` An error raised inside a procedure names the procedure and the line inside it instead.
+- `Cmd+Enter` with nothing selected runs only the statement at the insertion point. Select the `DECLARE` along with a statement that reads its variable.
+
 ## SSL/TLS
 
 New connections start on **Preferred**.
@@ -126,6 +145,8 @@ SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connecti
 - NTLM is not supported: Windows Authentication on macOS is Kerberos only.
 - Entra ID connections are created on the Mac only, through the device code flow only. iPhone and iPad take them over sync and prompt to sign in when you open one.
 - The SSL pane offers no certificate fields here. Verification runs against the system trust store; a private trust anchor goes in your own `freetds.conf`.
+- A result set from a batch offers **Fetch All**, and sorts on the server, only when its query can run again on its own. One that reads a variable, or comes from a procedure call or a loop, stays at the row limit and sorts the rows already shown: raise **Row cap** in [Settings](/customization/settings), or run the query by itself.
+- A batch keeps its first 100 result sets. The statements behind the rest still run, and the status bar says how many result sets were not kept.
 
 ## Troubleshooting
 
@@ -152,6 +173,10 @@ The connection carries no client ID. Fill in **Application (Client) ID**.
 ### The Microsoft Entra ID sign-in timed out before it was approved.
 
 The one-time code expired first. Click **Test Connection** to start a new one.
+
+### Must declare the scalar variable "@…".
+
+The statement that reads the variable ran in a different batch from its `DECLARE`. Check for a `GO` line between them, or a `Cmd+Enter` that ran only the statement at the insertion point. Select both statements, or run the whole script with `Cmd+Shift+Enter`.
 
 ### AADSTS7000218
 

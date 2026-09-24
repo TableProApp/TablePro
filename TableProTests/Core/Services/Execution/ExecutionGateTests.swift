@@ -267,6 +267,30 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 0)
     }
 
+    /// SQL Server rejected a text holding a `GO` line outright, so nothing after one ever ran. A script is now cut at
+    /// its `GO` lines and each batch runs, so the gate has to see the statement behind one.
+    @Test("Read-only denies a DROP that a GO line puts in a batch of its own")
+    func readOnlyDeniesDropBehindGoLine() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .readOnly, confirm: confirm, auth: auth)
+        let script = "SELECT 1\nGO\nDROP TABLE t"
+
+        let declared = await gate.authorize(makeRequest(
+            sql: script,
+            kind: OperationKind.worst(
+                of: QueryClassifier.statements(of: script, grammar: DatabaseType.mssql.lexicalGrammar),
+                databaseType: .mssql
+            ),
+            databaseType: .mssql
+        ))
+        let understated = await gate.authorize(makeRequest(sql: script, kind: .readQuery, databaseType: .mssql))
+
+        #expect(!declared.isAuthorized)
+        #expect(!understated.isAuthorized)
+        #expect(confirm.callCount == 0)
+    }
+
     @Test("Read-only blocks destructive without prompting")
     func readOnlyBlocksDestructiveBeforeConfirm() async {
         let confirm = StubConfirming(answer: true)

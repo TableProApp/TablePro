@@ -21,7 +21,6 @@ import TableProSQLGrammar
 /// SQLite. Every other engine's text is sent whole, as it always was, because the generic grammar cuts a T-SQL body
 /// with no `BEGIN`, a Dameng declaration section and a Snowflake `$$` body into pieces the server rejects.
 internal struct SQLScriptText {
-    private static let batchSeparatedEngines: Set<DatabaseType> = [.mssql]
     private static let mysqlScriptDelimiter = "//"
 
     internal let databaseType: DatabaseType
@@ -84,7 +83,7 @@ internal struct SQLScriptText {
             .map { StatementBlank.trimming($0) }
             .filter { !$0.isEmpty }
             .map(terminated)
-        guard Self.batchSeparatedEngines.contains(databaseType) else {
+        guard grammar.contains(.batchSeparatorLines) else {
             return ended.joined(separator: "\n")
         }
         return ended.map { "\($0)\nGO" }.joined(separator: "\n")

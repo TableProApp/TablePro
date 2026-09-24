@@ -65,7 +65,7 @@ enum ServerOutputCapture {
         return text.substring(to: failureLineLength) + "…"
     }
 
-    private static func drain(_ driver: DatabaseDriver) async -> PluginServerOutput {
+    static func drain(_ driver: DatabaseDriver) async -> PluginServerOutput {
         guard !Task.isCancelled else { return .none }
         do {
             return try await driver.fetchServerOutput()
