@@ -186,14 +186,16 @@ public enum SQLStatementScanner {
         return results
     }
 
-    /// `text` as a driver receives it when it is sent whole: trimmed, and ending where its last statement's executable
-    /// form ends, so a trailing separator comes off and a terminator that belongs to the statement stays. Empty when
-    /// nothing but separators, comments or blanks is left.
+    /// `text` as a driver receives it when it is sent whole: starting where its first statement starts and ending where
+    /// its last statement's executable form ends, so a separator on either side comes off and a terminator that belongs
+    /// to the statement stays. A `GO` line ahead of the first statement is the client's word: SQL Server reads one it
+    /// receives as a call to a procedure named `GO`. Empty when nothing but separators, comments or blanks is left.
     public static func executableText(of text: String, grammar: SQLLexicalGrammar) -> String {
         let trimmed = StatementBlank.trimming(text)
-        guard let last = executableStatements(in: trimmed, grammar: grammar).last else { return "" }
-        let end = last.range.location + last.range.length
-        return StatementBlank.trimming((trimmed as NSString).substring(to: end))
+        let statements = executableStatements(in: trimmed, grammar: grammar)
+        guard let first = statements.first, let last = statements.last else { return "" }
+        let span = NSRange(location: first.range.location, length: last.range.upperBound - first.range.location)
+        return (trimmed as NSString).substring(with: span)
     }
 
     /// The text the driver receives for `located`, or nil when nothing but a separator is left.

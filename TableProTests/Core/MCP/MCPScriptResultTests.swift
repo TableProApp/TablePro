@@ -126,4 +126,91 @@ struct MCPScriptResultTests {
         #expect(payload["result_sets"]?.arrayValue?.count == 2)
         #expect(payload["columns"]?.arrayValue?.compactMap(\.stringValue) == ["a"])
     }
+
+    // MARK: - Through every gate
+
+    nonisolated private static let scripts = [
+        "SELECT 1 AS a;\nSELECT 2 AS b;",
+        "SELECT 1 AS a\nGO\nSELECT 2 AS b"
+    ]
+
+    /// A SQL Server session at Silent, whose driver answers each batch with one result set per `AS` alias it holds.
+    private func sqlServerSession() -> ScriptAnsweringDriver {
+        var connection = TestFixtures.makeConnection(database: "warehouse", type: .mssql)
+        connection.aiPolicy = .alwaysAllow
+        let driver = ScriptAnsweringDriver(connection: connection) { batch in
+            ScriptAnsweringDriver.batch(
+                ["a", "b"].filter { batch.contains("AS \($0)") }.map { alias in
+                    ScriptAnsweringDriver.resultSet(columns: [alias], rows: [["1"]])
+                }
+            )
+        }
+        var session = ConnectionSession(connection: connection)
+        session.driver = driver
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        return driver
+    }
+
+    private func authPolicy() -> MCPAuthPolicy {
+        MCPAuthPolicy(connectionResolver: { _ in nil }, connectionIdsProvider: { [] }, historyRecorder: DiscardingHistory())
+    }
+
+    @Test("execute_query runs a SQL Server script of several statements past both gates", arguments: scripts)
+    func executeQueryToolRunsTheScript(script: String) async throws {
+        let driver = sqlServerSession()
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+
+        let result = try await ExecuteQueryTool().perform(
+            arguments: .object([
+                "connection_id": .string(driver.connection.id.uuidString),
+                "query": .string(script)
+            ]),
+            context: MCPToolTestHarness.context(),
+            services: MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: authPolicy())
+        )
+
+        let payload = try #require(result.structuredContent)
+        #expect(!result.isError)
+        #expect(payload["result_sets"]?.arrayValue?.map { $0["columns"]?.arrayValue?.compactMap(\.stringValue) }
+            == [["a"], ["b"]])
+        #expect(!driver.sentBatches.isEmpty)
+    }
+
+    @Test("The assistant's execute_query runs a SQL Server script of several statements past both gates", arguments: scripts)
+    func chatToolRunsTheScript(script: String) async throws {
+        let driver = sqlServerSession()
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+        let context = ChatToolContext(
+            connectionId: driver.connection.id,
+            bridge: MCPConnectionBridge(),
+            authPolicy: authPolicy()
+        )
+
+        let result = try await ExecuteQueryChatTool().execute(input: .object(["query": .string(script)]), context: context)
+
+        #expect(!result.isError)
+        let payload = try JSONDecoder().decode(JsonValue.self, from: Data(result.content.utf8))
+        #expect(payload["result_sets"]?.arrayValue?.count == 2)
+        #expect(!driver.sentBatches.isEmpty)
+    }
+
+    /// Measured on Azure SQL Edge 15: `GO\nDROP TABLE dbo.stale` sent whole answers Msg 2812, "Could not find stored
+    /// procedure 'GO'", and still drops the table, so the tool reports a failure for a statement that ran.
+    @Test("A GO line ahead of the one statement a tool sends never reaches the driver")
+    func leadingSeparatorIsNotSent() async throws {
+        let driver = sqlServerSession()
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+
+        _ = try await ToolQueryExecutor.executeAndLog(
+            services: MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: authPolicy()),
+            query: "GO\nDROP TABLE dbo.stale",
+            scope: DatabaseScope(connectionId: driver.connection.id, database: "warehouse", schema: nil),
+            maxRows: 0,
+            timeoutSeconds: 30,
+            principal: MCPToolTestHarness.principal()
+        )
+
+        #expect(driver.sentStatements == ["DROP TABLE dbo.stale"])
+        #expect(driver.sentBatches.isEmpty)
+    }
 }

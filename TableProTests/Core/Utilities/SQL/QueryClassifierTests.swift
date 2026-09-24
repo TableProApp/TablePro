@@ -191,6 +191,15 @@ struct QueryClassifierMultiStatementTests {
     func commentOnlyQueryIsNotMultiStatement() {
         #expect(!QueryClassifier.isMultiStatement("-- note", databaseType: .mysql))
     }
+
+    @Test("A statement a GO line runs more than once is multi-statement, and one it runs once is not")
+    func repeatedBatchIsMultiStatement() {
+        #expect(QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO 2", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO 1", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("GO\nDROP TABLE dbo.stale", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("GO 3\nDROP TABLE dbo.stale", databaseType: .mssql))
+    }
 }
 
 /// T-SQL needs no `;` between statements. Each text below was sent whole to Azure SQL Edge 15.0, which ran every

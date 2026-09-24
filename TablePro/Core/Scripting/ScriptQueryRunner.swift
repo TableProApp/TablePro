@@ -34,6 +34,13 @@ internal enum ScriptQueryRunner {
         internal let client: String?
     }
 
+    /// What a script may ask of the execution gate: to write, and to drop once a person confirms it. It is never
+    /// pre-cleared, since no external caller gets to say on its own that a person already agreed. On an engine that
+    /// takes scripts it may also run several statements in one call.
+    internal static func capabilities(on databaseType: DatabaseType) -> CallerCapabilities {
+        ExternalStatementGate.capabilities([.mayWrite, .mayRunDestructive], takingScriptsOn: databaseType)
+    }
+
     internal static func run(
         _ request: Request,
         bridge: DatabaseAccessBridge,
@@ -50,6 +57,8 @@ internal enum ScriptQueryRunner {
             return try ExternalConnectionPolicySnapshot.resolve(connectionId: request.connectionId)
         }
 
+        let capabilities = Self.capabilities(on: snapshot.databaseType)
+
         /// Classified before anything connects, so a statement the connection refuses never opens a
         /// session and never asks the user for a password.
         try ExternalStatementGate.classify(
@@ -60,7 +69,7 @@ internal enum ScriptQueryRunner {
                 externalAccess: snapshot.externalAccess,
                 loadsExtensions: snapshot.loadsExtensions,
                 allowsDestructive: true,
-                allowsMultiStatement: ExternalStatementGate.acceptsScripts(on: snapshot.databaseType)
+                allowsMultiStatement: capabilities.contains(.mayRunMultiStatement)
             )
         )
 
@@ -80,7 +89,7 @@ internal enum ScriptQueryRunner {
             connectionId: request.connectionId,
             databaseType: snapshot.databaseType,
             caller: .appleScript(client: request.client),
-            capabilities: [.mayWrite, .mayRunDestructive],
+            capabilities: capabilities,
             operationDescription: confirmationTitle(client: request.client, connection: snapshot.connectionName)
         )
 

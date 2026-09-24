@@ -85,6 +85,27 @@ struct ExternalStatementGateTests {
         }
     }
 
+    /// `GO 50` runs the batch fifty times in sqlcmd and in the editor. A tool that sends one statement once would run it
+    /// once and report success, so the count is refused rather than dropped.
+    @Test("A statement a GO line repeats is refused unless the caller takes scripts")
+    func repeatedStatementIsRefused() {
+        let repeated = "DELETE TOP (1000) FROM dbo.log WHERE archived = 1\nGO 50"
+        #expect(refusal(statement(repeated, databaseType: .mssql))
+            == .invalidArgument(String(localized: "Send one statement at a time.")))
+        #expect(refusal(statement(repeated, databaseType: .mssql, allowsMultiStatement: true)) == nil)
+        #expect(refusal(statement("DELETE FROM dbo.log WHERE archived = 1\nGO", databaseType: .mssql)) == nil)
+        #expect(refusal(statement("GO 3\nDELETE FROM dbo.log WHERE archived = 1", databaseType: .mssql)) == nil)
+    }
+
+    @Test("A caller that takes scripts claims leave to run several statements only where the engine takes them")
+    func scriptCapabilityFollowsTheEngine() {
+        let base: CallerCapabilities = [.mayWrite, .mayRunDestructive]
+        #expect(ExternalStatementGate.capabilities(base, takingScriptsOn: .mssql) == base.union(.mayRunMultiStatement))
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle] {
+            #expect(ExternalStatementGate.capabilities(base, takingScriptsOn: engine) == base, "\(engine.rawValue)")
+        }
+    }
+
     @Test("A SQL Server script clears the gate for a caller that takes scripts, and is still tiered by its worst statement")
     func sqlServerScriptIsGatedWhole() {
         let script = "DECLARE @sn NVARCHAR(50) = 'x';\nSELECT * FROM a WHERE sn = @sn;\nGO\nSELECT * FROM b"

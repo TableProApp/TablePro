@@ -53,8 +53,12 @@ struct ExecuteQueryChatTool: ChatTool {
         )
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        let capabilities = ExternalStatementGate.capabilities(
+            context.writeCapabilities,
+            takingScriptsOn: meta.databaseType
+        )
 
-        guard ExternalStatementGate.acceptsScripts(on: meta.databaseType)
+        guard capabilities.contains(.mayRunMultiStatement)
             || !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType)
         else {
             return ChatToolResult(
@@ -113,7 +117,7 @@ struct ExecuteQueryChatTool: ChatTool {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            capabilities: context.writeCapabilities
+            capabilities: capabilities
         )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
