@@ -8,11 +8,11 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("Pagination State")
 struct PaginationStateTests {
-
     @Test("Default page size is 1000")
     func defaultPageSize() {
         #expect(PaginationState.defaultPageSize == 1_000)
@@ -338,7 +338,7 @@ struct PaginationStateTests {
         var state = PaginationState()
         state.hasMoreRows = true
         state.baseQueryForMore = "SELECT * FROM t"
-        state.sortExecutionOverride = "SELECT * FROM t ORDER BY id ASC"
+        state.sortExecutionOverride = .statement("SELECT * FROM t ORDER BY id ASC")
 
         state.resetLoadMore()
 
