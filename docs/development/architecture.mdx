@@ -26,7 +26,7 @@ The UI is SwiftUI with AppKit underneath it for windows, menus, and the data gri
 
 <DriverCounts />
 
-A driver is one of four roles a bundle can take. `ExportFormatPlugin`, `ImportFormatPlugin`, and `DocumentInspectorPlugin` are the others, which is how the CSV, JSON, SQL, XLSX, and MQL formats and the CSV inspector ship.
+A driver is one of three roles a bundle can take. `ExportFormatPlugin` and `ImportFormatPlugin` are the others, which is how the CSV, JSON, SQL, XLSX, and MQL formats ship. `DocumentInspectorPlugin` is still declared in the kit, and the app no longer loads a bundle that provides it.
 
 ### Opt-in protocols
 

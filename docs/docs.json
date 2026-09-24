@@ -45,6 +45,10 @@
   },
   "redirects": [
     {
+      "source": "/features/csv-inspector",
+      "destination": "/features/data-files"
+    },
+    {
       "source": "/features/php-viewer",
       "destination": "/features/json-viewer"
     },
@@ -204,7 +208,7 @@
               "features/filtering",
               "features/change-tracking",
               "features/json-viewer",
-              "features/csv-inspector"
+              "features/data-files"
             ]
           },
           {
