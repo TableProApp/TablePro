@@ -511,6 +511,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server dumps failing on their first view, routine or trigger when restored with sqlcmd or SSMS.
 - A leading `GO` line sent to SQL Server by MCP and AI assistant tools, and a `GO n` count ignored.
 - App hanging for a minute when an import stopped on a failing statement several megabytes long.
+- SQL Server Windows Authentication to another realm failing when the service principal name is over 128 bytes.
 
 ### Security
 

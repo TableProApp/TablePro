@@ -14,8 +14,13 @@
 #   - Verify CA and Verify Identity read TRUE with the authority that signed the server's certificate, and are refused
 #     without it. Verify Identity is refused for a host name the certificate does not carry, and Verify CA is not.
 #   - Connections to one host with different modes, opened at the same time, each get their own mode.
-#   - A connect to a server that never answers does not hold up a connect to another host.
+#   - A connect to a server that never answers does not hold up a connect to another host, nor one to another port on
+#     the same address, which is what every SSH tunnel on 127.0.0.1 is.
+#   - A connect that waits for another connect to the same host name logs in once that one ends, and one that waits
+#     longer than its login timeout gives up saying another connection holds the name, not that the server timed out.
 #   - A password longer than db-lib takes fails the connect instead of logging in without one.
+#   - A Windows Authentication connect deletes the Kerberos ticket cache it was handed however it fails, and a service
+#     principal longer than the 128 bytes a login field takes reaches Kerberos.
 #   - Against a server that cannot encrypt, which the check plays itself, Disabled and Preferred connect and Required is
 #     refused, and only Required asks for encryption in the prelogin.
 #
@@ -166,6 +171,7 @@ MANIFEST
 cat > "$WORK/Sources/Check/Check.swift" << 'SWIFT'
 import Darwin
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
 
 @main
@@ -255,7 +261,11 @@ enum Check {
         await verifyingModesCheckTheCertificate()
         await concurrentModesOnOneHost()
         try await unansweredConnectHoldsUpNoOtherHost()
+        try await unansweredConnectHoldsUpNoOtherPortOnTheAddress()
+        try await waitForAHostNameIsBoundedAndSaysWhy()
         await overlongPasswordFailsTheConnect()
+        await kerberosCacheIsDeletedWhateverEndsTheConnect()
+        await longServicePrincipalReachesKerberos()
         await serverThatCannotEncrypt()
     }
 
@@ -313,27 +323,15 @@ enum Check {
     }
 
     static func unansweredConnectHoldsUpNoOtherHost() async throws {
-        let listener = socket(AF_INET, SOCK_STREAM, 0)
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_addr.s_addr = inet_addr("127.0.0.1")
-        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let bound = withUnsafeMutablePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { generic in
-                bind(listener, generic, length) == 0 && listen(listener, 8) == 0
-                    && getsockname(listener, generic, &length) == 0
-            }
-        }
-        guard bound else {
+        guard let listener = SilentListener() else {
             expect(false, "a listener that never answers could be opened")
             return
         }
-        let silentPort = Int(UInt16(bigEndian: address.sin_port))
         let silentHost = host == "127.0.0.1" ? "localhost" : "127.0.0.1"
 
         let silentFinished = Flag()
         let silent = Task {
-            let answer = await outcome(config(.required, host: silentHost, port: silentPort))
+            let answer = await outcome(config(.required, host: silentHost, port: listener.port))
             silentFinished.set()
             return answer
         }
@@ -342,7 +340,7 @@ enum Check {
         let live = await outcome(config(.required))
         let elapsed = Date().timeIntervalSince(started)
         let silentStillWaiting = !silentFinished.isSet
-        close(listener)
+        listener.close()
         let silentOutcome = await silent.value
 
         expect(live == "TRUE" && elapsed < 10 && silentStillWaiting,
@@ -352,10 +350,156 @@ enum Check {
                "got \(silentOutcome)")
     }
 
+    static func unansweredConnectHoldsUpNoOtherPortOnTheAddress() async throws {
+        guard host == "127.0.0.1" else {
+            print("SKIP: connects to other ports on one address need the server on 127.0.0.1")
+            return
+        }
+        guard let first = SilentListener(), let second = SilentListener() else {
+            expect(false, "two listeners that never answer could be opened")
+            return
+        }
+        let silentFinished = Flag()
+        let silent = Task {
+            async let one = outcome(config(.preferred, host: "127.0.0.1", port: first.port))
+            async let two = outcome(config(.required, host: "127.0.0.1", port: second.port))
+            let answers = await [one, two]
+            silentFinished.set()
+            return answers
+        }
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        let started = Date()
+        let live = await outcome(config(.required))
+        let elapsed = Date().timeIntervalSince(started)
+        let silentStillWaiting = !silentFinished.isSet
+        first.close()
+        second.close()
+        let silentOutcomes = await silent.value
+
+        expect(live == "TRUE" && elapsed < 10 && silentStillWaiting,
+               "a connect to 127.0.0.1:\(port) finishes while two to other ports on 127.0.0.1, which never answer, wait",
+               String(format: "live=%@ in %.1fs", live, elapsed))
+        expect(silentOutcomes.allSatisfy { $0.hasPrefix("refused") },
+               "the connects that never got an answer fail once their servers go", "got \(silentOutcomes)")
+    }
+
+    static func waitForAHostNameIsBoundedAndSaysWhy() async throws {
+        guard host == "127.0.0.1" else {
+            print("SKIP: a wait for localhost needs the server on 127.0.0.1")
+            return
+        }
+        guard let first = SilentListener(), let second = SilentListener() else {
+            expect(false, "two listeners that never answer could be opened")
+            return
+        }
+
+        let holder = Task { await outcome(config(.required, host: "localhost", port: first.port)) }
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        var started = Date()
+        let waiter = Task { await outcome(config(.required, host: "localhost")) }
+        try await Task.sleep(nanoseconds: 10_000_000_000)
+        first.close()
+        let waited = await waiter.value
+        var elapsed = Date().timeIntervalSince(started)
+        _ = await holder.value
+        expect(waited == "TRUE" && elapsed > 9,
+               "a connect to localhost that waits for another to localhost logs in once that one ends",
+               String(format: "live=%@ after %.1fs", waited, elapsed))
+
+        guard let third = SilentListener() else {
+            expect(false, "a third listener that never answers could be opened")
+            return
+        }
+        let holders = Task {
+            async let one = outcome(config(.required, host: "localhost", port: second.port))
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            async let two = outcome(config(.required, host: "localhost", port: third.port))
+            return await [one, two]
+        }
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        started = Date()
+        let starved = await outcome(config(.required, host: "localhost"))
+        elapsed = Date().timeIntervalSince(started)
+        second.close()
+        third.close()
+        let holderOutcomes = await holders.value
+
+        let limit = Double(MSSQLConnectionOptions.defaultLoginTimeoutSeconds + 5)
+        expect(starved.contains("Another connection to localhost") && elapsed >= limit - 1 && elapsed < limit + 5,
+               "a connect to localhost behind two others that never answer gives up at its limit and says why",
+               String(format: "got %@ after %.1fs", starved, elapsed))
+        expect(holderOutcomes.allSatisfy { $0.hasPrefix("refused") },
+               "the connects that held localhost fail once their servers go", "got \(holderOutcomes)")
+    }
+
     static func overlongPasswordFailsTheConnect() async {
         let seen = await outcome(config(.required, password: String(repeating: "p", count: 200)))
         expect(seen.hasPrefix("refused") && seen.contains("128 bytes"),
                "a password db-lib refuses fails the connect and says why", "got \(seen)")
+    }
+
+    static func windowsOptions(
+        host: String = Check.host,
+        database: String = Check.database,
+        servicePrincipal: String? = nil,
+        cachePath: String? = nil
+    ) -> MSSQLConnectionOptions {
+        MSSQLConnectionOptions(
+            host: host,
+            port: port,
+            user: "",
+            password: "",
+            database: database,
+            encryptionLevel: .require,
+            authMethod: .windows,
+            kerberosCachePath: cachePath,
+            kerberosServicePrincipal: servicePrincipal
+        )
+    }
+
+    static func windowsConnectFailure(_ options: MSSQLConnectionOptions) async -> String? {
+        let connection = FreeTDSConnection(options: options)
+        do {
+            try await connection.connect()
+            connection.disconnect()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    static func kerberosCacheIsDeletedWhateverEndsTheConnect() async {
+        let tooLongPrincipal = "MSSQLSvc/" + String(repeating: "h", count: 240) + ":\(port)@EXAMPLE.COM"
+        let cases: [(label: String, options: (String) -> MSSQLConnectionOptions)] = [
+            ("a database name db-lib refuses", { windowsOptions(database: String(repeating: "d", count: 129), cachePath: $0) }),
+            ("a host FreeTDS cannot be given", { windowsOptions(host: "[\(host)", cachePath: $0) }),
+            ("a service principal FreeTDS cannot be given",
+             { windowsOptions(servicePrincipal: tooLongPrincipal, cachePath: $0) }),
+            ("a login Kerberos refuses", { windowsOptions(cachePath: $0) })
+        ]
+        for (label, options) in cases {
+            let cachePath = (NSTemporaryDirectory() as NSString)
+                .appendingPathComponent("tablepro-krb5-check-\(UUID().uuidString)")
+            guard FileManager.default.createFile(atPath: cachePath, contents: Data("ticket".utf8)) else {
+                expect(false, "a stand-in ticket cache could be written")
+                return
+            }
+            let failure = await windowsConnectFailure(options(cachePath))
+            let survived = FileManager.default.fileExists(atPath: cachePath)
+            try? FileManager.default.removeItem(atPath: cachePath)
+            expect(failure != nil && !survived, "the ticket cache is gone after \(label) fails the connect",
+                   "failure=\(failure ?? "none") cache survived=\(survived)")
+        }
+    }
+
+    static func longServicePrincipalReachesKerberos() async {
+        let principal = "MSSQLSvc/sql-prod-availability-group-listener-001.finance.emea.corp.contoso-international.com"
+            + ":\(port)@CORP.CONTOSO-INTERNATIONAL.COM"
+        let failure = await windowsConnectFailure(windowsOptions(servicePrincipal: principal)) ?? "connected"
+        let refusedBeforeKerberos = failure.contains("128 bytes") || failure.contains("cannot be passed to FreeTDS")
+        expect(principal.utf8.count > 128 && failure != "connected" && !refusedBeforeKerberos,
+               "a \(principal.utf8.count)-byte service principal is handed to Kerberos, which fails without a ticket",
+               "got \(failure)")
     }
 
     static func connectFailure(_ config: DriverConnectionConfig) async -> String? {
@@ -512,6 +656,37 @@ final class ServerWithoutEncryption: @unchecked Sendable {
         let length = payload.count + 8
         let packet: [UInt8] = [0x04, 0x01, UInt8(length >> 8), UInt8(length & 0xFF), 0, 0, 1, 0] + payload
         _ = packet.withUnsafeBytes { Darwin.send(client, $0.baseAddress, packet.count, 0) }
+    }
+}
+
+/// Takes connections on 127.0.0.1 and never answers, which is what a tunnel to a server that has gone quiet does.
+/// Closing it resets every connection still waiting on it.
+final class SilentListener: @unchecked Sendable {
+    let port: Int
+    private let descriptor: Int32
+
+    init?() {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return nil }
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { generic in
+                bind(fd, generic, length) == 0 && listen(fd, 8) == 0 && getsockname(fd, generic, &length) == 0
+            }
+        }
+        guard bound else {
+            Darwin.close(fd)
+            return nil
+        }
+        descriptor = fd
+        port = Int(UInt16(bigEndian: address.sin_port))
+    }
+
+    func close() {
+        Darwin.close(descriptor)
     }
 }
 

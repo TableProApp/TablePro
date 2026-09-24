@@ -73,14 +73,94 @@ struct MSSQLFreeTDSConfigTests {
         ])
     }
 
-    @Test("Every entry states the authority and the hostname check, so a section named global cannot lend its own")
+    @Test("An IP address is named with its port, so connects to other ports on it, every tunnel among them, never share a name")
+    func addressNamedWithItsPort() throws {
+        let cases: [(host: String, port: Int, name: String, dialled: String)] = [
+            ("127.0.0.1", 54_321, "127.0.0.1,54321", "127.0.0.1"),
+            ("10.0.0.5", 1_433, "10.0.0.5,1433", "10.0.0.5"),
+            ("::1", 1_433, "::1,1433", "::1"),
+            ("[::1]", 1_433, "::1,1433", "::1"),
+            ("fe80::1%en0", 14_330, "fe80::1%en0,14330", "fe80::1%en0")
+        ]
+        for (host, port, name, dialled) in cases {
+            let server = try entry(host: host, port: port, mode: .required)
+            #expect(server.name == name, "\(host)")
+            #expect(lines(server).prefix(3) == ["[\(name)]", "host = \(dialled)", "port = \(port)"], "\(host)")
+        }
+    }
+
+    @Test("A host name in brackets is read without them, as libtds reads one")
+    func bracketsAroundAHostAreDropped() throws {
+        let server = try entry(host: "[db.example.com]", mode: .required)
+
+        #expect(server.name == "db.example.com")
+        #expect(lines(server).prefix(2) == ["[db.example.com]", "host = db.example.com"])
+    }
+
+    @Test("Every entry states the authority, the hostname check and the service principal, so a section named global cannot lend its own")
     func everyEntryIsSelfContained() throws {
         for mode in SSLMode.allCases {
             let options = lines(try entry(mode: mode)).dropFirst().map {
                 $0.split(separator: "=", maxSplits: 1).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
             }
-            #expect(options == ["host", "port", "tds version", "encryption", "ca file", "check certificate hostname"],
-                    "\(mode)")
+            #expect(options == [
+                "host", "port", "tds version", "encryption", "ca file", "check certificate hostname", "spn"
+            ], "\(mode)")
+        }
+    }
+
+    @Test("Windows Authentication writes its service principal into the entry, past the 128 bytes a login field takes")
+    func servicePrincipalIsWritten() throws {
+        let host = "sql-prod-availability-group-listener-001.finance.emea.corp.contoso-international.com"
+        let principal = "MSSQLSvc/\(host):1433@CORP.CONTOSO-INTERNATIONAL.COM"
+        let options = MSSQLConnectionOptions(
+            host: host,
+            user: "",
+            password: "",
+            database: "app",
+            authMethod: .windows,
+            kerberosServicePrincipal: principal
+        )
+
+        let server = try MSSQLFreeTDSServerEntry(options: options)
+
+        #expect(principal.utf8.count > 128)
+        #expect(server.servicePrincipal == principal)
+        #expect(lines(server).last == "spn = \(principal)")
+    }
+
+    @Test("A service principal is written only for Windows Authentication")
+    func servicePrincipalNeedsWindowsAuthentication() throws {
+        let options = MSSQLConnectionOptions(
+            host: "db.example.com",
+            user: "sa",
+            password: "secret",
+            database: "app",
+            kerberosServicePrincipal: "MSSQLSvc/db.example.com:1433@EXAMPLE.COM"
+        )
+
+        let server = try MSSQLFreeTDSServerEntry(options: options)
+
+        #expect(server.servicePrincipal == nil)
+        #expect(lines(server).last == "spn =")
+    }
+
+    @Test("A service principal libtds would cut short or reshape is refused", arguments: [
+        "MSSQLSvc/" + String(repeating: "h", count: 240) + ":1433@EXAMPLE.COM",
+        "MSSQLSvc/db.example.com:1433@EXAMPLE;COM",
+        "MSSQLSvc/db.example.com:1433@EXAMPLE#COM",
+        "MSSQLSvc/db.example.com:1433\n\tencryption = off"
+    ])
+    func unreadableServicePrincipals(principal: String) {
+        #expect(throws: MSSQLFreeTDSConfigError.unreadableServicePrincipal) {
+            try MSSQLFreeTDSServerEntry(
+                host: "db.example.com",
+                port: 1_433,
+                encryption: .require,
+                verification: .none,
+                caCertificatePath: nil,
+                servicePrincipal: principal
+            )
         }
     }
 
@@ -147,7 +227,8 @@ struct MSSQLFreeTDSConfigTests {
             "tds version = 7.4",
             "encryption = require",
             "ca file = /certs/corp.pem",
-            "check certificate hostname = yes"
+            "check certificate hostname = yes",
+            "spn ="
         ])
     }
 
@@ -162,7 +243,10 @@ struct MSSQLFreeTDSConfigTests {
         "db.example.com\n\tencryption = off",
         "db.example.com\r",
         "db example.com",
-        "[db.example.com]",
+        "[db.example.com",
+        "db.example.com]",
+        "[]",
+        "[[::1]]",
         "db=example.com",
         "db.example.com;comment",
         "db.example.com#comment",
@@ -174,8 +258,8 @@ struct MSSQLFreeTDSConfigTests {
         }
     }
 
-    @Test("Host names and IP addresses are written as given", arguments: [
-        "localhost", "127.0.0.1", "::1", "fe80::1%en0", "sql-01.corp.example.com", "MyServer"
+    @Test("Host names are written as given", arguments: [
+        "localhost", "sql-01.corp.example.com", "MyServer", "myserver.database.windows.net"
     ])
     func readableHosts(host: String) throws {
         #expect(try entry(host: host, mode: .required).name == host)

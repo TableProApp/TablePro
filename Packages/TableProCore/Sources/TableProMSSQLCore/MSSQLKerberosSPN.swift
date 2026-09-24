@@ -5,8 +5,8 @@ import Foundation
 /// FreeTDS otherwise constructs an unrealmed `MSSQLSvc/host:port`, which macOS Heimdal resolves
 /// against the client's `default_realm` with no cross-realm referral. Windows Authentication then
 /// fails (`KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`) whenever the SQL Server's realm differs from the Mac's
-/// default realm. Supplying the realm-qualified SPN via `DBSETSERVERPRINCIPAL` makes Heimdal request
-/// the service ticket from the correct realm.
+/// default realm. Supplying the realm-qualified SPN as the `spn` of the connection's freetds.conf
+/// entry makes Heimdal request the service ticket from the correct realm.
 public enum MSSQLKerberosSPN {
     /// Returns `MSSQLSvc/<host>:<port>@<REALM>`, or `nil` when no realm is set (letting FreeTDS keep
     /// its default, unrealmed SPN). The realm is upper-cased to match Active Directory convention.
