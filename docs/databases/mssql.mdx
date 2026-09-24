@@ -125,15 +125,15 @@ Every result set a batch returns opens in its own result tab. In a batch of plai
 
 ## SSL/TLS
 
-New connections start on **Preferred**.
+New connections start on **Preferred**, which encrypts the login and leaves queries and results in plain TCP unless the server forces encryption. Pick **Required (skip verify)** or stricter to encrypt the whole session.
 
 | Mode | Behavior |
 |---|---|
-| **Disabled** | Plain TCP |
-| **Preferred** | TLS, falling back to plain when the server cannot |
-| **Required (skip verify)** | TLS, certificate unchecked |
-| **Verify CA** | TLS, certificate chained to a trusted authority |
-| **Verify Identity** | TLS, chain checked, and the certificate names the host you dialled |
+| **Disabled** | The login over TLS when the server offers it, then plain TCP. A server that forces encryption gets TLS throughout |
+| **Preferred** | Same as Disabled |
+| **Required (skip verify)** | TLS throughout, certificate unchecked. A server without TLS is refused |
+| **Verify CA** | TLS throughout, certificate chained to a trusted authority. The host name is not checked |
+| **Verify Identity** | TLS throughout, chain checked, and the certificate names the host you dialled |
 
 Verification runs against the macOS system roots at `/etc/ssl/cert.pem`, which covers Azure SQL and anything else publicly trusted. See [SSL/TLS](/connections/ssl).
 
@@ -144,7 +144,7 @@ SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connecti
 - Named instances are not supported. Give the host and the TCP port that instance listens on.
 - NTLM is not supported: Windows Authentication on macOS is Kerberos only.
 - Entra ID connections are created on the Mac only, through the device code flow only. iPhone and iPad take them over sync and prompt to sign in when you open one.
-- The SSL pane offers no certificate fields here. Verification runs against the system trust store; a private trust anchor goes in your own `freetds.conf`.
+- The SSL pane offers no certificate fields here, and your own `freetds.conf` is not read. A server certificate from a private CA fails Verify CA and Verify Identity: use **Required (skip verify)** for that server.
 - A result set from a batch offers **Fetch All**, and sorts on the server, only when its query can run again on its own. One that reads a variable, or comes from a procedure call or a loop, stays at the row limit and sorts the rows already shown: raise **Row cap** in [Settings](/customization/settings), or run the query by itself.
 - A batch keeps its first 100 result sets. The statements behind the rest still run, and the status bar says how many result sets were not kept.
 

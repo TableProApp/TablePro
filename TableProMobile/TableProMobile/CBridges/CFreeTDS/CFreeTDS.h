@@ -10,4 +10,8 @@
 // for iOS.
 extern DBINT dbcount(DBPROCESS *dbproc);
 
+// Missing from the same header, and in the library the same way. FreeTDSConnection.swift names the freetds.conf that
+// carries every connection's encryption level with it, because dbsetlname has no field for one.
+extern void dbsetifile(char *filename);
+
 #endif

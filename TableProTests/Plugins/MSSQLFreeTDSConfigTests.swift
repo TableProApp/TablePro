@@ -10,17 +10,23 @@ import Testing
 
 @Suite("MSSQL FreeTDS config")
 struct MSSQLFreeTDSConfigTests {
-    private func configuration(
-        verification: MSSQLCertificateVerification,
+    private func entry(
+        host: String = "db.example.com",
+        port: Int = 1_433,
+        mode: SSLMode,
         caCertificatePath: String? = nil
-    ) -> String {
-        MSSQLFreeTDSConfig.configuration(
-            host: "db.example.com",
-            port: 1_433,
-            encryptionFlag: "require",
-            verification: verification,
+    ) throws -> MSSQLFreeTDSServerEntry {
+        try MSSQLFreeTDSServerEntry(
+            host: host,
+            port: port,
+            encryption: MSSQLSSLMapping.encryptionLevel(for: mode),
+            verification: MSSQLSSLMapping.certificateVerification(for: mode),
             caCertificatePath: caCertificatePath
         )
+    }
+
+    private func lines(_ entry: MSSQLFreeTDSServerEntry) -> [String] {
+        entry.text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
     @Test("Every SSL mode maps to the verification it advertises")
@@ -32,32 +38,75 @@ struct MSSQLFreeTDSConfigTests {
         #expect(MSSQLSSLMapping.certificateVerification(for: .verifyIdentity) == .chainAndHostname)
     }
 
-    @Test("Verify CA pins an authority but does not check the hostname")
-    func verifyCaConfiguration() {
-        let text = configuration(verification: .chain)
+    @Test("Every SSL mode writes an entry, and each carries the level its mode maps to")
+    func everyModeCarriesItsLevel() throws {
+        for mode in SSLMode.allCases {
+            let level = MSSQLSSLMapping.encryptionLevel(for: mode).rawValue
+            #expect(lines(try entry(mode: mode)).contains("encryption = \(level)"), "\(mode)")
+        }
+        #expect(lines(try entry(mode: .required)).contains("encryption = require"))
+    }
 
-        #expect(text.contains("[\(MSSQLFreeTDSConfig.serverEntryName)]"))
-        #expect(text.contains("host = db.example.com"))
-        #expect(text.contains("port = 1433"))
+    @Test("Each level is written as libtds spells it")
+    func levelSpelling() throws {
+        let spellings: [(level: MSSQLEncryptionLevel, spelling: String)] = [
+            (.request, "request"), (.require, "require")
+        ]
+        for (level, spelling) in spellings {
+            let server = try MSSQLFreeTDSServerEntry(
+                host: "db", port: 1_433, encryption: level, verification: .none, caCertificatePath: nil
+            )
+            #expect(lines(server).contains("encryption = \(spelling)"), "\(level)")
+        }
+    }
+
+    @Test("The entry is named after the host, so the login packet carries the host as its server name")
+    func namedAfterTheHost() throws {
+        let server = try entry(host: "myserver.database.windows.net", port: 1_433, mode: .required)
+
+        #expect(server.name == "myserver.database.windows.net")
+        #expect(lines(server).prefix(4) == [
+            "[myserver.database.windows.net]",
+            "host = myserver.database.windows.net",
+            "port = 1433",
+            "tds version = 7.4"
+        ])
+    }
+
+    @Test("Every entry states the authority and the hostname check, so a section named global cannot lend its own")
+    func everyEntryIsSelfContained() throws {
+        for mode in SSLMode.allCases {
+            let options = lines(try entry(mode: mode)).dropFirst().map {
+                $0.split(separator: "=", maxSplits: 1).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            }
+            #expect(options == ["host", "port", "tds version", "encryption", "ca file", "check certificate hostname"],
+                    "\(mode)")
+        }
+    }
+
+    @Test("Verify CA pins an authority and turns off the hostname check libtds makes by default")
+    func verifyCaConfiguration() throws {
+        let text = lines(try entry(mode: .verifyCa))
+
         #expect(text.contains("encryption = require"))
         #expect(text.contains("ca file = \(MSSQLFreeTDSConfig.systemTrustStorePath)"))
-        #expect(!text.contains("check certificate hostname"))
+        #expect(text.contains("check certificate hostname = no"))
     }
 
     @Test("Verify Identity also checks the hostname")
-    func verifyIdentityConfiguration() {
-        let text = configuration(verification: .chainAndHostname)
+    func verifyIdentityConfiguration() throws {
+        let text = lines(try entry(mode: .verifyIdentity))
 
-        #expect(text.contains("ca file = "))
+        #expect(text.contains("ca file = \(MSSQLFreeTDSConfig.systemTrustStorePath)"))
         #expect(text.contains("check certificate hostname = yes"))
     }
 
     @Test("A user supplied authority wins over the system trust store")
-    func userSuppliedAuthority() {
-        let text = configuration(verification: .chain, caCertificatePath: "/Users/me/corp-ca.pem")
+    func userSuppliedAuthority() throws {
+        let text = lines(try entry(mode: .verifyCa, caCertificatePath: "/Users/me/My Certs/corp-ca.pem"))
 
-        #expect(text.contains("ca file = /Users/me/corp-ca.pem"))
-        #expect(!text.contains(MSSQLFreeTDSConfig.systemTrustStorePath))
+        #expect(text.contains("ca file = /Users/me/My Certs/corp-ca.pem"))
+        #expect(!text.contains("ca file = \(MSSQLFreeTDSConfig.systemTrustStorePath)"))
     }
 
     @Test("A blank authority path falls back to the system trust store")
@@ -67,12 +116,90 @@ struct MSSQLFreeTDSConfigTests {
         #expect(MSSQLFreeTDSConfig.authorityPath(userSupplied: "/tmp/ca.pem") == "/tmp/ca.pem")
     }
 
-    @Test("A non-verifying mode writes no authority line")
-    func nonVerifyingConfiguration() {
-        let text = configuration(verification: .none)
+    @Test("A non-verifying mode names no authority and checks no hostname, even when a path is set")
+    func nonVerifyingConfiguration() throws {
+        for mode in [SSLMode.disabled, .preferred, .required] {
+            let text = lines(try entry(mode: mode, caCertificatePath: "/tmp/ca.pem"))
+            #expect(text.contains("ca file ="), "\(mode)")
+            #expect(text.contains("check certificate hostname = no"), "\(mode)")
+        }
+    }
 
-        #expect(!text.contains("ca file"))
-        #expect(!text.contains("check certificate hostname"))
+    @Test("The entry for a connection carries its level, its checks and its authority")
+    func entryFromConnectionOptions() throws {
+        var options = MSSQLConnectionOptions(
+            host: "db.example.com",
+            port: 14_330,
+            user: "sa",
+            password: "secret",
+            database: "app",
+            encryptionLevel: MSSQLSSLMapping.encryptionLevel(for: .verifyIdentity)
+        )
+        options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: .verifyIdentity)
+        options.caCertificatePath = "/certs/corp.pem"
+
+        let text = lines(try MSSQLFreeTDSServerEntry(options: options))
+
+        #expect(text == [
+            "[db.example.com]",
+            "host = db.example.com",
+            "port = 14330",
+            "tds version = 7.4",
+            "encryption = require",
+            "ca file = /certs/corp.pem",
+            "check certificate hostname = yes"
+        ])
+    }
+
+    @Test("A connection built without a level asks for request, never off")
+    func defaultLevel() {
+        let options = MSSQLConnectionOptions(host: "db", user: "sa", password: "secret", database: "app")
+        #expect(options.encryptionLevel == .request)
+    }
+
+    @Test("A host that would read back as something else is refused", arguments: [
+        "",
+        "db.example.com\n\tencryption = off",
+        "db.example.com\r",
+        "db example.com",
+        "[db.example.com]",
+        "db=example.com",
+        "db.example.com;comment",
+        "db.example.com#comment",
+        String(repeating: "a", count: 250)
+    ])
+    func unreadableHosts(host: String) {
+        #expect(throws: MSSQLFreeTDSConfigError.unreadableHost) {
+            try entry(host: host, mode: .required)
+        }
+    }
+
+    @Test("Host names and IP addresses are written as given", arguments: [
+        "localhost", "127.0.0.1", "::1", "fe80::1%en0", "sql-01.corp.example.com", "MyServer"
+    ])
+    func readableHosts(host: String) throws {
+        #expect(try entry(host: host, mode: .required).name == host)
+    }
+
+    @Test("A port outside 1 to 65535 is refused", arguments: [0, -1, 65_536])
+    func invalidPorts(port: Int) {
+        #expect(throws: MSSQLFreeTDSConfigError.invalidPort(port)) {
+            try entry(port: port, mode: .required)
+        }
+    }
+
+    @Test("An authority path libtds would cut short or reshape is refused", arguments: [
+        "/certs/ca;old.pem",
+        "/certs/#1.pem",
+        "/certs/ca.pem ",
+        "/certs/two  spaces.pem",
+        "/certs/ca\n\tcheck certificate hostname = no",
+        "/" + String(repeating: "c", count: 250)
+    ])
+    func unreadableAuthorityPaths(path: String) {
+        #expect(throws: MSSQLFreeTDSConfigError.unreadableAuthorityPath) {
+            try entry(mode: .verifyCa, caCertificatePath: path)
+        }
     }
 
     @Test("The system trust store is present on this machine")

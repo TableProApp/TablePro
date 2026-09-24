@@ -31,7 +31,7 @@ The certificate rows appear only once **SSL Mode** is anything but Disabled. Eac
 | **Client Key** | Any mode but Disabled | The matching private key. Required once a client certificate is set |
 | **Key Passphrase** | Once **Client Key** has a path, on drivers that support it (Cassandra and ScyllaDB) | The passphrase of an encrypted key. Stored in the Keychain |
 
-SQL Server shows no certificate fields at all. FreeTDS takes no per-connection paths and trusts the system store; a custom trust anchor goes in `freetds.conf` instead.
+SQL Server shows no certificate fields at all and verifies against the system trust store. See [SQL Server](/databases/mssql#limitations).
 
 ## Per-driver defaults
 
@@ -41,7 +41,7 @@ A new connection starts on the mode that matches the driver's own default, and t
 |---|---|---|
 | PostgreSQL, Redshift, CockroachDB | Preferred | libpq's own `sslmode=prefer` fallback to plain TCP. Same as `psql` and DataGrip |
 | MySQL, MariaDB | Preferred | Tries TLS, then retries plain on an SSL handshake error. Auth and network errors are not retried |
-| SQL Server | Preferred | FreeTDS `encryption=request`, falls back to plain |
+| SQL Server | Preferred | FreeTDS `encryption=request`: the login over TLS, the rest in plain TCP unless the server forces encryption |
 | Teradata | Disabled | Opens a TLS transport, retries on a plain socket if it fails to come up |
 | MongoDB, Redis, Cassandra, ClickHouse, Elasticsearch, Typesense, SurrealDB, Weaviate | Disabled | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
 | etcd | Disabled | Nothing. The driver never reads these fields. Set **TLS Mode** on the Options section instead, and see [etcd](/databases/etcd) |

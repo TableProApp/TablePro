@@ -491,6 +491,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Grid commands enabled in the CSV inspector that did nothing.
 - Changing a filter or sort leaving the CSV inspector on a later page.
 - CSV inspector windows always opening as tabs, ignoring the system's tab setting.
+- SQL Server Verify CA refusing a certificate that does not name the host.
+- SQL Server login failing without a reason for a password longer than 128 bytes.
 
 ### Security
 
@@ -515,6 +517,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 - A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
 - `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
+- SQL Server connections set to Required (skip verify) not encrypted past the login.
 
 ## [0.75.0] - 2026-09-18
 
