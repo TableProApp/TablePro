@@ -21,7 +21,7 @@ final class DataFileGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {
-        controller.setCell(pageRow: row, column: column, text: newValue ?? "")
+        controller.setCell(pageRow: row, column: column, text: newValue)
     }
 
     func dataGridDeleteRows(_ indices: Set<Int>) {
@@ -91,16 +91,7 @@ final class DataFileGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
-        guard controller.tableRows.rows.indices.contains(displayRow),
-              controller.columnNames.ids.indices.contains(dataColumn) else { return nil }
-        let row = controller.tableRows.rows[displayRow]
-        guard dataColumn < row.values.count else { return nil }
-        let id = controller.columnNames.ids[dataColumn]
-        return CellFilterMenuBuilder.menuItem(
-            columnName: controller.columnNames.displayNames[dataColumn],
-            columnType: DataFileColumnTypes.filterType(for: controller.kind(of: id)),
-            value: row.values[dataColumn]
-        ) { [weak controller] filter in
+        controller.gridCoordinator?.cellFilterMenuItem(forRow: displayRow, dataColumn: dataColumn) { [weak controller] filter in
             controller?.addFilter(filter)
         }
     }

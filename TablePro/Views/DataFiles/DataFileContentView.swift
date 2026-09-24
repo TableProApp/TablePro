@@ -95,6 +95,10 @@ struct DataFileContentView: View {
         var config = DataGridConfiguration()
         config.showRowNumbers = true
         config.hiddenColumns = controller.columnLayout.hiddenColumns
+        config.supportsValueFilter = false
+        config.filterMenuColumnTypes = controller.columnNames.ids.map {
+            DataFileColumnTypes.filterType(for: controller.kind(of: $0))
+        }
         return config
     }
 }

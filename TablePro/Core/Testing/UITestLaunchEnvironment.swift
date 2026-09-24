@@ -20,6 +20,7 @@ import Foundation
 internal enum UITestLaunchEnvironment {
     internal static let sampleDatabaseVariable = "TABLEPRO_UI_TEST_OPEN_SAMPLE"
     internal static let welcomeSheetVariable = "TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET"
+    internal static let dataFileVariable = "TABLEPRO_UI_TEST_OPEN_FILE"
 
     internal static var requestsWelcomeSheet: Bool {
         isSet(welcomeSheetVariable)
@@ -30,15 +31,30 @@ internal enum UITestLaunchEnvironment {
     /// that carries intents, which is what stops the startup behaviour from racing the sample
     /// window onto the screen 150ms later.
     internal static var launchIntents: [LaunchIntent] {
-        guard isSet(sampleDatabaseVariable) else { return [] }
-        return [.openSampleDatabase]
+        var intents: [LaunchIntent] = []
+        if isSet(sampleDatabaseVariable) {
+            intents.append(.openSampleDatabase)
+        }
+        if let dataFileURL {
+            intents.append(.openDataFile(dataFileURL))
+        }
+        return intents
+    }
+
+    private static var dataFileURL: URL? {
+        guard let path = value(of: dataFileVariable), path.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: path)
     }
 
     private static func isSet(_ variable: String) -> Bool {
-        guard AppStorageEnvironment.shared.isIsolated else { return false }
+        value(of: variable) != nil
+    }
+
+    private static func value(of variable: String) -> String? {
+        guard AppStorageEnvironment.shared.isIsolated else { return nil }
         let raw = ProcessInfo.processInfo.environment[variable]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw, !raw.isEmpty else { return false }
-        return true
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw
     }
 }

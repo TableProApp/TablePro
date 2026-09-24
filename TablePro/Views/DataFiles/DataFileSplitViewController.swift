@@ -20,6 +20,7 @@ final class DataFileSplitViewController: NSSplitViewController {
     private var cancellables: Set<AnyCancellable> = []
     var statisticsPopover: NSPopover?
     var sheetController: NSViewController?
+    let exportPresenter = ExportSheetPresenter()
 
     init(document: DataFileDocument) {
         dataFileDocument = document
@@ -48,6 +49,12 @@ final class DataFileSplitViewController: NSSplitViewController {
         gridDelegate.owner = self
         addSplitViewItem(contentItem)
         addSplitViewItem(inspectorItem)
+
+        KeyWindowCommandSubscription
+            .sink(AppCommands.shared.exportQueryResults, whileKey: { [weak self] in self?.view.window }) { [weak self] _ in
+                self?.presentExport()
+            }
+            .store(in: &cancellables)
 
         controller.$isInspectorVisible
             .removeDuplicates()

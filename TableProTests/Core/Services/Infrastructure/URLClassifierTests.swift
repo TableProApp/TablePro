@@ -5,68 +5,41 @@
 
 import Foundation
 @testable import TablePro
-import TableProPluginKit
 import Testing
 
 @Suite("URLClassifier file extension routing", .serialized)
 @MainActor
 struct URLClassifierTests {
-    private func withInspectorState<T>(
-        lazy: [String: URL],
-        active: [String: any DocumentInspectorPlugin] = [:],
-        body: () throws -> T
-    ) rethrows -> T {
-        let originalLazy = PluginManager.shared.lazyInspectorFileExtensions
-        let originalActive = PluginManager.shared.inspectorPlugins
-        defer {
-            PluginManager.shared.lazyInspectorFileExtensions = originalLazy
-            PluginManager.shared.inspectorPlugins = originalActive
-        }
-        PluginManager.shared.lazyInspectorFileExtensions = lazy
-        PluginManager.shared.inspectorPlugins = active
-        return try body()
-    }
-
-    @Test("CSV routes to openInspectorFile when the extension is registered")
-    func routesCSVWhenExtensionRegistered() {
-        let csvURL = URL(fileURLWithPath: "/tmp/sample.csv")
-        let stubPluginURL = URL(fileURLWithPath: "/tmp/stub.tableplugin")
-        let intent = withInspectorState(lazy: ["csv": stubPluginURL]) {
-            URLClassifier.classify(csvURL)
-        }
-        guard case .some(.success(.openInspectorFile(let routed))) = intent else {
-            Issue.record("Expected .openInspectorFile, got \(String(describing: intent))")
+    @Test("Tabular files route to the data file window", arguments: [
+        "sample.csv", "sample.tsv", "sample.psv", "sample.txt", "sample.dat", "sample.json",
+        "sample.jsonl", "sample.ndjson", "sample.xlsx", "sample.csv.gz", "SAMPLE.CSV"
+    ])
+    func routesDataFiles(name: String) {
+        let url = URL(fileURLWithPath: "/tmp/\(name)")
+        guard case .some(.success(.openDataFile(let routed))) = URLClassifier.classify(url) else {
+            Issue.record("Expected .openDataFile for \(name)")
             return
         }
-        #expect(routed == csvURL)
+        #expect(routed == url)
     }
 
-    @Test("CSV falls back to a DuckDB connection when no inspector plugin registers the extension")
-    func routesCSVToDuckDBWhenExtensionMissing() {
-        let csvURL = URL(fileURLWithPath: "/tmp/sample.csv")
-        let intent = withInspectorState(lazy: [:]) {
-            URLClassifier.classify(csvURL)
-        }
-        guard case .some(.success(.openDatabaseFile(let routed, let dbType))) = intent else {
-            Issue.record("Expected .openDatabaseFile, got \(String(describing: intent))")
+    @Test("Parquet still routes to a DuckDB connection")
+    func routesParquetToDuckDB() {
+        let url = URL(fileURLWithPath: "/tmp/export.parquet")
+        guard case .some(.success(.openDatabaseFile(let routed, let dbType))) = URLClassifier.classify(url) else {
+            Issue.record("Expected .openDatabaseFile")
             return
         }
-        #expect(routed == csvURL)
+        #expect(routed == url)
         #expect(dbType == .duckdb)
     }
 
-    @Test("Analytics files with no inspector route to DuckDB", arguments: ["parquet", "json", "ndjson"])
-    func routesDuckDBFileKinds(ext: String) {
-        let fileURL = URL(fileURLWithPath: "/tmp/export.\(ext)")
-        let intent = withInspectorState(lazy: [:]) {
-            URLClassifier.classify(fileURL)
+    @Test("A compressed SQL dump is not a data file")
+    func compressedSQLIsNotADataFile() {
+        let intent = URLClassifier.classify(URL(fileURLWithPath: "/tmp/dump.sql.gz"))
+        if case .some(.success(.openDataFile)) = intent {
+            Issue.record("A .sql.gz must not open in the data file window")
         }
-        guard case .some(.success(.openDatabaseFile(let routed, let dbType))) = intent else {
-            Issue.record("Expected .openDatabaseFile, got \(String(describing: intent))")
-            return
-        }
-        #expect(routed == fileURL)
-        #expect(dbType == .duckdb)
     }
 
     @Test("SQL file routes to openSQLFile", arguments: ["sql", "psql", "pgsql", "PSQL"])
@@ -128,9 +101,7 @@ struct URLClassifierTests {
     ])
     func contentsIdentifyASQLiteDatabase(name: String) throws {
         try withDatabaseFile(named: name, bytes: sqliteBytes) { url in
-            let intent = withInspectorState(lazy: ["csv": URL(fileURLWithPath: "/tmp/stub.tableplugin")]) {
-                URLClassifier.classify(url)
-            }
+            let intent = URLClassifier.classify(url)
             guard case .some(.success(.openDatabaseFile(let routed, let dbType))) = intent else {
                 Issue.record("Expected .openDatabaseFile, got \(String(describing: intent))")
                 return
@@ -153,7 +124,7 @@ struct URLClassifierTests {
     @Test("A Parquet file keeping its extension still routes to DuckDB")
     func parquetRoutesByExtension() throws {
         try withDatabaseFile(named: "export.parquet", bytes: parquetBytes) { url in
-            let intent = withInspectorState(lazy: [:]) { URLClassifier.classify(url) }
+            let intent = URLClassifier.classify(url)
             guard case .some(.success(.openDatabaseFile(_, let dbType))) = intent else {
                 Issue.record("Expected .openDatabaseFile, got \(String(describing: intent))")
                 return

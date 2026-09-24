@@ -73,6 +73,31 @@ enum DataFilePrompts {
         }
     }
 
+    static func importTarget(
+        from targets: [ConnectedSessionSummary],
+        window: NSWindow?,
+        completion: @escaping (ConnectedSessionSummary?) -> Void
+    ) {
+        let popUp = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        popUp.addItems(withTitles: targets.map(targetTitle))
+        popUp.setAccessibilityLabel(String(localized: "Connection"))
+        present(
+            message: String(localized: "Import into Table"),
+            informative: String(localized: "Choose a connection. Its import sheet opens with the rows of this file, unsaved edits included."),
+            confirm: String(localized: "Continue"),
+            accessory: popUp,
+            window: window
+        ) { confirmed in
+            let index = popUp.indexOfSelectedItem
+            completion(confirmed && targets.indices.contains(index) ? targets[index] : nil)
+        }
+    }
+
+    private static func targetTitle(_ target: ConnectedSessionSummary) -> String {
+        guard !target.databaseName.isEmpty, target.databaseName != target.name else { return target.name }
+        return "\(target.name) (\(target.databaseName))"
+    }
+
     private static func presentInvalidPattern(window: NSWindow?) {
         let alert = NSAlert()
         alert.messageText = String(localized: "Invalid regular expression")
@@ -113,7 +138,7 @@ enum DataFilePrompts {
         alert.addButton(withTitle: confirm)
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.accessoryView = accessory
-        alert.window.initialFirstResponder = accessory is NSTextField ? accessory : accessory.subviews.first
+        alert.window.initialFirstResponder = accessory is NSStackView ? accessory.subviews.first : accessory
         AlertHelper.present(alert, in: window) { response in
             completion(response == .alertFirstButtonReturn)
         }
@@ -134,7 +159,7 @@ enum DataFileDeleteConfirmation {
             : String(format: String(localized: "Delete %lld columns?"), count)
     }
 
-    static func confirm(messageText: String, window: NSWindow?, proceed: @escaping @MainActor () -> Void) {
+    static func makeAlert(messageText: String) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = messageText
         alert.alertStyle = .warning
@@ -143,7 +168,11 @@ enum DataFileDeleteConfirmation {
             confirmButton: String(localized: "Delete"),
             cancelButton: String(localized: "Cancel")
         )
-        AlertHelper.present(alert, in: window) { response in
+        return alert
+    }
+
+    static func confirm(messageText: String, window: NSWindow?, proceed: @escaping @MainActor () -> Void) {
+        AlertHelper.present(makeAlert(messageText: messageText), in: window) { response in
             guard response == .alertFirstButtonReturn else { return }
             proceed()
         }

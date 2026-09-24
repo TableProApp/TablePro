@@ -75,6 +75,7 @@ final class DataFileController: ObservableObject {
     private var queryDebounceTask: Task<Void, Never>?
     var findTask: Task<Void, Never>?
     var findDebounceTask: Task<Void, Never>?
+    var transferTask: Task<Void, Never>?
     private var activityRevealTask: Task<Void, Never>?
     private var messageTask: Task<Void, Never>?
     private var queryRevision = 0
@@ -122,6 +123,16 @@ final class DataFileController: ObservableObject {
         loadTask = Task { [weak self] in
             await self?.performLoad(request)
         }
+    }
+
+    func waitForPendingWork() async {
+        await loadTask?.value
+        await queryDebounceTask?.value
+        await queryTask?.value
+        await mutationTask?.value
+        await findDebounceTask?.value
+        await findTask?.value
+        await transferTask?.value
     }
 
     private func performLoad(_ request: DataFileLoadRequest) async {
@@ -265,10 +276,13 @@ final class DataFileController: ObservableObject {
         }
         pageKeys = keys
         pageRevision &+= 1
+        let names = columnNames.displayNames
+        let holdsNull = kind?.holdsNull ?? false
         tableRows = TableRows(
             rows: rows,
-            columns: columnNames.displayNames,
-            columnTypes: ids.map { _ in ColumnType.text(rawType: "TEXT") }
+            columns: names,
+            columnTypes: ids.map { _ in ColumnType.text(rawType: "TEXT") },
+            columnNullable: Dictionary(uniqueKeysWithValues: names.map { ($0, holdsNull) })
         )
         changeManager.bumpReload()
         gridCoordinator?.applyDelta(.fullReplace)
@@ -347,6 +361,8 @@ final class DataFileController: ObservableObject {
     func cancelActivity() {
         queryTask?.cancel()
         mutationTask?.cancel()
+        findTask?.cancel()
+        transferTask?.cancel()
     }
 
     func tearDown() {
@@ -356,6 +372,7 @@ final class DataFileController: ObservableObject {
         queryDebounceTask?.cancel()
         findTask?.cancel()
         findDebounceTask?.cancel()
+        transferTask?.cancel()
         activityRevealTask?.cancel()
         messageTask?.cancel()
         workingCopy = nil

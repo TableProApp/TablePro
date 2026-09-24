@@ -47,11 +47,14 @@ struct DataFileStatusBar: View {
 
     @ViewBuilder
     private var rowSummary: some View {
-        if controller.visibleRowCount == controller.totalRowCount {
-            Text("\(controller.totalRowCount) ^[rows](inflect: true)")
-        } else {
-            Text("\(controller.visibleRowCount) of \(controller.totalRowCount) ^[rows](inflect: true)")
+        Group {
+            if controller.visibleRowCount == controller.totalRowCount {
+                Text("\(controller.totalRowCount) ^[rows](inflect: true)")
+            } else {
+                Text("\(controller.visibleRowCount) of \(controller.totalRowCount) ^[rows](inflect: true)")
+            }
         }
+        .accessibilityIdentifier("data-file-row-count")
     }
 
     private func activityView(_ activity: DataFileActivity) -> some View {

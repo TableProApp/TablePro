@@ -71,5 +71,8 @@ extension DataFileController {
         } else {
             runQuery()
         }
+        if find.isVisible, find.hasQuery {
+            scheduleFind()
+        }
     }
 }

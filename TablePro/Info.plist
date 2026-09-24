@@ -334,7 +334,6 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>jsonl</string>
-					<string>ndjson</string>
 				</array>
 			</dict>
 		</dict>

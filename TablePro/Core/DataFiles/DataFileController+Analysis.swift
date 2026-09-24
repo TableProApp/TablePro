@@ -24,15 +24,12 @@ extension DataFileController {
         let filter = value.isEmpty
             ? TableFilter(columnName: name, filterOperator: .isEmpty)
             : TableFilter(columnName: name, filterOperator: .equal, value: value.value)
-        filterState.filters.append(filter)
-        filterState.isVisible = true
-        applyAllFilters()
+        addFilter(filter)
     }
 
     func addFilter(_ filter: TableFilter) {
-        filterState.filters.append(filter)
-        filterState.isVisible = true
-        applyAllFilters()
+        filterState = TabFilterState.cellFilterState(filterState, adding: filter)
+        runQuery()
     }
 
     func removeDuplicateRows(comparing columns: [TabularColumnID], options: TabularDuplicateOptions) {
@@ -80,6 +77,7 @@ struct DataFileStatisticsRequest: Sendable {
     let keys: [Int]
     let isFiltered: Bool
 
+    @concurrent
     func summarize(progress: @escaping @Sendable (Double) -> Void) async throws -> TabularColumnSummary {
         try await TabularColumnStatistics.summarize(
             column: column,

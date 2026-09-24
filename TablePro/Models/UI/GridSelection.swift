@@ -10,7 +10,7 @@ struct GridSelection: Equatable {
     /// rectangle spanning every row is what a heading click builds, and equally what Select All,
     /// Shift+Space and an ordinary cell drag build whenever the page is short enough. Reading the
     /// intent back out of the shape painted the whole heading row as selected on Cmd+A, hid a
-    /// swept block's own outline, and armed the CSV inspector's Delete Column on every column of
+    /// swept block's own outline, and armed the data file window's Delete Column on every column of
     /// the file.
     var columns: IndexSet = []
 

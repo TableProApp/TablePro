@@ -46,6 +46,7 @@ enum DataFileLoadError: LocalizedError, Equatable {
 }
 
 enum DataFileLoader {
+    @concurrent
     static func load(
         _ request: DataFileLoadRequest,
         workingCopy: DataFileWorkingCopy,

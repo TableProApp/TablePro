@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import TableProTabular
 
@@ -30,14 +31,15 @@ final class DataFileStatisticsModel: ObservableObject {
         task?.cancel()
         state = .computing(0)
         let request = request
+        let reportProgress: @Sendable (Double) -> Void = { [weak self] fraction in
+            Task { @MainActor in
+                guard let self, case .computing = self.state else { return }
+                self.state = .computing(fraction)
+            }
+        }
         task = Task { [weak self] in
             do {
-                let summary = try await request.summarize { fraction in
-                    Task { @MainActor [weak self] in
-                        guard case .computing = self?.state else { return }
-                        self?.state = .computing(fraction)
-                    }
-                }
+                let summary = try await request.summarize(progress: reportProgress)
                 self?.state = .ready(summary)
             } catch is CancellationError {
                 return
@@ -178,6 +180,7 @@ struct DataFileStatisticsView: View {
         }
         .buttonStyle(.plain)
         .help(String(localized: "Filter rows with this value"))
+        .accessibilityIdentifier("data-file-statistics-value")
         .accessibilityLabel(String(
             format: String(localized: "%@, %@ rows"),
             value.isEmpty ? String(localized: "(empty)") : value.value,

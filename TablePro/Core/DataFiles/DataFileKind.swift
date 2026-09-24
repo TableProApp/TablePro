@@ -29,11 +29,15 @@ struct DataFileKind: Sendable, Equatable {
     static let dataType = "com.tablepro.delimited-data"
     static let jsonType = "public.json"
     static let jsonLinesType = "com.tablepro.json-lines"
+    static let newlineDelimitedJSONType = "public.ndjson"
     static let workbookType = "org.openxmlformats.spreadsheetml.sheet"
     static let gzipType = "org.gnu.gnu-zip-archive"
 
-    static let editableTypes = [commaSeparatedType, tabSeparatedType, pipeSeparatedType, jsonType, jsonLinesType]
-    static let readableTypes = editableTypes + [plainTextType, dataType, workbookType, gzipType]
+    static let editableTypes = [
+        commaSeparatedType, tabSeparatedType, pipeSeparatedType, plainTextType, dataType,
+        jsonType, jsonLinesType, newlineDelimitedJSONType
+    ]
+    static let readableTypes = editableTypes + [workbookType, gzipType]
 
     let format: DataFileFormat
     let contentExtension: String
@@ -41,6 +45,13 @@ struct DataFileKind: Sendable, Equatable {
 
     var isEditable: Bool {
         !isCompressed && format != .workbook
+    }
+
+    var holdsNull: Bool {
+        switch format {
+        case .json, .jsonLines: return true
+        case .delimited, .workbook: return false
+        }
     }
 
     var typeIdentifier: String {
@@ -87,6 +98,7 @@ struct DataFileKind: Sendable, Equatable {
         case pipeSeparatedType: return DataFileKind(format: .delimited, contentExtension: "psv", isCompressed: false)
         case jsonType: return DataFileKind(format: .json, contentExtension: "json", isCompressed: false)
         case jsonLinesType: return DataFileKind(format: .jsonLines, contentExtension: "jsonl", isCompressed: false)
+        case newlineDelimitedJSONType: return DataFileKind(format: .jsonLines, contentExtension: "ndjson", isCompressed: false)
         case workbookType: return DataFileKind(format: .workbook, contentExtension: "xlsx", isCompressed: false)
         default: return nil
         }
@@ -97,7 +109,7 @@ struct DataFileKind: Sendable, Equatable {
         case .json:
             return jsonType
         case .jsonLines:
-            return jsonLinesType
+            return fileExtension == "ndjson" ? newlineDelimitedJSONType : jsonLinesType
         case .workbook:
             return workbookType
         case .delimited:
@@ -117,7 +129,7 @@ struct DataFileKind: Sendable, Equatable {
             return .delimited
         case jsonType:
             return .json
-        case jsonLinesType:
+        case jsonLinesType, newlineDelimitedJSONType:
             return .jsonLines
         default:
             return nil
@@ -142,6 +154,7 @@ struct DataFileKind: Sendable, Equatable {
         case dataType: return "dat"
         case jsonType: return "json"
         case jsonLinesType: return "jsonl"
+        case newlineDelimitedJSONType: return "ndjson"
         case workbookType: return "xlsx"
         default: return UTType(typeName)?.preferredFilenameExtension
         }

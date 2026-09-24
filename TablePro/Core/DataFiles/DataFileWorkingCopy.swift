@@ -31,6 +31,7 @@ final class DataFileWorkingCopy: @unchecked Sendable {
         directory.appendingPathComponent(name)
     }
 
+    @concurrent
     func snapshot(of url: URL, kind: DataFileKind) async throws -> URL {
         if kind.isCompressed {
             let destination = file(named: "content-\(UUID().uuidString).\(kind.contentExtension)")

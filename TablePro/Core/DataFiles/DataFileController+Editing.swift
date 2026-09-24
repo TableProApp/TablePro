@@ -12,15 +12,20 @@ extension DataFileController {
         .text(text)
     }
 
-    func setCell(pageRow: Int, column: Int, text: String) {
+    var nullCell: TabularCell {
+        (kind?.holdsNull ?? false) ? TabularCell(kind: .null, text: "") : .text("")
+    }
+
+    func setCell(pageRow: Int, column: Int, text: String?) {
         guard isEditable, let table, let key = key(forPageRow: pageRow),
               columnNames.ids.indices.contains(column) else { return }
         let id = columnNames.ids[column]
         guard let tabularColumn = table.column(id) else { return }
         let original = table.cell(key: key, column: tabularColumn)
-        guard original.text != text || original.kind.isNullLike else { return }
+        let cell = text.map { editedCell($0, replacing: original) } ?? nullCell
+        guard cell != original else { return }
         var updated = table
-        updated.setCells([(key: key, columnID: id, cell: editedCell(text, replacing: original))])
+        updated.setCells([(key: key, columnID: id, cell: cell)])
         commit(updated, actionName: String(localized: "Edit Cell"))
     }
 

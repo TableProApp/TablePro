@@ -5,6 +5,7 @@
 
 import AppKit
 import TableProTabular
+import TableProTabularIO
 
 struct DataFileMenuValidation {
     let isEnabled: Bool
@@ -71,9 +72,6 @@ extension DataFileSplitViewController {
 
     @objc func toggleFilterBar(_ sender: Any?) {
         controller.filterState.isVisible.toggle()
-        if controller.filterState.isVisible, controller.filterState.filters.isEmpty {
-            controller.addBlankFilter()
-        }
     }
 
     @objc override func toggleInspector(_ sender: Any?) {
@@ -296,7 +294,7 @@ extension DataFileSplitViewController {
         case #selector(performFindAndReplace(_:)):
             return DataFileMenuValidation(isEnabled: editable)
         case #selector(dataFileImportIntoTable(_:)):
-            return DataFileMenuValidation(isEnabled: loaded && DataFileImportTargets.hasConnectedSessions)
+            return DataFileMenuValidation(isEnabled: loaded && !importTargets().isEmpty)
         case #selector(toggleFilterBar(_:)):
             return DataFileMenuValidation(
                 isEnabled: loaded,

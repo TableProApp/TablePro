@@ -32,20 +32,16 @@ enum DataFileFilterMapping {
     }
 
     static func operand(_ raw: String, allowsNullLiteral: Bool) -> TabularOperand {
-        let trimmed = raw.trimmingCharacters(in: .whitespaces)
-        let number: Double? = PluginNumericLiteral.isValid(trimmed) ? Double(trimmed) : nil
+        let compiled = FilterOperand(raw, columnType: nil)
         return TabularOperand(
-            text: raw,
-            number: number,
-            boolean: StoredBoolean.value(of: trimmed),
-            isNullLiteral: allowsNullLiteral && trimmed.caseInsensitiveCompare("NULL") == .orderedSame
+            text: compiled.text,
+            number: compiled.number.map { NSDecimalNumber(decimal: $0).doubleValue },
+            boolean: compiled.boolean,
+            isNullLiteral: allowsNullLiteral && compiled.isNullLiteral
         )
     }
 
     static func listItems(_ input: String) -> [String] {
-        input.split(separator: ",", omittingEmptySubsequences: true).compactMap {
-            let trimmed = $0.trimmingCharacters(in: .whitespaces)
-            return trimmed.isEmpty ? nil : trimmed
-        }
+        FilterOperand.listItems(input)
     }
 }

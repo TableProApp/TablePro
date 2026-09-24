@@ -46,17 +46,6 @@ extension DataFileController {
         runQuery()
     }
 
-    func clearAppliedFilters() {
-        filterState.commit = nil
-        runQuery()
-    }
-
-    func removeAllFilters() {
-        filterState.filters = []
-        filterState.commit = nil
-        runQuery()
-    }
-
     func updateSort(_ state: SortState) {
         sortState = state
         runQuery()
@@ -66,6 +55,7 @@ extension DataFileController {
         setDebounceTask(nil)
         guard let table else { return }
         let revision = nextQueryRevision()
+        filterState.executedFilters = filterState.appliedFilters
         let predicate = currentPredicate()
         let sortKeys = currentSortKeys()
         selectedRowIndices = []
