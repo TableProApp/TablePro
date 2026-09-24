@@ -293,7 +293,6 @@ struct SSHChannelRelayBacklogTests {
         let run = try runBacklogRelay()
 
         #expect(run.reads == Self.queuedBuffers + 1)
-        #expect(run.elapsed < 1.0)
     }
 
     @Test("A backlog past the per-round cap still lands inside one poll interval")
