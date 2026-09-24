@@ -139,10 +139,11 @@ final class SQLFileParser: Sendable {
         var backslashEscapesActive = false
         var collected: [(statement: String, lineNumber: Int)] = []
 
-        /// Oracle's statement grammar, so a PL/SQL unit arrives whole with its own `;`. Every other dialect has
-        /// always split an import at each `;` and relies on `DELIMITER` or dollar quoting for a routine body, and
-        /// keeps doing so.
-        var boundaries: PLSQLUnitTracker?
+        /// The statement grammar, for a dialect whose statement can own its `;`: a PL/SQL unit arrives whole with
+        /// its own `;`, and a T-SQL `MERGE` with the `;` SQL Server refuses to run it without, so a routine body
+        /// arrives whole there too. Every other dialect has always split an import at each `;` and relies on
+        /// `DELIMITER` or dollar quoting for a routine body, and keeps doing so.
+        var boundaries: (any SQLStatementBoundaryTracking)?
         var word: [unichar] = []
         var alternativeQuoteCloser: unichar = 0
         var lineHasCode = false
@@ -153,6 +154,10 @@ final class SQLFileParser: Sendable {
         /// literal where a word could start.
         var previousUnit: unichar = 0x20
 
+        /// Whether that unit belongs to a word or a name, which a letter glued to it continues. A number is neither,
+        /// so `1MERGE` is a number and a keyword, as the statement scanner and SQL Server both read it.
+        var previousUnitInWord = false
+
         /// Set for the last pass over the buffer, once the file has nothing more to give. A character held back for
         /// the one after it is settled with nothing after it, instead of being left in the buffer and dropped.
         var atEndOfInput = false
@@ -160,7 +165,9 @@ final class SQLFileParser: Sendable {
         init(grammar: SQLLexicalGrammar, currentStatement: NSMutableString?) {
             self.grammar = grammar
             self.currentStatement = currentStatement
-            self.boundaries = grammar.contains(.plsqlBlocks) ? PLSQLUnitTracker() : nil
+            self.boundaries = SQLStatementBoundaries.statementsCanOwnTerminator(in: grammar)
+                ? SQLStatementBoundaries.makeTracker(for: grammar)
+                : nil
         }
     }
 
@@ -200,6 +207,9 @@ final class SQLFileParser: Sendable {
     ) -> WordStep {
         let readsAlternativeQuotes = ctx.grammar.contains(.alternativeQuoting)
         guard ctx.boundaries != nil || readsAlternativeQuotes else { return .none }
+        let followsWord = ctx.previousUnitInWord
+        ctx.previousUnitInWord = (followsWord && SqlBlockStructure.continuesWord(char, grammar: ctx.grammar))
+            || (char >= 0x80 && SQLNonCodeSpan.isWordUnit(char))
         if !ctx.word.isEmpty {
             if SqlBlockStructure.continuesWord(char, grammar: ctx.grammar) {
                 ctx.word.append(char)
@@ -207,17 +217,19 @@ final class SQLFileParser: Sendable {
             }
             flushWord(&ctx)
         }
-        guard !SQLNonCodeSpan.isWordUnit(ctx.previousUnit),
-              SqlBlockStructure.startsWord(nsBuffer, at: i, length: bufLen, grammar: ctx.grammar)
-        else {
-            return .none
-        }
-        if readsAlternativeQuotes, let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
+        guard SqlBlockStructure.startsWord(nsBuffer, at: i, length: bufLen, grammar: ctx.grammar) else { return .none }
+        if readsAlternativeQuotes, !SQLNonCodeSpan.isWordUnit(ctx.previousUnit),
+           let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
             if quoteLength > 0 {
                 return .opensAlternativeQuote(prefixLength: quoteLength)
             }
-            guard ctx.atEndOfInput else { return .needsMoreData }
+            guard ctx.atEndOfInput else {
+                ctx.previousUnitInWord = followsWord
+                return .needsMoreData
+            }
         }
+        guard !followsWord else { return .none }
+        ctx.previousUnitInWord = true
         if ctx.boundaries?.needsWords == true {
             ctx.word.append(char)
         }
@@ -348,6 +360,7 @@ final class SQLFileParser: Sendable {
                 needsWhitespace: ctx.grammar.contains(.dashCommentsNeedWhitespace)
             ) {
                 ctx.state = .inSingleLineComment
+                ctx.boundaries?.observeGap()
                 i += 2
                 return StepResult(advanced: true, deferred: false)
             }
@@ -356,6 +369,7 @@ final class SQLFileParser: Sendable {
         if (char == kHash && ctx.grammar.contains(.hashLineComments))
             || (char == kSlash && nextChar == kSlash && ctx.grammar.contains(.doubleSlashLineComments)) {
             ctx.state = .inSingleLineComment
+            ctx.boundaries?.observeGap()
             return StepResult(advanced: false, deferred: false)
         }
 
@@ -369,6 +383,8 @@ final class SQLFileParser: Sendable {
                     ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
                 appendChar(char, to: ctx.currentStatement)
                 appendChar(next, to: ctx.currentStatement)
+            } else {
+                ctx.boundaries?.observeGap()
             }
             i += 2
             return StepResult(advanced: true, deferred: false)
@@ -456,15 +472,17 @@ final class SQLFileParser: Sendable {
             ctx.statementStartLine = ctx.currentLine
             ctx.hasStatementContent = true
         }
-        if !isWhitespace(char) {
+        if isWhitespace(char) {
+            ctx.boundaries?.observeGap()
+        } else {
             ctx.boundaries?.observeSymbol(char)
         }
         appendChar(char, to: ctx.currentStatement)
         return StepResult(advanced: false, deferred: false)
     }
 
-    /// A `;` ends the statement unless Oracle's grammar holds it inside a PL/SQL unit, and a unit keeps the `;` that
-    /// ends it.
+    /// A `;` ends the statement unless the grammar holds it inside a PL/SQL unit or a routine body, and a statement
+    /// that owns the `;` that ends it keeps it.
     private static func processSemicolon(_ ctx: inout ParserContext) {
         guard ctx.boundaries != nil else {
             yieldAndReset(&ctx)
@@ -995,6 +1013,9 @@ final class SQLFileParser: Sendable {
                 if !didManuallyAdvance { i += 1 }
                 if i > 0, i <= bufLen {
                     ctx.previousUnit = nsBuffer.character(at: i - 1)
+                }
+                if ctx.state != .normal {
+                    ctx.previousUnitInWord = false
                 }
             }
 

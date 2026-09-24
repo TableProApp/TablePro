@@ -34,19 +34,26 @@ struct SQLMergeTerminatorTests {
         "MERGE #staging AS t USING dbo.s AS s ON t.id = s.id WHEN MATCHED THEN DELETE;",
         "MERGE @changes AS t USING dbo.s AS s ON t.id = s.id WHEN MATCHED THEN DELETE;",
         Self.merge + " -- loaded nightly\n;",
+        "TRUNCATE TABLE dbo.\u{6CE8}\u{6587}\n" + Self.merge + ";",
+        "SELECT id, qualit\u{00E9} FROM dbo.produits ORDER BY qualit\u{00E9}\n" + Self.merge + ";",
+        "SELECT 1 AS caf\u{00E9} -- note\n" + Self.merge + ";",
+        "SELECT 1 AS x$\n" + Self.merge + ";",
+        "SELECT COUNT(*) FROM dbo.\u{9867}\u{5BA2} /* c */ " + Self.merge + ";",
+        "MERGE range AS t USING dbo.s AS s ON t.id = s.id WHEN MATCHED THEN DELETE;",
+        "MERGE Range AS t USING dbo.s AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET v = s.v;",
     ]
 
     /// A `MERGE` inside parentheses, a hint or a name, none of which needs a `;`.
     private static let otherStatements: [String] = [
         "SELECT s.id FROM dbo.s AS s INNER MERGE JOIN dbo.t AS t ON s.id = t.id;",
         "SELECT id FROM dbo.s OPTION (MERGE JOIN, MERGE UNION);",
-        "ALTER PARTITION FUNCTION pf () MERGE RANGE (2);",
         "INSERT INTO dbo.log (act, id) SELECT act, id FROM (" + Self.merge
             + " OUTPUT $action, inserted.id) AS c (act, id);",
         "DECLARE @merge INT = 1 SELECT @merge;",
         "SELECT a FROM #merge;",
         "SELECT 1 AS x$merge;",
         "SELECT 1 AS \u{00E9}merge;",
+        "SELECT 1 AS \u{6CE8}\u{6587}MERGE;",
         "SELECT merge_date FROM dbo.t;",
         "SELECT [merge] FROM dbo.t;",
         "SELECT 'MERGE' AS a;",
@@ -95,6 +102,24 @@ struct SQLMergeTerminatorTests {
     @Test("A ; that ends anything but a MERGE statement is still a separator", arguments: otherStatements)
     func otherStatementsLoseTheSeparator(sql: String) {
         #expect(sent(sql) == [String(sql.dropLast())])
+    }
+
+    /// `RANGE` is not reserved, so `MERGE range` is a statement on a table of that name, and the `;` this keeps is one
+    /// the server accepts after any statement.
+    @Test("The ; after ALTER PARTITION FUNCTION ... MERGE RANGE is kept, and the server runs it")
+    func mergeRangeKeepsItsTerminator() {
+        let sql = "ALTER PARTITION FUNCTION pf () MERGE RANGE (2);"
+
+        #expect(sent(sql) == [sql])
+    }
+
+    @Test("A reader that drops every ; tracks only the grammars whose statements can own one")
+    func statementsCanOwnTerminator() {
+        let owning = SQLLexicalProfile.curatedDatabaseTypeIds.filter { typeId in
+            let grammar = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil).execution
+            return SQLStatementBoundaries.statementsCanOwnTerminator(in: grammar)
+        }
+        #expect(Set(owning) == ["SQL Server", "Oracle"])
     }
 
     @Test("In a script only the MERGE keeps its ;")

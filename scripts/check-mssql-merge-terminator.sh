@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 #
-# Check, against a real SQL Server, that every MERGE the editor sends keeps the `;` the server requires.
+# Check, against a real SQL Server, that every MERGE the editor and SQL import send keeps the `;` the server requires.
 #
 # SQL Server fails a whole batch whose MERGE has no `;` with Msg 10713, and runs none of its statements. The
-# statement scanner strips the `;` that ends a statement, so a MERGE run alone, the last statement of a script, or
-# one sent statement by statement went out without it. Packages/TableProCore/Sources/TableProSQLGrammar/
-# SQLMergeStatementTracker.swift decides which `;` belongs to a MERGE, and where one does not is the server's
-# decision: a MERGE inside parentheses, a MERGE JOIN hint, MERGE RANGE, and a name such as @merge need none.
+# statement scanner and the import parser strip the `;` that ends a statement, so a MERGE run alone, the last
+# statement of a script, one sent statement by statement or one imported from a file went out without it.
+# Packages/TableProCore/Sources/TableProSQLGrammar/SQLMergeStatementTracker.swift decides which `;` belongs to a
+# MERGE, and where one does not is the server's decision: a MERGE inside parentheses, a MERGE JOIN hint, and a name
+# such as @merge or x$merge need none, while a MERGE after a name and a space, or on a table named range, does.
 #
-# So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
-# Libs/libsybdb.a. For each editor text it takes what the scanner sends, as one batch cut from the first statement to
-# the last the way the app's batch planner cuts it, and statement by statement, and runs both through
+# So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package, the app's
+# TablePro/Core/Utilities/SQL/SQLFileParser.swift and the shipped Libs/libsybdb.a. For each editor text it takes what
+# the scanner sends, as one batch cut from the first statement to the last the way the app's batch planner cuts it,
+# statement by statement, and what the import parser reads from the text saved as a file, and runs each through
 # MSSQLPluginDriver. Each must run and leave the rows expected. For a MERGE it also sends the batch without its last
 # `;`, which must still fail with Msg 10713: that is what the scanner used to send, and what shows the rule holds.
 #
@@ -75,9 +77,11 @@ fi
 
 mkdir -p "$WORK/Sources/Check"
 ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
-for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift; do
+for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileParser.swift \
+    "$ROOT"/TablePro/Core/Utilities/SQL/SQLChunkDecoder.swift "$ROOT"/TablePro/Core/Utilities/Text/ByteOrderMark.swift; do
     ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
+echo 'enum DecompressionError: Error { case fileReadFailed(String) }' > "$WORK/Sources/Check/DecompressionError.swift"
 
 cat > "$WORK/Package.swift" << MANIFEST
 // swift-tools-version: 6.0
@@ -122,6 +126,7 @@ enum Check {
         let name: String
         let text: String
         let needsTerminator: Bool
+        let keepsTerminator: Bool
         let runsStatementByStatement: Bool
         let expectation: String
         let expected: String
@@ -130,6 +135,7 @@ enum Check {
             _ name: String,
             _ text: String,
             needsTerminator: Bool,
+            keepsTerminator: Bool? = nil,
             runsStatementByStatement: Bool = true,
             expectation: String = "SELECT COUNT(*) FROM dbo.merge_target",
             expected: String = "2"
@@ -137,6 +143,7 @@ enum Check {
             self.name = name
             self.text = text
             self.needsTerminator = needsTerminator
+            self.keepsTerminator = keepsTerminator ?? needsTerminator
             self.runsStatementByStatement = runsStatementByStatement
             self.expectation = expectation
             self.expected = expected
@@ -172,6 +179,23 @@ enum Check {
         Case("a procedure whose body is a MERGE", "CREATE PROCEDURE dbo.merge_proc AS\n\(merge);",
              needsTerminator: true,
              expectation: "SELECT COUNT(*) FROM sys.procedures WHERE name = 'merge_proc'", expected: "1"),
+        Case("a procedure whose BEGIN ... END body holds a MERGE",
+             "CREATE PROCEDURE dbo.merge_proc AS\nBEGIN\n    UPDATE dbo.merge_source SET v = v;\n    \(merge);\nEND;",
+             needsTerminator: false,
+             expectation: "SELECT COUNT(*) FROM sys.procedures WHERE name = 'merge_proc'", expected: "1"),
+        Case("a MERGE after a name in Japanese",
+             "SELECT COUNT(*) FROM dbo.merge_source AS \u{6CE8}\u{6587}\n\(merge);", needsTerminator: true),
+        Case("a MERGE after an accented name and a line comment",
+             "SELECT 1 AS caf\u{00E9} -- note\n\(merge);", needsTerminator: true),
+        Case("a MERGE after a name that ends in $", "SELECT 1 AS x$\n\(merge);", needsTerminator: true),
+        Case("a MERGE after a name in Chinese and a block comment",
+             "SELECT COUNT(*) FROM dbo.merge_source AS \u{9867}\u{5BA2} /* c */ \(merge);", needsTerminator: true),
+        Case("a MERGE into a table named range",
+             merge.replacingOccurrences(of: "dbo.merge_target", with: "range") + ";", needsTerminator: true,
+             expectation: "SELECT COUNT(*) FROM range"),
+        Case("a MERGE into a table named Range, in mixed case",
+             merge.replacingOccurrences(of: "dbo.merge_target", with: "Range") + ";", needsTerminator: true,
+             expectation: "SELECT COUNT(*) FROM range"),
         Case("a MERGE inside parentheses",
              "INSERT INTO dbo.merge_log (act, id)\nSELECT act, id FROM (\(merge)\n"
                  + "OUTPUT $action, inserted.id) AS c (act, id);",
@@ -182,11 +206,14 @@ enum Check {
         Case("a MERGE JOIN query hint", "SELECT id FROM dbo.merge_source OPTION (MERGE JOIN);",
              needsTerminator: false, expected: "0"),
         Case("MERGE RANGE", "ALTER PARTITION FUNCTION merge_pf () MERGE RANGE (2);", needsTerminator: false,
+             keepsTerminator: true,
              expectation: "SELECT fanout FROM sys.partition_functions WHERE name = 'merge_pf'", expected: "3"),
         Case("a variable named merge", "DECLARE @merge INT = 1\nSELECT @merge AS a;", needsTerminator: false,
              expected: "0"),
         Case("a name ending in merge", "SELECT 1 AS x$merge;", needsTerminator: false, expected: "0"),
         Case("a name with a letter outside ASCII", "SELECT 1 AS \u{00E9}merge;", needsTerminator: false,
+             expected: "0"),
+        Case("a name in Japanese that ends in merge", "SELECT 1 AS \u{6CE8}\u{6587}merge;", needsTerminator: false,
              expected: "0"),
     ]
 
@@ -195,8 +222,10 @@ enum Check {
         IF OBJECT_ID(N'dbo.merge_target') IS NOT NULL DROP TABLE dbo.merge_target;
         IF OBJECT_ID(N'dbo.merge_source') IS NOT NULL DROP TABLE dbo.merge_source;
         IF OBJECT_ID(N'dbo.merge_log') IS NOT NULL DROP TABLE dbo.merge_log;
+        IF OBJECT_ID(N'dbo.range') IS NOT NULL DROP TABLE dbo.range;
         IF EXISTS (SELECT 1 FROM sys.partition_functions WHERE name = 'merge_pf') DROP PARTITION FUNCTION merge_pf;
         CREATE TABLE dbo.merge_target (id INT PRIMARY KEY, v INT);
+        CREATE TABLE range (id INT PRIMARY KEY, v INT);
         CREATE TABLE dbo.merge_source (id INT, v INT);
         CREATE TABLE dbo.merge_log (act NVARCHAR(10), id INT);
         CREATE PARTITION FUNCTION merge_pf (INT) AS RANGE LEFT FOR VALUES (1, 2, 3);
@@ -205,7 +234,7 @@ enum Check {
 
     static let teardown = """
         DROP PROCEDURE IF EXISTS dbo.merge_proc;
-        DROP TABLE IF EXISTS dbo.merge_target, dbo.merge_source, dbo.merge_log;
+        DROP TABLE IF EXISTS dbo.merge_target, dbo.merge_source, dbo.merge_log, dbo.range;
         IF EXISTS (SELECT 1 FROM sys.partition_functions WHERE name = 'merge_pf') DROP PARTITION FUNCTION merge_pf;
         """
 
@@ -251,15 +280,27 @@ enum Check {
         try await driver.executeBatch(query: sql, rowCap: nil, parameters: nil)?.errors ?? []
     }
 
-    static func runStatements(_ driver: MSSQLPluginDriver, _ text: String) async -> String? {
-        for statement in SQLStatementScanner.executableStatements(in: text, grammar: grammar) {
+    static func runStatements(_ driver: MSSQLPluginDriver, _ statements: [String]) async -> String? {
+        for statement in statements {
             do {
-                _ = try await driver.execute(query: statement.sql)
+                _ = try await driver.execute(query: statement)
             } catch {
                 return error.localizedDescription
             }
         }
         return nil
+    }
+
+    /// What SQL import reads from the text saved as a file, each statement of which it sends on its own.
+    static func importedStatements(of text: String) async throws -> [String] {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var statements: [String] = []
+        for try await (statement, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, grammar: grammar) {
+            statements.append(statement)
+        }
+        return statements
     }
 
     static func main() async {
@@ -285,8 +326,8 @@ enum Check {
                     expect(false, "\(check.name): the scanner finds a statement")
                     continue
                 }
-                expect(batch.hasSuffix(";") == check.needsTerminator,
-                       "\(check.name): the batch \(check.needsTerminator ? "keeps" : "drops") its last ;", batch)
+                expect(batch.hasSuffix(";") == check.keepsTerminator,
+                       "\(check.name): the batch \(check.keepsTerminator ? "keeps" : "drops") its last ;", batch)
 
                 _ = try await runBatch(driver, reset)
                 let errors = try await runBatch(driver, batch)
@@ -296,11 +337,20 @@ enum Check {
 
                 if check.runsStatementByStatement {
                     _ = try await runBatch(driver, reset)
-                    let failure = await runStatements(driver, check.text)
+                    let scanned = SQLStatementScanner.executableStatements(in: check.text, grammar: grammar).map(\.sql)
+                    let failure = await runStatements(driver, scanned)
                     let afterStatements = try await answer(driver, check.expectation)
                     expect(failure == nil && afterStatements == check.expected,
                            "\(check.name): statement by statement it runs",
                            "error \(failure ?? "none"), answer \(afterStatements)")
+
+                    _ = try await runBatch(driver, reset)
+                    let imported = try await importedStatements(of: check.text)
+                    let importFailure = await runStatements(driver, imported)
+                    let afterImport = try await answer(driver, check.expectation)
+                    expect(importFailure == nil && afterImport == check.expected,
+                           "\(check.name): imported from a file it runs",
+                           "statements \(imported), error \(importFailure ?? "none"), answer \(afterImport)")
                 }
 
                 guard check.needsTerminator else { continue }

@@ -184,6 +184,9 @@ public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
         settlePendingBeforeNonWord()
     }
 
+    /// PL/SQL reads `a . b` as `a.b`, so whitespace leaves a member name a member name.
+    public mutating func observeGap() {}
+
     public mutating func observeSemicolon() -> Bool {
         previousSymbol = nil
         followsPeriod = false

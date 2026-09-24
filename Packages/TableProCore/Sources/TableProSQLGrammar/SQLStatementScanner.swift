@@ -315,7 +315,7 @@ public enum SQLStatementScanner {
             if let span = SQLNonCodeSpan.span(at: i, in: nsQuery, grammar: grammar) {
                 switch span.kind {
                 case .lineComment, .blockComment:
-                    break
+                    tracker.observeGap()
                 case .executableComment:
                     hasStatementContent = true
                 case .quoted, .parameter:
@@ -382,6 +382,7 @@ public enum SQLStatementScanner {
 
             let blankLength = StatementBlank.blankLength(in: nsQuery, at: i)
             if blankLength > 0 {
+                tracker.observeGap()
                 i += blankLength
                 continue
             }
