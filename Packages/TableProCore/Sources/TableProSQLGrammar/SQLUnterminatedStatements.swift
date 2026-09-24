@@ -22,10 +22,10 @@ public enum SQLUnterminatedStatements {
     /// own.
     public static func runnable(in statement: String, grammar: SQLLexicalGrammar) -> [String] {
         guard grammar.contains(.unterminatedStatements) else { return [statement] }
-        let code = SQLCodeProjection.code(of: statement, grammar: grammar) as NSString
-        let tokens = TSQLTokens.read(code)
+        let text = statement as NSString
+        let tokens = TSQLTokens.read(text, grammar: grammar)
         guard !definesRoutine(tokens) else { return [statement] }
-        return [statement] + ownTexts(of: statementSpans(in: tokens, length: code.length), in: statement as NSString)
+        return [statement] + ownTexts(of: statementSpans(in: tokens, length: text.length), in: text)
     }
 
     /// The reserved keywords that begin a T-SQL statement. `ELSE` and `FETCH` are left out because they also continue
@@ -176,12 +176,16 @@ public enum SQLUnterminatedStatements {
     }
 }
 
-/// T-SQL's words, parentheses and terminators in a code projection, where every literal and comment is already blank.
+/// T-SQL's words, literals, parentheses and terminators. A comment is nothing, as it is to the server.
 enum TSQLTokens {
     struct Token {
         enum Kind: Equatable {
             case word(String)
             case name
+
+            /// A string or a quoted identifier. It stands between the words on either side, so `UPDATE [t] SET` is
+            /// never read as the `UPDATE SET` of a foreign key, nor `SELECT [a], [b]` as a list of permissions.
+            case quoted
             case open
             case close
             case terminator
@@ -214,12 +218,22 @@ enum TSQLTokens {
     private static let digitZero = UInt16(UnicodeScalar("0").value)
     private static let hexLetters = Set("abcdefABCDEF".utf16)
 
-    static func read(_ code: NSString) -> [Token] {
+    /// Words and numbers are read from the code projection, where every comment and literal is blank, so none runs
+    /// into a span ``SQLNonCodeSpan`` found.
+    static func read(_ text: NSString, grammar: SQLLexicalGrammar) -> [Token] {
+        let code = SQLCodeProjection.code(of: text as String, grammar: grammar) as NSString
         let length = code.length
         var tokens: [Token] = []
         var depth = 0
         var index = 0
         while index < length {
+            if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+                if span.kind == .quoted {
+                    tokens.append(Token(kind: .quoted, location: index, depth: depth))
+                }
+                index = max(span.end, index + 1)
+                continue
+            }
             let blank = StatementBlank.blankLength(in: code, at: index)
             if blank > 0 {
                 index += blank
@@ -239,8 +253,8 @@ enum TSQLTokens {
                 index = endOfNumber(code, from: index, length: length)
             } else if startsWord(code, at: index) {
                 let end = endOfWord(code, from: index, length: length)
-                let text = code.substring(with: NSRange(location: index, length: end - index))
-                tokens.append(Token(kind: wordKind(text), location: index, depth: depth))
+                let word = code.substring(with: NSRange(location: index, length: end - index))
+                tokens.append(Token(kind: wordKind(word), location: index, depth: depth))
                 index = end
             } else {
                 tokens.append(Token(kind: symbolKind(unit), location: index, depth: depth))

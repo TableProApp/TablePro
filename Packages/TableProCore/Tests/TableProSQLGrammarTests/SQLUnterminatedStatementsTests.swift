@@ -69,6 +69,18 @@ struct SQLUnterminatedStatementsTests {
         #expect(inner(sql) == expected)
     }
 
+    @Test("A quoted name stands between the words around it, so the statement it follows still begins", arguments: [
+        ("SELECT 1\nUPDATE [t] SET c = 9", ["SELECT 1", "UPDATE [t] SET c = 9"]),
+        ("SELECT 1\nUPDATE \"t\" SET c = 9", ["SELECT 1", "UPDATE \"t\" SET c = 9"]),
+        ("SELECT 1\nUPDATE [t]\nSET c = 9", ["SELECT 1", "UPDATE [t]\nSET c = 9"]),
+        ("PRINT 1\nUPDATE [t] SET c = 9", ["PRINT 1", "UPDATE [t] SET c = 9"]),
+        ("PRINT 1\nSELECT [a], [b] INTO x FROM t", ["PRINT 1", "SELECT [a], [b] INTO x FROM t"]),
+        ("PRINT 1\nSELECT \"a\", b INTO x FROM t", ["PRINT 1", "SELECT \"a\", b INTO x FROM t"]),
+    ])
+    func quotedNameBetweenWords(sql: String, expected: [String]) {
+        #expect(inner(sql) == expected)
+    }
+
     @Test("A keyword glued to a number begins a statement, as the server lexes it", arguments: [
         "SELECT 1DELETE FROM t", "SELECT 1.DELETE FROM t", "SELECT 1e1DELETE FROM t", "SELECT 1eDELETE FROM t",
         "SELECT 1.5e+2DELETE FROM t", "SELECT 1E+DELETE FROM t", "SELECT $1DELETE FROM t", "SELECT €1DELETE FROM t",
@@ -110,6 +122,9 @@ struct SQLUnterminatedStatementsTests {
         #expect(inner("UPDATE STATISTICS t SET NOCOUNT ON") == ["UPDATE STATISTICS t", "SET NOCOUNT ON"])
         #expect(inner("MERGE t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET c = s.c;")
             == ["MERGE t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET c = s.c"])
+        #expect(inner("UPDATE [t] SET [c] = 1 SET NOCOUNT OFF") == ["UPDATE [t] SET [c] = 1", "SET NOCOUNT OFF"])
+        #expect(inner("MERGE [t] USING [s] ON [t].[id] = [s].[id] WHEN MATCHED THEN UPDATE SET [c] = [s].[c];")
+            == ["MERGE [t] USING [s] ON [t].[id] = [s].[id] WHEN MATCHED THEN UPDATE SET [c] = [s].[c]"])
     }
 
     @Test("A word that only continues a read begins nothing", arguments: [
@@ -143,6 +158,8 @@ struct SQLUnterminatedStatementsTests {
             "ALTER"
         ),
         ("CREATE TABLE t (a int REFERENCES p (id) ON DELETE SET NULL ON UPDATE SET DEFAULT)", "CREATE"),
+        ("GRANT SELECT, UPDATE ON [t] TO [u]", "GRANT"),
+        ("ALTER TABLE [t] ADD FOREIGN KEY ([a]) REFERENCES [p] ([id]) ON DELETE CASCADE ON UPDATE SET NULL", "ALTER"),
         (
             "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id);",
             "MERGE"

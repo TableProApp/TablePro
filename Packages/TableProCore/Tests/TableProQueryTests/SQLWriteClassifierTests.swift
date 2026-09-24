@@ -206,7 +206,8 @@ struct SQLWriteClassifierTests {
           arguments: [
               "SELECT 1\nDROP TABLE t", "SELECT 1 DELETE FROM t", "SELECT 1 TRUNCATE TABLE t",
               "SELECT 1DELETE FROM t", "SELECT $1DELETE FROM t", "SELECT 1 EXEC('DELETE FROM t')",
-              "SELECT DB_NAME() USE master",
+              "SELECT DB_NAME() USE master", "SELECT 1\nUPDATE [t] SET c = 1", "SELECT 1\nUPDATE \"t\" SET c = 1",
+              "SELECT 1\nUPDATE [t]\nSET c = 1",
           ])
     func unterminatedStatementIsAWrite(sql: String) {
         #expect(isWrite(sql, .mssql))
@@ -217,6 +218,7 @@ struct SQLWriteClassifierTests {
         "SELECT 'DROP TABLE t' AS s -- DELETE FROM t", "SELECT 1\nSELECT 2",
         "SELECT * FROM t WHERE id IN (SELECT id FROM s)", "SELECT CASE WHEN a = 1 THEN 'x' ELSE 'y' END FROM t",
         "SELECT id FROM t ORDER BY id OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY", "SELECT 0xDELETE FROM t",
+        "SELECT [a], 'b' FROM [t] WHERE [c] = 'd'",
     ])
     func unterminatedReadIsARead(sql: String) {
         #expect(!isWrite(sql, .mssql))

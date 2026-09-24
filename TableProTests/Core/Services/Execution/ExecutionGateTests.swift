@@ -298,6 +298,8 @@ struct ExecutionGateTests {
         "PRINT 'x' UPDATE t SET c = 1",
         "SELECT 1DELETE FROM t",
         "SELECT 1 EXEC('DELETE FROM t')",
+        "SELECT 1\nUPDATE [t] SET c = 1",
+        "PRINT 1\nSELECT [a], [b] INTO x FROM t",
     ])
     func readOnlyDeniesUnterminatedStatement(sql: String) async {
         let confirm = StubConfirming(answer: true)
