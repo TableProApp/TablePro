@@ -20,7 +20,14 @@ extension ContextItem {
             return name.isEmpty ? String(localized: "Saved Query") : name
         case .file(let url):
             return url.lastPathComponent
+        case .queryContext(let attachment):
+            return attachment.chipLabel
         }
+    }
+
+    var helpText: String? {
+        guard case .queryContext(let attachment) = self else { return nil }
+        return attachment.helpText
     }
 
     var symbolName: String {
@@ -37,6 +44,8 @@ extension ContextItem {
             return "star"
         case .file:
             return "doc"
+        case .queryContext:
+            return "tablecells"
         }
     }
 
@@ -54,6 +63,8 @@ extension ContextItem {
             return "savedQuery:\(id.uuidString)"
         case .file(let url):
             return "file:\(url.absoluteString)"
+        case .queryContext(let attachment):
+            return "queryContext:\(attachment.id.uuidString)"
         }
     }
 }

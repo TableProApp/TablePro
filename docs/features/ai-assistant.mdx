@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 14 providers"
+description: "Built-in AI for SQL: chat with tool calling, inline suggestions, and review, explain, optimize, and fix-error across 14 providers"
 ---
 
 One provider is active at a time and answers every AI request in the app, from the chat panel to the ghost text in the editor. Switch it and all of them switch with it. Keys are yours and live in the macOS Keychain, so every request bills to your own account with that provider.
@@ -102,7 +102,7 @@ Type `@` in the composer to open a picker at the caret: **Schema**, a specific *
 
 ### Slash commands
 
-Type `/` for **`/explain`**, **`/optimize`**, and **`/fix`**, which act on the active query, or **`/help`** for the list. Add your own under **Settings > AI > Custom Slash Commands**: a template substitutes `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}`, the text typed after the command, at send time.
+Type `/` for **`/review`**, **`/explain`**, **`/optimize`**, and **`/fix`**, or **`/help`** for the list. The first three act on the text typed after the command, or on the whole query tab when there is none, and attach the same table structure as the menu actions. **`/fix`** sends the tab's last failed statement with its error. Add your own under **Settings > AI > Custom Slash Commands**: a template substitutes `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}`, the text typed after the command, at send time. A custom command with a built-in's name runs only from the command menu.
 
 ### Model picker
 
@@ -112,11 +112,29 @@ The cpu icon beside the mode picker lists every configured provider and its mode
 
 A long job reads badly in a 270pt pane. [Agent mode](/features/agent-mode) (`Cmd+Option+Shift+A`) gives the same session the whole window: the sessions on this connection, the conversation, and a pane holding the SQL it proposed and the rows it read. It is one conversation shown two ways, so switching does not start another.
 
-## Explain, optimize, and fix
+## Review, explain, optimize, and fix
 
-**Query > Explain with AI** (`Cmd+L`) and **Query > Optimize with AI** (`Cmd+Option+L`) act on the whole query tab; the editor's right-click menu has both and acts on the selection instead, appearing only when text is selected. When a query fails, **Fix with AI** on the inline error banner sends the query and the error. All three open a new conversation and send at once.
+Put the cursor in a statement, or select the part you want, then pick an action. Each one sends what **Run** would run, never the whole tab, and opens a new conversation.
 
-The reply comes back as a walkthrough. Optimize and Fix diff your query against the rewritten one, switchable between **Unified** and **Split**; Explain anchors its steps to the query as it stands. Each numbered step carries a one-line reason and a tag (**Critical**, **Change**, or **Context**), expands to the lines it refers to, and offers **Jump to lines** and **Ask about this change**, which keeps a follow-up anchored to that step. **Apply to Editor** replaces the editor content after you confirm; nothing is applied on its own. A model that answers in prose instead renders as a normal message.
+| Action | Where to find it | What comes back |
+|--------|------------------|-----------------|
+| **Review with AI** | **Review** in the query bar, **Query > Review with AI** (`Cmd+Option+Shift+L`), the editor's context menu | Findings ranked by severity, each with its fix |
+| **Explain with AI** | **Query > Explain with AI** (`Cmd+L`), the context menu, the menu beside **Review** | What the statement does, step by step |
+| **Optimize with AI** | **Query > Optimize with AI** (`Cmd+Option+L`), the context menu, the menu beside **Review** | A rewrite or an index to add, with the reason |
+| **Fix with AI** | The error banner after a query fails | The failed statement, corrected against its error |
+
+Start with **Review with AI** when you are unsure what to ask: it checks correctness, cost and safety in one pass, and says so when the statement is fine.
+
+<Frame caption="The chip lists the tables whose structure went with the request">
+  <img className="block dark:hidden" src="/images/ai-query-review.png" alt="Query bar with the Review button, and the assistant answering a review of a JOIN" />
+  <img className="hidden dark:block" src="/images/ai-query-review-dark.png" alt="Query bar with the Review button, and the assistant answering a review of a JOIN" />
+</Frame>
+
+The request carries the structure of the tables the statement names, read from the tab's own database and schema: columns and types, keys, indexes with their predicates, foreign keys, and estimated row counts. Up to 12 tables go, in the order the statement names them. The chip above your message lists them; hover it to see any table that could not be read or was not found. If the tab already shows an EXPLAIN plan for the same statement, the plan goes too. Building this reads only the database's catalog: your statement never runs, and no rows are sent. Turn off **Include database schema** in **Settings > AI** to send the statement alone.
+
+With no provider set up the actions are dimmed. With AI turned off, or on a connection whose AI policy is **Never**, they are hidden.
+
+The reply comes back as a walkthrough. Optimize and Fix diff your statement against the rewritten one, switchable between **Unified** and **Split**; Review and Explain anchor their steps to the statement as it stands. Each numbered step carries a one-line reason and a tag (**Critical**, **Change**, or **Context**), expands to the lines it refers to, and offers **Jump to lines** and **Ask about this change**, which keeps a follow-up anchored to that step. **Apply to Editor** replaces the statement you sent after you confirm. If you edited that statement since, the suggestion opens as a new query instead. A model that answers in prose renders as a normal message.
 
 ## Per-connection AI rules
 

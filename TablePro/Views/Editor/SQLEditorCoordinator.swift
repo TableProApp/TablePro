@@ -107,8 +107,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
     var onRunStatement: ((String, Int) -> Bool)?
-    var onAIExplain: ((String) -> Void)?
-    var onAIOptimize: ((String) -> Void)?
+    var currentAIAvailability: (() -> AIQueryActionAvailability)?
+    var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var databaseType: DatabaseType?
     var tabID: UUID?
@@ -313,8 +313,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         statementRunController.onRun = nil
         statementRunController.clear(in: controller)
         diagnosticsController.clear(in: controller)
-        onAIExplain = nil
-        onAIOptimize = nil
+        currentAIAvailability = nil
+        onAIAction = nil
         onSaveAsFavorite = nil
         schemaProvider = nil
         controller?.textView?.menu = nil
@@ -405,10 +405,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private func installAIContextMenu(controller: TextViewController) {
         guard controller.textView != nil else { return }
         let menu = AIEditorContextMenu(title: "")
-        menu.hasSelection = { [weak controller] in
-            guard let controller else { return false }
-            return controller.cursorPositions.contains { $0.range.length > 0 }
-        }
         menu.selectedText = { [weak controller] in
             guard let controller, let textView = controller.textView else { return nil }
             let range = textView.selectedRange()
@@ -418,14 +414,21 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         menu.fullText = { [weak controller] in
             controller?.textView?.string
         }
-        menu.onExplainWithAI = { [weak self] text in self?.onAIExplain?(text) }
-        menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
+        menu.aiAvailability = { [weak self] in self?.currentAIAvailability?() ?? .hidden }
+        menu.onAIAction = { [weak self, weak controller] action in
+            self?.onAIAction?(action, Self.aiTarget(for: controller?.textView))
+        }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
         menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
         menu.foldStateAtCursor = { [weak controller] in controller?.foldStateAtCursor() }
         menu.onToggleFold = { [weak controller] in controller?.toggleFoldAtCursor() }
         contextMenu = menu
         controller.textView?.menu = menu
+    }
+
+    static func aiTarget(for textView: TextView?) -> AIQueryTarget {
+        guard let textView else { return .selectionOrStatementAtCursor }
+        return .contextMenu(selectedRange: textView.selectedRange(), contextClickWord: textView.contextClickWordRange)
     }
 
     private let foldPreview = FoldPreviewController()

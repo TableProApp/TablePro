@@ -52,12 +52,14 @@ extension AIChatViewModel {
             overrideModel: selectedModel
         )
         guard let resolved else {
+            clearPendingWalkthrough()
             errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
             return
         }
 
         if connection != nil, let policy = resolveConnectionPolicy(settings: settings) {
             if policy == .never {
+                clearPendingWalkthrough()
                 errorMessage = String(localized: "AI is disabled for this connection.")
                 if let last = messages.last, last.role == .user {
                     messages.removeLast()
@@ -269,7 +271,7 @@ extension AIChatViewModel {
                 let failedAssistantID = currentAssistantID
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    self.pendingWalkthroughBeforeSQL = nil
+                    self.clearPendingWalkthrough()
                     if !Task.isCancelled {
                         Self.logger.error("Streaming failed: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
@@ -297,7 +299,8 @@ extension AIChatViewModel {
     @MainActor
     func resolveWalkthroughIfNeeded(id: UUID) {
         guard let beforeSQL = pendingWalkthroughBeforeSQL else { return }
-        pendingWalkthroughBeforeSQL = nil
+        let source = pendingWalkthroughSource
+        clearPendingWalkthrough()
         guard let turn = turn(withID: id) else { return }
 
         let textBlocks = turn.blocks.filter { block in
@@ -331,7 +334,7 @@ extension AIChatViewModel {
         }
 
         guard let envelope = WalkthroughEnvelopeParser.parse(from: joined) else { return }
-        let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope)
+        let walkthrough = SqlWalkthroughBlock(beforeSQL: beforeSQL, envelope: envelope, source: source)
         turn.appendBlock(.sqlWalkthrough(walkthrough))
     }
 

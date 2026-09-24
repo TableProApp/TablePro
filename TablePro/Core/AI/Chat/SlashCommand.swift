@@ -6,6 +6,7 @@
 import Foundation
 
 enum SlashCommand: String, CaseIterable, Identifiable, Sendable {
+    case review
     case explain
     case optimize
     case fix
@@ -17,6 +18,7 @@ enum SlashCommand: String, CaseIterable, Identifiable, Sendable {
 
     var description: String {
         switch self {
+        case .review: return String(localized: "Review the current query against its tables")
         case .explain: return String(localized: "Explain the current query")
         case .optimize: return String(localized: "Suggest optimizations for the current query")
         case .fix: return String(localized: "Fix the last error on the current query")
@@ -24,14 +26,25 @@ enum SlashCommand: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var requiresQuery: Bool {
+    var queryAction: AIQueryAction? {
         switch self {
-        case .explain, .optimize, .fix: return true
-        case .help: return false
+        case .review: return .review
+        case .explain: return .explain
+        case .optimize: return .optimize
+        case .fix: return .fixError
+        case .help: return nil
         }
     }
 
+    var requiresQuery: Bool {
+        queryAction != nil
+    }
+
     static let allCommands: [SlashCommand] = allCases
+
+    static func isBuiltIn(name: String) -> Bool {
+        SlashCommand(rawValue: name.trimmingCharacters(in: .whitespaces).lowercased()) != nil
+    }
 
     /// Parses a typed input. Returns the command and any body text after it,
     /// or nil if the text doesn't start with a known slash command.

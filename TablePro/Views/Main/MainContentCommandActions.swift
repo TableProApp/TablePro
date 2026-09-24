@@ -621,6 +621,10 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.insertQueryFromAI(query)
     }
 
+    func applyAISuggestion(_ afterSQL: String, replacing beforeSQL: String, source: QueryEditorAnchor?) {
+        coordinator?.applyAISuggestion(afterSQL, replacing: beforeSQL, source: source)
+    }
+
     // MARK: - Tab Operations (Group A — Called Directly)
 
     /// A new tab joins the connection's own tab list. It used to open another window whenever
@@ -1113,16 +1117,12 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.runExplain()
     }
 
-    func aiExplainQuery() {
-        guard let tab = coordinator?.tabManager.selectedTab, tab.hasQueryText else { return }
-        coordinator?.showAssistant()
-        coordinator?.aiViewModel?.handleExplainSelection(tab.content.query)
+    var aiQueryActionAvailability: AIQueryActionAvailability {
+        coordinator?.aiQueryActionAvailability ?? .hidden
     }
 
-    func aiOptimizeQuery() {
-        guard let tab = coordinator?.tabManager.selectedTab, tab.hasQueryText else { return }
-        coordinator?.showAssistant()
-        coordinator?.aiViewModel?.handleOptimizeSelection(tab.content.query)
+    func runAIQueryAction(_ action: AIQueryAction) {
+        coordinator?.runAIQueryAction(action, target: .selectionOrStatementAtCursor)
     }
 
     func previewFKReference() {

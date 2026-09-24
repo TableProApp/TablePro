@@ -72,23 +72,10 @@ extension MainContentCoordinator {
         if tab.tabType == .table {
             sql = fullQuery
             sourceOffset = 0
-        } else if let firstCursor = cursorPositions.first, firstCursor.range.length > 0 {
-            let nsQuery = fullQuery as NSString
-            let clampedRange = NSIntersectionRange(
-                firstCursor.range,
-                NSRange(location: 0, length: nsQuery.length)
-            )
-            sql = nsQuery.substring(with: clampedRange)
-            sourceOffset = clampedRange.location
         } else {
-            let statement = QueryStatementScanner.locatedStatementAtCursor(
-                in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0,
-                model: statementModel,
-                grammar: lexicalGrammar
-            )
-            sql = statement.sql
-            sourceOffset = statement.offset
+            let target = selectionOrStatementAtCursor(in: fullQuery)
+            sql = target.sql
+            sourceOffset = target.offset
         }
 
         return QueryStatementScanner

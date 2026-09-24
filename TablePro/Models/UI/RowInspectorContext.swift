@@ -59,6 +59,27 @@ internal struct RowInspectorContext: Equatable {
 internal struct AssistantContext: Equatable {
     internal let currentQuery: String?
     internal let queryResults: String?
+    internal let editorTarget: AssistantEditorTarget?
+
+    internal init(currentQuery: String?, queryResults: String?, editorTarget: AssistantEditorTarget? = nil) {
+        self.currentQuery = currentQuery
+        self.queryResults = queryResults
+        self.editorTarget = editorTarget
+    }
 
     internal static let empty = AssistantContext(currentQuery: nil, queryResults: nil)
+}
+
+internal struct AssistantEditorSnapshot: Equatable {
+    internal let currentQuery: String?
+    internal let target: AssistantEditorTarget?
+
+    internal static let empty = AssistantEditorSnapshot(currentQuery: nil, target: nil)
+}
+
+internal struct AssistantEditorTarget: Equatable, Sendable {
+    internal let tabId: UUID
+    internal let scope: DatabaseScope?
+    internal let errorMessage: String?
+    internal let errorQuery: String?
 }

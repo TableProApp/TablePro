@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("SlashCommand")
@@ -78,5 +78,36 @@ struct SlashCommandTests {
         #expect(SlashCommand.optimize.requiresQuery)
         #expect(SlashCommand.fix.requiresQuery)
         #expect(!SlashCommand.help.requiresQuery)
+        #expect(SlashCommand.review.requiresQuery)
+    }
+
+    @Test("/review parses with its body and maps to the review action")
+    func reviewParsesAndMaps() {
+        let parsed = SlashCommand.parse("/review SELECT * FROM orders")
+        #expect(parsed?.command == .review)
+        #expect(parsed?.body == "SELECT * FROM orders")
+        #expect(SlashCommand.review.queryAction == .review)
+        #expect(SlashCommand.fix.queryAction == .fixError)
+        #expect(SlashCommand.help.queryAction == nil)
+    }
+
+    @Test("A prefix of /re matches review only")
+    func reviewPrefixMatch() {
+        #expect(SlashCommand.match(prefix: "/re") == [.review])
+    }
+
+    @Test("Built-in names are recognised whatever their case or padding")
+    func builtInNames() {
+        #expect(SlashCommand.isBuiltIn(name: "review"))
+        #expect(SlashCommand.isBuiltIn(name: " Review "))
+        #expect(!SlashCommand.isBuiltIn(name: "summarize"))
+    }
+
+    @Test("The help text lists every built-in command")
+    @MainActor
+    func helpListsEveryCommand() {
+        for command in SlashCommand.allCommands {
+            #expect(AIChatViewModel.helpMarkdown.contains("/\(command.name)"))
+        }
     }
 }

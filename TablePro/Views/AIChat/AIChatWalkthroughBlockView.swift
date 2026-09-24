@@ -52,7 +52,7 @@ struct AIChatWalkthroughBlockView: View {
                     }
                 }
                 if let afterSQL = walkthrough.envelope.afterSQL, !afterSQL.isEmpty {
-                    applyControls(afterSQL: afterSQL)
+                    applyControls(afterSQL: afterSQL, walkthrough: walkthrough)
                 }
             }
             .padding(10)
@@ -373,7 +373,7 @@ struct AIChatWalkthroughBlockView: View {
         .padding(12)
     }
 
-    private func applyControls(afterSQL: String) -> some View {
+    private func applyControls(afterSQL: String, walkthrough: SqlWalkthroughBlock) -> some View {
         HStack {
             Spacer()
             Button(String(localized: "Apply to Editor")) { showApplyConfirmation = true }
@@ -381,13 +381,19 @@ struct AIChatWalkthroughBlockView: View {
                 .disabled(actions == nil)
                 .help(actions == nil
                     ? String(localized: "Open a connection to apply")
-                    : String(localized: "Put the suggested SQL into the query editor"))
+                    : String(localized: "Replace the original statement in the editor with the suggested SQL"))
         }
         .alert(String(localized: "Apply suggested SQL?"), isPresented: $showApplyConfirmation) {
-            Button(String(localized: "Apply")) { actions?.loadQueryIntoEditor(afterSQL) }
+            Button(String(localized: "Apply")) {
+                actions?.applyAISuggestion(afterSQL, replacing: walkthrough.beforeSQL, source: walkthrough.source)
+            }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("This puts the AI-generated SQL into the query editor, replacing what is there. Nothing runs until you execute it.")
+            Text(String(localized: """
+                This replaces the original statement in the editor with the AI-generated SQL. \
+                If the statement has changed since, the SQL opens in a new query instead. \
+                Nothing runs until you execute it.
+                """))
         }
     }
 

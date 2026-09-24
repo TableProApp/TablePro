@@ -12,13 +12,14 @@ enum ContextItem: Codable, Equatable, Sendable {
     case queryResult(summary: String)
     case savedQuery(id: UUID, name: String)
     case file(url: URL)
+    case queryContext(QueryContextAttachment)
 
     private enum CodingKeys: String, CodingKey {
-        case kind, connectionId, name, text, summary, id, url
+        case kind, connectionId, name, text, summary, id, url, queryContext
     }
 
     private enum Kind: String, Codable {
-        case schema, table, currentQuery, queryResult, savedQuery, file
+        case schema, table, currentQuery, queryResult, savedQuery, file, queryContext
     }
 
     init(from decoder: Decoder) throws {
@@ -42,6 +43,8 @@ enum ContextItem: Codable, Equatable, Sendable {
             self = .savedQuery(id: id, name: name)
         case .file:
             self = .file(url: try container.decode(URL.self, forKey: .url))
+        case .queryContext:
+            self = .queryContext(try container.decode(QueryContextAttachment.self, forKey: .queryContext))
         }
     }
 
@@ -68,6 +71,9 @@ enum ContextItem: Codable, Equatable, Sendable {
         case .file(let url):
             try container.encode(Kind.file, forKey: .kind)
             try container.encode(url, forKey: .url)
+        case .queryContext(let attachment):
+            try container.encode(Kind.queryContext, forKey: .kind)
+            try container.encode(attachment, forKey: .queryContext)
         }
     }
 }

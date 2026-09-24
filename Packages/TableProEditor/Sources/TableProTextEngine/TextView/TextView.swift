@@ -252,6 +252,9 @@ open class TextView: NSView, NSTextContent {
     /// Manages emphasized text ranges in the text view
     public var emphasisManager: EmphasisManager?
 
+    /// The word the last right-click selected, or nil when that click landed inside the existing selection.
+    public internal(set) var contextClickWordRange: NSRange?
+
     // MARK: - Private Properties
 
     var isFirstResponder: Bool = false
