@@ -14,8 +14,8 @@ final class SQLFileParser: Sendable {
     /// SQL Server takes at most 65,536 packets of 4,096 bytes in one request, about 134 million UTF-16 units of batch
     /// text: measured on Azure SQL Edge 15, a 133,900,000-unit batch ran and a 133,960,000-unit one closed the
     /// connection. A batch that reaches half of that ends at its next `;`, which leaves the statement it ends inside
-    /// as much room again. A dump written with no `GO` line is then sent in pieces the server takes, and held one
-    /// piece at a time rather than whole.
+    /// as much room again. A script whose `GO` lines stand that far apart is then sent in pieces the server takes,
+    /// and held one piece at a time rather than whole.
     static let defaultBatchCutLength = 67_108_864
 
     private let batchCutLength: Int
@@ -165,8 +165,19 @@ final class SQLFileParser: Sendable {
         /// SQL Server's tools read a script the way sqlcmd does: a line holding only `GO` ends a batch, the batch goes
         /// to the server whole with its `;` and its comments, and the `GO` line goes nowhere. The comments stay so the
         /// server's line numbers count the file's lines and a routine keeps the comments written inside it.
+        ///
+        /// Only a file that holds a `GO` line is read so. One that holds none was written to run a statement at a
+        /// time, cut at each `;`: that is how every SQL Server dump TablePro wrote before it wrote `GO` lines reads,
+        /// and read as one batch it fails on its first view with Msg 111, having run none of it.
         let readsBatches: Bool
         let batchCutLength: Int
+
+        /// A SQL Server statement goes to the server as a batch of its own, so it keeps the comments written inside it
+        /// for the same reasons a batch keeps all of its own. The ones before its first code stay out of it.
+        let keepsStatementComments: Bool
+
+        /// Set once a `GO` line has ended a batch, which is what settles whether a file is read in batches.
+        var sawBatchSeparator = false
 
         /// Whether only spaces and tabs stand between the last line break and the unit being read, which is where a
         /// `GO` line can start. Tracked here because the buffer no longer holds the line's start once a chunk is
@@ -183,9 +194,9 @@ final class SQLFileParser: Sendable {
         var unitsBeforeBuffer = 0
 
         /// The statement grammar, for a dialect whose statement can own its `;`: a PL/SQL unit arrives whole with
-        /// its own `;`. A batch keeps every `;` it holds, a T-SQL `MERGE`'s included, so a grammar read in batches
-        /// needs none. Every other dialect has always split an import at each `;` and relies on `DELIMITER` or dollar
-        /// quoting for a routine body, and keeps doing so.
+        /// its own `;`, and so do a T-SQL `MERGE` and a `BEGIN...END` routine body. A batch keeps every `;` it holds,
+        /// so a file read in batches needs none. Every other dialect has always split an import at each `;` and
+        /// relies on `DELIMITER` or dollar quoting for a routine body, and keeps doing so.
         var boundaries: (any SQLStatementBoundaryTracking)?
         var word: [unichar] = []
         var alternativeQuoteCloser: unichar = 0
@@ -205,20 +216,26 @@ final class SQLFileParser: Sendable {
         /// the one after it is settled with nothing after it, instead of being left in the buffer and dropped.
         var atEndOfInput = false
 
-        init(grammar: SQLLexicalGrammar, currentStatement: NSMutableString?, batchCutLength: Int) {
+        init(grammar: SQLLexicalGrammar, currentStatement: NSMutableString?, batchCutLength: Int, readsBatches: Bool) {
             self.grammar = grammar
             self.currentStatement = currentStatement
-            self.readsBatches = grammar.contains(.batchSeparatorLines)
+            self.readsBatches = readsBatches
             self.batchCutLength = batchCutLength
+            self.keepsStatementComments = grammar.contains(.batchSeparatorLines)
             self.boundaries = !readsBatches && SQLStatementBoundaries.statementsCanOwnTerminator(in: grammar)
                 ? SQLStatementBoundaries.makeTracker(for: grammar)
                 : nil
         }
 
-        /// Whether the block comment being read goes into the statement: a conditional comment is SQL the server runs,
-        /// and a batch keeps every comment.
+        /// Whether the comment being read goes into the text sent.
+        var keepsComments: Bool {
+            readsBatches || (keepsStatementComments && hasStatementContent)
+        }
+
+        /// Whether the block comment being read goes into the statement, which a conditional comment always does,
+        /// being SQL the server runs.
         var keepsCommentText: Bool {
-            readsBatches || isConditionalComment
+            keepsComments || isConditionalComment
         }
     }
 
@@ -417,7 +434,7 @@ final class SQLFileParser: Sendable {
             ) {
                 ctx.state = .inSingleLineComment
                 ctx.boundaries?.observeGap()
-                if ctx.readsBatches {
+                if ctx.keepsComments {
                     appendRange(&ctx, from: i, to: i + 2, in: nsBuffer)
                 }
                 i += 2
@@ -429,7 +446,7 @@ final class SQLFileParser: Sendable {
             || (char == kSlash && nextChar == kSlash && ctx.grammar.contains(.doubleSlashLineComments)) {
             ctx.state = .inSingleLineComment
             ctx.boundaries?.observeGap()
-            if ctx.readsBatches {
+            if ctx.keepsComments {
                 appendChar(char, to: ctx.currentStatement)
             }
             return StepResult(advanced: false, deferred: false)
@@ -443,12 +460,12 @@ final class SQLFileParser: Sendable {
             if ctx.isConditionalComment {
                 (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
                     ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+            } else {
+                ctx.boundaries?.observeGap()
             }
             if ctx.keepsCommentText {
                 appendChar(char, to: ctx.currentStatement)
                 appendChar(next, to: ctx.currentStatement)
-            } else {
-                ctx.boundaries?.observeGap()
             }
             i += 2
             return StepResult(advanced: true, deferred: false)
@@ -774,6 +791,7 @@ final class SQLFileParser: Sendable {
             return StepResult(advanced: false, deferred: true)
         case .separator(let separator):
             let end = NSMaxRange(separator.range)
+            ctx.sawBatchSeparator = true
             yieldBatch(&ctx, repeatCount: separator.repeatCount, nextBatchStart: ctx.unitsBeforeBuffer + end)
             i = end
             return StepResult(advanced: true, deferred: false)
@@ -819,7 +837,7 @@ final class SQLFileParser: Sendable {
             appendChar(char, to: ctx.currentStatement)
         }
         if char == kSlash, nextChar == kStar, !ctx.isConditionalComment, ctx.grammar.contains(.nestedBlockComments) {
-            if ctx.readsBatches {
+            if ctx.keepsComments {
                 appendChar(kStar, to: ctx.currentStatement)
             }
             ctx.commentDepth += 1
@@ -969,10 +987,42 @@ final class SQLFileParser: Sendable {
         })
     }
 
+    /// How many statements the import runs, a batch ended by `GO 5` counting five times. The runs are added up rather
+    /// than walked, because a count can reach `Int32.max`.
+    func countStatements(
+        url: URL,
+        encoding: String.Encoding,
+        grammar: SQLLexicalGrammar
+    ) async throws -> Int {
+        let session = ParseSession(
+            url: url, encoding: encoding, grammar: grammar, countOnly: true, batchCutLength: batchCutLength
+        )
+        var count = 0
+
+        while let statement = try await session.nextStatement() {
+            try Task.checkCancellation()
+            count += statement.repeatCount
+        }
+
+        return count
+    }
+}
+
+extension SQLFileParser {
+    /// How a session cuts its file.
+    private enum Reading {
+        /// Settled from the file before its first statement: in batches when it holds a `GO` line and the grammar
+        /// reads them, else a statement at a time.
+        case fromFile
+        /// At the file's `GO` lines, as sqlcmd cuts a script.
+        case batches
+    }
+
     private final class ParseSession: @unchecked Sendable {
         private let url: URL
         private let encoding: String.Encoding
         private let grammar: SQLLexicalGrammar
+        private let batchCutLength: Int
         private let chunkSize = 65_536
 
         private var fileHandle: FileHandle?
@@ -981,18 +1031,29 @@ final class SQLFileParser: Sendable {
         private var decoder: SQLChunkDecoder
         private var emitIndex = 0
         private var finished = false
+        private var readingSettled: Bool
         private var repeating: ParsedStatement?
         private var remainingRuns = 0
 
-        init(url: URL, encoding: String.Encoding, grammar: SQLLexicalGrammar, countOnly: Bool, batchCutLength: Int) {
+        init(
+            url: URL,
+            encoding: String.Encoding,
+            grammar: SQLLexicalGrammar,
+            countOnly: Bool,
+            batchCutLength: Int,
+            reading: Reading = .fromFile
+        ) {
             self.url = url
             self.encoding = encoding
             self.grammar = grammar
+            self.batchCutLength = batchCutLength
             self.decoder = SQLChunkDecoder(encoding: encoding)
+            self.readingSettled = reading == .batches
             self.ctx = ParserContext(
                 grammar: grammar,
                 currentStatement: countOnly ? nil : NSMutableString(),
-                batchCutLength: batchCutLength
+                batchCutLength: batchCutLength,
+                readsBatches: reading == .batches
             )
         }
 
@@ -1024,13 +1085,14 @@ final class SQLFileParser: Sendable {
                 if finished {
                     return nil
                 }
-                if Task.isCancelled {
-                    finished = true
-                    closeFile()
-                    return nil
-                }
 
                 do {
+                    try settleReading()
+                    guard !Task.isCancelled else {
+                        finished = true
+                        closeFile()
+                        return nil
+                    }
                     try advanceOneChunk()
                 } catch {
                     finished = true
@@ -1039,6 +1101,40 @@ final class SQLFileParser: Sendable {
                     throw error
                 }
             }
+        }
+
+        /// Reads the file for a `GO` line before any of it is handed out, because a batch cannot be put back together
+        /// from statements already sent.
+        private func settleReading() throws {
+            guard !readingSettled else { return }
+            readingSettled = true
+            guard grammar.contains(.batchSeparatorLines) else { return }
+            let scan = ParseSession(
+                url: url,
+                encoding: encoding,
+                grammar: grammar,
+                countOnly: true,
+                batchCutLength: batchCutLength,
+                reading: .batches
+            )
+            guard try scan.findsBatchSeparator() else { return }
+            ctx = ParserContext(
+                grammar: grammar,
+                currentStatement: ctx.currentStatement,
+                batchCutLength: batchCutLength,
+                readsBatches: true
+            )
+        }
+
+        /// Whether the file holds a `GO` line, read the way a script is cut into batches, so one inside a literal or a
+        /// comment does not count. Reading stops at the first.
+        func findsBatchSeparator() throws -> Bool {
+            defer { closeFile() }
+            while !finished, !ctx.sawBatchSeparator, !Task.isCancelled {
+                try advanceOneChunk()
+                ctx.collected.removeAll(keepingCapacity: true)
+            }
+            return ctx.sawBatchSeparator
         }
 
         private func advanceOneChunk() throws {
@@ -1103,7 +1199,7 @@ final class SQLFileParser: Sendable {
                     shouldDefer = result.deferred
 
                 case .inSingleLineComment:
-                    if ctx.readsBatches {
+                    if ctx.keepsComments {
                         SQLFileParser.appendChar(char, to: ctx.currentStatement)
                     }
                     if char == SQLFileParser.kNewline
@@ -1227,25 +1323,5 @@ final class SQLFileParser: Sendable {
                     "Failed to close file handle for \(self.url.path): \(error.localizedDescription)")
             }
         }
-    }
-
-    /// How many statements the import runs, a batch ended by `GO 5` counting five times. The runs are added up rather
-    /// than walked, because a count can reach `Int32.max`.
-    func countStatements(
-        url: URL,
-        encoding: String.Encoding,
-        grammar: SQLLexicalGrammar
-    ) async throws -> Int {
-        let session = ParseSession(
-            url: url, encoding: encoding, grammar: grammar, countOnly: true, batchCutLength: batchCutLength
-        )
-        var count = 0
-
-        while let statement = try await session.nextStatement() {
-            try Task.checkCancellation()
-            count += statement.repeatCount
-        }
-
-        return count
     }
 }

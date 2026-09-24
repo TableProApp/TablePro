@@ -5,8 +5,11 @@
 # sqlcmd and SQL Server Management Studio cut a script into batches at each line holding only GO, send every batch
 # whole, and never send the GO line. The import used to split a file at each `;` and send the GO lines on: the server
 # ran the statement after a GO, refused the GO itself with Msg 2812 or Msg 102, cut a procedure off at its first inner
-# `;`, and dropped every variable before the statement that read it (Msg 137). None of that shows in a unit test,
-# because each case depends on what the server does with the text it is sent.
+# `;`, and dropped every variable before the statement that read it (Msg 137). A file with no GO line at all is still
+# cut at each `;`, because that is how every SQL Server dump TablePro wrote before it wrote GO lines reads: sent as one
+# batch, it fails on its first view with Msg 111, and on a table the dump drops and recreates wider with Msg 207, and
+# runs none of it. None of that shows in a unit test, because each case depends on what the server does with the text
+# it is sent.
 #
 # So this builds a harness from the real TablePro/Core/Utilities/SQL/SQLFileParser.swift and the files it reads
 # lines and chunks with, the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
@@ -219,6 +222,7 @@ enum Check {
             IF OBJECT_ID(N'dbo.import_p') IS NOT NULL DROP PROCEDURE dbo.import_p;
             IF OBJECT_ID(N'dbo.import_c') IS NOT NULL DROP PROCEDURE dbo.import_c;
             IF OBJECT_ID(N'dbo.import_rows') IS NOT NULL DROP TABLE dbo.import_rows;
+            IF OBJECT_ID(N'dbo.import_wide') IS NOT NULL DROP TABLE dbo.import_wide;
             CREATE TABLE dbo.import_rows (id INT NULL, v NVARCHAR(40) NULL);
             EXEC (N'CREATE PROCEDURE dbo.import_p AS SELECT 0;');
             """, rowCap: nil, parameters: nil)
@@ -226,11 +230,13 @@ enum Check {
         try await compareScript(driver)
         try await ssmsScript(driver)
         try await declaredVariable(driver)
+        try await declaredVariableWithoutGo(driver)
         try await repeatedBatch(driver)
         try await commentsInARoutine(driver)
         try await goInsideALiteral(driver)
         try await errorLine(driver)
         try await dumpWithGoLines(driver)
+        try await dumpRecreatingAWiderTable(driver)
         try await dumpCutAtSemicolons(driver)
         driver.disconnect()
     }
@@ -272,11 +278,23 @@ enum Check {
             DELETE FROM dbo.import_rows;
             DECLARE @x INT = 7;
             INSERT INTO dbo.import_rows (id) VALUES (@x);
+            GO
             """
         let result = try await importScript(script, driver: driver)
         expect(result.failure == nil, "a variable is declared for the statement that reads it",
                "\(String(describing: result.failure))")
         expect(try await scalar("SELECT MAX(id) FROM dbo.import_rows", driver) == "7", "the variable's value arrives")
+    }
+
+    /// A file with no GO line runs a statement at a time, so a variable declared in one statement is gone by the next.
+    /// One GO line is what asks for the script's batches.
+    static func declaredVariableWithoutGo(_ driver: MSSQLPluginDriver) async throws {
+        let script = "DECLARE @x INT = 7;\nINSERT INTO dbo.import_rows (id) VALUES (@x);\n"
+        let result = try await importScript(script, driver: driver)
+        expect(result.runs == ["DECLARE @x INT = 7", "INSERT INTO dbo.import_rows (id) VALUES (@x)"],
+               "a script with no GO line runs a statement at a time", "\(result.runs)")
+        expect(result.failure?.message.contains("@x") == true, "the second statement no longer sees the variable",
+               "\(String(describing: result.failure))")
     }
 
     static func repeatedBatch(_ driver: MSSQLPluginDriver) async throws {
@@ -329,8 +347,9 @@ enum Check {
     }
 
     /// The shape TablePro's SQL export writes for SQL Server: every statement a batch of its own, so a view or a routine
-    /// is first in its batch as SQL Server requires. Written without the GO lines, the same dump fails its view with
-    /// Msg 111 and runs none of the batch, which is what the export used to write.
+    /// is first in its batch as SQL Server requires. The export used to write the same dump with no GO line, which
+    /// sqlcmd sends as one batch and fails on its view with Msg 111, running none of it. The import still reads that
+    /// dump a statement at a time.
     static func dumpWithGoLines(_ driver: MSSQLPluginDriver) async throws {
         let statements = [
             "IF OBJECT_ID(N'dbo.import_v') IS NOT NULL DROP VIEW dbo.import_v;",
@@ -343,16 +362,39 @@ enum Check {
                "\(String(describing: withGo.failure))")
         expect(try await scalar("SELECT COUNT(*) FROM dbo.import_v", driver) == "2", "the dump's view reads its rows")
 
+        _ = try await driver.executeBatch(query: "DROP VIEW dbo.import_v;", rowCap: nil, parameters: nil)
         let withoutGo = try await importScript(statements.joined(separator: "\n"), driver: driver)
-        expect(withoutGo.failure?.message.contains("must be the first statement") == true,
-               "the same dump with no GO line fails its view as sqlcmd would", "\(String(describing: withoutGo.failure))")
+        expect(withoutGo.failure == nil, "the same dump with no GO line imports a statement at a time",
+               "\(String(describing: withoutGo.failure))")
+        expect(withoutGo.runs.count == statements.count, "each of its statements is a batch of its own",
+               "\(withoutGo.runs)")
+        expect(try await scalar("SELECT COUNT(*) FROM sys.views WHERE name = N'import_v'", driver) == "1",
+               "the view of a dump with no GO line is created")
     }
 
-    /// A batch past the cut length ends at a semicolon, which is what keeps a dump written with no GO line inside what
-    /// the server takes in one request. A small cut length stands in for the real one.
+    /// A dump written with its drop option restores over the database it came from. Sent as one batch, the INSERT is
+    /// compiled against the table as it stands before the batch runs, which has only the column it had then, and SQL
+    /// Server refuses the whole batch with Msg 207.
+    static func dumpRecreatingAWiderTable(_ driver: MSSQLPluginDriver) async throws {
+        _ = try await driver.executeBatch(query: "CREATE TABLE dbo.import_wide (a INT);", rowCap: nil, parameters: nil)
+        let dump = """
+            DROP TABLE IF EXISTS [dbo].[import_wide];
+            CREATE TABLE [dbo].[import_wide] ([a] int, [b] int);
+            INSERT INTO [dbo].[import_wide] ([a], [b]) VALUES (1, 2);
+            """
+        let result = try await importScript(dump, driver: driver)
+        expect(result.failure == nil, "a dump that recreates a table wider imports", "\(String(describing: result.failure))")
+        let shape = try await scalar(
+            "SELECT CONCAT(COUNT(*), N':', COL_LENGTH(N'dbo.import_wide', N'b')) FROM dbo.import_wide", driver
+        )
+        expect(shape == "1:4", "the recreated table has its new column and its row", "\(String(describing: shape))")
+    }
+
+    /// A batch past the cut length ends at a semicolon, which is what keeps a script whose GO lines stand far apart
+    /// inside what the server takes in one request. A small cut length stands in for the real one.
     static func dumpCutAtSemicolons(_ driver: MSSQLPluginDriver) async throws {
         let rows = (1...40).map { "INSERT INTO dbo.import_rows (id, v) VALUES (\($0), N'r;\($0)');" }
-        let script = (["DELETE FROM dbo.import_rows;"] + rows).joined(separator: "\n")
+        let script = (["DELETE FROM dbo.import_rows;"] + rows + ["GO"]).joined(separator: "\n")
         let result = try await importScript(script, driver: driver, parser: SQLFileParser(batchCutLength: 200))
         expect(result.failure == nil, "a cut dump imports", "\(String(describing: result.failure))")
         expect(result.runs.count > 1, "the dump was sent in more than one batch", "\(result.runs.count)")
