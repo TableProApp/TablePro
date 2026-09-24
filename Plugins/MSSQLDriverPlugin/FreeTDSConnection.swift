@@ -160,11 +160,38 @@ nonisolated private func freetdsRecordLibraryError(
 nonisolated private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
     let key = freetdsConnectionKey(dbproc)
     freetdsErrors.withLock { $0.perConnection[key] = nil }
+    freetdsGates.withLock { $0[key] = nil }
 }
+
+/// Each open connection's gate, found by its DBPROCESS, because db-lib's interrupt and error handlers are C functions
+/// that receive nothing else.
+nonisolated private let freetdsGates = OSAllocatedUnfairLock(initialState: [UInt: MSSQLRequestGate]())
+
+nonisolated private func freetdsRegister(_ gate: MSSQLRequestGate, for dbproc: UnsafeMutablePointer<DBPROCESS>) {
+    let key = freetdsConnectionKey(dbproc)
+    freetdsGates.withLock { $0[key] = gate }
+}
+
+nonisolated private func freetdsGate(forKey key: UInt) -> MSSQLRequestGate? {
+    freetdsGates.withLock { $0[key] }
+}
+
+/// db-lib's interrupt pair. The check runs once a second on the thread waiting on the socket; answering `INT_CANCEL`
+/// ends that wait as a timeout, which the error handler turns into an attention sent from the same thread.
+nonisolated private let freetdsInterruptCheck: DB_DBCHKINTR_FUNC = { dbproc in
+    guard let gate = freetdsGate(forKey: UInt(bitPattern: dbproc)), gate.isInterruptRaised else { return 0 }
+    return 1
+}
+
+nonisolated private let freetdsInterruptHandler: DB_DBHNDLINTR_FUNC = { _ in INT_CANCEL }
 
 nonisolated private let freetdsInitOnce: Void = {
     _ = dbinit()
     _ = dberrhandle { dbproc, _, dberr, _, dberrstr, oserrstr in
+        if dberr == SYBETIME, let dbproc, freetdsGate(forKey: freetdsConnectionKey(dbproc))?.takeInterrupt() == true {
+            freetdsLogger.debug("FreeTDS: a Stop interrupted the wait, sending the attention")
+            return INT_TIMEOUT
+        }
         var msg = "db-lib error \(dberr)"
         if let s = dberrstr { msg += ": \(String(cString: s))" }
         if let s = oserrstr, String(cString: s) != "Success" { msg += " (os: \(String(cString: s)))" }
@@ -233,22 +260,10 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private let options: MSSQLConnectionOptions
     private let lock = NSLock()
     private var _isConnected = false
-    /// Every call is numbered as it is handed to the queue, and a Stop cancels every call numbered so far. A call
-    /// therefore sees a Stop pressed while it waited behind another call or behind a drain, and never one pressed
-    /// before it was made. A single flag cleared when the call began work lost the first kind: a Stop pressed during a
-    /// minute-long drain was wiped, and the DELETE behind it was sent and committed.
-    private var enqueuedCalls: UInt64 = 0
-    private var cancelledThroughCall: UInt64 = 0
 
-    /// Whether a call's own request is on the wire, which is the only time a Stop sends the server an attention. While
-    /// the queue is only reading past an abandoned request the Stop marks the call and the drain stops at its next
-    /// check: a `dbcancel` from another thread then reads the same socket the drain is reading, and measured, the drain
-    /// thread waited forever for a packet the cancelling thread had already consumed.
-    private var requestInFlight = false
-
-    /// Set on the connection's queue when a read stopped before the end of its request, and cleared by the next call
-    /// once it has read past the rest.
-    private var hasAbandonedRequest = false
+    /// Which calls a Stop reaches. A Stop is the one thing here that runs off the queue, so it goes through this gate
+    /// and never through db-lib.
+    private let requestGate = MSSQLRequestGate()
 
     private static let kerberosEnvLock = NSLock()
     private static let freetdsConfEnvLock = NSLock()
@@ -424,6 +439,8 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         dbproc = proc
         _isConnected = true
         lock.unlock()
+        freetdsRegister(requestGate, for: proc)
+        dbsetinterrupt(proc, freetdsInterruptCheck, freetdsInterruptHandler)
         establishSession(proc)
     }
 
@@ -455,15 +472,15 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     }
 
     func switchDatabase(_ database: String) async throws {
-        let call = enqueueCall()
+        let call = requestGate.enqueue()
         try await freetdsDispatchAsync(on: queue) { [self] in
             guard let proc = self.dbproc else {
                 throw MSSQLCoreError.notConnected
             }
-            try self.drainAbandonedRequest(proc, call: call)
-            try self.beginRequest(call)
-            defer { self.endRequest() }
-            if dbuse(proc, database) == FAIL {
+            try self.requestGate.beginRequest(call)
+            defer { self.requestGate.endRequest() }
+            guard dbuse(proc, database) != FAIL else {
+                if self.requestGate.isCancelled(call) { throw CancellationError() }
                 throw MSSQLCoreError.queryFailed("Cannot switch to database '\(database)'")
             }
         }
@@ -485,26 +502,17 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
     }
 
+    /// A Stop. Safe from any thread, because it only marks the calls: see ``MSSQLRequestGate``.
     func cancelCurrentQuery() {
-        lock.lock()
-        cancelledThroughCall = enqueuedCalls
-        let proc = requestInFlight ? dbproc : nil
-        lock.unlock()
-
-        guard let proc else { return }
-        dbcancel(proc)
+        requestGate.stop()
     }
 
     func executeQuery(_ query: String) async throws -> MSSQLRawResult {
         try await read(query, plan: .singleResult).singleResult()
     }
 
-    /// A read the host has classified as a query, capped at `rowCap`. Reaching the cap stops reading and leaves the rest
-    /// of the request on the connection for the next call to skip, so the capped result comes back at once.
-    ///
-    /// It never cancels the request. The cap is the app's, not the user's, and an attention is an abort to the server:
-    /// measured, under `SET XACT_ABORT ON` a `dbcancel` sent after 10,000 of 200,000 rows rolled the session's open
-    /// transaction back with no message to either handler.
+    /// A read the host has classified as a query, capped at `rowCap`. Reaching the cap ends the request on the server
+    /// the way ``MSSQLRequestEnding`` allows, so the statement does not stay behind holding its locks.
     func executeQuery(_ query: String, rowCap: Int) async throws -> MSSQLRawResult {
         try await read(query, plan: .boundedQuery(rowCap: rowCap)).singleResult()
     }
@@ -527,30 +535,34 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
 
     private func read(_ query: String, plan: FreeTDSReadPlan) async throws -> MSSQLBatchReadout {
         let queryToRun = String(query)
-        let call = enqueueCall()
+        let call = requestGate.enqueue()
         return try await withTaskCancellationHandler {
             try await freetdsDispatchAsync(on: queue) { [self] in
-                try self.readSync(queryToRun, call: call, plan: plan, sink: .buffer, isAborted: { false })
+                try self.readSync(queryToRun, call: call, plan: plan, sink: .buffer, isAborted: nil)
             }
         } onCancel: { [weak self] in
             self?.cancelCurrentQuery()
         }
     }
 
+    /// Runs one call's request to its end. A read that may stop early asks the session first, in the same call so
+    /// nothing runs between the answer and the read, and a read that cannot costs no extra round trip.
     private func readSync(
         _ query: String,
         call: UInt64,
         plan: FreeTDSReadPlan,
         sink: FreeTDSRowSink,
-        isAborted: @escaping @Sendable () -> Bool
+        isAborted: (@Sendable () -> Bool)?
     ) throws -> MSSQLBatchReadout {
         guard let proc = dbproc else {
             throw MSSQLCoreError.notConnected
         }
 
-        try drainAbandonedRequest(proc, call: call)
-        try beginRequest(call)
-        defer { endRequest() }
+        try requestGate.beginRequest(call)
+        defer { requestGate.endRequest() }
+
+        let mayStopEarly = plan.endsRequestAtRowCap || isAborted != nil
+        let ending = try mayStopEarly ? sessionRequestEnding(proc, call: call) : MSSQLRequestEnding.readRest
 
         freetdsClearError(for: proc)
         if dbcmd(proc, query) == FAIL {
@@ -560,106 +572,48 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             proc: proc,
             plan: plan,
             sink: sink,
-            userCancelled: { [self] in self.isCancelled(call) },
-            consumerStopped: isAborted
+            ending: ending,
+            userCancelled: { [requestGate] in requestGate.isCancelled(call) },
+            consumerStopped: isAborted ?? { false }
         )
-        defer { hasAbandonedRequest = reader.abandonedRequest }
         return try reader.read()
     }
 
-    /// Reads past whatever a call that stopped early left on the connection, so db-lib never refuses the next request
-    /// with 20019. A capped read and a stream whose consumer stopped leave the rest of their request here rather than
-    /// cancelling it; skipping it costs the time the server takes to send it, which is what the next call pays.
-    ///
-    /// A `FAIL` with no db-lib error behind it is one of the abandoned statements failing, and the rest still follow. A
-    /// db-lib error means the connection cannot go on (it died, or refused the call), and reading further would never
-    /// end, so the next request finds out from db-lib itself.
-    ///
-    /// Rows are skipped one at a time rather than with `dbcanquery`, so a Stop for `call` is seen within a thousand rows
-    /// rather than after the whole rest of a result set. It ends the drain and the call before anything of the call's
-    /// own is sent, and leaves what the drain had not read yet for the next call: `dbresults` and `dbnextrow` on a
-    /// connection with nothing pending answer that there is nothing and send nothing, measured.
-    private func drainAbandonedRequest(_ proc: UnsafeMutablePointer<DBPROCESS>, call: UInt64) throws {
-        guard hasAbandonedRequest else {
-            _ = dbcanquery(proc)
-            return
-        }
+    /// One round trip, about a millisecond against a local server, the same as `SELECT 1`. A server error in the answer
+    /// reads the rest rather than trusting it.
+    private func sessionRequestEnding(
+        _ proc: UnsafeMutablePointer<DBPROCESS>,
+        call: UInt64
+    ) throws -> MSSQLRequestEnding {
         freetdsClearError(for: proc)
-        try skipRows(proc, call: call)
-        while true {
-            guard !isCancelled(call) else { throw CancellationError() }
-            let code = dbresults(proc)
-            if code == Int32(NO_MORE_RESULTS) {
-                hasAbandonedRequest = false
-                return
-            }
-            if code == FAIL {
-                guard freetdsDiagnostics(for: proc).libraryError.isEmpty else {
-                    hasAbandonedRequest = false
-                    return
-                }
-                continue
-            }
-            if dbnumcols(proc) > 0 {
-                try skipRows(proc, call: call)
-            }
-        }
-    }
-
-    private func skipRows(_ proc: UnsafeMutablePointer<DBPROCESS>, call: UInt64) throws {
-        var skipped = 0
-        while true {
-            let code = dbnextrow(proc)
-            if code == Int32(NO_MORE_ROWS) || code == FAIL { return }
-            skipped += 1
-            if skipped.isMultiple(of: 1_000), isCancelled(call) {
-                throw CancellationError()
-            }
-        }
-    }
-
-    /// Marks the call's request as on the wire before the last look for a Stop, so a Stop is either seen here and
-    /// nothing is sent, or lands after this and cancels the request on the server.
-    private func beginRequest(_ call: UInt64) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard call > cancelledThroughCall else { throw CancellationError() }
-        requestInFlight = true
-    }
-
-    private func endRequest() {
-        lock.lock()
-        requestInFlight = false
-        lock.unlock()
-    }
-
-    private func enqueueCall() -> UInt64 {
-        lock.lock()
-        defer { lock.unlock() }
-        enqueuedCalls += 1
-        return enqueuedCalls
-    }
-
-    private func isCancelled(_ call: UInt64) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return call <= cancelledThroughCall
+        guard dbcmd(proc, MSSQLRequestEnding.sessionQuery) != FAIL else { return .readRest }
+        var reader = FreeTDSBatchReader(
+            proc: proc,
+            plan: .singleResult,
+            sink: .buffer,
+            ending: .readRest,
+            userCancelled: { [requestGate] in requestGate.isCancelled(call) },
+            consumerStopped: { false }
+        )
+        let answer = try reader.read()
+        return MSSQLRequestEnding(sessionAnswer: answer.errors.isEmpty ? answer.resultSets.first : nil)
     }
 
     /// `isAborted` is how a consumer that stopped reaches this loop. It is a closure rather than a
     /// PluginKit type because this file is compiled into the iOS app too and may not import
     /// PluginKit. It is polled instead of `Task.isCancelled`, which is always false here: the body
-    /// runs inside a bare `queue.async` with no task context.
+    /// runs inside a bare `queue.async` with no task context. A consumer that stops ends the request
+    /// the way a capped read does.
     ///
     /// Only the request's first result set is streamed. A later one is read past, so the statements behind it still
     /// run, and a server error anywhere in the request finishes the stream with that error.
     func streamQuery(
         _ query: String,
-        isAborted: @escaping @Sendable () -> Bool = { false },
+        isAborted: (@Sendable () -> Bool)? = nil,
         continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
     ) async throws {
         let queryToRun = String(query)
-        let call = enqueueCall()
+        let call = requestGate.enqueue()
         try await withTaskCancellationHandler {
             try await freetdsDispatchAsync(on: queue) { [self] in
                 do {
@@ -763,13 +717,13 @@ nonisolated private extension MSSQLLoginField {
 
 /// How much of a request one call keeps.
 ///
-/// Every limit here is the app's own, so none of them sends the server an attention: under `SET XACT_ABORT ON` that
-/// rolls back the session's open transaction. `abandonsRequestAtRowCap` stops reading and leaves the rest for the next
-/// call to skip; every other limit skips the rest of the one result set with `dbcanquery` and reads on.
+/// A bounded read's row cap ends the whole request (`endsRequestAtRowCap`), the way ``MSSQLRequestEnding`` allows.
+/// Every other limit is one the request goes on past: the rest of that result set is read and dropped, and the read
+/// carries on with the next, because a batch's later statements still have to run.
 nonisolated private struct FreeTDSReadPlan: Sendable {
     let keptResultSetLimit: Int
     let rowCap: Int?
-    let abandonsRequestAtRowCap: Bool
+    let endsRequestAtRowCap: Bool
     let rowBudget: Int
 
     /// Results without columns at the head of the request whose counts are not the request's own: a statement the
@@ -779,14 +733,14 @@ nonisolated private struct FreeTDSReadPlan: Sendable {
     static let singleResult = FreeTDSReadPlan(
         keptResultSetLimit: 1,
         rowCap: nil,
-        abandonsRequestAtRowCap: false,
+        endsRequestAtRowCap: false,
         rowBudget: MSSQLRowLimits.emergencyMax
     )
 
     static let stream = FreeTDSReadPlan(
         keptResultSetLimit: 1,
         rowCap: nil,
-        abandonsRequestAtRowCap: false,
+        endsRequestAtRowCap: false,
         rowBudget: .max
     )
 
@@ -794,7 +748,7 @@ nonisolated private struct FreeTDSReadPlan: Sendable {
         FreeTDSReadPlan(
             keptResultSetLimit: 1,
             rowCap: max(rowCap, 1),
-            abandonsRequestAtRowCap: true,
+            endsRequestAtRowCap: true,
             rowBudget: MSSQLRowLimits.emergencyMax
         )
     }
@@ -803,7 +757,7 @@ nonisolated private struct FreeTDSReadPlan: Sendable {
         FreeTDSReadPlan(
             keptResultSetLimit: MSSQLRowLimits.batchResultSetLimit,
             rowCap: rowCap.map { max($0, 1) },
-            abandonsRequestAtRowCap: false,
+            endsRequestAtRowCap: false,
             rowBudget: MSSQLRowLimits.emergencyMax,
             leadingCountsToSkip: countsToSkip
         )
@@ -815,16 +769,19 @@ nonisolated private enum FreeTDSRowSink {
     case stream(AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation)
 }
 
-/// Reads one request to its end, or stops at a limit and says so, so the connection is never left with results nobody
-/// will read.
+/// Reads one request to its end, or ends it early, so the connection is never left with results nobody will read.
 ///
 /// db-lib reports a failed statement as a `FAIL` from `dbresults` and then carries on to the next one, and it refuses
-/// `dbresults` while a result set still has rows unread, failing with 20019 for as long as nothing reads them. A read
-/// that stopped at either used to leave the connection answering every later request, the health ping included, with
-/// 20019 until it reconnected. So every exit here reads on to `NO_MORE_RESULTS`, skips unread rows with `dbcanquery`,
-/// or leaves the rest of the request marked as abandoned (``abandonedRequest``) for the next call to read past. Only a
-/// Stop the user asked for cancels the request with `dbcancel`: an attention is an abort to the server, and under
-/// `SET XACT_ABORT ON` one sent for a limit the app imposed rolled back the user's open transaction.
+/// `dbresults` while a result set still has rows unread, failing with 20019 for as long as nothing reads them. So every
+/// exit here reads on to `NO_MORE_RESULTS` or ends the request with an attention. None leaves the rest for the next
+/// call: a statement left unread stays suspended on the server holding its locks, and the next call has to read all of
+/// it before the server answers.
+///
+/// This is the only thread that reads the connection, so it is the one that answers a Stop. It looks for one after
+/// every db-lib call and ends the request with `dbcancel`; a Stop that lands while db-lib waits on the socket reaches
+/// that wait through the interrupt handler, which sends the attention from here and ends the wait. Rows are skipped one
+/// at a time rather than with `dbcanquery`, which reads a whole result set without once waiting a second on the socket,
+/// so a Stop during it was never seen: measured over 30 million rows.
 ///
 /// A result set counts only when no server error arrived while it was read: `SELECT 1/0` sends its columns and then
 /// its error, and a conversion error cuts a scan short with `dbnextrow` answering `NO_MORE_ROWS`, so both would
@@ -832,12 +789,13 @@ nonisolated private enum FreeTDSRowSink {
 nonisolated private struct FreeTDSBatchReader {
     private enum ResultSetEnd {
         case readToEnd
-        case requestAbandoned
+        case stoppedEarly
     }
 
     private let proc: UnsafeMutablePointer<DBPROCESS>
     private let plan: FreeTDSReadPlan
     private let sink: FreeTDSRowSink
+    private let ending: MSSQLRequestEnding
     private let userCancelled: () -> Bool
     private let consumerStopped: () -> Bool
 
@@ -852,6 +810,10 @@ nonisolated private struct FreeTDSBatchReader {
     private var headerStreamed = false
     private var countsSkipped = 0
 
+    /// Set when the read stopped keeping results early in a session that may not be sent an attention, so it reads
+    /// past the rest of the request instead.
+    private var isReadingPastRest = false
+
     /// Every error the request raised, the ones past the stored cap included. Whether a `FAIL` has a server error behind
     /// it is read off this, not off the kept errors: once the cap was reached a failing statement added nothing to
     /// those, and read as db-lib failing the whole request.
@@ -859,38 +821,37 @@ nonisolated private struct FreeTDSBatchReader {
         errors.count + droppedErrorCount
     }
 
-    /// Whether the read stopped before the end of its request, leaving the rest on the connection.
-    private(set) var abandonedRequest = false
-
     init(
         proc: UnsafeMutablePointer<DBPROCESS>,
         plan: FreeTDSReadPlan,
         sink: FreeTDSRowSink,
+        ending: MSSQLRequestEnding,
         userCancelled: @escaping () -> Bool,
         consumerStopped: @escaping () -> Bool
     ) {
         self.proc = proc
         self.plan = plan
         self.sink = sink
+        self.ending = ending
         self.userCancelled = userCancelled
         self.consumerStopped = consumerStopped
     }
 
     mutating func read() throws -> MSSQLBatchReadout {
         let executed = dbsqlexec(proc)
+        try cancelIfUserAsked()
         absorbMessages()
         if executed == FAIL, errorTotal == 0 {
             try failWithoutServerError()
         }
 
         while true {
-            try cancelIfUserAsked()
-            if consumerStopped() {
-                abandonedRequest = true
-                break
+            if !isReadingPastRest, consumerStopped() {
+                guard try stopEarly() else { break }
             }
             let errorsBefore = errorTotal
             let code = dbresults(proc)
+            try cancelIfUserAsked()
             absorbMessages()
             if code == Int32(NO_MORE_RESULTS) {
                 break
@@ -906,13 +867,12 @@ nonisolated private struct FreeTDSBatchReader {
                 recordCount()
                 continue
             }
-            guard keptCount < plan.keptResultSetLimit, !headerStreamed else {
-                readPast(errorsBefore: errorsBefore)
+            guard keptCount < plan.keptResultSetLimit, !headerStreamed, !isReadingPastRest else {
+                try readPast(errorsBefore: errorsBefore)
                 continue
             }
-            if try readResultSet(columnCount: columnCount, errorsBefore: errorsBefore) == .requestAbandoned {
-                abandonedRequest = true
-                break
+            if try readResultSet(columnCount: columnCount, errorsBefore: errorsBefore) == .stoppedEarly {
+                guard try stopEarly() else { break }
             }
         }
 
@@ -941,22 +901,26 @@ nonisolated private struct FreeTDSBatchReader {
 
         while true {
             let rowCode = dbnextrow(proc)
+            try cancelIfUserAsked()
             if rowCode == Int32(NO_MORE_ROWS) || rowCode == FAIL {
                 break
             }
-            try cancelIfUserAsked()
             if consumerStopped() {
-                end = .requestAbandoned
+                end = .stoppedEarly
                 break
             }
             if let cap = plan.rowCap, rowCount >= cap {
                 isTruncated = true
-                end = stopReading(atRowCap: true)
+                guard plan.endsRequestAtRowCap else {
+                    try skipRows()
+                    break
+                }
+                end = .stoppedEarly
                 break
             }
             if rowsKept >= plan.rowBudget {
                 isTruncated = true
-                end = stopReading(atRowCap: false)
+                try skipRows()
                 break
             }
             rows.append(readRow(descriptors))
@@ -975,19 +939,34 @@ nonisolated private struct FreeTDSBatchReader {
         return end
     }
 
-    private func stopReading(atRowCap: Bool) -> ResultSetEnd {
-        guard atRowCap, plan.abandonsRequestAtRowCap else {
-            _ = dbcanquery(proc)
-            return .readToEnd
+    /// Stops keeping anything more of the request, and answers whether the read goes on. An attention ends the request
+    /// on the server now. Otherwise the rest of the current result set is skipped here and the loop reads past what
+    /// follows, so the request still ends inside this call.
+    private mutating func stopEarly() throws -> Bool {
+        switch ending {
+        case .attention:
+            _ = dbcancel(proc)
+            return false
+        case .readRest:
+            try skipRows()
+            isReadingPastRest = true
+            return true
         }
-        return .requestAbandoned
     }
 
-    private mutating func readPast(errorsBefore: Int) {
-        _ = dbcanquery(proc)
+    private mutating func readPast(errorsBefore: Int) throws {
+        try skipRows()
         absorbMessages()
         guard errorTotal == errorsBefore else { return }
         readPastCount += 1
+    }
+
+    private func skipRows() throws {
+        while true {
+            let code = dbnextrow(proc)
+            try cancelIfUserAsked()
+            if code == Int32(NO_MORE_ROWS) || code == FAIL { return }
+        }
     }
 
     private mutating func recordCount() {
@@ -1053,7 +1032,9 @@ nonisolated private struct FreeTDSBatchReader {
         absorbedMessageCount += arrival.messages.count
     }
 
-    /// A Stop the user asked for ends the request on the server, which is what they asked for.
+    /// A Stop the user asked for ends the request on the server, which is what they asked for, whatever the session
+    /// holds. When the interrupt handler already sent the attention, `dbcancel` finds the request over and returns at
+    /// once: measured, 0 ms.
     private func cancelIfUserAsked() throws {
         guard userCancelled() else { return }
         _ = dbcancel(proc)
@@ -1061,13 +1042,14 @@ nonisolated private struct FreeTDSBatchReader {
     }
 
     /// db-lib failed the request with no server error to explain it: the connection is gone, or db-lib refused the
-    /// call. Whatever the request left is marked abandoned rather than cancelled, for the same reason a cap is.
-    private mutating func failWithoutServerError() throws -> Never {
+    /// call. Reading further would never end, so on a live connection an attention ends whatever the request left, and
+    /// the next call does not find it pending.
+    private func failWithoutServerError() throws -> Never {
         let diagnostics = freetdsDiagnostics(for: proc)
         if diagnostics.connectionEnded {
             throw MSSQLCoreError.connectionFailed(diagnostics.libraryError)
         }
-        abandonedRequest = true
+        _ = dbcancel(proc)
         let detail = diagnostics.libraryError.isEmpty ? "Query execution failed" : diagnostics.libraryError
         throw MSSQLCoreError.queryFailed(detail)
     }
