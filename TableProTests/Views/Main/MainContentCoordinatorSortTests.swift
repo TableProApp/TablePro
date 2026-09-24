@@ -189,6 +189,38 @@ struct MainContentCoordinatorSortTests {
         #expect(tabManager.tabs[idx].sortState.columns.isEmpty)
     }
 
+    /// A SQL Server batch can return a result no single statement stands behind. Re-sorting it on the server would
+    /// mean re-sending the whole script with `ORDER BY` on the end, writes included, so it is ordered in place.
+    @Test("A result with no query to run again is sorted in place, never by re-running the editor text")
+    func resultWithoutReplayableQuerySortsInPlace() throws {
+        let (coordinator, tabManager, tabId) = makeCoordinator()
+        let script = "INSERT INTO audit_log (msg) VALUES ('x');\nSELECT msg FROM audit_log"
+        let rows = TableRows.from(
+            queryRows: [["b"], ["c"], ["a"]].map { row in row.map(PluginCellValue.fromOptional) },
+            columns: ["msg"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
+        tabManager.tabs[idx].content.query = script
+        let batchResult = ResultSet(label: "Result 1", tableRows: rows)
+        tabManager.mutate(at: idx) { $0.display.replaceUnpinnedResults(with: [batchResult]) }
+        coordinator.setActiveTableRows(rows, for: tabId)
+
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+
+        #expect(tabManager.tabs[idx].pagination.sortExecutionOverride == nil)
+        #expect(tabManager.tabs[idx].content.query == script)
+        #expect(tabManager.tabs[idx].sortState.columns == [SortColumn(columnIndex: 0, direction: .ascending)])
+        let sorted = coordinator.tabSessionRegistry.tableRows(for: tabId).rows.map { $0[0].asText }
+        #expect(sorted == ["a", "b", "c"])
+
+        coordinator.handleSortStateChanged(SortState())
+
+        let restored = coordinator.tabSessionRegistry.tableRows(for: tabId).rows.map { $0[0].asText }
+        #expect(restored == ["b", "c", "a"])
+        #expect(tabManager.tabs[idx].pagination.sortExecutionOverride == nil)
+    }
+
     @Test("Sort resets pagination on the active tab")
     func sortResetsPagination() {
         let (coordinator, tabManager, tabId) = makeCoordinator()

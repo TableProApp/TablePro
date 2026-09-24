@@ -78,6 +78,9 @@ struct StatementTextValidatorTests {
         await #expect(throws: DatabaseError.self) {
             _ = try await adapter.executeBoundedQuery(query: truncatingDelete, rowCap: 10)
         }
+        await #expect(throws: DatabaseError.self) {
+            _ = try await adapter.executeBatch(query: truncatingDelete, rowCap: nil, parameters: nil)
+        }
         #expect(driver.executedQueries.isEmpty)
     }
 

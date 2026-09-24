@@ -24,4 +24,5 @@ public struct PluginCapabilities: OptionSet, Sendable {
     public static let userManagement        = PluginCapabilities(rawValue: 1 << 12)
     public static let schemaCompare         = PluginCapabilities(rawValue: 1 << 13)
     public static let dataCompare           = PluginCapabilities(rawValue: 1 << 14)
+    public static let resultSetBatches      = PluginCapabilities(rawValue: 1 << 15)
 }

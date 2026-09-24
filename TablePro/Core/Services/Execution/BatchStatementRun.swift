@@ -14,11 +14,17 @@ private let batchLog = Logger(subsystem: "com.TablePro", category: "BatchStateme
 ///
 /// A stopped run carries the results of the statements that already ran when the plan cannot take
 /// them back, so their rows and their history are kept rather than dropped.
-internal enum BatchStatementOutcome {
-    case completed(results: [QueryResult])
-    case failed(results: [QueryResult], failure: MultiStatementFailure, errorDescription: String)
-    case cancelled(results: [QueryResult])
+///
+/// A unit that answered with a server error rather than throwing one fails the run as
+/// ``MultiStatementFailure/batch(sql:)``, and its own output is the last of `results`: a SQL Server
+/// batch carries on past most errors, so what it returned is real.
+internal enum BatchStatementOutcome<Output> {
+    case completed(results: [Output])
+    case failed(results: [Output], failure: MultiStatementFailure, errorDescription: String)
+    case cancelled(results: [Output])
 }
+
+extension BatchStatementOutcome: Sendable where Output: Sendable {}
 
 /// The driver calls one multi-statement run makes, in order, for one ``BatchTransactionPlan``.
 ///
@@ -31,7 +37,7 @@ internal enum BatchStatementOutcome {
 /// stay cancellable: a Stop between two of them is the one that can still take work back.
 @MainActor
 internal enum BatchStatementRun {
-    internal static func run<Statement: Sendable>(
+    internal static func run<Statement: Sendable, Output: Sendable>(
         _ statements: [Statement],
         plan: BatchTransactionPlan,
         mode: PluginTransactionAccessMode,
@@ -40,8 +46,9 @@ internal enum BatchStatementRun {
         gate: BatchClaimGate,
         failureSQL: (Statement) -> String,
         isCommitPoint: (Statement) -> Bool,
-        execute: @escaping @MainActor @Sendable (Statement) async throws -> QueryResult
-    ) async -> BatchStatementOutcome {
+        serverError: (Output) -> String? = { _ in nil },
+        execute: @escaping @MainActor @Sendable (Statement) async throws -> Output
+    ) async -> BatchStatementOutcome<Output> {
         let opensTransaction = plan.opensTransaction && driver.supportsTransactions
         if opensTransaction {
             do {
@@ -51,7 +58,7 @@ internal enum BatchStatementRun {
             }
         }
 
-        var results: [QueryResult] = []
+        var results: [Output] = []
         for statement in statements {
             guard !Task.isCancelled, gate.isCurrent() else {
                 await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
@@ -71,6 +78,14 @@ internal enum BatchStatementRun {
                 return .cancelled(results: plan.keepsExecutedStatements ? results : [])
             case .committed(let result):
                 results.append(result)
+                if let errorDescription = serverError(result) {
+                    await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
+                    return .failed(
+                        results: results,
+                        failure: .batch(sql: failureSQL(statement)),
+                        errorDescription: errorDescription
+                    )
+                }
             case .failed(let failure) where failure.outcomeIsUnknown:
                 return .failed(
                     results: results,
@@ -94,14 +109,14 @@ internal enum BatchStatementRun {
     /// A statement the script wrote itself is ordinary work unless it is the script's own commit,
     /// which is as final as the app's own and goes through the same protection. The batch leaves
     /// the phase again afterwards, so everything after it stays stoppable.
-    private static func runStatement<Statement: Sendable>(
+    private static func runStatement<Statement: Sendable, Output: Sendable>(
         _ statement: Statement,
         isCommitPoint: Bool,
         driver: DatabaseDriver,
         connectionId: UUID,
         gate: BatchClaimGate,
-        execute: @escaping @MainActor @Sendable (Statement) async throws -> QueryResult
-    ) async -> BatchCommitOutcome<QueryResult> {
+        execute: @escaping @MainActor @Sendable (Statement) async throws -> Output
+    ) async -> BatchCommitOutcome<Output> {
         guard isCommitPoint else {
             do {
                 return .committed(try await execute(statement))
@@ -126,13 +141,13 @@ internal enum BatchStatementRun {
     /// claim settles rather than released here: between the server's answer and the settle there is
     /// no statement left to stop, and a Stop landing in that gap would drop the results of work the
     /// server has already kept.
-    private static func commit(
-        results: [QueryResult],
+    private static func commit<Output>(
+        results: [Output],
         driver: DatabaseDriver,
         connectionId: UUID,
         gate: BatchClaimGate,
         plan: BatchTransactionPlan
-    ) async -> BatchStatementOutcome {
+    ) async -> BatchStatementOutcome<Output> {
         let committed = await BatchCommitPoint.run(
             driver: driver,
             connectionId: connectionId,

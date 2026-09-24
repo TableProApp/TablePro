@@ -55,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 - Invalid PostgreSQL indexes named on the table's **Indexes** tab.
 - Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
+- `GO` batch separators in SQL Server scripts, and a result tab for every result set a batch returns. (#3078)
+- SQL Server `PRINT` output and informational messages in the **Output** result view.
 - **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command.
 
 ### Changed
@@ -86,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
+- SQL Server scripts run outside an app-opened transaction, as in SQL Server Management Studio. (#3078)
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
@@ -106,6 +109,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Variables declared in a SQL Server script lost after its first statement. (#3078)
+- Later SQL Server result sets shown under the first one's columns, or crashing the app.
+- SQL Server errors raised inside a query shown as an empty or partial result.
+- SQL Server connection refusing every query after a failed statement until it reconnected.
+- `-1 row(s) affected` after SQL Server DDL.
+- Next SQL Server query stalling after a result cut at the row limit.
+- A quote, bracket or `?` in a comment breaking SQL Server query parameters.
 - Edits made while an iCloud sync was running reverted by that sync and never uploaded.
 - Saved queries unavailable until relaunch after their store failed to open once.
 - SQL files saved as UTF-8 whatever their encoding, and non-UTF-8 SQL files not opening from Finder or **File > Open File…**.

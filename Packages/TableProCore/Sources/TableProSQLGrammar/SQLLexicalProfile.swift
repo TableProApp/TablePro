@@ -122,9 +122,10 @@ public struct SQLLexicalProfile: Sendable, Hashable {
 
     /// Azure SQL Edge 15.0 (the SQL Server 2019 engine), measured: brackets quote identifiers and `]]` escapes, block
     /// comments nest, a backslash is literal, a carriage return ends `--`, and T-SQL has no `$$`, `#` or `//` comment.
+    /// A `GO` line is sqlcmd's, not the server's: sent to it, Azure SQL Edge answers Msg 102 and runs nothing.
     static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
-        .carriageReturnEndsLineComments,
+        .carriageReturnEndsLineComments, .batchSeparatorLines,
     ]
 
     /// Spanner's GoogleSQL dialect on the emulator, measured, and BigQuery by the ZetaSQL grammar the two share: a

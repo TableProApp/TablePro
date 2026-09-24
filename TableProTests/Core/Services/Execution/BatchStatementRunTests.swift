@@ -21,7 +21,7 @@ struct BatchStatementRunTests {
         commitPoints: Set<String> = [],
         failing: String? = nil,
         stopsAfter: Int = .max
-    ) async -> BatchStatementOutcome {
+    ) async -> BatchStatementOutcome<QueryResult> {
         let claims = probe ?? ClaimProbe()
         return await BatchStatementRun.run(
             statements,
@@ -62,6 +62,35 @@ struct BatchStatementRunTests {
         }
         #expect(results.count == 1)
         #expect(failure == .statement(sql: "VACUUM"))
+    }
+
+    /// A SQL Server batch carries on past most errors, so it answers rather than throws, and what it returned before
+    /// and after the error is real. The run stops there and keeps that answer as the last of its results.
+    @Test("A unit that answers with a server error fails the run and keeps its own answer")
+    func serverErrorFailsTheRunAndKeepsTheAnswer() async {
+        let driver = TransactionRecordingDriver()
+        let claims = ClaimProbe()
+        let outcome = await BatchStatementRun.run(
+            ["batch 1", "batch 2", "batch 3"],
+            plan: .autocommit,
+            mode: .readWrite,
+            driver: driver,
+            connectionId: claims.connectionId,
+            gate: claims.gate,
+            failureSQL: { $0 },
+            isCommitPoint: { _ in false },
+            serverError: { (answer: String) in answer == "batch 2 answered" ? "Line 1: boom" : nil }
+        ) { unit in
+            "\(unit) answered"
+        }
+        #expect(driver.events.isEmpty)
+        guard case .failed(let answers, let failure, let description) = outcome else {
+            Issue.record("expected a failed run, got \(outcome)")
+            return
+        }
+        #expect(answers == ["batch 1 answered", "batch 2 answered"])
+        #expect(failure == .batch(sql: "batch 2"))
+        #expect(description == "Line 1: boom")
     }
 
     @Test("A Stop in autocommit keeps the results of the statements that already committed")
@@ -532,7 +561,7 @@ private final class ClaimProbe {
 
 @MainActor
 private final class TaskHolder {
-    var task: Task<BatchStatementOutcome, Never>?
+    var task: Task<BatchStatementOutcome<QueryResult>, Never>?
 
     func cancel() {
         task?.cancel()

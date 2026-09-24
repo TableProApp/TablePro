@@ -1104,20 +1104,15 @@ final class MainContentCoordinator: ObservableObject {
         bypassRowLimit: Bool,
         sourceOffset: Int? = nil
     ) -> Bool {
-        let anchored = { (statements: [SQLStatementScanner.ExecutableStatement]) in
-            guard let sourceOffset else { return statements }
-            return statements.map { $0.offset(by: sourceOffset) }
-        }
+        let batches = queryExecutionCoordinator.executionBatches(in: sql, sourceOffset: sourceOffset ?? 0)
+        let statements = batches.flatMap(\.statements)
+        guard !statements.isEmpty else { return false }
 
         // `:active` is a bind placeholder in SQL and an ordinary object key in JavaScript, so a
         // script would open the parameter panel and then be rewritten into something the driver
         // cannot run.
         if services.appSettings.editor.queryParametersEnabled, statementModel == .sql {
-            let paramStatements = anchored(
-                QueryStatementScanner.executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
-            )
-            guard !paramStatements.isEmpty else { return false }
-            let combinedSQL = SQLParameterExtractor.parameterSource(of: paramStatements)
+            let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
             if !detectedNames.isEmpty {
@@ -1133,8 +1128,8 @@ final class MainContentCoordinator: ObservableObject {
                 }
 
                 tabManager.tabStructureVersion += 1
-                dispatchParameterizedStatements(
-                    paramStatements,
+                dispatchParameterizedBatches(
+                    batches,
                     parameters: reconciled,
                     tabIndex: index,
                     bypassRowLimit: bypassRowLimit
@@ -1143,13 +1138,8 @@ final class MainContentCoordinator: ObservableObject {
             }
         }
 
-        let statements = anchored(
-            QueryStatementScanner.executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
-        )
-        guard !statements.isEmpty else { return false }
-
         tabManager.tabStructureVersion += 1
-        dispatchStatements(statements, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        dispatchBatches(batches, tabIndex: index, bypassRowLimit: bypassRowLimit)
         return true
     }
 
@@ -1528,6 +1518,10 @@ final class MainContentCoordinator: ObservableObject {
             let tabId = tab.id
             let capturedSort = newState
             let hasBoundParameters = tab.pagination.baseQueryParameterValues?.isEmpty == false
+            if !hasBoundParameters, let active = tab.display.activeResultSet, active.baseQuery == nil {
+                sortHeldRows(by: newState, tabId: tabId)
+                return
+            }
             let baseQuery = hasBoundParameters
                 ? tab.content.query
                 : (tab.pagination.baseQueryForMore ?? tab.content.query)

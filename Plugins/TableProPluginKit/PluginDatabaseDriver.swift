@@ -92,6 +92,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
 
+    /// Sends `query` to the server as one batch and reads it to the end, returning every result set it produced and
+    /// every error it raised. `rowCap` bounds each result set on its own. A driver that implements this declares
+    /// ``PluginCapabilities/resultSetBatches``; the default returns nil, and the host runs the text statement by
+    /// statement instead.
+    ///
+    /// Only a failure to run the batch at all throws. A server error inside it is part of the answer, because the
+    /// statements after it may still have run and returned results.
+    func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult?
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
 
     /// What `fetchTables(schema:)` lists for every schema `fetchSchemas()` lists, in one call, each
@@ -1029,6 +1038,10 @@ public extension PluginDatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
+
+    func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
+        nil
+    }
 
     /// The bounded read for a driver whose `streamRows` yields rows as they arrive and whose
     /// producer stops when its consumer does. Opt in by returning this from `executeBoundedQuery`.
