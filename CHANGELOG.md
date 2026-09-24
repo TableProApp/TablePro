@@ -497,6 +497,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server statement that kept running on the server, and committed, after Disconnect.
 - SQL Server `MERGE` refused with Msg 10713 when run alone or as the last statement of a script.
 - Column sort re-running every statement in the editor for a result with query parameters or after Fetch All.
+- Format SQL, Fold and Save as Favorite shown dimmed in the query editor's context menu.
+- Format SQL and Save as Favorite in the editor's context menu acting on the right-clicked word alone.
+- Explain, Optimize and Fix with AI cancelling a reply the assistant was still writing.
+- AI chat unable to send again after a message too large to send, with an error naming the wrong setting.
+- A whole AI conversation lost when one part of it could not be read.
 
 ### Security
 

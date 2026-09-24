@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -68,6 +69,70 @@ struct TrailingPaneStateTests {
         let first = state.assistant.activate(connection: connection)
         let second = state.assistant.activate(connection: connection)
         #expect(first === second)
+    }
+
+    @Test("An action while the assistant is busy opens a new session and stops observing the busy one")
+    @MainActor
+    func busyAssistantMovesToANewSession() throws {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let registry = Self.isolatedRegistry()
+        let state = TrailingPaneState(connectionId: connection.id, sessionRegistry: registry)
+        let busy = try #require(state.assistant.activate(connection: connection))
+        busy.streamingState = .streaming(assistantID: UUID())
+
+        let fresh = try #require(state.assistant.activateIdleSession(connection: connection))
+
+        #expect(fresh !== busy)
+        #expect(state.assistant.viewModelIfActivated === fresh)
+        #expect(fresh.connection?.id == connection.id)
+        #expect(busy.isStreaming)
+        #expect(registry.sessions(for: connection.id).count == 2)
+
+        var announcements = 0
+        let subscription = state.assistant.objectWillChange.sink { announcements += 1 }
+        busy.inputText = "typed into the busy session"
+        #expect(announcements == 0)
+        fresh.inputText = "typed into the new session"
+        #expect(announcements > 0)
+        subscription.cancel()
+    }
+
+    @Test("An action while the assistant is idle stays in its session")
+    @MainActor
+    func idleAssistantKeepsItsSession() throws {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let registry = Self.isolatedRegistry()
+        let state = TrailingPaneState(connectionId: connection.id, sessionRegistry: registry)
+        let current = try #require(state.assistant.activate(connection: connection))
+
+        let resolved = state.assistant.activateIdleSession(connection: connection)
+
+        #expect(resolved === current)
+        #expect(registry.sessions(for: connection.id).count == 1)
+    }
+
+    @Test("A second window's assistant follows the session the first one started")
+    @MainActor
+    func secondWindowFollowsTheNewSession() throws {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let registry = Self.isolatedRegistry()
+        let first = TrailingPaneState(connectionId: connection.id, sessionRegistry: registry)
+        let second = TrailingPaneState(connectionId: connection.id, sessionRegistry: registry)
+        let busy = try #require(first.assistant.activate(connection: connection))
+        second.assistant.activate(connection: connection)
+        busy.streamingState = .streaming(assistantID: UUID())
+        let fresh = try #require(first.assistant.activateIdleSession(connection: connection))
+
+        second.assistant.followDisplayedSession()
+
+        var announcements = 0
+        let subscription = second.assistant.objectWillChange.sink { announcements += 1 }
+        busy.inputText = "typed into the busy session"
+        #expect(announcements == 0)
+        fresh.inputText = "typed into the new session"
+        #expect(announcements > 0)
+        #expect(second.assistant.viewModelIfActivated === fresh)
+        subscription.cancel()
     }
 
     /// A registry of its own per test, so a session written by one case cannot be restored by the

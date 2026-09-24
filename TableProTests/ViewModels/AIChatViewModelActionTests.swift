@@ -251,4 +251,137 @@ struct AIChatViewModelActionTests {
         #expect(vm.messages.isEmpty)
         #expect(vm.errorMessage != nil)
     }
+
+    @Test("A reply in flight, and a wait on AI access, keep the session busy")
+    func busyStates() {
+        let vm = AIChatViewModel()
+        let states: [AIChatViewModel.StreamingState] = [.loading, .streaming(assistantID: UUID()), .awaitingApproval]
+        for state in states {
+            vm.streamingState = state
+            #expect(vm.isBusy, "\(state)")
+        }
+    }
+
+    @Test("An idle, failed or paused session is not busy")
+    func idleStates() {
+        let vm = AIChatViewModel()
+        let states: [AIChatViewModel.StreamingState] = [.idle, .failed(nil), .pausedAtToolLimit(count: 25)]
+        for state in states {
+            vm.streamingState = state
+            #expect(!vm.isBusy, "\(state)")
+        }
+    }
+
+    @Test("A tool call waiting on approval keeps its own session busy and no other")
+    func pendingToolApprovalIsBusy() {
+        let vm = AIChatViewModel()
+        let other = AIChatViewModel()
+        let center = ToolApprovalCenter.shared
+        center.expect(sessionId: vm.sessionId, toolUseIds: ["call_0"])
+        defer { center.forget(sessionId: vm.sessionId, toolUseIds: ["call_0"]) }
+
+        #expect(vm.isBusy)
+        #expect(!other.isBusy)
+    }
+
+    @Test("Preparing a turn, or holding one for a connect, is busy")
+    func preparationIsBusy() {
+        let vm = AIChatViewModel()
+        vm.prepTask = Task {}
+        #expect(vm.isBusy)
+        vm.prepTask = nil
+        #expect(!vm.isBusy)
+
+        vm.heldTurnAwaitsConnection = true
+        #expect(vm.isBusy)
+    }
+
+    private func oversized() -> String {
+        String(repeating: "a", count: ChatPreflight.characterLimit + 1)
+    }
+
+    @Test("An oversized message leaves the transcript, its text goes back to the composer and its attachments go")
+    func oversizedMessageReturnsToComposer() async {
+        let vm = AIChatViewModel()
+        let earlier = ChatTurn(role: .user, blocks: [.text("How many orders?")])
+        let reply = ChatTurn(role: .assistant, blocks: [.text("42")])
+        let message = ChatTurn(role: .user, blocks: [.text(oversized()), .attachment(.schema(connectionId: UUID()))])
+        let placeholder = ChatTurn(role: .assistant, blocks: [])
+        vm.messages = [earlier, reply, message, placeholder]
+        vm.streamingState = .streaming(assistantID: placeholder.id)
+
+        let sent = await vm.preflightCheck(
+            systemPrompt: "You are a helpful database assistant.",
+            turns: [earlier, reply, message].map { $0.wireSnapshot },
+            assistantID: placeholder.id
+        )
+
+        #expect(!sent)
+        #expect(vm.messages.map { $0.id } == [earlier.id, reply.id])
+        #expect(vm.inputText == oversized())
+        #expect(vm.attachedContext.isEmpty)
+        #expect(vm.errorMessage == ChatPreflight.Rejection.message.explanation)
+        #expect(!vm.isBusy)
+    }
+
+    @Test("After an oversized message is refused, a short one can be sent")
+    func refusalLeavesAConversationThatCanSend() async {
+        let vm = AIChatViewModel()
+        let message = ChatTurn(role: .user, blocks: [.text(oversized())])
+        let placeholder = ChatTurn(role: .assistant, blocks: [])
+        vm.messages = [message, placeholder]
+
+        _ = await vm.preflightCheck(systemPrompt: nil, turns: [message.wireSnapshot], assistantID: placeholder.id)
+        let short = ChatTurn(role: .user, blocks: [.text("How many orders?")])
+        vm.messages.append(short)
+        let retried = await vm.preflightCheck(
+            systemPrompt: nil,
+            turns: vm.messages.map { $0.wireSnapshot },
+            assistantID: UUID()
+        )
+
+        #expect(retried)
+    }
+
+    @Test("A slash command refused as too large takes its invocation back and clears its walkthrough")
+    func refusedSlashCommandClearsWalkthrough() async {
+        let vm = AIChatViewModel()
+        let invocation = ChatTurn(role: .user, blocks: [.text("/review")])
+        let prompt = ChatTurn(role: .user, blocks: [.text(oversized())])
+        let placeholder = ChatTurn(role: .assistant, blocks: [])
+        vm.messages = [invocation, prompt, placeholder]
+        vm.pendingWalkthroughBeforeSQL = "SELECT 1"
+        vm.pendingWalkthroughSource = QueryEditorAnchor(tabId: UUID())
+
+        _ = await vm.preflightCheck(
+            systemPrompt: nil,
+            turns: [invocation, prompt].map { $0.wireSnapshot },
+            assistantID: placeholder.id
+        )
+
+        #expect(vm.messages.isEmpty)
+        #expect(vm.inputText == "/review")
+        #expect(vm.pendingWalkthroughBeforeSQL == nil)
+        #expect(vm.pendingWalkthroughSource == nil)
+    }
+
+    @Test("A long conversation is named as the cause, not the message")
+    func historyIsNamed() async {
+        let vm = AIChatViewModel()
+        let earlier = ChatTurn(role: .user, blocks: [.text(oversized())])
+        let reply = ChatTurn(role: .assistant, blocks: [.text("Done")])
+        let message = ChatTurn(role: .user, blocks: [.text("And now?")])
+        let placeholder = ChatTurn(role: .assistant, blocks: [])
+        vm.messages = [earlier, reply, message, placeholder]
+
+        _ = await vm.preflightCheck(
+            systemPrompt: nil,
+            turns: [earlier, reply, message].map { $0.wireSnapshot },
+            assistantID: placeholder.id
+        )
+
+        #expect(vm.errorMessage == ChatPreflight.Rejection.history.explanation)
+        #expect(vm.messages.map { $0.id } == [earlier.id, reply.id])
+        #expect(vm.inputText == "And now?")
+    }
 }
