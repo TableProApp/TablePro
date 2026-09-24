@@ -147,6 +147,7 @@ SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connecti
 - The SSL pane offers no certificate fields here. Verification runs against the system trust store; a private trust anchor goes in your own `freetds.conf`.
 - A result set from a batch offers **Fetch All**, and sorts on the server, only when its query can run again on its own. One that reads a variable, or comes from a procedure call or a loop, stays at the row limit and sorts the rows already shown: raise **Row cap** in [Settings](/customization/settings), or run the query by itself.
 - A batch keeps its first 100 result sets. The statements behind the rest still run, and the status bar says how many result sets were not kept.
+- With a transaction open under `SET XACT_ABORT ON`, a query cut at the row limit reads its whole result before any rows appear. Stop ends it, and SQL Server then rolls the transaction back.
 
 ## Troubleshooting
 

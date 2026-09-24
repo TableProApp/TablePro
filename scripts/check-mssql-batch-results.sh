@@ -13,13 +13,18 @@
 #   - A later result set can be wider than the first. The stream path indexed the first one's columns with the later
 #     one's count and trapped.
 #   - A capped read that cancelled the rest of its request sent the server an attention, which under
-#     SET XACT_ABORT ON rolled back the session's open transaction without a word.
+#     SET XACT_ABORT ON rolled back the session's open transaction without a word. One that left the rest unread
+#     instead kept its SELECT suspended on the server holding its locks, so another session's ALTER TABLE failed with
+#     Msg 1222, and the connection's next call had to read every remaining row before the server answered it.
 #   - sp_executesql runs its text one scope down, so a parameterized batch wrapped in it failed a BEGIN TRAN with
 #     Msg 266 and lost its #temp tables, and its generated names collided with the script's own variables (Msg 134).
 #     The declaration that binds values in the batch instead reports a row count of its own, and a procedure called
 #     without EXEC fails behind it.
-#   - A Stop pressed while a statement waited behind the drain of an abandoned read was forgotten, and the statement
-#     was sent and committed anyway.
+#   - A Stop pressed while a statement waited behind another call was forgotten, and the statement was sent and
+#     committed anyway.
+#   - A Stop called dbcancel from its own thread, and dbcancel reads the server's answer on the thread that calls it.
+#     The thread reading the connection then waited forever for packets the Stop had already read: during a large
+#     result, and during a read blocked on another session's lock.
 #   - Past the errors a read keeps, a failing statement looked like db-lib failing the whole request.
 #
 # So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
@@ -27,7 +32,10 @@
 # change to the reader re-checks it.
 #
 # Usage:
-#   scripts/check-mssql-batch-results.sh [host] [port] [user]
+#   scripts/check-mssql-batch-results.sh [host] [port] [user] [database]
+#
+# The database defaults to tablepro_batch_check and is created when missing, so runs that share a server can each
+# name their own.
 #
 # The password comes from MSSQL_SA_PASSWORD. With no server listening on host:port, the script starts
 # mcr.microsoft.com/azure-sql-edge in Docker as tablepro-mssql-check (or TP_MSSQL_CONTAINER), generating a password
@@ -38,6 +46,7 @@ set -uo pipefail
 HOST="${1:-127.0.0.1}"
 PORT="${2:-14339}"
 USER_NAME="${3:-sa}"
+DATABASE="${4:-tablepro_batch_check}"
 PASSWORD="${MSSQL_SA_PASSWORD:-}"
 CONTAINER="${TP_MSSQL_CONTAINER:-tablepro-mssql-check}"
 IMAGE="mcr.microsoft.com/azure-sql-edge:latest"
@@ -127,6 +136,8 @@ import TableProPluginKit
 enum Check {
     nonisolated(unsafe) static var failures = 0
 
+    static let database = ProcessInfo.processInfo.environment["TP_CHECK_DATABASE"] ?? "tablepro_batch_check"
+
     static func expect(_ condition: Bool, _ label: String, _ detail: @autoclosure () -> String = "") {
         if condition {
             print("PASS: \(label)")
@@ -137,6 +148,69 @@ enum Check {
     }
 
     static func columns(_ result: PluginQueryResult) -> [String] { result.columns }
+
+    static func crossJoin(rows: Int) -> String {
+        "SELECT TOP (\(rows)) a.object_id, REPLICATE('x', 100) AS pad FROM sys.all_columns a CROSS JOIN sys.all_columns b"
+    }
+
+    final class Settled<Value: Sendable>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var result: Result<Value, Error>?
+
+        func record(_ result: Result<Value, Error>) { lock.withLock { self.result = result } }
+        var value: Result<Value, Error>? { lock.withLock { result } }
+    }
+
+    /// Waits for `task` for at most `seconds` without depending on it ever ending: a read the driver lost stays blocked
+    /// inside db-lib for good, and the checks after it still have to run. Nil when it did not end in time.
+    static func settle<Value: Sendable>(_ task: Task<Value, Error>, within seconds: Double) async -> Result<Value, Error>? {
+        let settled = Settled<Value>()
+        Task.detached { settled.record(await task.result) }
+        let deadline = Date().addingTimeInterval(seconds)
+        while settled.value == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return settled.value
+    }
+
+    /// A Stop pressed on a thread of its own. The app presses it on the main thread and waits for it to return, so a
+    /// Stop that never returns freezes the app; pressing it here keeps a Stop that blocks from holding up the checks.
+    final class StopPress: @unchecked Sendable {
+        private let lock = NSLock()
+        private var hasReturned = false
+
+        func markReturned() { lock.withLock { hasReturned = true } }
+
+        func returns(within seconds: Double) async -> Bool {
+            let deadline = Date().addingTimeInterval(seconds)
+            while !lock.withLock({ hasReturned }), Date() < deadline {
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            return lock.withLock { hasReturned }
+        }
+    }
+
+    static func pressStop(_ driver: MSSQLPluginDriver) -> StopPress {
+        let press = StopPress()
+        Thread.detachNewThread {
+            try? driver.cancelQuery()
+            press.markReturned()
+        }
+        return press
+    }
+
+    static func answersPromptly(_ driver: MSSQLPluginDriver) async -> Bool {
+        let probe = Task { try await driver.execute(query: "SELECT 42 AS n").rows.first?.first?.asText }
+        guard case .success(let answer)? = await settle(probe, within: 5) else { return false }
+        return answer == "42"
+    }
+
+    static func runningRequests(of spid: String, seenBy observer: MSSQLPluginDriver) async throws -> String? {
+        let requests = try await observer.execute(
+            query: "SELECT COUNT(*) AS n FROM sys.dm_exec_requests WHERE session_id = \(Int(spid) ?? -1)"
+        )
+        return requests.rows.first?.first?.asText
+    }
 
     static func connect(_ database: String) async throws -> MSSQLPluginDriver {
         let environment = ProcessInfo.processInfo.environment
@@ -173,10 +247,10 @@ enum Check {
 
     static func run() async throws {
         let admin = try await connect("master")
-        _ = try await admin.execute(query: "IF DB_ID(N'tablepro_batch_check') IS NULL CREATE DATABASE tablepro_batch_check")
+        _ = try await admin.execute(query: "IF DB_ID(N'\(database)') IS NULL CREATE DATABASE [\(database)]")
         admin.disconnect()
 
-        let driver = try await connect("tablepro_batch_check")
+        let driver = try await connect(database)
         _ = try await driver.executeBatch(query: """
             IF OBJECT_ID(N'dbo.serialnew') IS NULL CREATE TABLE dbo.serialnew ([S/N] NVARCHAR(50), model NVARCHAR(20));
             IF OBJECT_ID(N'dbo.wms') IS NULL CREATE TABLE dbo.wms ([S/N] NVARCHAR(50), bin_code NVARCHAR(10), qty INT, model NVARCHAR(20));
@@ -184,6 +258,15 @@ enum Check {
             IF OBJECT_ID(N'dbo.serial_existed') IS NULL CREATE TABLE dbo.serial_existed (sn_code NVARCHAR(50), seen_at DATETIME2);
             IF OBJECT_ID(N'dbo.pk_check') IS NULL CREATE TABLE dbo.pk_check (id INT PRIMARY KEY);
             IF OBJECT_ID(N'dbo.update_check') IS NULL CREATE TABLE dbo.update_check (id INT, v NVARCHAR(10));
+            IF OBJECT_ID(N'dbo.capped_rows') IS NULL BEGIN
+                CREATE TABLE dbo.capped_rows (id INT PRIMARY KEY, pad CHAR(100) NOT NULL DEFAULT 'x');
+                INSERT INTO dbo.capped_rows (id)
+                    SELECT TOP (200000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) FROM sys.all_columns a CROSS JOIN sys.all_columns b;
+            END;
+            IF OBJECT_ID(N'dbo.stop_locked') IS NULL BEGIN
+                CREATE TABLE dbo.stop_locked (id INT PRIMARY KEY);
+                INSERT INTO dbo.stop_locked SELECT TOP (5000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) FROM sys.all_columns;
+            END;
             """, rowCap: nil, parameters: nil)
         _ = try await driver.executeBatch(query: """
             DELETE FROM dbo.serialnew; DELETE FROM dbo.wms; DELETE FROM dbo.drm_report_n; DELETE FROM dbo.serial_existed;
@@ -206,7 +289,14 @@ enum Check {
         try await parameterNames(driver)
         try await boundCountsAndCalls(driver)
         try await manyErrors(driver)
-        try await stopDuringDrain(driver)
+
+        let observer = try await connect(database)
+        try await cappedReadsEndTheirStatement(driver, observer: observer)
+        try await stopDuringWaitfor()
+        try await stopDuringLargeResult()
+        try await stopDuringBlockedRead(locker: observer)
+        try await stopWhileReadingPastTheRest(observer: observer)
+        observer.disconnect()
         try await fatalError(driver)
     }
 
@@ -319,8 +409,7 @@ enum Check {
             rowCap: nil,
             parameters: nil
         )
-        let big = "SELECT TOP (200000) a.object_id, REPLICATE('x', 100) AS pad FROM sys.all_columns a CROSS JOIN sys.all_columns b"
-        let bounded = try await driver.executeBoundedQuery(query: big, rowCap: 10_000)
+        let bounded = try await driver.executeBoundedQuery(query: crossJoin(rows: 200_000), rowCap: 10_000)
         expect(bounded?.rows.count == 10_000 && bounded?.isTruncated == true, "a bounded read stops at its cap")
         let after = try await driver.execute(query: "SELECT @@TRANCOUNT AS open_transactions, COUNT(*) AS kept FROM dbo.pk_check WHERE id = 77")
         expect(after.rows.first?.map(\.asText) == ["1", "1"],
@@ -329,6 +418,163 @@ enum Check {
         _ = try await driver.execute(query: "IF @@TRANCOUNT > 0 ROLLBACK; SET XACT_ABORT OFF")
         let next = try await driver.execute(query: "SELECT 7 AS n")
         expect(next.rows.first?.first?.asText == "7", "the query after a capped read answers with its own result")
+    }
+
+    static func cappedReadsEndTheirStatement(_ driver: MSSQLPluginDriver, observer: MSSQLPluginDriver) async throws {
+        let spid = try await driver.execute(query: "SELECT @@SPID AS spid").rows.first?.first?.asText ?? ""
+        let alter = "SET LOCK_TIMEOUT 3000; ALTER TABLE dbo.capped_rows ADD capped_probe INT NULL; "
+            + "ALTER TABLE dbo.capped_rows DROP COLUMN capped_probe; SET LOCK_TIMEOUT -1;"
+
+        let capped = try await driver.executeBoundedQuery(query: "SELECT * FROM dbo.capped_rows", rowCap: 10_000)
+        expect(capped?.rows.count == 10_000 && capped?.isTruncated == true, "a capped read of a table keeps 10,000 rows")
+        let running = try await runningRequests(of: spid, seenBy: observer)
+        expect(running == "0", "a capped read leaves no statement running on the server", "requests=\(running ?? "nil")")
+        let altered = try await observer.executeBatch(query: alter, rowCap: nil, parameters: nil)
+        expect(altered?.errors.isEmpty == true, "a capped read releases its locks: another session alters the table",
+               "\(String(describing: altered?.errors.map(\.message)))")
+
+        _ = try await driver.executeBatch(
+            query: "BEGIN TRAN; INSERT INTO dbo.pk_check VALUES (78);", rowCap: nil, parameters: nil
+        )
+        _ = try await driver.executeBoundedQuery(query: "SELECT * FROM dbo.capped_rows", rowCap: 10_000)
+        let alteredInTransaction = try await observer.executeBatch(query: alter, rowCap: nil, parameters: nil)
+        let kept = try await driver.execute(query: "SELECT @@TRANCOUNT AS open_transactions, COUNT(*) AS kept FROM dbo.pk_check WHERE id = 78")
+        expect(alteredInTransaction?.errors.isEmpty == true && kept.rows.first?.map(\.asText) == ["1", "1"],
+               "without XACT_ABORT a capped read in a transaction ends its SELECT and keeps the transaction and its work",
+               "\(String(describing: alteredInTransaction?.errors.map(\.message))) \(String(describing: kept.rows.first?.map(\.asText)))")
+        _ = try await driver.execute(query: "IF @@TRANCOUNT > 0 ROLLBACK")
+
+        _ = try await driver.executeBatch(
+            query: "SET XACT_ABORT ON; BEGIN TRAN; INSERT INTO dbo.pk_check VALUES (77);", rowCap: nil, parameters: nil
+        )
+        _ = try await driver.executeBoundedQuery(query: "SELECT * FROM dbo.capped_rows", rowCap: 10_000)
+        let runningInTransaction = try await runningRequests(of: spid, seenBy: observer)
+        let keptUnderXactAbort = try await driver.execute(query: "SELECT @@TRANCOUNT AS open_transactions, COUNT(*) AS kept FROM dbo.pk_check WHERE id = 77")
+        expect(runningInTransaction == "0" && keptUnderXactAbort.rows.first?.map(\.asText) == ["1", "1"],
+               "under XACT_ABORT a capped read reads the rest in its own call: nothing left running, the transaction kept",
+               "requests=\(runningInTransaction ?? "nil") \(String(describing: keptUnderXactAbort.rows.first?.map(\.asText)))")
+        _ = try await driver.execute(query: "IF @@TRANCOUNT > 0 ROLLBACK; SET XACT_ABORT OFF")
+
+        _ = try await driver.executeBoundedQuery(query: crossJoin(rows: 5_000_000), rowCap: 10_000)
+        let startedAt = Date()
+        let next = try await driver.execute(query: "SELECT 7 AS n")
+        let answeredIn = Date().timeIntervalSince(startedAt)
+        expect(next.rows.first?.first?.asText == "7" && answeredIn < 2,
+               "the query after a capped read of 5,000,000 rows answers at once",
+               String(format: "%.2fs", answeredIn))
+    }
+
+    /// What went wrong when Stop was pressed on `read` after `delay`, or nothing. The Stop has to come back at once,
+    /// the read has to end with an error within 3 seconds, and the connection has to answer the next query.
+    static func stopMisses(
+        _ driver: MSSQLPluginDriver,
+        after delay: UInt64,
+        read: Task<Void, Error>
+    ) async throws -> [String] {
+        try await Task.sleep(nanoseconds: delay)
+        let stoppedAt = Date()
+        let press = pressStop(driver)
+        let outcome = await settle(read, within: 10)
+        let endedIn = Date().timeIntervalSince(stoppedAt)
+        var misses: [String] = []
+        if await !press.returns(within: 2) {
+            misses.append("the Stop never returned")
+        }
+        switch outcome {
+        case nil:
+            misses.append("the read never ended")
+        case .success?:
+            misses.append("the read finished instead of stopping")
+        case .failure?:
+            if endedIn >= 3 { misses.append(String(format: "the read ended %.2fs after the Stop", endedIn)) }
+            if await !answersPromptly(driver) { misses.append("the connection did not answer after") }
+        }
+        return misses
+    }
+
+    /// Runs a Stop scenario `attempts` times on a fresh connection each time. A Stop that reads the socket from its
+    /// own thread races the thread reading the connection, so one attempt that happened to win proves nothing.
+    static func expectStop(
+        _ label: String,
+        attempts: Int = 3,
+        _ attempt: (MSSQLPluginDriver) async throws -> [String]
+    ) async throws {
+        var misses: [String] = []
+        for number in 1...attempts {
+            let driver = try await connect(database)
+            let missed = try await attempt(driver)
+            if !missed.isEmpty {
+                misses.append("attempt \(number): \(missed.joined(separator: ", "))")
+            }
+            driver.disconnect()
+        }
+        expect(misses.isEmpty, label, misses.joined(separator: "; "))
+    }
+
+    static func stopDuringWaitfor() async throws {
+        try await expectStop("a Stop during a WAITFOR returns, ends the call and leaves the connection answering") { driver in
+            let read = Task {
+                _ = try await driver.executeBatch(query: "WAITFOR DELAY '00:00:30'; SELECT 1 AS n;", rowCap: nil, parameters: nil)
+            }
+            return try await stopMisses(driver, after: 700_000_000, read: read)
+        }
+    }
+
+    static func stopDuringLargeResult() async throws {
+        try await expectStop("a Stop during a large result returns, ends the call and leaves the connection answering") { driver in
+            let read = Task {
+                _ = try await driver.executeBatch(query: crossJoin(rows: 30_000_000), rowCap: nil, parameters: nil)
+            }
+            return try await stopMisses(driver, after: 700_000_000, read: read)
+        }
+    }
+
+    static func stopDuringBlockedRead(locker: MSSQLPluginDriver) async throws {
+        try await expectStop(
+            "a Stop during a read blocked on another session's lock returns, ends the call and leaves the connection answering"
+        ) { driver in
+            _ = try await locker.executeBatch(
+                query: "BEGIN TRAN; UPDATE dbo.stop_locked SET id = id WHERE id = 4000;", rowCap: nil, parameters: nil
+            )
+            let read = Task {
+                _ = try await driver.executeBatch(query: "SELECT id FROM dbo.stop_locked ORDER BY id;", rowCap: nil, parameters: nil)
+            }
+            let misses = try await stopMisses(driver, after: 1_500_000_000, read: read)
+            _ = try await locker.execute(query: "IF @@TRANCOUNT > 0 ROLLBACK")
+            return misses
+        }
+    }
+
+    static func stopWhileReadingPastTheRest(observer: MSSQLPluginDriver) async throws {
+        let driver = try await connect(database)
+        _ = try await driver.executeBatch(
+            query: "SET XACT_ABORT ON; BEGIN TRAN; INSERT INTO dbo.pk_check VALUES (79);", rowCap: nil, parameters: nil
+        )
+        let read = Task { try await driver.executeBoundedQuery(query: crossJoin(rows: 5_000_000), rowCap: 10_000) }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let delete = Task { try await driver.executeBatch(query: "DELETE FROM dbo.pk_check WHERE id = 1;", rowCap: nil, parameters: nil) }
+        try await Task.sleep(nanoseconds: 700_000_000)
+        let stoppedAt = Date()
+        let press = pressStop(driver)
+        let readOutcome = await settle(read, within: 10)
+        let deleteOutcome = await settle(delete, within: 10)
+        let answeredIn = Date().timeIntervalSince(stoppedAt)
+        let stopReturned = await press.returns(within: 2)
+        let readStopped: Bool
+        if case .failure? = readOutcome { readStopped = true } else { readStopped = false }
+        let deleteStopped: Bool
+        if case .failure? = deleteOutcome { deleteStopped = true } else { deleteStopped = false }
+        expect(stopReturned && readStopped && deleteStopped && answeredIn < 3,
+               "a Stop while a capped read reads past the rest ends it and the statement queued behind it",
+               String(format: "stop=%@ read=%@ delete=%@ after %.2fs", stopReturned ? "returned" : "never returned",
+                      readStopped ? "stopped" : "not stopped", deleteStopped ? "stopped" : "not stopped", answeredIn))
+        let kept = try await observer.execute(query: "SELECT COUNT(*) AS n FROM dbo.pk_check WHERE id = 1")
+        expect(kept.rows.first?.first?.asText == "1", "the statement queued behind the Stop was never sent: the row is still there",
+               "\(String(describing: kept.rows.first?.first?.asText))")
+        guard readOutcome != nil, deleteOutcome != nil else { return }
+        _ = try? await driver.execute(query: "IF @@TRANCOUNT > 0 ROLLBACK; SET XACT_ABORT OFF")
+        expect(await answersPromptly(driver), "the connection answers after a Stop while reading past the rest")
+        driver.disconnect()
     }
 
     static func procedureResultSets(_ driver: MSSQLPluginDriver) async throws {
@@ -344,7 +590,7 @@ enum Check {
         expect(output.lines == ["hello from print"], "PRINT reaches the server output", "\(output.lines)")
         let again = try await driver.fetchServerOutput()
         expect(again.lines.isEmpty, "the server output is handed over once", "\(again.lines)")
-        _ = try await driver.execute(query: "USE tablepro_batch_check")
+        _ = try await driver.execute(query: "USE [\(database)]")
         let context = try await driver.fetchServerOutput()
         expect(context.lines.isEmpty, "a change of database context is not output", "\(context.lines)")
     }
@@ -437,27 +683,6 @@ enum Check {
         expect(after.rows.first?.first?.asText == "8", "the connection answers after 1,500 errors")
     }
 
-    static func stopDuringDrain(_ driver: MSSQLPluginDriver) async throws {
-        let big = "SELECT TOP (5000000) a.object_id, REPLICATE('x', 100) AS pad FROM sys.all_columns a CROSS JOIN sys.all_columns b"
-        _ = try await driver.executeBoundedQuery(query: big, rowCap: 10_000)
-        let delete = Task { try await driver.executeBatch(query: "DELETE FROM dbo.pk_check WHERE id = 1;", rowCap: nil, parameters: nil) }
-        try await Task.sleep(nanoseconds: 300_000_000)
-        let stoppedAt = Date()
-        try driver.cancelQuery()
-        let outcome = await delete.result
-        let stopped: Bool
-        switch outcome {
-        case .success: stopped = false
-        case .failure: stopped = true
-        }
-        let answeredIn = Date().timeIntervalSince(stoppedAt)
-        expect(stopped && answeredIn < 2, "a Stop during the drain before a statement ends the call promptly",
-               String(format: "stopped=%@ after %.2fs", stopped ? "yes" : "no", answeredIn))
-        let kept = try await driver.execute(query: "SELECT COUNT(*) AS n FROM dbo.pk_check WHERE id = 1")
-        expect(kept.rows.first?.first?.asText == "1", "a Stop during the drain sends nothing: the row is still there",
-               "\(String(describing: kept.rows.first?.first?.asText))")
-    }
-
     static func fatalError(_ driver: MSSQLPluginDriver) async throws {
         do {
             _ = try await driver.executeBatch(query: "RAISERROR('fatal check', 20, 1) WITH LOG", rowCap: nil, parameters: nil)
@@ -479,4 +704,4 @@ swift build --package-path "$WORK" --scratch-path "$WORK/.build" > "$WORK/build.
 }
 
 TP_CHECK_HOST="$HOST" TP_CHECK_PORT="$PORT" TP_CHECK_USER="$USER_NAME" TP_CHECK_PASSWORD="$PASSWORD" \
-    "$WORK/.build/debug/Check"
+    TP_CHECK_DATABASE="$DATABASE" "$WORK/.build/debug/Check"
