@@ -40,6 +40,15 @@ final class KeyHandlingTableView: NSTableView {
         )
     }
 
+    /// A reload changes which rows the pinned row gutter numbers, and the gutter is not a subview of
+    /// the table, so nothing the reload redraws reaches it. Its frame follows the table's only once
+    /// the rows outgrow the viewport, so a result with fewer rows than the one before it left the
+    /// old numbers painted beside rows that were gone.
+    override func reloadData() {
+        super.reloadData()
+        coordinator?.repaintRowGutter()
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }
