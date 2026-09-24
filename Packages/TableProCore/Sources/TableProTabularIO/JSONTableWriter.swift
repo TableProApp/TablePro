@@ -55,14 +55,20 @@ public struct JSONTableWriter {
         isCancelled: () -> Bool,
         sink: ([UInt8]) throws -> Void
     ) throws where Rows.Element == JSONOutputRow {
-        let columnChanges = try resolvedColumnChanges()
+        let rules = JSONLiteralRules(forbidsLineBreaks: shape == .lines)
+        let splicer = JSONObjectSplicer(
+            keyTable: source?.index.keyTable ?? JSONKeyTable(),
+            columnPlans: try resolvedColumnPlans(rules: rules),
+            rules: rules
+        )
         let data = source?.bytes ?? Data()
         try data.withUnsafeBytes { raw in
             var emitter = JSONDocumentEmitter(
                 bytes: raw.bindMemory(to: UInt8.self),
                 index: source?.index,
                 shape: shape,
-                columnChanges: columnChanges,
+                splicer: splicer,
+                rules: rules,
                 capacity: min(raw.count, Self.flushThreshold) + Self.bufferSlack
             )
             for row in rows {
@@ -77,12 +83,15 @@ public struct JSONTableWriter {
         }
     }
 
-    private func resolvedColumnChanges() throws -> [JSONMemberChange?] {
+    private func resolvedColumnPlans(rules: JSONLiteralRules) throws -> [JSONColumnPlan?] {
         guard let source, !keyChanges.isEmpty else { return [] }
         let keyTable = source.index.keyTable
         var changes = [JSONMemberChange?](repeating: nil, count: source.columnCount)
         for (key, change) in keyChanges {
             guard let column = keyTable.column(named: key) else { continue }
+            if let literal = change.newLiteral {
+                try rules.check(literal)
+            }
             changes[column] = change
         }
         var names = Set<String>()
@@ -90,20 +99,24 @@ public struct JSONTableWriter {
             let finalName = changes[column]?.newKey ?? name
             guard names.insert(finalName).inserted else { throw JSONTableWriteError.duplicateKey(finalName) }
         }
-        return changes
+        return changes.map { $0.map(JSONColumnPlan.init) }
     }
 }
 
 private struct JSONDocumentEmitter {
-    private enum Content {
-        case source
-        case bytes([UInt8])
-    }
+    private enum PendingRow {
+        case source(Int)
+        case splice(Int, JSONObjectEdit?)
+        case new([JSONNewMember])
 
-    private struct RenderedRow {
-        let sourceRow: Int?
-        var sourceEnd: Int?
-        let content: Content
+        var sourceRow: Int? {
+            switch self {
+            case .source(let row), .splice(let row, _):
+                return row
+            case .new:
+                return nil
+            }
+        }
     }
 
     private static let sourcelessArrayPrefix = Array("[\n".utf8)
@@ -114,38 +127,38 @@ private struct JSONDocumentEmitter {
     let bytes: UnsafeBufferPointer<UInt8>
     let index: JSONTableIndex?
     let shape: JSONTableShape
-    let columnChanges: [JSONMemberChange?]
-    let hasColumnChanges: Bool
     let rules: JSONLiteralRules
     var output: [UInt8] = []
-    private var predictor = JSONKeyPredictor()
-    private var pending: RenderedRow?
+    private let lineEnding: [UInt8]
+    private var splicer: JSONObjectSplicer
+    private var pending: PendingRow?
     private var arraySeparator: [UInt8]?
 
     init(
         bytes: UnsafeBufferPointer<UInt8>,
         index: JSONTableIndex?,
         shape: JSONTableShape,
-        columnChanges: [JSONMemberChange?],
+        splicer: JSONObjectSplicer,
+        rules: JSONLiteralRules,
         capacity: Int
     ) {
         self.bytes = bytes
         self.index = index
         self.shape = shape
-        self.columnChanges = columnChanges
-        hasColumnChanges = columnChanges.contains { $0 != nil }
-        rules = JSONLiteralRules(forbidsLineBreaks: shape == .lines)
+        self.splicer = splicer
+        self.rules = rules
+        lineEnding = (index?.lineEnding ?? .lf).bytes
         output.reserveCapacity(capacity)
     }
 
     mutating func append(_ row: JSONOutputRow) throws {
-        let rendered = try render(row)
+        let next = try pendingRow(for: row)
         if let previous = pending {
-            try emit(previous, before: rendered)
+            try emit(previous, before: next.sourceRow)
         } else {
             emitPrefix()
         }
-        pending = rendered
+        pending = next
     }
 
     mutating func finish() throws {
@@ -157,17 +170,16 @@ private struct JSONDocumentEmitter {
         try emitSuffix()
     }
 
-    private mutating func render(_ row: JSONOutputRow) throws -> RenderedRow {
+    private func pendingRow(for row: JSONOutputRow) throws -> PendingRow {
         switch row {
         case .source(let sourceRow):
             try requireSourceRow(sourceRow)
-            guard hasColumnChanges else { return RenderedRow(sourceRow: sourceRow, sourceEnd: nil, content: .source) }
-            return try splice(sourceRow, edit: nil)
+            return splicer.hasColumnPlans ? .splice(sourceRow, nil) : .source(sourceRow)
         case .edited(let sourceRow, let edit):
             try requireSourceRow(sourceRow)
-            return try splice(sourceRow, edit: edit)
+            return .splice(sourceRow, edit)
         case .new(let members):
-            return RenderedRow(sourceRow: nil, sourceEnd: nil, content: .bytes(try JSONObjectSplicer.serialize(members, rules: rules)))
+            return .new(members)
         }
     }
 
@@ -177,59 +189,51 @@ private struct JSONDocumentEmitter {
         }
     }
 
-    private mutating func splice(_ row: Int, edit: JSONObjectEdit?) throws -> RenderedRow {
-        guard let index, let base = bytes.baseAddress else { throw JSONTableWriteError.sourceRowUnavailable(row) }
-        let splicer = JSONObjectSplicer(
-            cursor: JSONCursor(base: base, count: bytes.count, row: row),
-            keyTable: index.keyTable,
-            columnChanges: columnChanges,
-            rules: rules
-        )
-        switch try splicer.splice(objectAt: index.rowStarts[row], edit: edit, predictor: &predictor) {
-        case .unchanged(let end):
-            return RenderedRow(sourceRow: row, sourceEnd: end, content: .source)
-        case .rewritten(let rewritten, let end):
-            return RenderedRow(sourceRow: row, sourceEnd: end, content: .bytes(rewritten))
-        }
-    }
-
-    private mutating func emit(_ previous: RenderedRow, before next: RenderedRow) throws {
-        if case .source = previous.content, let row = previous.sourceRow, next.sourceRow == row + 1, let index {
+    private mutating func emit(_ previous: PendingRow, before nextRow: Int?) throws {
+        if case .source(let row) = previous, nextRow == row + 1, let index {
             output.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[index.rowStarts[row]..<index.rowStarts[row + 1]]))
             return
         }
         let end = try emitObject(previous)
-        output.append(contentsOf: try separator(after: previous.sourceRow, end: end, before: next.sourceRow))
+        try appendSeparator(after: previous.sourceRow, end: end, before: nextRow)
     }
 
-    private mutating func emitObject(_ row: RenderedRow) throws -> Int? {
-        switch row.content {
-        case .bytes(let content):
-            output.append(contentsOf: content)
-            return row.sourceEnd
-        case .source:
-            guard let sourceRow = row.sourceRow, let index else { return nil }
-            let end = try row.sourceEnd ?? objectEnd(ofRow: sourceRow)
-            output.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[index.rowStarts[sourceRow]..<end]))
+    private mutating func emitObject(_ row: PendingRow) throws -> Int? {
+        switch row {
+        case .new(let members):
+            try JSONObjectSplicer.appendNewObject(members, rules: rules, into: &output)
+            return nil
+        case .source(let sourceRow):
+            let start = try rowStart(sourceRow)
+            let end = try objectEnd(ofRow: sourceRow)
+            output.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[start..<end]))
             return end
+        case .splice(let sourceRow, let edit):
+            guard let base = bytes.baseAddress else { throw JSONTableWriteError.sourceRowUnavailable(sourceRow) }
+            let cursor = JSONCursor(base: base, count: bytes.count, row: sourceRow)
+            return try splicer.splice(cursor, objectAt: try rowStart(sourceRow), edit: edit, into: &output)
         }
     }
 
-    private mutating func separator(after previousRow: Int?, end: Int?, before nextRow: Int?) throws -> [UInt8] {
+    private mutating func appendSeparator(after previousRow: Int?, end: Int?, before nextRow: Int?) throws {
         guard let index else {
-            return shape == .array ? Self.sourcelessArraySeparator : DelimitedDialect.LineEnding.lf.bytes
+            output.append(contentsOf: shape == .array ? Self.sourcelessArraySeparator : lineEnding)
+            return
         }
         if let previousRow, let end {
             let trailing = end..<(previousRow + 1 < index.rowCount ? index.rowStarts[previousRow + 1] : index.endOffset)
-            if nextRow == previousRow + 1 {
-                return Array(UnsafeBufferPointer(rebasing: bytes[trailing]))
-            }
-            if shape == .lines, bytes[trailing].contains(where: JSONByte.isLineBreak) {
-                return Array(UnsafeBufferPointer(rebasing: bytes[trailing]))
+            let keepsTrailing = nextRow == previousRow + 1
+                || (shape == .lines && bytes[trailing].contains(where: JSONByte.isLineBreak))
+            if keepsTrailing {
+                output.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[trailing]))
+                return
             }
         }
-        guard shape == .array else { return index.lineEnding.bytes }
-        return try styleSeparator(for: index)
+        guard shape == .array else {
+            output.append(contentsOf: lineEnding)
+            return
+        }
+        output.append(contentsOf: try styleSeparator(for: index))
     }
 
     private mutating func styleSeparator(for index: JSONTableIndex) throws -> [UInt8] {
@@ -264,12 +268,12 @@ private struct JSONDocumentEmitter {
 
     private mutating func emitSuffix() throws {
         guard let index else {
-            output.append(contentsOf: shape == .array ? Self.sourcelessArraySuffix : DelimitedDialect.LineEnding.lf.bytes)
+            output.append(contentsOf: shape == .array ? Self.sourcelessArraySuffix : lineEnding)
             return
         }
         guard index.rowCount > 0 else {
             if index.openingBracket == nil {
-                output.append(contentsOf: index.lineEnding.bytes)
+                output.append(contentsOf: lineEnding)
             } else {
                 output.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[index.bodyEnd..<index.endOffset]))
             }
@@ -298,8 +302,12 @@ private struct JSONDocumentEmitter {
         output.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[index.bodyEnd..<index.endOffset]))
     }
 
-    private func objectEnd(ofRow row: Int) throws -> Int {
+    private func rowStart(_ row: Int) throws -> Int {
         guard let index else { throw JSONTableWriteError.sourceRowUnavailable(row) }
-        return try JSONRowParser.objectEnd(in: bytes, at: index.rowStarts[row], row: row)
+        return index.rowStarts[row]
+    }
+
+    private func objectEnd(ofRow row: Int) throws -> Int {
+        try JSONRowParser.objectEnd(in: bytes, at: try rowStart(row), row: row)
     }
 }
