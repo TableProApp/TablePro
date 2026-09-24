@@ -41,7 +41,7 @@ Past the scope, a call clears three more gates:
 
 `confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
 
-Statements that read or write files, or that run server-side code, are refused on every tool. So is more than one statement in a single call, except a SQL Server script sent to [`execute_query`](#execute_query).
+Statements that read or write files, or that run server-side code, are refused on every tool. So is more than one statement in a single call, and a statement a `GO 5` line would run five times, except in a SQL Server script sent to [`execute_query`](#execute_query).
 
 ## Connections
 

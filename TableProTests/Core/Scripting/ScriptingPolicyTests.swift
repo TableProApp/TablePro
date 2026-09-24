@@ -52,7 +52,7 @@ struct ScriptingPolicyTests {
             connectionId: connectionId,
             databaseType: .postgresql,
             caller: .appleScript(client: "Script Editor"),
-            capabilities: [.mayWrite, .mayRunDestructive],
+            capabilities: ScriptQueryRunner.capabilities(on: .postgresql),
             operationDescription: "Script Editor wants to run a query on \"Production\"",
             gate: gate
         )
@@ -67,24 +67,53 @@ struct ScriptingPolicyTests {
         #expect(!request.capabilities.contains(.cannotPrompt))
     }
 
-    /// A script runs one statement, so `mayRunMultiStatement` is deliberately absent. `classify`
-    /// refuses several statements before this point; the capability is the second line.
-    @Test("A script never carries permission to run several statements at once")
-    func scriptsMayNotRunMultipleStatements() async throws {
-        let gate = RecordingExecutionGate(decision: authorized())
+    /// A script runs one statement, except on SQL Server, where the script is the unit (#3078). `classify` refuses
+    /// several statements everywhere else before this point; the capability is the second line.
+    @Test("A script carries permission to run several statements at once only where the engine takes scripts")
+    func scriptsRunSeveralStatementsOnlyWhereScriptsAreTheUnit() {
+        let sqlServer = ScriptQueryRunner.capabilities(on: .mssql)
+        #expect(sqlServer == [.mayWrite, .mayRunDestructive, .mayRunMultiStatement])
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle] {
+            #expect(!ScriptQueryRunner.capabilities(on: engine).contains(.mayRunMultiStatement), "\(engine.rawValue)")
+        }
+    }
 
-        try await ExternalStatementGate.authorizeExecution(
-            sql: "SELECT 1",
-            connectionId: UUID(),
-            databaseType: .postgresql,
-            caller: .appleScript(client: nil),
-            capabilities: [.mayWrite, .mayRunDestructive],
-            operationDescription: "a query",
-            gate: gate
+    /// The execution gate counts statements before it asks Safe Mode anything, so this holds at Silent too.
+    @Test("A SQL Server script from a script clears the execution gate, and several statements elsewhere do not")
+    @MainActor
+    func sqlServerScriptClearsTheExecutionGate() async throws {
+        let gate = DefaultExecutionGate(
+            confirming: StubConfirming(answer: false),
+            authenticating: StubAuthenticating(answer: false),
+            safeModeLevelResolver: { _ in .silent },
+            forcesWriteResolver: { _ in false }
         )
 
-        let request = try #require(await gate.lastRequest)
-        #expect(!request.capabilities.contains(.mayRunMultiStatement))
+        for script in ["SELECT 1 AS a;\nSELECT 2 AS b;", "SELECT 1 AS a\nGO\nSELECT 2 AS b", "SELECT 1 AS a\nGO 3"] {
+            try await ExternalStatementGate.authorizeExecution(
+                sql: script,
+                connectionId: UUID(),
+                databaseType: .mssql,
+                caller: .appleScript(client: nil),
+                capabilities: ScriptQueryRunner.capabilities(on: .mssql),
+                operationDescription: "a query",
+                gate: gate
+            )
+        }
+
+        await #expect(throws: ExternalStatementGateError.denied(
+            String(localized: "Multiple statements are not permitted for this client")
+        )) {
+            try await ExternalStatementGate.authorizeExecution(
+                sql: "SELECT 1; SELECT 2",
+                connectionId: UUID(),
+                databaseType: .postgresql,
+                caller: .appleScript(client: nil),
+                capabilities: ScriptQueryRunner.capabilities(on: .postgresql),
+                operationDescription: "a query",
+                gate: gate
+            )
+        }
     }
 
     @Test("A denied statement throws the gate's own reason, so the script can read it")

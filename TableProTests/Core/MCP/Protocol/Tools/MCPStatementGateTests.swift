@@ -99,6 +99,18 @@ struct MCPStatementGateRefusalTests {
         #expect(error?.code == .invalidArgument)
     }
 
+    /// The execution gate counts statements too, and it counts them before Safe Mode is asked anything, so leave that
+    /// only the first gate was given refused every script at Silent (#3078).
+    @Test("A SQL Server script clears the execution gate as well when the caller takes scripts", arguments: [
+        "DECLARE @sn NVARCHAR(50) = N'x';\nSELECT 1 AS a WHERE @sn = N'x';\nSELECT 2 AS b;",
+        "SELECT 1 AS a\nGO\nSELECT 2 AS b",
+        "SELECT 1 AS a\nGO 3"
+    ])
+    func sqlServerScriptClearsBothGates(script: String) async throws {
+        let error = try await refusal(sql: script, databaseType: .mssql, allowsMultiStatement: true)
+        #expect(error == nil)
+    }
+
     @Test("A destructive statement is refused unless the caller allows destructive work")
     func destructiveIsRefusedWithoutOptIn() async throws {
         let error = try await refusal(sql: "DROP TABLE users")

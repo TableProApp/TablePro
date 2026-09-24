@@ -119,6 +119,18 @@ internal enum ExternalStatementGate {
         databaseType.lexicalGrammar.contains(.batchSeparatorLines)
     }
 
+    /// `capabilities`, plus leave to run several statements in one call where the engine takes scripts.
+    ///
+    /// The execution gate refuses a text of several statements to a caller without that leave, before Safe Mode is
+    /// asked anything, so a caller that lets a script past `classify` has to claim it there as well.
+    internal static func capabilities(
+        _ capabilities: CallerCapabilities,
+        takingScriptsOn databaseType: DatabaseType
+    ) -> CallerCapabilities {
+        guard acceptsScripts(on: databaseType) else { return capabilities }
+        return capabilities.union(.mayRunMultiStatement)
+    }
+
     /// A loaded SQLite extension can add functions that write files or run a nested statement, and
     /// the classifier reads `SELECT BlobToFile(...)` as a read. So on a connection that loads
     /// extensions, a statement from outside the app may call only what SQLite itself provides. Nil

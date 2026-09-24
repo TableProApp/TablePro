@@ -26,6 +26,10 @@ struct SQLBatchSeparatorTests {
         SQLStatementScanner.executableStatements(in: text, grammar: grammar).map(\.sql)
     }
 
+    private func executableText(_ text: String) -> String {
+        SQLStatementScanner.executableText(of: text, grammar: Self.sqlServer)
+    }
+
     private func separatorText(_ text: String) -> [String] {
         separators(text).map { (text as NSString).substring(with: $0.range) }
     }
@@ -160,6 +164,16 @@ struct SQLBatchSeparatorTests {
         let text = "SELECT 1\nGO\nGO\n\nGO 2\nSELECT 2\nGO"
         #expect(separators(text).count == 4)
         #expect(statements(text) == ["SELECT 1", "SELECT 2"])
+    }
+
+    /// Sent whole, a leading `GO` answers Msg 2812, "Could not find stored procedure 'GO'", and SQL Server still runs
+    /// the statement after it, so a tool reported a failure for a `DROP` that had run (measured on Azure SQL Edge 15).
+    @Test("A GO line before the first statement stays out of the text sent whole")
+    func leadingSeparatorIsNotSent() {
+        #expect(executableText("GO\nDROP TABLE dbo.stale") == "DROP TABLE dbo.stale")
+        #expect(executableText("  go -- lead\n\nDROP TABLE dbo.stale;") == "DROP TABLE dbo.stale")
+        #expect(executableText("GO\nGO 3\n-- keep\nSELECT 1\nGO") == "-- keep\nSELECT 1")
+        #expect(executableText("SELECT 1\nGO\nSELECT 2") == "SELECT 1\nGO\nSELECT 2")
     }
 
     @Test("The reporter's script has no GO, so it stays five statements in one batch")

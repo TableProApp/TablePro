@@ -509,6 +509,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server scripts refused, or cut to their first result set, over MCP, AppleScript and the AI assistant.
 - SQL import into SQL Server sending `GO` lines to the server and splitting batches at each semicolon.
 - SQL Server dumps failing on their first view, routine or trigger when restored with sqlcmd or imported.
+- A leading `GO` line sent to SQL Server by MCP and AI assistant tools, and a `GO n` count ignored.
 
 ### Security
 

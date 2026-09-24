@@ -50,6 +50,9 @@ enum MCPStatementGate {
         if allowsDestructive {
             capabilities.insert(.mayRunDestructive)
         }
+        if allowsMultiStatement {
+            capabilities.insert(.mayRunMultiStatement)
+        }
         capabilities.formUnion(consent.capabilities)
 
         try await services.authPolicy.checkSafeModeDialog(
