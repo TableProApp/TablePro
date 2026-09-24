@@ -47,7 +47,7 @@ enum HighlightMenuBuilder {
                 color: color,
                 target: target
             )
-        case .text(let text) where HighlightCondition.readsAsNullLiteral(text, columnType: columnType):
+        case .text(let text) where FilterOperand.readsAsNullLiteral(text, columnType: columnType):
             return nil
         case .text(let text):
             return HighlightRule(
