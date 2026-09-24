@@ -126,6 +126,47 @@ enum ExportMode {
     case tables(connection: DatabaseConnection, preselection: ExportPreselection)
     case queryResults(connection: DatabaseConnection, tableRows: TableRows, suggestedFileName: String)
     case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
+    case dataSource(DataSourceExportRequest)
+}
+
+internal extension ExportMode {
+    var connection: DatabaseConnection? {
+        switch self {
+        case .tables(let connection, _),
+             .queryResults(let connection, _, _),
+             .streamingQuery(let connection, _, _):
+            return connection
+        case .dataSource:
+            return nil
+        }
+    }
+
+    var formatDatabaseTypeId: String {
+        switch self {
+        case .dataSource(let request):
+            return request.databaseTypeId
+        case .tables(let connection, _),
+             .queryResults(let connection, _, _),
+             .streamingQuery(let connection, _, _):
+            return connection.type.rawValue
+        }
+    }
+
+    var listsDatabaseObjects: Bool {
+        guard case .tables = self else { return false }
+        return true
+    }
+
+    var suggestedFileName: String? {
+        switch self {
+        case .tables:
+            return nil
+        case .queryResults(_, _, let name), .streamingQuery(_, _, let name):
+            return name
+        case .dataSource(let request):
+            return request.suggestedFileName
+        }
+    }
 }
 
 // MARK: - Export Configuration
