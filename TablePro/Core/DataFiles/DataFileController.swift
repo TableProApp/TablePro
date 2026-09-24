@@ -151,7 +151,7 @@ final class DataFileController: ObservableObject {
                 Self.logger.debug("Data file load cancelled")
                 return
             }
-            Self.logger.error("Data file load failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Data file load failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
             loadState = .failed(error.localizedDescription)
         }
     }
@@ -191,20 +191,21 @@ final class DataFileController: ObservableObject {
         table = nil
         loadState = .loading
         loadProgress = 0
+        let reportProgress: @Sendable (Double) -> Void = { [weak self] fraction in
+            Task { @MainActor in
+                self?.loadProgress = fraction
+            }
+        }
         loadTask = Task { [weak self] in
             do {
-                let loaded = try await DataFileLoader.loadSheet(workbookSheet, of: workbook) { fraction in
-                    Task { @MainActor [weak self] in
-                        self?.loadProgress = fraction
-                    }
-                }
+                let loaded = try await DataFileLoader.loadSheet(workbookSheet, of: workbook, progress: reportProgress)
                 guard let self, self.selectedSheetIndex == index else { return }
                 self.sheets[index].table = loaded.table
                 self.sheets[index].kinds = loaded.kinds
                 self.installSheet(at: index)
             } catch {
                 guard let self, !error.isDataFileCancellation, self.selectedSheetIndex == index else { return }
-                Self.logger.error("Sheet load failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Sheet load failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 self.loadState = .failed(error.localizedDescription)
             }
         }

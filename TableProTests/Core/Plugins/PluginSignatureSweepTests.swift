@@ -108,8 +108,7 @@ final class PluginSignatureSweepTests: XCTestCase {
             pluginIconName: "puzzlepiece",
             defaultPort: nil,
             exportFormatId: nil,
-            importFormatId: nil,
-            inspectorId: nil
+            importFormatId: nil
         )
     }
 

@@ -55,8 +55,7 @@ struct PluginLazyActivationVerificationTests {
                 pluginIconName: "puzzlepiece",
                 defaultPort: nil,
                 exportFormatId: nil,
-                importFormatId: nil,
-                inspectorId: nil
+                importFormatId: nil
             )
         ]
 
@@ -117,8 +116,7 @@ struct PluginLazyActivationVerificationTests {
                 pluginIconName: "puzzlepiece",
                 defaultPort: nil,
                 exportFormatId: nil,
-                importFormatId: nil,
-                inspectorId: nil
+                importFormatId: nil
             )
         ]
 

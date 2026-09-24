@@ -68,7 +68,7 @@ final class DataFileDocument: NSDocument {
         }
     }
 
-    nonisolated override func read(from url: URL, ofType typeName: String) throws {
+    override nonisolated func read(from url: URL, ofType typeName: String) throws {
         guard let kind = DataFileKind.kind(forTypeIdentifier: typeName, url: url) else {
             throw DataFileLoadError.unsupported(String(localized: "This kind of file cannot be opened as a table."))
         }
@@ -79,7 +79,7 @@ final class DataFileDocument: NSDocument {
         }
     }
 
-    nonisolated override func write(to url: URL, ofType typeName: String) throws {
+    override nonisolated func write(to url: URL, ofType typeName: String) throws {
         try MainActor.assumeIsolated {
             try controller.write(to: url, typeName: typeName)
             lastOwnWrite = Date()
@@ -109,7 +109,7 @@ final class DataFileDocument: NSDocument {
         updateChangeCount(.changeCleared)
     }
 
-    nonisolated override func presentedItemDidChange() {
+    override nonisolated func presentedItemDidChange() {
         Task { @MainActor [weak self] in
             self?.handleExternalChange()
         }
@@ -132,7 +132,7 @@ final class DataFileDocument: NSDocument {
         do {
             try revert(toContentsOf: url, ofType: fileType ?? controller.kind?.typeIdentifier ?? DataFileKind.commaSeparatedType)
         } catch {
-            Self.logger.error("Reload after an outside change failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Reload after an outside change failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

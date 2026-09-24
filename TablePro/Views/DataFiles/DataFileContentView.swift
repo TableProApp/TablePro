@@ -65,7 +65,7 @@ struct DataFileContentView: View {
     private var grid: some View {
         DataGridView(
             tableRowsProvider: { controller.tableRows },
-            tableRowsMutator: { _ in },
+            tableRowsMutator: { _ in .none },
             paginationOffsetProvider: { controller.pageOffset },
             changeManager: controller.anyChangeManager,
             isEditable: controller.isEditable && !controller.isBusy,

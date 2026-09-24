@@ -118,4 +118,18 @@ final class TabularQueryTests: XCTestCase {
         )
         XCTAssertEqual(sorted, [2, 4, 1, 3])
     }
+
+    func testNaturalSortOrdersDigitRunsByMagnitudeAndIgnoresCase() async throws {
+        let values = [
+            "Item 10", "Item 2", "Item 100", "Item 20", "file10.txt", "file9.txt",
+            "v1.10.0", "v1.2.3", "ABC", "abc", "x007", "x7"
+        ]
+        let table = try await table("v\n" + values.joined(separator: "\n") + "\n")
+        let sorted = try await TabularSorter.sortedKeys(
+            table.rowOrder.keys,
+            in: table,
+            by: [TabularSortKey(column: table.columns[0].id, ascending: true, numeric: false)]
+        )
+        XCTAssertEqual(sorted, [9, 10, 6, 5, 2, 1, 4, 3, 8, 7, 11, 12])
+    }
 }

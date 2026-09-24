@@ -76,8 +76,7 @@ struct DriverUnavailabilityTests {
             pluginIconName: "puzzlepiece",
             defaultPort: nil,
             exportFormatId: nil,
-            importFormatId: nil,
-            inspectorId: nil
+            importFormatId: nil
         )
     }
 
@@ -278,8 +277,7 @@ struct DriverUnavailabilityTests {
                 pluginIconName: "puzzlepiece",
                 defaultPort: nil,
                 exportFormatId: nil,
-                importFormatId: nil,
-                inspectorId: nil
+                importFormatId: nil
             )
         ]
 

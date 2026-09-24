@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProTabular
 import TableProTabularIO
 
@@ -77,7 +78,7 @@ extension DataFileController {
         endActivity(activityID)
         setMutationTask(nil)
         guard !error.isDataFileCancellation else { return }
-        Self.logger.error("Data file operation failed: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("Data file operation failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         showMessage(error.localizedDescription)
     }
 

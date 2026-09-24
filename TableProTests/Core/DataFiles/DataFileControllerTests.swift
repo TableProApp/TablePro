@@ -13,6 +13,8 @@ import Testing
 @MainActor
 @Suite("Data file controller")
 struct DataFileControllerTests {
+    private let undoManager = UndoManager()
+
     private func loaded(_ text: String, fileExtension: String = "csv") async throws -> (DataFileController, URL) {
         try await loaded(data: Data(text.utf8), fileExtension: fileExtension)
     }
@@ -24,7 +26,7 @@ struct DataFileControllerTests {
         let url = directory.appendingPathComponent("people.\(fileExtension)")
         try data.write(to: url)
         let controller = DataFileController()
-        controller.undoManager = UndoManager()
+        controller.undoManager = undoManager
         let kind = try #require(DataFileKind.classify(url))
         controller.load(url: url, kind: kind)
         await controller.waitForPendingWork()
@@ -62,7 +64,7 @@ struct DataFileControllerTests {
     @Test("An edit under a filter lands on the row the user sees")
     func editUnderFilterTargetsTheVisibleRow() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Paris\n")
-        controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .equal, value: "london")]
+        controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .equal, value: "London")]
         controller.applyAllFilters()
         await controller.waitForPendingWork()
         #expect(column(controller, 0) == ["B"])

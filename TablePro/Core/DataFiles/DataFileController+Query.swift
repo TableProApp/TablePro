@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProTabular
 import TableProTabularIO
 
@@ -114,7 +115,7 @@ extension DataFileController {
         guard isCurrentQuery(revision) else { return }
         setQueryRunning(false)
         if !error.isDataFileCancellation {
-            Self.logger.error("Data file query failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Data file query failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

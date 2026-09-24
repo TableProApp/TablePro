@@ -23,7 +23,7 @@ final class DataFileWorkingCopy: @unchecked Sendable {
         do {
             try FileManager.default.removeItem(at: directory)
         } catch {
-            Self.logger.error("Could not remove a data file working copy: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Could not remove a data file working copy: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

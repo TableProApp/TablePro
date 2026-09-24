@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProTabular
 import TableProTabularIO
 
@@ -82,7 +83,7 @@ extension DataFileController {
             } catch {
                 self?.finishTransfer(activityID)
                 guard !error.isDataFileCancellation else { return }
-                Self.logger.error("Import snapshot failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Import snapshot failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 self?.showMessage(error.localizedDescription)
             }
         }

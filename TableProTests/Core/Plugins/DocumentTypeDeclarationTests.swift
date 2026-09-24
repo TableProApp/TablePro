@@ -68,7 +68,7 @@ struct DocumentTypeDeclarationTests {
     @Test("Every type the data file window reads is claimed by the bundle", arguments: DataFileKind.readableTypes)
     func claimsDataFileType(contentType: String) throws {
         let documentType = try documentType(forContentType: contentType)
-        #expect(documentType["CFBundleTypeRole"] as? String != nil)
+        #expect(documentType["CFBundleTypeRole"] is String)
     }
 
     @Test("TablePro's own data file types are declared with their extensions")
