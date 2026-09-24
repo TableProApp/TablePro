@@ -133,7 +133,7 @@ internal final class WindowManager {
 
     /// A window that is a background member of a native tab group is made key without being
     /// brought to the front of its group, so it is selected in the group first.
-    private func bringToFront(_ window: NSWindow?) {
+    internal func bringToFront(_ window: NSWindow?) {
         guard let window else { return }
         if let group = window.tabGroup, group.selectedWindow !== window {
             group.selectedWindow = window
