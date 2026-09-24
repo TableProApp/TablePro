@@ -54,18 +54,18 @@ public enum TabularColumnStatistics {
     public static func summarize(
         column: TabularColumnID,
         kind: TabularInferredKind,
-        rows: [Int],
+        keys: [Int],
         in table: TabularTable,
         topValueLimit: Int = defaultTopValueLimit,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> TabularColumnSummary {
         let numeric = kind.sortsNumerically
         let isDate = kind == .date
-        let partials = try await TabularScanEngine.forEachChunk(of: 0..<rows.count, progress: { progress($0 * 0.8) }) { chunk, counter in
+        let partials = try await TabularScanEngine.forEachChunk(of: 0..<keys.count, progress: { progress($0 * 0.8) }) { chunk, counter in
             var partial = Partial()
             var cancelled = false
             var processed = 0
-            table.scan(columns: [column], logicalRows: rows[chunk]) { _, cells in
+            table.scan(columns: [column], keys: keys[chunk]) { _, cells in
                 accumulate(kind: cells.kinds[0], bytes: cells.bytes[0], numeric: numeric, isDate: isDate, into: &partial)
                 processed += 1
                 if processed == TabularScanEngine.cancellationStride {
@@ -84,7 +84,7 @@ public enum TabularColumnStatistics {
         }
         let merged = merge(partials)
         try Task.checkCancellation()
-        let top = try await topValues(merged.counts, column: column, rows: rows, table: table, limit: topValueLimit)
+        let top = try await topValues(merged.counts, column: column, keys: keys, table: table, limit: topValueLimit)
         progress(1)
         return TabularColumnSummary(
             rowCount: merged.rowCount,
@@ -172,7 +172,7 @@ public enum TabularColumnStatistics {
     private static func topValues(
         _ counts: [ValueHash: Int],
         column: TabularColumnID,
-        rows: [Int],
+        keys: [Int],
         table: TabularTable,
         limit: Int
     ) async throws -> [TabularValueCount] {
@@ -183,10 +183,10 @@ public enum TabularColumnStatistics {
         }
         var found: [ValueHash: String] = [:]
         var position = 0
-        while found.count < wanted.count, position < rows.count {
+        while found.count < wanted.count, position < keys.count {
             try Task.checkCancellation()
-            let end = min(rows.count, position + 65_536)
-            table.scan(columns: [column], logicalRows: rows[position..<end]) { _, cells in
+            let end = min(keys.count, position + 65_536)
+            table.scan(columns: [column], keys: keys[position..<end]) { _, cells in
                 let bytes = cells.bytes[0]
                 let key = ValueHash(bytes, isEmpty: bytes.isEmpty || cells.kinds[0].isNullLike)
                 if wanted[key] != nil, found[key] == nil {

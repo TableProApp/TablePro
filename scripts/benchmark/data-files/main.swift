@@ -61,10 +61,10 @@ enum DataFilesBenchmark {
 
         let all = Array(0..<table.rowCount)
         _ = try await measure("sort amount (numeric)") {
-            try await TabularSorter.sortedRows(all, in: table, by: [TabularSortKey(column: ids[3], ascending: true, numeric: true)])
+            try await TabularSorter.sortedKeys(table.rowOrder.keys, in: table, by: [TabularSortKey(column: ids[3], ascending: true, numeric: true)])
         }
         _ = try await measure("sort name (natural text)") {
-            try await TabularSorter.sortedRows(all, in: table, by: [TabularSortKey(column: ids[1], ascending: true, numeric: false)])
+            try await TabularSorter.sortedKeys(table.rowOrder.keys, in: table, by: [TabularSortKey(column: ids[1], ascending: true, numeric: false)])
         }
     }
 

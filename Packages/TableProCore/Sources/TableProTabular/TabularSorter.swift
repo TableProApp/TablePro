@@ -26,7 +26,7 @@ public enum TabularSorter {
         var text = TabularValueStore()
     }
 
-    public static func sortedRows(
+    public static func sortedKeys(
         _ rows: [Int],
         in table: TabularTable,
         by keys: [TabularSortKey],
@@ -101,7 +101,7 @@ public enum TabularSorter {
             }
             var processed = 0
             var cancelled = false
-            table.scan(columns: columnIDs, logicalRows: rows[chunk]) { _, cells in
+            table.scan(columns: columnIDs, keys: rows[chunk]) { _, cells in
                 for (index, key) in keys.enumerated() {
                     append(cells.bytes[index], kind: cells.kinds[index], numeric: key.numeric, into: &local[index])
                 }

@@ -24,7 +24,7 @@ public enum TabularCleanup {
     public static func apply(
         _ operation: TabularCleanupOperation,
         columns: [TabularColumnID],
-        rows: [Int],
+        keys: [Int],
         in table: TabularTable,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> TabularCleanupResult {
@@ -33,34 +33,34 @@ public enum TabularCleanup {
         let share = 1 / Double(max(1, columns.count))
         for (index, column) in columns.enumerated() {
             let columnProgress: @Sendable (Double) -> Void = { progress(Double(index) * share + $0 * share) }
-            if case .setValue(let text) = operation, rows.count == table.rowCount, table.column(column) != nil {
+            if case .setValue(let text) = operation, keys.count == table.rowCount, table.column(column) != nil {
                 values[column] = ColumnValues(base: .constant(.text(text)))
-                changed += try await countDiffering(column: column, from: text, rows: rows, table: table, progress: columnProgress)
+                changed += try await countDiffering(column: column, from: text, keys: keys, table: table, progress: columnProgress)
                 continue
             }
             let result: TabularRewriteResult
             switch operation {
             case .fillDown:
-                guard let first = rows.first else { continue }
-                let fill = table.cell(key: table.key(atRow: first), column: table.column(column) ?? TabularColumn(
+                guard let first = keys.first else { continue }
+                let fill = table.cell(key: first, column: table.column(column) ?? TabularColumn(
                     id: column,
                     name: "",
                     values: ColumnValues(base: .constant(table.source.absentCell))
                 ))
                 result = try await TabularColumnRewrite.rewrite(
                     column: column,
-                    rows: Array(rows.dropFirst()),
+                    keys: Array(keys.dropFirst()),
                     in: table,
                     progress: columnProgress
                 ) { kind, bytes in
                     kind == fill.kind && TabularTextMatching.string(bytes) == fill.text ? nil : fill
                 }
             case .setValue(let text):
-                result = try await TabularColumnRewrite.rewrite(column: column, rows: rows, in: table, progress: columnProgress) { _, bytes in
+                result = try await TabularColumnRewrite.rewrite(column: column, keys: keys, in: table, progress: columnProgress) { _, bytes in
                     TabularTextMatching.string(bytes) == text ? nil : .text(text)
                 }
             case .trimWhitespace, .changeCase:
-                result = try await TabularColumnRewrite.rewrite(column: column, rows: rows, in: table, progress: columnProgress) { kind, bytes in
+                result = try await TabularColumnRewrite.rewrite(column: column, keys: keys, in: table, progress: columnProgress) { kind, bytes in
                     guard !kind.isNullLike, !bytes.isEmpty else { return nil }
                     let original = TabularTextMatching.string(bytes)
                     let transformed = transform(original, operation)
@@ -94,16 +94,16 @@ public enum TabularCleanup {
     private static func countDiffering(
         column: TabularColumnID,
         from text: String,
-        rows: [Int],
+        keys: [Int],
         table: TabularTable,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> Int {
         let needle = Array(text.utf8)
-        let counts = try await TabularScanEngine.forEachChunk(of: 0..<rows.count, progress: progress) { chunk, counter in
+        let counts = try await TabularScanEngine.forEachChunk(of: 0..<keys.count, progress: progress) { chunk, counter in
             var differing = 0
             var processed = 0
             var cancelled = false
-            table.scan(columns: [column], logicalRows: rows[chunk]) { _, cells in
+            table.scan(columns: [column], keys: keys[chunk]) { _, cells in
                 if !cells.bytes[0].elementsEqual(needle) || cells.kinds[0].isNullLike {
                     differing += 1
                 }
@@ -137,9 +137,9 @@ public struct TabularDuplicateOptions: Sendable, Equatable {
 }
 
 public enum TabularDuplicates {
-    public static func duplicateRows(
+    public static func duplicateKeys(
         comparing columns: [TabularColumnID],
-        rows: [Int],
+        keys rows: [Int],
         in table: TabularTable,
         options: TabularDuplicateOptions = TabularDuplicateOptions(),
         progress: @escaping @Sendable (Double) -> Void = { _ in }
@@ -150,7 +150,7 @@ public enum TabularDuplicates {
             keys.reserveCapacity(chunk.count)
             var processed = 0
             var cancelled = false
-            table.scan(columns: columns, logicalRows: rows[chunk]) { _, cells in
+            table.scan(columns: columns, keys: rows[chunk]) { _, cells in
                 keys.append(RowFingerprint(cells, options: options))
                 processed += 1
                 if processed == TabularScanEngine.cancellationStride {

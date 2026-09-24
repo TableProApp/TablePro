@@ -24,11 +24,11 @@ public struct TabularFindQuery: Sendable, Equatable {
 }
 
 public struct TabularFindMatch: Sendable, Hashable {
-    public let row: Int
+    public let key: Int
     public let column: TabularColumnID
 
-    public init(row: Int, column: TabularColumnID) {
-        self.row = row
+    public init(key: Int, column: TabularColumnID) {
+        self.key = key
         self.column = column
     }
 }
@@ -84,20 +84,20 @@ public final class TabularFindMatcher: @unchecked Sendable {
 public enum TabularFinder {
     public static func findAll(
         _ query: TabularFindQuery,
-        rows: [Int],
+        keys: [Int],
         in table: TabularTable,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> [TabularFindMatch] {
         let matcher = try TabularFindMatcher(query)
         guard !query.text.isEmpty, !query.columns.isEmpty else { return [] }
         let columns = query.columns
-        let chunks = try await TabularScanEngine.forEachChunk(of: 0..<rows.count, progress: progress) { chunk, counter in
+        let chunks = try await TabularScanEngine.forEachChunk(of: 0..<keys.count, progress: progress) { chunk, counter in
             var found: [TabularFindMatch] = []
             var processed = 0
             var cancelled = false
-            table.scan(columns: columns, logicalRows: rows[chunk]) { logicalRow, cells in
+            table.scan(columns: columns, keys: keys[chunk]) { key, cells in
                 for (slot, column) in columns.enumerated() where matcher.matches(cells.bytes[slot]) {
-                    found.append(TabularFindMatch(row: logicalRow, column: column))
+                    found.append(TabularFindMatch(key: key, column: column))
                 }
                 processed += 1
                 if processed == TabularScanEngine.cancellationStride {
@@ -120,7 +120,7 @@ public enum TabularFinder {
     public static func replaceAll(
         _ query: TabularFindQuery,
         with template: String,
-        rows: [Int],
+        keys: [Int],
         in table: TabularTable,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> TabularReplaceResult {
@@ -132,7 +132,7 @@ public enum TabularFinder {
             let share = 1 / Double(max(1, query.columns.count))
             let result = try await TabularColumnRewrite.rewrite(
                 column: column,
-                rows: rows,
+                keys: keys,
                 in: table,
                 progress: { progress(Double(index) * share + $0 * share) }
             ) { kind, bytes in

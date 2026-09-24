@@ -25,7 +25,7 @@ final class TabularEditingTests: XCTestCase {
         let summary = try await TabularColumnStatistics.summarize(
             column: table.columns[0].id,
             kind: .integer,
-            rows: Array(0..<table.rowCount),
+            keys: table.rowOrder.keys,
             in: table
         )
         XCTAssertEqual(summary.rowCount, 5)
@@ -41,27 +41,27 @@ final class TabularEditingTests: XCTestCase {
 
     func testFindHonoursCaseWholeWordsAndRegex() async throws {
         let table = try await table("a,b\ncat,Category\nCAT,dog\nconcat,cat5\n")
-        let all = Array(0..<table.rowCount)
-        let plain = try await TabularFinder.findAll(TabularFindQuery(text: "cat", columns: table.columnIDs), rows: all, in: table)
+        let all = table.rowOrder.keys
+        let plain = try await TabularFinder.findAll(TabularFindQuery(text: "cat", columns: table.columnIDs), keys: all, in: table)
         XCTAssertEqual(plain.count, 5)
         let cased = try await TabularFinder.findAll(
             TabularFindQuery(text: "cat", matchesCase: true, columns: table.columnIDs),
-            rows: all,
+            keys: all,
             in: table
         )
         XCTAssertEqual(cased.count, 3)
         let words = try await TabularFinder.findAll(
             TabularFindQuery(text: "cat", matchesWholeWords: true, columns: table.columnIDs),
-            rows: all,
+            keys: all,
             in: table
         )
-        XCTAssertEqual(words.map(\.row), [0, 1])
+        XCTAssertEqual(words.map(\.key), [1, 2])
         let regex = try await TabularFinder.findAll(
             TabularFindQuery(text: "^c.t\\d$", isRegularExpression: true, columns: table.columnIDs),
-            rows: all,
+            keys: all,
             in: table
         )
-        XCTAssertEqual(regex, [TabularFindMatch(row: 2, column: table.columns[1].id)])
+        XCTAssertEqual(regex, [TabularFindMatch(key: 3, column: table.columns[1].id)])
         XCTAssertThrowsError(try TabularFindMatcher(TabularFindQuery(text: "(", isRegularExpression: true, columns: [])))
     }
 
@@ -71,7 +71,7 @@ final class TabularEditingTests: XCTestCase {
         let result = try await TabularFinder.replaceAll(
             TabularFindQuery(text: "(fo)o", isRegularExpression: true, columns: table.columnIDs),
             with: "$1x",
-            rows: Array(0..<table.rowCount),
+            keys: table.rowOrder.keys,
             in: table
         )
         XCTAssertEqual(result.changedCells, 3)
@@ -86,7 +86,7 @@ final class TabularEditingTests: XCTestCase {
         let result = try await TabularFinder.replaceAll(
             TabularFindQuery(text: "5", columns: table.columnIDs),
             with: "$1",
-            rows: Array(0..<table.rowCount),
+            keys: table.rowOrder.keys,
             in: table
         )
         XCTAssertEqual(texts(applying(result.values, to: table), column: 0), ["price $1"])
@@ -94,35 +94,35 @@ final class TabularEditingTests: XCTestCase {
 
     func testCleanupOperationsReportChangedCells() async throws {
         let table = try await table("a,b\n  x  ,1\ny,2\n\t z ,3\n")
-        let all = Array(0..<table.rowCount)
-        let trimmed = try await TabularCleanup.apply(.trimWhitespace, columns: [table.columns[0].id], rows: all, in: table)
+        let all = table.rowOrder.keys
+        let trimmed = try await TabularCleanup.apply(.trimWhitespace, columns: [table.columns[0].id], keys: all, in: table)
         XCTAssertEqual(trimmed.changedCells, 2)
         XCTAssertEqual(texts(applying(trimmed.values, to: table), column: 0), ["x", "y", "z"])
 
-        let upper = try await TabularCleanup.apply(.changeCase(.uppercase), columns: [table.columns[0].id], rows: [1], in: table)
+        let upper = try await TabularCleanup.apply(.changeCase(.uppercase), columns: [table.columns[0].id], keys: [2], in: table)
         XCTAssertEqual(texts(applying(upper.values, to: table), column: 0), ["  x  ", "Y", "\t z "])
 
-        let filled = try await TabularCleanup.apply(.fillDown, columns: [table.columns[1].id], rows: [0, 1, 2], in: table)
+        let filled = try await TabularCleanup.apply(.fillDown, columns: [table.columns[1].id], keys: [1, 2, 3], in: table)
         XCTAssertEqual(filled.changedCells, 2)
         XCTAssertEqual(texts(applying(filled.values, to: table), column: 1), ["1", "1", "1"])
 
-        let everywhere = try await TabularCleanup.apply(.setValue("k"), columns: [table.columns[1].id], rows: all, in: table)
+        let everywhere = try await TabularCleanup.apply(.setValue("k"), columns: [table.columns[1].id], keys: all, in: table)
         XCTAssertEqual(everywhere.changedCells, 3)
         XCTAssertEqual(texts(applying(everywhere.values, to: table), column: 1), ["k", "k", "k"])
     }
 
     func testDuplicateRowsKeepTheFirstOccurrence() async throws {
         let table = try await table("a,b\nx,1\nX ,1\nx,1\ny,2\n")
-        let all = Array(0..<table.rowCount)
-        let exact = try await TabularDuplicates.duplicateRows(comparing: table.columnIDs, rows: all, in: table)
-        XCTAssertEqual(exact, [2])
-        let loose = try await TabularDuplicates.duplicateRows(
+        let all = table.rowOrder.keys
+        let exact = try await TabularDuplicates.duplicateKeys(comparing: table.columnIDs, keys: all, in: table)
+        XCTAssertEqual(exact, [3])
+        let loose = try await TabularDuplicates.duplicateKeys(
             comparing: table.columnIDs,
-            rows: all,
+            keys: all,
             in: table,
             options: TabularDuplicateOptions(ignoresCase: true, ignoresSurroundingWhitespace: true)
         )
-        XCTAssertEqual(loose, [1, 2])
+        XCTAssertEqual(loose, [2, 3])
     }
 
     func testTypeInferenceIsStrict() {

@@ -11,7 +11,7 @@ public enum TabularColumnRewrite {
 
     public static func rewrite(
         column: TabularColumnID,
-        rows: [Int],
+        keys: [Int],
         in table: TabularTable,
         progress: @escaping @Sendable (Double) -> Void = { _ in },
         transform: @escaping Transform
@@ -20,13 +20,12 @@ public enum TabularColumnRewrite {
             throw TabularEditError.unknownColumn
         }
         let edits = current.values.edits
-        let chunks = try await TabularScanEngine.forEachChunk(of: 0..<rows.count, progress: progress) { chunk, counter in
+        let chunks = try await TabularScanEngine.forEachChunk(of: 0..<keys.count, progress: progress) { chunk, counter in
             var changes: [(key: Int, cell: TabularCell)] = []
             var changed = 0
             var processed = 0
             var cancelled = false
-            table.scan(columns: [column], logicalRows: rows[chunk]) { logicalRow, cells in
-                let key = table.key(atRow: logicalRow)
+            table.scan(columns: [column], keys: keys[chunk]) { key, cells in
                 if let replacement = transform(cells.kinds[0], cells.bytes[0]) {
                     changes.append((key, replacement))
                     changed += 1

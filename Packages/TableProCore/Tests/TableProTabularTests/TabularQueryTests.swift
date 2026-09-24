@@ -95,27 +95,27 @@ final class TabularQueryTests: XCTestCase {
 
     func testSortPutsBlanksLastAndSortsNaturally() async throws {
         let table = try await table("name,n\nItem 10,3\nItem 2,\nitem 1,20\n,x\n")
-        let byName = try await TabularSorter.sortedRows(
-            Array(0..<table.rowCount),
+        let byName = try await TabularSorter.sortedKeys(
+            table.rowOrder.keys,
             in: table,
             by: [TabularSortKey(column: table.columns[0].id, ascending: true, numeric: false)]
         )
-        XCTAssertEqual(byName, [2, 1, 0, 3])
-        let byNumberDescending = try await TabularSorter.sortedRows(
-            Array(0..<table.rowCount),
+        XCTAssertEqual(byName, [3, 2, 1, 4])
+        let byNumberDescending = try await TabularSorter.sortedKeys(
+            table.rowOrder.keys,
             in: table,
             by: [TabularSortKey(column: table.columns[1].id, ascending: false, numeric: true)]
         )
-        XCTAssertEqual(byNumberDescending, [2, 0, 3, 1])
+        XCTAssertEqual(byNumberDescending, [3, 1, 4, 2])
     }
 
     func testSortIsStableForEqualKeys() async throws {
         let table = try await table("k,v\nb,1\na,2\nb,3\na,4\n")
-        let sorted = try await TabularSorter.sortedRows(
-            Array(0..<table.rowCount),
+        let sorted = try await TabularSorter.sortedKeys(
+            table.rowOrder.keys,
             in: table,
             by: [TabularSortKey(column: table.columns[0].id, ascending: true, numeric: false)]
         )
-        XCTAssertEqual(sorted, [1, 3, 0, 2])
+        XCTAssertEqual(sorted, [2, 4, 1, 3])
     }
 }

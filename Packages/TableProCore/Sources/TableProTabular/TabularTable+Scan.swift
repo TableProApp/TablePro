@@ -12,16 +12,38 @@ public extension TabularTable {
 
     func scan<Rows: Collection>(
         columns ids: [TabularColumnID],
-        logicalRows clamped: Rows,
+        logicalRows: Rows,
         _ body: (Int, TabularRowCells) -> Bool
     ) where Rows.Element == Int {
-        guard !ids.isEmpty, !clamped.isEmpty else { return }
+        let count = rowCount
+        let order = rowOrder
+        scanPairs(
+            columns: ids,
+            pairs: logicalRows.lazy.filter { $0 >= 0 && $0 < count }.map { (label: $0, key: order.key(at: $0)) },
+            body
+        )
+    }
+
+    func scan<Keys: Collection>(
+        columns ids: [TabularColumnID],
+        keys: Keys,
+        _ body: (Int, TabularRowCells) -> Bool
+    ) where Keys.Element == Int {
+        scanPairs(columns: ids, pairs: keys.lazy.map { (label: $0, key: $0) }, body)
+    }
+
+    private func scanPairs<Pairs: Sequence>(
+        columns ids: [TabularColumnID],
+        pairs: Pairs,
+        _ body: (Int, TabularRowCells) -> Bool
+    ) where Pairs.Element == (label: Int, key: Int) {
+        guard !ids.isEmpty else { return }
         let plan = ScanPlan(table: self, ids: ids)
         var buffer = TabularCellBuffer()
         var batch: [Int] = []
-        var batchRows: [Int] = []
-        batch.reserveCapacity(min(clamped.count, 4_096))
-        batchRows.reserveCapacity(min(clamped.count, 4_096))
+        var batchLabels: [Int] = []
+        batch.reserveCapacity(4_096)
+        batchLabels.reserveCapacity(4_096)
         var stopped = false
 
         func flushBatch() {
@@ -31,32 +53,30 @@ public extension TabularTable {
                 while position < batch.count, batch[position] != key {
                     position += 1
                 }
-                let logicalRow = position < batchRows.count ? batchRows[position] : 0
+                let label = position < batchLabels.count ? batchLabels[position] : 0
                 position += 1
                 let keepGoing = plan.assemble(key: key, sourceCells: sourceCells, into: &buffer) { cells in
-                    body(logicalRow, cells)
+                    body(label, cells)
                 }
                 if !keepGoing { stopped = true }
                 return keepGoing
             }
             batch.removeAll(keepingCapacity: true)
-            batchRows.removeAll(keepingCapacity: true)
+            batchLabels.removeAll(keepingCapacity: true)
         }
 
-        for logicalRow in clamped {
+        for pair in pairs {
             if stopped { return }
-            guard logicalRow >= 0, logicalRow < rowCount else { continue }
-            let key = rowOrder.key(at: logicalRow)
-            if isSourceKey(key), !plan.sourceColumns.isEmpty {
-                batch.append(key)
-                batchRows.append(logicalRow)
+            if isSourceKey(pair.key), !plan.sourceColumns.isEmpty {
+                batch.append(pair.key)
+                batchLabels.append(pair.label)
                 if batch.count >= 4_096 { flushBatch() }
                 continue
             }
             flushBatch()
             if stopped { return }
-            let keepGoing = plan.assemble(key: key, sourceCells: nil, into: &buffer) { cells in
-                body(logicalRow, cells)
+            let keepGoing = plan.assemble(key: pair.key, sourceCells: nil, into: &buffer) { cells in
+                body(pair.label, cells)
             }
             if !keepGoing { return }
         }
