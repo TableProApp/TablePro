@@ -41,6 +41,26 @@
             </property>
         </record-type>
 
+        <record-type name="result set" code="TPrt" description="One result set of a SQL Server script.">
+            <property name="columns" code="TPco" description="The column names.">
+                <cocoa key="scriptColumns"/>
+                <type type="text" list="yes"/>
+            </property>
+            <property name="rows" code="TPrw" description="The rows.">
+                <cocoa key="scriptRows"/>
+                <type type="result row" list="yes"/>
+            </property>
+            <property name="row count" code="TPrc" type="integer" description="How many rows came back.">
+                <cocoa key="scriptRowCount"/>
+            </property>
+            <property name="truncated" code="TPtc" type="boolean" description="Whether the row limit cut the result short.">
+                <cocoa key="scriptTruncated"/>
+            </property>
+            <property name="status message" code="TPsg" type="text" description="What the server said, when it said anything.">
+                <cocoa key="scriptStatusMessage"/>
+            </property>
+        </record-type>
+
         <record-type name="query result" code="TPqr" description="The rows a statement produced.">
             <property name="columns" code="TPco" description="The column names.">
                 <cocoa key="scriptColumns"/>
@@ -64,6 +84,10 @@
             </property>
             <property name="status message" code="TPsg" type="text" description="What the server said, when it said anything.">
                 <cocoa key="scriptStatusMessage"/>
+            </property>
+            <property name="results" code="TPrz" description="Every result set, in order, when a SQL Server script returned more than one. Empty otherwise, and the record itself is the first.">
+                <cocoa key="scriptResults"/>
+                <type type="result set" list="yes"/>
             </property>
         </record-type>
 
@@ -174,7 +198,7 @@
 
         <command name="run query" code="TProrunq" description="Run one statement and return its rows. Safe Mode and the connection's External Clients level both apply.">
             <cocoa class="TPScriptRunQueryCommand"/>
-            <direct-parameter type="text" description="The statement to run. One statement, not several."/>
+            <direct-parameter type="text" description="The statement to run. One statement, not several, except on SQL Server, where a whole script runs batch by batch at its GO lines."/>
             <parameter name="in" code="TPki" type="connection" description="The connection to run it on.">
                 <cocoa key="ScriptConnectionArgument"/>
             </parameter>

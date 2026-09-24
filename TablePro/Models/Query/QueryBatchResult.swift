@@ -22,4 +22,31 @@ struct QueryBatchResult {
         discardedResultSetCount: 0,
         executionTime: 0
     )
+
+    /// The result sets one batch keeps across all of its repetitions, the same ceiling the driver keeps for one.
+    static let keptResultSetLimit = 100
+
+    /// This answer and `next`, read after it on the same batch, as one answer. `GO 5` sends a batch five times and
+    /// keeps what every repetition returned, up to the ceiling one request keeps. An error keeps its place among the
+    /// result sets, counted across the repetitions.
+    func followed(by next: QueryBatchResult) -> QueryBatchResult {
+        let room = max(Self.keptResultSetLimit - resultSets.count, 0)
+        let nextErrors = next.errors.map { error in
+            PluginBatchError(
+                message: error.message,
+                code: error.code,
+                line: error.line,
+                procedure: error.procedure,
+                precedingResultSetCount: min(resultSets.count + error.precedingResultSetCount, Self.keptResultSetLimit)
+            )
+        }
+        return QueryBatchResult(
+            resultSets: resultSets + next.resultSets.prefix(room),
+            rowsAffected: rowsAffected + next.rowsAffected,
+            errors: errors + nextErrors,
+            discardedResultSetCount: discardedResultSetCount + next.discardedResultSetCount
+                + max(next.resultSets.count - room, 0),
+            executionTime: executionTime + next.executionTime
+        )
+    }
 }

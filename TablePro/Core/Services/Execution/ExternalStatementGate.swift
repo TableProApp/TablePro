@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal enum ExternalStatementGateError: LocalizedError, Equatable {
     case denied(String)
@@ -106,6 +107,16 @@ internal enum ExternalStatementGate {
         }
 
         return classification
+    }
+
+    /// Whether a caller that takes scripts may send several statements in one call to this engine.
+    ///
+    /// Only where a script is cut into batches at `GO` lines, as on SQL Server. There the server runs whatever one
+    /// request carries as one batch whether or not its statements end in `;`, and a local variable exists only inside
+    /// the batch that declares it, so one statement per call is neither enforceable nor useful. Every other engine
+    /// keeps one statement per call.
+    internal static func acceptsScripts(on databaseType: DatabaseType) -> Bool {
+        databaseType.lexicalGrammar.contains(.batchSeparatorLines)
     }
 
     /// A loaded SQLite extension can add functions that write files or run a nested statement, and

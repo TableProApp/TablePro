@@ -506,6 +506,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Previous run's column headings left over an empty grid under the error of a script that failed partway.
 - Row numbers of a longer previous result left beside the rows of a shorter one.
 - Run executing an old sorted query after a column header was clicked while a query ran.
+- SQL Server scripts refused, or cut to their first result set, over MCP, AppleScript and the AI assistant.
 
 ### Security
 
