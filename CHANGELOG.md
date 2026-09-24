@@ -504,6 +504,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A whole AI conversation lost when one part of it could not be read.
 - Previous run's column headings left over an empty grid under the error of a script that failed partway.
 - Row numbers of a longer previous result left beside the rows of a shorter one.
+- Run executing an old sorted query after a column header was clicked while a query ran.
 
 ### Security
 
