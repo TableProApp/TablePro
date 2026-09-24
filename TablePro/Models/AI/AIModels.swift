@@ -15,6 +15,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case claudeAgent
     case openAI
     case openRouter
+    case requesty
     case gemini
     case xai
     case ollama
@@ -34,6 +35,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeAgent:  return "Claude Agent"
         case .openAI:       return "OpenAI"
         case .openRouter:   return "OpenRouter"
+        case .requesty:     return "Requesty"
         case .gemini:       return "Gemini"
         case .xai:          return "xAI"
         case .ollama:       return "Ollama"
@@ -53,6 +55,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeAgent:  return ""
         case .openAI:       return "https://api.openai.com"
         case .openRouter:   return "https://openrouter.ai/api"
+        case .requesty:     return "https://router.requesty.ai"
         case .gemini:       return "https://generativelanguage.googleapis.com"
         case .xai:          return "https://api.x.ai"
         case .ollama:       return "http://localhost:11434"
@@ -106,6 +109,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeAgent:  return "terminal"
         case .openAI:       return "cpu"
         case .openRouter:   return "globe"
+        case .requesty:     return "arrow.triangle.branch"
         case .gemini:       return "wand.and.stars"
         case .xai:          return "x.circle"
         case .ollama:       return "desktopcomputer"

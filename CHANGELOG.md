@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export from a data file window to every bundled format, for all, filtered or selected rows.
 - **Import into Table** from a data file window, into an open connection's import sheet.
 - **Text Encoding** in a data file's Save As panel.
+- Requesty as an AI provider, an OpenAI-compatible router.
 
 ### Changed
 

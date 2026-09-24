@@ -101,7 +101,7 @@ enum AIProviderRegistration {
             }
         ))
 
-        for type in [AIProviderType.openRouter, .openCode, .ollama, .llamaCpp, .mlx, .custom] {
+        for type in [AIProviderType.openRouter, .requesty, .openCode, .ollama, .llamaCpp, .mlx, .custom] {
             var capabilities: AIProviderCapabilities = [
                 .chat, .models, .reasoning, .images,
                 .endpointConfigurable, .maxOutputTokens, .modelListFetchable
