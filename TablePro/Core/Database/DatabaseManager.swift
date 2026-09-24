@@ -19,6 +19,7 @@ final class DatabaseManager: ObservableObject {
     internal let connectionStorage: ConnectionStorage
     internal let appSettingsStorage: AppSettingsStorage
     internal let pluginManager: PluginManager
+    internal let aiAccessApprovals: AIAccessApprovals
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     /// Passwords the user has been asked for this launch, keyed by whatever answers for them: the
@@ -158,11 +159,13 @@ final class DatabaseManager: ObservableObject {
     internal init(
         connectionStorage: ConnectionStorage = .shared,
         appSettingsStorage: AppSettingsStorage = .shared,
-        pluginManager: PluginManager = .shared
+        pluginManager: PluginManager = .shared,
+        aiAccessApprovals: AIAccessApprovals = .shared
     ) {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
+        self.aiAccessApprovals = aiAccessApprovals
         observeConnectionUpdates()
         observeHealthCheckSetting()
     }

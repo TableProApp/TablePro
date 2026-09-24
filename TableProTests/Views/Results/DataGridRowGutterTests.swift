@@ -13,6 +13,11 @@ private final class FakeColumnLayoutPersister: ColumnLayoutPersisting {
 }
 
 @MainActor
+private final class GutterDraws {
+    var total = 0
+}
+
+@MainActor
 private struct GutterGrid {
     let window: NSWindow
     let scrollView: NSScrollView
@@ -191,6 +196,49 @@ struct DataGridRowGutterTests {
 
     private func screenPoint(x: CGFloat, y: CGFloat, in grid: GutterGrid) -> NSPoint {
         grid.window.convertPoint(toScreen: grid.gutter.convert(NSPoint(x: x, y: y), to: nil))
+    }
+
+    /// With the rows inside the viewport the strip's frame does not move on a reload, and a frame
+    /// change is all its own geometry sync repaints for. A result with fewer rows than the one
+    /// before it left the old numbers painted beside rows that were gone.
+    ///
+    /// Counted through the page offset, which only the strip's drawing reads once the rows are laid
+    /// out. `needsDisplay` cannot answer this, it reads false straight after being set, and
+    /// `displayIfNeeded()` does not draw the strip: its layer draws when the run loop commits.
+    @Test("a reload to fewer rows redraws the gutter even though its frame holds")
+    func reloadToFewerRowsRedrawsTheGutter() throws {
+        let grid = GutterGrid(rowCount: 3, dataColumns: 2)
+        let draws = GutterDraws()
+        grid.coordinator.paginationOffsetProvider = {
+            draws.total += 1
+            return 0
+        }
+        grid.scrollView.layoutSubtreeIfNeeded()
+        Self.commit()
+        draws.total = 0
+        Self.commit()
+        try #require(draws.total == 0, "a settled gutter must not draw again, or the count proves nothing")
+        let frameBefore = grid.gutter.frame
+
+        let oneRow = TableRows.from(
+            queryRows: [[.text("a"), .text("b")]],
+            columns: ["col0", "col1"],
+            columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: 2)
+        )
+        grid.coordinator.tableRowsProvider = { oneRow }
+        grid.coordinator.updateCache()
+        grid.tableView.reloadData()
+        grid.scrollView.layoutSubtreeIfNeeded()
+        draws.total = 0
+        Self.commit()
+
+        #expect(grid.tableView.numberOfRows == 1)
+        #expect(grid.gutter.frame == frameBefore)
+        #expect(draws.total > 0, "the strip must redraw, or it keeps numbering rows 2 and 3")
+    }
+
+    private static func commit() {
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
     @Test("the gutter width follows the column when the row count crosses a digit boundary")

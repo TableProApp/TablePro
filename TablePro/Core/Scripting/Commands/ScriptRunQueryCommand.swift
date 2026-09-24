@@ -28,7 +28,6 @@ internal final class ScriptRunQueryCommand: ScriptCommand {
             client: sendingApplication
         )
 
-        let outcome = try await ScriptQueryRunner.run(request, bridge: bridge)
-        return ScriptResultEncoder.encode(outcome.result, executionTimeMs: outcome.executionTimeMs)
+        return ScriptResultEncoder.encode(try await ScriptQueryRunner.run(request, bridge: bridge))
     }
 }

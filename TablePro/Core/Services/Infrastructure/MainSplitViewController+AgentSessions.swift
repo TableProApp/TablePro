@@ -107,8 +107,9 @@ internal extension MainSplitViewController {
         repaintEveryWindow(hosting: connectionId)
     }
 
-    /// Closing or deleting a session is the one pair of commands whose result another window cannot
-    /// discover for itself.
+    /// Closing or deleting a session, and an assistant action that had to start one because the
+    /// session on screen was busy, are the commands whose result another window cannot discover for
+    /// itself.
     ///
     /// The registry can now hand the displayed session over to nothing, which is a value nothing
     /// could reach while `removeSession` had no caller outside a test, and a second window's
@@ -119,7 +120,7 @@ internal extension MainSplitViewController {
     ///
     /// This window first and unconditionally, because it is the one the command came from and it is
     /// hosted whether or not anything has registered it.
-    private func repaintEveryWindow(hosting connectionId: UUID) {
+    func repaintEveryWindow(hosting connectionId: UUID) {
         repaintAgentRail(hosting: connectionId, in: self)
         for host in WindowManager.shared.hostControllers(for: connectionId) where host !== self {
             repaintAgentRail(hosting: connectionId, in: host)
@@ -132,6 +133,7 @@ internal extension MainSplitViewController {
            workspace.agentSessions.session(id: highlighted) == nil {
             workspace.agentRail.highlightedSessionId = workspace.displayedAgentSession?.id
         }
+        workspace.trailingPaneState?.assistant.followDisplayedSession()
         host.applyContentMode(for: workspace)
     }
 

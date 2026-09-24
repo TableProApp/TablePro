@@ -40,6 +40,12 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     /// does not already end in one.
     func scriptText(for ddl: String) -> String
 
+    /// How this engine's own client reads a script, so a dump is written the way it is read back. SQL Server's
+    /// client ends a batch at a line holding only `GO` (``SQLLexicalFeatures/batchSeparatorLines``) and refuses a
+    /// view, a routine or a trigger that is not the first statement of its batch. Empty by default, which writes a
+    /// script of `;`-terminated statements.
+    var lexicalFeatures: SQLLexicalFeatures { get }
+
     /// The GRANT statements that recreate one principal's privileges, rendered by the engine's own
     /// grant builder. `host` is the MySQL-style host part, which is what separates two principals
     /// that share a name. Empty on an engine with no principal management.
@@ -85,6 +91,8 @@ public extension PluginExportDataSource {
     func scriptText(for ddl: String) -> String {
         ddl.hasSuffix(";") ? ddl : ddl + ";"
     }
+
+    var lexicalFeatures: SQLLexicalFeatures { [] }
 
     func fetchGrantStatements(principal: String, host: String?) async throws -> [String] { [] }
 

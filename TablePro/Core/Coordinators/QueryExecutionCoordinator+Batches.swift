@@ -72,24 +72,17 @@ extension QueryExecutionCoordinator {
     /// The batches `text` runs as on this connection. `sourceOffset` moves them onto the tab's whole query when
     /// `text` is a selection or a single statement taken from it.
     func executionBatches(in text: String, sourceOffset: Int = 0) -> [ExecutableBatch] {
-        let grammar = parent.lexicalGrammar
-        let statements = QueryStatementScanner.executableStatements(
-            in: text, model: parent.statementModel, grammar: grammar
-        )
-        let separators = parent.statementModel == .sql
-            ? SQLStatementScanner.batchSeparators(in: text, grammar: grammar)
-            : []
-        return QueryBatchPlanner.batches(
-            in: text, statements: statements, separators: separators, sourceOffset: sourceOffset
+        QueryBatchPlanner.batches(
+            in: text, model: parent.statementModel, grammar: parent.lexicalGrammar, sourceOffset: sourceOffset
         )
     }
 
     func executionRoute(for batches: [ExecutableBatch]) -> QueryExecutionRoute? {
-        let databaseType = parent.connection.type
-        let sendsBatchesWhole = DatabaseManager.shared.driver(for: parent.connectionId)?.supportsResultSetBatches ?? false
-        return QueryExecutionRoute.resolve(batches, sendsBatchesWhole: sendsBatchesWhole) { sql in
-            QueryExecutor.qualifiesForRowCap(sql: sql, tabType: .query, databaseType: databaseType)
-        }
+        QueryExecutionRoute.resolve(
+            batches,
+            databaseType: parent.connection.type,
+            sendsBatchesWhole: DatabaseManager.shared.driver(for: parent.connectionId)?.supportsResultSetBatches ?? false
+        )
     }
 
     /// Runs each batch whole, in order, on one lease, and stops at the first that fails.
@@ -284,17 +277,17 @@ extension QueryExecutionCoordinator {
         driver: DatabaseDriver,
         failureOutput: ServerOutputBox
     ) async throws -> BatchOutput {
-        var resultSets: [QueryResult] = []
-        var rowsAffected = 0
-        var errors: [PluginBatchError] = []
-        var discarded = 0
-        var executionTime: TimeInterval = 0
+        var combined = QueryBatchResult.empty
         var printed = BatchPrintedOutput()
         for _ in 0..<max(prepared.batch.repeatCount, 1) {
             try Task.checkCancellation()
             let answer: QueryBatchResult
             do {
-                answer = try await Self.answer(for: prepared, driver: driver)
+                answer = try await driver.answerBatch(
+                    query: prepared.sentSQL,
+                    rowCap: prepared.rowCap,
+                    parameters: prepared.parameterValues
+                )
             } catch {
                 if !DatabaseCancellationDiagnosis.isCancellation(error) {
                     printed.append(await ServerOutputCapture.drain(driver))
@@ -303,59 +296,19 @@ extension QueryExecutionCoordinator {
                 throw error
             }
             printed.append(await ServerOutputCapture.drain(driver))
-            errors += answer.errors.map { error in
-                PluginBatchError(
-                    message: error.message,
-                    code: error.code,
-                    line: error.line,
-                    procedure: error.procedure,
-                    precedingResultSetCount: min(resultSets.count + error.precedingResultSetCount, keptResultSetLimit)
-                )
-            }
-            let room = max(keptResultSetLimit - resultSets.count, 0)
-            resultSets += answer.resultSets.prefix(room)
-            discarded += answer.discardedResultSetCount + max(answer.resultSets.count - room, 0)
-            rowsAffected += answer.rowsAffected
-            executionTime += answer.executionTime
+            combined = combined.followed(by: answer)
             guard answer.errors.isEmpty else { break }
         }
         var output = BatchOutput(
-            resultSets: resultSets,
-            rowsAffected: rowsAffected,
-            errors: errors,
-            discardedResultSetCount: discarded,
-            executionTime: executionTime,
-            errorDescription: BatchErrorText.describe(errors, batchStartLine: prepared.startLine)
+            resultSets: combined.resultSets,
+            rowsAffected: combined.rowsAffected,
+            errors: combined.errors,
+            discardedResultSetCount: combined.discardedResultSetCount,
+            executionTime: combined.executionTime,
+            errorDescription: BatchErrorText.describe(combined.errors, batchStartLine: prepared.startLine)
         )
         output.serverOutput = printed.output
         return output
-    }
-
-    /// The result sets one batch keeps across all of its repetitions, the same ceiling the driver keeps for one.
-    private static let keptResultSetLimit = 100
-
-    /// A driver that declared batches and then declines one gets the text as a single statement, which is what it
-    /// was sent as before batches existed.
-    private static func answer(for prepared: PreparedBatch, driver: DatabaseDriver) async throws -> QueryBatchResult {
-        if let answer = try await driver.executeBatch(
-            query: prepared.sentSQL,
-            rowCap: prepared.rowCap,
-            parameters: prepared.parameterValues
-        ) {
-            return answer
-        }
-        let single = try await driver.executeUserQuery(
-            query: prepared.sentSQL,
-            rowCap: prepared.rowCap,
-            parameters: prepared.parameterValues
-        )
-        return QueryBatchResult(
-            resultSets: single.columns.isEmpty ? [] : [single],
-            rowsAffected: single.columns.isEmpty ? single.rowsAffected : 0,
-            errors: [],
-            discardedResultSetCount: 0,
-            executionTime: single.executionTime
-        )
     }
 
     /// A failed batch ran, at least in part, and the server does not say how far, so every statement in it is
@@ -564,8 +517,6 @@ extension QueryExecutionCoordinator {
         return resultSets
     }
 
-    /// What the run has to tell the reader beyond its results: a transaction the script left open, and result sets
-    /// the driver read past because a batch returned more than it keeps.
     private static func runNotice(
         outcome: BatchStatementOutcome<BatchOutput>,
         sessionState: PluginSessionTransactionState
@@ -575,12 +526,10 @@ extension QueryExecutionCoordinator {
         case .completed(let results), .cancelled(let results), .failed(let results, _, _):
             outputs = results
         }
-        let discarded = outputs.reduce(0) { $0 + $1.discardedResultSetCount }
-        let discardedNote = discarded > 0
-            ? String(format: String(localized: "%lld more result sets were not kept."), Int64(discarded))
-            : nil
-        let notes = [sessionState.openTransactionNotice, discardedNote].compactMap { $0 }
-        return notes.isEmpty ? nil : notes.joined(separator: " ")
+        return BatchRunNotice.text(
+            discardedResultSetCount: outputs.reduce(0) { $0 + $1.discardedResultSetCount },
+            sessionState: sessionState
+        )
     }
 
     private func numberedResultSet(_ result: QueryResult, anchor: StatementAnchor?, index: Int) -> ResultSet {

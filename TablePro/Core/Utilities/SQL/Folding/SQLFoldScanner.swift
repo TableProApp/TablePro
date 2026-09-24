@@ -221,11 +221,13 @@ private struct Scan {
 
     private mutating func consumeTrivia(_ character: UInt16) -> Bool {
         if character == SqlLexer.newline {
+            boundaries.observeGap()
             line += 1
             index += 1
             return true
         }
         guard SqlLexer.isWhitespace(character) else { return false }
+        boundaries.observeGap()
         index += 1
         return true
     }
@@ -236,6 +238,9 @@ private struct Scan {
         guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) else { return false }
         let start = SqlLexer.endOfLine(text, from: index, length: length)
         let startLine = line
+        if span.kind.isComment {
+            boundaries.observeGap()
+        }
         switch span.kind {
         case .lineComment:
             break

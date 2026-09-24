@@ -83,6 +83,30 @@ struct SQLBatchSeparatorTests {
         #expect(separators(text).isEmpty)
     }
 
+    @Test(
+        "A reader that tracked the line start reads each line as the scanner does",
+        arguments: [
+            "GO", "go", "GO   ", "GO -- batch one", "GO--glued", "GO 2 -- twice", "GO\t7", "GO 05", "GO 2147483647",
+            "GO;", "GO 0", "GO -1", "GO x", "GO 2147483648", "GOTO done", "go_table", "GO5", "GO /* c */", "GO 2 3",
+        ]
+    )
+    func lineStartingAtAgreesWithTheScanner(line: String) {
+        let text = "SELECT 1\n\(line)\nSELECT 2"
+        let lineStart = 9
+        let buffer = "\(line)\nSELECT 2" as NSString
+        let read = SQLBatchSeparator.line(startingAt: 0, in: buffer, length: buffer.length, grammar: Self.sqlServer)
+        let scanned = separators(text).first
+        #expect(read?.repeatCount == scanned?.repeatCount)
+        #expect(read.map { NSRange(location: $0.range.location + lineStart, length: $0.range.length) } == scanned?.range)
+    }
+
+    @Test("The caller vouches for the line start, so text before the GO is not read")
+    func lineStartingAtTrustsTheCaller() {
+        let buffer = "  GO 3\nSELECT 2" as NSString
+        let read = SQLBatchSeparator.line(startingAt: 2, in: buffer, length: buffer.length, grammar: Self.sqlServer)
+        #expect(read == SQLBatchSeparator(range: NSRange(location: 2, length: 4), repeatCount: 3))
+    }
+
     @Test("GO after code on the same line is not a separator")
     func goMustStartTheLine() {
         #expect(separators("SELECT 1 GO\nSELECT 2").isEmpty)

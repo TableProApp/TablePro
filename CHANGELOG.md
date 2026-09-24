@@ -494,6 +494,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server login failing without a reason for a password longer than 128 bytes.
 - SQL Server connection that never answered again after Stop was pressed during a query.
 - SQL Server query cut at the row limit left running on the server, holding its locks and stalling the next query.
+- SQL Server statement that kept running on the server, and committed, after Disconnect.
+- SQL Server `MERGE` refused with Msg 10713 when run alone or as the last statement of a script.
+- Column sort re-running every statement in the editor for a result with query parameters or after Fetch All.
+- Format SQL, Fold and Save as Favorite shown dimmed in the query editor's context menu.
+- Format SQL and Save as Favorite in the editor's context menu acting on the right-clicked word alone.
+- Explain, Optimize and Fix with AI cancelling a reply the assistant was still writing.
+- AI chat unable to send again after a message too large to send, with an error naming the wrong setting.
+- A whole AI conversation lost when one part of it could not be read.
+- SQL Server `MERGE` statements and procedure bodies failing when imported from a .sql file.
+- Previous run's column headings left over an empty grid under the error of a script that failed partway.
+- Row numbers of a longer previous result left beside the rows of a shorter one.
+- Run executing an old sorted query after a column header was clicked while a query ran.
+- SQL Server scripts refused, or cut to their first result set, over MCP, AppleScript and the AI assistant.
+- SQL import into SQL Server sending `GO` lines to the server and splitting batches at each semicolon.
+- SQL Server dumps failing on their first view, routine or trigger when restored with sqlcmd or imported.
 
 ### Security
 
@@ -520,6 +535,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
 - SQL Server statements written after another without a semicolon skipped Safe Mode, on Mac, iPhone and iPad.
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
+- Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
 
 ## [0.75.0] - 2026-09-18
 

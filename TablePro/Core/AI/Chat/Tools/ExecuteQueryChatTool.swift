@@ -9,8 +9,9 @@ struct ExecuteQueryChatTool: ChatTool {
     let name = "execute_query"
     let description = String(localized: """
         Execute a SQL query against a connection. The connection's safe mode policy applies.\
-         Multi-statement queries are rejected. Destructive operations (DROP, TRUNCATE, ALTER...DROP)\
-         are blocked here; use confirm_destructive_operation instead.
+         Multi-statement queries are rejected, except on SQL Server, where a whole script runs batch by batch\
+         at its GO lines and result_sets lists every result set when there is more than one. Destructive\
+         operations (DROP, TRUNCATE, ALTER...DROP) are blocked here; use confirm_destructive_operation instead.
         """)
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
@@ -53,7 +54,9 @@ struct ExecuteQueryChatTool: ChatTool {
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
+        guard ExternalStatementGate.acceptsScripts(on: meta.databaseType)
+            || !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType)
+        else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
@@ -120,7 +123,8 @@ struct ExecuteQueryChatTool: ChatTool {
             scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principal: .inAppAssistant
+            principal: .inAppAssistant,
+            unit: .script
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

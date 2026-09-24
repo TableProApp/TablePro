@@ -8,13 +8,16 @@ import os
 
 @MainActor
 final class AIChatInlineSource: InlineSuggestionSource {
+    typealias SettingsProvider = @MainActor () -> AISettings
+    typealias ProviderResolver = @MainActor (AISettings) -> AIProviderFactory.ResolvedProvider?
+
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AIChatInlineSource")
 
     /// Settable, because the provider is per database scope and the source outlives a scope
     /// change: latching the instance handed the model the first scope's tables for the rest of
     /// the tab's life, and left the prompt schema-less once that provider was released.
     internal weak var schemaProvider: SQLSchemaProvider?
-    internal var connectionPolicy: AIConnectionPolicy?
+    internal var connectionId: UUID?
 
     /// One id for this source's whole life.
     ///
@@ -22,23 +25,35 @@ final class AIChatInlineSource: InlineSuggestionSource {
     /// would leave a Copilot conversation behind for every inline suggestion, locally and on the
     /// server. Inline suggestions are one long-running conversation, not a new one each keystroke.
     private let sessionId = UUID()
+    private let accessGate: AIConnectionAccessGate
+    private let currentSettings: SettingsProvider
+    private let resolveProvider: ProviderResolver
 
-    init(schemaProvider: SQLSchemaProvider?, connectionPolicy: AIConnectionPolicy?) {
+    init(
+        schemaProvider: SQLSchemaProvider?,
+        connectionId: UUID?,
+        accessGate: AIConnectionAccessGate,
+        currentSettings: @escaping SettingsProvider = { AppSettingsManager.shared.ai },
+        resolveProvider: @escaping ProviderResolver = { AIProviderFactory.resolve(settings: $0) }
+    ) {
         self.schemaProvider = schemaProvider
-        self.connectionPolicy = connectionPolicy
+        self.connectionId = connectionId
+        self.accessGate = accessGate
+        self.currentSettings = currentSettings
+        self.resolveProvider = resolveProvider
     }
 
     var isAvailable: Bool {
-        let settings = AppSettingsManager.shared.ai
+        let settings = currentSettings()
         guard settings.enabled, settings.hasActiveProvider else { return false }
-        if connectionPolicy == .never { return false }
-        return true
+        return accessGate.allowsUnpromptedAccess(to: connectionId)
     }
 
     func requestSuggestion(context: SuggestionContext) async throws -> InlineSuggestion? {
-        let settings = AppSettingsManager.shared.ai
+        guard accessGate.allowsUnpromptedAccess(to: connectionId) else { return nil }
 
-        guard let resolved = AIProviderFactory.resolve(settings: settings) else {
+        let settings = currentSettings()
+        guard let resolved = resolveProvider(settings) else {
             return nil
         }
 
@@ -47,7 +62,9 @@ final class AIChatInlineSource: InlineSuggestionSource {
             ChatTurnWire(role: .user, blocks: [.text(userMessage)])
         ]
 
-        let systemPrompt = await buildSystemPrompt()
+        let systemPrompt = await buildSystemPrompt(settings: settings)
+
+        guard accessGate.allowsUnpromptedAccess(to: connectionId) else { return nil }
 
         var accumulated = ""
         let stream = resolved.provider.streamChat(
@@ -77,9 +94,7 @@ final class AIChatInlineSource: InlineSuggestionSource {
 
     // MARK: - Private
 
-    private func buildSystemPrompt() async -> String {
-        let settings = AppSettingsManager.shared.ai
-
+    private func buildSystemPrompt(settings: AISettings) async -> String {
         guard settings.includeSchema,
               let provider = schemaProvider else {
             return AIPromptTemplates.inlineSuggestSystemPrompt()

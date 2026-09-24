@@ -168,7 +168,8 @@ nonisolated private let freetdsConfigFile = MSSQLFreeTDSConfigFile(
 )
 
 /// Each open connection's gate, found by its DBPROCESS, because db-lib's interrupt and error handlers are C functions
-/// that receive nothing else.
+/// that receive nothing else. A gate stays registered until the queue closes its handle: a read that a Stop or a
+/// disconnect is ending finds the interrupt through it, and without it the read ran on until the server finished.
 nonisolated private let freetdsGates = OSAllocatedUnfairLock(initialState: [UInt: MSSQLRequestGate]())
 
 nonisolated private func freetdsRegister(_ gate: MSSQLRequestGate, for dbproc: UnsafeMutablePointer<DBPROCESS>) {
@@ -266,8 +267,8 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private let lock = NSLock()
     private var _isConnected = false
 
-    /// Which calls a Stop reaches. A Stop is the one thing here that runs off the queue, so it goes through this gate
-    /// and never through db-lib.
+    /// Which calls a Stop reaches. A Stop and a disconnect are the only things here that run off the queue, so they
+    /// stop a call through this gate and never through db-lib.
     private let requestGate = MSSQLRequestGate()
 
     private static let kerberosEnvLock = NSLock()
@@ -475,6 +476,9 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
     }
 
+    /// Closing a connection ends what it is running, as it does for any SQL Server client: measured, a statement whose
+    /// client closed the socket wrote nothing. Only the queue may close the handle and the queue may be inside a read,
+    /// so the read is stopped the way a Stop stops it and the handle is closed behind it.
     func disconnect() {
         let handle = dbproc
         dbproc = nil
@@ -483,11 +487,10 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         _isConnected = false
         lock.unlock()
 
-        if let handle {
-            freetdsUnregister(handle)
-            queue.async {
-                _ = dbclose(handle)
-            }
+        requestGate.stop()
+        guard let handle else { return }
+        queue.async { [self] in
+            teardown(handle)
         }
     }
 

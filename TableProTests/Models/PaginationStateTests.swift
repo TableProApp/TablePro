@@ -8,11 +8,11 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("Pagination State")
 struct PaginationStateTests {
-
     @Test("Default page size is 1000")
     func defaultPageSize() {
         #expect(PaginationState.defaultPageSize == 1_000)
@@ -333,17 +333,16 @@ struct PaginationStateTests {
         #expect(state.currentOffset == 0)
     }
 
-    @Test("Reset load more clears the sort execution override")
-    func resetLoadMoreClearsSortOverride() {
+    @Test("Reset load more clears the query and the values it ran with")
+    func resetLoadMoreClearsTheQueryAndItsValues() {
         var state = PaginationState()
         state.hasMoreRows = true
-        state.baseQueryForMore = "SELECT * FROM t"
-        state.sortExecutionOverride = "SELECT * FROM t ORDER BY id ASC"
+        state.setBaseQueryForMore("SELECT * FROM t WHERE id = ?", parameterValues: ["1"])
 
         state.resetLoadMore()
 
-        #expect(state.sortExecutionOverride == nil)
         #expect(state.baseQueryForMore == nil)
+        #expect(state.baseQueryParameterValues == nil)
         #expect(state.hasMoreRows == false)
     }
 

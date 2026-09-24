@@ -27,10 +27,9 @@ enum AIQueryTarget: Equatable, Sendable {
     case statement(containing: Int)
 
     static func contextMenu(selectedRange: NSRange, contextClickWord: NSRange?) -> AIQueryTarget {
-        guard let contextClickWord, NSEqualRanges(selectedRange, contextClickWord) else {
-            return .selectionOrStatementAtCursor
-        }
-        return .statement(containing: contextClickWord.location)
+        let selection = EditorContextSelection(selectedRange: selectedRange, contextClickWord: contextClickWord)
+        guard selection.selectsOnlyClickedWord else { return .selectionOrStatementAtCursor }
+        return .statement(containing: selection.effectiveRange.location)
     }
 }
 

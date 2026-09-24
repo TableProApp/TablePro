@@ -409,38 +409,40 @@ struct DataGridView: NSViewRepresentable {
         coordinator.updateCache()
         coordinator.visualIndex.rebuild(from: coordinator.changeManager)
 
-        if !latestRows.columns.isEmpty {
-            coordinator.isRebuildingColumns = true
-            let sameTableLiveWidths = TableViewCoordinator.liveWidthsForSameTable(
-                previous: previousColumnKey,
-                current: coordinator.columnLayoutKey,
-                liveWidths: liveColumnWidths
-            )
-            let storedLayout = coordinator.layoutDiscardingUnownedWidths(
-                coordinator.savedColumnLayout(binding: columnLayout),
-                tableRows: latestRows
-            )
-            coordinator.synchronizeUserSizedColumns(
-                with: storedLayout,
-                columns: latestRows.columns,
-                tableIdentityChanged: previousColumnKey != coordinator.columnLayoutKey
-            )
-            let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
-            let savedLayout = coordinator.resolvedColumnLayout(
-                saved: storedLayout,
-                liveWidths: reconciliationWidths
-            )
-            reconcileColumnPool(
-                tableView: tableView,
-                coordinator: coordinator,
-                tableRows: latestRows,
-                columnComments: columnComments,
-                savedLayout: savedLayout
-            )
-            coordinator.isRebuildingColumns = false
-            coordinator.invalidateColumnIndexCache()
-            coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
-        }
+        /// Reconciled for a result with no columns as well, which hides every slot, exactly as
+        /// `makeNSView` does for whatever it mounts over. An error result is one: a failed run
+        /// leaves it active over an empty buffer, and skipping the pool there kept the previous
+        /// result's headings over a grid with no rows.
+        coordinator.isRebuildingColumns = true
+        let sameTableLiveWidths = TableViewCoordinator.liveWidthsForSameTable(
+            previous: previousColumnKey,
+            current: coordinator.columnLayoutKey,
+            liveWidths: liveColumnWidths
+        )
+        let storedLayout = coordinator.layoutDiscardingUnownedWidths(
+            coordinator.savedColumnLayout(binding: columnLayout),
+            tableRows: latestRows
+        )
+        coordinator.synchronizeUserSizedColumns(
+            with: storedLayout,
+            columns: latestRows.columns,
+            tableIdentityChanged: previousColumnKey != coordinator.columnLayoutKey
+        )
+        let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
+        let savedLayout = coordinator.resolvedColumnLayout(
+            saved: storedLayout,
+            liveWidths: reconciliationWidths
+        )
+        reconcileColumnPool(
+            tableView: tableView,
+            coordinator: coordinator,
+            tableRows: latestRows,
+            columnComments: columnComments,
+            savedLayout: savedLayout
+        )
+        coordinator.isRebuildingColumns = false
+        coordinator.invalidateColumnIndexCache()
+        coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
 
         coordinator.updateValueFilterHeaderIndicators()
 

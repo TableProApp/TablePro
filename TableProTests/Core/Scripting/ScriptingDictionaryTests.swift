@@ -271,6 +271,20 @@ struct ScriptingDictionaryTests {
         }
     }
 
+    /// Measured with a throwaway scriptable app: a property named `result sets` beside a record type named
+    /// `result set` compiles, and AppleScript then reads it as every element of that type and answers `{}`.
+    @Test("No record property is named the plural of a record type")
+    func propertiesAreNotPluralsOfRecordTypes() throws {
+        let records = try suite().elements(forName: "record-type")
+        let plurals = Set(records.compactMap { $0.attribute(forName: "name")?.stringValue }.map { $0 + "s" })
+        for record in records {
+            for property in record.elements(forName: "property") {
+                let name = property.attribute(forName: "name")?.stringValue ?? ""
+                #expect(!plurals.contains(name), "'\(name)' reads as every element of a record type, not the property")
+            }
+        }
+    }
+
     // MARK: - The encoder and the dictionary agree
 
     @Test("Every record key the encoder writes is declared in the dictionary")
@@ -285,6 +299,16 @@ struct ScriptingDictionaryTests {
         for key in ScriptingKeys.QueryResult.all + ScriptingKeys.ResultRow.all {
             #expect(declared.contains(key), "'\(key)' is written by the encoder but not declared")
         }
+    }
+
+    @Test("Every key of a result set is declared on the result set record type")
+    func resultSetKeysAreDeclared() throws {
+        let resultSet = try #require(
+            try suite().elements(forName: "record-type")
+                .first { $0.attribute(forName: "name")?.stringValue == "result set" }
+        )
+        let declared = Set(resultSet.elements(forName: "property").map { cocoaKey(of: $0) })
+        #expect(declared == Set(ScriptingKeys.ResultSet.all))
     }
 
     @Test("Every command parameter key the commands read is declared in the dictionary")

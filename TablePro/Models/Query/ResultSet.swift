@@ -39,6 +39,11 @@ final class ResultSet: ObservableObject, Identifiable {
     @Published var baseQuery: String?
     @Published var baseQueryParameterValues: [String?]?
 
+    /// The statement a parameterized run produced these rows from, as written, with the values it bound. `baseQuery`
+    /// and `baseQueryParameterValues` are the same run in the driver's positional form, which Fetch All sends as it
+    /// is and which a sort cannot edit safely. Nil for rows no parameterized statement stands behind.
+    @Published var namedParameterStatement: NamedParameterStatement?
+
     /// The table these rows came from, captured when the statement ran. Nil means the rows have no
     /// single writable table, which `ResultEditability` treats as a refusal rather than a licence
     /// to use whatever the tab is pointing at now.

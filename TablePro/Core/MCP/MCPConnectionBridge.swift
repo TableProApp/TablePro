@@ -159,6 +159,23 @@ public actor MCPConnectionBridge {
         )
     }
 
+    func executeScript(
+        scope: DatabaseScope,
+        query: String,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
+    ) async throws -> (payload: JsonValue, rowsReturned: Int) {
+        let outcome = try await access.runScript(
+            scope: scope,
+            query: query,
+            maxRows: maxRows,
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation
+        )
+        return (Self.encode(script: outcome, scope: scope), outcome.rowsReturned)
+    }
+
     func runStatement(
         scope: DatabaseScope,
         query: String,
@@ -177,6 +194,33 @@ public actor MCPConnectionBridge {
     }
 
     static func encode(result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> JsonValue {
+        .object(fields(of: result, scope: scope, executionTimeMs: executionTimeMs))
+    }
+
+    /// A script's answer in the shape a statement's has, so a client that reads one result reads the first, plus
+    /// `result_sets` with every one of them once there is more than one to read.
+    static func encode(script: DatabaseAccessBridge.ScriptOutcome, scope: DatabaseScope) -> JsonValue {
+        var response = fields(of: script.primary, scope: scope, executionTimeMs: script.executionTimeMs)
+        if script.resultSets.count > 1 {
+            response["result_sets"] = .array(script.resultSets.map(encode(resultSet:)))
+        }
+        return .object(response)
+    }
+
+    static func encode(resultSet: QueryResult) -> JsonValue {
+        var entry: [String: JsonValue] = [
+            "columns": .array(resultSet.columns.map { .string($0) }),
+            "rows": .array(resultSet.rows.map { row in .array(row.map(cellValue)) }),
+            "row_count": .int(resultSet.rows.count),
+            "is_truncated": .bool(resultSet.isTruncated)
+        ]
+        if let statusMessage = resultSet.statusMessage {
+            entry["status_message"] = .string(statusMessage)
+        }
+        return .object(entry)
+    }
+
+    private static func fields(of result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> [String: JsonValue] {
         var response: [String: JsonValue] = [
             "columns": .array(result.columns.map { .string($0) }),
             "rows": .array(result.rows.map { row in .array(row.map(cellValue)) }),
@@ -192,7 +236,7 @@ public actor MCPConnectionBridge {
         if let statusMessage = result.statusMessage {
             response["status_message"] = .string(statusMessage)
         }
-        return .object(response)
+        return response
     }
 
     static func cellValue(_ cell: PluginCellValue) -> JsonValue {

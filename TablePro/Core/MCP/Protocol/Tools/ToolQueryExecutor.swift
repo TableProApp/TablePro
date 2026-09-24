@@ -1,6 +1,13 @@
 import Foundation
 
 enum ToolQueryExecutor {
+    /// What one call sends: a statement, or a text that runs as a script where the engine takes one, whose every
+    /// result set comes back.
+    enum Unit: Sendable {
+        case statement
+        case script
+    }
+
     static func executeAndLog(
         services: MCPToolServices,
         query: String,
@@ -8,7 +15,8 @@ enum ToolQueryExecutor {
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
-        secrets: [String]
+        secrets: [String],
+        unit: Unit = .statement
     ) async throws -> JsonValue {
         try await context.cancellation.throwIfCancelled()
         return try await executeAndLog(
@@ -19,7 +27,8 @@ enum ToolQueryExecutor {
             timeoutSeconds: timeoutSeconds,
             principal: context.principal,
             cancellation: context.cancellation,
-            secrets: secrets
+            secrets: secrets,
+            unit: unit
         )
     }
 
@@ -31,22 +40,24 @@ enum ToolQueryExecutor {
         timeoutSeconds: Int,
         principal: MCPPrincipal,
         cancellation: MCPCancellationToken? = nil,
-        secrets: [String] = []
+        secrets: [String] = [],
+        unit: Unit = .statement
     ) async throws -> JsonValue {
         let connectionId = scope.connectionId
         let databaseName = scope.database
         let startTime = Date()
         let operationStart = ContinuousClock.Instant.now
         do {
-            let result = try await services.connectionBridge.executeQuery(
-                scope: scope,
+            let (result, rowCount) = try await run(
+                unit,
+                services: services,
                 query: query,
+                scope: scope,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
             )
             let elapsed = Date().timeIntervalSince(startTime)
-            let rowCount = result["row_count"]?.intValue ?? 0
             await services.authPolicy.logQuery(
                 sql: query,
                 connectionId: connectionId,
@@ -101,6 +112,38 @@ enum ToolQueryExecutor {
                 startedAt: operationStart
             )
             throw translate(error, secrets: secrets)
+        }
+    }
+
+    /// The call's payload, and the rows it returned across every result set, which the history and the audit log
+    /// record.
+    private static func run(
+        _ unit: Unit,
+        services: MCPToolServices,
+        query: String,
+        scope: DatabaseScope,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
+    ) async throws -> (payload: JsonValue, rowsReturned: Int) {
+        switch unit {
+        case .statement:
+            let payload = try await services.connectionBridge.executeQuery(
+                scope: scope,
+                query: query,
+                maxRows: maxRows,
+                timeoutSeconds: timeoutSeconds,
+                cancellation: cancellation
+            )
+            return (payload, payload["row_count"]?.intValue ?? 0)
+        case .script:
+            return try await services.connectionBridge.executeScript(
+                scope: scope,
+                query: query,
+                maxRows: maxRows,
+                timeoutSeconds: timeoutSeconds,
+                cancellation: cancellation
+            )
         }
     }
 

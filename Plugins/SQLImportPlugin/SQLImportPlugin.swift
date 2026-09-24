@@ -73,7 +73,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 try progress.checkCancellation()
 
                 do {
-                    try await sink.execute(statement: statement)
+                    try await sink.execute(statement: statement, line: lineNumber)
                     executedCount += 1
                     progress.incrementStatement()
                 } catch {

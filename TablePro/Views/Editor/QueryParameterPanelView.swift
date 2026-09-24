@@ -114,6 +114,7 @@ struct QueryParameterRowView: View {
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .disabled(parameter.isNull)
+                .accessibilityIdentifier("query-parameter-value-\(parameter.name)")
 
             Picker("", selection: $parameter.type) {
                 ForEach(QueryParameterType.allCases, id: \.self) { paramType in

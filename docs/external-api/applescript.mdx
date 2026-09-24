@@ -105,8 +105,14 @@ A record. Assign it to a variable and the rows stay with it.
 | `truncated` | boolean | True when `row limit` cut the result short |
 | `execution time` | real | Milliseconds |
 | `status message` | text | What the server said, when it said anything |
+| `results` | list of result set | Every result set, when a SQL Server script returned more than one. Empty otherwise |
 
 A cell is always text. NULL is the empty string, and binary is Base64.
+
+### result set
+
+One entry of `results`, with the `columns`, `rows`, `row count`, `truncated` and `status message`
+of that result set.
 
 ## Commands
 
@@ -123,6 +129,24 @@ connection opens first if it is closed, which can prompt for a password.
 `row limit` defaults to 500 and caps at 10000. `timeout` defaults to 30 seconds and caps at 600.
 Several statements in one call are refused, as are statements that read files or run server-side
 code.
+
+SQL Server is the exception to one statement per call: send the whole script, and it runs batch by
+batch at its `GO` lines, as the query editor runs it. The record is the first result set,
+`rows affected` counts the whole script, and `results` holds every result set when there is more
+than one. `row limit` caps each result set on its own.
+
+```applescript
+tell application "TablePro"
+  set r to run query "EXEC sp_help 'dbo.orders'" in connection "Warehouse"
+  set sets to results of r
+  repeat with one in sets
+    columns of one
+  end repeat
+end tell
+```
+
+Read `results` into a variable before counting it. Inside a `tell` block, `count of results of r`
+is sent to TablePro and answers 0.
 
 AppleScript gives up on any command after two minutes. Wrap a long query in
 `with timeout of 300 seconds`.

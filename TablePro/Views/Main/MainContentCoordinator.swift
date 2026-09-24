@@ -1055,25 +1055,12 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
 
-        let fullQuery = tab.content.query
-
         /// The offset says where the SQL sits in the tab's query, so each result can point back at the statement that
-        /// produced it. A sort override is SQL the app wrote rather than text the reader can be sent to, so it has
-        /// none. The other two hand over untrimmed text with an exact offset and let the scanner do the trimming,
-        /// which keeps the two from having to agree about how much whitespace was dropped.
-        let sql: String
-        let sourceOffset: Int?
-        if let sortOverride = tab.pagination.sortExecutionOverride {
-            tabManager.mutate(at: index) { $0.pagination.sortExecutionOverride = nil }
-            sql = sortOverride
-            sourceOffset = nil
-        } else {
-            let target = selectionOrStatementAtCursor(in: fullQuery)
-            sql = target.sql
-            sourceOffset = target.offset
-        }
-
-        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: bypassRowLimit, sourceOffset: sourceOffset)
+        /// produced it. The selection and the statement at the caret both hand over untrimmed text with an exact
+        /// offset and let the scanner do the trimming, which keeps the two from having to agree about how much
+        /// whitespace was dropped.
+        let target = selectionOrStatementAtCursor(in: tab.content.query)
+        executeResolvedSQL(target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit, sourceOffset: target.offset)
     }
 
     /// Runs one statement, named by its own text rather than by where the caret happens to be.
@@ -1102,16 +1089,31 @@ final class MainContentCoordinator: ObservableObject {
     /// Returns whether the SQL was actually dispatched. It is not when the statement carries parameters whose panel
     /// has yet to be filled in: that opens the panel and runs nothing, and a caller that advances the caret on the
     /// strength of a run would then be pointing at the wrong statement when the reader presses again.
+    ///
+    /// `boundParameters` are the values a result already ran with, handed back when that result runs again. They
+    /// stand in for the panel's, which may have changed since, so the panel is neither reconciled nor opened.
     @discardableResult
     private func executeResolvedSQL(
         _ sql: String,
         tabIndex index: Int,
         bypassRowLimit: Bool,
-        sourceOffset: Int? = nil
+        sourceOffset: Int? = nil,
+        boundParameters: [QueryParameter]? = nil
     ) -> Bool {
         let batches = queryExecutionCoordinator.executionBatches(in: sql, sourceOffset: sourceOffset ?? 0)
         let statements = batches.flatMap(\.statements)
         guard !statements.isEmpty else { return false }
+
+        if let boundParameters {
+            tabManager.tabStructureVersion += 1
+            dispatchParameterizedBatches(
+                batches,
+                parameters: boundParameters,
+                tabIndex: index,
+                bypassRowLimit: bypassRowLimit
+            )
+            return true
+        }
 
         // `:active` is a bind placeholder in SQL and an ordinary object key in JavaScript, so a
         // script would open the parameter panel and then be rewritten into something the driver
@@ -1522,36 +1524,42 @@ final class MainContentCoordinator: ObservableObject {
         if tab.tabType == .query {
             let tabId = tab.id
             let capturedSort = newState
-            let hasBoundParameters = tab.pagination.baseQueryParameterValues?.isEmpty == false
-            if !hasBoundParameters, let active = tab.display.activeResultSet, active.baseQuery == nil {
+            guard let rerun = tab.sortRerun else {
                 sortHeldRows(by: newState, tabId: tabId)
                 return
             }
-            let baseQuery = hasBoundParameters
-                ? tab.content.query
-                : (tab.pagination.baseQueryForMore ?? tab.content.query)
+            /// The result on screen stays clickable while the next run is in flight, and its re-run cannot start
+            /// until that run ends. The click is dropped, not kept for later: kept on the tab, it stood in for the
+            /// reader's next Run, bound to the values of a result that run had already replaced.
+            guard !tabExecution.isExecuting(tabId) else {
+                traceExecutionBlocked(tabId: tabId, site: "handleSortStateChanged")
+                return
+            }
             let capturedColumns = tableRows.columns
             confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
-                guard let self, confirmed else { return }
+                guard let self, confirmed, self.tabManager.selectedTabId == tabId,
+                      !self.tabExecution.isExecuting(tabId) else { return }
                 let orderClause = capturedSort.columns.compactMap { sortCol -> String? in
                     guard sortCol.columnIndex >= 0, sortCol.columnIndex < capturedColumns.count else { return nil }
                     let columnName = capturedColumns[sortCol.columnIndex]
                     let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
                     return "\(self.queryBuilder.quoteIdentifier(columnName)) \(direction)"
                 }.joined(separator: ", ")
-                let orderQuery = QuerySqlParser.applyingOrderBy(
-                    orderClause,
-                    to: baseQuery,
-                    grammar: self.lexicalGrammar
-                )
+                let orderQuery = rerun.transformingSQL {
+                    QuerySqlParser.applyingOrderBy(orderClause, to: $0, grammar: self.lexicalGrammar)
+                }
                 guard self.tabManager.mutate(tabId: tabId, { tab in
                     tab.sortState = capturedSort
                     tab.hasUserInteraction = true
                     tab.pagination.reset()
                     tab.pagination.resetLoadMore()
-                    tab.pagination.sortExecutionOverride = orderQuery
-                }) else { return }
-                self.runQuery(viewport: .firstRow)
+                }), let index = self.tabManager.selectedTabIndex else { return }
+                self.executeResolvedSQL(
+                    orderQuery.sql,
+                    tabIndex: index,
+                    bypassRowLimit: false,
+                    boundParameters: orderQuery.boundParameters
+                )
             }
             return
         }

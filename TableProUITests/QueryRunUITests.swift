@@ -36,6 +36,20 @@ final class QueryRunUITests: UITestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    func testRunOptionsMenuIsNamed() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+        let runMenu = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "query-run-menu")
+            .firstMatch
+        XCTAssertTrue(runMenu.waitToExist(timeout: 10), "The query tab's command bar must carry the Run menu")
+        XCTAssertTrue(
+            runMenu.label == "Run Options" || runMenu.title == "Run Options",
+            "The Run menu must be named Run Options: got label '\(runMenu.label)', title '\(runMenu.title)'"
+        )
+    }
+
     /// Asserting the item exists would still pass if it were wired to the wrong command or to
     /// nothing at all. Running it and counting the results is what covers the wiring.
     func testRunAllStatementsRunsEveryStatementInTheTab() throws {
