@@ -48,6 +48,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         )
     }
 
+    @MainActor
     func toggle(name: String, schema: String?, database: String?, connectionId: UUID) {
         let entry = FavoriteEntry(connectionId: connectionId, database: database, schema: schema, name: name)
         let action: TrackedAction = mutate { favorites in
@@ -61,6 +62,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         notify(after: action)
     }
 
+    @MainActor
     @discardableResult
     func addFavorite(name: String, schema: String?, database: String?, connectionId: UUID) -> Bool {
         let entry = FavoriteEntry(connectionId: connectionId, database: database, schema: schema, name: name)
@@ -72,6 +74,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         return action.changed
     }
 
+    @MainActor
     @discardableResult
     func addFavoriteWithoutSync(_ entry: FavoriteEntry) -> Bool {
         let action = mutate { favorites in
@@ -81,6 +84,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         return action.changed
     }
 
+    @MainActor
     func removeFavorite(name: String, schema: String?, database: String?, connectionId: UUID) {
         let entry = FavoriteEntry(connectionId: connectionId, database: database, schema: schema, name: name)
         let action = mutate { favorites in
@@ -89,6 +93,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         notify(after: action)
     }
 
+    @MainActor
     func removeFavoriteWithoutSync(_ entry: FavoriteEntry) {
         let action = mutate { favorites in
             favorites.remove(entry) != nil ? .removed(entry) : .noChange
@@ -96,6 +101,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         notify(after: action, skipSync: true)
     }
 
+    @MainActor
     func removeFavoriteWithoutSync(id: String) {
         let action = mutate { favorites in
             guard let entry = favorites.first(where: { Self.syncId(for: $0) == id }) else { return .noChange }
@@ -103,12 +109,14 @@ final class FavoriteTablesStorage: @unchecked Sendable {
             return .removed(entry)
         }
         notify(after: action, skipSync: true)
+        syncTracker.discardDirty(.tableFavorite, ids: [id])
     }
 
     /// Drops every favorite inside a database, or inside one schema of it when a schema is named.
     ///
     /// The container is gone, so each entry names a table that no longer exists. Removed one at a
     /// time through the syncing path, because the tables are gone on every device, not only this one.
+    @MainActor
     @discardableResult
     func removeFavorites(inDatabase database: String?, schema: String?, connectionId: UUID) -> [FavoriteEntry] {
         let doomed = favorites(for: connectionId).filter { entry in
@@ -124,6 +132,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         return Array(doomed)
     }
 
+    @MainActor
     @discardableResult
     func removeFavorites(for connectionId: UUID) -> [FavoriteEntry] {
         removeFavorites(for: connectionId, skipSync: false)
@@ -131,11 +140,13 @@ final class FavoriteTablesStorage: @unchecked Sendable {
 
     /// Used when another device deleted the connection. Marking tombstones here would push its own
     /// deletion straight back at it.
+    @MainActor
     @discardableResult
     func removeFavoritesWithoutSync(for connectionId: UUID) -> [FavoriteEntry] {
         removeFavorites(for: connectionId, skipSync: true)
     }
 
+    @MainActor
     @discardableResult
     private func removeFavorites(for connectionId: UUID, skipSync: Bool) -> [FavoriteEntry] {
         var removed: [FavoriteEntry] = []
@@ -150,7 +161,9 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         lock.unlock()
 
         guard !removed.isEmpty else { return [] }
-        if !skipSync {
+        if skipSync {
+            syncTracker.discardDirty(.tableFavorite, ids: removed.map(Self.syncId(for:)))
+        } else {
             for entry in removed {
                 syncTracker.markDeleted(.tableFavorite, id: Self.syncId(for: entry))
             }
@@ -188,6 +201,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         return action
     }
 
+    @MainActor
     private func notify(after action: TrackedAction, skipSync: Bool = false) {
         switch action {
         case .noChange:
@@ -198,7 +212,9 @@ final class FavoriteTablesStorage: @unchecked Sendable {
             }
             NotificationCenter.default.post(name: .favoriteTablesDidChange, object: nil)
         case .removed(let entry):
-            if !skipSync {
+            if skipSync {
+                syncTracker.discardDirty(.tableFavorite, ids: [Self.syncId(for: entry)])
+            } else {
                 syncTracker.markDeleted(.tableFavorite, id: Self.syncId(for: entry))
             }
             NotificationCenter.default.post(name: .favoriteTablesDidChange, object: nil)

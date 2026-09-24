@@ -97,7 +97,7 @@ extension MainContentCommandActions {
         let everything = Set(victims.map(\.id))
         guard hasUnsavedWork(among: victims) else { return .close(everything) }
 
-        switch await AlertHelper.confirmSaveChanges(message: unsavedWorkMessage(for: victims), window: closeAnchorWindow) {
+        switch await confirmSaveChanges(unsavedWorkMessage(for: victims), closeAnchorWindow) {
         case .save:
             return .close(await saveVictims(victims))
         case .dontSave:
@@ -150,6 +150,7 @@ extension MainContentCommandActions {
         guard await saveWorkOnScreen(among: victims) else { return [] }
 
         var closable: Set<UUID> = []
+        var files: [(tab: QueryTab, url: URL)] = []
         for victim in victims where !coordinator.isSelectedTab(victim) {
             switch coordinator.savability(of: victim) {
             case .nothingAtRisk:
@@ -161,9 +162,10 @@ extension MainContentCommandActions {
                     closable.insert(victim.id)
                     continue
                 }
-                if await saveFile(of: victim, to: url) { closable.insert(victim.id) }
+                files.append((tab: victim, url: url))
             }
         }
+        closable.formUnion(await saveFiles(files))
         if let selected = coordinator.tabManager.selectedTab, victims.contains(where: { $0.id == selected.id }) {
             closable.insert(selected.id)
         }

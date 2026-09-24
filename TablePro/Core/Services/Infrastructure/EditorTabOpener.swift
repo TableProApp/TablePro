@@ -70,6 +70,7 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? browseDatabaseName,
                 sourceFileURL: payload.sourceFileURL,
                 sourceFileStamp: payload.sourceFileStamp,
+                sourceFileEncoding: payload.sourceFileEncoding,
                 claimFocus: true
             )
         case .createTable:

@@ -488,27 +488,32 @@ internal final class TabRouter {
         }
 
         if let session = DatabaseManager.shared.lastActiveSession {
-            let read = await Task.detached(priority: .userInitiated) { () -> (content: String, stamp: FileStamp?)? in
-                let stamp = FileStamp.read(url)
-                guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-                return (content, stamp)
-            }.value
-            guard let read else {
-                Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
-                return
-            }
-            let payload = EditorTabPayload(
-                connectionId: session.connection.id,
-                tabType: .query,
-                initialQuery: read.content,
-                sourceFileURL: url,
-                sourceFileStamp: read.stamp
-            )
+            let payload = try await Self.sqlFileTabPayload(for: url, connectionId: session.connection.id)
             WindowManager.shared.openTab(payload: payload)
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         } else {
             WelcomeRouter.shared.enqueueSQLFile(url)
         }
+    }
+
+    internal static func sqlFileTabPayload(for url: URL, connectionId: UUID) async throws -> EditorTabPayload {
+        let read: FileTextLoader.LoadedText
+        do {
+            read = try await Task.detached(priority: .userInitiated) {
+                try FileTextLoader.read(url)
+            }.value
+        } catch {
+            logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
+            throw error
+        }
+        return EditorTabPayload(
+            connectionId: connectionId,
+            tabType: .query,
+            initialQuery: read.content,
+            sourceFileURL: url,
+            sourceFileStamp: read.stamp,
+            sourceFileEncoding: read.textEncoding
+        )
     }
 
     // MARK: - Helpers

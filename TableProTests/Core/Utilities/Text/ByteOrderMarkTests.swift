@@ -15,7 +15,8 @@ struct ByteOrderMarkTests {
             ([0xFF, 0xFE, 0x00, 0x00], .utf32LittleEndian),
             ([0x00, 0x00, 0xFE, 0xFF], .utf32BigEndian),
             ([0xFF, 0xFE], .utf16LittleEndian),
-            ([0xFE, 0xFF], .utf16BigEndian)
+            ([0xFE, 0xFF], .utf16BigEndian),
+            ([0xEF, 0xBB, 0xBF], .utf8)
         ]
 
         for (bytes, mark) in marks {
@@ -34,7 +35,7 @@ struct ByteOrderMarkTests {
         #expect(mark == .utf32LittleEndian)
         #expect(mark?.encoding == .utf32)
         #expect(mark?.byteOrderedEncoding == .utf32LittleEndian)
-        #expect(mark?.codeUnitLength == 4)
+        #expect(mark?.byteOrderedEncoding.codeUnitLength == 4)
     }
 
     @Test("A declared encoding only takes the marks it can carry")
@@ -50,12 +51,14 @@ struct ByteOrderMarkTests {
         #expect(ByteOrderMark.leading(Data([0xFE, 0xFF, 0x00, 0x61]), allowedBy: .utf32) == nil)
     }
 
-    @Test("A UTF-8 mark is left to Foundation, which drops it itself")
-    func leavesTheUTF8MarkAlone() {
+    @Test("A UTF-8 mark is recognised so a save can write it back, and decoded text never carries it")
+    func recognisesTheUTF8Mark() {
         let bytes = Data([0xEF, 0xBB, 0xBF]) + Data("SELECT 1;".utf8)
 
-        #expect(ByteOrderMark.leading(bytes) == nil)
-        #expect(ByteOrderMark.leading(bytes, allowedBy: .utf8) == nil)
+        #expect(ByteOrderMark.leading(bytes) == .utf8)
+        #expect(ByteOrderMark.leading(bytes, allowedBy: .utf8) == .utf8)
+        #expect(ByteOrderMark.leading(bytes, allowedBy: .isoLatin1) == nil)
+        #expect(ByteOrderMark.utf8.byteOrderedEncoding == .utf8)
         #expect(String(data: bytes, encoding: .utf8) == "SELECT 1;")
     }
 

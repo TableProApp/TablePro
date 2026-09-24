@@ -101,7 +101,7 @@ struct ObjectSourceView: View {
     private func export() async {
         guard let url = await SQLFileService.showSavePanel(suggestedName: exportFileName) else { return }
         do {
-            try await SQLFileService.writeFile(content: source, to: url)
+            try await SQLFileService.writeFile(content: source, to: url, encoding: .utf8)
         } catch {
             exportError = error.localizedDescription
         }

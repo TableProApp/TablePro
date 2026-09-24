@@ -54,7 +54,7 @@ internal final class GroupStorage {
     /// Set when the stored payload could not be understood at all. Every mutation rewrites the
     /// whole array, so continuing over an unreadable store would replace the user's groups with
     /// whatever the caller happened to be holding.
-    private var storeIsUnreadable = false
+    internal private(set) var storeIsUnreadable = false
 
     internal init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
@@ -108,6 +108,7 @@ internal final class GroupStorage {
     /// that failed leaves the store holding the previous set.
     @discardableResult
     internal func saveGroups(_ groups: [ConnectionGroup]) -> Bool {
+        let previous = loadGroups()
         guard !storeIsUnreadable else {
             Self.logger.error("Refusing to overwrite an unreadable group store")
             return false
@@ -117,7 +118,7 @@ internal final class GroupStorage {
             let data = try encoder.encode(groups)
             defaults.set(data, forKey: groupsKey)
             cachedGroups = nil
-            syncTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
+            syncTracker.markDirty(.group, ids: SyncRecordChanges.changedIds(from: previous, to: groups))
             return true
         } catch {
             Self.logger.error("Failed to save groups: \(error)")
@@ -239,10 +240,8 @@ internal final class GroupStorage {
     ///
     /// The pull that calls this raises one change notification for the batch, so this raises none.
     ///
-    /// A record identical to the one already stored is skipped, because `saveGroups` marks every
-    /// group dirty and the push uploads every dirty group. Writing an unchanged record therefore
-    /// re-uploads the whole list, which the other device receives and writes back, and two Macs
-    /// trade the same records forever. The iOS coordinator has always had this guard.
+    /// A record identical to the one already stored is skipped. The iOS coordinator has always had
+    /// this guard.
     @discardableResult
     internal func applyRemoteGroup(_ group: ConnectionGroup) -> RemoteApplyOutcome {
         var groups = loadGroups()

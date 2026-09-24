@@ -129,7 +129,7 @@ Click a linked file to open it as an ordinary editor tab. `Cmd+S` writes back in
 
 A file changed on disk gets the same banner and diff sheet as any other [SQL file](/features/sql-files#when-the-file-changes-underneath-you). Files added and removed outside TablePro reach the sidebar a second later.
 
-A non-UTF-8 file carries a yellow warning triangle. Saving keeps its encoding, and a character it cannot represent, an emoji in an ISO Latin-1 file, fails the save with an error rather than dropping the character.
+A file in an encoding that cannot store every character, such as ISO Latin-1 or Shift JIS, carries a yellow warning triangle. Saving keeps its encoding, and a character it cannot represent, an emoji in an ISO Latin-1 file, fails the save with an error rather than dropping the character.
 
 ### Frontmatter
 

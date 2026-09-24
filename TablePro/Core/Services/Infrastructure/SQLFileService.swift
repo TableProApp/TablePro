@@ -20,26 +20,21 @@ enum SQLFileService {
         return types.isEmpty ? [.plainText] : Array(types)
     }
 
-    /// Reads a SQL file from disk.
-    static func readFile(url: URL) async throws -> String {
+    static func writeFile(content: String, to url: URL, encoding: FileTextEncoding) async throws {
         try await Task.detached {
-            try String(contentsOf: url, encoding: .utf8)
+            try FileTextWriter.write(content, to: url, as: encoding)
         }.value
     }
 
-    /// Writes content to a SQL file atomically.
-    static func writeFile(content: String, to url: URL) async throws {
-        try await Task.detached {
-            guard let data = content.data(using: .utf8) else {
-                throw CocoaError(.fileWriteInapplicableStringEncoding)
-            }
-            try data.write(to: url, options: .atomic)
+    static func encodingOnDisk(of url: URL) async -> FileTextEncoding? {
+        await Task.detached {
+            FileTextLoader.load(url)?.textEncoding
         }.value
     }
 
     static func writeData(_ data: Data, to url: URL) async throws {
         try await Task.detached {
-            try data.write(to: url, options: .atomic)
+            try FileTextWriter.replaceContents(of: url, with: data, attribute: TextEncodingAttribute.read(from: url))
         }.value
     }
 

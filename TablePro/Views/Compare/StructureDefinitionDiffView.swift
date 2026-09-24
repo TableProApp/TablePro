@@ -17,9 +17,10 @@ internal struct StructureDefinitionDiffView: View {
     internal let targetLines: [String]
 
     @State private var isUnified = false
+    @State private var presentation: StructureDefinitionDiffPresentation?
 
-    private var pairs: [DiffPair] {
-        DiffComputer.computeSplit(before: targetLines, after: sourceLines)
+    private var input: StructureDefinitionDiffInput {
+        StructureDefinitionDiffInput(sourceLines: sourceLines, targetLines: targetLines)
     }
 
     internal var body: some View {
@@ -38,12 +39,29 @@ internal struct StructureDefinitionDiffView: View {
             }
             .padding(.bottom, 6)
 
+            diffBody
+        }
+        .task(id: input) {
+            let loaded = await StructureDefinitionDiffPresentation.load(input)
+            guard !Task.isCancelled else { return }
+            presentation = loaded
+        }
+    }
+
+    @ViewBuilder
+    private var diffBody: some View {
+        if let presentation, presentation.isCurrent(for: input) {
             TextDiffView(
-                pairs: pairs,
+                pairs: presentation.pairs,
                 beforeLabel: targetLabel,
                 afterLabel: sourceLabel,
                 layout: isUnified ? .unified : .split
             )
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
         }
     }
 }

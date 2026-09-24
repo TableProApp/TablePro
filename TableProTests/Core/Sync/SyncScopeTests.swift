@@ -5,10 +5,11 @@
 
 import Foundation
 @testable import TablePro
-import Testing
 import TableProSyncTransport
+import Testing
 
 @Suite("Sync scope")
+@MainActor
 struct SyncScopeTests {
     @Test("Every current record type is declared synced")
     func allCurrentTypesSync() {

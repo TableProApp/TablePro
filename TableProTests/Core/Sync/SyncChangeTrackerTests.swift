@@ -105,4 +105,92 @@ struct SyncChangeTrackerTests {
         #expect(tracker.dirtyRecords(for: .connection) == ["x"])
         #expect(tracker.dirtyRecords(for: .group) == ["y"])
     }
+
+    @Test("A record nobody touched after the snapshot clears against it")
+    func untouchedRecordClearsAgainstTheSnapshot() {
+        tracker.markDirty(.tag, id: "a")
+        let snapshot = tracker.editSnapshot()
+
+        let cleared = tracker.clearDirty(SyncRecordIdentity(type: .tag, id: "a"), unlessEditedSince: snapshot)
+
+        #expect(cleared)
+        #expect(tracker.dirtyRecords(for: .tag).isEmpty)
+    }
+
+    @Test("A record edited after the snapshot stays dirty through the clear")
+    func editAfterTheSnapshotKeepsTheMark() {
+        tracker.markDirty(.tag, id: "a")
+        let snapshot = tracker.editSnapshot()
+        tracker.markDirty(.tag, id: "a")
+
+        let cleared = tracker.clearDirty(SyncRecordIdentity(type: .tag, id: "a"), unlessEditedSince: snapshot)
+
+        #expect(!cleared)
+        #expect(tracker.dirtyRecords(for: .tag) == ["a"])
+    }
+
+    @Test("A record cleared after its push is not an edit until it is marked again")
+    func clearedRecordIsNotAnEdit() {
+        let identity = SyncRecordIdentity(type: .tag, id: "a")
+        tracker.markDirty(.tag, id: "a")
+        let snapshot = tracker.editSnapshot()
+
+        tracker.clearDirty(.tag, id: "a")
+
+        #expect(!tracker.hasEdit(identity, since: snapshot))
+
+        tracker.markDirty(.tag, id: "a")
+
+        #expect(tracker.hasEdit(identity, since: snapshot))
+    }
+
+    @Test("A mark discarded by a remote delete is not an edit")
+    func discardedRecordIsNotAnEdit() {
+        tracker.markDirty(.tag, id: "a")
+        let snapshot = tracker.editSnapshot()
+
+        tracker.discardDirty(.tag, ids: ["a"])
+
+        #expect(!tracker.hasEdit(SyncRecordIdentity(type: .tag, id: "a"), since: snapshot))
+    }
+
+    @Test("A mark left over from an earlier launch clears unless it is edited again")
+    func markFromAnEarlierLaunchClears() {
+        metadata.markDirty("a", type: .tag)
+        let snapshot = tracker.editSnapshot()
+
+        #expect(!tracker.hasEdit(SyncRecordIdentity(type: .tag, id: "a"), since: snapshot))
+
+        tracker.markDirty(.tag, id: "a")
+
+        #expect(tracker.hasEdit(SyncRecordIdentity(type: .tag, id: "a"), since: snapshot))
+    }
+
+    @Test("A record first dirtied after the snapshot counts as edited")
+    func recordOutsideTheSnapshotCountsAsEdited() {
+        let snapshot = tracker.editSnapshot()
+        tracker.markDirty(.tag, id: "late")
+
+        #expect(tracker.hasEdit(SyncRecordIdentity(type: .tag, id: "late"), since: snapshot))
+    }
+
+    @Test("A delete after the snapshot counts as an edit")
+    func deleteAfterTheSnapshotCountsAsAnEdit() {
+        tracker.markDirty(.group, id: "a")
+        let snapshot = tracker.editSnapshot()
+        tracker.markDeleted(.group, id: "a")
+
+        #expect(tracker.hasEdit(SyncRecordIdentity(type: .group, id: "a"), since: snapshot))
+    }
+
+    @Test("A write made while a pull applies is not an edit")
+    func suppressedWriteIsNotAnEdit() {
+        tracker.markDirty(.tag, id: "a")
+        let snapshot = tracker.editSnapshot()
+        tracker.isSuppressed = true
+        tracker.markDirty(.tag, id: "a")
+        tracker.isSuppressed = false
+
+        #expect(!tracker.hasEdit(SyncRecordIdentity(type: .tag, id: "a"), since: snapshot))
+    }
 }

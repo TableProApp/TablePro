@@ -159,4 +159,88 @@ struct FileTextLoaderTests {
 
         #expect(header == nil)
     }
+
+    private func withFixture<T>(_ fixture: EncodedSQLFileFixture, _ body: (URL) -> T) throws -> T {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileTextLoaderTests-\(UUID().uuidString).sql")
+        try fixture.write(fixture.original, to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        return body(url)
+    }
+
+    @Test(
+        "Loading records the encoding, the byte order mark, and the attribute that named the encoding",
+        arguments: EncodedSQLFileFixture.allCases
+    )
+    func recordsHowTheFileWasRead(fixture: EncodedSQLFileFixture) throws {
+        let expectedMark = ByteOrderMark.leading(try #require(fixture.bytes(of: "")))
+
+        let loaded = try #require(try withFixture(fixture) { FileTextLoader.load($0) })
+
+        #expect(loaded.content == fixture.original)
+        #expect(loaded.encoding == fixture.reportedEncoding)
+        #expect(loaded.textEncoding.byteOrderMark == expectedMark)
+        #expect(loaded.textEncoding.attribute.flatMap { String(data: $0.value, encoding: .utf8) } == fixture.attributeValue)
+    }
+
+    @Test(
+        "The header is read the way the whole file is, the encoding attribute included",
+        arguments: EncodedSQLFileFixture.allCases
+    )
+    func headerAgreesWithTheWholeFile(fixture: EncodedSQLFileFixture) throws {
+        let loaded = try withFixture(fixture) { url in
+            (header: FileTextLoader.loadHeader(url), whole: FileTextLoader.load(url))
+        }
+
+        let header = try #require(loaded.header)
+        let whole = try #require(loaded.whole)
+        #expect(header.textEncoding == whole.textEncoding)
+        #expect(header.content == whole.content)
+    }
+
+    @Test("A UTF-8 byte order mark outranks a text encoding attribute and is recorded")
+    func utf8ByteOrderMarkOutranksTheEncodingAttribute() throws {
+        let text = "SELECT 'Caf\u{E9}';\n"
+        let bytes = Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)
+        let attribute = Array("MACINTOSH;0".utf8)
+
+        let loaded = try withFile(bytes) { url in
+            _ = setxattr(url.path, "com.apple.TextEncoding", attribute, attribute.count, 0, 0)
+            return FileTextLoader.load(url)
+        }
+
+        let result = try #require(loaded)
+        #expect(result.content == text)
+        #expect(result.textEncoding == FileTextEncoding(encoding: .utf8, byteOrderMark: .utf8))
+        #expect(result.textEncoding.attribute == nil)
+    }
+
+    @Test("A text encoding attribute that cannot decode the file is not kept")
+    func dropsAnAttributeThatDidNotDecodeTheFile() throws {
+        let bytes = Data([0x53, 0x81, 0x20, 0xFF, 0x0A])
+        let attribute = Array("SHIFT_JIS;2561".utf8)
+
+        let loaded = try withFile(bytes) { url in
+            _ = setxattr(url.path, "com.apple.TextEncoding", attribute, attribute.count, 0, 0)
+            return FileTextLoader.load(url)
+        }
+
+        let result = try #require(loaded)
+        #expect(result.encoding == .isoLatin1)
+        #expect(result.textEncoding.attribute == nil)
+    }
+
+    @Test("A file recorded as ASCII is read as UTF-8, and the ASCII record is not kept")
+    func readsAnASCIIRecordAsUTF8() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileTextLoaderTests-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "SELECT 1;\n".write(to: url, atomically: true, encoding: .ascii)
+
+        let loaded = try #require(FileTextLoader.load(url))
+        let header = try #require(FileTextLoader.loadHeader(url))
+
+        #expect(loaded.textEncoding == .utf8)
+        #expect(header.textEncoding == .utf8)
+    }
 }

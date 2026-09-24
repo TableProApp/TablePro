@@ -18,7 +18,7 @@ import Foundation
 internal enum FileTabBaseline {
     internal static func hydrate(_ tab: inout QueryTab) {
         guard let url = tab.content.sourceFileURL, let loaded = FileTextLoader.load(url) else { return }
-        record(loaded.content, stamp: loaded.stamp, in: &tab.content)
+        record(loaded.content, stamp: loaded.stamp, encoding: loaded.textEncoding, in: &tab.content)
     }
 
     internal static func hydrate(_ tabs: inout [QueryTab]) {
@@ -28,16 +28,26 @@ internal enum FileTabBaseline {
     }
 
     internal static func adopt(_ loaded: FileTextLoader.LoadedText, into content: inout TabQueryContent) {
-        adopt(text: loaded.content, stamp: loaded.stamp, into: &content)
+        adopt(text: loaded.content, stamp: loaded.stamp, encoding: loaded.textEncoding, into: &content)
     }
 
-    internal static func adopt(text: String, stamp: FileStamp?, into content: inout TabQueryContent) {
+    internal static func adopt(
+        text: String,
+        stamp: FileStamp?,
+        encoding: FileTextEncoding?,
+        into content: inout TabQueryContent
+    ) {
         content.query = text
-        record(text, stamp: stamp, in: &content)
+        record(text, stamp: stamp, encoding: encoding, in: &content)
     }
 
-    internal static func recordWrite(of text: String, to url: URL, in content: inout TabQueryContent) {
-        record(text, stamp: FileStamp.read(url), in: &content)
+    internal static func recordWrite(
+        of text: String,
+        to url: URL,
+        as encoding: FileTextEncoding,
+        in content: inout TabQueryContent
+    ) {
+        record(text, stamp: FileStamp.read(url), encoding: encoding, in: &content)
     }
 
     internal static func diskChange(in content: TabQueryContent) -> SourceFileDiskChange? {
@@ -69,9 +79,15 @@ internal enum FileTabBaseline {
         content.diskChange = nil
     }
 
-    private static func record(_ text: String, stamp: FileStamp?, in content: inout TabQueryContent) {
+    private static func record(
+        _ text: String,
+        stamp: FileStamp?,
+        encoding: FileTextEncoding?,
+        in content: inout TabQueryContent
+    ) {
         content.savedFileContent = text
         content.savedFileStamp = stamp
+        content.sourceFileEncoding = encoding
         content.diskChange = nil
         content.dismissedDiskChange = nil
     }

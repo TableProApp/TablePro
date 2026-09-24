@@ -11,6 +11,8 @@ Three ways in: double-click in Finder, **File > Open File…** (`Cmd+O`), or dra
 
 Each file opens in a new tab. Opening one that is already open focuses its existing tab instead of making a second, and files opened before any connection exists wait in a queue until you connect.
 
+The encoding comes from the file: its byte order mark first, then the encoding a Mac app recorded for it when saving, then UTF-8. Bytes that fit none of those open as ISO Latin-1.
+
 The title bar carries the filename, and the close button gets the standard macOS unsaved-changes dot.
 
 ## Saving
@@ -22,6 +24,14 @@ The title bar carries the filename, and the close button gets the standard macOS
 When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the grid changes first. Press it again once that finishes to save the file.
 
 Closing a query tab keeps its SQL either way. Reopen it with `Cmd+Shift+T` or **File > Reopen Closed Tab**. See [Tabs](/features/tabs).
+
+### File encoding
+
+A save writes the file in the encoding it was opened in. A byte order mark stays, and UTF-16 and UTF-32 keep their byte order. A file known only by the encoding a Mac app recorded for it keeps that record. A file recorded as ASCII saves as UTF-8.
+
+If the text holds a character the encoding cannot store, such as an emoji in an ISO Latin-1 file, the save stops. An alert names the file and its encoding, the file on disk is left as it was, and the tab stays open with your text. This holds for `Cmd+S`, for **Save** when closing a tab or a window, and for closing several tabs at once.
+
+Save As always writes UTF-8, which is how to convert a file. The tab then points at the new file and keeps saving it as UTF-8.
 
 ## When the file changes underneath you
 

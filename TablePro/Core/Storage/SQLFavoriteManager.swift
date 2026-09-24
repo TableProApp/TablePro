@@ -15,6 +15,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     private let storage: SQLFavoriteStorage
     private let syncTracker: SyncChangeTracker
+    private let operations = MainActorSerialQueue()
 
     init(storage: SQLFavoriteStorage = SQLFavoriteStorage(), syncTracker: SyncChangeTracker = .shared) {
         self.storage = storage
@@ -24,34 +25,36 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Favorites
 
     func addFavorite(_ favorite: SQLFavorite) async -> Bool {
-        let result = await storage.addFavorite(favorite)
-        if result {
+        await operations.run { [self] in
+            guard await storage.addFavorite(favorite) else { return false }
             syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
             postUpdateNotification(connectionId: favorite.connectionId)
+            return true
         }
-        return result
     }
 
     func updateFavorite(_ favorite: SQLFavorite) async -> Bool {
-        let result = await storage.updateFavorite(favorite)
-        guard result.succeeded else { return false }
-        syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
-        postUpdateNotification(for: result, newConnectionId: favorite.connectionId)
-        return true
+        await operations.run { [self] in
+            let result = await storage.updateFavorite(favorite)
+            guard result.succeeded else { return false }
+            syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
+            postUpdateNotification(for: result, newConnectionId: favorite.connectionId)
+            return true
+        }
     }
 
     func deleteFavorite(id: UUID) async -> Bool {
-        let result = await storage.deleteFavorite(id: id)
-        if result {
+        await operations.run { [self] in
+            guard await storage.deleteFavorite(id: id) else { return false }
             syncTracker.markDeleted(.favorite, id: id.uuidString)
             postUpdateNotification(connectionId: nil)
+            return true
         }
-        return result
     }
 
     func deleteFavorites(ids: [UUID]) async {
-        let result = await storage.deleteFavorites(ids: ids)
-        if result {
+        await operations.run { [self] in
+            guard await storage.deleteFavorites(ids: ids) else { return }
             for id in ids {
                 syncTracker.markDeleted(.favorite, id: id.uuidString)
             }
@@ -68,16 +71,18 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     /// posts a change notification that can start a sync, and a sync that reads a file still
     /// holding the record re-uploads what was just deleted.
     func removeFavoritesAndFolders(for connectionId: UUID) async {
-        let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
-        guard !removed.isEmpty else { return }
-        for id in removed.favorites {
-            syncTracker.markDeleted(.favorite, id: id.uuidString)
+        await operations.run { [self] in
+            let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
+            guard !removed.isEmpty else { return }
+            for id in removed.favorites {
+                syncTracker.markDeleted(.favorite, id: id.uuidString)
+            }
+            for id in removed.folders {
+                syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
+            }
+            markDetachedDirty(removed.detached)
+            postUpdateNotification(connectionId: nil)
         }
-        for id in removed.folders {
-            syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
-        }
-        markDetachedDirty(removed.detached)
-        postUpdateNotification(connectionId: nil)
     }
 
     /// A row that survived the delete holding a reference the delete had to clear is a local edit
@@ -87,6 +92,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     /// Only on the path that owns the deletion. When another device deleted the connection it runs
     /// the same cleanup over the same rows and pushes the result itself, and the caller that exists
     /// for that case deliberately does not mark anything.
+    @MainActor
     private func markDetachedDirty(_ detached: DetachedFavoriteRecords) {
         guard !detached.isEmpty else { return }
         syncTracker.markDirty(.favorite, ids: detached.favorites.map(\.uuidString))
@@ -97,11 +103,13 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     /// deletion straight back at it, which is the reason `FavoriteTablesStorage` splits the same
     /// way.
     func removeFavoritesAndFoldersWithoutSync(for connectionId: UUID) async {
-        let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
-        guard !removed.isEmpty else { return }
-        syncTracker.discardDirty(.favorite, ids: removed.favorites.map(\.uuidString))
-        syncTracker.discardDirty(.favoriteFolder, ids: removed.folders.map(\.uuidString))
-        postUpdateNotification(connectionId: nil)
+        await operations.run { [self] in
+            let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
+            guard !removed.isEmpty else { return }
+            syncTracker.discardDirty(.favorite, ids: removed.favorites.map(\.uuidString))
+            syncTracker.discardDirty(.favoriteFolder, ids: removed.folders.map(\.uuidString))
+            postUpdateNotification(connectionId: nil)
+        }
     }
 
     func hasFavorites(for connectionIds: [UUID]) async -> Bool {
@@ -126,6 +134,14 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         )
     }
 
+    func favoritesForSync() async -> [SQLFavorite]? {
+        await storage.readAllFavorites()
+    }
+
+    func foldersForSync() async -> [SQLFavoriteFolder]? {
+        await storage.readAllFolders()
+    }
+
     // MARK: - Versions
 
     func fetchVersions(favoriteId: UUID) async -> [SQLFavoriteVersion] {
@@ -137,30 +153,38 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     }
 
     func restore(_ version: SQLFavoriteVersion) async -> Bool {
-        let result = await storage.replaceQuery(favoriteId: version.favoriteId, query: version.query, updatedAt: Date())
-        guard result.succeeded else { return false }
-        syncTracker.markDirty(.favorite, id: version.favoriteId.uuidString)
-        postUpdateNotification(connectionId: result.retainedScope)
-        return true
+        await operations.run { [self] in
+            let result = await storage.replaceQuery(
+                favoriteId: version.favoriteId,
+                query: version.query,
+                updatedAt: Date()
+            )
+            guard result.succeeded else { return false }
+            syncTracker.markDirty(.favorite, id: version.favoriteId.uuidString)
+            postUpdateNotification(connectionId: result.retainedScope)
+            return true
+        }
     }
 
     // MARK: - Folders
 
     func addFolder(_ folder: SQLFavoriteFolder) async -> Bool {
-        let result = await storage.addFolder(folder)
-        if result {
+        await operations.run { [self] in
+            guard await storage.addFolder(folder) else { return false }
             syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
             postUpdateNotification(connectionId: folder.connectionId)
+            return true
         }
-        return result
     }
 
     func updateFolder(_ folder: SQLFavoriteFolder) async -> Bool {
-        let result = await storage.updateFolder(folder)
-        guard result.succeeded else { return false }
-        syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
-        postUpdateNotification(for: result, newConnectionId: folder.connectionId)
-        return true
+        await operations.run { [self] in
+            let result = await storage.updateFolder(folder)
+            guard result.succeeded else { return false }
+            syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
+            postUpdateNotification(for: result, newConnectionId: folder.connectionId)
+            return true
+        }
     }
 
     /// The records the delete moved up a level are marked dirty alongside the folder's tombstone.
@@ -169,12 +193,14 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     /// to sync. The moved records kept the id of the deleted folder on the wire, so a device
     /// fetching the account fresh stored a `folderId` matching no folder.
     func deleteFolder(id: UUID) async -> Bool {
-        guard let deletion = await storage.deleteFolder(id: id) else { return false }
-        syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
-        syncTracker.markDirty(.favorite, ids: deletion.movedFavorites.map(\.uuidString))
-        syncTracker.markDirty(.favoriteFolder, ids: deletion.movedFolders.map(\.uuidString))
-        postUpdateNotification(connectionId: nil)
-        return true
+        await operations.run { [self] in
+            guard let deletion = await storage.deleteFolder(id: id) else { return false }
+            syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
+            syncTracker.markDirty(.favorite, ids: deletion.movedFavorites.map(\.uuidString))
+            syncTracker.markDirty(.favoriteFolder, ids: deletion.movedFolders.map(\.uuidString))
+            postUpdateNotification(connectionId: nil)
+            return true
+        }
     }
 
     func fetchFolders(connectionId: UUID? = nil) async -> [SQLFavoriteFolder] {
@@ -186,46 +212,78 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     }
 
     func renameFolder(id: UUID, name: String) async -> Bool {
-        let result = await storage.renameFolder(id: id, name: name)
-        guard result.succeeded else { return false }
-        syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
-        postUpdateNotification(connectionId: result.retainedScope)
-        return true
+        await operations.run { [self] in
+            let result = await storage.renameFolder(id: id, name: name)
+            guard result.succeeded else { return false }
+            syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
+            postUpdateNotification(connectionId: result.retainedScope)
+            return true
+        }
     }
 
     /// The mark runs after the write has committed, per the sync ordering rule: `markDirty` posts a
     /// change notification that can start a sync, and a sync reading the database before the write
     /// lands pushes the scope the folder is leaving.
     func setFolderScope(id: UUID, connectionId: UUID?) async -> Bool {
-        let result = await storage.setFolderScope(id: id, connectionId: connectionId)
-        guard result.succeeded else { return false }
-        syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
-        postUpdateNotification(for: result, newConnectionId: connectionId)
-        return true
+        await operations.run { [self] in
+            let result = await storage.setFolderScope(id: id, connectionId: connectionId)
+            guard result.succeeded else { return false }
+            syncTracker.markDirty(.favoriteFolder, id: id.uuidString)
+            postUpdateNotification(for: result, newConnectionId: connectionId)
+            return true
+        }
     }
 
     func setFavoriteFolder(id: UUID, folderId: UUID?) async -> Bool {
-        let result = await storage.setFavoriteFolder(id: id, folderId: folderId)
-        guard result.succeeded else { return false }
-        syncTracker.markDirty(.favorite, id: id.uuidString)
-        postUpdateNotification(connectionId: result.retainedScope)
-        return true
+        await operations.run { [self] in
+            let result = await storage.setFavoriteFolder(id: id, folderId: folderId)
+            guard result.succeeded else { return false }
+            syncTracker.markDirty(.favorite, id: id.uuidString)
+            postUpdateNotification(connectionId: result.retainedScope)
+            return true
+        }
     }
 
     // MARK: - Remote Apply
 
-    func applyRemote(_ batch: RemoteSQLFavoriteBatch) async -> RemoteApplyOutcome {
+    func applyRemote(
+        _ batch: RemoteSQLFavoriteBatch,
+        echoGuard: SyncEchoGuard? = nil
+    ) async -> RemoteApplyOutcome {
         guard !batch.isEmpty else { return .skipped }
-        guard await applyRemoteFavoriteDeletions(batch.deletedFavoriteIds),
-              await applyRemoteFolders(batch.folders),
-              await applyRemoteFavorites(batch.favoritesToUpsert),
-              await applyRemoteFolderDeletions(batch.deletedFolderIds)
-        else {
-            return .failed
+        return await operations.run { [self] in
+            let admitted = admitting(batch, echoGuard: echoGuard)
+            guard !admitted.isEmpty else { return .skipped }
+            guard await applyRemoteFavoriteDeletions(admitted.deletedFavoriteIds),
+                  await applyRemoteFolders(admitted.folders),
+                  await applyRemoteFavorites(admitted.favoritesToUpsert),
+                  await applyRemoteFolderDeletions(admitted.deletedFolderIds)
+            else {
+                return .failed
+            }
+            return .applied
         }
-        return .applied
     }
 
+    @MainActor
+    private func admitting(_ batch: RemoteSQLFavoriteBatch, echoGuard: SyncEchoGuard?) -> RemoteSQLFavoriteBatch {
+        let deletedFavoriteIds = syncTracker.tombstonedIds(for: .favorite)
+        let deletedFolderIds = syncTracker.tombstonedIds(for: .favoriteFolder)
+        var admitted = batch
+        admitted.favorites = batch.favorites.filter { favorite in
+            let id = favorite.id.uuidString
+            guard !deletedFavoriteIds.contains(id) else { return false }
+            return echoGuard?.withholds(.favorite, id: id, tracker: syncTracker) != true
+        }
+        admitted.folders = batch.folders.filter { folder in
+            let id = folder.id.uuidString
+            guard !deletedFolderIds.contains(id) else { return false }
+            return echoGuard?.withholds(.favoriteFolder, id: id, tracker: syncTracker) != true
+        }
+        return admitted
+    }
+
+    @MainActor
     private func applyRemoteFavoriteDeletions(_ ids: Set<UUID>) async -> Bool {
         guard !ids.isEmpty else { return true }
         guard await storage.deleteFavorites(ids: Array(ids)) else { return false }
@@ -234,6 +292,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         return true
     }
 
+    @MainActor
     private func applyRemoteFolders(_ folders: [SQLFavoriteFolder]) async -> Bool {
         for folder in folders {
             let write = await storage.upsertFolder(folder)
@@ -243,6 +302,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         return true
     }
 
+    @MainActor
     private func applyRemoteFavorites(_ favorites: [SQLFavorite]) async -> Bool {
         guard !favorites.isEmpty else { return true }
         guard let result = await storage.applyRemoteFavorites(favorites) else { return false }
@@ -256,6 +316,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         return true
     }
 
+    @MainActor
     private func applyRemoteFolderDeletions(_ ids: Set<UUID>) async -> Bool {
         guard !ids.isEmpty else { return true }
         defer { postUpdateNotification(connectionId: nil) }
