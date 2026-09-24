@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Requesty as an AI provider, an OpenAI-compatible router. (#3128 by @Thibaultjaigu)
+
 ## [0.76.0] - 2026-09-28
 
 Agent mode: one AI session that works across the whole connection window, with every statement it ran.
