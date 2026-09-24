@@ -59,13 +59,12 @@ public enum DelimitedDialectDetector {
         var textual = 0
         reader.forEachField(in: base, range: 0..<sample.count, scratch: &scratch) { _, content in
             total += 1
-            if !content.isEmpty, TabularNumberGrammar.shape(of: content) == nil {
+            if TabularHeaderHeuristic.isLabel(content) {
                 textual += 1
             }
             return true
         }
-        guard total > 0 else { return false }
-        return textual * 2 >= total
+        return TabularHeaderHeuristic.looksLikeHeader(labelCount: textual, cellCount: total)
     }
 
     private static func forcedDelimiter(forFileExtension fileExtension: String) -> UInt8? {
