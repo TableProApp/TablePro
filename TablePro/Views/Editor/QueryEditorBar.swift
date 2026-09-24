@@ -166,8 +166,10 @@ struct QueryEditorBar: View {
     /// kind lands beside that chevron rather than replacing it: `systemImage:` puts a second one
     /// there, and a bare `Text` survives `.labelStyle(.iconOnly)` and widens the segment from 47pt
     /// to 115pt. A `Label` whose icon is empty is the one shape that renders as the chevron alone
-    /// and still carries a name, because `.accessibilityLabel` on a `Menu` is not additive:
-    /// measured, it replaces the label's own name with nothing at all.
+    /// and still carries a name: measured, the menu half publishes "Run Options" as its
+    /// accessibility label. `.accessibilityLabel` on a `Menu` names it only beside
+    /// `.accessibilityElement(children: .contain)`, as the AI menu has; on its own it replaces the
+    /// label's name with nothing at all.
     @ViewBuilder
     private var runControl: some View {
         if isExecuting {

@@ -407,21 +407,18 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private func installAIContextMenu(controller: TextViewController) {
         guard controller.textView != nil else { return }
         let menu = AIEditorContextMenu(title: "")
-        menu.selectedText = { [weak controller] in
-            guard let controller, let textView = controller.textView else { return nil }
-            let range = textView.selectedRange()
-            guard range.length > 0 else { return nil }
-            return (textView.string as NSString).substring(with: range)
-        }
         menu.fullText = { [weak controller] in
             controller?.textView?.string
+        }
+        menu.selection = { [weak controller] in
+            Self.contextSelection(of: controller?.textView)
         }
         menu.aiAvailability = { [weak self] in self?.currentAIAvailability?() ?? .hidden }
         menu.onAIAction = { [weak self, weak controller] action in
             self?.onAIAction?(action, Self.aiTarget(for: controller?.textView))
         }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
-        menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
+        menu.onFormatSQL = { [weak self] range in self?.formatSQL(selectedRange: range) }
         menu.foldStateAtCursor = { [weak controller] in controller?.foldStateAtCursor() }
         menu.onToggleFold = { [weak controller] in controller?.toggleFoldAtCursor() }
         contextMenu = menu
@@ -431,6 +428,16 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     static func aiTarget(for textView: TextView?) -> AIQueryTarget {
         guard let textView else { return .selectionOrStatementAtCursor }
         return .contextMenu(selectedRange: textView.selectedRange(), contextClickWord: textView.contextClickWordRange)
+    }
+
+    static func contextSelection(of textView: TextView?) -> EditorContextSelection {
+        guard let textView else {
+            return EditorContextSelection(selectedRange: NSRange(location: 0, length: 0), contextClickWord: nil)
+        }
+        return EditorContextSelection(
+            selectedRange: textView.selectedRange(),
+            contextClickWord: textView.contextClickWordRange
+        )
     }
 
     private let foldPreview = FoldPreviewController()
@@ -454,10 +461,15 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
 
     func performFormatSQL() {
         guard let textView = controller?.textView else { return }
+        formatSQL(selectedRange: textView.selectedRange())
+    }
+
+    private func formatSQL(selectedRange: NSRange) {
+        guard let textView = controller?.textView else { return }
         let formatter = QueryFormatterFactory.make(for: databaseType)
         let scope = FormatScopeResolver.resolve(
             fullText: textView.string,
-            selectedRange: textView.selectedRange()
+            selectedRange: selectedRange
         )
 
         do {

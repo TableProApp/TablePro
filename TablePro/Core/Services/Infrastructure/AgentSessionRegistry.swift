@@ -185,6 +185,14 @@ internal final class AgentSessionRegistry: ObservableObject {
         return startSession(for: connectionId)
     }
 
+    @discardableResult
+    internal func resolveIdleSession(for connectionId: UUID) -> AgentSession {
+        if let current = resolveSession(for: connectionId, startingIfNeeded: false), !current.viewModel.isBusy {
+            return current
+        }
+        return startSession(for: connectionId)
+    }
+
     /// Ends one session and keeps its transcript. The conversation stays in the history and the
     /// session stays in the rail, to be opened again.
     ///

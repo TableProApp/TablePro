@@ -9,12 +9,12 @@ import AppKit
 
 /// Context menu for the SQL editor that adds AI features alongside standard editing items
 final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
-    var selectedText: (() -> String?)?
     var fullText: (() -> String?)?
+    var selection: (() -> EditorContextSelection)?
     var aiAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
-    var onFormatSQL: (() -> Void)?
+    var onFormatSQL: ((NSRange) -> Void)?
     /// Whether the cursor sits inside a collapsed fold. `nil` when there is no fold at the cursor.
     var foldStateAtCursor: (() -> Bool?)?
     var onToggleFold: (() -> Void)?
@@ -32,70 +32,71 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     // MARK: - NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-
-        let cutItem = NSMenuItem(title: String(localized: "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "")
-        menu.addItem(cutItem)
-
-        let copyItem = NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "")
-        menu.addItem(copyItem)
-
-        let pasteItem = NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "")
-        menu.addItem(pasteItem)
-
-        menu.addItem(.separator())
-
-        let selectAllItem = NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
-        menu.addItem(selectAllItem)
-
-        menu.addItem(.separator())
-
-        let formatItem = NSMenuItem(
-            title: String(localized: "Format SQL"),
-            action: #selector(handleFormatSQL),
-            keyEquivalent: ""
-        )
-        formatItem.target = self
-        formatItem.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
-        if (fullText?()?.isEmpty ?? true) || onFormatSQL == nil {
-            formatItem.action = nil
+        let groups = [editingItems, [selectAllItem], formattingItems, favoriteItems, aiItems]
+            .filter { !$0.isEmpty }
+        menu.items = groups.enumerated().flatMap { index, group in
+            index == 0 ? group : [NSMenuItem.separator()] + group
         }
-        menu.addItem(formatItem)
+    }
 
-        let collapsed = foldStateAtCursor?()
-        let foldItem = NSMenuItem(
-            title: collapsed == true ? String(localized: "Unfold") : String(localized: "Fold"),
+    private var hasText: Bool {
+        fullText?()?.isEmpty == false
+    }
+
+    private var editingItems: [NSMenuItem] {
+        [
+            NSMenuItem(title: String(localized: "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: ""),
+            NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: ""),
+            NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "")
+        ]
+    }
+
+    private var selectAllItem: NSMenuItem {
+        NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
+    }
+
+    private var formattingItems: [NSMenuItem] {
+        [formatItem, foldItem].compactMap { $0 }
+    }
+
+    private var formatItem: NSMenuItem? {
+        guard hasText, onFormatSQL != nil else { return nil }
+        let item = NSMenuItem(title: String(localized: "Format SQL"), action: #selector(handleFormatSQL), keyEquivalent: "")
+        item.target = self
+        item.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
+        return item
+    }
+
+    private var foldItem: NSMenuItem? {
+        guard onToggleFold != nil, let collapsed = foldStateAtCursor?() else { return nil }
+        let item = NSMenuItem(
+            title: collapsed ? String(localized: "Unfold") : String(localized: "Fold"),
             action: #selector(handleToggleFold),
             keyEquivalent: ""
         )
-        foldItem.target = self
-        foldItem.image = NSImage(
-            systemSymbolName: collapsed == true ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
+        item.target = self
+        item.image = NSImage(
+            systemSymbolName: collapsed ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
             accessibilityDescription: nil
         )
-        if collapsed == nil || onToggleFold == nil {
-            foldItem.action = nil
-        }
-        menu.addItem(foldItem)
+        return item
+    }
 
-        menu.addItem(.separator())
-
-        let saveAsFavItem = NSMenuItem(
+    private var favoriteItems: [NSMenuItem] {
+        guard hasText, onSaveAsFavorite != nil else { return [] }
+        let item = NSMenuItem(
             title: String(localized: "Save as Favorite…"),
             action: #selector(handleSaveAsFavorite),
             keyEquivalent: ""
         )
-        saveAsFavItem.target = self
-        saveAsFavItem.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
-        saveAsFavItem.isEnabled = (fullText?()?.isEmpty == false)
-        menu.addItem(saveAsFavItem)
+        item.target = self
+        item.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
+        return [item]
+    }
 
-        guard onAIAction != nil, aiAvailability?().isEnabled == true else { return }
-
-        menu.addItem(.separator())
-        for action in AIQueryAction.editorActions {
-            menu.addItem(Self.aiMenuItem(for: action, target: self))
-        }
+    private var aiItems: [NSMenuItem] {
+        guard onAIAction != nil, aiAvailability?().isEnabled == true else { return [] }
+        return AIQueryAction.editorActions.map { Self.aiMenuItem(for: $0, target: self) }
     }
 
     private static func aiMenuItem(for action: AIQueryAction, target: AIEditorContextMenu) -> NSMenuItem {
@@ -104,6 +105,10 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         item.representedObject = action.rawValue
         item.image = NSImage(systemSymbolName: action.systemImage, accessibilityDescription: nil)
         return item
+    }
+
+    private var effectiveSelection: NSRange {
+        selection?().effectiveRange ?? NSRange(location: 0, length: 0)
     }
 
     // MARK: - AI Actions
@@ -119,14 +124,12 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     }
 
     @objc private func handleFormatSQL() {
-        onFormatSQL?()
+        onFormatSQL?(effectiveSelection)
     }
 
     @objc private func handleSaveAsFavorite() {
-        if let text = selectedText?(), !text.isEmpty {
-            onSaveAsFavorite?(text)
-        } else if let text = fullText?(), !text.isEmpty {
-            onSaveAsFavorite?(text)
-        }
+        guard let text = fullText?(), !text.isEmpty else { return }
+        let selected = selection?().selectedText(in: text)
+        onSaveAsFavorite?(selected ?? text)
     }
 }

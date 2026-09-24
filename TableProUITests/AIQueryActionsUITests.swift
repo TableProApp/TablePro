@@ -29,6 +29,20 @@ final class AIQueryActionsUITests: UITestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    func testAIActionsMenuIsNamed() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+        let menu = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "query-ai-menu")
+            .firstMatch
+        XCTAssertTrue(menu.waitToExist(timeout: 10), "The query bar must carry the AI Actions menu")
+        XCTAssertTrue(
+            menu.label == "AI Actions" || menu.title == "AI Actions",
+            "The AI menu must be named AI Actions: got label '\(menu.label)', title '\(menu.title)'"
+        )
+    }
+
     func testContextMenuHidesAIItemsItCannotRun() throws {
         let app = try launchWithSampleDatabase()
 
