@@ -67,11 +67,14 @@ final class MetadataConnectionPool {
         case closed
     }
 
-    /// One open in progress, shared by every caller that asks for its key while it runs.
+    /// One open in progress, shared by every caller that asks for its key while it runs. It stays
+    /// listed until the last of those callers has taken its entry, because an entry nobody has
+    /// taken yet looks idle and would otherwise be the first one closed.
     @MainActor
     private final class PendingOpen {
         let task: Task<Void, Error>
         var withdrawal: Withdrawal?
+        var waiterCount = 0
 
         init(task: Task<Void, Error>) {
             self.task = task
@@ -89,7 +92,7 @@ final class MetadataConnectionPool {
     private var transportReplacements: [UUID: Int] = [:]
     private var transportWaiters: [UUID: [TransportWaiter]] = [:]
     private let openDriver: DriverOpener
-    private let maxPerConnection = 6
+    static let maxPerConnection = 6
     private static let operationTimeoutSeconds: Double = 15
     private static let preparationTimeoutSeconds: Double = 60
     private var sweeper: Task<Void, Never>?
@@ -125,7 +128,7 @@ final class MetadataConnectionPool {
         let entry = try await acquireEntry(scope: scope, workload: workload)
         entry.inFlightCount += 1
         entry.lastUsed = Date()
-        defer { releaseEntry(entry) }
+        defer { releaseEntry(entry, connectionId: scope.connectionId) }
         return try await entry.runSerially(body)
     }
 
@@ -188,6 +191,10 @@ final class MetadataConnectionPool {
         entries.keys.filter { $0.scope.connectionId == connectionId }.count
     }
 
+    internal func heldConnectionCount(for connectionId: UUID) -> Int {
+        heldCount(for: connectionId)
+    }
+
     internal func markInFlight(scope: DatabaseScope, workload: Workload = .interactive) {
         entries[Key(scope: scope, workload: workload)]?.inFlightCount += 1
     }
@@ -220,11 +227,14 @@ final class MetadataConnectionPool {
     }
     #endif
 
-    private func releaseEntry(_ entry: Entry) {
+    private func releaseEntry(_ entry: Entry, connectionId: UUID) {
         entry.inFlightCount -= 1
-        if entry.inFlightCount == 0, entry.closeWhenIdle {
+        guard entry.inFlightCount == 0 else { return }
+        if entry.closeWhenIdle {
             entry.driver.disconnect()
+            return
         }
+        trimIdleEntries(for: connectionId)
     }
 
     private func closeOrDeferEntry(forKey key: Key) {
@@ -287,9 +297,22 @@ final class MetadataConnectionPool {
             if let failure {
                 throw failure
             }
-            guard let entry = entries[key] else { throw DatabaseError.notConnected }
-            return entry
+            if let entry = entries[key] {
+                return entry
+            }
+            if open.withdrawal == .closed {
+                throw DatabaseError.notConnected
+            }
+            forgetSpentOpen(open, forKey: key)
         }
+    }
+
+    /// An open whose entry went before this caller could take it has nothing left to hand out.
+    /// Joining it again returns at once, without a suspension, so a caller that did would spin on
+    /// the main actor and starve the other callers still waiting to resume from it.
+    private func forgetSpentOpen(_ open: PendingOpen, forKey key: Key) {
+        guard pending[key] === open else { return }
+        pending.removeValue(forKey: key)
     }
 
     /// A cached entry is only worth reusing while it is both connected and recent. The
@@ -325,11 +348,13 @@ final class MetadataConnectionPool {
         return open
     }
 
-    /// Waits for an open to finish, takes it off the pending list if nothing replaced it there, and
-    /// returns how it failed.
+    /// Waits for an open to finish, takes it off the pending list once the last caller waiting on it
+    /// has, and returns how it failed.
     private func completion(of open: PendingOpen, forKey key: Key) async -> Error? {
+        open.waiterCount += 1
         defer {
-            if pending[key] === open {
+            open.waiterCount -= 1
+            if open.waiterCount == 0, pending[key] === open {
                 pending.removeValue(forKey: key)
             }
         }
@@ -401,7 +426,8 @@ final class MetadataConnectionPool {
         let driver = try await DatabaseDriverFactory.createDriver(
             for: connection,
             passwordOverride: session.cachedPassword,
-            awaitPlugins: true
+            awaitPlugins: true,
+            purpose: .metadata
         )
         do {
             try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
@@ -571,15 +597,42 @@ final class MetadataConnectionPool {
         stopSweeperIfEmpty()
     }
 
+    /// Makes room for one more before an open. The caller never waits for room, so a burst of opens
+    /// can still run past the limit while its work is in flight; `trimIdleEntries` hands the extra
+    /// back as that work ends.
     private func evictIdleIfNeeded(for connectionId: UUID) {
-        let live = entries.filter { $0.key.scope.connectionId == connectionId }
-        let pendingCount = pending.keys.filter { $0.scope.connectionId == connectionId }.count
-        guard live.count + pendingCount >= maxPerConnection else { return }
-        let oldestIdle = live
-            .filter { $0.value.inFlightCount == 0 }
-            .min { $0.value.lastUsed < $1.value.lastUsed }
-        guard let oldestIdle else { return }
-        oldestIdle.value.driver.disconnect()
-        entries.removeValue(forKey: oldestIdle.key)
+        guard heldCount(for: connectionId) >= Self.maxPerConnection else { return }
+        evictLeastRecentlyUsedIdleEntry(for: connectionId)
+    }
+
+    /// Keeps a connection at the limit once its work ends. Closing only one idle entry per open, as
+    /// the pool used to, left a burst's high-water mark standing until the idle sweep: a tree Refresh
+    /// across many databases held every connection it opened for ten minutes (#3103).
+    private func trimIdleEntries(for connectionId: UUID) {
+        while heldCount(for: connectionId) > Self.maxPerConnection {
+            guard evictLeastRecentlyUsedIdleEntry(for: connectionId) else { break }
+        }
+        stopSweeperIfEmpty()
+    }
+
+    /// Every key the connection holds a connection for or is opening one for. Counted by key, so an
+    /// open that has finished but is still listed until its callers take the entry counts once.
+    private func heldCount(for connectionId: UUID) -> Int {
+        var keys = Set(entries.keys.filter { $0.scope.connectionId == connectionId })
+        keys.formUnion(pending.keys.filter { $0.scope.connectionId == connectionId })
+        return keys.count
+    }
+
+    /// An entry whose open is still listed has callers that have not taken it yet, so it is not idle
+    /// however it looks.
+    @discardableResult
+    private func evictLeastRecentlyUsedIdleEntry(for connectionId: UUID) -> Bool {
+        let idle = entries.filter { key, entry in
+            key.scope.connectionId == connectionId && entry.inFlightCount == 0 && pending[key] == nil
+        }
+        guard let oldest = idle.min(by: { $0.value.lastUsed < $1.value.lastUsed }) else { return false }
+        entries.removeValue(forKey: oldest.key)
+        oldest.value.driver.disconnect()
+        return true
     }
 }

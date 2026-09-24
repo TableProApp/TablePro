@@ -78,6 +78,9 @@ final class LibPQDriverCore: @unchecked Sendable {
             database: config.database,
             sslConfig: config.ssl,
             options: config.additionalFields["connectionOptions"],
+            applicationName: LibPQConnectionString.applicationName(
+                forPurpose: config.additionalFields["connectionPurpose"]
+            ),
             suppressServerSideCancel: singleConnectionMode
         )
 

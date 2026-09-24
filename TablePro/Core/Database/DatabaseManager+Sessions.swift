@@ -802,8 +802,12 @@ extension DatabaseManager {
 
     /// Drains the driver gate in the same step the entry goes, so nothing still queued for this
     /// session wakes to find a reopened one under the same id and runs there.
+    /// The pooled connections go with the entry, whichever path removed it. Only a user disconnect
+    /// used to close them, so a connect that failed or was cancelled left them open on the server
+    /// until the idle sweep, and a new session under the same id could be answered by the old ones.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
+        MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)

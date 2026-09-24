@@ -767,6 +767,12 @@ extension DatabaseDriver {
     }
 }
 
+/// Which of the app's connections a driver is, so a plugin can name it to the server.
+enum DriverPurpose: String, Sendable {
+    case session
+    case metadata
+}
+
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
@@ -777,15 +783,17 @@ enum DatabaseDriverFactory {
     static func createDriver(
         for connection: DatabaseConnection,
         passwordOverride: String? = nil,
-        awaitPlugins: Bool
+        awaitPlugins: Bool,
+        purpose: DriverPurpose = .session
     ) async throws -> DatabaseDriver {
         try await PluginManager.shared.prepareForConnecting(to: connection.type)
-        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
+        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride, purpose: purpose)
     }
 
     private static func createDriverFromPlugin(
         for connection: DatabaseConnection,
-        passwordOverride: String? = nil
+        passwordOverride: String?,
+        purpose: DriverPurpose
     ) async throws -> DatabaseDriver {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
@@ -804,6 +812,7 @@ enum DatabaseDriverFactory {
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
         additionalFields["connectionId"] = connection.id.uuidString
+        additionalFields["connectionPurpose"] = purpose.rawValue
         additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
         let config = DriverConnectionConfig(
             host: connection.host,

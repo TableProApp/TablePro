@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 - Invalid PostgreSQL indexes named on the table's **Indexes** tab.
 - Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
+- Application name `TablePro` on PostgreSQL, Redshift, CockroachDB and PGlite connections, `TablePro Metadata` on metadata connections.
 
 ### Changed
 
@@ -101,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
 - Edits made while an iCloud sync was running reverted by that sync and never uploaded.
 - Saved queries unavailable until relaunch after their store failed to open once.
 - SQL files saved as UTF-8 whatever their encoding, and non-UTF-8 SQL files not opening from Finder or **File > Open File…**.
