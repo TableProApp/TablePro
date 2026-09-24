@@ -3,7 +3,7 @@ set -u
 xcodebuild build-for-testing \
   -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -destination "$TEST_DESTINATION" \
   -derivedDataPath "$DERIVED_DATA" -clonedSourcePackagesDirPath ~/.spm-cache \
-  -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO > build.log 2>&1 &
+  -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO COMPILATION_CACHE_ENABLE_CACHING=NO > build.log 2>&1 &
 pid=$!
 while kill -0 "$pid" 2>/dev/null; do
   sleep 10

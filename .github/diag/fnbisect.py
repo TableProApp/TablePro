@@ -17,11 +17,48 @@ def stub(lines, name):
             break
     return lines[:open_line + 1] + ["        fatalError()\n", "    }\n"] + lines[end + 1:]
 
+EDITS = {
+    "gitCall-no-enum-catches": ("""        } catch GitProcessError.timedOut {
+            throw VersionHistoryError.commandFailed(String(localized: "Git did not respond in time."))
+        } catch GitProcessError.outputTooLarge {
+            throw VersionHistoryError.commandFailed(String(localized: "The file is too large to read from Git."))
+        } catch GitProcessError.launchFailed(let message) {
+            throw VersionHistoryError.commandFailed(message)
+        }""", "        }"),
+    "gitCall-plain": ("""        do {
+            return try await operation()
+        } catch let failure as GitCommandFailure {
+            throw VersionHistoryError.commandFailed(failure.errorDescription ?? failure.message)
+        } catch GitProcessError.timedOut {
+            throw VersionHistoryError.commandFailed(String(localized: "Git did not respond in time."))
+        } catch GitProcessError.outputTooLarge {
+            throw VersionHistoryError.commandFailed(String(localized: "The file is too large to read from Git."))
+        } catch GitProcessError.launchFailed(let message) {
+            throw VersionHistoryError.commandFailed(message)
+        }""", "        return try await operation()"),
+    "discard-closure-true": ("sourceIsUnchanged: { (try? await client.blob(revision: \"\", path: indexPath, in: directory)) == staged }",
+                             "sourceIsUnchanged: { true }"),
+    "writePlan-no-do-catch": ("""            do {
+                try await SQLFileService.writeData(replacement, to: fileURL)
+            } catch {
+                throw VersionHistoryError.restoreFailed(error.localizedDescription)
+            }""", """            try await SQLFileService.writeData(replacement, to: fileURL)"""),
+    "writePlan-guard-split": ("""            guard await sourceIsUnchanged(), (try? Data(contentsOf: fileURL)) == expected else {""",
+                              """            let unchanged = await sourceIsUnchanged()
+            guard unchanged, (try? Data(contentsOf: fileURL)) == expected else {"""),
+}
+
 def variants():
     lines = open(TARGET).readlines()
-    yield "original", "".join(lines)
+    text = "".join(lines)
+    yield "original", text
     for name in FUNCS:
         yield "stub-" + name, "".join(stub(lines, name))
+    for label, (old, new) in EDITS.items():
+        if old in text:
+            yield "edit-" + label, text.replace(old, new)
+        else:
+            print("edit not applicable:", label, flush=True)
 
 def run(argv, label, text, limit):
     os.makedirs("/tmp/bisect/" + label, exist_ok=True)
