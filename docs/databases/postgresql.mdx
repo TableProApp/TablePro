@@ -124,6 +124,10 @@ A `CREATE INDEX CONCURRENTLY` or `REINDEX CONCURRENTLY` that fails or is cancell
 
 PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).
 
+## Sessions on the server
+
+In `pg_stat_activity`, the connection your query editor uses reports `application_name` as `TablePro`. The [metadata connections](/connections/connection-form#connection-health) that read the sidebar and the Structure tab, and the ones a cross-database tab runs on, report `TablePro Metadata`. To name them yourself, put `-c application_name=reporting` in **Connection Options**: every connection then uses that name.
+
 ## Text encoding
 
 Sessions run in `UTF8` whatever encoding the database was created with, and the server converts text both ways. Japanese in an `EUC_JP` database or accented names in a `LATIN1` one read and save intact, and stay that way after `RESET ALL` or `DISCARD ALL` in a query tab. A `-c client_encoding=…` in **Connection Options** is overridden; other settings there still apply.

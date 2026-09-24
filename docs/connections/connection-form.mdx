@@ -102,7 +102,7 @@ A Server Dashboard tab keeps its own refresh running on its own interval, which 
 
 SQLite, DuckDB, Beancount, Snowflake, and Teradata are not checked.
 
-Metadata connections, the extra ones TablePro opens to read a database's object list, are closed after 10 minutes unused and reopened on the next read.
+Metadata connections are the extra ones opened to read a database's object list and structure. While many reads run at once, as after a Refresh with many databases expanded, more than six can be open; as that work ends, a connection closes the ones unused longest until six are left. One left unused for 10 minutes closes and reopens on the next read.
 
 ## Which drivers get which transports
 

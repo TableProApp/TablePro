@@ -13,7 +13,8 @@ struct LibPQConnectionStringTests {
         user: String = "postgres",
         password: String? = "hunter2",
         sslConfig: SSLConfiguration = SSLConfiguration(),
-        options: String? = nil
+        options: String? = nil,
+        applicationName: String? = nil
     ) -> String {
         LibPQConnectionString.build(
             host: "db.example.com",
@@ -22,7 +23,8 @@ struct LibPQConnectionStringTests {
             password: password,
             database: "app",
             sslConfig: sslConfig,
-            options: options
+            options: options,
+            applicationName: applicationName
         )
     }
 
@@ -97,6 +99,79 @@ struct LibPQConnectionStringTests {
         #expect(conninfo.contains("user='o\\'brien'"))
         #expect(conninfo.contains("password='back\\\\slash'"))
         #expect(conninfo.contains("options='-c application_name=\\'x\\''"))
+    }
+
+    @Test("The application name reaches libpq as a fallback, ahead of the connection options")
+    func sendsFallbackApplicationName() {
+        let conninfo = build(options: "-c search_path=app", applicationName: "TablePro Metadata")
+
+        #expect(conninfo.hasSuffix(
+            "client_encoding='UTF8' fallback_application_name='TablePro Metadata' options='-c search_path=app'"
+        ))
+        #expect(!conninfo.contains(" application_name="))
+    }
+
+    @Test("No application name, or an empty one, sends no application name keyword")
+    func omitsMissingApplicationName() {
+        #expect(!build().contains("application_name"))
+        #expect(!build(applicationName: "").contains("application_name"))
+    }
+
+    /// Measured on libpq 17: a fallback name replaces an `application_name` set in `options`, so it
+    /// has to stay out whenever the user named the session there, in any of the server's spellings.
+    @Test(
+        "A name the user gives the session in the connection options keeps the fallback out",
+        arguments: [
+            "-c application_name=reporting",
+            "-capplication_name=reporting",
+            "--application_name=reporting",
+            "-c application-name=reporting",
+            "--application-name=reporting",
+            "-c Application_Name=reporting"
+        ]
+    )
+    func userApplicationNameWins(options: String) {
+        let conninfo = build(options: options, applicationName: "TablePro")
+
+        #expect(!conninfo.contains("fallback_application_name"))
+        #expect(conninfo.contains("options="))
+    }
+
+    @Test(
+        "An option that only mentions application_name in its value still gets the fallback",
+        arguments: ["-c search_path=application_name,public", "--search-path=application_name", "-c statement_timeout=0"]
+    )
+    func valuesDoNotNameTheApplication(options: String) {
+        #expect(build(options: options, applicationName: "TablePro").contains("fallback_application_name='TablePro'"))
+    }
+
+    @Test("Each setting in the options is read by its name, in every spelling the server takes")
+    func readsSettingNames() {
+        #expect(
+            LibPQConnectionString.settingNames(in: "-c Search_Path=x -cstatement_timeout=0 --work-mem=64MB -c")
+                == ["search_path", "statement_timeout", "work_mem"]
+        )
+    }
+
+    @Test("A quote or backslash in the application name is escaped")
+    func escapesApplicationName() {
+        #expect(build(applicationName: "o'brien\\x").contains("fallback_application_name='o\\'brien\\\\x'"))
+    }
+
+    @Test("A metadata connection is named apart from the session, and anything else is the session")
+    func namesEachPurpose() {
+        #expect(LibPQConnectionString.applicationName(forPurpose: "metadata") == "TablePro Metadata")
+        #expect(LibPQConnectionString.applicationName(forPurpose: "session") == "TablePro")
+        #expect(LibPQConnectionString.applicationName(forPurpose: nil) == "TablePro")
+        #expect(LibPQConnectionString.applicationName(forPurpose: "other") == "TablePro")
+    }
+
+    @Test("Both names fit the server's 63-byte limit and are plain ASCII")
+    func namesFitTheServerLimit() {
+        for name in [LibPQConnectionString.sessionApplicationName, LibPQConnectionString.metadataApplicationName] {
+            #expect(name.utf8.count <= 63)
+            #expect(name.allSatisfy { $0.isASCII })
+        }
     }
 
     @Test("UTF8 and its PostgreSQL 8.0 name UNICODE both count as the pinned encoding")

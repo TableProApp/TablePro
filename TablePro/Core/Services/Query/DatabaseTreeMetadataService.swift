@@ -407,12 +407,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private func fetchRoutineList(_ key: ObjectsKey) async throws -> [RoutineInfo] {
         let schema = key.schema
         return try await routinesDedup.execute(key: key) { [self] in
-            try await withDriver(
-                connectionId: key.connectionId,
-                database: key.database,
-                schema: schema,
-                workload: .bulk
-            ) { driver in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
                 try await driver.fetchRoutines(schema: schema)
             }
         }
@@ -421,12 +416,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private func fetchTriggerList(_ key: ObjectsKey) async throws -> [TriggerInfo] {
         let schema = key.schema
         return try await triggersDedup.execute(key: key) { [self] in
-            try await withDriver(
-                connectionId: key.connectionId,
-                database: key.database,
-                schema: schema,
-                workload: .bulk
-            ) { driver in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
                 try await driver.fetchAllTriggers(schema: schema)
             }
         }
@@ -460,12 +450,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private func fetchTypeList(_ key: ObjectsKey) async throws -> [UserDefinedTypeInfo] {
         let schema = key.schema
         return try await typesDedup.execute(key: key) { [self] in
-            try await withDriver(
-                connectionId: key.connectionId,
-                database: key.database,
-                schema: schema,
-                workload: .bulk
-            ) { driver in
+            try await withDriver(connectionId: key.connectionId, database: key.database, workload: .bulk) { driver in
                 try await driver.fetchUserDefinedTypes(schema: schema)
             }
         }
@@ -799,7 +784,6 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     func handleDisconnect(connectionId: UUID) async {
         supersedeEveryKey(of: connectionId)
-        MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
         let objectKeys = Self.connectionObjectKeys(
@@ -932,15 +916,18 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     /// Every read goes through here rather than reaching for `MetadataConnectionPool`
     /// directly, because only `metadataRoute` knows which engines cannot answer a metadata
     /// read on a second connection.
+    ///
+    /// The scope names the database and never the schema a row belongs to: every fetch here names
+    /// its schema itself, and a scope per schema took a pooled connection per schema, one for each
+    /// schema node the tree expanded.
     private func withDriver<T: Sendable>(
         connectionId: UUID,
         database: String?,
-        schema: String? = nil,
         workload: MetadataConnectionPool.Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         guard let scope = DatabaseManager.shared.resolvedScope(
-            database: database, schema: schema, for: connectionId
+            database: database, schema: nil, for: connectionId
         ) else {
             throw DatabaseError.notConnected
         }

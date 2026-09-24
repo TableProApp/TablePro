@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 - Invalid PostgreSQL indexes named on the table's **Indexes** tab.
 - Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
+- Application name `TablePro` on PostgreSQL, Redshift, CockroachDB and PGlite connections, `TablePro Metadata` on metadata connections.
 - `GO` batch separators in SQL Server scripts, and a result tab for every result set a batch returns. (#3078)
 - SQL Server `PRINT` output and informational messages in the **Output** result view.
 - **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command.
@@ -109,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
 - Variables declared in a SQL Server script lost after its first statement. (#3078)
 - Later SQL Server result sets shown under the first one's columns, or crashing the app.
 - SQL Server errors raised inside a query shown as an empty or partial result.
