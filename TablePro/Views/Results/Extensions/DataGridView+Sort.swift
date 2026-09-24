@@ -54,9 +54,11 @@ extension TableViewCoordinator {
 
         let mouseLocation = window.mouseLocationOutsideOfEventStream
         let pointInHeader = headerView.convert(mouseLocation, from: nil)
-        let columnIndex = headerView.column(at: pointInHeader)
+        populateHeaderMenu(menu, forColumnAt: headerView.column(at: pointInHeader))
+    }
 
-        guard columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
+    func populateHeaderMenu(_ menu: NSMenu, forColumnAt columnIndex: Int) {
+        guard let tableView, columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
 
         let column = tableView.tableColumns[columnIndex]
         if column.identifier == ColumnIdentitySchema.rowNumberIdentifier { return }
@@ -144,7 +146,7 @@ extension TableViewCoordinator {
             menu.addItem(filterItem)
         }
 
-        if supportsColumnCommands, let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+        if supportsValueFilter, let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let filterValuesItem = NSMenuItem(
                 title: String(localized: "Filter Values…"),
                 action: #selector(filterColumnValues(_:)),

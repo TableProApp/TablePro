@@ -259,7 +259,7 @@ Select a row in the data grid and press `Cmd+V` to paste tabular data straight i
 
 **File > Import > Import Data…** (`Cmd+Shift+I`) takes `.sql` and `.sql.gz` files, whose statements execute directly against the database, and `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, and `.xlsx` files, which load into a table you pick or one TablePro creates.
 
-The extension picks the format, so one command covers all of them. A file no format reads is refused in the file panel, which names the extensions this connection takes. Only a SQL dump is read compressed: expand a `.csv.gz` before importing it.
+The extension picks the format, so one command covers all of them. A file no format reads is refused in the file panel, which names the extensions this connection takes. Only a SQL dump is read compressed here. To import a `.csv.gz`, open it as a [data file](/features/data-files) and choose **Edit > Data > Import into Table…**, which also carries any edits you made first.
 
 **File > Import > Import Data From** beside it names the format instead and offers every file, which is the route for a CSV saved as `orders.txt` or with no extension at all. **Actions** in the toolbar carries the same pair.
 

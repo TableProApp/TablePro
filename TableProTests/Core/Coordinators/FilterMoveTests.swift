@@ -26,7 +26,7 @@ struct FilterMoveTests {
         ]
     }
 
-    private func applying(_ move: FilterCoordinator.FilterMove, to filters: [TableFilter]) -> [TableFilter] {
+    private func applying(_ move: TabFilterState.FilterMove, to filters: [TableFilter]) -> [TableFilter] {
         var moved = filters
         moved.move(fromOffsets: move.source, toOffset: move.destination)
         return moved
@@ -37,7 +37,7 @@ struct FilterMoveTests {
         let filters = makeFilters()
 
         let move = try #require(
-            FilterCoordinator.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
+            TabFilterState.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
         )
         let result = applying(move, to: filters)
 
@@ -49,7 +49,7 @@ struct FilterMoveTests {
         let filters = makeFilters()
 
         let move = try #require(
-            FilterCoordinator.filterMove(in: filters, moving: filters[0].id, onto: filters[2].id)
+            TabFilterState.filterMove(in: filters, moving: filters[0].id, onto: filters[2].id)
         )
         let result = applying(move, to: filters)
 
@@ -60,22 +60,22 @@ struct FilterMoveTests {
     func dropOntoSelfIsNoOp() {
         let filters = makeFilters()
 
-        #expect(FilterCoordinator.filterMove(in: filters, moving: filters[1].id, onto: filters[1].id) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: filters[1].id, onto: filters[1].id) == nil)
     }
 
     @Test("A dragged row that is not in the current filter set is a no-op")
     func unknownDraggedFilterIsNoOp() {
         let filters = makeFilters()
 
-        #expect(FilterCoordinator.filterMove(in: filters, moving: UUID(), onto: filters[0].id) == nil)
-        #expect(FilterCoordinator.filterMove(in: filters, moving: filters[0].id, onto: UUID()) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: UUID(), onto: filters[0].id) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: filters[0].id, onto: UUID()) == nil)
     }
 
     @Test("Move up swaps a row with the one above it")
     func moveUpSwapsWithRowAbove() throws {
         let filters = makeFilters()
 
-        let move = try #require(FilterCoordinator.filterMove(in: filters, moving: filters[1].id, direction: .up))
+        let move = try #require(TabFilterState.filterMove(in: filters, moving: filters[1].id, direction: .up))
         let result = applying(move, to: filters)
 
         #expect(result.map(\.columnName) == ["age", "name", "id"])
@@ -85,7 +85,7 @@ struct FilterMoveTests {
     func moveDownSwapsWithRowBelow() throws {
         let filters = makeFilters()
 
-        let move = try #require(FilterCoordinator.filterMove(in: filters, moving: filters[1].id, direction: .down))
+        let move = try #require(TabFilterState.filterMove(in: filters, moving: filters[1].id, direction: .down))
         let result = applying(move, to: filters)
 
         #expect(result.map(\.columnName) == ["name", "id", "age"])
@@ -95,16 +95,16 @@ struct FilterMoveTests {
     func moveBeyondBoundsIsNoOp() {
         let filters = makeFilters()
 
-        #expect(FilterCoordinator.filterMove(in: filters, moving: filters[0].id, direction: .up) == nil)
-        #expect(FilterCoordinator.filterMove(in: filters, moving: filters[2].id, direction: .down) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: filters[0].id, direction: .up) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: filters[2].id, direction: .down) == nil)
     }
 
     @Test("Move up and move down on an unknown filter are no-ops")
     func moveUnknownFilterIsNoOp() {
         let filters = makeFilters()
 
-        #expect(FilterCoordinator.filterMove(in: filters, moving: UUID(), direction: .up) == nil)
-        #expect(FilterCoordinator.filterMove(in: filters, moving: UUID(), direction: .down) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: UUID(), direction: .up) == nil)
+        #expect(TabFilterState.filterMove(in: filters, moving: UUID(), direction: .down) == nil)
     }
 
     @Test("Moving a row carries every field of the condition unchanged")
@@ -121,7 +121,7 @@ struct FilterMoveTests {
         ]
 
         let move = try #require(
-            FilterCoordinator.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
+            TabFilterState.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
         )
         let result = applying(move, to: filters)
 
@@ -138,7 +138,7 @@ struct FilterMoveTests {
         state.commit = .all
 
         let move = try #require(
-            FilterCoordinator.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
+            TabFilterState.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
         )
         var reordered = state
         reordered.filters = applying(move, to: filters)
@@ -152,7 +152,7 @@ struct FilterMoveTests {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
 
         let move = try #require(
-            FilterCoordinator.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
+            TabFilterState.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
         )
         let reordered = applying(move, to: filters)
 

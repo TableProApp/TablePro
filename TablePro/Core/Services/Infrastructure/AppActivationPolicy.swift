@@ -79,7 +79,7 @@ internal extension LaunchIntent {
              .importConnection,
              .openSQLFile,
              .openDatabaseFile,
-             .openInspectorFile,
+             .openDataFile,
              .openConnectionShare,
              .pairIntegration,
              .openDatabaseURL,

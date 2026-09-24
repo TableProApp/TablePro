@@ -9,12 +9,12 @@
     "and scripts/ci/check-plugin-manifest.py fails if the two disagree. Seven icons here were",
     "already wrong when that check was first run.",
     "",
-    "The 8 plugins absent from this file are the ones bundled inside the app and never published",
+    "The 7 plugins absent from this file are the ones bundled inside the app and never published",
+    "to the registry: MySQL, PostgreSQL, CSV/JSON/SQL export, CSV/JSON import.",
     "",
-    "'bundled' marks a plugin that also ships inside the app. Those six can still be published",
+    "'bundled' marks a plugin that also ships inside the app. Those ten can still be published",
     "individually when users on an already-shipped app need a fix sooner, but a bulk ABI re-release",
-    "skips them, because their binaries ride with the next app release.",
-    "to the registry: MySQL, PostgreSQL, CSV/JSON/SQL export, CSV/JSON import, CSV inspector."
+    "skips them, because their binaries ride with the next app release."
   ],
   "plugins": {
     "beancount": {

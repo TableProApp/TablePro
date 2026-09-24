@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check every plugin source that logs through OSLog imports the module that defines it.
 
-The 41 plugin targets build with SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY, so a member is
+The 40 plugin targets build with SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY, so a member is
 only visible when the file importing it names a module that declares it. A file that writes
 
     logger.warning("read failed: \\(error.publicLogShape, privacy: .public)")

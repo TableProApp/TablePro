@@ -64,4 +64,35 @@ struct DocumentTypeDeclarationTests {
             #expect(declared.contains(fileExtension), "the driver does not open .\(fileExtension)")
         }
     }
+
+    @Test("Every type the data file window reads is claimed by the bundle", arguments: DataFileKind.readableTypes)
+    func claimsDataFileType(contentType: String) throws {
+        let documentType = try documentType(forContentType: contentType)
+        #expect(documentType["CFBundleTypeRole"] is String)
+    }
+
+    @Test("TablePro's own data file types are declared with their extensions")
+    func declaresOwnDataFileTypes() throws {
+        let expected: [(identifier: String, extensions: [String])] = [
+            (DataFileKind.pipeSeparatedType, ["psv"]),
+            (DataFileKind.jsonLinesType, ["jsonl"]),
+            (DataFileKind.dataType, ["dat"])
+        ]
+        for declaration in expected {
+            let tags = try #require(try importedType(declaration.identifier)["UTTypeTagSpecification"] as? [String: Any])
+            #expect(tags["public.filename-extension"] as? [String] == declaration.extensions, "\(declaration.identifier)")
+        }
+    }
+
+    @Test("Read-only data files are claimed as a viewer", arguments: [DataFileKind.workbookType, DataFileKind.gzipType])
+    func readOnlyDataFilesAreViewers(contentType: String) throws {
+        #expect(try documentType(forContentType: contentType)["CFBundleTypeRole"] as? String == "Viewer")
+    }
+
+    @Test("Generic types never make TablePro their default app", arguments: [
+        DataFileKind.plainTextType, DataFileKind.dataType, DataFileKind.gzipType
+    ])
+    func genericTypesTakeNoRank(contentType: String) throws {
+        #expect(try documentType(forContentType: contentType)["LSHandlerRank"] as? String == "None")
+    }
 }

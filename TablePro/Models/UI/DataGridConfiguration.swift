@@ -26,10 +26,14 @@ struct DataGridConfiguration: Equatable {
     /// column could share.
     var checkboxColumns: Set<Int> = []
 
-    /// Whether the grid offers the commands that belong to a result: value filters, column hiding,
-    /// export and the JSON view. A grid whose rows are a comparison answers none of them, and a
-    /// command that does nothing is worse than one that is not there.
+    /// Whether the grid offers the commands that belong to a result: filtering by a column, column
+    /// hiding, export and the JSON view. A grid whose rows are a comparison answers none of them, and
+    /// a command that does nothing is worse than one that is not there.
     var supportsColumnCommands: Bool = true
+
+    var supportsValueFilter: Bool = true
+
+    var filterMenuColumnTypes: [ColumnType]?
 
     /// Headings whose cells this grid must not let the user change, even though the rest of the grid
     /// is editable. The Structure tab sets it per object kind: PostgreSQL takes a view's

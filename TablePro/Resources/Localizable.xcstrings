@@ -38,6 +38,9 @@
     "%1$@ could not be read again before generating the script. %2$@" : {
 
     },
+    "%@ in the workbook expands to far more data than it holds, so it was not read." : {
+
+    },
     "A sequence" : {
       "localizations" : {
         "ko" : {
@@ -173,6 +176,9 @@
           }
         }
       }
+    },
+    "Find in file" : {
+
     },
     "Recent Tabs" : {
       "localizations" : {
@@ -1621,6 +1627,9 @@
         }
       }
     },
+    "(empty)" : {
+
+    },
     "(%lld active)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2856,6 +2865,9 @@
     "%@ cannot start with a dash or contain spaces" : {
 
     },
+    "%@ cells" : {
+
+    },
     "%@ changed after it was compared. Compare again before generating the script." : {
 
     },
@@ -3133,6 +3145,9 @@
           }
         }
       }
+    },
+    "%@ duplicate rows" : {
+
     },
     "%@ failed" : {
       "comment" : "Failure count, %@ is a count",
@@ -3451,6 +3466,9 @@
 
     },
     "%@ loses its default" : {
+
+    },
+    "%@ matches" : {
 
     },
     "%@ more, in the script beside this" : {
@@ -3994,6 +4012,9 @@
       }
     },
     "%@ rows copied" : {
+
+    },
+    "%@ rows have a different number of fields" : {
 
     },
     "%@ s" : {
@@ -6542,10 +6563,16 @@
     "%@ does not allow NULL, so its default cannot be NULL" : {
 
     },
+    "%@ files cannot be imported into this connection." : {
+
+    },
     "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
 
     },
     "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it." : {
+
+    },
+    "%@ is showing another sheet. Close it, then try again." : {
 
     },
     "%d added" : {
@@ -8806,6 +8833,46 @@
         }
       }
     },
+    "%lld of ^[%lld row](inflect: true)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of ^[%2$lld row](inflect: true)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld/%2$lld행"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld / %lld satır"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld trên %lld dòng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld / %lld 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld / %2$lld 列"
+          }
+        }
+      }
+    },
     "%lld pending changes" : {
       "localizations" : {
         "ko" : {
@@ -10505,6 +10572,9 @@
         }
       }
     },
+    "1 cell" : {
+
+    },
     "1 connection found" : {
       "localizations" : {
         "ko" : {
@@ -10613,6 +10683,9 @@
     "1 item" : {
 
     },
+    "1 match" : {
+
+    },
     "1 of %lld conflicts" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10715,6 +10788,9 @@
           }
         }
       }
+    },
+    "1 row" : {
+
     },
     "1 statement stays out of this run and %@ keeps what it has for it." : {
       "extractionState" : "stale",
@@ -10821,6 +10897,9 @@
           }
         }
       }
+    },
+    "1 visible row" : {
+
     },
     "1 year" : {
       "localizations" : {
@@ -12246,6 +12325,9 @@
     "A data comparison reads tables only." : {
 
     },
+    "A data file cannot run queries." : {
+
+    },
     "A Data Pump job for %1$@ was started, writing to %2$@. Watch DBA_DATAPUMP_JOBS for its progress." : {
 
     },
@@ -13137,6 +13219,9 @@
           }
         }
       }
+    },
+    "A value could not be written as JSON." : {
+
     },
     "A value was too large to keep." : {
       "localizations" : {
@@ -17765,6 +17850,9 @@
           }
         }
       }
+    },
+    "All Rows (%@)" : {
+
     },
     "All rows…" : {
       "localizations" : {
@@ -26834,6 +26922,9 @@
         }
       }
     },
+    "Cannot Import" : {
+
+    },
     "Cannot connect to Ollama at %@. Is Ollama running?" : {
       "localizations" : {
         "ko" : {
@@ -28135,6 +28226,9 @@
         }
       }
     },
+    "Change Case" : {
+
+    },
     "Change cells in the grid and review the SQL before you save." : {
       "localizations" : {
         "ko" : {
@@ -28555,6 +28649,9 @@
           }
         }
       }
+    },
+    "Changed %@." : {
+
     },
     "CHANGED" : {
       "extractionState" : "stale",
@@ -29816,6 +29913,9 @@
       }
     },
     "Choose a connection" : {
+
+    },
+    "Choose a connection. Its import sheet opens with the rows of this file, unsaved edits included." : {
 
     },
     "Choose a Database" : {
@@ -31207,40 +31307,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除"
-          }
-        }
-      }
-    },
-    "Clear all" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모두 지우기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tümünü temizle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa tất cả"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部清除"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部清除"
           }
         }
       }
@@ -35617,6 +35683,9 @@
         }
       }
     },
+    "Column Statistics…" : {
+
+    },
     "Column reorder failed: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -36063,6 +36132,9 @@
           }
         }
       }
+    },
+    "Comma" : {
+
     },
     "comma" : {
       "extractionState" : "manual",
@@ -36935,6 +37007,9 @@
           }
         }
       }
+    },
+    "Compare these columns:" : {
+
     },
     "Compare/Sync with…" : {
       "extractionState" : "stale",
@@ -42768,6 +42843,9 @@
         }
       }
     },
+    "Could not create %@." : {
+
+    },
     "Could not create destination file" : {
       "localizations" : {
         "ko" : {
@@ -44123,6 +44201,9 @@
     "Couldn't read the referenced table" : {
 
     },
+    "Count" : {
+
+    },
     "Couldn't Refresh Materialized View" : {
 
     },
@@ -44398,6 +44479,9 @@
           }
         }
       }
+    },
+    "Counting values…" : {
+
     },
     "Counting…" : {
       "localizations" : {
@@ -45685,40 +45769,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CSV"
-          }
-        }
-      }
-    },
-    "CSV Properties" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV 속성"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV Özellikleri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thuộc tính CSV"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV 属性"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSV 屬性"
           }
         }
       }
@@ -47275,6 +47325,9 @@
           }
         }
       }
+    },
+    "Data File" : {
+
     },
     "Data grid" : {
       "localizations" : {
@@ -54006,6 +54059,9 @@
         }
       }
     },
+    "Distinct" : {
+
+    },
     "Distributed HTAP, MySQL-compatible" : {
 
     },
@@ -54627,6 +54683,9 @@
           }
         }
       }
+    },
+    "Don't save" : {
+
     },
     "Done" : {
       "localizations" : {
@@ -57158,6 +57217,12 @@
       }
     },
     "Each database is written to its own file." : {
+
+    },
+    "Each value is split at every match. Rows with fewer pieces get empty cells." : {
+
+    },
+    "Earliest" : {
 
     },
     "Each SQLite file is a separate database.\nTo open a different database, create a new connection." : {
@@ -61580,6 +61645,9 @@
         }
       }
     },
+    "Every targeted cell gets this value." : {
+
+    },
     "Everything" : {
       "localizations" : {
         "ko" : {
@@ -63600,6 +63668,9 @@
           }
         }
       }
+    },
+    "Export %1$@ to %2$@" : {
+
     },
     "Export & Import" : {
       "extractionState" : "stale",
@@ -68355,6 +68426,9 @@
         }
       }
     },
+    "File format" : {
+
+    },
     "File Modified Externally" : {
       "localizations" : {
         "ko" : {
@@ -68526,6 +68600,12 @@
           }
         }
       }
+    },
+    "File Properties" : {
+
+    },
+    "File Properties…" : {
+
     },
     "File path inside the user's Downloads directory (returns inline data if omitted). Paths outside Downloads are rejected." : {
       "extractionState" : "stale",
@@ -68871,6 +68951,9 @@
           }
         }
       }
+    },
+    "Fill Down" : {
+
     },
     "Filter" : {
       "localizations" : {
@@ -69538,6 +69621,9 @@
     "Filter rows" : {
 
     },
+    "Filter rows with this value" : {
+
+    },
     "Filter settings" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -69812,6 +69898,9 @@
         }
       }
     },
+    "Filtered Rows (%@)" : {
+
+    },
     "Filtered to %lld of %lld ^[rows](inflect: true)" : {
       "localizations" : {
         "ko" : {
@@ -69884,6 +69973,9 @@
         }
       }
     },
+    "Filtering…" : {
+
+    },
     "Filters" : {
       "localizations" : {
         "ko" : {
@@ -69951,6 +70043,9 @@
           }
         }
       }
+    },
+    "Filters last as long as the tab. Filters already saved are kept, not deleted." : {
+
     },
     "Find" : {
       "localizations" : {
@@ -70053,6 +70148,9 @@
           }
         }
       }
+    },
+    "Find Options" : {
+
     },
     "Find Past Queries" : {
       "localizations" : {
@@ -70189,6 +70287,12 @@
           }
         }
       }
+    },
+    "Finding Duplicates…" : {
+
+    },
+    "Finding…" : {
+
     },
     "Find…" : {
       "localizations" : {
@@ -70404,6 +70508,9 @@
       }
     },
     "First row" : {
+
+    },
+    "First row is a header" : {
 
     },
     "Fit to Result" : {
@@ -73037,6 +73144,9 @@
         }
       }
     },
+    "Git did not respond in time." : {
+
+    },
     "GitHub Repository" : {
       "localizations" : {
         "ko" : {
@@ -74536,6 +74646,9 @@
         }
       }
     },
+    "Hide Filters" : {
+
+    },
     "Hide Inspector" : {
       "localizations" : {
         "ko" : {
@@ -75175,6 +75288,9 @@
           }
         }
       }
+    },
+    "History: %@" : {
+
     },
     "Holds a command that forwards a local port, such as kubectl port-forward." : {
 
@@ -76440,6 +76556,9 @@
         }
       }
     },
+    "Ignore case" : {
+
+    },
     "Ignore foreign key checks" : {
       "localizations" : {
         "ko" : {
@@ -76473,6 +76592,9 @@
           }
         }
       }
+    },
+    "Ignore leading and trailing whitespace" : {
+
     },
     "Image" : {
 
@@ -77472,6 +77594,12 @@
       }
     },
     "Import into" : {
+
+    },
+    "Import into Table" : {
+
+    },
+    "Import into Table…" : {
 
     },
     "Import into:" : {
@@ -81598,6 +81726,9 @@
         }
       }
     },
+    "Invalid regular expression" : {
+
+    },
     "Invalid username or password" : {
       "localizations" : {
         "ko" : {
@@ -82125,6 +82256,9 @@
           }
         }
       }
+    },
+    "Joins this column with the one to its right." : {
+
     },
     "Journal Mode" : {
       "localizations" : {
@@ -82929,6 +83063,9 @@
           }
         }
       }
+    },
+    "Keeps the first row of each group of matching rows. Rows hidden by a filter or search are not compared." : {
+
     },
     "Keeps what rows looked like before each save, on this Mac only, for 7 days. It is encrypted, and never synced." : {
       "localizations" : {
@@ -84732,6 +84869,9 @@
           }
         }
       }
+    },
+    "Latest" : {
+
     },
     "Latest executed_at to include, Unix epoch seconds (inclusive, optional)" : {
       "extractionState" : "stale",
@@ -89516,6 +89656,9 @@
         }
       }
     },
+    "lowercase" : {
+
+    },
     "Location" : {
       "localizations" : {
         "ko" : {
@@ -91338,6 +91481,9 @@
         }
       }
     },
+    "Maximum" : {
+
+    },
     "Maximum days cannot be negative" : {
       "localizations" : {
         "ko" : {
@@ -91920,6 +92066,12 @@
           }
         }
       }
+    },
+    "Mean" : {
+
+    },
+    "Median" : {
+
     },
     "MCP Access Request" : {
       "localizations" : {
@@ -92545,45 +92697,8 @@
         }
       }
     },
-    "Merge “%@” with “%@”" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Merge “%1$@” with “%2$@”"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%1$@” 및 “%2$@” 병합"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%1$@” ile “%2$@” birleştirilsin"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gộp “%1$@” với “%2$@”"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将“%1$@”与“%2$@”合并"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "將「%1$@」與「%2$@」合併"
-          }
-        }
-      }
+    "Merging Columns…" : {
+
     },
     "Merge All Windows" : {
       "localizations" : {
@@ -93234,6 +93349,9 @@
           }
         }
       }
+    },
+    "Minimum" : {
+
     },
     "Missing argument: %@" : {
       "extractionState" : "stale",
@@ -98004,6 +98122,9 @@
         }
       }
     },
+    "No cells changed." : {
+
+    },
     "No changes to preview" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -99152,6 +99273,9 @@
         }
       }
     },
+    "No duplicate rows found." : {
+
+    },
     "No Differences" : {
       "localizations" : {
         "ko" : {
@@ -99542,6 +99666,9 @@
     "No Highlight Rules" : {
 
     },
+    "No History" : {
+
+    },
     "No iCloud" : {
       "localizations" : {
         "ko" : {
@@ -99854,6 +99981,9 @@
           }
         }
       }
+    },
+    "No matches to replace." : {
+
     },
     "No Matches" : {
 
@@ -103093,6 +103223,9 @@
           }
         }
       }
+    },
+    "No values contain the separator." : {
+
     },
     "No values found" : {
       "extractionState" : "stale",
@@ -109332,6 +109465,9 @@
         }
       }
     },
+    "Opening… %@" : {
+
+    },
     "Opens an AWS Systems Manager port forwarding session through a target instance." : {
 
     },
@@ -113675,6 +113811,9 @@
         }
       }
     },
+    "Pipe" : {
+
+    },
     "Pipe  |" : {
       "localizations" : {
         "ko" : {
@@ -115693,6 +115832,9 @@
           }
         }
       }
+    },
+    "Preparing Import…" : {
+
     },
     "Preparing the metadata connection timed out." : {
       "localizations" : {
@@ -122313,40 +122455,6 @@
         }
       }
     },
-    "Real" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Real"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Real"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Real"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Real"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Real"
-          }
-        }
-      }
-    },
     "Reasoning" : {
       "localizations" : {
         "ko" : {
@@ -124032,40 +124140,6 @@
         }
       }
     },
-    "Regex" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "정규식"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regex"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regex"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正则表达式"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正規表達式"
-          }
-        }
-      }
-    },
     "Region" : {
 
     },
@@ -124105,6 +124179,9 @@
           }
         }
       }
+    },
+    "Regular Expression" : {
+
     },
     "related to %@" : {
 
@@ -125020,6 +125097,15 @@
     "Remove Comment" : {
 
     },
+    "Remove Duplicate Rows" : {
+
+    },
+    "Remove Duplicate Rows…" : {
+
+    },
+    "Remove Duplicates" : {
+
+    },
     "Remove Element" : {
       "comment" : "A button that removes an element from an array.",
       "isCommentAutoGenerated" : true,
@@ -125890,6 +125976,9 @@
         }
       }
     },
+    "Removed %@." : {
+
+    },
     "Rename" : {
       "localizations" : {
         "ko" : {
@@ -126384,6 +126473,12 @@
         }
       }
     },
+    "Reopening a table brings its filter rows back unapplied. Press Apply to run them." : {
+
+    },
+    "Reopening a table runs the filter it was last showing." : {
+
+    },
     "Reorder %@" : {
 
     },
@@ -126496,6 +126591,9 @@
         }
       }
     },
+    "Replace All" : {
+
+    },
     "Replace it" : {
 
     },
@@ -126532,6 +126630,18 @@
           }
         }
       }
+    },
+    "Replace with" : {
+
+    },
+    "Replaced %1$@ in %2$@." : {
+
+    },
+    "Replace…" : {
+
+    },
+    "Replacing…" : {
+
     },
     "Replication lag: %ds" : {
       "extractionState" : "stale",
@@ -128194,6 +128304,9 @@
         }
       }
     },
+    "Restore and apply" : {
+
+    },
     "Restore the previous values of a save" : {
       "localizations" : {
         "ko" : {
@@ -128329,6 +128442,9 @@
           }
         }
       }
+    },
+    "Restore without applying" : {
+
     },
     "Restore…" : {
       "extractionState" : "stale",
@@ -130141,12 +130257,45 @@
         }
       }
     },
+    "Row %@ is not an object." : {
+
+    },
+    "Row %@ is not valid JSON near byte %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Row %1$@ is not valid JSON near byte %2$@."
+          }
+        }
+      }
+    },
     "Row %@ of %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Row %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "Row %@, column %@ contains “%@”, which %@ cannot store. Choose Save As and pick UTF-8." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Row %1$@, column %2$@ contains “%3$@”, which %4$@ cannot store. Choose Save As and pick UTF-8."
+          }
+        }
+      }
+    },
+    "Row %@, column %@ is not valid JSON. Fix the value or clear it, then save again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Row %1$@, column %2$@ is not valid JSON. Fix the value or clear it, then save again."
           }
         }
       }
@@ -135636,6 +135785,9 @@
         }
       }
     },
+    "Search All Columns" : {
+
+    },
     "Search activity" : {
       "localizations" : {
         "ko" : {
@@ -135911,6 +136063,9 @@
           }
         }
       }
+    },
+    "Search every column" : {
+
     },
     "Search fields" : {
 
@@ -137145,6 +137300,9 @@
     "Select a dump this connection's engine wrote: %@." : {
 
     },
+    "Select a file to import" : {
+
+    },
     "Select a Library" : {
       "localizations" : {
         "ko" : {
@@ -137353,6 +137511,9 @@
       }
     },
     "Select a row to see its fields" : {
+
+    },
+    "Select a row to see its fields." : {
 
     },
     "Select a row to view it as JSON" : {
@@ -138189,6 +138350,9 @@
         }
       }
     },
+    "Selected Rows (%@)" : {
+
+    },
     "Selected SSH profile no longer exists." : {
       "localizations" : {
         "en" : {
@@ -138267,6 +138431,9 @@
 
     },
     "Self Time" : {
+
+    },
+    "Semicolon" : {
 
     },
     "Semicolon  ;" : {
@@ -139735,6 +139902,12 @@
         }
       }
     },
+    "Set Cells to Value" : {
+
+    },
+    "Set Cells to Value…" : {
+
+    },
     "Set DEFAULT" : {
       "localizations" : {
         "ko" : {
@@ -140389,6 +140562,9 @@
         }
       }
     },
+    "Sheet" : {
+
+    },
     "Shell script to run before connecting. Non-zero exit aborts connection." : {
       "localizations" : {
         "ko" : {
@@ -140592,6 +140768,9 @@
           }
         }
       }
+    },
+    "Show All (%@)" : {
+
     },
     "Show All Collections" : {
       "extractionState" : "stale",
@@ -141125,6 +141304,9 @@
           }
         }
       }
+    },
+    "Show Filters" : {
+
     },
     "Show Identical Objects" : {
       "localizations" : {
@@ -145259,6 +145441,9 @@
         }
       }
     },
+    "Sorting…" : {
+
+    },
     "source" : {
       "localizations" : {
         "ko" : {
@@ -145542,39 +145727,8 @@
         }
       }
     },
-    "Split “%@”" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@” 분할"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@” ayrılsın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tách “%@”"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拆分“%@”"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拆分「%@」"
-          }
-        }
-      }
+    "Splitting Column…" : {
+
     },
     "Split Column…" : {
       "localizations" : {
@@ -145640,42 +145794,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在每個符合處將每個值拆分到新欄位中。"
-          }
-        }
-      }
-    },
-    "Split mode" : {
-      "comment" : "Accessibility label for the segmented control in the alert that allows the user to choose between using a delimiter or a regex to split the values in a column.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "분할 모드"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bölme modu"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chế độ tách"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拆分方式"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分割方式"
           }
         }
       }
@@ -150467,6 +150585,9 @@
           }
         }
       }
+    },
+    "Sum" : {
+
     },
     "Summarize query history" : {
       "localizations" : {
@@ -156789,6 +156910,12 @@
         }
       }
     },
+    "Text Encoding" : {
+
+    },
+    "Text Encoding:" : {
+
+    },
     "Text matched against the recorded statement" : {
       "localizations" : {
         "ko" : {
@@ -157134,6 +157261,9 @@
           }
         }
       }
+    },
+    "That connection is no longer open." : {
+
     },
     "That maintenance operation is not available on this connection." : {
       "localizations" : {
@@ -158872,6 +159002,15 @@
         }
       }
     },
+    "The file is empty." : {
+
+    },
+    "The file is not valid %@ text." : {
+
+    },
+    "The file is too large to read from Git." : {
+
+    },
     "The filter field is not in the toolbar." : {
       "localizations" : {
         "ko" : {
@@ -159768,6 +159907,9 @@
 
     },
     "The operation was cancelled." : {
+
+    },
+    "The original file changed while it was open. Reload it, then save again." : {
 
     },
     "The Oracle listener refused the connection (ORA-%ld)." : {
@@ -164540,6 +164682,12 @@
     "This engine holds %1$lld digits, not %2$lld, so the extra ones are lost." : {
 
     },
+    "This file cannot be saved in that format." : {
+
+    },
+    "This file can’t be opened" : {
+
+    },
     "This file is encrypted" : {
       "localizations" : {
         "ko" : {
@@ -165044,6 +165192,9 @@
           }
         }
       }
+    },
+    "This kind of file cannot be opened as a table." : {
+
     },
     "This library's own project publishes no license file, so TablePro cannot state one for it. It is listed here so the gap stays visible instead of looking settled." : {
       "localizations" : {
@@ -167322,6 +167473,12 @@
         }
       }
     },
+    "This workbook has no worksheets." : {
+
+    },
+    "Those rows have more or fewer fields than the first row. Missing fields read as empty." : {
+
+    },
     "Threads" : {
       "localizations" : {
         "ko" : {
@@ -168034,6 +168191,9 @@
         }
       }
     },
+    "Title Case" : {
+
+    },
     "TLS certificate expired or near expiry" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -168594,6 +168754,9 @@
           }
         }
       }
+    },
+    "Toggle Header Row" : {
+
     },
     "Toggle History" : {
       "localizations" : {
@@ -169428,6 +169591,9 @@
           }
         }
       }
+    },
+    "Top Values" : {
+
     },
     "Total" : {
 
@@ -170280,6 +170446,9 @@
         }
       }
     },
+    "Trim Whitespace" : {
+
+    },
     "true" : {
       "localizations" : {
         "ko" : {
@@ -171109,6 +171278,9 @@
       }
     },
     "Turn the plugin on to connect." : {
+
+    },
+    "Two columns are both named “%@”. Rename one, then save again." : {
 
     },
     "Two-Factor Authentication" : {
@@ -173542,6 +173714,9 @@
         }
       }
     },
+    "UPPERCASE" : {
+
+    },
     "Update TablePro" : {
       "localizations" : {
         "ko" : {
@@ -173745,6 +173920,9 @@
           }
         }
       }
+    },
+    "Updating Cells…" : {
+
     },
     "Updating this plugin didn't finish. TablePro will try again the next time it launches." : {
       "localizations" : {
@@ -179200,6 +179378,9 @@
         }
       }
     },
+    "Whole Words" : {
+
+    },
     "Whole database" : {
 
     },
@@ -181095,6 +181276,40 @@
         }
       }
     },
+    "^[%lld column](inflect: true)" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld개 열"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld sütun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld cột"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld列"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個欄位"
+          }
+        }
+      }
+    },
     "Zoom Out" : {
       "localizations" : {
         "ko" : {
@@ -181282,16 +181497,7 @@
     "Merge Columns" : {
 
     },
-    "Switch Header Row" : {
-
-    },
     "Could not encode CSV content" : {
-
-    },
-    "Failed to write CSV file: %@" : {
-
-    },
-    "Failed to write CSV file" : {
 
     },
     "Amazon Keyspaces IAM authentication requires TLS. Enable SSL in the connection's SSL settings." : {
@@ -182170,6 +182376,9 @@
     "Column %@ is a generated column, which needs PostgreSQL 12 or later." : {
 
     },
+    "Column %d" : {
+
+    },
     "INCLUDE columns need PostgreSQL 11 or later." : {
 
     },
@@ -182296,6 +182505,9 @@
     "Replace existing" : {
 
     },
+    "Replace in Column…" : {
+
+    },
     "Update existing" : {
 
     },
@@ -182344,6 +182556,9 @@
     "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size." : {
 
     },
+    "1 row has a different number of fields" : {
+
+    },
     "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size." : {
 
     },
@@ -182366,6 +182581,9 @@
 
     },
     "1 day (default)" : {
+
+    },
+    "1 duplicate row" : {
 
     },
     "14 days" : {
@@ -182408,6 +182626,9 @@
 
     },
     "Only BEGIN, COMMIT and ROLLBACK are supported for Spanner transactions." : {
+
+    },
+    "Only UTF-8 JSON files can be opened." : {
 
     },
     "The schema change is still running on the server (%@)." : {
@@ -182758,6 +182979,40 @@
     "^[%lld line](inflect: true)" : {
 
     },
+    "^[%lld row](inflect: true)" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld행"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld satır"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld dòng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 列"
+          }
+        }
+      }
+    },
     "Only the first %lld lines are shown." : {
 
     },
@@ -182840,6 +183095,19 @@
 
     },
     "%@ takes nothing after it, and %@ was given." : {
+
+    },
+    "%@ to %@ characters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ to %2$@ characters"
+          }
+        }
+      }
+    },
+    "%@ visible rows" : {
 
     },
     "%@ was not sent because a MULTI block is open on this connection." : {
@@ -182942,6 +183210,9 @@
 
     },
     "Sentinel resolved to another Sentinel rather than a data node. Check the primary group name in your sentinel configuration." : {
+
+    },
+    "Separator" : {
 
     },
     "Compressing…" : {
@@ -183274,7 +183545,22 @@
     "The file has no function named %@." : {
 
     },
+    "The file has not finished opening." : {
+
+    },
+    "The file holds a single value, not a list of rows." : {
+
+    },
+    "The file holds one object, not a list of rows. Open a JSON array of objects or a JSON Lines file." : {
+
+    },
     "The extension failed to start: %@" : {
+
+    },
+    "The file changed while the operation ran, so nothing was applied." : {
+
+    },
+    "The file could not be read: %@" : {
 
     },
     "This connection loads SQLite extensions that have not been approved on this Mac." : {
@@ -183287,6 +183573,9 @@
 
     },
     "%@ (entry point %@)" : {
+
+    },
+    "%@ (hidden)" : {
 
     },
     "The saved list could not be read. Adding an extension replaces it." : {
@@ -183323,6 +183612,9 @@
 
     },
     "Not a full path. Use a path that starts with / or ~." : {
+
+    },
+    "Not a number" : {
 
     },
     "No file at this path." : {
@@ -183524,6 +183816,9 @@
 
     },
     "In DynamoDB order: sorting by %@ needs the whole result, or a Query on that sort key" : {
+
+    },
+    "In column %@" : {
 
     },
     "The request needs a TableName" : {

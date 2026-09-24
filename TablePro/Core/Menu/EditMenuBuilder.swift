@@ -159,51 +159,100 @@ enum EditMenuBuilder {
     }
 
     private static func tabularEditingSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.submenu(String(localized: "CSV/JSON Editing"), items: [
+        MenuItemFactory.submenu(String(localized: "Data"), items: [
             MenuItemFactory.item(
                 String(localized: "Insert Row Above"),
-                action: #selector(InspectorViewController.inspectorInsertRowAbove(_:))
+                action: #selector(DataFileSplitViewController.dataFileInsertRowAbove(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Insert Row Below"),
-                action: #selector(InspectorViewController.inspectorInsertRowBelow(_:))
+                action: #selector(DataFileSplitViewController.dataFileInsertRowBelow(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Delete Rows"),
-                action: #selector(InspectorViewController.inspectorDeleteSelectedRows(_:))
+                action: #selector(DataFileSplitViewController.dataFileDeleteSelectedRows(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Add Column…"),
+                action: #selector(DataFileSplitViewController.dataFileAddColumn(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Insert Column Left"),
-                action: #selector(InspectorViewController.inspectorInsertColumnLeft(_:))
+                action: #selector(DataFileSplitViewController.dataFileInsertColumnLeft(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Insert Column Right"),
-                action: #selector(InspectorViewController.inspectorInsertColumnRight(_:))
+                action: #selector(DataFileSplitViewController.dataFileInsertColumnRight(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Rename Column…"),
+                action: #selector(DataFileSplitViewController.dataFileRenameColumn(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Split Column…"),
-                action: #selector(InspectorViewController.inspectorSplitColumn(_:))
+                action: #selector(DataFileSplitViewController.dataFileSplitColumn(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Merge Columns…"),
-                action: #selector(InspectorViewController.inspectorMergeColumns(_:))
+                action: #selector(DataFileSplitViewController.dataFileMergeColumns(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Delete Column"),
-                action: #selector(InspectorViewController.inspectorDeleteColumn(_:))
+                action: #selector(DataFileSplitViewController.dataFileDeleteColumn(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Fill Down"),
+                action: #selector(DataFileSplitViewController.dataFileFillDown(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Set Cells to Value…"),
+                action: #selector(DataFileSplitViewController.dataFileSetCellsToValue(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Trim Whitespace"),
+                action: #selector(DataFileSplitViewController.dataFileTrimWhitespace(_:))
+            ),
+            changeCaseSubmenu(),
+            MenuItemFactory.item(
+                String(localized: "Replace in Column…"),
+                action: #selector(DataFileSplitViewController.dataFileReplaceInColumn(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Remove Duplicate Rows…"),
+                action: #selector(DataFileSplitViewController.dataFileRemoveDuplicates(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Column Statistics…"),
+                action: #selector(DataFileSplitViewController.dataFileShowStatistics(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Search All Columns"),
+                action: #selector(DataFileSplitViewController.dataFileSearchAllColumns(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Switch First Row Between Header and Data"),
-                action: #selector(InspectorViewController.inspectorToggleHeaderRow(_:)),
+                action: #selector(DataFileSplitViewController.dataFileToggleHeaderRow(_:)),
                 shortcut: .toggleHeaderRow,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Set CSV Properties…"),
-                action: #selector(InspectorViewController.inspectorSetCSVProperties(_:))
+                String(localized: "File Properties…"),
+                action: #selector(DataFileSplitViewController.dataFileShowProperties(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Import into Table…"),
+                action: #selector(DataFileSplitViewController.dataFileImportIntoTable(_:))
             )
         ])
+    }
+
+    private static func changeCaseSubmenu() -> NSMenuItem {
+        let item = NSMenuItem(title: String(localized: "Change Case"), action: nil, keyEquivalent: "")
+        item.submenu = DataFileColumnMenuBuilder.caseSubmenu(for: nil)
+        return item
     }
 }

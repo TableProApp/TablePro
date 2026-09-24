@@ -291,7 +291,9 @@ final class MainContentCoordinator: ObservableObject {
 
     @Published var cursorPositions: [CursorPosition] = []
     @Published var tableMetadata: TableMetadata?
-    @Published var activeSheet: ActiveSheet?
+    @Published var activeSheet: ActiveSheet? {
+        didSet { releaseImportFileUnlessImporting() }
+    }
     /// Owns the connection and database switcher surfaces. The commands present through this
     /// rather than flipping a flag a toolbar-hosted view has to observe, because that view is
     /// absent whenever its item is clipped into the overflow menu or removed by the user. It
@@ -301,7 +303,7 @@ final class MainContentCoordinator: ObservableObject {
     }
     @Published var sessionContexts: [PluginSessionContext] = []
     @Published var containerDropRequest: DatabaseDropRequest?
-    @Published var importFileURL: URL?
+    @Published var importFile: ImportFileHandoff?
     @Published var exportPreselection: ExportPreselection?
     @Published var pendingLoadTrigger: TableLoadTrigger?
     var deferredRestoreLoadTabId: UUID?
@@ -324,6 +326,8 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     var hostedTabRouting = HostedTabRouting.live
+
+    var importFormatLookup = ImportFormatLookup.live
 
     /// Routing failures report through here so a test can observe the message instead of raising a
     /// real alert. `AlertHelper.present` runs application-modal when no window qualifies, and a
@@ -962,6 +966,7 @@ final class MainContentCoordinator: ObservableObject {
         tableMetadataCache.removeAll()
         schemaColumns.removeAll()
         columnScopeRequeryTask?.cancel()
+        releaseImportFile()
 
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil

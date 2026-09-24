@@ -17,6 +17,31 @@ internal enum ExportFormatCatalog {
         "csv", "json", "sql", "xlsx", "md", "html", "xml", "parquet", "mql"
     ]
 
+    internal static func available(
+        _ plugins: [any ExportFormatPlugin],
+        forDatabaseTypeId databaseTypeId: String
+    ) -> [any ExportFormatPlugin] {
+        sorted(plugins.filter { plugin in
+            let pluginType = type(of: plugin)
+            return accepts(
+                databaseTypeId: databaseTypeId,
+                supportedDatabaseTypeIds: pluginType.supportedDatabaseTypeIds,
+                excludedDatabaseTypeIds: pluginType.excludedDatabaseTypeIds
+            )
+        })
+    }
+
+    internal static func accepts(
+        databaseTypeId: String,
+        supportedDatabaseTypeIds: [String],
+        excludedDatabaseTypeIds: [String]
+    ) -> Bool {
+        guard supportedDatabaseTypeIds.isEmpty else {
+            return supportedDatabaseTypeIds.contains(databaseTypeId)
+        }
+        return !excludedDatabaseTypeIds.contains(databaseTypeId)
+    }
+
     internal static func sorted(_ plugins: [any ExportFormatPlugin]) -> [any ExportFormatPlugin] {
         plugins.sorted { first, second in
             let firstRank = rank(of: type(of: first).formatId)

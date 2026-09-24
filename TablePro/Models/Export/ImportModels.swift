@@ -9,8 +9,7 @@ import Foundation
 
 // MARK: - Import Encoding Options
 
-/// The text encodings the SQL import dialog offers, matching the list the CSV inspector already
-/// offers in `CSVPropertyOptions.encodings`.
+/// The text encodings the SQL import dialog offers.
 ///
 /// The raw value is the key the last choice is stored under, so it stays put; `label` is what the
 /// menu shows. Latin-1 and Windows-1252 are both here because they disagree over 0x80 to 0x9F,

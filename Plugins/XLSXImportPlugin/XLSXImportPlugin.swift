@@ -8,6 +8,7 @@ import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProTabularIO
 
 final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Import"
@@ -133,22 +134,20 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     /// refers to, so a streaming read would have to hold that table anyway, and the format has no
     /// way to say how large it is before parsing.
     private func readSheet(at url: URL) throws -> Sheet {
-        let archive = try Data(contentsOf: url, options: .mappedIfSafe)
-        let entries = try ZipReader.entries(in: archive)
+        let archive = try ZipArchive(contentsOf: url)
 
-        guard let worksheetPath = XLSXSheetParser.firstWorksheetPath(in: Array(entries.keys)),
-              let worksheet = entries[worksheetPath] else {
+        guard let worksheetPath = XLSXSheetParser.firstWorksheetPath(in: archive.paths),
+              let worksheet = archive.entry(named: worksheetPath) else {
             throw XLSXSheetParser.ParseError.noWorksheet
         }
 
         var strings: [String] = []
-        if let sharedEntry = entries["xl/sharedStrings.xml"] {
-            strings = XLSXSheetParser.sharedStrings(
-                from: try ZipReader.data(for: sharedEntry, in: archive))
+        if let sharedEntry = archive.entry(named: "xl/sharedStrings.xml") {
+            strings = XLSXSheetParser.sharedStrings(from: try archive.data(for: sharedEntry, limit: .max))
         }
 
         var rows = XLSXSheetParser.rows(
-            from: try ZipReader.data(for: worksheet, in: archive),
+            from: try archive.data(for: worksheet, limit: .max),
             sharedStrings: strings
         )
 

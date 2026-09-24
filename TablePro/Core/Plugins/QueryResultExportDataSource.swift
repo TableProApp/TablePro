@@ -23,30 +23,68 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryResultExportDataSource")
 
-    init(tableRows: TableRows, databaseType: DatabaseType, driver: DatabaseDriver?) {
-        self.databaseTypeId = databaseType.rawValue
-        self.columns = tableRows.columns
-        self.columnTypeNames = tableRows.columnTypes.map { $0.rawType ?? "" }
-        self.rows = tableRows.rows.map { row in Array(row.values) }
+    private init(
+        columns: [String],
+        columnTypeNames: [String],
+        rows: [[PluginCellValue]],
+        databaseTypeId: String,
+        quoteIdentifier: @escaping (String) -> String,
+        escapeStringLiteral: @escaping (String) -> String
+    ) {
+        self.databaseTypeId = databaseTypeId
+        self.columns = columns
+        self.columnTypeNames = columnTypeNames
+        self.rows = rows
+        self.quoteIdentifierFn = quoteIdentifier
+        self.escapeStringFn = escapeStringLiteral
+    }
 
+    convenience init(tableRows: TableRows, databaseType: DatabaseType, driver: DatabaseDriver?) {
+        let quoting = Self.quoting(for: databaseType, driver: driver)
+        self.init(
+            columns: tableRows.columns,
+            columnTypeNames: Self.columnTypeNames(of: tableRows),
+            rows: tableRows.rows.map { Array($0.values) },
+            databaseTypeId: databaseType.rawValue,
+            quoteIdentifier: quoting.quoteIdentifier,
+            escapeStringLiteral: quoting.escapeStringLiteral
+        )
+    }
+
+    convenience init(detachedRows tableRows: TableRows, rowIndices: [Int]? = nil, databaseTypeId: String) {
+        let rows = rowIndices.map { indices in
+            indices.filter { tableRows.rows.indices.contains($0) }.map { Array(tableRows.rows[$0].values) }
+        } ?? tableRows.rows.map { Array($0.values) }
+        self.init(
+            columns: tableRows.columns,
+            columnTypeNames: Self.columnTypeNames(of: tableRows),
+            rows: rows,
+            databaseTypeId: databaseTypeId,
+            quoteIdentifier: SQLEscaping.quoteIdentifier,
+            escapeStringLiteral: SQLEscaping.escapeStringLiteral
+        )
+    }
+
+    private static func columnTypeNames(of tableRows: TableRows) -> [String] {
+        tableRows.columnTypes.map { $0.rawType ?? "" }
+    }
+
+    private static func quoting(
+        for databaseType: DatabaseType,
+        driver: DatabaseDriver?
+    ) -> (quoteIdentifier: (String) -> String, escapeStringLiteral: (String) -> String) {
         if let driver {
-            self.quoteIdentifierFn = { driver.quoteIdentifier($0) }
-            self.escapeStringFn = { driver.escapeStringLiteral($0) }
-            return
+            return ({ driver.quoteIdentifier($0) }, { driver.escapeStringLiteral($0) })
         }
         /// `resolveSQLDialect` reads the metadata snapshot through `snapshot(for:)`, which remaps a
         /// variant onto the engine it is a variant of. An engine with no SQL dialect at all
         /// (MongoDB, Redis) reaches this only through a format that writes no SQL, so ANSI is a
         /// harmless answer there rather than a wrong one.
         guard let dialect = try? resolveSQLDialect(for: databaseType) else {
-            Self.logger.warning(
-                "No SQL dialect for \(databaseType.rawValue, privacy: .public), quoting as ANSI")
-            self.quoteIdentifierFn = SQLEscaping.quoteIdentifier
-            self.escapeStringFn = SQLEscaping.escapeStringLiteral
-            return
+            logger.warning("No SQL dialect for \(databaseType.rawValue, privacy: .public), quoting as ANSI")
+            return (SQLEscaping.quoteIdentifier, SQLEscaping.escapeStringLiteral)
         }
-        self.quoteIdentifierFn = quoteIdentifierFromDialect(dialect)
-        self.escapeStringFn = escapeStringLiteralFromDialect(dialect)
+        return (quoteIdentifierFromDialect(dialect), escapeStringLiteralFromDialect(dialect))
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

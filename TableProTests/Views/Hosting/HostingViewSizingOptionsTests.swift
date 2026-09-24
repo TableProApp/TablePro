@@ -19,7 +19,7 @@ struct HostingViewSizingOptionsTests {
     private static let pinnedHosts = [
         "TablePro/Views/Sidebar/SourceList/SidebarHostingCellView.swift",
         "TablePro/Views/Shared/FieldDrivenList.swift",
-        "TablePro/Views/Inspector/InspectorViewController.swift",
+        "TablePro/Views/DataFiles/DataFileSplitViewController.swift",
         "TablePro/Views/QueryPlan/QueryPlanOutlineCoordinator.swift",
         "TablePro/Views/UsersRoles/PrivilegeScopeOutlineCoordinator.swift",
         "TablePro/Views/Components/CheckboxOutlineView.swift",

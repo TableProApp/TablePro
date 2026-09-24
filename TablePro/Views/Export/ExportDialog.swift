@@ -34,6 +34,8 @@ struct ExportDialog: View {
     /// already holds can answer for the new format without another round trip.
     @State private var loadedObjectKinds: Set<PluginExportObjectKind> = []
 
+    @State private var dataSourceScopeId: String?
+
     @State private var profiles: [ExportProfile] = []
     @State private var profileName = ""
     @State private var isNamingProfile = false
@@ -53,26 +55,32 @@ struct ExportDialog: View {
 
     // MARK: - Mode Helpers
 
-    private var connection: DatabaseConnection {
-        switch mode {
-        case .tables(let conn, _): return conn
-        case .queryResults(let conn, _, _): return conn
-        case .streamingQuery(let conn, _, _): return conn
-        }
+    private var connection: DatabaseConnection? {
+        mode.connection
     }
 
-    private var isQueryResultsMode: Bool {
-        switch mode {
-        case .queryResults, .streamingQuery: return true
-        default: return false
-        }
+    private var exportsSingleResult: Bool {
+        !mode.listsDatabaseObjects
     }
 
-    private var queryResultsRowCount: Int {
-        if case .queryResults(_, let tableRows, _) = mode {
+    private var dataSourceRequest: DataSourceExportRequest? {
+        guard case .dataSource(let request) = mode else { return nil }
+        return request
+    }
+
+    private var selectedDataSourceScope: DataSourceExportScope? {
+        dataSourceRequest?.scope(withId: dataSourceScopeId)
+    }
+
+    private var singleResultRowCount: Int? {
+        switch mode {
+        case .queryResults(_, let tableRows, _):
             return tableRows.count
+        case .dataSource:
+            return selectedDataSourceScope?.rowCount
+        case .tables, .streamingQuery:
+            return nil
         }
-        return 0
     }
 
     private var preselection: ExportPreselection {
@@ -87,7 +95,7 @@ struct ExportDialog: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                if !isQueryResultsMode {
+                if !exportsSingleResult {
                     tableSelectionView
                         .frame(minWidth: leftPanelWidth, maxWidth: .infinity)
 
@@ -106,7 +114,7 @@ struct ExportDialog: View {
         .frame(
             minWidth: dialogWidth,
             idealWidth: dialogWidth,
-            maxWidth: isQueryResultsMode ? dialogWidth : .infinity
+            maxWidth: exportsSingleResult ? dialogWidth : .infinity
         )
         .background(Color(nsColor: .windowBackgroundColor))
         .background {
@@ -124,7 +132,10 @@ struct ExportDialog: View {
                 config.formatId = type(of: first).formatId
             }
             captureSettingsSnapshot()
-            profiles = ExportProfileStorage.shared.profiles(for: connection.id)
+            dataSourceScopeId = dataSourceRequest?.initialScope?.id
+            if case .tables(let connection, _) = mode {
+                profiles = ExportProfileStorage.shared.profiles(for: connection.id)
+            }
         }
         .onDisappear {
             if !exportSucceeded {
@@ -141,20 +152,15 @@ struct ExportDialog: View {
             }
         }
         .task {
-            if isQueryResultsMode {
-                switch mode {
-                case .queryResults(_, _, let suggestedFileName):
+            guard case .tables(let connection, _) = mode else {
+                if let suggestedFileName = mode.suggestedFileName {
                     config.fileName = suggestedFileName
-                case .streamingQuery(_, _, let suggestedFileName):
-                    config.fileName = suggestedFileName
-                default:
-                    break
                 }
                 isLoading = false
-            } else {
-                populateFromSidebarTables()
-                await loadDatabaseItems()
+                return
             }
+            populateFromSidebarTables(of: connection)
+            await loadDatabaseItems(of: connection)
         }
         .sheet(isPresented: $showProgressDialog) {
             if let exportService {
@@ -184,19 +190,10 @@ struct ExportDialog: View {
     // MARK: - Plugin Helpers
 
     private var availableFormats: [any ExportFormatPlugin] {
-        let dbTypeId = connection.type.rawValue
-        let supported = pluginManager.allExportPlugins()
-            .filter { plugin in
-                let pluginType = type(of: plugin)
-                if !pluginType.supportedDatabaseTypeIds.isEmpty {
-                    return pluginType.supportedDatabaseTypeIds.contains(dbTypeId)
-                }
-                if pluginType.excludedDatabaseTypeIds.contains(dbTypeId) {
-                    return false
-                }
-                return true
-            }
-        return ExportFormatCatalog.sorted(supported)
+        ExportFormatCatalog.available(
+            pluginManager.allExportPlugins(),
+            forDatabaseTypeId: mode.formatDatabaseTypeId
+        )
     }
 
     private var availableFormatIds: [String] {
@@ -228,7 +225,7 @@ struct ExportDialog: View {
     }
 
     private var dialogWidth: CGFloat {
-        isQueryResultsMode ? Self.optionsPanelWidth : leftPanelWidth + Self.optionsPanelWidth
+        exportsSingleResult ? Self.optionsPanelWidth : leftPanelWidth + Self.optionsPanelWidth
     }
 
     // MARK: - Table Selection View
@@ -315,8 +312,7 @@ struct ExportDialog: View {
                 Menu("Delete") {
                     ForEach(profiles) { profile in
                         Button(profile.name) {
-                            ExportProfileStorage.shared.delete(id: profile.id, for: connection.id)
-                            profiles = ExportProfileStorage.shared.profiles(for: connection.id)
+                            deleteProfile(profile)
                         }
                     }
                 }
@@ -367,7 +363,7 @@ struct ExportDialog: View {
 
     private func saveProfile() {
         let trimmed = profileName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, let connection else { return }
         let profile = ExportProfileStorage.makeProfile(
             name: trimmed, formatId: config.formatId, databases: databaseItems)
         ExportProfileStorage.shared.save(profile, for: connection.id)
@@ -376,11 +372,25 @@ struct ExportDialog: View {
         isNamingProfile = false
     }
 
+    private func deleteProfile(_ profile: ExportProfile) {
+        guard let connection else { return }
+        ExportProfileStorage.shared.delete(id: profile.id, for: connection.id)
+        profiles = ExportProfileStorage.shared.profiles(for: connection.id)
+    }
+
     // MARK: - Export Options View
 
     private var exportOptionsView: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
+                if let dataSourceRequest {
+                    Text(dataSourceRequest.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+
                 if availableFormats.isEmpty {
                     HStack {
                         Spacer()
@@ -415,15 +425,26 @@ struct ExportDialog: View {
                     }
                 }
 
+                if let dataSourceRequest, dataSourceRequest.scopes.count > 1 {
+                    Picker(String(localized: "Rows"), selection: $dataSourceScopeId) {
+                        ForEach(dataSourceRequest.scopes) { scope in
+                            Text(scope.title).tag(Optional(scope.id))
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                }
+
                 VStack(spacing: 2) {
                     if case .streamingQuery = mode {
                         Text("All rows")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                    } else if isQueryResultsMode {
-                        Text("\(queryResultsRowCount) ^[row](inflect: true) to export")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    } else if exportsSingleResult {
+                        if let singleResultRowCount {
+                            Text("\(singleResultRowCount) ^[row](inflect: true) to export")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     } else {
                         Text("\(exportableCount) ^[table](inflect: true) to export")
                             .font(.subheadline)
@@ -535,13 +556,16 @@ struct ExportDialog: View {
         if isExporting || availableFormats.isEmpty {
             return true
         }
-        if case .streamingQuery = mode {
+        switch mode {
+        case .streamingQuery:
             return false
+        case .queryResults:
+            return singleResultRowCount == 0
+        case .dataSource:
+            return selectedDataSourceScope == nil || singleResultRowCount == 0
+        case .tables:
+            return exportableCount == 0
         }
-        if isQueryResultsMode {
-            return queryResultsRowCount == 0
-        }
-        return exportableCount == 0
     }
 
     /// A format change changes which object kinds can be written. Kinds the new format cannot
@@ -549,11 +573,11 @@ struct ExportDialog: View {
     /// what makes a reload worth its round trips.
     @MainActor
     private func reconcileObjectKindsForFormat() async {
-        guard !isQueryResultsMode else { return }
+        guard case .tables(let connection, _) = mode else { return }
         let wanted = supportedObjectKinds
         guard !loadedObjectKinds.isEmpty else { return }
         guard wanted.isSubset(of: loadedObjectKinds) else {
-            await loadDatabaseItems()
+            await loadDatabaseItems(of: connection)
             return
         }
         databaseItems = databaseItems.compactMap { database in
@@ -614,6 +638,7 @@ struct ExportDialog: View {
     private func reportExportFinished(_ outcome: OperationOutcome) {
         guard let startedAt = exportStartedAt else { return }
         exportStartedAt = nil
+        guard let connection else { return }
         OperationCompletionReporter.shared.report(
             OperationCompletion(
                 kind: .dataExport,
@@ -630,7 +655,7 @@ struct ExportDialog: View {
     /// The sidebar lists exactly what the export scope already points at, so the rows carry
     /// no qualifier. Naming the database here would reach the export data source as a schema
     /// on the engines that group by schema, which is a different container.
-    private func populateFromSidebarTables() {
+    private func populateFromSidebarTables(of connection: DatabaseConnection) {
         guard !sidebarTables.isEmpty else { return }
         /// These rows are the sidebar's, so they belong to the database being browsed. When the
         /// dialog is scoped somewhere else they are the wrong tables under the right name, and a
@@ -666,14 +691,14 @@ struct ExportDialog: View {
     }
 
     @MainActor
-    private func loadDatabaseItems() async {
+    private func loadDatabaseItems(of connection: DatabaseConnection) async {
         let priorRows = ExportTreeBuilder.snapshots(of: databaseItems)
         do {
-            let items = try await treeBuilder.build(priorRows: priorRows)
+            let items = try await treeBuilder(for: connection).build(priorRows: priorRows)
             loadedObjectKinds = supportedObjectKinds
             databaseItems = normalizedForCurrentFormat(items)
             isLoading = false
-            applyDefaultFileName()
+            applyDefaultFileName(for: connection)
         } catch is CancellationError {
             isLoading = false
         } catch {
@@ -696,7 +721,7 @@ struct ExportDialog: View {
         ExportDriverMetadataReader(scope: exportScope)
     }
 
-    private var treeBuilder: ExportTreeBuilder {
+    private func treeBuilder(for connection: DatabaseConnection) -> ExportTreeBuilder {
         ExportTreeBuilder(
             connection: connection,
             exportDatabaseName: exportDatabaseName,
@@ -706,7 +731,7 @@ struct ExportDialog: View {
         )
     }
 
-    private func applyDefaultFileName() {
+    private func applyDefaultFileName(for connection: DatabaseConnection) {
         if let singleTable = preselection.singleTableName {
             config.fileName = singleTable
         } else if preselection.containerNames.count == 1, let container = preselection.containerNames.first {
@@ -752,7 +777,7 @@ struct ExportDialog: View {
         let response = await savePanel.presentAsSheet(for: window)
         guard response == .OK, let url = savePanel.url else { return }
 
-        if isQueryResultsMode {
+        if exportsSingleResult {
             await startQueryResultsExport(to: url)
         } else {
             await startExport(to: url)
@@ -765,9 +790,13 @@ struct ExportDialog: View {
         if case .streamingQuery = mode {
             return String(format: String(localized: "Export query results to %@"), formatName)
         }
-        let count = isQueryResultsMode ? queryResultsRowCount : exportableCount
+        let knownCount = exportsSingleResult ? singleResultRowCount : exportableCount
+        guard let count = knownCount else {
+            let subject = dataSourceRequest?.title ?? config.fileName
+            return String(format: String(localized: "Export %1$@ to %2$@"), subject, formatName)
+        }
         let template: String
-        if isQueryResultsMode {
+        if exportsSingleResult {
             template = count == 1
                 ? String(localized: "Export %1$lld row to %2$@")
                 : String(localized: "Export %1$lld rows to %2$@")
@@ -783,12 +812,13 @@ struct ExportDialog: View {
     /// was opened against, and `resolvedScope` falls back to where the user is browsing when
     /// that connection has no database of its own.
     private var exportScope: DatabaseScope? {
-        DatabaseManager.shared.resolvedScope(database: connection.database, schema: nil, for: connection.id)
+        guard let connection else { return nil }
+        return DatabaseManager.shared.resolvedScope(database: connection.database, schema: nil, for: connection.id)
     }
 
     /// The name of that database, for the container refs the preselection is matched against.
     private var exportDatabaseName: String {
-        exportScope?.database ?? connection.database
+        exportScope?.database ?? connection?.database ?? ""
     }
 
     private func showExportError(_ error: Error) {
@@ -802,7 +832,7 @@ struct ExportDialog: View {
 
     @MainActor
     private func startExport(to url: URL) async {
-        guard let scope = exportScope else {
+        guard let scope = exportScope, let connection else {
             showExportError(ExportError.notConnected)
             return
         }
@@ -820,7 +850,7 @@ struct ExportDialog: View {
                 workload: .bulk,
                 cancellation: .untracked
             ) { driver in
-                try await runTableExport(on: driver, to: url)
+                try await runTableExport(on: driver, databaseType: connection.type, to: url)
             }
 
             showProgressDialog = false
@@ -846,15 +876,20 @@ struct ExportDialog: View {
     /// the database the dialog was opened for rather than wherever the shared driver was
     /// last parked by another tab.
     @MainActor
-    private func runTableExport(on driver: DatabaseDriver, to url: URL) async throws {
-        let service = ExportService(driver: driver, databaseType: connection.type)
+    private func runTableExport(on driver: DatabaseDriver, databaseType: DatabaseType, to url: URL) async throws {
+        let service = ExportService(driver: driver, databaseType: databaseType)
         exportService = service
         try await service.export(objects: exportableObjects, config: config, to: url)
     }
 
     @MainActor
-    private func runStreamingExport(on driver: DatabaseDriver, query: String, to url: URL) async throws {
-        let service = ExportService(driver: driver, databaseType: connection.type)
+    private func runStreamingExport(
+        on driver: DatabaseDriver,
+        databaseType: DatabaseType,
+        query: String,
+        to url: URL
+    ) async throws {
+        let service = ExportService(driver: driver, databaseType: databaseType)
         exportService = service
         try await service.exportStreamingQuery(query: query, config: config, to: url)
     }
@@ -868,7 +903,7 @@ struct ExportDialog: View {
 
         do {
             switch mode {
-            case .streamingQuery(_, let query, _):
+            case .streamingQuery(let connection, let query, _):
                 guard let scope = exportScope else { throw ExportError.notConnected }
                 let route = DatabaseManager.shared.executionRoute(for: scope)
                 try await DatabaseManager.shared.withScopedDriver(
@@ -877,16 +912,21 @@ struct ExportDialog: View {
                     workload: .bulk,
                     cancellation: .untracked
                 ) { driver in
-                    try await runStreamingExport(on: driver, query: query, to: url)
+                    try await runStreamingExport(on: driver, databaseType: connection.type, query: query, to: url)
                 }
-            case .queryResults(_, let tableRows, _):
+            case .queryResults(let connection, let tableRows, _):
                 let service = ExportService(
                     queryResultsDriver: DatabaseManager.shared.driver(for: connection.id),
                     databaseType: connection.type
                 )
                 exportService = service
                 try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
-            default:
+            case .dataSource:
+                guard let scope = selectedDataSourceScope else { throw ExportError.noTablesSelected }
+                let service = ExportService()
+                exportService = service
+                try await service.export(dataSource: scope.makeDataSource(), config: config, to: url)
+            case .tables:
                 showProgressDialog = false
                 isExporting = false
                 exportStartedAt = nil

@@ -147,12 +147,8 @@ final class MainContentCommandActions: ObservableObject {
         _ publisher: PassthroughSubject<Payload, Never>,
         handler: @escaping @MainActor (Payload) -> Void
     ) {
-        publisher
-            .receive(on: RunLoop.main)
-            .sink { [weak self] payload in
-                guard self?.isVisibleInKeyWindow() == true else { return }
-                handler(payload)
-            }
+        KeyWindowCommandSubscription
+            .sink(publisher, when: { [weak self] in self?.isVisibleInKeyWindow() == true }, perform: handler)
             .store(in: &eventCancellables)
     }
 

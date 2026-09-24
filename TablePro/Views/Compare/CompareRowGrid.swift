@@ -203,7 +203,8 @@ internal struct CompareRowGrid: View {
                 databaseType: session.source?.databaseType,
                 showRowNumbers: false,
                 checkboxColumns: [CompareRowGridModel.includeColumn],
-                supportsColumnCommands: false
+                supportsColumnCommands: false,
+                supportsValueFilter: false
             ),
             delegate: model,
             selectedRowIndices: $selectedRows,

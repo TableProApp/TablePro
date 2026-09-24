@@ -31,7 +31,7 @@ struct AppActivationPolicyTests {
         #expect(LaunchIntent.openConnection(UUID()).impliesUserInterface)
         #expect(LaunchIntent.openQuery(connectionId: UUID(), sql: "SELECT 1").impliesUserInterface)
         #expect(LaunchIntent.openSQLFile(URL(fileURLWithPath: "/tmp/q.sql")).impliesUserInterface)
-        #expect(LaunchIntent.openInspectorFile(URL(fileURLWithPath: "/tmp/rows.csv")).impliesUserInterface)
+        #expect(LaunchIntent.openDataFile(URL(fileURLWithPath: "/tmp/rows.csv")).impliesUserInterface)
         #expect(LaunchIntent.openConnectionShare(URL(string: "tablepro://share")!).impliesUserInterface)
         #expect(LaunchIntent.installPlugin(URL(string: "tablepro://plugin")!).impliesUserInterface)
         #expect(

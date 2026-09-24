@@ -5,7 +5,7 @@
 //  The connection window's panes carry no decorative dot and no middle-dot separator. Both read as
 //  generated rather than designed, and there were five: an unsaved-edit marker drawn as a coloured
 //  circle, the chat's typing indicator drawn as three of them, a middle dot between the counts in
-//  the CSV inspector's status bar, and in the query history drawer a connection dot and two more
+//  the data file window's status bar, and in the query history drawer a connection dot and two more
 //  middle dots. Status is an SF Symbol or words; separation is space.
 //
 
@@ -24,7 +24,7 @@ struct TrailingPaneHouseRuleTests {
 
     private static let scannedTrees = [
         "TablePro/Views/RowInspector",
-        "TablePro/Views/Inspector",
+        "TablePro/Views/DataFiles",
         "TablePro/Views/AIChat",
         /// Agent mode's result column is the third trailing surface, and its rail and conversation
         /// answer to the same rule: the session on screen is marked with a glyph, not with a dot.

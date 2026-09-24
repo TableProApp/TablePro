@@ -103,7 +103,6 @@ final class PluginManager: ObservableObject {
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19
-    nonisolated static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
@@ -182,8 +181,6 @@ final class PluginManager: ObservableObject {
 
     @Published internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
 
-    @Published internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
-
     @Published internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
     var disabledPluginIds: Set<String> {
@@ -198,9 +195,6 @@ final class PluginManager: ObservableObject {
     private(set) var lazyDriverURLs: [String: URL] = [:]
     private var lazyExportURLs: [String: URL] = [:]
     private var lazyImportURLs: [String: URL] = [:]
-    internal var lazyInspectorURLs: [String: URL] = [:]
-    internal var lazyInspectorFileExtensions: [String: URL] = [:]
-    internal var lazyInspectorUTIs: [String: URL] = [:]
     private var activatedBundleIds: Set<String> = []
 
     internal var reconciliationTask: Task<Void, Never>?
@@ -411,7 +405,6 @@ final class PluginManager: ObservableObject {
         if !manifest.providedDatabaseTypeIds.isEmpty { capabilities.append(.databaseDriver) }
         if !manifest.providedExportFormatIds.isEmpty { capabilities.append(.exportFormat) }
         if !manifest.providedImportFormatIds.isEmpty { capabilities.append(.importFormat) }
-        if !manifest.providedInspectorIds.isEmpty { capabilities.append(.documentInspector) }
 
         let info = bundle.infoDictionary ?? [:]
         let version = (info["CFBundleShortVersionString"] as? String) ?? "0.0.0"
@@ -437,8 +430,7 @@ final class PluginManager: ObservableObject {
             pluginIconName: pluginIconName,
             defaultPort: defaultPort,
             exportFormatId: manifest.providedExportFormatIds.first,
-            importFormatId: manifest.providedImportFormatIds.first,
-            inspectorId: manifest.providedInspectorIds.first
+            importFormatId: manifest.providedImportFormatIds.first
         )
         plugins.append(entry)
 
@@ -451,16 +443,7 @@ final class PluginManager: ObservableObject {
         for formatId in manifest.providedImportFormatIds {
             lazyImportURLs[formatId] = url
         }
-        for inspectorId in manifest.providedInspectorIds {
-            lazyInspectorURLs[inspectorId] = url
-        }
-        for ext in manifest.providedInspectorFileExtensions {
-            lazyInspectorFileExtensions[ext.lowercased()] = url
-        }
-        for uti in manifest.providedInspectorUTIs {
-            lazyInspectorUTIs[uti] = url
-        }
-        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds), inspectors=\(manifest.providedInspectorIds)")
+        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds)")
     }
 
     /// Takes back everything `registerLazyManifest` published for this bundle, so a plugin the app
@@ -487,16 +470,13 @@ final class PluginManager: ObservableObject {
 
     /// Rebuilt from the surviving manifests rather than filtered by URL.
     ///
-    /// Two bundles may declare the same driver, format or inspector key, and the one registered
+    /// Two bundles may declare the same driver or format key, and the one registered
     /// last owns it. Deleting the withdrawn bundle's keys would take the shared key with it and
     /// leave the valid plugin listed but unreachable for the rest of the process.
     private func rebuildLazyRegistrations() {
         lazyDriverURLs = [:]
         lazyExportURLs = [:]
         lazyImportURLs = [:]
-        lazyInspectorURLs = [:]
-        lazyInspectorFileExtensions = [:]
-        lazyInspectorUTIs = [:]
 
         for entry in plugins {
             guard let bundle = Bundle(url: entry.url),
@@ -510,15 +490,6 @@ final class PluginManager: ObservableObject {
             }
             for formatId in manifest.providedImportFormatIds {
                 lazyImportURLs[formatId] = entry.url
-            }
-            for inspectorId in manifest.providedInspectorIds {
-                lazyInspectorURLs[inspectorId] = entry.url
-            }
-            for ext in manifest.providedInspectorFileExtensions {
-                lazyInspectorFileExtensions[ext.lowercased()] = entry.url
-            }
-            for uti in manifest.providedInspectorUTIs {
-                lazyInspectorUTIs[uti] = entry.url
             }
         }
     }
@@ -541,22 +512,12 @@ final class PluginManager: ObservableObject {
         activateLazyBundle(at: url)
     }
 
-    func activateInspector(id: String) {
-        guard inspectorPlugins[id] == nil else { return }
-        guard let url = lazyInspectorURLs[id] else { return }
-        activateLazyBundle(at: url)
-    }
-
     func allLazyExportFormatIds() -> [String] {
         Array(lazyExportURLs.keys)
     }
 
     func allLazyImportFormatIds() -> [String] {
         Array(lazyImportURLs.keys)
-    }
-
-    func allLazyInspectorIds() -> [String] {
-        Array(lazyInspectorURLs.keys)
     }
 
     func activateLazyBundle(at url: URL) {
@@ -629,44 +590,23 @@ final class PluginManager: ObservableObject {
 
     nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
         let infoPlist = bundle.infoDictionary ?? [:]
-        let declaredPluginKit = infoPlist["TableProPluginKitVersion"] as? Int
-        let declaredInspectorKit = infoPlist["TableProInspectorKitVersion"] as? Int
-
-        if declaredPluginKit == nil && declaredInspectorKit == nil {
+        guard let version = infoPlist["TableProPluginKitVersion"] as? Int else {
             throw PluginError.pluginOutdated(
                 pluginVersion: 0,
                 requiredVersion: currentPluginKitVersion
             )
         }
-
-        if let version = declaredPluginKit {
-            if version > currentPluginKitVersion {
-                throw PluginError.incompatibleVersion(
-                    required: version,
-                    current: currentPluginKitVersion
-                )
-            }
-            if version < minimumCompatiblePluginKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: version,
-                    requiredVersion: currentPluginKitVersion
-                )
-            }
+        if version > currentPluginKitVersion {
+            throw PluginError.incompatibleVersion(
+                required: version,
+                current: currentPluginKitVersion
+            )
         }
-
-        if let version = declaredInspectorKit {
-            if version > currentInspectorKitVersion {
-                throw PluginError.incompatibleVersion(
-                    required: version,
-                    current: currentInspectorKitVersion
-                )
-            }
-            if version < currentInspectorKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: version,
-                    requiredVersion: currentInspectorKitVersion
-                )
-            }
+        if version < minimumCompatiblePluginKitVersion {
+            throw PluginError.pluginOutdated(
+                pluginVersion: version,
+                requiredVersion: currentPluginKitVersion
+            )
         }
 
         if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
@@ -776,7 +716,6 @@ final class PluginManager: ObservableObject {
         let driverType = principalClass as? any DriverPlugin.Type
         let exportType = principalClass as? any ExportFormatPlugin.Type
         let importType = principalClass as? any ImportFormatPlugin.Type
-        let inspectorType = principalClass as? any DocumentInspectorPlugin.Type
 
         let disabled = disabledPluginIds
         let version: String
@@ -801,8 +740,7 @@ final class PluginManager: ObservableObject {
             pluginIconName: driverType?.iconName ?? "puzzlepiece",
             defaultPort: driverType?.defaultPort,
             exportFormatId: exportType?.formatId,
-            importFormatId: importType?.formatId,
-            inspectorId: inspectorType?.inspectorId
+            importFormatId: importType?.formatId
         )
 
         plugins.append(entry)
@@ -1062,9 +1000,6 @@ final class PluginManager: ObservableObject {
         }
         if let formatId = entry.importFormatId {
             importPlugins.removeValue(forKey: formatId)
-        }
-        if let inspectorId = entry.inspectorId {
-            inspectorPlugins.removeValue(forKey: inspectorId)
         }
     }
 }

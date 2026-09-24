@@ -16,6 +16,7 @@ internal struct InspectorFieldListView: View {
     internal let isEditable: Bool
     internal let databaseType: DatabaseType
     internal let userDefinedTypeScope: DatabaseScope?
+    internal var offersDatabaseValues = true
     internal var onPopOut: ((FieldEditState, String, FieldEditorKind) -> Void)?
 
     @State private var searchText = ""
@@ -190,7 +191,7 @@ internal struct InspectorFieldListView: View {
                 ? { editState.setFieldToBytes(at: field.columnIndex, data: $0) }
                 : nil,
             editor: kind,
-            allowsNullAndDefault: !field.isSchemaField,
+            allowsNullAndDefault: offersDatabaseValues && !field.isSchemaField,
             showsTypeBadge: !field.isSchemaField,
             userDefinedTypeScope: field.isSchemaField ? userDefinedTypeScope : nil
         )
@@ -221,6 +222,7 @@ internal struct InspectorFieldListView: View {
 
     private func applyStateShortcut(_ key: Character) -> KeyPressResultCompat {
         guard isEditable,
+              offersDatabaseValues,
               let focusedField,
               let field = editState.fields.first(where: { $0.id == focusedField }),
               !field.isSchemaField,

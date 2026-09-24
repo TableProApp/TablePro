@@ -250,22 +250,18 @@ extension MainContentCoordinator {
     /// nil too: a panel that enables every file and then refuses all of them is a dead end.
     private func offeredImportFormats() -> [ImportFormatOption]? {
         guard !safeModeLevel.blocksAllWrites else { return nil }
-        guard PluginManager.shared.supportsImport(for: connection.type) else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Import Not Supported"),
-                message: String(format: String(localized: "Import is not supported for %@ connections."), connection.type.rawValue),
-                window: contentWindow
-            )
+        guard importFormatLookup.supportsImport(connection.type) else {
+            reportImportRefusal(.importNotSupported(connection.type))
             return nil
         }
-        let options = PluginManager.shared.importFormatOptions(for: connection.type)
+        let options = importFormatLookup.offeredFormats(connection.type)
         return options.isEmpty ? nil : options
     }
 
     private func presentImportSheet(fileURL: URL, formatId: String) {
-        guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else { return }
-        importFileURL = fileURL
-        switch ImportRouting.route(formatId: formatId, requiresTargetTable: type(of: plugin).requiresTargetTable) {
+        guard let requiresTargetTable = importFormatLookup.requiresTargetTable(formatId) else { return }
+        importFile = ImportFileHandoff(url: fileURL, ownsFile: false)
+        switch ImportRouting.route(formatId: formatId, requiresTargetTable: requiresTargetTable) {
         case .statement(let id): activeSheet = .importDialog(formatId: id)
         case .rowMapping(let id): activeSheet = .rowImport(formatId: id)
         }

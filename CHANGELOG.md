@@ -59,6 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GO` batch separators in SQL Server scripts, and a result tab for every result set a batch returns. (#3078)
 - SQL Server `PRINT` output and informational messages in the **Output** result view.
 - **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command.
+- **Data Files** window for CSV, TSV, pipe-separated, `.txt` and `.dat` files, replacing the CSV inspector.
+- JSON and JSON Lines files opened and edited as a table, with nested values kept as JSON text.
+- Excel `.xlsx` workbooks opened read-only, one tab per sheet.
+- Compressed data files such as `.csv.gz` opened read-only.
+- Find & Replace across a whole data file, with Match Case, Whole Words and regular expressions.
+- **Search All Columns** in the data file window's toolbar.
+- Column statistics for a data file, with top values that filter the file when clicked.
+- Row Details pane in data file windows on ⌥⌘I.
+- **Edit > Data** cleanup: Fill Down, Set Cells to Value, Trim Whitespace, Change Case, Replace in Column, Remove Duplicate Rows.
+- Export from a data file window to every bundled format, for all, filtered or selected rows.
+- **Import into Table** from a data file window, into an open connection's import sheet.
+- **Text Encoding** in a data file's Save As panel.
 
 ### Changed
 
@@ -77,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - One header for the Inspector and the Assistant, with a picker between them and their commands in its menu.
 - **Fields** / **JSON** and the JSON view's options moved into the Inspector's header menu.
 - Pencil for the Inspector's unsaved-edit marker and a spinner for the AI chat's typing indicator.
-- Middle-dot separators dropped from the CSV inspector's status bar and the query history rows.
+- Middle-dot separators dropped from the query history rows.
 - Connection marked with a tinted symbol rather than a color dot in the query history rows.
 - Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
 - DynamoDB maps, lists and sets shown as plain JSON and edited in the JSON editor.
@@ -99,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Selection or the statement at the cursor, not the whole tab, as what **Explain with AI** and **Optimize with AI** send.
 - Explain and Optimize with AI in the editor's context menu without a selection.
 - Tables for the MCP `review_query` and `propose_indexes` prompts read from the SQL, up to 12, with the ones not found named.
+- Data file windows filtering with the table grid's filter bar: 18 operators, **Match all** or **Match any**, typed comparisons and presets.
+- ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
+- Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
+- `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
 
 ### Removed
 
@@ -107,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Throughput readout in the toolbar; the connection switcher still shows it.
 - Back, Forward, New Tab, Open Quickly, Add Row and Restore Previous Values from the default toolbar.
 - Toolbar **Assistant** button; the trailing pane's own picker chooses between the inspector and the assistant.
+- CSV Inspector plugin; the Data Files window took its place.
 
 ### Fixed
 
@@ -459,6 +476,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/fix` sending the result grid in place of the query's error.
 - AI query commands enabled on a connection whose AI access is **Never**.
 - The chat message after a declined AI request answered as a SQL rewrite.
+- Rows merged on save when a CSV file did not end with a line break.
+- Rows saved empty when a value held a character the file's encoding cannot store.
+- Column names added in the CSV inspector dropped on save.
+- UTF-16 CSV files read as garbage, and saving them corrupting the file.
+- `.tsv` files opened as comma-separated, and **Save As** TSV writing commas.
+- Edits and deletes under a filter or sort landing on a different row.
+- Filters and sorts pointing at the wrong column after a column was inserted or deleted.
+- Fields past the first row's column count hidden, and dropped by undo.
+- Delimiter guessed differently on each open when two delimiters tied.
+- **Reload** in the CSV inspector showing the file as first opened.
+- Renaming a column in a file without a header row doing nothing.
+- Values such as `NaN`, `inf` and `0x1F` read as numbers, breaking sort.
+- Grid commands enabled in the CSV inspector that did nothing.
+- Changing a filter or sort leaving the CSV inspector on a later page.
+- CSV inspector windows always opening as tabs, ignoring the system's tab setting.
 
 ### Security
 
