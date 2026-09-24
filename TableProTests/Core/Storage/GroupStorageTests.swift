@@ -4,10 +4,10 @@
 //
 
 import Combine
-import TableProPluginKit
 @testable import TablePro
-import XCTest
+import TableProPluginKit
 import TableProSyncTransport
+import XCTest
 
 @MainActor
 final class GroupStorageTests: XCTestCase {
@@ -27,9 +27,9 @@ final class GroupStorageTests: XCTestCase {
         try await super.setUp()
         let unique = UUID().uuidString
         suiteName = "com.TablePro.tests.GroupStorage.\(unique)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         syncSuiteName = "com.TablePro.tests.Sync.\(unique)"
-        syncDefaults = UserDefaults(suiteName: syncSuiteName)!
+        syncDefaults = try XCTUnwrap(UserDefaults(suiteName: syncSuiteName))
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
         connectionFileURL = FileManager.default.temporaryDirectory
@@ -359,8 +359,6 @@ final class GroupStorageTests: XCTestCase {
         XCTAssertEqual(storage.loadGroups().map(\.id), [b.id])
     }
 
-    /// saveGroups marks every group dirty and the push uploads every dirty group, so writing a
-    /// record that changed nothing re-uploads the whole list to the device it came from.
     func testApplyingAnUnchangedRemoteGroupWritesNothing() throws {
         let group = ConnectionGroup(name: "Shared", color: .green)
         try storage.addGroup(group)

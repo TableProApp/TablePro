@@ -83,6 +83,9 @@ public struct SQLLexicalFeatures: OptionSet, Sendable, Hashable {
 
     /// A carriage return on its own ends a line comment.
     public static let carriageReturnEndsLineComments = SQLLexicalFeatures(rawValue: 1 << 21)
+
+    /// A line holding only `GO` ends the batch, as sqlcmd reads it.
+    public static let batchSeparatorLines = SQLLexicalFeatures(rawValue: 1 << 22)
 }
 
 /// The lexical facts a driver's session settled, such as MySQL's `NO_BACKSLASH_ESCAPES` from the status flags of the

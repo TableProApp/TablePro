@@ -60,6 +60,18 @@ struct TabQueryContentEqualityTests {
         #expect(a != b)
     }
 
+    @Test("sourceFileEncoding participates in equality")
+    func sourceFileEncodingEquality() {
+        var a = TabQueryContent(query: "Q")
+        var b = TabQueryContent(query: "Q")
+        a.sourceFileEncoding = .utf8
+        #expect(a != b)
+        b.sourceFileEncoding = .utf8
+        #expect(a == b)
+        b.sourceFileEncoding = FileTextEncoding(encoding: .utf16, byteOrderMark: .utf16BigEndian)
+        #expect(a != b)
+    }
+
     @Test("Value semantics: mutating a copy does not change the original")
     func valueSemantics() {
         let a = TabQueryContent(query: "original")

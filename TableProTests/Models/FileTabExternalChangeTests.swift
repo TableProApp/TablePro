@@ -143,7 +143,7 @@ struct FileTabExternalChangeTests {
         var tab = hydratedTab(for: url)
 
         try "SELECT 1 -- saved".write(to: url, atomically: true, encoding: .utf8)
-        FileTabBaseline.recordWrite(of: "SELECT 1 -- saved", to: url, in: &tab.content)
+        FileTabBaseline.recordWrite(of: "SELECT 1 -- saved", to: url, as: .utf8, in: &tab.content)
 
         #expect(tab.content.savedFileContent == "SELECT 1 -- saved")
         #expect(FileTabBaseline.diskChange(in: tab.content) == nil)
@@ -184,5 +184,32 @@ struct FileTabExternalChangeTests {
         let state = SessionStateFactory.create(connection: connection, payload: payload)
         defer { state.coordinator.teardown() }
         #expect(state.tabManager.tabs.first?.content.savedFileStamp == loaded.stamp)
+    }
+
+    @Test("The file's encoding travels with the payload that opens the tab")
+    func payloadCarriesTheEncoding() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("external-change-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fixture = EncodedSQLFileFixture.shiftJISByAttribute
+        try fixture.write(fixture.original, to: url)
+        let loaded = try #require(FileTextLoader.load(url))
+        #expect(loaded.textEncoding.attribute != nil)
+        let connection = TestFixtures.makeConnection()
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .query,
+            initialQuery: loaded.content,
+            sourceFileURL: url,
+            sourceFileStamp: loaded.stamp,
+            sourceFileEncoding: loaded.textEncoding
+        )
+
+        let decoded = try JSONDecoder().decode(EditorTabPayload.self, from: JSONEncoder().encode(payload))
+        #expect(decoded.sourceFileEncoding == loaded.textEncoding)
+
+        let state = SessionStateFactory.create(connection: connection, payload: payload)
+        defer { state.coordinator.teardown() }
+        #expect(state.tabManager.tabs.first?.content.sourceFileEncoding == loaded.textEncoding)
     }
 }

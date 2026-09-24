@@ -25,6 +25,7 @@ struct QueryCommandAvailability {
     /// moment it was the command the reader wanted.
     let canOpenRunMenu: Bool
     let explainVariants: [ExplainVariant]
+    let aiActions: AIQueryActionAvailability
 
     /// Every hint the bar shows, resolved here so a disabled control can say why rather than just
     /// dimming. A control that dims without explaining is the one thing a reader cannot act on.
@@ -33,6 +34,7 @@ struct QueryCommandAvailability {
     let explainHint: String
     let formatHint: String
     let favoriteHint: String
+    let aiReviewHint: String
 
     /// `isStoppable` is separate from `isExecuting` because a batch whose `COMMIT` is on the wire is
     /// still running and can no longer be stopped by anything: the HIG asks not to offer a cancel
@@ -44,9 +46,12 @@ struct QueryCommandAvailability {
         isStoppable: Bool,
         hasResults: Bool,
         explainVariants: [ExplainVariant],
+        aiActions: AIQueryActionAvailability = .hidden,
         shortcutHint: (String, ShortcutAction) -> String
     ) {
         self.explainVariants = explainVariants
+        self.aiActions = aiActions
+        aiReviewHint = aiActions.hint(base: shortcutHint(AIQueryAction.review.menuTitle, .aiReviewQuery))
         canRun = isConnected && hasQueryText && !isExecuting
         canStop = isExecuting && isStoppable
         canExplain = Self.canExplain(

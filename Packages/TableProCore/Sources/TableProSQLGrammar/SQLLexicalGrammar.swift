@@ -82,6 +82,10 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// A carriage return on its own ends a line comment, as a line feed does.
     public static let carriageReturnEndsLineComments = SQLLexicalGrammar(rawValue: 1 << 21)
 
+    /// A line holding only `GO` ends the batch, as sqlcmd and SQL Server Management Studio read it; the server never
+    /// sees it. The line may add a repeat count and a `--` comment, and nothing else.
+    public static let batchSeparatorLines = SQLLexicalGrammar(rawValue: 1 << 22)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

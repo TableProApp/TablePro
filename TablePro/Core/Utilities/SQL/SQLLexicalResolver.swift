@@ -76,6 +76,7 @@ extension SQLLexicalGrammar {
         (.parenthesizedParameterNames, .parenthesizedParameterNames),
         (.doubledClosingBracketEscapes, .doubledClosingBracketEscapes),
         (.carriageReturnEndsLineComments, .carriageReturnEndsLineComments),
+        (.batchSeparatorLines, .batchSeparatorLines),
     ]
 
     init(pluginFeatures: SQLLexicalFeatures) {

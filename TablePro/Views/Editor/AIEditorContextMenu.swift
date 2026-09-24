@@ -9,12 +9,10 @@ import AppKit
 
 /// Context menu for the SQL editor that adds AI features alongside standard editing items
 final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
-    /// Closure provided by the coordinator to check if text is selected
-    var hasSelection: (() -> Bool)?
     var selectedText: (() -> String?)?
     var fullText: (() -> String?)?
-    var onExplainWithAI: ((String) -> Void)?
-    var onOptimizeWithAI: ((String) -> Void)?
+    var aiAvailability: (() -> AIQueryActionAvailability)?
+    var onAIAction: ((AIQueryAction) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var onFormatSQL: (() -> Void)?
     /// Whether the cursor sits inside a collapsed fold. `nil` when there is no fold at the cursor.
@@ -92,40 +90,28 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         saveAsFavItem.isEnabled = (fullText?()?.isEmpty == false)
         menu.addItem(saveAsFavItem)
 
-        // AI items — only when text is selected
-        guard AppSettingsManager.shared.ai.enabled, hasSelection?() == true else { return }
+        guard onAIAction != nil, aiAvailability?().isEnabled == true else { return }
 
         menu.addItem(.separator())
+        for action in AIQueryAction.editorActions {
+            menu.addItem(Self.aiMenuItem(for: action, target: self))
+        }
+    }
 
-        let explainItem = NSMenuItem(
-            title: String(localized: "Explain with AI"),
-            action: #selector(handleExplainWithAI),
-            keyEquivalent: ""
-        )
-        explainItem.target = self
-        explainItem.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
-        menu.addItem(explainItem)
-
-        let optimizeItem = NSMenuItem(
-            title: String(localized: "Optimize with AI"),
-            action: #selector(handleOptimizeWithAI),
-            keyEquivalent: ""
-        )
-        optimizeItem.target = self
-        optimizeItem.image = NSImage(systemSymbolName: "bolt", accessibilityDescription: nil)
-        menu.addItem(optimizeItem)
+    private static func aiMenuItem(for action: AIQueryAction, target: AIEditorContextMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: action.menuTitle, action: #selector(handleAIAction(_:)), keyEquivalent: "")
+        item.target = target
+        item.representedObject = action.rawValue
+        item.image = NSImage(systemSymbolName: action.systemImage, accessibilityDescription: nil)
+        return item
     }
 
     // MARK: - AI Actions
 
-    @objc private func handleExplainWithAI() {
-        guard let text = selectedText?() else { return }
-        onExplainWithAI?(text)
-    }
-
-    @objc private func handleOptimizeWithAI() {
-        guard let text = selectedText?() else { return }
-        onOptimizeWithAI?(text)
+    @objc private func handleAIAction(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let action = AIQueryAction(rawValue: rawValue) else { return }
+        onAIAction?(action)
     }
 
     @objc private func handleToggleFold() {

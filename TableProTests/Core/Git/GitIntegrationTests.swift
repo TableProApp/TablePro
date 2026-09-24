@@ -265,4 +265,49 @@ struct GitIntegrationTests {
         await #expect(throws: VersionHistoryError.fileChangedBeforeWriting) { try await plan.apply() }
         #expect(try repo.read("q.sql") == "edited\n")
     }
+
+    @Test("A file whose encoding macOS recorded reads its past versions in that encoding and keeps it through a restore")
+    func restoreKeepsTheRecordedEncoding() async throws {
+        let repo = try ScratchRepository(client: client)
+        defer { repo.remove() }
+        let fixture = EncodedSQLFileFixture.shiftJISByAttribute
+        let url = repo.url("japanese.sql")
+        try await repo.git("init", "-q")
+        try fixture.write(fixture.original, to: url)
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-qm", "first")
+        try fixture.write(fixture.edited, to: url)
+        try await repo.git("commit", "-qam", "second")
+        let provider = LinkedFileVersionHistoryProvider(fileURL: url)
+        let first = try #require(try await provider.loadHistory().entries.last)
+
+        #expect(try await provider.content(of: first.reference) == fixture.original)
+
+        try await provider.prepareRestore(first.reference).apply()
+
+        #expect(try Data(contentsOf: url) == fixture.bytes(of: fixture.original))
+        #expect(EncodedSQLFileFixture.attributeValue(of: url) == fixture.attributeValue)
+        let reloaded = try #require(FileTextLoader.load(url))
+        #expect(reloaded.encoding == .shiftJIS)
+        #expect(reloaded.content == fixture.original)
+    }
+
+    @Test("Discarding changes to a file whose encoding macOS recorded keeps that encoding")
+    func discardKeepsTheRecordedEncoding() async throws {
+        let repo = try ScratchRepository(client: client)
+        defer { repo.remove() }
+        let fixture = EncodedSQLFileFixture.windowsCyrillicByAttribute
+        let url = repo.url("cyrillic.sql")
+        try await repo.git("init", "-q")
+        try fixture.write(fixture.original, to: url)
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-qm", "first")
+        try fixture.write(fixture.edited, to: url)
+
+        try await LinkedFileVersionHistoryProvider(fileURL: url).prepareDiscard().apply()
+
+        #expect(try Data(contentsOf: url) == fixture.bytes(of: fixture.original))
+        #expect(EncodedSQLFileFixture.attributeValue(of: url) == fixture.attributeValue)
+        #expect(FileTextLoader.load(url)?.content == fixture.original)
+    }
 }

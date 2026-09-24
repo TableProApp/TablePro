@@ -2,8 +2,6 @@
 //  AIChatViewModelActionTests.swift
 //  TableProTests
 //
-//  Tests for AI action dispatch methods on AIChatViewModel.
-//
 
 import Foundation
 import TableProPluginKit
@@ -11,147 +9,246 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AIChatViewModel Action Dispatch")
+@Suite("AIChatViewModel Query Actions")
 @MainActor
 struct AIChatViewModelActionTests {
-    // MARK: - handleFixError
-
-    @Test("handleFixError with default connection uses SQL query language")
-    func fixErrorDefaultConnection() {
-        let vm = AIChatViewModel()
-        vm.connection = TestFixtures.makeConnection(type: .mysql)
-
-        vm.handleFixError(query: "SELECT * FROM users", error: "Table not found")
-
-        #expect(vm.messages.count >= 1)
-        let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage != nil)
-        #expect(userMessage?.plainText.contains("SQL query") == true)
-        #expect(userMessage?.plainText.contains("```sql") == true)
+    private func request(
+        _ action: AIQueryAction,
+        _ statement: String,
+        type: DatabaseType = .mysql,
+        scope: DatabaseScope? = nil,
+        error: String? = nil
+    ) -> AIQueryRequest {
+        AIQueryRequest(action: action, statement: statement, scope: scope, databaseType: type, errorMessage: error)
     }
 
-    @Test("handleFixError with MongoDB connection uses JavaScript language")
-    func fixErrorMongoDBConnection() {
+    private func userPrompt(_ vm: AIChatViewModel) -> String {
+        vm.messages.last { $0.role == .user }?.plainText ?? ""
+    }
+
+    @Test("Fix with AI on MySQL fences the query as SQL and carries the error")
+    func fixErrorSQL() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        let error = "ERROR 1146: Table 'orders' doesn't exist"
+
+        vm.runQueryAction(request(.fixError, "SELECT * FROM orders WHERE id = 999", error: error))
+
+        let prompt = userPrompt(vm)
+        #expect(prompt.contains("SQL query"))
+        #expect(prompt.contains("```sql"))
+        #expect(prompt.contains("SELECT * FROM orders WHERE id = 999"))
+        #expect(prompt.contains(error))
+    }
+
+    @Test("A MongoDB query is fenced as JavaScript and named for its engine")
+    func mongoDBLanguage() {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mongodb)
 
-        vm.handleFixError(query: "db.users.find({})", error: "SyntaxError")
+        vm.runQueryAction(request(.review, "db.users.find({})", type: .mongodb))
 
-        let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage != nil)
-        #expect(userMessage?.plainText.contains("MongoDB query") == true)
-        #expect(userMessage?.plainText.contains("```javascript") == true)
+        let prompt = userPrompt(vm)
+        #expect(prompt.contains("MongoDB query"))
+        #expect(prompt.contains("```javascript"))
     }
 
-    @Test("handleFixError with Redis connection uses bash language")
-    func fixErrorRedisConnection() {
+    @Test("A Redis command is fenced as bash and named a command")
+    func redisLanguage() {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .redis)
 
-        vm.handleFixError(query: "GET mykey", error: "WRONGTYPE")
+        vm.runQueryAction(request(.explain, "GET mykey", type: .redis))
 
-        let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage != nil)
-        #expect(userMessage?.plainText.contains("Redis command") == true)
-        #expect(userMessage?.plainText.contains("```bash") == true)
+        let prompt = userPrompt(vm)
+        #expect(prompt.contains("Redis command"))
+        #expect(prompt.contains("```bash"))
     }
 
-    @Test("handleFixError includes query and error text verbatim")
-    func fixErrorIncludesVerbatimText() {
+    @Test("Each action sends its own instruction with the statement verbatim", arguments: [
+        AIQueryAction.review, .explain, .optimize
+    ])
+    func actionInstruction(action: AIQueryAction) {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        let statement = "SELECT u.name, COUNT(o.id) FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.name"
+
+        vm.runQueryAction(request(action, statement))
+
+        let prompt = userPrompt(vm)
+        #expect(prompt.hasPrefix(action.instruction(typeName: "SQL query", withStructure: false)))
+        #expect(prompt.contains(statement))
+    }
+
+    @Test("Without structure attached the prompt never claims it is, and an on-screen plan goes inline")
+    func promptWithoutStructure() {
+        let prompt = AIPromptTemplates.queryActionPrompt(
+            .optimize,
+            statement: "SELECT * FROM t",
+            typeName: "SQL query",
+            language: "sql",
+            withStructure: false,
+            explainPlan: "Seq Scan on t"
+        )
+        #expect(!prompt.contains("attached"))
+        #expect(prompt.contains("Explain plan:\n```text\nSeq Scan on t\n```"))
+
+        let withStructure = AIPromptTemplates.queryActionPrompt(
+            .optimize, statement: "SELECT * FROM t", typeName: "SQL query", language: "sql"
+        )
+        #expect(withStructure.contains("attached"))
+    }
+
+    @Test("An empty or whitespace statement sends nothing")
+    func emptyStatementIsNoOp() {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
 
-        let query = "SELECT * FROM orders WHERE id = 999"
-        let error = "ERROR 1146: Table 'orders' doesn't exist"
+        vm.runQueryAction(request(.review, "   \n  "))
 
-        vm.handleFixError(query: query, error: error)
-
-        let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage?.plainText.contains(query) == true)
-        #expect(userMessage?.plainText.contains(error) == true)
+        #expect(vm.messages.isEmpty)
     }
 
-    // MARK: - handleExplainSelection
+    @Test("A statement over the limit is refused with a reason and sends nothing")
+    func oversizedStatementIsRefused() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        let huge = "SELECT " + String(repeating: "a", count: AIChatViewModel.queryActionStatementLimit + 1)
 
-    @Test("handleExplainSelection with non-empty text creates user message")
-    func explainSelectionNonEmpty() {
+        vm.runQueryAction(request(.review, huge))
+
+        #expect(vm.messages.isEmpty)
+        #expect(vm.errorMessage != nil)
+    }
+
+    @Test("A menu action starts a new conversation")
+    func actionStartsNewConversation() {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
 
-        let selectedText = "SELECT u.name, COUNT(o.id) FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.name"
+        vm.runQueryAction(request(.explain, "SELECT 1"))
+        vm.runQueryAction(request(.optimize, "SELECT 2"))
 
-        vm.handleExplainSelection(selectedText)
-
-        let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage != nil)
-        #expect(userMessage?.plainText.contains("Explain this SQL query") == true)
-        #expect(userMessage?.plainText.contains(selectedText) == true)
-        #expect(userMessage?.plainText.contains("```sql") == true)
+        let userTurns = vm.messages.filter { $0.role == .user }
+        #expect(userTurns.count == 1)
+        #expect(userTurns.first?.plainText.contains("SELECT 2") == true)
     }
 
-    @Test("handleExplainSelection with empty text is a no-op")
-    func explainSelectionEmpty() {
+    @Test("A menu action replaces a stale editor context with its own tab's text")
+    func actionReplacesStaleContext() {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.currentQuery = "SELECT * FROM other_tab"
+        vm.queryResults = "id | secret"
 
-        let countBefore = vm.messages.count
+        vm.runQueryAction(AIQueryRequest(
+            action: .review,
+            statement: "UPDATE b SET x = 1",
+            editorText: "SELECT 1;\nUPDATE b SET x = 1;",
+            scope: nil,
+            databaseType: .mysql
+        ))
 
-        vm.handleExplainSelection("")
-
-        // No new messages should be added
-        #expect(vm.messages.count == countBefore)
+        #expect(vm.currentQuery == "SELECT 1;\nUPDATE b SET x = 1;")
+        #expect(vm.queryResults == nil)
     }
 
-    // MARK: - handleOptimizeSelection
-
-    @Test("handleOptimizeSelection with non-empty text creates user message")
-    func optimizeSelectionNonEmpty() {
+    @Test("The structure attachment follows the Include schema setting")
+    func structureAttachmentFollowsSetting() {
         let vm = AIChatViewModel()
-        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        vm.connection = connection
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
 
-        let selectedText = "SELECT * FROM users WHERE name LIKE '%john%'"
+        vm.runQueryAction(request(.review, "SELECT * FROM orders", scope: scope))
 
-        vm.handleOptimizeSelection(selectedText)
-
-        let userMessage = vm.messages.first { $0.role == .user }
-        #expect(userMessage != nil)
-        #expect(userMessage?.plainText.contains("Optimize this SQL query") == true)
-        #expect(userMessage?.plainText.contains(selectedText) == true)
-        #expect(userMessage?.plainText.contains("```sql") == true)
+        let attachment = vm.messages.first { $0.role == .user }?.blocks.compactMap { block -> QueryContextAttachment? in
+            guard case .attachment(.queryContext(let attachment)) = block.kind else { return nil }
+            return attachment
+        }.first
+        #expect((attachment != nil) == vm.services.appSettings.ai.includeSchema)
+        if let attachment {
+            #expect(attachment.statement == "SELECT * FROM orders")
+            #expect(attachment.database == "shop")
+            #expect(!attachment.isResolved)
+            #expect(userPrompt(vm).contains("attached"))
+        }
     }
 
-    @Test("handleOptimizeSelection with empty text is a no-op")
-    func optimizeSelectionEmpty() {
+    @Test("Editing a message drops its structure attachment, which described the old statement")
+    func editDropsStructure() {
         let vm = AIChatViewModel()
-        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        vm.connection = connection
+        let attachment = QueryContextAttachment(
+            connectionId: connection.id, database: "shop", schema: nil, statement: "SELECT 1", rendered: "## Query context"
+        )
+        let turn = ChatTurn(role: .user, blocks: [.text("Review this"), .attachment(.queryContext(attachment)), .attachment(.schema(connectionId: connection.id))])
+        vm.messages = [turn]
 
-        let countBefore = vm.messages.count
+        vm.editMessage(turn)
 
-        vm.handleOptimizeSelection("")
-
-        // No new messages should be added
-        #expect(vm.messages.count == countBefore)
+        #expect(vm.attachedContext == [.schema(connectionId: connection.id)])
     }
 
-    // MARK: - startNewConversation clears state
-
-    @Test("Action methods clear previous messages via startNewConversation")
-    func actionClearsPreviousMessages() {
+    @Test("Refusing access clears the pending walkthrough so the next message is not a rewrite")
+    func denyClearsWalkthrough() {
         let vm = AIChatViewModel()
         vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.messages.append(ChatTurn(role: .user, blocks: [.text("Review this")]))
+        vm.pendingWalkthroughBeforeSQL = "SELECT 1"
+        vm.pendingWalkthroughSource = QueryEditorAnchor(tabId: UUID())
+        vm.streamingState = .awaitingApproval
 
-        vm.handleExplainSelection("SELECT 1")
+        vm.denyAIAccess()
 
-        let firstCount = vm.messages.filter { $0.role == .user }.count
-        #expect(firstCount >= 1)
+        #expect(vm.pendingWalkthroughBeforeSQL == nil)
+        #expect(vm.pendingWalkthroughSource == nil)
+    }
 
-        vm.handleOptimizeSelection("SELECT 2")
+    @Test("A slash command is refused while a reply is streaming")
+    func slashRefusedWhileStreaming() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.currentQuery = "SELECT 1"
+        vm.streamingState = .streaming(assistantID: UUID())
 
-        // After second action, startNewConversation should have cleared,
-        // so there should be exactly 1 user message (from the second action).
-        // There may also be assistant/error messages from startStreaming.
-        let userMessages = vm.messages.filter { $0.role == .user }
-        #expect(userMessages.count == 1)
-        #expect(userMessages.first?.plainText.contains("SELECT 2") == true)
+        vm.runSlashCommand(.review)
+
+        #expect(vm.messages.isEmpty)
+    }
+
+    @Test("/fix uses the tab's own error and failed query, never the result grid")
+    func fixUsesTabError() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.currentQuery = "SELECT 1;\nSELECT nope FROM t;"
+        vm.queryResults = "id | email\n1 | a@b.com"
+        vm.editorTarget = AssistantEditorTarget(
+            tabId: UUID(),
+            scope: nil,
+            errorMessage: "Unknown column 'nope'",
+            errorQuery: "SELECT nope FROM t"
+        )
+
+        vm.runSlashCommand(.fix)
+
+        let prompt = userPrompt(vm)
+        #expect(prompt.contains("Unknown column 'nope'"))
+        #expect(prompt.contains("SELECT nope FROM t"))
+        #expect(!prompt.contains("a@b.com"))
+    }
+
+    @Test("/fix without a failed query explains itself and sends nothing")
+    func fixWithoutErrorRefuses() {
+        let vm = AIChatViewModel()
+        vm.connection = TestFixtures.makeConnection(type: .mysql)
+        vm.currentQuery = "SELECT 1"
+        vm.queryResults = "id\n1"
+
+        vm.runSlashCommand(.fix)
+
+        #expect(vm.messages.isEmpty)
+        #expect(vm.errorMessage != nil)
     }
 }

@@ -30,11 +30,21 @@ public struct MSSQLRawResult: Sendable {
     public let affectedRows: Int
     public let isTruncated: Bool
 
-    public init(columns: [MSSQLColumnDescriptor], rows: [[MSSQLRawCell]], affectedRows: Int, isTruncated: Bool) {
+    /// Result sets the request returned after this one, which a single-result call reads past and does not keep.
+    public let resultSetsNotShown: Int
+
+    public init(
+        columns: [MSSQLColumnDescriptor],
+        rows: [[MSSQLRawCell]],
+        affectedRows: Int,
+        isTruncated: Bool,
+        resultSetsNotShown: Int = 0
+    ) {
         self.columns = columns
         self.rows = rows
         self.affectedRows = affectedRows
         self.isTruncated = isTruncated
+        self.resultSetsNotShown = resultSetsNotShown
     }
 }
 

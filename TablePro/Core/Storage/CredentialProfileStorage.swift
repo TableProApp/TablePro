@@ -87,8 +87,9 @@ final class CredentialProfileStorage {
 
     @discardableResult
     func saveProfiles(_ profiles: [CredentialProfile]) -> Bool {
+        let previous = loadProfiles()
         guard saveProfilesWithoutSync(profiles) else { return false }
-        syncTracker.markDirty(.credentialProfile, ids: profiles.map { $0.id.uuidString })
+        syncTracker.markDirty(.credentialProfile, ids: SyncRecordChanges.changedIds(from: previous, to: profiles))
         return true
     }
 

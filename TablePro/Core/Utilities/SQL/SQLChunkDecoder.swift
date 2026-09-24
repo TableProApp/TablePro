@@ -79,7 +79,7 @@ struct SQLChunkDecoder {
 
         let resolution = Self.resolve(declaredEncoding, startingWith: data)
         resolvedEncoding = resolution.encoding
-        unitSize = Self.unitSize(of: resolution.encoding)
+        unitSize = resolution.encoding.codeUnitLength
         maximumTrim = Self.maximumTrim(of: resolution.encoding, unitSize: unitSize)
         if resolution.byteOrderMarkLength > 0, data.count >= resolution.byteOrderMarkLength {
             data = Data(data.dropFirst(resolution.byteOrderMarkLength))
@@ -92,34 +92,11 @@ struct SQLChunkDecoder {
         let byteOrderMarkLength: Int
     }
 
-    /// `.utf8` is absent on purpose: Foundation consumes a UTF-8 mark itself, measured.
     private static func resolve(_ encoding: String.Encoding, startingWith data: Data) -> Resolution {
         if let mark = ByteOrderMark.leading(data, allowedBy: encoding) {
             return Resolution(encoding: mark.byteOrderedEncoding, byteOrderMarkLength: mark.length)
         }
-        return Resolution(encoding: unmarkedByteOrder(of: encoding), byteOrderMarkLength: 0)
-    }
-
-    private static func unmarkedByteOrder(of encoding: String.Encoding) -> String.Encoding {
-        switch encoding {
-        case .utf16:
-            return .utf16BigEndian
-        case .utf32:
-            return .utf32BigEndian
-        default:
-            return encoding
-        }
-    }
-
-    private static func unitSize(of encoding: String.Encoding) -> Int {
-        switch encoding {
-        case .utf16, .utf16LittleEndian, .utf16BigEndian:
-            return 2
-        case .utf32, .utf32LittleEndian, .utf32BigEndian:
-            return 4
-        default:
-            return 1
-        }
+        return Resolution(encoding: encoding.unmarkedByteOrder, byteOrderMarkLength: 0)
     }
 
     /// `CFStringGetMaximumSizeForEncoding` counts bytes per UTF-16 code unit, so it is asked for

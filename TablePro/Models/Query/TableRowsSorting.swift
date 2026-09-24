@@ -38,4 +38,24 @@ internal enum TableRowsSorting {
         result.reorderRows(ContiguousArray(ordered.map(\.element)))
         return result
     }
+
+    /// The rows back in the order they arrived, which is what clearing a sort shows. Every fetched row carries its
+    /// arrival position in its id; a row added since has none and keeps its place after them.
+    internal static func inArrivalOrder(_ rows: TableRows) -> TableRows {
+        let ordered = rows.rows.enumerated().sorted { lhs, rhs in
+            switch (lhs.element.id, rhs.element.id) {
+            case let (.existing(left), .existing(right)):
+                return left < right
+            case (.existing, .inserted):
+                return true
+            case (.inserted, .existing):
+                return false
+            case (.inserted, .inserted):
+                return lhs.offset < rhs.offset
+            }
+        }
+        var result = rows
+        result.reorderRows(ContiguousArray(ordered.map(\.element)))
+        return result
+    }
 }

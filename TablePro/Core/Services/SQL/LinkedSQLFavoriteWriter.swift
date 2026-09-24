@@ -13,7 +13,7 @@ internal enum LinkedSQLFavoriteWriter {
 
     enum WriteError: Error {
         case readFailed
-        case encodingMismatch(String.Encoding)
+        case encodingMismatch(FileTextEncoding)
         case writeFailed
     }
 
@@ -33,12 +33,10 @@ internal enum LinkedSQLFavoriteWriter {
 
         let newContent = rewrite(loaded.content, with: metadata)
         do {
-            try newContent.write(to: url, atomically: true, encoding: loaded.encoding)
-        } catch let error as NSError where
-            error.domain == NSCocoaErrorDomain &&
-            error.code == NSFileWriteInapplicableStringEncodingError {
-            Self.logger.error("Encoding \(loaded.encoding.rawValue) cannot represent edited content at \(url.path, privacy: .private(mask: .hash))")
-            throw WriteError.encodingMismatch(loaded.encoding)
+            try FileTextWriter.write(newContent, to: url, as: loaded.textEncoding)
+        } catch FileTextWriter.WriteError.unrepresentable(let encoding) {
+            Self.logger.error("Encoding \(encoding.encoding.rawValue) cannot represent edited content at \(url.path, privacy: .private(mask: .hash))")
+            throw WriteError.encodingMismatch(encoding)
         } catch {
             Self.logger.error("Failed to write metadata to \(url.path, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
             throw WriteError.writeFailed

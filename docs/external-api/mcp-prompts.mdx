@@ -49,8 +49,8 @@ Required arguments come first; optional ones follow in parentheses.
 | `explain_table` | `connection`, `table` (`database`, `schema`, `audience`) | One table's columns, keys, indexes and DDL, explained to someone who has never used it, ending in three queries worth running. |
 | `data_quality_audit` | `connection`, `table` (`database`, `schema`) | One table's structure, turned into a checklist of runnable data quality queries ordered cheapest first. |
 | `question_to_sql` | `connection`, `question` (`tables`, `database`, `schema`) | An inventory of up to 150 tables plus full structure for up to 6, and rules that forbid inventing columns and require a `LIMIT`. |
-| `review_query` | `connection`, `query` (`explain_plan`, `database`, `schema`) | Your query, your plan if you pass one, and the structure of up to 6 tables it names. Reviews correctness, then cost, then risk. |
-| `propose_indexes` | `connection`, `query` (`explain_plan`, `database`, `schema`) | The same tables with the indexes they already have. Asks for ranked `CREATE INDEX` statements and any index the query makes redundant. |
+| `review_query` | `connection`, `query` (`explain_plan`, `database`, `schema`) | Your query, your plan if you pass one, and the structure of up to 12 tables the SQL names, in query order, with the ones not found or not readable listed. Reviews correctness, then cost, then risk. |
+| `propose_indexes` | `connection`, `query` (`explain_plan`, `database`, `schema`) | The same tables with the indexes they already have, including each index's predicate and whether it is valid. Asks for ranked `CREATE INDEX` statements and any index the query makes redundant. |
 | `write_migration` | `connection`, `change` (`table`, `database`, `schema`) | Current structure with DDL when a table is named, plus the connection's Safe Mode level. Asks for the migration, the rollback and a verifying query. |
 | `summarize_query_history` | `connection` (`period`, `limit`) | The recorded history for that connection, summarized by intent, with every write, every failure and the slowest statements called out. |
 

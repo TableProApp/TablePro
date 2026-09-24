@@ -44,8 +44,8 @@ struct SQLEditorView: View {
     var onRunStatement: ((String, Int) -> Bool)?
     /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting: Bool = false
-    var onAIExplain: ((String) -> Void)?
-    var onAIOptimize: ((String) -> Void)?
+    var currentAIAvailability: (() -> AIQueryActionAvailability)?
+    var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
 
     @State private var editorState = SourceEditorState()
@@ -62,8 +62,8 @@ struct SQLEditorView: View {
         coordinator.onRunStatement = onRunStatement
         coordinator.setStatementRunControlsEnabled(!isExecuting)
         coordinator.setStatementHighlightEnabled(settingsManager.editor.highlightCurrentStatement)
-        coordinator.onAIExplain = onAIExplain
-        coordinator.onAIOptimize = onAIOptimize
+        coordinator.currentAIAvailability = currentAIAvailability
+        coordinator.onAIAction = onAIAction
         coordinator.onSaveAsFavorite = onSaveAsFavorite
         coordinator.schemaProvider = schemaProvider
         coordinator.connectionAIPolicy = connectionAIPolicy

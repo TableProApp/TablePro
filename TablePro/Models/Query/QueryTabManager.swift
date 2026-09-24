@@ -263,12 +263,18 @@ final class QueryTabManager: ObservableObject {
         databaseName: String = "",
         sourceFileURL: URL? = nil,
         sourceFileStamp: FileStamp? = nil,
+        sourceFileEncoding: FileTextEncoding? = nil,
         claimFocus: Bool = false
     ) {
         if let sourceFileURL,
            let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
-                adoptReopenedFile(at: existingIndex, content: query, stamp: sourceFileStamp)
+                adoptReopenedFile(
+                    at: existingIndex,
+                    content: query,
+                    stamp: sourceFileStamp,
+                    encoding: sourceFileEncoding
+                )
             }
             selectedTabId = tabs[existingIndex].id
             return
@@ -292,7 +298,12 @@ final class QueryTabManager: ObservableObject {
         newTab.tableContext.databaseName = databaseName
         newTab.content.sourceFileURL = sourceFileURL
         if sourceFileURL != nil {
-            FileTabBaseline.adopt(text: newTab.content.query, stamp: sourceFileStamp, into: &newTab.content)
+            FileTabBaseline.adopt(
+                text: newTab.content.query,
+                stamp: sourceFileStamp,
+                encoding: sourceFileEncoding,
+                into: &newTab.content
+            )
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -311,12 +322,12 @@ final class QueryTabManager: ObservableObject {
     /// The baseline moves with the buffer. Writing the text without it left the tab reading as
     /// dirty against content it had just loaded, and armed the same banner for a change it had
     /// already taken.
-    private func adoptReopenedFile(at index: Int, content: String, stamp: FileStamp?) {
+    private func adoptReopenedFile(at index: Int, content: String, stamp: FileStamp?, encoding: FileTextEncoding?) {
         /// An unknown baseline is not a licence to replace what the tab holds. `isFileDirty` reads a
         /// missing one as clean, so without this a tab that never learned what its file said would
         /// be overwritten by the very check meant to protect it.
         guard tabs[index].content.savedFileContent != nil, !tabs[index].content.isFileDirty else { return }
-        FileTabBaseline.adopt(text: content, stamp: stamp, into: &tabs[index].content)
+        FileTabBaseline.adopt(text: content, stamp: stamp, encoding: encoding, into: &tabs[index].content)
     }
 
     /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than

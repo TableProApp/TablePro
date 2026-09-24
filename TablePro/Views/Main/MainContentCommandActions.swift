@@ -617,6 +617,10 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.insertQueryFromAI(query)
     }
 
+    func applyAISuggestion(_ afterSQL: String, replacing beforeSQL: String, source: QueryEditorAnchor?) {
+        coordinator?.applyAISuggestion(afterSQL, replacing: beforeSQL, source: source)
+    }
+
     // MARK: - Tab Operations (Group A — Called Directly)
 
     /// A new tab joins the connection's own tab list. It used to open another window whenever
@@ -1086,14 +1090,15 @@ final class MainContentCommandActions: ObservableObject {
         let tabId = tab.id
         guard let url = await chooseSaveURL(suggestedName) else { return false }
         do {
-            try await SQLFileService.writeFile(content: content, to: url)
+            try await SQLFileService.writeFile(content: content, to: url, encoding: .utf8)
         } catch {
-            Self.logger.error("Failed to save file: \(error.localizedDescription)")
+            Self.logger.error("Failed to save file: \(error.publicLogShape, privacy: .public)")
+            reportFileSaveFailures([Self.saveFailureMessage(for: error, fileName: url.lastPathComponent)])
             return false
         }
         coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
             mutTab.content.sourceFileURL = url
-            FileTabBaseline.recordWrite(of: content, to: url, in: &mutTab.content)
+            FileTabBaseline.recordWrite(of: content, to: url, as: .utf8, in: &mutTab.content)
             mutTab.title = url.deletingPathExtension().lastPathComponent
         }
         coordinator?.tabManager.markTabRenamed(tabId)
@@ -1108,16 +1113,12 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.runExplain()
     }
 
-    func aiExplainQuery() {
-        guard let tab = coordinator?.tabManager.selectedTab, tab.hasQueryText else { return }
-        coordinator?.showAssistant()
-        coordinator?.aiViewModel?.handleExplainSelection(tab.content.query)
+    var aiQueryActionAvailability: AIQueryActionAvailability {
+        coordinator?.aiQueryActionAvailability ?? .hidden
     }
 
-    func aiOptimizeQuery() {
-        guard let tab = coordinator?.tabManager.selectedTab, tab.hasQueryText else { return }
-        coordinator?.showAssistant()
-        coordinator?.aiViewModel?.handleOptimizeSelection(tab.content.query)
+    func runAIQueryAction(_ action: AIQueryAction) {
+        coordinator?.runAIQueryAction(action, target: .selectionOrStatementAtCursor)
     }
 
     func previewFKReference() {
@@ -1534,7 +1535,15 @@ final class MainContentCommandActions: ObservableObject {
     private func handleOpenSQLFiles(_ urls: [URL]) {
         Task {
             for url in urls {
-                try? await TabRouter.shared.route(.openSQLFile(url))
+                do {
+                    try await TabRouter.shared.route(.openSQLFile(url))
+                } catch {
+                    coordinator?.presentError(
+                        String(localized: "Could Not Open File"),
+                        error.localizedDescription,
+                        closeAnchorWindow
+                    )
+                }
             }
         }
     }

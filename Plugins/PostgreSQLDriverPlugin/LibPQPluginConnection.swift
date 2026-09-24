@@ -36,6 +36,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let database: String
     private let sslConfig: SSLConfiguration
     private let options: String?
+    private let applicationName: String?
     private let suppressServerSideCancel: Bool
 
     private let stateLock = NSLock()
@@ -91,6 +92,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         database: String,
         sslConfig: SSLConfiguration = SSLConfiguration(),
         options: String? = nil,
+        applicationName: String? = nil,
         suppressServerSideCancel: Bool = false
     ) {
         self.host = host
@@ -100,6 +102,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.options = options
+        self.applicationName = applicationName
         self.suppressServerSideCancel = suppressServerSideCancel
     }
 
@@ -336,7 +339,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             password: password,
             database: database,
             sslConfig: sslConfig,
-            options: options
+            options: options,
+            applicationName: applicationName
         )
     }
 

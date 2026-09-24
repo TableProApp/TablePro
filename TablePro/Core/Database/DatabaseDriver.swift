@@ -92,6 +92,14 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
+    /// Whether ``executeBatch(query:rowCap:parameters:)`` sends a text to the server whole and answers with every
+    /// result set it produced.
+    var supportsResultSetBatches: Bool { get }
+
+    /// Send `query` as one batch and read it to the end. Returns nil when the driver cannot, and the caller runs the
+    /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
+    func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
@@ -410,6 +418,10 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    var supportsResultSetBatches: Bool { false }
+
+    func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
 
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
@@ -767,6 +779,12 @@ extension DatabaseDriver {
     }
 }
 
+/// Which of the app's connections a driver is, so a plugin can name it to the server.
+enum DriverPurpose: String, Sendable {
+    case session
+    case metadata
+}
+
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
@@ -777,15 +795,17 @@ enum DatabaseDriverFactory {
     static func createDriver(
         for connection: DatabaseConnection,
         passwordOverride: String? = nil,
-        awaitPlugins: Bool
+        awaitPlugins: Bool,
+        purpose: DriverPurpose = .session
     ) async throws -> DatabaseDriver {
         try await PluginManager.shared.prepareForConnecting(to: connection.type)
-        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
+        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride, purpose: purpose)
     }
 
     private static func createDriverFromPlugin(
         for connection: DatabaseConnection,
-        passwordOverride: String? = nil
+        passwordOverride: String?,
+        purpose: DriverPurpose
     ) async throws -> DatabaseDriver {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
@@ -804,6 +824,7 @@ enum DatabaseDriverFactory {
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
         additionalFields["connectionId"] = connection.id.uuidString
+        additionalFields["connectionPurpose"] = purpose.rawValue
         additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
         let config = DriverConnectionConfig(
             host: connection.host,

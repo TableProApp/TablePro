@@ -149,6 +149,12 @@ enum QueryMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Review with AI"),
+                action: #selector(MainSplitViewController.reviewQueryWithAI(_:)),
+                shortcut: .aiReviewQuery,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Explain with AI"),
                 action: #selector(MainSplitViewController.explainQueryWithAI(_:)),
                 shortcut: .aiExplainQuery,

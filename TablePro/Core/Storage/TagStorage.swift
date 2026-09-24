@@ -40,7 +40,7 @@ internal final class TagStorage {
     /// Set when the stored payload could not be understood at all. Every mutation rewrites the
     /// whole array, so continuing over an unreadable store would replace a user's own tags with
     /// the preset list this falls back to for display.
-    private var storeIsUnreadable = false
+    internal private(set) var storeIsUnreadable = false
 
     internal init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
@@ -97,6 +97,7 @@ internal final class TagStorage {
     /// that goes on to write related state must check the result.
     @discardableResult
     internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
+        let previous = defaults.data(forKey: tagsKey) == nil ? [] : loadTags()
         guard !storeIsUnreadable else {
             Self.logger.error("Refusing to overwrite an unreadable tag store")
             return false
@@ -106,7 +107,7 @@ internal final class TagStorage {
             let data = try encoder.encode(tags)
             defaults.set(data, forKey: tagsKey)
             cachedTags = nil
-            syncTracker.markDirty(.tag, ids: tags.map { $0.id.uuidString })
+            syncTracker.markDirty(.tag, ids: SyncRecordChanges.changedIds(from: previous, to: tags))
             return true
         } catch {
             Self.logger.error("Failed to save tags: \(error)")
@@ -128,9 +129,7 @@ internal final class TagStorage {
 
     /// Apply a tag that arrived from another device.
     ///
-    /// Written as it arrived, and skipped when it matches what is already stored: `saveTags` marks
-    /// every tag dirty and the push uploads every dirty tag, so writing an unchanged record
-    /// re-uploads the whole library to the device it came from, which writes it back.
+    /// Written as it arrived, and skipped when it matches what is already stored.
     @discardableResult
     internal func applyRemoteTag(_ tag: ConnectionTag) -> RemoteApplyOutcome {
         var tags = loadTags()

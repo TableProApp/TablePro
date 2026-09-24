@@ -8,7 +8,7 @@ import Foundation
 internal enum FileTextLoader {
     struct LoadedText: Sendable {
         let content: String
-        let encoding: String.Encoding
+        let textEncoding: FileTextEncoding
         /// What the file was, as of just before this text was read.
         ///
         /// Read here rather than by the caller, because a caller that stats afterwards records a
@@ -17,39 +17,56 @@ internal enum FileTextLoader {
         /// fails the other way, leaving the baseline older than the text, so the changed-on-disk
         /// notice can fire once too often but never go missing.
         let stamp: FileStamp?
+        var encoding: String.Encoding { textEncoding.encoding }
         var isUTF8: Bool { encoding == .utf8 }
     }
 
     static func load(_ url: URL) -> LoadedText? {
-        let stamp = FileStamp.read(url)
-        if startsWithByteOrderMark(url) {
-            return loadByteOrderMarked(url, stamp: stamp)
-        }
-        var detected: String.Encoding = .utf8
-        if let content = try? String(contentsOf: url, usedEncoding: &detected) {
-            return LoadedText(content: content, encoding: detected, stamp: stamp)
-        }
-        if let content = try? String(contentsOf: url, encoding: .utf8) {
-            return LoadedText(content: content, encoding: .utf8, stamp: stamp)
-        }
-        if let content = try? String(contentsOf: url, encoding: .isoLatin1) {
-            return LoadedText(content: content, encoding: .isoLatin1, stamp: stamp)
-        }
-        return nil
+        try? read(url)
     }
 
-    static func decode(_ data: Data) -> String? {
+    static func read(_ url: URL) throws -> LoadedText {
+        let stamp = FileStamp.read(url)
+        if startsWithByteOrderMark(url) {
+            return try readByteOrderMarked(url, stamp: stamp)
+        }
+        let attribute = TextEncodingAttribute.read(from: url)
+        var detected: String.Encoding = .utf8
+        if let content = try? String(contentsOf: url, usedEncoding: &detected) {
+            let textEncoding = FileTextEncoding(encoding: detected, attributeOnDisk: attribute)
+            return LoadedText(content: content, textEncoding: textEncoding, stamp: stamp)
+        }
+        if let content = try? String(contentsOf: url, encoding: .utf8) {
+            return LoadedText(content: content, textEncoding: .utf8, stamp: stamp)
+        }
+        let content = try String(contentsOf: url, encoding: .isoLatin1)
+        return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: .isoLatin1), stamp: stamp)
+    }
+
+    static func decode(_ data: Data, declaredEncoding: String.Encoding? = nil) -> String? {
+        if declaredEncoding != nil, ByteOrderMark.leading(data) == nil, let utf8 = String(data: data, encoding: .utf8) {
+            return utf8
+        }
         guard !data.isEmpty else { return "" }
-        return TextPrefixDecoder.decode(data, prefixLength: data.count)?.content
+        return TextPrefixDecoder.decode(data, prefixLength: data.count, declaredEncoding: declaredEncoding)?.content
     }
 
     static func loadHeader(_ url: URL, maxBytes: Int = 4_096) -> LoadedText? {
         let stamp = FileStamp.read(url)
+        let attribute = TextEncodingAttribute.read(from: url)
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let bytes = try? handle.read(upToCount: maxBytes + TextPrefixDecoder.lookaheadLength),
-              let decoded = TextPrefixDecoder.decode(bytes, prefixLength: maxBytes) else { return nil }
-        return LoadedText(content: decoded.content, encoding: decoded.encoding, stamp: stamp)
+              let decoded = TextPrefixDecoder.decode(
+                  bytes,
+                  prefixLength: maxBytes,
+                  declaredEncoding: attribute?.encoding
+              ) else { return nil }
+        return LoadedText(
+            content: decoded.content,
+            textEncoding: textEncoding(of: decoded, attribute: attribute),
+            stamp: stamp
+        )
     }
 
     private static func startsWithByteOrderMark(_ url: URL) -> Bool {
@@ -59,14 +76,50 @@ internal enum FileTextLoader {
         return ByteOrderMark.leading(bytes) != nil
     }
 
-    private static func loadByteOrderMarked(_ url: URL, stamp: FileStamp?) -> LoadedText? {
-        guard let bytes = try? Data(contentsOf: url),
-              let decoded = TextPrefixDecoder.decode(bytes, prefixLength: bytes.count) else { return nil }
-        return LoadedText(content: decoded.content, encoding: decoded.encoding, stamp: stamp)
+    private static func readByteOrderMarked(_ url: URL, stamp: FileStamp?) throws -> LoadedText {
+        let bytes = try Data(contentsOf: url)
+        guard let decoded = TextPrefixDecoder.decode(bytes, prefixLength: bytes.count) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return LoadedText(
+            content: decoded.content,
+            textEncoding: textEncoding(of: decoded, attribute: nil),
+            stamp: stamp
+        )
+    }
+
+    private static func textEncoding(
+        of decoded: TextPrefixDecoder.Decoded,
+        attribute: TextEncodingAttribute?
+    ) -> FileTextEncoding {
+        FileTextEncoding(encoding: decoded.encoding, byteOrderMark: decoded.byteOrderMark, attributeOnDisk: attribute)
     }
 }
 
 internal extension String.Encoding {
+    init?(coreFoundationEncoding: CFStringEncoding) {
+        guard coreFoundationEncoding != kCFStringEncodingInvalidId,
+              CFStringIsEncodingAvailable(coreFoundationEncoding) else { return nil }
+        self.init(rawValue: CFStringConvertEncodingToNSStringEncoding(coreFoundationEncoding))
+    }
+
+    init?(ianaCharacterSetName name: String) {
+        self.init(coreFoundationEncoding: CFStringConvertIANACharSetNameToEncoding(name as CFString))
+    }
+
+    private static let gb18030 = String.Encoding(
+        coreFoundationEncoding: CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+    )
+
+    var representsAllOfUnicode: Bool {
+        switch self {
+        case .utf8, .utf16, .utf16BigEndian, .utf16LittleEndian, .utf32, .utf32BigEndian, .utf32LittleEndian:
+            return true
+        default:
+            return self == Self.gb18030
+        }
+    }
+
     var displayName: String {
         switch self {
         case .utf8: return "UTF-8"

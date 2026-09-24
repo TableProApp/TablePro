@@ -50,6 +50,7 @@ final class AIChatViewModel: ObservableObject {
 
     @Published var currentQuery: String?
     @Published var queryResults: String?
+    var editorTarget: AssistantEditorTarget?
 
     var isStreaming: Bool {
         switch streamingState {
@@ -82,6 +83,8 @@ final class AIChatViewModel: ObservableObject {
     }
 
     var pendingWalkthroughBeforeSQL: String?
+    var pendingWalkthroughSource: QueryEditorAnchor?
+    var queryContextMetadata: any ScopedMetadataProviding
     var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
     var inFlightSchemaLoad: Task<Void, Never>?
     nonisolated(unsafe) var streamingTask: Task<Void, Never>?
@@ -150,6 +153,7 @@ final class AIChatViewModel: ObservableObject {
         self.services = services
         self.sessionId = sessionId
         self.conversationToRestore = conversationId
+        self.queryContextMetadata = services.databaseManager
         observeSavedQueryUpdates()
     }
 
@@ -217,11 +221,6 @@ final class AIChatViewModel: ObservableObject {
         startStreaming()
     }
 
-    func sendWithWalkthroughContext(prompt: String, beforeSQL: String) {
-        pendingWalkthroughBeforeSQL = beforeSQL
-        sendWithContext(prompt: prompt)
-    }
-
     func attach(_ item: ContextItem) {
         guard !attachedContext.contains(where: { $0.stableKey == item.stableKey }) else { return }
         attachedContext.append(item)
@@ -237,7 +236,7 @@ final class AIChatViewModel: ObservableObject {
     }
 
     func cancelStream() {
-        pendingWalkthroughBeforeSQL = nil
+        clearPendingWalkthrough()
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
@@ -335,7 +334,8 @@ final class AIChatViewModel: ObservableObject {
         inFlightSchemaLoad = nil
         currentQuery = nil
         queryResults = nil
-        pendingWalkthroughBeforeSQL = nil
+        editorTarget = nil
+        clearPendingWalkthrough()
         messages = []
         errorMessage = nil
         activeConversationID = nil
@@ -349,11 +349,9 @@ final class AIChatViewModel: ObservableObject {
         attachedImages = []
     }
 
-    func handleFixError(query: String, error: String) {
-        startNewConversation()
-        let databaseType = connection?.type ?? .mysql
-        let prompt = AIPromptTemplates.fixError(query: query, error: error, databaseType: databaseType)
-        sendWithWalkthroughContext(prompt: prompt, beforeSQL: query)
+    func clearPendingWalkthrough() {
+        pendingWalkthroughBeforeSQL = nil
+        pendingWalkthroughSource = nil
     }
 
     func loadAvailableModels() async {

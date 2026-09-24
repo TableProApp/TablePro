@@ -94,6 +94,8 @@ enum SQLLexicalRelevance {
     private static let openBracket = UInt16(UnicodeScalar("[").value)
     private static let at = UInt16(UnicodeScalar("@").value)
     private static let colon = UInt16(UnicodeScalar(":").value)
+    private static let capitalG = UInt16(UnicodeScalar("G").value)
+    private static let smallG = UInt16(UnicodeScalar("g").value)
 
     static func facts(triggeredBy text: NSString) -> SQLLexicalGrammar {
         let length = text.length
@@ -139,6 +141,8 @@ enum SQLLexicalRelevance {
                 facts.insert(.carriageReturnEndsLineComments)
             case SqlLexer.smallQ, SqlLexer.capitalQ:
                 if next == SqlLexer.singleQuote { facts.insert(.alternativeQuoting) }
+            case capitalG, smallG:
+                facts.insert(.batchSeparatorLines)
             default:
                 break
             }

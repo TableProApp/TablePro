@@ -91,9 +91,11 @@ extension MainContentView {
     /// assistant was never revealed has nothing to tell.
     func updateAssistantContext() {
         guard trailingPaneState.assistant.isActivated else { return }
+        let snapshot = coordinator.assistantEditorSnapshot
         trailingPaneState.assistant.context = AssistantContext(
-            currentQuery: coordinator.tabManager.selectedTab?.content.query,
-            queryResults: cachedQueryResultsSummary()
+            currentQuery: snapshot.currentQuery,
+            queryResults: cachedQueryResultsSummary(),
+            editorTarget: snapshot.target
         )
     }
 

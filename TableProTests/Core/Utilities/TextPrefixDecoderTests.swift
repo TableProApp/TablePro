@@ -178,4 +178,40 @@ struct TextPrefixDecoderTests {
     func returnsNothingForNoBytes() {
         #expect(TextPrefixDecoder.decode(Data(), prefixLength: 4_096) == nil)
     }
+
+    @Test("A declared encoding reads text with no mark, and a Shift JIS character across the limit survives")
+    func readsTheDeclaredEncoding() throws {
+        var bytes = Data(repeating: UInt8(ascii: "a"), count: Self.prefixLength - 1)
+        bytes.append(try #require("\u{65E5}\u{672C}".data(using: .shiftJIS)))
+
+        let decoded = try #require(
+            TextPrefixDecoder.decode(bytes, prefixLength: Self.prefixLength, declaredEncoding: .shiftJIS)
+        )
+
+        #expect(decoded.encoding == .shiftJIS)
+        #expect(decoded.byteOrderMark == nil)
+        #expect(decoded.content.hasSuffix("\u{65E5}"))
+    }
+
+    @Test("A byte order mark outranks a declared encoding and is reported")
+    func byteOrderMarkOutranksTheDeclaredEncoding() throws {
+        let bytes = Data([0xFE, 0xFF]) + (try #require("SELECT 1;".data(using: .utf16BigEndian)))
+
+        let decoded = try #require(TextPrefixDecoder.decode(bytes, prefixLength: 4_096, declaredEncoding: .macOSRoman))
+
+        #expect(decoded.encoding == .utf16)
+        #expect(decoded.byteOrderMark == .utf16BigEndian)
+        #expect(decoded.content == "SELECT 1;")
+    }
+
+    @Test("Text that falls back to ISO Latin-1 reports no mark, since the mark's bytes are now part of the text")
+    func latin1FallbackReportsNoMark() throws {
+        let bytes = Data([0xEF, 0xBB, 0xBF, 0x53, 0xFF])
+
+        let decoded = try #require(TextPrefixDecoder.decode(bytes, prefixLength: 4_096))
+
+        #expect(decoded.encoding == .isoLatin1)
+        #expect(decoded.byteOrderMark == nil)
+        #expect(decoded.content == String(data: bytes, encoding: .isoLatin1))
+    }
 }

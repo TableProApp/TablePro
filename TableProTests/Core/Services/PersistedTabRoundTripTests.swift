@@ -533,7 +533,7 @@ struct PersistedTabRoundTripTests {
                 kind: .trigger, name: "audit", database: "shop", schema: "public", table: "orders"
             )
         )
-        let json = String(decoding: try JSONEncoder().encode(tab), as: UTF8.self)
+        let json = try #require(String(data: try JSONEncoder().encode(tab), encoding: .utf8))
         #expect(!json.contains("CREATE"))
         #expect(json.contains("orders"))
     }

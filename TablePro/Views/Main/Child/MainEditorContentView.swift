@@ -494,14 +494,8 @@ struct MainEditorContentView: View {
                         onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
                         onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
                         isExecuting: coordinator.tabExecution.isExecuting(tab.id),
-                        onAIExplain: { text in
-                            coordinator.showAssistant()
-                            coordinator.aiViewModel?.handleExplainSelection(text)
-                        },
-                        onAIOptimize: { text in
-                            coordinator.showAssistant()
-                            coordinator.aiViewModel?.handleOptimizeSelection(text)
-                        },
+                        currentAIAvailability: { coordinator.aiQueryActionAvailability },
+                        onAIAction: { action, target in coordinator.runAIQueryAction(action, target: target) },
                         onSaveAsFavorite: { text in
                             guard !text.isEmpty else { return }
                             coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
@@ -620,7 +614,7 @@ struct MainEditorContentView: View {
         if let error = tab.display.activeResultSet?.errorMessage ?? tab.execution.errorMessage {
             InlineErrorBanner(
                 message: error,
-                onFixWithAI: settingsManager.ai.enabled && tab.tabType == .query
+                onFixWithAI: coordinator.aiQueryActionAvailability(for: tab).isVisible
                     ? { coordinator.fixErrorWithAI(query: tab.execution.errorQuery ?? tab.content.query, error: error) }
                     : nil,
                 onDismiss: {
@@ -1190,6 +1184,7 @@ struct MainEditorContentView: View {
             isStoppable: coordinator.tabExecution.isStoppable(tab.id),
             hasResults: coordinator.canClearActiveQueryResults,
             explainVariants: coordinator.connection.type.explainVariants,
+            aiActions: coordinator.aiQueryActionAvailability(for: tab),
             shortcutHint: { label, action in
                 settingsManager.keyboard.shortcutHint(label, for: action)
             }

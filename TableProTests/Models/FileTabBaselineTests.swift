@@ -102,4 +102,35 @@ struct FileTabBaselineTests {
         #expect(loaded.content == "SELECT 1")
         #expect(loaded.stamp != nil)
     }
+
+    @Test("A rebuilt tab learns how its file is encoded, so a save writes it back the same way")
+    func hydratesTheEncoding() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("baseline-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fixture = EncodedSQLFileFixture.utf16BigEndianWithByteOrderMark
+        try fixture.write(fixture.original, to: url)
+        var tab = fileTab(query: fixture.original, url: url)
+
+        FileTabBaseline.hydrate(&tab)
+
+        #expect(tab.content.sourceFileEncoding == FileTextEncoding(encoding: .utf16, byteOrderMark: .utf16BigEndian))
+        #expect(tab.content.isFileDirty == false)
+    }
+
+    @Test("A Save As write replaces the encoding the tab was opened with")
+    func recordingAWriteReplacesTheEncoding() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("baseline-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fixture = EncodedSQLFileFixture.utf16BigEndianWithByteOrderMark
+        try fixture.write(fixture.original, to: url)
+        var tab = fileTab(query: fixture.original, url: url)
+        FileTabBaseline.hydrate(&tab)
+        #expect(tab.content.sourceFileEncoding?.byteOrderMark == .utf16BigEndian)
+
+        FileTabBaseline.recordWrite(of: fixture.original, to: url, as: .utf8, in: &tab.content)
+
+        #expect(tab.content.sourceFileEncoding == .utf8)
+    }
 }

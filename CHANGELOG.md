@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 - Invalid PostgreSQL indexes named on the table's **Indexes** tab.
 - Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
+- Application name `TablePro` on PostgreSQL, Redshift, CockroachDB and PGlite connections, `TablePro Metadata` on metadata connections.
+- `GO` batch separators in SQL Server scripts, and a result tab for every result set a batch returns. (#3078)
+- SQL Server `PRINT` output and informational messages in the **Output** result view.
+- **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command.
 - **Data Files** window for CSV, TSV, pipe-separated, `.txt` and `.dat` files, replacing the CSV inspector.
 - JSON and JSON Lines files opened and edited as a table, with nested values kept as JSON text.
 - Excel `.xlsx` workbooks opened read-only, one tab per sheet.
@@ -97,12 +101,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse materialized views read-only in the data grid, as on every other engine.
 - **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
 - SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
+- SQL Server scripts run outside an app-opened transaction, as in SQL Server Management Studio. (#3078)
 - One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
 - Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 - Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read.
-- Data file windows filtering with the table grid's filter panel: 18 operators, AND/OR, typed comparisons and presets.
+- Columns, indexes, foreign keys and row counts of the tables a query uses, sent with every AI query action.
+- Selection or the statement at the cursor, not the whole tab, as what **Explain with AI** and **Optimize with AI** send.
+- Explain and Optimize with AI in the editor's context menu without a selection.
+- Tables for the MCP `review_query` and `propose_indexes` prompts read from the SQL, up to 12, with the ones not found named.
+- Data file windows filtering with the table grid's filter bar: 18 operators, **Match all** or **Match any**, typed comparisons and presets.
 - ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
 - Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
 - `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
@@ -118,6 +127,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
+- Variables declared in a SQL Server script lost after its first statement. (#3078)
+- Later SQL Server result sets shown under the first one's columns, or crashing the app.
+- SQL Server errors raised inside a query shown as an empty or partial result.
+- SQL Server connection refusing every query after a failed statement until it reconnected.
+- `-1 row(s) affected` after SQL Server DDL.
+- Next SQL Server query stalling after a result cut at the row limit.
+- A quote, bracket or `?` in a comment breaking SQL Server query parameters.
+- Edits made while an iCloud sync was running reverted by that sync and never uploaded.
+- Saved queries unavailable until relaunch after their store failed to open once.
+- SQL files saved as UTF-8 whatever their encoding, and non-UTF-8 SQL files not opening from Finder or **File > Open File…**.
+- Unresponsive app while comparing large query plans.
+- Slow definition diff in Compare & Sync for large tables.
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
 - Stale column and MongoDB field suggestions when a refresh ran while they were loading.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
@@ -448,6 +470,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
 - PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
 - Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
+- **Apply to Editor** replacing the whole query tab with one rewritten statement.
+- AI schema context describing the sidebar's database instead of the query tab's.
+- The query and results of another tab sent as context with an AI query action.
+- `/fix` sending the result grid in place of the query's error.
+- AI query commands enabled on a connection whose AI access is **Never**.
+- The chat message after a declined AI request answered as a SQL rewrite.
 - Rows merged on save when a CSV file did not end with a line break.
 - Rows saved empty when a value held a character the file's encoding cannot store.
 - Column names added in the CSV inspector dropped on save.
