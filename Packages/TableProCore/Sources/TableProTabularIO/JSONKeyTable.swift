@@ -17,84 +17,139 @@ public struct JSONKeyTable: Sendable, Equatable {
     }
 
     public func name(of column: Int) -> String {
-        storage.withUnsafeBufferPointer { buffer in
-            JSONText.lossyString(UnsafeBufferPointer(rebasing: buffer[offsets[column]..<offsets[column + 1]]))
-        }
+        withLookup { JSONText.lossyString($0.key(of: column)) }
     }
 
     public func column(named name: String) -> Int? {
-        var copy = name
-        return copy.withUTF8 { column(for: $0) }
+        withLookup { $0.column(named: name) }
+    }
+
+    public func column(for key: UnsafeBufferPointer<UInt8>) -> Int? {
+        withLookup { $0.column(for: key) }
     }
 
     @inline(__always)
     internal func matches(_ column: Int, _ key: UnsafeBufferPointer<UInt8>) -> Bool {
-        let start = offsets[column]
-        let length = offsets[column + 1] - start
-        guard length == key.count else { return false }
-        guard length > 0, let keyBase = key.baseAddress else { return true }
-        return storage.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return false }
-            return JSONWord.equal(base + start, keyBase, count: length)
+        storage.withUnsafeBufferPointer { storage in
+            offsets.withUnsafeBufferPointer { offsets in
+                JSONKeyLookup.matches(column, key, storage: storage, offsets: offsets)
+            }
         }
     }
 
-    public func column(for key: UnsafeBufferPointer<UInt8>) -> Int? {
-        let hash = Self.hash(key)
-        let mask = slots.count - 1
-        var position = Int(truncatingIfNeeded: hash) & mask
-        while true {
-            let slot = slots[position]
-            if slot == Self.emptySlot { return nil }
-            let column = Int(slot)
-            if hashes[column] == hash, matches(column, key) { return column }
-            position = (position + 1) & mask
+    internal func withLookup<Result>(_ body: (JSONKeyLookup) throws -> Result) rethrows -> Result {
+        try storage.withUnsafeBufferPointer { storage in
+            try offsets.withUnsafeBufferPointer { offsets in
+                try hashes.withUnsafeBufferPointer { hashes in
+                    try slots.withUnsafeBufferPointer { slots in
+                        try body(JSONKeyLookup(storage: storage, offsets: offsets, hashes: hashes, slots: slots))
+                    }
+                }
+            }
         }
     }
 
     @discardableResult
     internal mutating func insert(_ key: UnsafeBufferPointer<UInt8>) -> Int {
-        let hash = Self.hash(key)
-        let mask = slots.count - 1
-        var position = Int(truncatingIfNeeded: hash) & mask
-        while true {
-            let slot = slots[position]
-            if slot == Self.emptySlot { break }
-            let column = Int(slot)
-            if hashes[column] == hash, matches(column, key) { return column }
-            position = (position + 1) & mask
-        }
+        if let existing = column(for: key) { return existing }
+        let hash = JSONKeyLookup.hash(key)
         let column = count
         storage.append(contentsOf: key)
         offsets.append(storage.count)
         hashes.append(hash)
-        slots[position] = Int32(truncatingIfNeeded: column)
-        if count * 2 > slots.count {
-            grow()
+        if (count * 2) > slots.count {
+            rebuildSlots(capacity: slots.count * 2)
+        } else {
+            place(column, hash: hash)
         }
         return column
     }
 
-    private mutating func grow() {
-        let capacity = slots.count * 2
-        var grown = Array(repeating: Self.emptySlot, count: capacity)
-        let mask = capacity - 1
+    private mutating func rebuildSlots(capacity: Int) {
+        slots = Array(repeating: Self.emptySlot, count: capacity)
         for (column, hash) in hashes.enumerated() {
-            var position = Int(truncatingIfNeeded: hash) & mask
-            while grown[position] != Self.emptySlot {
-                position = (position + 1) & mask
-            }
-            grown[position] = Int32(truncatingIfNeeded: column)
+            place(column, hash: hash)
         }
-        slots = grown
     }
 
-    private static func hash(_ key: UnsafeBufferPointer<UInt8>) -> UInt64 {
+    private mutating func place(_ column: Int, hash: UInt64) {
+        let mask = slots.count - 1
+        var position = Int(truncatingIfNeeded: hash) & mask
+        while slots[position] != Self.emptySlot {
+            position = (position + 1) & mask
+        }
+        slots[position] = Int32(truncatingIfNeeded: column)
+    }
+}
+
+internal struct JSONKeyLookup {
+    private let storage: UnsafeBufferPointer<UInt8>
+    private let offsets: UnsafeBufferPointer<Int>
+    private let hashes: UnsafeBufferPointer<UInt64>
+    private let slots: UnsafeBufferPointer<Int32>
+
+    init(
+        storage: UnsafeBufferPointer<UInt8>,
+        offsets: UnsafeBufferPointer<Int>,
+        hashes: UnsafeBufferPointer<UInt64>,
+        slots: UnsafeBufferPointer<Int32>
+    ) {
+        self.storage = storage
+        self.offsets = offsets
+        self.hashes = hashes
+        self.slots = slots
+    }
+
+    static func hash(_ key: UnsafeBufferPointer<UInt8>) -> UInt64 {
         var hash: UInt64 = 0xCBF2_9CE4_8422_2325 ^ UInt64(key.count)
         for byte in key {
             hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
         }
         return hash ^ (hash >> 29)
+    }
+
+    var count: Int { hashes.count }
+
+    func column(named name: String) -> Int? {
+        var copy = name
+        return copy.withUTF8 { column(for: $0) }
+    }
+
+    func key(of column: Int) -> UnsafeBufferPointer<UInt8> {
+        UnsafeBufferPointer(rebasing: storage[offsets[column]..<offsets[column + 1]])
+    }
+
+    @inline(__always)
+    func matches(_ column: Int, _ key: UnsafeBufferPointer<UInt8>) -> Bool {
+        Self.matches(column, key, storage: storage, offsets: offsets)
+    }
+
+    @inline(__always)
+    static func matches(
+        _ column: Int,
+        _ key: UnsafeBufferPointer<UInt8>,
+        storage: UnsafeBufferPointer<UInt8>,
+        offsets: UnsafeBufferPointer<Int>
+    ) -> Bool {
+        let start = offsets[column]
+        let length = offsets[column + 1] - start
+        guard length == key.count else { return false }
+        guard length > 0, let keyBase = key.baseAddress, let base = storage.baseAddress else { return true }
+        return JSONWord.equal(base + start, keyBase, count: length)
+    }
+
+    func column(for key: UnsafeBufferPointer<UInt8>) -> Int? {
+        guard !slots.isEmpty else { return nil }
+        let hash = Self.hash(key)
+        let mask = slots.count - 1
+        var position = Int(truncatingIfNeeded: hash) & mask
+        while true {
+            let slot = slots[position]
+            if slot < 0 { return nil }
+            let column = Int(slot)
+            if hashes[column] == hash, matches(column, key) { return column }
+            position = (position + 1) & mask
+        }
     }
 }
 
@@ -102,16 +157,12 @@ internal struct JSONKeyPredictor {
     private var expected: [Int] = []
 
     @inline(__always)
-    mutating func column(
-        for key: UnsafeBufferPointer<UInt8>,
-        ordinal: Int,
-        in table: JSONKeyTable
-    ) -> Int? {
+    mutating func column(for key: UnsafeBufferPointer<UInt8>, ordinal: Int, in lookup: JSONKeyLookup) -> Int? {
         if ordinal < expected.count {
             let predicted = expected[ordinal]
-            if predicted >= 0, table.matches(predicted, key) { return predicted }
+            if predicted >= 0, lookup.matches(predicted, key) { return predicted }
         }
-        let resolved = table.column(for: key)
+        let resolved = lookup.column(for: key)
         remember(resolved ?? -1, at: ordinal)
         return resolved
     }

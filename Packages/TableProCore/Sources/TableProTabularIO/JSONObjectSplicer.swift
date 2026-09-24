@@ -82,7 +82,7 @@ internal struct JSONObjectSplicer {
     }
 
     let hasColumnPlans: Bool
-    private let keyTable: JSONKeyTable
+    private let keys: JSONKeyLookup
     private let columnPlans: [JSONColumnPlan?]
     private let rules: JSONLiteralRules
     private var predictor = JSONKeyPredictor()
@@ -92,12 +92,12 @@ internal struct JSONObjectSplicer {
     private var lastPositions: [Int]
     private var keyScratch: [UInt8] = []
 
-    init(keyTable: JSONKeyTable, columnPlans: [JSONColumnPlan?], rules: JSONLiteralRules) {
-        self.keyTable = keyTable
+    init(keys: JSONKeyLookup, columnPlans: [JSONColumnPlan?], rules: JSONLiteralRules) {
+        self.keys = keys
         self.columnPlans = columnPlans
         self.rules = rules
         hasColumnPlans = columnPlans.contains { $0 != nil }
-        lastPositions = [Int](repeating: -1, count: keyTable.count)
+        lastPositions = [Int](repeating: -1, count: keys.count)
     }
 
     static func encodedKey(_ name: String) -> [UInt8] {
@@ -162,11 +162,11 @@ internal struct JSONObjectSplicer {
 
     private mutating func column(of token: JSONMemberToken, ordinal: Int, cursor: JSONCursor) -> Int? {
         guard token.keyHasEscapes else {
-            return predictor.column(for: cursor.keyBytes(of: token), ordinal: ordinal, in: keyTable)
+            return predictor.column(for: cursor.keyBytes(of: token), ordinal: ordinal, in: keys)
         }
         keyScratch.removeAll(keepingCapacity: true)
         JSONText.appendDecoded(cursor.keyBytes(of: token), into: &keyScratch)
-        return keyScratch.withUnsafeBufferPointer { keyTable.column(for: $0) }
+        return keyScratch.withUnsafeBufferPointer { keys.column(for: $0) }
     }
 
     private func collectRowChanges(_ edit: JSONObjectEdit?) throws -> RowChanges {
@@ -182,7 +182,7 @@ internal struct JSONObjectSplicer {
             }
             let merged = changes.bySourceKey[key].map { $0.overridden(by: memberEdit.change) } ?? memberEdit.change
             changes.bySourceKey[key] = merged
-            if let column = keyTable.column(named: key) {
+            if let column = keys.column(named: key) {
                 changes.byColumn[column] = merged
             }
         }
@@ -226,7 +226,7 @@ internal struct JSONObjectSplicer {
     private func absentMembers(_ rowChanges: RowChanges) -> [JSONNewMember] {
         var members: [JSONNewMember] = []
         for key in rowChanges.keyOrder {
-            let column = keyTable.column(named: key)
+            let column = keys.column(named: key)
             if let column, lastPositions[column] >= 0 { continue }
             let documentPlan = column.flatMap { $0 < columnPlans.count ? columnPlans[$0] : nil }
             guard documentPlan?.removed != true,

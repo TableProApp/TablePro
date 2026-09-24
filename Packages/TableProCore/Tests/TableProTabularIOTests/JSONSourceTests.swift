@@ -105,6 +105,24 @@ final class JSONSourceTests: XCTestCase {
         XCTAssertEqual(seen, ["y", "x", "y", ""])
     }
 
+    func testBulkRangeListAndGenericScansAgreeWithSingleCellReads() async throws {
+        let text = (0..<1_000).map { "{\"n\":\($0),\"s\":\"v\\\"\($0)\",\"o\":{ \"k\" : \($0) }}\n" }.joined()
+        let source = try await JSONFixtures.source(text)
+        let expected = (0..<1_000).reversed().map { row in (0..<3).map { source.cell(row: row, column: $0) } }
+        func collect<Rows: Collection>(_ rows: Rows) -> [[TabularCell]] where Rows.Element == Int {
+            var seen: [[TabularCell]] = []
+            source.scan(columns: [0, 1, 2], rows: rows) { _, cells in
+                seen.append((0..<cells.count).map { TabularCell(kind: cells.kinds[$0], text: cells.string(at: $0)) })
+                return true
+            }
+            return seen
+        }
+        XCTAssertEqual(Array(collect(0..<1_000).reversed()), expected)
+        XCTAssertEqual(collect(Array((0..<1_000).reversed())), expected)
+        XCTAssertEqual(collect((0..<1_000).reversed()), expected)
+        XCTAssertEqual(expected.last, [TabularCell(kind: .number, text: "0"), .text("v\"0"), TabularCell(kind: .object, text: #"{"k":0}"#)])
+    }
+
     func testScanStopsWhenTheBodyReturnsFalse() async throws {
         let source = try await JSONFixtures.source("{\"a\":1}\n{\"a\":2}\n{\"a\":3}\n")
         var rows: [Int] = []

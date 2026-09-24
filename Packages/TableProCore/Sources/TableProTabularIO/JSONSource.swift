@@ -61,30 +61,36 @@ public struct JSONSource: TabularSource {
         _ body: (Int, TabularRowCells) -> Bool
     ) where Rows.Element == Int {
         guard let slots = JSONSlotMap(columns: columns) else { return }
-        let keyTable = index.keyTable
-        let rowStarts = index.rowStarts
+        withScanSession(slots: slots, slotCount: columns.count) { session in
+            if let range = rows as? Range<Int> {
+                session.scan(rows: range, body)
+                return
+            }
+            if let list = rows as? [Int] {
+                session.scan(rows: list, body)
+                return
+            }
+            for row in rows {
+                guard session.scan(row: row, body) else { return }
+            }
+        }
+    }
+
+    private func withScanSession(slots: JSONSlotMap, slotCount: Int, _ body: (inout JSONScanSession) -> Void) {
         bytes.withUnsafeBytes { raw in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
-            var reader = JSONCellReader(base: base, count: raw.count, slots: columns.count)
-            var predictor = JSONKeyPredictor()
-            for row in rows {
-                guard row >= 0, row < rowStarts.count else { continue }
-                reader.begin()
-                let cursor = JSONCursor(base: base, count: raw.count, row: row)
-                var ordinal = 0
-                do {
-                    _ = try cursor.forEachMember(objectAt: rowStarts[row]) { token in
-                        let column = token.keyHasEscapes
-                            ? reader.column(forEscapedKey: cursor.keyBytes(of: token), in: keyTable)
-                            : predictor.column(for: cursor.keyBytes(of: token), ordinal: ordinal, in: keyTable)
-                        ordinal += 1
-                        guard let column else { return }
-                        slots.forEachSlot(of: column) { reader.fill($0, with: token) }
-                    }
-                } catch {
-                    reader.markAllAsErrors()
+            index.rowStarts.withUnsafeBufferPointer { rowStarts in
+                index.keyTable.withLookup { lookup in
+                    var session = JSONScanSession(
+                        base: base,
+                        count: raw.count,
+                        rowStarts: rowStarts,
+                        lookup: lookup,
+                        slots: slots,
+                        slotCount: slotCount
+                    )
+                    body(&session)
                 }
-                if !reader.deliver(row: row, to: body) { return }
             }
         }
     }
@@ -124,42 +130,103 @@ private struct JSONSlotMap {
         }
     }
 
+    var hasRepeatedColumns: Bool { !extraSlots.isEmpty }
+
     @inline(__always)
-    func forEachSlot(of column: Int, _ body: (Int) -> Void) {
-        guard column <= lastColumn else { return }
+    func firstSlot(of column: Int) -> Int? {
+        guard column <= lastColumn else { return nil }
         let slot = firstSlots[column]
-        guard slot >= 0 else { return }
-        body(slot)
-        guard !extraSlots.isEmpty, let extra = extraSlots[column] else { return }
-        extra.forEach(body)
+        return slot >= 0 ? slot : nil
+    }
+
+    func repeatedSlots(of column: Int) -> [Int] {
+        extraSlots[column] ?? []
     }
 }
 
-private struct JSONCellReader {
-    let base: UnsafePointer<UInt8>
-    let count: Int
-    let slots: Int
+private struct JSONScanSession {
+    private static let bulkScanRowCount = 256
+    private static let privateSlotSlack = 256
+
+    private let base: UnsafePointer<UInt8>
+    private let count: Int
+    private let rowStarts: UnsafeBufferPointer<Int>
+    private let lookup: JSONKeyLookup
+    private let slots: JSONSlotMap
+    private let slotCount: Int
+    private var predictor = JSONKeyPredictor()
     private var buffer = TabularCellBuffer()
     private var scratch: [UInt8] = []
     private var keyScratch: [UInt8] = []
 
-    init(base: UnsafePointer<UInt8>, count: Int, slots: Int) {
+    init(
+        base: UnsafePointer<UInt8>,
+        count: Int,
+        rowStarts: UnsafeBufferPointer<Int>,
+        lookup: JSONKeyLookup,
+        slots: JSONSlotMap,
+        slotCount: Int
+    ) {
         self.base = base
         self.count = count
+        self.rowStarts = rowStarts
+        self.lookup = lookup
         self.slots = slots
+        self.slotCount = slotCount
     }
 
-    mutating func begin() {
-        buffer.reset(slots: slots, fill: .missing)
+    mutating func scan(rows: Range<Int>, _ body: (Int, TabularRowCells) -> Bool) {
+        reserveThreadPrivateCapacity(forRows: rows.count)
+        for row in rows {
+            guard scan(row: row, body) else { return }
+        }
     }
 
-    mutating func column(forEscapedKey key: UnsafeBufferPointer<UInt8>, in table: JSONKeyTable) -> Int? {
+    mutating func scan(rows: [Int], _ body: (Int, TabularRowCells) -> Bool) {
+        reserveThreadPrivateCapacity(forRows: rows.count)
+        for row in rows {
+            guard scan(row: row, body) else { return }
+        }
+    }
+
+    private mutating func reserveThreadPrivateCapacity(forRows rowCount: Int) {
+        guard rowCount >= Self.bulkScanRowCount else { return }
+        buffer.reset(slots: slotCount + Self.privateSlotSlack, fill: .missing)
+        _ = buffer.withResolved { _ in true }
+    }
+
+    mutating func scan(row: Int, _ body: (Int, TabularRowCells) -> Bool) -> Bool {
+        guard row >= 0, row < rowStarts.count else { return true }
+        buffer.reset(slots: slotCount, fill: .missing)
+        let cursor = JSONCursor(base: base, count: count, row: row)
+        var ordinal = 0
+        do {
+            _ = try cursor.forEachMember(objectAt: rowStarts[row]) { token in
+                let key = cursor.keyBytes(of: token)
+                let column = token.keyHasEscapes
+                    ? column(forEscapedKey: key)
+                    : predictor.column(for: key, ordinal: ordinal, in: lookup)
+                ordinal += 1
+                guard let column, let slot = slots.firstSlot(of: column) else { return }
+                fill(slot, with: token)
+                guard slots.hasRepeatedColumns else { return }
+                for repeated in slots.repeatedSlots(of: column) {
+                    fill(repeated, with: token)
+                }
+            }
+        } catch {
+            markAllAsErrors()
+        }
+        return buffer.withResolved { body(row, $0) }
+    }
+
+    private mutating func column(forEscapedKey key: UnsafeBufferPointer<UInt8>) -> Int? {
         keyScratch.removeAll(keepingCapacity: true)
         JSONText.appendDecoded(key, into: &keyScratch)
-        return keyScratch.withUnsafeBufferPointer { table.column(for: $0) }
+        return keyScratch.withUnsafeBufferPointer { lookup.column(for: $0) }
     }
 
-    mutating func fill(_ slot: Int, with token: JSONMemberToken) {
+    private mutating func fill(_ slot: Int, with token: JSONMemberToken) {
         let range = token.valueRange
         switch token.kind {
         case .text:
@@ -185,14 +252,10 @@ private struct JSONCellReader {
         }
     }
 
-    mutating func markAllAsErrors() {
-        for slot in 0..<slots {
+    private mutating func markAllAsErrors() {
+        for slot in 0..<slotCount {
             buffer.setEmpty(slot, kind: .error)
         }
-    }
-
-    mutating func deliver(row: Int, to body: (Int, TabularRowCells) -> Bool) -> Bool {
-        buffer.withResolved { body(row, $0) }
     }
 
     private mutating func setScratch(_ slot: Int, kind: TabularCellKind) {

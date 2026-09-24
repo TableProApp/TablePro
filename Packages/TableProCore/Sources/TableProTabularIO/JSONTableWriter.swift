@@ -56,30 +56,29 @@ public struct JSONTableWriter {
         sink: ([UInt8]) throws -> Void
     ) throws where Rows.Element == JSONOutputRow {
         let rules = JSONLiteralRules(forbidsLineBreaks: shape == .lines)
-        let splicer = JSONObjectSplicer(
-            keyTable: source?.index.keyTable ?? JSONKeyTable(),
-            columnPlans: try resolvedColumnPlans(rules: rules),
-            rules: rules
-        )
+        let columnPlans = try resolvedColumnPlans(rules: rules)
+        let keyTable = source?.index.keyTable ?? JSONKeyTable()
         let data = source?.bytes ?? Data()
         try data.withUnsafeBytes { raw in
-            var emitter = JSONDocumentEmitter(
-                bytes: raw.bindMemory(to: UInt8.self),
-                index: source?.index,
-                shape: shape,
-                splicer: splicer,
-                rules: rules,
-                capacity: min(raw.count, Self.flushThreshold) + Self.bufferSlack
-            )
-            for row in rows {
-                try emitter.append(row)
-                guard emitter.output.count >= Self.flushThreshold else { continue }
-                if isCancelled() { throw TabularCancellation() }
+            try keyTable.withLookup { keys in
+                var emitter = JSONDocumentEmitter(
+                    bytes: raw.bindMemory(to: UInt8.self),
+                    index: source?.index,
+                    shape: shape,
+                    splicer: JSONObjectSplicer(keys: keys, columnPlans: columnPlans, rules: rules),
+                    rules: rules,
+                    capacity: min(raw.count, Self.flushThreshold) + Self.bufferSlack
+                )
+                for row in rows {
+                    try emitter.append(row)
+                    guard emitter.output.count >= Self.flushThreshold else { continue }
+                    if isCancelled() { throw TabularCancellation() }
+                    try sink(emitter.output)
+                    emitter.output.removeAll(keepingCapacity: true)
+                }
+                try emitter.finish()
                 try sink(emitter.output)
-                emitter.output.removeAll(keepingCapacity: true)
             }
-            try emitter.finish()
-            try sink(emitter.output)
         }
     }
 
