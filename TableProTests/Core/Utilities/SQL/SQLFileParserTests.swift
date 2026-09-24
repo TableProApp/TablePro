@@ -202,7 +202,8 @@ struct SQLFileParserTests {
         MERGE dbo.t AS t USING dbo.s AS s ON t.id = s.id WHEN NOT MATCHED THEN INSERT (id, v) VALUES (s.id, s.v)
         """
 
-    /// SQL import sends each statement on its own, and SQL Server fails a `MERGE` sent without its `;` with Msg 10713.
+    /// SQL import sends a SQL Server file a batch at a time with its text as written, so a `MERGE` keeps the `;` SQL
+    /// Server fails it without, with Msg 10713.
     @Test("SQL Server: a MERGE keeps its ; in the middle of a file and at its end")
     func sqlServerMergeKeepsItsTerminator() async throws {
         let sql = """
@@ -212,44 +213,30 @@ struct SQLFileParserTests {
             TRUNCATE TABLE dbo.\u{6CE8}\u{6587}
             \(Self.merge);
             """
-        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
-        #expect(stmts == [
-            "UPDATE dbo.s SET v = 1",
-            Self.merge + ";",
-            "SELECT COUNT(*) FROM dbo.t",
-            "TRUNCATE TABLE dbo.\u{6CE8}\u{6587}\n" + Self.merge + ";",
-        ])
+        #expect(try await Self.parse(sql, grammar: TestGrammar.sqlServer) == [sql])
     }
 
-    /// SQL Server reads `1MERGE` as a number and a `MERGE`, as the statement scanner does.
-    @Test("SQL Server: a MERGE glued to a number keeps its ;")
-    func sqlServerMergeGluedToNumberKeepsItsTerminator() async throws {
-        let sql = "SELECT 1\(Self.merge);\nSELECT 1.\(Self.merge);"
-        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
-        #expect(stmts == ["SELECT 1\(Self.merge);", "SELECT 1.\(Self.merge);"])
-    }
-
-    @Test("SQL Server: a name that ends in merge is not a MERGE")
-    func sqlServerNameEndingInMergeDropsTheSeparator() async throws {
-        let sql = "SELECT 1 AS x$merge;\nSELECT 1 AS \u{00E9}merge;\nSELECT a FROM #merge;"
-        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
-        #expect(stmts == ["SELECT 1 AS x$merge", "SELECT 1 AS \u{00E9}merge", "SELECT a FROM #merge"])
+    @Test("SQL Server: a file with no GO line arrives as written, every ; kept", arguments: [
+        "SELECT 1\(merge);\nSELECT 1.\(merge);",
+        "SELECT 1 AS x$merge;\nSELECT 1 AS \u{00E9}merge;\nSELECT a FROM #merge;",
+    ])
+    func sqlServerScriptArrivesAsWritten(sql: String) async throws {
+        #expect(try await Self.parse(sql, grammar: TestGrammar.sqlServer) == [sql])
     }
 
     @Test("SQL Server: a MERGE whose keyword straddles two read chunks keeps its ;")
     func sqlServerMergeAcrossChunkBoundary() async throws {
         let padding = String(repeating: "a", count: 65_523)
         let sql = "SELECT '\(padding)';\n\(Self.merge);"
-        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
-        #expect(stmts == ["SELECT '\(padding)'", Self.merge + ";"])
+        #expect(try await Self.parse(sql, grammar: TestGrammar.sqlServer) == [sql])
     }
 
-    /// A T-SQL routine has no `DELIMITER` and no dollar quoting, so only the statement grammar keeps its body whole.
+    /// A T-SQL routine runs to the end of its batch, as sqlcmd sends it, so its body arrives whole.
     @Test("SQL Server: a procedure body arrives whole")
     func sqlServerProcedureBodyArrivesWhole() async throws {
-        let procedure = "CREATE PROCEDURE dbo.p AS BEGIN UPDATE dbo.t SET v = 1; \(Self.merge); END"
-        let stmts = try await Self.parse(procedure + ";\nSELECT 1;", grammar: TestGrammar.sqlServer)
-        #expect(stmts == [procedure, "SELECT 1"])
+        let procedure = "CREATE PROCEDURE dbo.p AS BEGIN UPDATE dbo.t SET v = 1; \(Self.merge); END;"
+        let stmts = try await Self.parse(procedure + "\nGO\nSELECT 1;", grammar: TestGrammar.sqlServer)
+        #expect(stmts == [procedure, "SELECT 1;"])
     }
 
     @Test("Postgres: the ; after a MERGE is still a separator")

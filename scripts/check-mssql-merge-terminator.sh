@@ -78,6 +78,7 @@ fi
 mkdir -p "$WORK/Sources/Check"
 ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
 for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileParser.swift \
+    "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileBatchLines.swift \
     "$ROOT"/TablePro/Core/Utilities/SQL/SQLChunkDecoder.swift "$ROOT"/TablePro/Core/Utilities/Text/ByteOrderMark.swift; do
     ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
@@ -291,8 +292,8 @@ enum Check {
         return nil
     }
 
-    /// What SQL import reads from the text saved as a file, each statement of which it sends on its own.
-    static func importedStatements(of text: String) async throws -> [String] {
+    /// What SQL import reads from the text saved as a file: a batch at a time, each sent whole, the way sqlcmd reads it.
+    static func importedBatches(of text: String) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
         try text.write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -345,12 +346,15 @@ enum Check {
                            "error \(failure ?? "none"), answer \(afterStatements)")
 
                     _ = try await runBatch(driver, reset)
-                    let imported = try await importedStatements(of: check.text)
-                    let importFailure = await runStatements(driver, imported)
+                    let imported = try await importedBatches(of: check.text)
+                    var importErrors: [PluginBatchError] = []
+                    for importedBatch in imported {
+                        importErrors += try await runBatch(driver, importedBatch)
+                    }
                     let afterImport = try await answer(driver, check.expectation)
-                    expect(importFailure == nil && afterImport == check.expected,
+                    expect(importErrors.isEmpty && afterImport == check.expected,
                            "\(check.name): imported from a file it runs",
-                           "statements \(imported), error \(importFailure ?? "none"), answer \(afterImport)")
+                           "batches \(imported), errors \(importErrors.map(\.message)), answer \(afterImport)")
                 }
 
                 guard check.needsTerminator else { continue }
