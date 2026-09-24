@@ -33,7 +33,9 @@ let package = Package(
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
         .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
         .library(name: "CSQLite", targets: ["CSQLite"]),
-        .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"])
+        .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"]),
+        .library(name: "TableProTabularIO", targets: ["TableProTabularIO"]),
+        .library(name: "TableProTabular", targets: ["TableProTabular"])
     ],
     targets: [
         .target(
@@ -157,9 +159,29 @@ let package = Package(
             path: "Sources/CSQLite"
         ),
         .target(
+            name: "TableProTabularIO",
+            dependencies: [],
+            path: "Sources/TableProTabularIO"
+        ),
+        .target(
+            name: "TableProTabular",
+            dependencies: ["TableProTabularIO"],
+            path: "Sources/TableProTabular"
+        ),
+        .target(
             name: "TableProSQLiteCore",
             dependencies: ["CSQLite"],
             path: "Sources/TableProSQLiteCore"
+        ),
+        .testTarget(
+            name: "TableProTabularIOTests",
+            dependencies: ["TableProTabularIO", "TableProPluginKit"],
+            path: "Tests/TableProTabularIOTests"
+        ),
+        .testTarget(
+            name: "TableProTabularTests",
+            dependencies: ["TableProTabular", "TableProTabularIO"],
+            path: "Tests/TableProTabularTests"
         ),
         .testTarget(
             name: "TableProConnectionLibraryTests",
