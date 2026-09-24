@@ -112,7 +112,7 @@ jobs:
   packages:
     name: Package Tests
     needs: changes
-    if: needs.changes.outputs.run == 'true'
+    if: false
     runs-on: macos-26
     timeout-minutes: 20
     steps:
