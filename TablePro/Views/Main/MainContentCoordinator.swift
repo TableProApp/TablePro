@@ -1055,34 +1055,12 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
 
-        let fullQuery = tab.content.query
-
         /// The offset says where the SQL sits in the tab's query, so each result can point back at the statement that
-        /// produced it. A sort override is SQL the app wrote rather than text the reader can be sent to, so it has
-        /// none. The other two hand over untrimmed text with an exact offset and let the scanner do the trimming,
-        /// which keeps the two from having to agree about how much whitespace was dropped.
-        let sql: String
-        let sourceOffset: Int?
-        let boundParameters: [QueryParameter]?
-        if let sortOverride = tab.pagination.sortExecutionOverride {
-            tabManager.mutate(at: index) { $0.pagination.sortExecutionOverride = nil }
-            sql = sortOverride.sql
-            sourceOffset = nil
-            boundParameters = sortOverride.boundParameters
-        } else {
-            let target = selectionOrStatementAtCursor(in: fullQuery)
-            sql = target.sql
-            sourceOffset = target.offset
-            boundParameters = nil
-        }
-
-        executeResolvedSQL(
-            sql,
-            tabIndex: index,
-            bypassRowLimit: bypassRowLimit,
-            sourceOffset: sourceOffset,
-            boundParameters: boundParameters
-        )
+        /// produced it. The selection and the statement at the caret both hand over untrimmed text with an exact
+        /// offset and let the scanner do the trimming, which keeps the two from having to agree about how much
+        /// whitespace was dropped.
+        let target = selectionOrStatementAtCursor(in: tab.content.query)
+        executeResolvedSQL(target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit, sourceOffset: target.offset)
     }
 
     /// Runs one statement, named by its own text rather than by where the caret happens to be.
@@ -1550,9 +1528,17 @@ final class MainContentCoordinator: ObservableObject {
                 sortHeldRows(by: newState, tabId: tabId)
                 return
             }
+            /// The result on screen stays clickable while the next run is in flight, and its re-run cannot start
+            /// until that run ends. The click is dropped, not kept for later: kept on the tab, it stood in for the
+            /// reader's next Run, bound to the values of a result that run had already replaced.
+            guard !tabExecution.isExecuting(tabId) else {
+                traceExecutionBlocked(tabId: tabId, site: "handleSortStateChanged")
+                return
+            }
             let capturedColumns = tableRows.columns
             confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
-                guard let self, confirmed else { return }
+                guard let self, confirmed, self.tabManager.selectedTabId == tabId,
+                      !self.tabExecution.isExecuting(tabId) else { return }
                 let orderClause = capturedSort.columns.compactMap { sortCol -> String? in
                     guard sortCol.columnIndex >= 0, sortCol.columnIndex < capturedColumns.count else { return nil }
                     let columnName = capturedColumns[sortCol.columnIndex]
@@ -1567,9 +1553,13 @@ final class MainContentCoordinator: ObservableObject {
                     tab.hasUserInteraction = true
                     tab.pagination.reset()
                     tab.pagination.resetLoadMore()
-                    tab.pagination.sortExecutionOverride = orderQuery
-                }) else { return }
-                self.runQuery(viewport: .firstRow)
+                }), let index = self.tabManager.selectedTabIndex else { return }
+                self.executeResolvedSQL(
+                    orderQuery.sql,
+                    tabIndex: index,
+                    bypassRowLimit: false,
+                    boundParameters: orderQuery.boundParameters
+                )
             }
             return
         }

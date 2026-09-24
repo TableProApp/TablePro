@@ -502,6 +502,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain, Optimize and Fix with AI cancelling a reply the assistant was still writing.
 - AI chat unable to send again after a message too large to send, with an error naming the wrong setting.
 - A whole AI conversation lost when one part of it could not be read.
+- Run executing an old sorted query after a column header was clicked while a query ran.
 
 ### Security
 
