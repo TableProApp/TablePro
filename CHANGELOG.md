@@ -494,6 +494,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server login failing without a reason for a password longer than 128 bytes.
 - SQL Server connection that never answered again after Stop was pressed during a query.
 - SQL Server query cut at the row limit left running on the server, holding its locks and stalling the next query.
+- SQL Server Windows Authentication to another realm failing when the service principal name is over 128 bytes.
 
 ### Security
 

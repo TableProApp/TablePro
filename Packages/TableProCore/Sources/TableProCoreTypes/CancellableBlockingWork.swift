@@ -8,6 +8,12 @@ public final class SingleResumeGate<Value: Sendable>: @unchecked Sendable {
 
     public init() {}
 
+    public var isSettled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return settled
+    }
+
     public func install(_ continuation: CheckedContinuation<Value, Error>, alreadyCancelled: Bool) {
         lock.lock()
         if alreadyCancelled, !settled {

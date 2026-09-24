@@ -6,8 +6,8 @@ import TableProMSSQLCore
 ///
 /// macOS Heimdal does not apply the system Kerberos configuration (`[domain_realm]`) when FreeTDS
 /// builds its own SPN string, so a cross-realm host fails with `KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`.
-/// We resolve the realm here (like the JDBC driver) and hand FreeTDS an explicit SPN via
-/// `DBSETSERVERPRINCIPAL`.
+/// We resolve the realm here (like the JDBC driver) and hand FreeTDS an explicit SPN as the `spn`
+/// of the connection's freetds.conf entry.
 ///
 /// Once an explicit SPN is set, FreeTDS stops canonicalizing a short hostname to its FQDN (which it
 /// otherwise does with `getaddrinfo` for dot-less names). To avoid regressing those connections we

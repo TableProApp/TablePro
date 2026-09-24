@@ -287,38 +287,39 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     }
 
     func connect() async throws {
-        let gate = SingleResumeGate<Void>()
-        let isKerberos = options.authMethod == .windows
-        let deadline = DispatchTimeInterval.seconds(options.loginTimeoutSeconds + Self.connectDeadlineMarginSeconds)
-
-        Self.deadlineQueue.asyncAfter(deadline: .now() + deadline) {
-            gate.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos))
-        }
+        let attempt = SingleResumeGate<Void>()
 
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                gate.install(continuation, alreadyCancelled: Task.isCancelled)
+                attempt.install(continuation, alreadyCancelled: Task.isCancelled)
                 queue.async { [self] in
                     do {
-                        let proc = try openConnection()
-                        if gate.win(()) {
+                        let proc = try openConnection(for: attempt)
+                        if attempt.win(()) {
                             adopt(proc)
                         } else {
                             teardown(proc)
                         }
                     } catch {
-                        gate.fail(error)
+                        attempt.fail(error)
                     }
                 }
             }
         } onCancel: {
-            gate.fail(CancellationError())
+            attempt.fail(CancellationError())
+            freetdsConfigFile.interruptWaits()
         }
     }
 
-    /// db-lib reads the encryption level and the certificate checks from freetds.conf and from nowhere else, so the
-    /// server is described there rather than on the login.
-    private func openConnection() throws -> UnsafeMutablePointer<DBPROCESS> {
+    /// db-lib reads the encryption level, the certificate checks and the service principal from freetds.conf and from
+    /// nowhere else, so the server is described there rather than on the login. Waiting for the entry and logging in
+    /// are bounded apart, each by the login timeout: the wait is for another connection's dbopen to the same server
+    /// name, and a single deadline over both would fail this one as a timeout without ever trying it.
+    ///
+    /// The Kerberos ticket cache handed over for this connect is deleted here, however the connect ends, because this
+    /// is the one place that runs to the end of the attempt: the caller can give up while dbopen still reads the cache.
+    private func openConnection(for attempt: SingleResumeGate<Void>) throws -> UnsafeMutablePointer<DBPROCESS> {
+        defer { discardKerberosCache() }
         let entry: MSSQLFreeTDSServerEntry
         do {
             entry = try MSSQLFreeTDSServerEntry(options: options)
@@ -333,17 +334,39 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
 
         let opened: UnsafeMutablePointer<DBPROCESS>?
         do {
-            opened = try freetdsConfigFile.withEntry(entry) {
+            opened = try freetdsConfigFile.withEntry(
+                entry,
+                waitingAtMost: TimeInterval(connectDeadlineSeconds),
+                givingUpWhen: { attempt.isSettled }
+            ) {
+                guard !attempt.isSettled else { throw CancellationError() }
+                armDeadline(for: attempt)
                 freetdsClearError(for: nil)
                 return withKerberosEnvironmentIfNeeded { dbopen(login, entry.name) }
             }
-        } catch {
+        } catch let error as MSSQLFreeTDSConfigError {
             throw MSSQLCoreError.connectionFailed(error.localizedDescription)
         }
         guard let proc = opened else {
             throw openFailure()
         }
         return proc
+    }
+
+    private var connectDeadlineSeconds: Int {
+        options.loginTimeoutSeconds + Self.connectDeadlineMarginSeconds
+    }
+
+    private func armDeadline(for attempt: SingleResumeGate<Void>) {
+        let isKerberos = options.authMethod == .windows
+        Self.deadlineQueue.asyncAfter(deadline: .now() + .seconds(connectDeadlineSeconds)) {
+            attempt.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos))
+        }
+    }
+
+    private func discardKerberosCache() {
+        guard let cachePath = options.kerberosCachePath else { return }
+        try? FileManager.default.removeItem(atPath: cachePath)
     }
 
     private func configure(_ login: UnsafeMutablePointer<LOGINREC>) throws {
@@ -376,20 +399,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 )
             }
         }
-
-        #if os(macOS)
-        // Windows Auth cross-realm: FreeTDS otherwise builds its own SPN and only canonicalizes a
-        // short hostname (via getaddrinfo), never applying [domain_realm] to pick the realm. We
-        // resolve the canonical host + realm up front and hand FreeTDS the full SPN, so cross-realm
-        // and short-name/CNAME hosts authenticate like the JDBC driver does.
-        if options.authMethod == .windows, let spn = options.kerberosServicePrincipal, !spn.isEmpty {
-            guard dbsetlname(login, spn, Int32(DBSETSERVERPRINCIPAL)) == SUCCEED else {
-                throw MSSQLCoreError.connectionFailed(
-                    String(localized: "The Kerberos service principal name is longer than the 128 bytes FreeTDS takes.")
-                )
-            }
-        }
-        #endif
     }
 
     private func openFailure() -> MSSQLCoreError {
@@ -418,7 +427,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 unsetenv("KRB5CCNAME")
             }
             Self.kerberosEnvLock.unlock()
-            try? FileManager.default.removeItem(atPath: cachePath)
         }
         return body()
     }
