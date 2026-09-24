@@ -10,10 +10,10 @@
 # its batch.
 #
 # So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
-# Libs/libsybdb.a, sends each text whole through MSSQLPluginDriver, and watches a three-row canary table. A text
-# that changed the canary ran its hidden statement, and then both the reader (a statement that begins with the hidden
-# keyword) and the iOS gate (SQLWriteClassifier) must have seen it, or the check fails. A text the reader splits
-# although the server ran nothing is reported as read conservatively, which is allowed.
+# Libs/libsybdb.a, sends each text whole through MSSQLPluginDriver, and watches a three-row canary table and the table
+# a SELECT INTO would create. A text that changed either ran its hidden statement, and then both the reader (a
+# statement that begins with the hidden keyword) and the iOS gate (SQLWriteClassifier) must have seen it, or the check
+# fails. A text the reader splits although the server ran nothing is reported as read conservatively, which is allowed.
 #
 # Usage:
 #   scripts/check-mssql-unterminated-statements.sh [host] [port] [user]
@@ -128,6 +128,7 @@ enum Check {
     }
 
     static let canary = "dbo.unterminated_canary"
+    static let intoTable = "dbo.unterminated_into"
 
     static let cases: [Case] = [
         Case(name: "a line break", sql: "SELECT 1\nDELETE FROM \(canary)", hidden: "DELETE"),
@@ -164,6 +165,18 @@ enum Check {
         Case(name: "a DELETE inside an INSERT",
              sql: "INSERT INTO dbo.unterminated_log SELECT id FROM (DELETE FROM \(canary) OUTPUT deleted.id) AS d",
              hidden: "DELETE"),
+        Case(name: "an UPDATE of a bracketed name", sql: "SELECT 1\nUPDATE [unterminated_canary] SET id = 9",
+             hidden: "UPDATE"),
+        Case(name: "an UPDATE of a quoted name", sql: "SELECT 1\nUPDATE \"unterminated_canary\" SET id = 9",
+             hidden: "UPDATE"),
+        Case(name: "an UPDATE of a bracketed name with SET on its own line",
+             sql: "SELECT 1\nUPDATE [unterminated_canary]\nSET id = 9", hidden: "UPDATE"),
+        Case(name: "an UPDATE of a bracketed name after PRINT", sql: "PRINT 1\nUPDATE [unterminated_canary] SET id = 9",
+             hidden: "UPDATE"),
+        Case(name: "a SELECT INTO of bracketed columns after PRINT",
+             sql: "PRINT 1\nSELECT [id], [id] AS b INTO \(intoTable) FROM \(canary)", hidden: "SELECT"),
+        Case(name: "a SELECT INTO of quoted columns after PRINT",
+             sql: "PRINT 1\nSELECT \"id\", id AS b INTO \(intoTable) FROM \(canary)", hidden: "SELECT"),
         Case(name: "a hex literal", sql: "SELECT 0xDELETE FROM \(canary)", hidden: "DELETE"),
         Case(name: "a hex literal with a digit", sql: "SELECT 0x1DELETE FROM \(canary)", hidden: "DELETE"),
         Case(name: "an alias after a number", sql: "SELECT 1xDELETE FROM \(canary)", hidden: "DELETE"),
@@ -197,6 +210,7 @@ enum Check {
         IF OBJECT_ID(N'dbo.unterminated_p') IS NOT NULL DROP PROCEDURE dbo.unterminated_p;
         IF OBJECT_ID(N'dbo.unterminated_f') IS NOT NULL DROP FUNCTION dbo.unterminated_f;
         IF TYPE_ID(N'dbo.unterminated_t') IS NOT NULL DROP TYPE dbo.unterminated_t;
+        IF OBJECT_ID(N'dbo.unterminated_into') IS NOT NULL DROP TABLE dbo.unterminated_into;
         DELETE FROM dbo.unterminated_canary;
         INSERT INTO dbo.unterminated_canary VALUES (1), (2), (3);
         """
@@ -233,8 +247,10 @@ enum Check {
         }
     }
 
-    static func canaryRows(_ driver: MSSQLPluginDriver) async throws -> String {
-        let result = try await driver.execute(query: "SELECT COUNT(*) AS n FROM \(canary)")
+    static func canaryState(_ driver: MSSQLPluginDriver) async throws -> String {
+        let result = try await driver.execute(
+            query: "SELECT CONCAT(COUNT(*), ':', SUM(id), ':', OBJECT_ID(N'\(intoTable)')) AS state FROM \(canary)"
+        )
         return result.rows.first?.first?.asText ?? "?"
     }
 
@@ -251,8 +267,9 @@ enum Check {
             let driver = try await connect(database)
             for check in cases {
                 _ = try await driver.executeBatch(query: reset, rowCap: nil, parameters: nil)
+                let before = try await canaryState(driver)
                 _ = try? await driver.execute(query: check.sql)
-                let ran = try await canaryRows(driver) != "3"
+                let ran = try await canaryState(driver) != before
                 let reader = readerSees(check.hidden, in: check.sql)
                 let gate = SQLWriteClassifier.isWriteQuery(check.sql, databaseType: .mssql)
                 if ran, reader, gate {

@@ -101,7 +101,7 @@ struct ExternalStatementGateTests {
     }
 
     @Test("A write SQL Server runs without a terminator is refused on a connection read only for external clients",
-          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1"])
+          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1", "SELECT 1\nUPDATE [t] SET c = 1"])
     func unterminatedWriteRefusedOnReadOnlyConnection(sql: String) {
         #expect(refusal(statement(sql, databaseType: .mssql, externalAccess: .readOnly))
             == .denied(String(localized: "This connection is read only for external clients.")))
