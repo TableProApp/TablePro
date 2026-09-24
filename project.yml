@@ -717,7 +717,6 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
       - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
       - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
-      - Plugins/XLSXImportPlugin/ZipReader.swift
       - Plugins/XMLExportPlugin/XMLExportModels.swift
       - Plugins/SnowflakeDriverPlugin/PluginCellValueBox.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
@@ -961,6 +960,9 @@ targets:
     templateAttributes:
       folder: XLSXImportPlugin
       principalClass: XLSXImportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTabularIO
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXImportPlugin
