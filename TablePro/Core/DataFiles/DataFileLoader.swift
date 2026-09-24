@@ -26,6 +26,7 @@ struct DataFileContent: Sendable {
     let sheets: [DataFileSheet]
     let initialSheetIndex: Int
     let delimitedSource: DelimitedSource?
+    let jsonSource: JSONSource?
     let workbook: XLSXWorkbook?
     let dialect: DelimitedDialect?
     let raggedRowCount: Int
@@ -46,6 +47,7 @@ enum DataFileLoadError: LocalizedError, Equatable {
     case unreadable(String)
     case undecodable(String)
     case unsupported(String)
+    case invalidJSON(JSONTableError)
 
     var errorDescription: String? {
         switch self {
@@ -55,6 +57,32 @@ enum DataFileLoadError: LocalizedError, Equatable {
             return String(format: String(localized: "The file is not valid %@ text."), encoding)
         case .unsupported(let message):
             return message
+        case .invalidJSON(let error):
+            return Self.message(for: error)
+        }
+    }
+
+    private static func message(for error: JSONTableError) -> String {
+        switch error {
+        case .emptyDocument:
+            return String(localized: "The file is empty.")
+        case .unsupportedEncoding:
+            return String(localized: "Only UTF-8 JSON files can be opened.")
+        case .singleObject:
+            return String(localized: "The file holds one object, not a list of rows. Open a JSON array of objects or a JSON Lines file.")
+        case .scalarDocument:
+            return String(localized: "The file holds a single value, not a list of rows.")
+        case .rowIsNotAnObject(let row, _):
+            return String(format: String(localized: "Row %@ is not an object."), (row + 1).formatted())
+        case .truncated(let row, let offset), .unexpectedByte(let row, let offset),
+             .mismatchedBracket(let row, let offset), .trailingContent(let row, let offset),
+             .invalidString(let row, let offset), .invalidEscape(let row, let offset),
+             .invalidNumber(let row, let offset), .invalidLiteral(let row, let offset):
+            return String(
+                format: String(localized: "Row %@ is not valid JSON near byte %@."),
+                (row + 1).formatted(),
+                offset.formatted()
+            )
         }
     }
 }
@@ -79,8 +107,47 @@ enum DataFileLoader {
         case .workbook:
             return try loadWorkbook(request, snapshotURL: snapshotURL, progress: progress)
         case .json, .jsonLines:
-            throw DataFileLoadError.unsupported(String(localized: "This kind of file cannot be opened yet."))
+            return try await loadJSON(request, snapshotURL: snapshotURL, progress: progress)
         }
+    }
+
+    private static func loadJSON(
+        _ request: DataFileLoadRequest,
+        snapshotURL: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> DataFileContent {
+        let bytes = try mappedData(at: snapshotURL)
+        let source: JSONSource
+        do {
+            source = try await JSONSourceBuilder.build(
+                bytes: bytes,
+                fileKind: JSONTableFileKind.forFileExtension(request.kind.contentExtension),
+                progress: { progress($0 * 0.95) },
+                isCancelled: { Task.isCancelled }
+            )
+        } catch let error as JSONTableError {
+            throw DataFileLoadError.invalidJSON(error)
+        }
+        let table = TabularTable(source: source, usesFirstRowAsHeader: false)
+        let kinds = TabularTypeInference.inferKinds(of: table)
+        progress(1)
+        let sheet = DataFileSheet(
+            name: request.url.lastPathComponent,
+            isHidden: false,
+            table: table,
+            kinds: kinds,
+            workbookSheet: nil
+        )
+        return DataFileContent(
+            kind: request.kind,
+            sheets: [sheet],
+            initialSheetIndex: 0,
+            delimitedSource: nil,
+            jsonSource: source,
+            workbook: nil,
+            dialect: nil,
+            raggedRowCount: 0
+        )
     }
 
     @concurrent
@@ -126,6 +193,7 @@ enum DataFileLoader {
             sheets: sheets,
             initialSheetIndex: initial,
             delimitedSource: nil,
+            jsonSource: nil,
             workbook: workbook,
             dialect: nil,
             raggedRowCount: 0
@@ -205,6 +273,7 @@ enum DataFileLoader {
             sheets: [sheet],
             initialSheetIndex: 0,
             delimitedSource: source,
+            jsonSource: nil,
             workbook: nil,
             dialect: dialect,
             raggedRowCount: source.raggedRowCount

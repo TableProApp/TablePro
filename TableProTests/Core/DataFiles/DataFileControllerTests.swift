@@ -261,6 +261,7 @@ struct DataFileControllerTests {
             table: table,
             columns: controller.columnNames.ids,
             names: controller.columnNames.displayNames,
+            format: .csv,
             progress: { _ in }
         )
         defer { try? FileManager.default.removeItem(at: snapshot.url) }
@@ -319,5 +320,103 @@ struct DataFileControllerTests {
         let output = url.deletingLastPathComponent().appendingPathComponent("people.csv")
         try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
         #expect(try String(contentsOf: output, encoding: .utf8) == "name,age\nAnn,31\nBob,42\nCy,27\n")
+    }
+
+    @Test("A JSON Lines file opens with its keys as columns and null as NULL")
+    func opensJSONLines() async throws {
+        let (controller, _) = try await loaded("{\"id\":1,\"name\":null}\n{\"id\":2,\"city\":\"Hue\"}\n", fileExtension: "jsonl")
+        #expect(controller.columnNames.displayNames == ["id", "name", "city"])
+        #expect(controller.tableRows.rows[0].values[1] == .null)
+        #expect(controller.tableRows.columnNullable["name"] == true)
+        #expect(controller.isEditable)
+    }
+
+    @Test("Saving a JSON Lines file rewrites only the edited member and keeps its type")
+    func jsonEditKeepsType() async throws {
+        let text = "{\"id\": 1, \"name\": \"Ann\"}\n{\"id\": 2, \"name\": \"Bob\"}\n"
+        let (controller, url) = try await loaded(text, fileExtension: "jsonl")
+        controller.setCell(pageRow: 1, column: 0, text: "20")
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.jsonl")
+        try controller.write(to: output, typeName: DataFileKind.jsonLinesType)
+        let written = try String(contentsOf: output, encoding: .utf8)
+        #expect(written == "{\"id\": 1, \"name\": \"Ann\"}\n{\"id\": 20, \"name\": \"Bob\"}\n")
+    }
+
+    @Test("NULL and a number typed into a missing cell are written as JSON null and a number")
+    func jsonNullAndTypedMissingCell() async throws {
+        let (controller, url) = try await loaded("{\"n\":1,\"s\":\"a\"}\n{\"s\":\"b\"}\n", fileExtension: "jsonl")
+        controller.setCell(pageRow: 0, column: 1, text: nil)
+        controller.setCell(pageRow: 1, column: 0, text: "7")
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.jsonl")
+        try controller.write(to: output, typeName: DataFileKind.jsonLinesType)
+        let objects = try String(contentsOf: output, encoding: .utf8).split(separator: "\n").map { line in
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? NSDictionary
+        }
+        #expect(objects[0] == ["n": 1, "s": NSNull()])
+        #expect(objects[1] == ["s": "b", "n": 7])
+    }
+
+    @Test("Renaming a column renames the key in every object")
+    func jsonRenameColumn() async throws {
+        let (controller, url) = try await loaded("[{\"a\":1},{\"a\":2}]", fileExtension: "json")
+        controller.renameColumn(controller.columnNames.ids[0], to: "b")
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.json")
+        try controller.write(to: output, typeName: DataFileKind.jsonType)
+        #expect(try String(contentsOf: output, encoding: .utf8) == "[{\"b\":1},{\"b\":2}]")
+    }
+
+    @Test("A JSON array saves as JSON Lines")
+    func jsonArraySavesAsLines() async throws {
+        let (controller, url) = try await loaded("[{\"a\":1,\"b\":\"x\"}]", fileExtension: "json")
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.jsonl")
+        try controller.write(to: output, typeName: DataFileKind.jsonLinesType)
+        let line = try String(contentsOf: output, encoding: .utf8).trimmingCharacters(in: .newlines)
+        #expect(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? NSDictionary == ["a": 1, "b": "x"])
+    }
+
+    @Test("A malformed JSON file names the row it failed on")
+    func malformedJSONNamesTheRow() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DataFileControllerTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("bad.jsonl")
+        try Data("{\"a\":1}\n{\"a\":}\n".utf8).write(to: url)
+        let controller = DataFileController()
+        controller.load(url: url, kind: try #require(DataFileKind.classify(url)))
+        await controller.waitForPendingWork()
+        guard case .failed(let message) = controller.loadState else {
+            Issue.record("Expected the load to fail")
+            return
+        }
+        #expect(message.hasPrefix("Row 2 is not valid JSON"))
+    }
+
+    @Test("The import snapshot of a JSON file is JSON Lines with its nulls and numbers")
+    func jsonImportSnapshot() async throws {
+        let (controller, _) = try await loaded("{\"id\":1,\"note\":null}\n", fileExtension: "jsonl")
+        #expect(controller.importFormat == .jsonLines)
+        let table = try #require(controller.table)
+        let snapshot = try await DataFileController.writeImportSnapshot(
+            table: table,
+            columns: controller.columnNames.ids,
+            names: controller.columnNames.displayNames,
+            format: controller.importFormat,
+            progress: { _ in }
+        )
+        defer { try? FileManager.default.removeItem(at: snapshot.url) }
+        #expect(snapshot.formatId == "json")
+        let line = try String(contentsOf: snapshot.url, encoding: .utf8).trimmingCharacters(in: .newlines)
+        #expect(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? NSDictionary == ["id": 1, "note": NSNull()])
+    }
+
+    @Test("A typed value picks its JSON kind from the cell it replaces or the column")
+    func jsonKindRules() {
+        #expect(DataFileController.jsonKind(for: "5", replacing: .missing, columnKind: .integer) == .number)
+        #expect(DataFileController.jsonKind(for: "five", replacing: .missing, columnKind: .integer) == .text)
+        #expect(DataFileController.jsonKind(for: "true", replacing: .null, columnKind: .boolean) == .boolean)
+        #expect(DataFileController.jsonKind(for: "null", replacing: .missing, columnKind: .text) == .null)
+        #expect(DataFileController.jsonKind(for: "{\"a\":1}", replacing: .object, columnKind: .text) == .object)
+        #expect(DataFileController.jsonKind(for: "{broken", replacing: .object, columnKind: .text) == .text)
+        #expect(DataFileController.jsonKind(for: "7", replacing: .text, columnKind: .integer) == .text)
     }
 }

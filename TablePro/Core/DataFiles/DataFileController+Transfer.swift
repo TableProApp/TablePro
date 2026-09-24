@@ -14,8 +14,23 @@ enum DataFileExportScopeID {
     static let selected = "selected"
 }
 
-enum DataFileImportFormat {
-    static let formatId = "csv"
+enum DataFileImportFormat: Sendable, Equatable {
+    case csv
+    case jsonLines
+
+    var formatId: String {
+        switch self {
+        case .csv: return "csv"
+        case .jsonLines: return "json"
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .csv: return "csv"
+        case .jsonLines: return "jsonl"
+        }
+    }
 }
 
 struct DataFileImportSnapshot: Equatable, Sendable {
@@ -65,15 +80,26 @@ extension DataFileController {
         gridSelection.affectedRows.compactMap { key(forPageRow: $0) }
     }
 
+    var importFormat: DataFileImportFormat {
+        kind?.holdsNull == true ? .jsonLines : .csv
+    }
+
     func prepareImportSnapshot(completion: @escaping @MainActor (DataFileImportSnapshot) -> Void) {
         guard let table, loadState == .loaded, transferTask == nil else { return }
         let names = columnNames.displayNames
         let ids = columnNames.ids
+        let format = importFormat
         let activityID = beginActivity(title: String(localized: "Preparing Import…"), isMutation: false)
         let reporter = progressReporter(for: activityID)
         transferTask = Task { [weak self] in
             do {
-                let snapshot = try await Self.writeImportSnapshot(table: table, columns: ids, names: names, progress: reporter)
+                let snapshot = try await Self.writeImportSnapshot(
+                    table: table,
+                    columns: ids,
+                    names: names,
+                    format: format,
+                    progress: reporter
+                )
                 guard let self else {
                     try? FileManager.default.removeItem(at: snapshot.url)
                     return
@@ -99,25 +125,42 @@ extension DataFileController {
         table: TabularTable,
         columns: [TabularColumnID],
         names: [String],
+        format: DataFileImportFormat,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> DataFileImportSnapshot {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TableProDataFileImports", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("\(UUID().uuidString).csv")
-        let writer = DelimitedWriter(dialect: DelimitedDialect(), source: nil)
-        let rows = DataFileSnapshotRows(table: table, columns: columns, names: names, progress: progress)
+        let url = directory.appendingPathComponent("\(UUID().uuidString).\(format.fileExtension)")
         do {
-            try writer.write(to: url, rows: rows, endsWithLineTerminator: true) { Task.isCancelled }
+            switch format {
+            case .csv:
+                let rows = DataFileSnapshotRows(table: table, columns: columns, names: names, progress: progress)
+                try DelimitedWriter(dialect: DelimitedDialect(), source: nil)
+                    .write(to: url, rows: rows, endsWithLineTerminator: true) { Task.isCancelled }
+            case .jsonLines:
+                try writeJSONLinesSnapshot(of: table, to: url)
+            }
+            guard !Task.isCancelled else { throw CancellationError() }
         } catch {
             try? FileManager.default.removeItem(at: url)
             throw error
         }
-        guard !Task.isCancelled else {
-            try? FileManager.default.removeItem(at: url)
-            throw CancellationError()
+        progress(1)
+        return DataFileImportSnapshot(url: url, formatId: format.formatId)
+    }
+
+    private nonisolated static func writeJSONLinesSnapshot(of table: TabularTable, to url: URL) throws {
+        let rows = table.jsonOutputRows(sourceKeys: nil) { cell, _ in
+            try JSONValueTyping.literal(for: cell.text, originalKind: cell.kind)
         }
-        return DataFileImportSnapshot(url: url, formatId: DataFileImportFormat.formatId)
+        try JSONTableWriter(shape: .lines).write(to: url, rows: rows) { Task.isCancelled }
+        if let failure = rows.status.failure {
+            throw DataFileSaveError.invalidJSONValue(
+                row: (table.rowOrder.logicalRow(ofKey: failure.key) ?? 0) + 1,
+                column: table.column(failure.column)?.name ?? ""
+            )
+        }
     }
 }
 

@@ -176,7 +176,7 @@ extension DataFileController {
             return
         }
         var updated = table
-        updated.setCells([(key: match.key, columnID: match.column, cell: editedCell(replaced.text, replacing: original))])
+        updated.setCells([(key: match.key, columnID: match.column, cell: editedCell(replaced.text, replacing: original, column: match.column))])
         commit(updated, actionName: String(localized: "Replace"))
         find.matches.remove(at: index)
         find.currentIndex = find.matches.isEmpty ? nil : min(index, find.matches.count - 1)

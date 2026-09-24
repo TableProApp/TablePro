@@ -140,7 +140,7 @@ public enum TabularFinder {
                 let replaced = matcher.replacing(in: TabularTextMatching.string(bytes), with: template)
                 guard replaced.replacements > 0 else { return nil }
                 counter.add(replaced.replacements)
-                return TabularCell(kind: .text, text: replaced.text)
+                return TabularCell(kind: kind, text: replaced.text)
             }
             guard result.changedCells > 0 else { continue }
             values[column] = result.values

@@ -37,7 +37,7 @@ extension DataFileSplitViewController {
             presentImportFailure(String(localized: "That connection is no longer open."))
             return
         }
-        if let refusal = coordinator.rowImportRefusal(formatId: DataFileImportFormat.formatId) {
+        if let refusal = coordinator.rowImportRefusal(formatId: controller.importFormat.formatId) {
             presentImportFailure(refusal.localizedDescription)
             return
         }

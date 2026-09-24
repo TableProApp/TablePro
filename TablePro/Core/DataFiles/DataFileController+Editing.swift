@@ -8,12 +8,40 @@ import TableProTabular
 import TableProTabularIO
 
 extension DataFileController {
-    func editedCell(_ text: String, replacing original: TabularCell) -> TabularCell {
-        .text(text)
+    func editedCell(_ text: String, replacing original: TabularCell, column id: TabularColumnID) -> TabularCell {
+        guard kind?.holdsNull == true else { return .text(text) }
+        return TabularCell(kind: Self.jsonKind(for: text, replacing: original.kind, columnKind: kind(of: id)), text: text)
     }
 
     var nullCell: TabularCell {
-        (kind?.holdsNull ?? false) ? TabularCell(kind: .null, text: "") : .text("")
+        (kind?.holdsNull ?? false) ? TabularCell(kind: .null, text: "null") : .text("")
+    }
+
+    nonisolated static func jsonKind(
+        for text: String,
+        replacing original: TabularCellKind,
+        columnKind: TabularInferredKind
+    ) -> TabularCellKind {
+        switch original {
+        case .null, .missing:
+            return jsonKind(forNewValue: text, columnKind: columnKind)
+        case .object, .array:
+            return (try? JSONValueTyping.literal(for: text, originalKind: original)) == nil ? .text : original
+        case .number, .boolean, .text, .error, .date:
+            return original
+        }
+    }
+
+    nonisolated static func jsonKind(forNewValue text: String, columnKind: TabularInferredKind) -> TabularCellKind {
+        guard text != "null" else { return .null }
+        switch columnKind {
+        case .integer, .decimal:
+            return JSONValueTyping.isNumberLexeme(text) ? .number : .text
+        case .boolean:
+            return text == "true" || text == "false" ? .boolean : .text
+        case .date, .text:
+            return .text
+        }
     }
 
     func setCell(pageRow: Int, column: Int, text: String?) {
@@ -22,7 +50,7 @@ extension DataFileController {
         let id = columnNames.ids[column]
         guard let tabularColumn = table.column(id) else { return }
         let original = table.cell(key: key, column: tabularColumn)
-        let cell = text.map { editedCell($0, replacing: original) } ?? nullCell
+        let cell = text.map { editedCell($0, replacing: original, column: id) } ?? nullCell
         guard cell != original else { return }
         var updated = table
         updated.setCells([(key: key, columnID: id, cell: cell)])
@@ -103,8 +131,11 @@ extension DataFileController {
             }
         }
         let absent = updated.source.absentCell
+        let ids = updated.columnIDs
         let cells = rows.map { row in
-            (0..<updated.columnCount).map { column in column < row.count ? TabularCell.text(row[column]) : absent }
+            (0..<updated.columnCount).map { column in
+                column < row.count ? editedCell(row[column], replacing: absent, column: ids[column]) : absent
+            }
         }
         let keys = updated.insertRows(cells, at: updated.rowCount)
         var newDisplay = displayKeys

@@ -11,6 +11,8 @@ enum DataFileSaveError: LocalizedError {
     case notLoaded
     case unsupportedFormat
     case unencodable(row: Int, column: Int, character: Character, encoding: String)
+    case invalidJSONValue(row: Int, column: String)
+    case duplicateJSONKey(String)
     case failed(String)
 
     var errorDescription: String? {
@@ -27,6 +29,14 @@ enum DataFileSaveError: LocalizedError {
                 String(character),
                 encoding
             )
+        case .invalidJSONValue(let row, let column):
+            return String(
+                format: String(localized: "Row %@, column %@ is not valid JSON. Fix the value or clear it, then save again."),
+                row.formatted(),
+                column
+            )
+        case .duplicateJSONKey(let key):
+            return String(format: String(localized: "Two columns are both named “%@”. Rename one, then save again."), key)
         case .failed(let message):
             return message
         }
@@ -42,9 +52,61 @@ extension DataFileController {
         switch format {
         case .delimited:
             try writeDelimited(table, to: url, typeName: typeName)
-        case .json, .jsonLines, .workbook:
+        case .json:
+            let keepsLines = kind?.format == .json && content?.jsonSource?.shape == .lines
+            try writeJSON(table, to: url, shape: keepsLines ? .lines : .array)
+        case .jsonLines:
+            try writeJSON(table, to: url, shape: .lines)
+        case .workbook:
             throw DataFileSaveError.unsupportedFormat
         }
+    }
+
+    private func writeJSON(_ table: TabularTable, to url: URL, shape: JSONTableShape) throws {
+        let source = content?.jsonSource
+        let keepsSource = source?.shape == shape
+        let typesText = source == nil
+        let kinds = Dictionary(uniqueKeysWithValues: table.columnIDs.map { ($0, kind(of: $0)) })
+        let rows = table.jsonOutputRows(sourceKeys: keepsSource ? source?.keys : nil) { cell, id in
+            try Self.jsonLiteral(for: cell, columnKind: kinds[id] ?? .text, typesText: typesText)
+        }
+        let writer: JSONTableWriter
+        if keepsSource, let source {
+            writer = JSONTableWriter(source: source, keyChanges: table.jsonKeyChanges(sourceKeys: source.keys))
+        } else {
+            writer = JSONTableWriter(shape: shape)
+        }
+        do {
+            try writer.write(to: url, rows: rows)
+        } catch JSONTableWriteError.duplicateKey(let key) {
+            throw DataFileSaveError.duplicateJSONKey(key)
+        } catch JSONTableWriteError.invalidLiteral, JSONTableWriteError.literalSpansLines {
+            throw DataFileSaveError.failed(String(localized: "A value could not be written as JSON."))
+        } catch JSONTableWriteError.sourceRowUnavailable {
+            throw DataFileSaveError.failed(String(localized: "The original file changed while it was open. Reload it, then save again."))
+        } catch TabularWriteError.couldNotCreate(let path) {
+            throw DataFileSaveError.failed(String(format: String(localized: "Could not create %@."), path))
+        } catch TabularWriteError.writeFailed(let message) {
+            throw DataFileSaveError.failed(message)
+        }
+        if let failure = rows.status.failure {
+            throw DataFileSaveError.invalidJSONValue(
+                row: (table.rowOrder.logicalRow(ofKey: failure.key) ?? 0) + 1,
+                column: table.column(failure.column)?.name ?? ""
+            )
+        }
+    }
+
+    nonisolated static func jsonLiteral(
+        for cell: TabularCell,
+        columnKind: TabularInferredKind,
+        typesText: Bool
+    ) throws -> String {
+        guard typesText, cell.kind == .text else {
+            return try JSONValueTyping.literal(for: cell.text, originalKind: cell.kind)
+        }
+        let kind = jsonKind(forNewValue: cell.text, columnKind: columnKind)
+        return try JSONValueTyping.literal(for: cell.text, originalKind: kind == .null ? .text : kind)
     }
 
     func outputDialect(forType typeName: String, table: TabularTable) -> DelimitedDialect {
