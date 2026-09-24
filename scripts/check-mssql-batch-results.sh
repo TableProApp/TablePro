@@ -26,6 +26,10 @@
 #     The thread reading the connection then waited forever for packets the Stop had already read: during a large
 #     result, and during a read blocked on another session's lock.
 #   - Past the errors a read keeps, a failing statement looked like db-lib failing the whole request.
+#   - A disconnect left the statement running on the server and committing, where a client that closes its socket
+#     ends it. db-lib closes the handle only once the read in progress returns, and the disconnect took away the gate
+#     the interrupt is found through, so a Stop pressed just before it was lost. Closing a window stops and then
+#     disconnects; Disconnect disconnects and then stops.
 #
 # So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
 # Libs/libsybdb.a, runs each case through MSSQLPluginDriver, and fails when any answer differs. A FreeTDS bump or a
@@ -267,6 +271,7 @@ enum Check {
                 CREATE TABLE dbo.stop_locked (id INT PRIMARY KEY);
                 INSERT INTO dbo.stop_locked SELECT TOP (5000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) FROM sys.all_columns;
             END;
+            IF OBJECT_ID(N'dbo.stop_disconnect') IS NULL CREATE TABLE dbo.stop_disconnect (id INT);
             """, rowCap: nil, parameters: nil)
         _ = try await driver.executeBatch(query: """
             DELETE FROM dbo.serialnew; DELETE FROM dbo.wms; DELETE FROM dbo.drm_report_n; DELETE FROM dbo.serial_existed;
@@ -296,6 +301,7 @@ enum Check {
         try await stopDuringLargeResult()
         try await stopDuringBlockedRead(locker: observer)
         try await stopWhileReadingPastTheRest(observer: observer)
+        try await disconnectEndsTheStatement(observer: observer)
         observer.disconnect()
         try await fatalError(driver)
     }
@@ -575,6 +581,71 @@ enum Check {
         _ = try? await driver.execute(query: "IF @@TRANCOUNT > 0 ROLLBACK; SET XACT_ABORT OFF")
         expect(await answersPromptly(driver), "the connection answers after a Stop while reading past the rest")
         driver.disconnect()
+    }
+
+    static func disconnectEndsTheStatement(observer: MSSQLPluginDriver) async throws {
+        let closingWindow = try await disconnectMisses(observer: observer) { driver in
+            let press = pressStop(driver)
+            let stopReturned = await press.returns(within: 1)
+            driver.disconnect()
+            return stopReturned ? [] : ["the Stop never returned"]
+        }
+        expect(closingWindow.isEmpty, "a Stop and then a disconnect, as closing a window does, end the statement on the server",
+               closingWindow.joined(separator: ", "))
+
+        let disconnecting = try await disconnectMisses(observer: observer) { driver in
+            driver.disconnect()
+            return []
+        }
+        expect(disconnecting.isEmpty, "a disconnect alone, as Disconnect does before any Stop, ends the statement on the server",
+               disconnecting.joined(separator: ", "))
+    }
+
+    /// What was wrong once `end` ran 1 second into a WAITFOR and an INSERT, or nothing. The read has to end, the session
+    /// has to be gone from the server within 3 seconds, and nothing may be written once the WAITFOR would have ended.
+    static func disconnectMisses(
+        observer: MSSQLPluginDriver,
+        end: (MSSQLPluginDriver) async -> [String]
+    ) async throws -> [String] {
+        _ = try await observer.execute(query: "DELETE FROM dbo.stop_disconnect")
+        let driver = try await connect(database)
+        let identity = try await driver.execute(
+            query: "SELECT @@SPID AS spid, CONVERT(VARCHAR(30), login_time, 121) AS login FROM sys.dm_exec_sessions WHERE session_id = @@SPID"
+        ).rows.first?.map(\.asText)
+        guard let identity, identity.count == 2, let spid = identity[0], let login = identity[1] else {
+            return ["the session could not be identified"]
+        }
+        let startedAt = Date()
+        let read = Task {
+            _ = try await driver.executeBatch(
+                query: "WAITFOR DELAY '00:00:06'; INSERT INTO dbo.stop_disconnect VALUES (1);", rowCap: nil, parameters: nil
+            )
+        }
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        var misses = await end(driver)
+        let endedAt = Date()
+
+        let sessionQuery = "SELECT COUNT(*) AS n FROM sys.dm_exec_sessions WHERE session_id = \(Int(spid) ?? -1) "
+            + "AND CONVERT(VARCHAR(30), login_time, 121) = '\(login)'"
+        var sessionClosed = false
+        while !sessionClosed, Date().timeIntervalSince(endedAt) < 3 {
+            sessionClosed = try await observer.execute(query: sessionQuery).rows.first?.first?.asText == "0"
+            if !sessionClosed { try await Task.sleep(nanoseconds: 100_000_000) }
+        }
+        if !sessionClosed { misses.append("the session was still on the server 3s later") }
+        switch await settle(read, within: 1) {
+        case nil: misses.append("the read never ended")
+        case .success?: misses.append("the read finished instead of stopping")
+        case .failure?: break
+        }
+
+        let waitforEnd = startedAt.addingTimeInterval(8)
+        if Date() < waitforEnd {
+            try await Task.sleep(nanoseconds: UInt64(waitforEnd.timeIntervalSinceNow * 1_000_000_000))
+        }
+        let written = try await observer.execute(query: "SELECT COUNT(*) AS n FROM dbo.stop_disconnect").rows.first?.first?.asText
+        if written != "0" { misses.append("the INSERT behind the WAITFOR wrote \(written ?? "nil") row(s)") }
+        return misses
     }
 
     static func procedureResultSets(_ driver: MSSQLPluginDriver) async throws {

@@ -308,4 +308,57 @@ struct AgentSessionRegistryTests {
         let records = store.load()
         #expect(records.first?.status == .failed)
     }
+
+    @Test("An explicit action runs in the session on screen while it is idle")
+    func idleSessionTakesTheAction() {
+        let registry = AgentSessionRegistry(store: makeStore())
+        let connectionId = UUID()
+        let current = registry.startSession(for: connectionId)
+
+        let resolved = registry.resolveIdleSession(for: connectionId)
+
+        #expect(resolved === current)
+        #expect(registry.sessions(for: connectionId).count == 1)
+    }
+
+    @Test("An explicit action beside a busy session starts a new one and leaves the busy one running")
+    func busySessionIsLeftRunning() {
+        let registry = AgentSessionRegistry(store: makeStore())
+        let connectionId = UUID()
+        let busy = registry.startSession(for: connectionId)
+        let assistantID = UUID()
+        busy.viewModel.streamingState = .streaming(assistantID: assistantID)
+
+        let resolved = registry.resolveIdleSession(for: connectionId)
+
+        #expect(resolved !== busy)
+        #expect(registry.currentSession(for: connectionId) === resolved)
+        #expect(registry.sessions(for: connectionId).contains { $0 === busy })
+        #expect(!busy.status.isEnded)
+        guard case .streaming(let streamingID) = busy.viewModel.streamingState else {
+            Issue.record("The busy session's reply was cancelled")
+            return
+        }
+        #expect(streamingID == assistantID)
+    }
+
+    @Test("A paused tool loop is not busy, so the action takes its session")
+    func pausedSessionTakesTheAction() {
+        let registry = AgentSessionRegistry(store: makeStore())
+        let connectionId = UUID()
+        let paused = registry.startSession(for: connectionId)
+        paused.viewModel.streamingState = .pausedAtToolLimit(count: 25)
+
+        #expect(registry.resolveIdleSession(for: connectionId) === paused)
+    }
+
+    @Test("An explicit action with no session on screen starts one")
+    func actionStartsTheFirstSession() {
+        let registry = AgentSessionRegistry(store: makeStore())
+        let connectionId = UUID()
+
+        let resolved = registry.resolveIdleSession(for: connectionId)
+
+        #expect(registry.currentSession(for: connectionId) === resolved)
+    }
 }

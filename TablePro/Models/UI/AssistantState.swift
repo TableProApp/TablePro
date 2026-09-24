@@ -26,6 +26,7 @@ internal final class AssistantState: ObservableObject {
     @Published internal private(set) var isActivated = false
 
     private var sessionCancellable: AnyCancellable?
+    private var observedSessionId: UUID?
 
     internal init(connectionId: UUID? = nil, registry: AgentSessionRegistry = .shared) {
         self.connectionId = connectionId
@@ -57,18 +58,36 @@ internal final class AssistantState: ObservableObject {
         guard let session = registry.resolveSession(for: connectionId, startingIfNeeded: true) else {
             return nil
         }
+        return present(session, connection: connection)
+    }
+
+    @discardableResult
+    internal func activateIdleSession(connection: DatabaseConnection? = nil) -> AIChatViewModel? {
+        guard let connectionId else { return nil }
+        return present(registry.resolveIdleSession(for: connectionId), connection: connection)
+    }
+
+    internal func followDisplayedSession() {
+        guard isActivated else { return }
+        follow(session)
+    }
+
+    private func present(_ session: AgentSession, connection: DatabaseConnection?) -> AIChatViewModel {
         if let connection, session.viewModel.connection?.id != connection.id {
             session.viewModel.connection = connection
         }
         session.viewModel.restoreConversationsIfNeeded()
-        observe(session)
+        follow(session)
         if !isActivated { isActivated = true }
         return session.viewModel
     }
 
-    private func observe(_ session: AgentSession) {
-        sessionCancellable = session.objectWillChange
+    private func follow(_ session: AgentSession?) {
+        guard session?.id != observedSessionId else { return }
+        observedSessionId = session?.id
+        sessionCancellable = session?.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
+        objectWillChange.send()
     }
 
     /// Releases this presentation. It does not stop the session.
@@ -80,6 +99,7 @@ internal final class AssistantState: ObservableObject {
     /// there.
     internal func teardown() {
         sessionCancellable = nil
+        observedSessionId = nil
         context = .empty
         isActivated = false
     }

@@ -45,8 +45,7 @@ extension MainContentCoordinator {
         guard aiQueryActionAvailability.isEnabled,
               let tab = tabManager.selectedTab,
               let request = aiQueryRequest(for: action, in: tab, target: target) else { return }
-        showAssistant()
-        aiViewModel?.runQueryAction(request)
+        presentIdleAssistant()?.runQueryAction(request)
     }
 
     func fixErrorWithAI(query: String, error: String) {
@@ -61,8 +60,18 @@ extension MainContentCoordinator {
             source: source,
             errorMessage: error
         )
-        showAssistant()
-        aiViewModel?.runQueryAction(request)
+        presentIdleAssistant()?.runQueryAction(request)
+    }
+
+    private func presentIdleAssistant() -> AIChatViewModel? {
+        guard AppSettingsManager.shared.ai.enabled, let assistant = trailingPaneState?.assistant else { return nil }
+        let shownSessionId = assistant.session?.id
+        guard let viewModel = assistant.activateIdleSession(connection: connection) else { return nil }
+        if viewModel.sessionId != shownSessionId {
+            splitViewController?.repaintEveryWindow(hosting: connectionId)
+        }
+        trailingPaneProxy?.showAssistant()
+        return viewModel
     }
 
     func aiQueryRequest(

@@ -111,10 +111,13 @@ enum QueryClassifier {
         isMultiStatement(sql, databaseType: databaseType, readings: databaseType.lexicalReadings)
     }
 
+    /// Whether `sql` runs more than one statement: it holds several, or a `GO n` line runs its one statement n times.
+    /// A caller that sends one statement once cannot honour the count, and dropping it runs the statement once.
     static func isMultiStatement(_ sql: String, databaseType: DatabaseType, readings: SQLLexicalReadings) -> Bool {
         let model = QueryStatementModel.forDatabaseType(databaseType)
         return readings.distinct(for: sql).contains { grammar in
-            QueryStatementScanner.executableStatements(in: sql, model: model, grammar: grammar).count > 1
+            let batches = QueryBatchPlanner.batches(in: sql, model: model, grammar: grammar)
+            return batches.flatMap(\.statements).count > 1 || batches.contains { $0.repeatCount > 1 }
         }
     }
 

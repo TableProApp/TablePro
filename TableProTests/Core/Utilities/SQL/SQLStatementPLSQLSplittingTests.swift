@@ -97,6 +97,13 @@ struct SQLStatementPLSQLSplittingTests {
         #expect(SQLStatementScanner.executableText(of: "/\n", grammar: TestGrammar.oracle).isEmpty)
     }
 
+    @Test("A slash line before the first statement stays out of a script sent whole")
+    func executableTextDropsALeadingSlash() {
+        #expect(SQLStatementScanner.executableText(of: "/\nSELECT 1 FROM dual", grammar: TestGrammar.oracle) == "SELECT 1 FROM dual")
+        #expect(SQLStatementScanner.executableText(of: ";\n-- keep\nSELECT 1 FROM dual;", grammar: TestGrammar.oracle)
+            == "-- keep\nSELECT 1 FROM dual")
+    }
+
     @Test("A caret on a slash line runs the statement the slash ends")
     func caretOnSlashLineRunsTheStatementAbove() {
         let script = "BEGIN NULL; END;\n/\nSELECT 1 FROM dual\n/\n"

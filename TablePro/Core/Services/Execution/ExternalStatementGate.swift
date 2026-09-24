@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal enum ExternalStatementGateError: LocalizedError, Equatable {
     case denied(String)
@@ -106,6 +107,28 @@ internal enum ExternalStatementGate {
         }
 
         return classification
+    }
+
+    /// Whether a caller that takes scripts may send several statements in one call to this engine.
+    ///
+    /// Only where a script is cut into batches at `GO` lines, as on SQL Server. There the server runs whatever one
+    /// request carries as one batch whether or not its statements end in `;`, and a local variable exists only inside
+    /// the batch that declares it, so one statement per call is neither enforceable nor useful. Every other engine
+    /// keeps one statement per call.
+    internal static func acceptsScripts(on databaseType: DatabaseType) -> Bool {
+        databaseType.lexicalGrammar.contains(.batchSeparatorLines)
+    }
+
+    /// `capabilities`, plus leave to run several statements in one call where the engine takes scripts.
+    ///
+    /// The execution gate refuses a text of several statements to a caller without that leave, before Safe Mode is
+    /// asked anything, so a caller that lets a script past `classify` has to claim it there as well.
+    internal static func capabilities(
+        _ capabilities: CallerCapabilities,
+        takingScriptsOn databaseType: DatabaseType
+    ) -> CallerCapabilities {
+        guard acceptsScripts(on: databaseType) else { return capabilities }
+        return capabilities.union(.mayRunMultiStatement)
     }
 
     /// A loaded SQLite extension can add functions that write files or run a nested statement, and

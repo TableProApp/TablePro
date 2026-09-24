@@ -90,6 +90,9 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// `DROP TABLE t` is two statements. ``SQLUnterminatedStatements`` finds where they begin.
     public static let unterminatedStatements = SQLLexicalGrammar(rawValue: 1 << 23)
 
+    /// The `;` that ends a `MERGE` belongs to it, because the engine refuses a `MERGE` without one, as T-SQL does.
+    public static let terminatedMergeStatements = SQLLexicalGrammar(rawValue: 1 << 24)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

@@ -41,8 +41,8 @@ public enum SQLStatementScanner {
     /// One statement as the driver will receive it, with the span of the text it was taken from.
     ///
     /// `sql` is the trimmed form, with the terminating `;` stripped unless it belongs to the statement, as it does
-    /// after a PL/SQL unit's `END`; `range` covers exactly those characters, so a caller that keeps the range can find
-    /// its way back to the statement it ran.
+    /// after a PL/SQL unit's `END` and after a T-SQL `MERGE`; `range` covers exactly those characters, so a caller that
+    /// keeps the range can find its way back to the statement it ran.
     ///
     /// The range is relative to the text the scan was given. A run started from a selection or from a single
     /// statement scans a fragment, so those callers shift the range onto the tab's whole query with ``offset(by:)``
@@ -186,14 +186,16 @@ public enum SQLStatementScanner {
         return results
     }
 
-    /// `text` as a driver receives it when it is sent whole: trimmed, and ending where its last statement's executable
-    /// form ends, so a trailing separator comes off and a terminator that belongs to the statement stays. Empty when
-    /// nothing but separators, comments or blanks is left.
+    /// `text` as a driver receives it when it is sent whole: starting where its first statement starts and ending where
+    /// its last statement's executable form ends, so a separator on either side comes off and a terminator that belongs
+    /// to the statement stays. A `GO` line ahead of the first statement is the client's word: SQL Server reads one it
+    /// receives as a call to a procedure named `GO`. Empty when nothing but separators, comments or blanks is left.
     public static func executableText(of text: String, grammar: SQLLexicalGrammar) -> String {
         let trimmed = StatementBlank.trimming(text)
-        guard let last = executableStatements(in: trimmed, grammar: grammar).last else { return "" }
-        let end = last.range.location + last.range.length
-        return StatementBlank.trimming((trimmed as NSString).substring(to: end))
+        let statements = executableStatements(in: trimmed, grammar: grammar)
+        guard let first = statements.first, let last = statements.last else { return "" }
+        let span = NSRange(location: first.range.location, length: last.range.upperBound - first.range.location)
+        return (trimmed as NSString).substring(with: span)
     }
 
     /// The text the driver receives for `located`, or nil when nothing but a separator is left.
@@ -315,7 +317,7 @@ public enum SQLStatementScanner {
             if let span = SQLNonCodeSpan.span(at: i, in: nsQuery, grammar: grammar) {
                 switch span.kind {
                 case .lineComment, .blockComment:
-                    break
+                    tracker.observeGap()
                 case .executableComment:
                     hasStatementContent = true
                 case .quoted, .parameter:
@@ -382,6 +384,7 @@ public enum SQLStatementScanner {
 
             let blankLength = StatementBlank.blankLength(in: nsQuery, at: i)
             if blankLength > 0 {
+                tracker.observeGap()
                 i += blankLength
                 continue
             }

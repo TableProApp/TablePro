@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId: String
@@ -13,6 +14,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private let driver: DatabaseDriver
     private let databaseType: DatabaseType
+    private let grammar: SQLLexicalGrammar
     private let columnMapping: [String: String]
     private let rowGenerator: SQLStatementGenerator?
 
@@ -34,6 +36,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.isCancelled = isCancelled
         self.driver = driver
         self.databaseType = databaseType
+        self.grammar = databaseType.lexicalGrammar
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
         self.columnMapping = Dictionary(
@@ -53,8 +56,32 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func execute(statement: String) async throws {
-        _ = try await driver.execute(query: statement)
+        try await execute(statement: statement, line: 1)
     }
+
+    /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, or a statement at a time when it holds no `GO`
+    /// line, and each goes to the server whole: T-SQL scopes a variable, a table variable and a `TRY...CATCH` to one
+    /// batch, and a routine's body runs to the end of its batch. A driver that cannot send a batch whole runs its
+    /// statements one by one, as the editor does.
+    func execute(statement: String, line: Int) async throws {
+        guard grammar.contains(.batchSeparatorLines) else {
+            _ = try await driver.execute(query: statement)
+            return
+        }
+        if driver.supportsResultSetBatches,
+           let answer = try await driver.executeBatch(query: statement, rowCap: Self.batchRowCap, parameters: nil) {
+            guard let failure = BatchErrorText.describe(answer.errors, batchStartLine: line) else { return }
+            throw DatabaseError.queryFailed(failure)
+        }
+        for batchStatement in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
+            guard !isCancelled() else { throw PluginImportCancellationError() }
+            _ = try await driver.execute(query: batchStatement.sql)
+        }
+    }
+
+    /// An import shows no rows, so a batch keeps as few of each result set as a driver takes, and the rest are read
+    /// past rather than held.
+    private static let batchRowCap = 1
 
     func insertRow(_ values: [String: PluginCellValue]) async throws {
         guard let targetTable else {

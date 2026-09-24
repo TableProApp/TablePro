@@ -206,15 +206,7 @@ internal actor DatabaseAccessBridge {
             ? .cancellableRead(owner)
             : .protectedWrite
 
-        if let cancellation {
-            await cancellation.onCancelRequested {
-                await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(
-                        owner: owner, on: connectionId, delivery: .immediate
-                    )
-                }
-            }
-        }
+        await forwardCancellation(cancellation, to: owner, on: connectionId)
 
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -232,12 +224,17 @@ internal actor DatabaseAccessBridge {
                 route: route,
                 policy: policy,
                 owner: owner,
-                statement: statement,
-                shouldCap: shouldCap,
-                maxRows: maxRows,
-                normalizedQuery: normalizedQuery,
                 timeoutSeconds: timeoutSeconds
-            )
+            ) { driver in
+                if shouldCap {
+                    return try await driver.executeUserQuery(
+                        query: statement.sql,
+                        rowCap: statement.rowCap ?? maxRows,
+                        parameters: nil
+                    )
+                }
+                return try await driver.execute(query: normalizedQuery)
+            }
         } catch {
             if classification.tier != .safe {
                 CatalogChangeService.post(statementRan)
@@ -249,34 +246,38 @@ internal actor DatabaseAccessBridge {
         return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
     }
 
-    private func runRacingTimeout(
+    internal func forwardCancellation(
+        _ cancellation: (any StatementCancellationSignal)?,
+        to owner: DriverLeaseOwner,
+        on connectionId: UUID
+    ) async {
+        guard let cancellation else { return }
+        await cancellation.onCancelRequested {
+            await MainActor.run {
+                try? DatabaseManager.shared.cancelRunningQuery(
+                    owner: owner, on: connectionId, delivery: .immediate
+                )
+            }
+        }
+    }
+
+    internal func runRacingTimeout<Output: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         policy: DriverCancellationPolicy,
         owner: DriverLeaseOwner,
-        statement: LeadingRowsStatement,
-        shouldCap: Bool,
-        maxRows: Int,
-        normalizedQuery: String,
-        timeoutSeconds: Int
-    ) async throws -> QueryResult {
+        timeoutSeconds: Int,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> Output
+    ) async throws -> Output {
         let connectionId = scope.connectionId
-        return try await withThrowingTaskGroup(of: QueryResult.self) { group in
+        return try await withThrowingTaskGroup(of: Output.self) { group in
             group.addTask {
                 try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
-                    cancellation: policy
-                ) { driver in
-                    if shouldCap {
-                        return try await driver.executeUserQuery(
-                            query: statement.sql,
-                            rowCap: statement.rowCap ?? maxRows,
-                            parameters: nil
-                        )
-                    }
-                    return try await driver.execute(query: normalizedQuery)
-                }
+                    cancellation: policy,
+                    body
+                )
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(timeoutSeconds))

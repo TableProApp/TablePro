@@ -70,17 +70,17 @@ internal struct SQLExportStatementTally: Equatable {
 internal final class SQLExportStatementAccumulator {
     /// What separates two rows, and what terminates a statement. Both are counted as the UTF-8 bytes
     /// they are, because the file is written as UTF-8 whatever encoding its prologue declares to the
-    /// server.
+    /// server. A terminator can carry a `GO` line, which ends each statement's batch on SQL Server.
     private static let rowSeparator = ",\n"
-    private static let terminator = ";\n\n"
     private static let rowSeparatorBytes = 2
-    private static let terminatorBytes = 3
 
     private let prefix: String
     private let suffix: String
+    private let terminator: String
     private let budget: SQLExportStatementBudget
     private let prefixBytes: Int
     private let suffixBytes: Int
+    private let terminatorBytes: Int
 
     private var rows: [String] = []
     private var bodyBytes = 0
@@ -90,12 +90,19 @@ internal final class SQLExportStatementAccumulator {
     internal private(set) var oversizedRowCount = 0
     internal private(set) var statementCount = 0
 
-    internal init(prefix: String, suffix: String, budget: SQLExportStatementBudget) {
+    internal init(
+        prefix: String,
+        suffix: String,
+        budget: SQLExportStatementBudget,
+        terminator: String = ";\n\n"
+    ) {
         self.prefix = prefix
         self.suffix = suffix
+        self.terminator = terminator
         self.budget = budget
         prefixBytes = prefix.utf8.count
         suffixBytes = suffix.utf8.count
+        terminatorBytes = terminator.utf8.count
     }
 
     /// What this accumulator wrote, against the limit it was built with rather than whatever the
@@ -112,7 +119,7 @@ internal final class SQLExportStatementAccumulator {
     /// trailing clause is not small: `ON DUPLICATE KEY UPDATE` over a wide table, or a PostgreSQL
     /// `ON CONFLICT ... DO UPDATE SET`, runs to hundreds of bytes that a budget counting only values
     /// would spend twice.
-    private var envelopeBytes: Int { prefixBytes + suffixBytes + Self.terminatorBytes }
+    private var envelopeBytes: Int { prefixBytes + suffixBytes + terminatorBytes }
 
     /// Takes one rendered row and hands back the statement it closed, if it closed one.
     internal func append(_ renderedRow: String) -> String? {
@@ -142,7 +149,7 @@ internal final class SQLExportStatementAccumulator {
     /// Closes whatever is held, and answers nil when nothing is.
     internal func finish() -> String? {
         guard !rows.isEmpty else { return nil }
-        let statement = prefix + rows.joined(separator: Self.rowSeparator) + suffix + Self.terminator
+        let statement = prefix + rows.joined(separator: Self.rowSeparator) + suffix + terminator
         let statementBytes = envelopeBytes + bodyBytes
         if statementBytes > largestStatementBytes {
             largestStatementBytes = statementBytes

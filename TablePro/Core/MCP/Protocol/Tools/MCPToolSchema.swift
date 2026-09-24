@@ -84,24 +84,51 @@ enum MCPToolSchema {
         "description": .string(String(localized: "Cell value: string, number, boolean, or null"))
     ])
 
+    private static let resultSetProperties: [String: JsonValue] = [
+        "columns": array(String(localized: "Column names in result order"), of: stringItem),
+        "rows": array(
+            String(localized: "Rows, each an array aligned with columns"),
+            of: .object(["type": .string("array"), "items": cell])
+        ),
+        "row_count": integer(String(localized: "Number of rows returned")),
+        "rows_affected": integer(String(localized: "Rows the statement changed")),
+        "execution_time_ms": number(String(localized: "Server round trip in milliseconds")),
+        "is_truncated": boolean(String(localized: "Whether the row limit clipped the result")),
+        "status_message": string(String(localized: "Driver status message, when the engine sent one")),
+        "database": string(String(localized: "Database the statement ran against")),
+        "schema": string(String(localized: "Schema the statement ran against"))
+    ]
+
+    private static let resultSetRequired = [
+        "columns", "rows", "row_count", "rows_affected", "execution_time_ms", "is_truncated"
+    ]
+
     static let resultSet: JsonValue = object(
-        properties: [
-            "columns": array(String(localized: "Column names in result order"), of: stringItem),
-            "rows": array(
-                String(localized: "Rows, each an array aligned with columns"),
-                of: .object(["type": .string("array"), "items": cell])
-            ),
-            "row_count": integer(String(localized: "Number of rows returned")),
-            "rows_affected": integer(String(localized: "Rows the statement changed")),
-            "execution_time_ms": number(String(localized: "Server round trip in milliseconds")),
-            "is_truncated": boolean(String(localized: "Whether the row limit clipped the result")),
-            "status_message": string(String(localized: "Driver status message, when the engine sent one")),
-            "database": string(String(localized: "Database the statement ran against")),
-            "schema": string(String(localized: "Schema the statement ran against"))
-        ],
-        required: ["columns", "rows", "row_count", "rows_affected", "execution_time_ms", "is_truncated"],
+        properties: resultSetProperties,
+        required: resultSetRequired,
         allowsAdditional: true
     )
+
+    /// A result set, where the top-level fields describe the first one a SQL Server script returned and
+    /// `result_sets` lists every one of them once there is more than one.
+    static let scriptResult: JsonValue = object(
+        properties: resultSetProperties.merging([
+            "result_sets": array(
+                String(localized: "Every result set a script returned, in order, when it returned more than one"),
+                of: object(
+                    properties: resultSetProperties.filter { scriptResultSetKeys.contains($0.key) },
+                    required: ["columns", "rows", "row_count", "is_truncated"],
+                    allowsAdditional: true
+                )
+            )
+        ]) { current, _ in current },
+        required: resultSetRequired,
+        allowsAdditional: true
+    )
+
+    private static let scriptResultSetKeys: Set<String> = [
+        "columns", "rows", "row_count", "is_truncated", "status_message"
+    ]
 
     static let columnDefinition: JsonValue = object(
         properties: [

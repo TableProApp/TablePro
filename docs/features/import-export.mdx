@@ -45,7 +45,7 @@ SQL exports more than tables. A database holding more than one kind of object gr
 | Events | `CREATE EVENT` | MySQL, MariaDB |
 | Privileges | `GRANT`, one principal per row | engines with user management |
 
-An Oracle or Dameng routine or trigger is followed by a `/` line, and a MySQL or MariaDB routine, trigger or event with a body sits in a `DELIMITER` block, the same form a [saved sync script](/features/compare-sync#the-script) uses. Restore those dumps with SQL*Plus, DISQL or the `mysql` client.
+An Oracle or Dameng routine or trigger is followed by a `/` line, and a MySQL or MariaDB routine, trigger or event with a body sits in a `DELIMITER` block, the same form a [saved sync script](/features/compare-sync#the-script) uses. Restore those dumps with SQL*Plus, DISQL or the `mysql` client. A SQL Server dump ends every statement with a `GO` line, so each one runs as its own batch in `sqlcmd` and SQL Server Management Studio.
 
 A database with only tables lists them flat, with no group to open first.
 
@@ -297,7 +297,9 @@ The extension picks the format, so one command covers all of them. A file no for
 
 **UTF-16** reads the byte order from the mark at the start of the file and falls back to big-endian, which is what a file with no mark means. Pick **UTF-16 LE** or **UTF-16 BE** for a file that has no mark and is not big-endian. Latin-1 and Windows-1252 differ over the bytes `0x80` to `0x9F`: a dump written by MySQL keeps its curly quotes, en dashes and euro sign there, so Windows-1252 is the one to pick for it.
 
-Skip and Continue collects up to 1,000 failures with their line numbers and messages, and the summary counts successes against failures behind a **Copy Details** button. **Save Report…** writes them all to a CSV with a line, a statement and the database's own error per row, so a large import's failures can be sorted and searched rather than scrolled. A stop shows the line, the database's own message, and the failing statement, with the dialog still open behind it, ready for a changed setting and another run.
+On SQL Server a file that holds a `GO` line runs a batch at a time, cut at its `GO` lines the way `sqlcmd` cuts it, so every count and failure here is a batch rather than a statement. A file with no `GO` line runs a statement at a time. See [Scripts and batches](/databases/mssql#scripts-and-batches).
+
+Skip and Continue collects up to 1,000 failures with their line numbers and messages, and the summary counts successes against failures behind a **Copy Details** button. **Save Report…** writes them all to a CSV with a line, a statement and the database's own error per row, so a large import's failures can be sorted and searched rather than scrolled. A stop shows the line, the database's own message, and the failing statement, with the dialog still open behind it, ready for a changed setting and another run. The alert shows the first 10,000 characters of a longer statement and the first five errors of a batch that raised more, and **Copy Details** copies all of them.
 
 ### Disabling foreign key checks
 

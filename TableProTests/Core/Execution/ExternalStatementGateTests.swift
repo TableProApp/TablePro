@@ -75,6 +75,52 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement("SELECT 1; SELECT 2", allowsMultiStatement: true)) == nil)
     }
 
+    /// SQL Server runs whatever one request carries as one batch, `;` or not, and a variable lives only in the batch
+    /// that declares it, so a caller that takes scripts may send one there (#3078). Nowhere else.
+    @Test("Only an engine that cuts scripts into GO batches takes a script in one call")
+    func scriptsAreTakenWhereBatchesAreTheUnit() {
+        #expect(ExternalStatementGate.acceptsScripts(on: .mssql))
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle, .clickhouse] {
+            #expect(!ExternalStatementGate.acceptsScripts(on: engine), "\(engine.rawValue) takes one statement per call")
+        }
+    }
+
+    /// `GO 50` runs the batch fifty times in sqlcmd and in the editor. A tool that sends one statement once would run it
+    /// once and report success, so the count is refused rather than dropped.
+    @Test("A statement a GO line repeats is refused unless the caller takes scripts")
+    func repeatedStatementIsRefused() {
+        let repeated = "DELETE TOP (1000) FROM dbo.log WHERE archived = 1\nGO 50"
+        #expect(refusal(statement(repeated, databaseType: .mssql))
+            == .invalidArgument(String(localized: "Send one statement at a time.")))
+        #expect(refusal(statement(repeated, databaseType: .mssql, allowsMultiStatement: true)) == nil)
+        #expect(refusal(statement("DELETE FROM dbo.log WHERE archived = 1\nGO", databaseType: .mssql)) == nil)
+        #expect(refusal(statement("GO 3\nDELETE FROM dbo.log WHERE archived = 1", databaseType: .mssql)) == nil)
+    }
+
+    @Test("A caller that takes scripts claims leave to run several statements only where the engine takes them")
+    func scriptCapabilityFollowsTheEngine() {
+        let base: CallerCapabilities = [.mayWrite, .mayRunDestructive]
+        #expect(ExternalStatementGate.capabilities(base, takingScriptsOn: .mssql) == base.union(.mayRunMultiStatement))
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle] {
+            #expect(ExternalStatementGate.capabilities(base, takingScriptsOn: engine) == base, "\(engine.rawValue)")
+        }
+    }
+
+    @Test("A SQL Server script clears the gate for a caller that takes scripts, and is still tiered by its worst statement")
+    func sqlServerScriptIsGatedWhole() {
+        let script = "DECLARE @sn NVARCHAR(50) = 'x';\nSELECT * FROM a WHERE sn = @sn;\nGO\nSELECT * FROM b"
+        let takesScripts = ExternalStatementGate.acceptsScripts(on: .mssql)
+        #expect(refusal(statement(script, databaseType: .mssql, allowsMultiStatement: takesScripts)) == nil)
+        #expect(refusal(statement(script, databaseType: .mssql, externalAccess: .readOnly, allowsMultiStatement: takesScripts))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+        #expect(refusal(statement(
+            "SELECT 1;\nGO\nDROP TABLE orders",
+            databaseType: .mssql,
+            allowsDestructive: false,
+            allowsMultiStatement: takesScripts
+        )) == .denied(String(localized: "This statement drops or truncates data.")))
+    }
+
     /// The connection setting a user reaches for when they want a script to look but not touch.
     @Test("A write is refused when the connection is read only for external clients", arguments: [
         ExternalAccessLevel.readOnly, ExternalAccessLevel.blocked
@@ -101,7 +147,7 @@ struct ExternalStatementGateTests {
     }
 
     @Test("A write SQL Server runs without a terminator is refused on a connection read only for external clients",
-          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1"])
+          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1", "SELECT 1\nUPDATE [t] SET c = 1"])
     func unterminatedWriteRefusedOnReadOnlyConnection(sql: String) {
         #expect(refusal(statement(sql, databaseType: .mssql, externalAccess: .readOnly))
             == .denied(String(localized: "This connection is read only for external clients.")))

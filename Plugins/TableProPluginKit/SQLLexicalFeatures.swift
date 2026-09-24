@@ -89,6 +89,9 @@ public struct SQLLexicalFeatures: OptionSet, Sendable, Hashable {
 
     /// A statement needs no `;` before the next one, as in T-SQL.
     public static let unterminatedStatements = SQLLexicalFeatures(rawValue: 1 << 23)
+
+    /// A `MERGE` needs the `;` that ends it, as in T-SQL.
+    public static let terminatedMergeStatements = SQLLexicalFeatures(rawValue: 1 << 24)
 }
 
 /// The lexical facts a driver's session settled, such as MySQL's `NO_BACKSLASH_ESCAPES` from the status flags of the

@@ -82,4 +82,44 @@ struct AIConversationTests {
         let storedVersion = json?["schemaVersion"] as? Int
         #expect(storedVersion == AIConversation.currentSchemaVersion)
     }
+
+    @Test("A block or attachment kind this build does not know is skipped, and the rest of the conversation loads")
+    func unknownBlockKindsAreSkipped() throws {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let json = """
+            {
+                "id": "\(UUID().uuidString)",
+                "title": "From a newer build",
+                "createdAt": "\(now)",
+                "updatedAt": "\(now)",
+                "messages": [
+                    {
+                        "id": "\(UUID().uuidString)",
+                        "role": "user",
+                        "timestamp": "\(now)",
+                        "blocks": [
+                            {"kind": "text", "text": "Review this"},
+                            {"kind": "attachment", "attachment": {"kind": "notebookCell", "cell": 3}},
+                            {"kind": "diagram", "diagram": {"nodes": []}}
+                        ]
+                    },
+                    {
+                        "id": "\(UUID().uuidString)",
+                        "role": "assistant",
+                        "timestamp": "\(now)",
+                        "blocks": [{"kind": "text", "text": "Looks fine"}]
+                    }
+                ]
+            }
+            """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let conversation = try decoder.decode(AIConversation.self, from: Data(json.utf8))
+
+        #expect(conversation.title == "From a newer build")
+        #expect(conversation.messages.count == 2)
+        #expect(conversation.messages.first?.blocks.map { $0.kind } == [.text("Review this")])
+        #expect(conversation.messages.last?.plainText == "Looks fine")
+    }
 }

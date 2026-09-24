@@ -41,7 +41,7 @@ Past the scope, a call clears three more gates:
 
 `confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
 
-Statements that read or write files, or that run server-side code, are refused on every tool. So is more than one statement in a single call.
+Statements that read or write files, or that run server-side code, are refused on every tool. So is more than one statement in a single call, and a statement a `GO 5` line would run five times, except in a SQL Server script sent to [`execute_query`](#execute_query).
 
 ## Connections
 
@@ -105,7 +105,7 @@ A lost connection, or a database where no schema could be read, fails the call i
 |------|-----------|---------|
 | `browse_table` | `connection_id`, `table` (`columns`, `filters`, `logic`, `sort`, `limit`, `offset`, `timeout_seconds`, `database`, `schema`) | A result set |
 | `count_rows` | `connection_id`, `table` (`exact`, `filters`, `logic`, `database`, `schema`) | `table`, `row_count`, `is_approximate`, `filter_count` |
-| `execute_query` | `connection_id`, `query` (`max_rows`, `timeout_seconds`, `database`, `schema`) | A result set |
+| `execute_query` | `connection_id`, `query` (`max_rows`, `timeout_seconds`, `database`, `schema`) | A result set, plus `result_sets[]` when a SQL Server script returns more than one |
 | `explain_query` | `connection_id`, `query` (`analyze`, `variant`, `timeout_seconds`, `database`, `schema`) | `statement` as actually sent, `execution_time_ms`, `columns[]`, `rows[][]`, and where available `plan_text`, `plan` and `available_variants[]` |
 | `export_data` | `connection_id`, `format` (`query` **or** `tables`, `sql_table`, `output_path`, `max_rows`, `database`, `schema`) | `format`, `rows_exported`, `is_truncated`, `path` when a file was written, and `exports[]` (`label`, `row_count`, `is_truncated`, `data`) |
 | `quote_identifiers` | `connection_id` and at least one of `identifiers`, `literals` (`database`, `schema`) | `identifiers[]` as `{ input, quoted }` and `literals[]` as `{ input, escaped }`, in the order supplied |
@@ -127,6 +127,12 @@ Without filters this returns the engine's fast estimate unless `exact` is set. W
 ### `execute_query`
 
 One statement, 100 KB at most. `DROP` and `TRUNCATE` are refused here; use `confirm_destructive_operation`. When the request carries a `progressToken`, the tool emits progress at 0.0 (resolving), 0.3 (executing) and 1.0 (done).
+
+On SQL Server, send the whole script instead. A variable exists only in the batch that declares it, so a `DECLARE` and the `SELECT`s that read it belong in one call. The script is cut into batches at its `GO` lines, as the query editor cuts it, and `GO 5` runs a batch five times. The gates judge the script by its worst statement: one write anywhere needs `tools:write` and Safe Mode, and one `DROP` refuses the call. `DECLARE` counts as a write.
+
+The top-level fields describe the first result set, with `rows_affected` counting the whole script. When the script returns more than one result set, `result_sets[]` lists every one in order, each with `columns`, `rows`, `row_count` and `is_truncated`. `max_rows` caps each result set on its own. `status_message` says when the script left a transaction open.
+
+A batch that raises an error fails the call with the server's message and line number. The batches after it do not run, and the error says what stays applied.
 
 ### `explain_query`
 

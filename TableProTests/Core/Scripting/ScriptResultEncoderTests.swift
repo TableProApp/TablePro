@@ -29,7 +29,7 @@ struct ScriptResultEncoderTests {
             error: nil
         )
 
-        let record = ScriptResultEncoder.encode(result, executionTimeMs: 12.5)
+        let record = ScriptResultEncoder.encode(.statement(result, executionTimeMs: 12.5))
 
         #expect(record[ScriptingKeys.QueryResult.columns] as? [String] == ["id", "name"])
         #expect(record[ScriptingKeys.QueryResult.rowCount] as? Int == 2)
@@ -51,7 +51,7 @@ struct ScriptResultEncoderTests {
             error: nil
         )
 
-        let record = ScriptResultEncoder.encode(result, executionTimeMs: 0)
+        let record = ScriptResultEncoder.encode(.statement(result, executionTimeMs: 0))
 
         #expect(try rows(of: record) == [["", payload.base64EncodedString()]])
     }
@@ -93,6 +93,56 @@ struct ScriptResultEncoderTests {
         #expect(try rows(of: record) == [["1"]])
     }
 
+    /// The record is the first result, as it always was, so a script written before scripts existed reads the same
+    /// thing. `results` holds every result set of a SQL Server script that returned more than one (#3078).
+    @Test("A script's record is its first result set and lists every result set in results")
+    func scriptListsEveryResultSet() throws {
+        let outcome = ScriptBatchRun(
+            answers: [
+                QueryBatchResult(
+                    resultSets: [
+                        ScriptAnsweringDriver.resultSet(columns: ["a"], rows: [["1"]]),
+                        ScriptAnsweringDriver.resultSet(columns: ["b", "c"], rows: [["x", "y"]], isTruncated: true)
+                    ],
+                    rowsAffected: 4,
+                    errors: [],
+                    discardedResultSetCount: 0,
+                    executionTime: 0
+                )
+            ],
+            sessionState: .idle
+        ).outcome(executionTimeMs: 9)
+
+        let record = ScriptResultEncoder.encode(outcome)
+
+        #expect(record[ScriptingKeys.QueryResult.columns] as? [String] == ["a"])
+        #expect(record[ScriptingKeys.QueryResult.rowsAffected] as? Int == 4)
+        let results = try #require(record[ScriptingKeys.QueryResult.results] as? [[String: Any]])
+        #expect(results.map { $0[ScriptingKeys.QueryResult.columns] as? [String] } == [["a"], ["b", "c"]])
+        #expect(try rows(of: results[1]) == [["x", "y"]])
+        #expect(results.map { $0[ScriptingKeys.QueryResult.truncated] as? Bool } == [false, true])
+        for key in ScriptingKeys.ResultSet.all {
+            #expect(results.allSatisfy { $0[key] != nil }, "'\(key)' is missing from a result set")
+        }
+    }
+
+    @Test("A single result leaves results empty rather than repeating the rows")
+    func singleResultLeavesResultsEmpty() throws {
+        let result = QueryResult(
+            columns: ["n"],
+            columnTypes: [],
+            rows: [[.text("1")]],
+            rowsAffected: 0,
+            executionTime: 0,
+            error: nil
+        )
+
+        let record = ScriptResultEncoder.encode(.statement(result, executionTimeMs: 1))
+
+        let results = try #require(record[ScriptingKeys.QueryResult.results] as? [[String: Any]])
+        #expect(results.isEmpty)
+    }
+
     @Test("A statement that changed rows reports how many, and whether it was cut short")
     func carriesAffectedAndTruncated() throws {
         var result = QueryResult(
@@ -106,7 +156,7 @@ struct ScriptResultEncoderTests {
         result.isTruncated = true
         result.statusMessage = "UPDATE 7"
 
-        let record = ScriptResultEncoder.encode(result, executionTimeMs: 3)
+        let record = ScriptResultEncoder.encode(.statement(result, executionTimeMs: 3))
 
         #expect(record[ScriptingKeys.QueryResult.rowsAffected] as? Int == 7)
         #expect(record[ScriptingKeys.QueryResult.truncated] as? Bool == true)

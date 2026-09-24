@@ -49,6 +49,18 @@ enum BatchResultMapping {
     }
 }
 
+/// What a run of batches has to tell the reader beyond its results: a transaction the script left open, and result
+/// sets the driver read past because a batch returned more than it keeps.
+enum BatchRunNotice {
+    static func text(discardedResultSetCount: Int, sessionState: PluginSessionTransactionState) -> String? {
+        let discardedNote = discardedResultSetCount > 0
+            ? String(format: String(localized: "%lld more result sets were not kept."), Int64(discardedResultSetCount))
+            : nil
+        let notes = [sessionState.openTransactionNotice, discardedNote].compactMap { $0 }
+        return notes.isEmpty ? nil : notes.joined(separator: " ")
+    }
+}
+
 /// How an error a batch raised reads in the editor.
 ///
 /// The server numbers lines from the first line of the text it was sent, so a batch's line is moved onto the editor's

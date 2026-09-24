@@ -470,7 +470,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         guard !dropTargets.isEmpty else { return }
         for object in dropTargets {
             guard let statement = dropStatement(for: object, dataSource: dataSource) else { continue }
-            try writer.write("\(statement)\n")
+            try writer.write(statement + dataSource.dumpStatementEnd)
         }
         try writer.write("\n")
     }
@@ -517,6 +517,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     ) async throws {
         var emittedTypeNames: Set<String> = []
         let structureTables = tables.filter { optionValue($0, at: 0) }
+        let statementEnd = dataSource.dumpStatementEnd
 
         for table in structureTables {
             do {
@@ -527,9 +528,9 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
                     if optionValue(table, at: 1) {
                         try writer.write(
-                            "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
+                            "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\(statementEnd)")
                     }
-                    try writer.write("\(seq.ddl)\n\n")
+                    try writer.write("\(seq.ddl)\(statementEnd)\n")
                 }
             } catch {
                 let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
@@ -547,10 +548,11 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
                     if optionValue(table, at: 1) {
                         try writer.write(
-                            "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
+                            "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\(statementEnd)")
                     }
                     let quotedLabels = enumType.labels.map { "'\(dataSource.escapeStringLiteral($0))'" }
-                    try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n")
+                    let labels = quotedLabels.joined(separator: ", ")
+                    try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(labels));\(statementEnd)\n")
                 }
             } catch {
                 let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
@@ -588,8 +590,8 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(dataSource.scriptText(for: ddl))
-                try writer.write("\n\n")
+                try writer.write(dataSource.scriptText(for: ddl) + dataSource.dumpStatementEnd)
+                try writer.write("\n")
             } catch {
                 ddlFailures.append(sanitizedName)
                 let ddlWarning = "Warning: failed to fetch DDL for table \(sanitizedName): \(error)"
@@ -631,7 +633,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 table: object.name, databaseName: object.databaseName)
             guard !statements.isEmpty else { return }
             for statement in statements {
-                try writer.write("\(dataSource.scriptText(for: statement))\n")
+                try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
             }
             try writer.write("\n")
         } catch {
@@ -674,8 +676,8 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(dataSource.scriptText(for: ddl))
-                try writer.write("\n\n")
+                try writer.write(dataSource.scriptText(for: ddl) + dataSource.dumpStatementEnd)
+                try writer.write("\n")
             } catch {
                 ddlFailures.append(sanitizedName)
                 Self.logger.warning("Failed to fetch DDL for \(sanitizedName): \(error)")
@@ -708,7 +710,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     principal: principal.name, host: principal.identity)
                 guard !statements.isEmpty else { continue }
                 for statement in statements {
-                    try writer.write("\(dataSource.scriptText(for: statement))\n")
+                    try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
                 }
             } catch {
                 let sanitized = PluginExportUtilities.sanitizeForSQLComment(principal.name)
@@ -778,7 +780,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 let grouped = groupForeignKeysByConstraint(fks)
                 for group in grouped {
                     let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
-                    try writer.write("\(alter)\n")
+                    try writer.write(alter + dataSource.dumpStatementEnd)
                     emittedAnything = true
                 }
             }
@@ -793,7 +795,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 for column in columns where column.isIdentity {
                     let setval = renderIdentitySetval(
                         table: table, columnName: column.name, dataSource: dataSource)
-                    try writer.write("\(setval)\n")
+                    try writer.write(setval + dataSource.dumpStatementEnd)
                     emittedAnything = true
                 }
             }
@@ -829,7 +831,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 let statements = try await dataSource.fetchIndexDDL(
                     table: object.name, databaseName: object.databaseName)
                 for statement in statements {
-                    try writer.write("\(dataSource.scriptText(for: statement))\n")
+                    try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
                     emittedAnything = true
                 }
             } catch {
@@ -950,7 +952,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         let needsIdentityInsert = dataSource.databaseTypeId == "SQL Server"
             && columnInfo.contains(where: \.isIdentity)
         let identityInsert = needsIdentityInsert
-            ? SQLExportSessionScope.identityInsert(tableRef: tableRef)
+            ? SQLExportSessionScope.identityInsert(tableRef: tableRef, statementEnd: dataSource.dumpStatementEnd)
             : nil
 
         if !table.rowScope.isUnrestricted {
@@ -1093,7 +1095,8 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         let accumulator = SQLExportStatementAccumulator(
             prefix: rendered.prefix,
             suffix: rendered.suffix,
-            budget: statementBudget(for: dataSource.databaseTypeId, options: options))
+            budget: statementBudget(for: dataSource.databaseTypeId, options: options),
+            terminator: ";\(dataSource.dumpStatementEnd)\n")
         return (accumulator, rendered.warning)
     }
 

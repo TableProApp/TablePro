@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Runs one statement for a script, with every gate a script has to clear.
+/// Runs one statement for a script, or on SQL Server a whole script, with every gate a script has to clear.
 ///
 /// A script is an external caller with no token, so the gates it clears are the connection's own:
 /// **External Clients** decides whether it may write at all, and Safe Mode decides whether a person
@@ -34,16 +34,18 @@ internal enum ScriptQueryRunner {
         internal let client: String?
     }
 
-    internal struct Outcome: Sendable {
-        internal let result: QueryResult
-        internal let executionTimeMs: Double
+    /// What a script may ask of the execution gate: to write, and to drop once a person confirms it. It is never
+    /// pre-cleared, since no external caller gets to say on its own that a person already agreed. On an engine that
+    /// takes scripts it may also run several statements in one call.
+    internal static func capabilities(on databaseType: DatabaseType) -> CallerCapabilities {
+        ExternalStatementGate.capabilities([.mayWrite, .mayRunDestructive], takingScriptsOn: databaseType)
     }
 
     internal static func run(
         _ request: Request,
         bridge: DatabaseAccessBridge,
         history: QueryHistoryRecording = QueryHistoryManager.shared
-    ) async throws -> Outcome {
+    ) async throws -> DatabaseAccessBridge.ScriptOutcome {
         let snapshot = try await MainActor.run { () throws -> ExternalConnectionPolicySnapshot in
             /// Asked here as well as at the object model, so the rule holds even if some later
             /// command hands this a connection id it did not resolve through `connections()`.
@@ -55,6 +57,8 @@ internal enum ScriptQueryRunner {
             return try ExternalConnectionPolicySnapshot.resolve(connectionId: request.connectionId)
         }
 
+        let capabilities = Self.capabilities(on: snapshot.databaseType)
+
         /// Classified before anything connects, so a statement the connection refuses never opens a
         /// session and never asks the user for a password.
         try ExternalStatementGate.classify(
@@ -64,7 +68,8 @@ internal enum ScriptQueryRunner {
                 databaseType: snapshot.databaseType,
                 externalAccess: snapshot.externalAccess,
                 loadsExtensions: snapshot.loadsExtensions,
-                allowsDestructive: true
+                allowsDestructive: true,
+                allowsMultiStatement: capabilities.contains(.mayRunMultiStatement)
             )
         )
 
@@ -84,7 +89,7 @@ internal enum ScriptQueryRunner {
             connectionId: request.connectionId,
             databaseType: snapshot.databaseType,
             caller: .appleScript(client: request.client),
-            capabilities: [.mayWrite, .mayRunDestructive],
+            capabilities: capabilities,
             operationDescription: confirmationTitle(client: request.client, connection: snapshot.connectionName)
         )
 
@@ -94,7 +99,7 @@ internal enum ScriptQueryRunner {
         let started = Date()
 
         do {
-            let outcome = try await bridge.runStatement(
+            let outcome = try await bridge.runScript(
                 scope: scope,
                 query: request.sql,
                 maxRows: rowLimit,
@@ -106,22 +111,22 @@ internal enum ScriptQueryRunner {
                 scope: scope,
                 databaseType: snapshot.databaseType,
                 elapsed: Date().timeIntervalSince(started),
-                rowCount: outcome.result.rows.count,
+                rowCount: outcome.rowsReturned,
                 error: nil,
                 history: history
             )
             await report(
                 .succeeded(
                     OperationSummary(
-                        rowsReturned: outcome.result.rows.count,
-                        rowsAffected: outcome.result.rowsAffected
+                        rowsReturned: outcome.rowsReturned,
+                        rowsAffected: outcome.primary.rowsAffected
                     )
                 ),
                 request: request,
                 scope: scope,
                 startedAt: startedAt
             )
-            return Outcome(result: outcome.result, executionTimeMs: outcome.executionTimeMs)
+            return outcome
         } catch {
             let message = ScriptingError.from(error, secrets: snapshot.redactionSecrets).errorDescription
             await record(

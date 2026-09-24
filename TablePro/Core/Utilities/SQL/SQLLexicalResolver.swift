@@ -78,6 +78,7 @@ extension SQLLexicalGrammar {
         (.carriageReturnEndsLineComments, .carriageReturnEndsLineComments),
         (.batchSeparatorLines, .batchSeparatorLines),
         (.unterminatedStatements, .unterminatedStatements),
+        (.terminatedMergeStatements, .terminatedMergeStatements),
     ]
 
     init(pluginFeatures: SQLLexicalFeatures) {

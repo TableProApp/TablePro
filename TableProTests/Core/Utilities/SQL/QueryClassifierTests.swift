@@ -191,6 +191,15 @@ struct QueryClassifierMultiStatementTests {
     func commentOnlyQueryIsNotMultiStatement() {
         #expect(!QueryClassifier.isMultiStatement("-- note", databaseType: .mysql))
     }
+
+    @Test("A statement a GO line runs more than once is multi-statement, and one it runs once is not")
+    func repeatedBatchIsMultiStatement() {
+        #expect(QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO 2", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO 1", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("GO\nDROP TABLE dbo.stale", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("GO 3\nDROP TABLE dbo.stale", databaseType: .mssql))
+    }
 }
 
 /// T-SQL needs no `;` between statements. Each text below was sent whole to Azure SQL Edge 15.0, which ran every
@@ -220,6 +229,11 @@ struct QueryClassifierUnterminatedStatementTests {
         Case(sql: "IF 1 = 0 SELECT 1 ELSE DELETE FROM t", tier: .write, deletesEverything: true),
         Case(sql: "DELETE FROM t SELECT 1 WHERE 1 = 1", tier: .write, deletesEverything: true),
         Case(sql: "CREATE TYPE dbo.t FROM int DROP TABLE x", tier: .destructive, deletesEverything: true),
+        Case(sql: "SELECT 1\nUPDATE [t] SET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "SELECT 1\nUPDATE \"t\" SET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "PRINT 1\nUPDATE [t]\nSET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "PRINT 1\nSELECT [a], [b] INTO x FROM t", tier: .write, deletesEverything: false),
+        Case(sql: "PRINT 1\nDELETE [t]", tier: .write, deletesEverything: true),
         Case(
             sql: "INSERT INTO log SELECT id FROM (DELETE FROM t OUTPUT deleted.id) AS d",
             tier: .write,
@@ -245,6 +259,7 @@ struct QueryClassifierUnterminatedStatementTests {
         "SELECT [delete], \"update\" FROM t",
         "SELECT 'DROP TABLE t' AS s -- DELETE FROM t",
         "SELECT 1\nSELECT 2",
+        "SELECT [a], 'b' FROM [t] WHERE [c] = 'd'",
         "SELECT 1 PRINT 'done'",
         "SELECT * FROM t WHERE id IN (SELECT id FROM s)",
         "SELECT CASE WHEN a = 1 THEN 'x' ELSE 'y' END FROM t",

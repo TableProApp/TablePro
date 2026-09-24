@@ -61,6 +61,17 @@ final class AIChatViewModel: ObservableObject {
         }
     }
 
+    var isBusy: Bool {
+        switch streamingState {
+        case .loading, .streaming, .awaitingApproval:
+            return true
+        case .idle, .pausedAtToolLimit, .failed:
+            return prepTask != nil
+                || heldTurnAwaitsConnection
+                || ToolApprovalCenter.shared.hasPending(sessionId: sessionId)
+        }
+    }
+
     var lastMessageFailed: Bool {
         if case .failed = streamingState { return true }
         return false
@@ -92,7 +103,6 @@ final class AIChatViewModel: ObservableObject {
 
     let services: AppServices
     var chatStorage: AIChatStorage { services.aiChatStorage }
-    @Published var sessionApprovedConnections: Set<UUID> = []
     var cachedSavedQueries: [UUID: SQLFavorite] = [:]
     private var savedQueryCancellables: Set<AnyCancellable> = []
 
@@ -339,7 +349,6 @@ final class AIChatViewModel: ObservableObject {
         messages = []
         errorMessage = nil
         activeConversationID = nil
-        sessionApprovedConnections = []
         streamingState = .idle
         for image in attachedImages {
             if case .cacheFile(let filename, _) = image.source {

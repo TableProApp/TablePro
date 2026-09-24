@@ -43,6 +43,18 @@ struct ExecutableBatch: Sendable {
 
 /// Groups a scanned text's statements into the batches its engine runs.
 enum QueryBatchPlanner {
+    /// The batches `text` runs as, scanned the way its engine reads it. Only a SQL text can hold a `GO` line.
+    static func batches(
+        in text: String,
+        model: QueryStatementModel,
+        grammar: SQLLexicalGrammar,
+        sourceOffset: Int = 0
+    ) -> [ExecutableBatch] {
+        let statements = QueryStatementScanner.executableStatements(in: text, model: model, grammar: grammar)
+        let separators = model == .sql ? SQLStatementScanner.batchSeparators(in: text, grammar: grammar) : []
+        return batches(in: text, statements: statements, separators: separators, sourceOffset: sourceOffset)
+    }
+
     /// `statements` and `separators` are in `text`'s coordinates; the batches come back shifted by `sourceOffset`
     /// onto the tab's whole query, the way a run started from a selection already shifts its statements.
     static func batches(
@@ -114,5 +126,17 @@ enum QueryExecutionRoute {
             return .single(first)
         }
         return .batches(batches)
+    }
+
+    /// The route on an engine of `databaseType`, where a plain query is one the editor caps and pages.
+    @MainActor
+    static func resolve(
+        _ batches: [ExecutableBatch],
+        databaseType: DatabaseType,
+        sendsBatchesWhole: Bool
+    ) -> QueryExecutionRoute? {
+        resolve(batches, sendsBatchesWhole: sendsBatchesWhole) { sql in
+            QueryExecutor.qualifiesForRowCap(sql: sql, tabType: .query, databaseType: databaseType)
+        }
     }
 }

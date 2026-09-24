@@ -32,6 +32,10 @@ struct QueryBatchPlannerTests {
         WHERE sn_code = @sn;
         """
 
+    private static let merge = """
+        MERGE dbo.target AS t USING dbo.staging AS s ON t.id = s.id WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id);
+        """
+
     private static func batches(_ text: String, on type: DatabaseType, sourceOffset: Int = 0) -> [ExecutableBatch] {
         let grammar = type.lexicalGrammar
         return QueryBatchPlanner.batches(
@@ -98,6 +102,46 @@ struct QueryBatchPlannerTests {
         let batch = try #require(batches.first)
         #expect(batch.range.location == 40)
         #expect(batch.statements.map(\.range.location) == [40, 50])
+    }
+
+    /// SQL Server fails a whole batch whose `MERGE` has no `;` with Msg 10713, so none of its statements run.
+    @Test("A batch that ends with a MERGE keeps the ; the MERGE needs, and every other batch drops its last one")
+    func batchEndingInMergeKeepsItsTerminator() {
+        let etl = "DECLARE @d DATE = GETDATE();\nUPDATE dbo.staging SET loaded_at = @d;\n\(Self.merge)"
+        let text = "\(etl)\nGO\nSELECT 1;\nGO\n\(Self.merge)\n"
+
+        #expect(Self.batches(text, on: .mssql).map(\.sql) == [etl, "SELECT 1", Self.merge])
+    }
+
+    @Test("A MERGE run alone goes out with its ;, on either route a SQL Server driver takes")
+    func loneMergeKeepsItsTerminator() {
+        let batchRoute = QueryExecutionRoute.resolve(
+            Self.batches(Self.merge, on: .mssql),
+            sendsBatchesWhole: true,
+            isPlainQuery: Self.isPlainQuery(.mssql)
+        )
+        let statementRoute = QueryExecutionRoute.resolve(
+            Self.batches("SELECT 1;\n\(Self.merge)", on: .mssql),
+            sendsBatchesWhole: false,
+            isPlainQuery: Self.isPlainQuery(.mssql)
+        )
+        guard case .batches(let batches) = batchRoute else {
+            Issue.record("expected batches, got \(String(describing: batchRoute))")
+            return
+        }
+        guard case .statements(let statements) = statementRoute else {
+            Issue.record("expected statements, got \(String(describing: statementRoute))")
+            return
+        }
+        #expect(batches.map(\.sql) == [Self.merge])
+        #expect(statements.map(\.sql) == ["SELECT 1", Self.merge])
+    }
+
+    @Test("An engine whose MERGE needs no ; still drops it")
+    func postgresMergeDropsItsSeparator() {
+        let statements = Self.batches("\(Self.merge)\nSELECT 1;", on: .postgresql).flatMap(\.statements)
+
+        #expect(statements.map(\.sql) == [String(Self.merge.dropLast()), "SELECT 1"])
     }
 
     // MARK: - Route

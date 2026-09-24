@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable {
     let databaseTypeId: String
@@ -20,6 +21,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     /// construction, on the main actor, because the registry lives there and this is asked for from
     /// the export plugin's own thread.
     let supportsCascadeDrop: Bool
+    let lexicalFeatures: SQLLexicalFeatures
     private let implicitSchemaName: String?
     private let pagination: PaginationCapability
     private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
@@ -27,6 +29,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
         let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         self.supportsCascadeDrop = snapshot?.capabilities.supportsCascadeDrop ?? false
+        self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
         self.implicitSchemaName = snapshot?.schema.implicitSchemaName
         self.pagination = PaginationCapability.of(databaseType)
         self.driver = driver

@@ -162,6 +162,18 @@ struct SQLScriptTextTests {
             """)
     }
 
+    /// SQL Server fails a whole batch whose `MERGE` has no `;` with Msg 10713, and a procedure whose body ends in one.
+    @Test("A SQL Server MERGE keeps its ; in what is sent and in a script", arguments: [
+        "MERGE dbo.t AS t USING dbo.s AS s ON t.id = s.id WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id);",
+        "CREATE PROCEDURE dbo.p AS MERGE dbo.t AS t USING dbo.s AS s ON t.id = s.id WHEN MATCHED THEN DELETE;",
+    ])
+    func sqlServerMergeKeepsItsTerminator(statement: String) {
+        #expect(Self.sqlServer.sendableStatements(statement) == [statement])
+        #expect(Self.sqlServer.scriptText(forDriverText: statement) == statement)
+        #expect(Self.sqlServer.script([statement]) == "\(statement)\nGO")
+        #expect(Self.sqlServer.script([String(statement.dropLast())]) == "\(statement)\nGO")
+    }
+
     /// Measured on DM8: DISQL read everything after a procedure ending in `END;` as part of it and reported "The script
     /// file is not complete", while the same script with a `/` line after the procedure ran every statement.
     @Test("A Dameng script ends a unit with a / line and plain SQL with ;")
@@ -243,6 +255,24 @@ struct SQLScriptTextTests {
         let script = Self.mysql.script(statements)
 
         #expect(try await Self.imported(script, grammar: TestGrammar.mysql) == statements)
+    }
+
+    /// The import reads a SQL Server script a batch at a time, the way sqlcmd reads it, so each statement a saved
+    /// script ends with a `GO` line comes back as a batch of its own with nothing cut out of it.
+    @Test("A SQL Server script imports one batch per statement it was written from")
+    func sqlServerScriptImports() async throws {
+        let statements = [
+            "DROP PROCEDURE p",
+            "CREATE PROCEDURE p AS SET NOCOUNT ON; SELECT 1;",
+            "INSERT INTO t (a) VALUES ('a;b')",
+        ]
+        let script = Self.sqlServer.script(statements)
+
+        #expect(try await Self.imported(script, grammar: TestGrammar.sqlServer) == [
+            "DROP PROCEDURE p;",
+            "CREATE PROCEDURE p AS SET NOCOUNT ON; SELECT 1;",
+            "INSERT INTO t (a) VALUES ('a;b');",
+        ])
     }
 
     private static func imported(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [String] {

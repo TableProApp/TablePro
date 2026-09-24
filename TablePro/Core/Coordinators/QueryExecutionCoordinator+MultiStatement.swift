@@ -40,6 +40,7 @@ extension QueryExecutionCoordinator {
         index: Int,
         baseQuery: String?,
         baseQueryParameterValues: [String?]? = nil,
+        namedParameterStatement: NamedParameterStatement? = nil,
         tabId: UUID,
         anchor: StatementAnchor? = nil
     ) -> ResultSet {
@@ -62,6 +63,7 @@ extension QueryExecutionCoordinator {
             resultSet.isTruncated = result.isTruncated
             resultSet.baseQuery = baseQuery
             resultSet.baseQueryParameterValues = baseQueryParameterValues
+            resultSet.namedParameterStatement = namedParameterStatement
         }
         resultSet.origin = statementOrigin(sql: sql, tabId: tabId, producesRows: !result.columns.isEmpty)
         return resultSet
