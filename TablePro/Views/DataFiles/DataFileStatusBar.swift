@@ -13,7 +13,7 @@ struct DataFileStatusBar: View {
         HStack(spacing: 14) {
             if controller.loadState == .loaded {
                 rowSummary
-                Text("\(controller.columnNames.count) ^[columns](inflect: true)")
+                Text("^[\(controller.columnNames.count) column](inflect: true)")
                 if !controller.selectedRowIndices.isEmpty {
                     Text("\(controller.selectedRowIndices.count) selected")
                 }
@@ -49,9 +49,9 @@ struct DataFileStatusBar: View {
     private var rowSummary: some View {
         Group {
             if controller.visibleRowCount == controller.totalRowCount {
-                Text("\(controller.totalRowCount) ^[rows](inflect: true)")
+                Text("^[\(controller.totalRowCount) row](inflect: true)")
             } else {
-                Text("\(controller.visibleRowCount) of \(controller.totalRowCount) ^[rows](inflect: true)")
+                Text("\(controller.visibleRowCount) of ^[\(controller.totalRowCount) row](inflect: true)")
             }
         }
         .accessibilityIdentifier("data-file-row-count")

@@ -43,7 +43,6 @@ struct DataFileFindBar: View {
                 .font(.callout)
                 .foregroundStyle(controller.find.isPatternInvalid ? Color.red : Color.secondary)
                 .monospacedDigit()
-                .accessibilityLabel(counterText)
 
             HStack(spacing: 2) {
                 Button(String(localized: "Previous match"), systemImage: "chevron.left") {
@@ -104,6 +103,7 @@ struct DataFileFindBar: View {
 
             Button(String(localized: "Replace All")) {
                 controller.replaceAll()
+                controller.focusGrid()
             }
             .disabled(!controller.find.hasQuery || controller.find.isPatternInvalid || controller.isBusy)
             .accessibilityIdentifier("data-file-replace-all")

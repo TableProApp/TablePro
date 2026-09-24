@@ -75,6 +75,10 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
         dataFileDocument?.undoManager
     }
 
+    func windowWillClose(_ notification: Notification) {
+        (contentViewController as? DataFileSplitViewController)?.dismissTransientUI()
+    }
+
     func focusSearchField() {
         searchItem?.beginSearchInteraction()
     }

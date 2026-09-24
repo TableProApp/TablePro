@@ -353,9 +353,10 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    /// The cell a paste would land in. Deliberately looser than `focusedDataCell()`, which also
-    /// requires a single selected row: a paste anchors on the focused cell alone.
-    private func pasteAnchorCell() -> (row: Int, column: Int)? {
+    /// The cell a paste would land in, and the cell a command about "this cell" acts on.
+    /// Deliberately looser than `focusedDataCell()`, which also requires a single selected row: a
+    /// paste anchors on the focused cell alone.
+    func pasteAnchorCell() -> (row: Int, column: Int)? {
         guard focusedRow >= 0,
               presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,

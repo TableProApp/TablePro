@@ -71,7 +71,7 @@ final class DataFileSplitViewController: NSSplitViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        splitView.autosaveName = "com.TablePro.DataFileSplit"
+        splitView.autosaveName = SplitViewAutosaveName.current("com.TablePro.DataFileSplit")
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {

@@ -193,15 +193,18 @@ extension DataFileSplitViewController {
         guard let request = controller.statisticsRequest(for: id) else { return }
         statisticsPopover?.close()
         let model = DataFileStatisticsModel(request: request)
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: DataFileStatisticsView(model: model) { [weak self, weak popover] value in
-            popover?.close()
-            self?.controller.addEqualsFilter(column: id, value: value)
-        })
-        statisticsPopover = popover
         let anchor = headerAnchor(for: id)
-        popover.show(relativeTo: anchor.rect, of: anchor.view, preferredEdge: .maxY)
+        statisticsPopover = PopoverPresenter.show(
+            relativeTo: anchor.rect,
+            of: anchor.view,
+            preferredEdge: .maxY,
+            behavior: .transient
+        ) { [weak self] dismiss in
+            DataFileStatisticsView(model: model) { value in
+                dismiss()
+                self?.controller.addEqualsFilter(column: id, value: value)
+            }
+        }
     }
 
     private func headerAnchor(for id: TabularColumnID) -> (rect: NSRect, view: NSView) {

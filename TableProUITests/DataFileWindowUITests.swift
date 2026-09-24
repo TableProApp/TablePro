@@ -33,7 +33,7 @@ final class DataFileWindowUITests: UITestCase {
         try XCTUnwrap(item).click()
 
         XCTAssertTrue(
-            waitForRowCount("1 of 3", in: window),
+            waitForRowCount("1 of 3 rows", in: window),
             "amount > 50 keeps 100 alone; a text comparison would have kept 9"
         )
     }
@@ -57,7 +57,11 @@ final class DataFileWindowUITests: UITestCase {
         window.buttons["data-file-replace-all"].firstMatch.click()
         XCTAssertTrue(waitForText("No matches", in: window), "Replace All must leave nothing to find")
 
-        app.typeKey("z", modifierFlags: .command)
+        let edit = app.menuBars.menuBarItems["Edit"]
+        edit.click()
+        let undo = edit.menus.menuItems["Undo Replace All"].firstMatch
+        XCTAssertTrue(undo.waitToExist(timeout: 5), "Edit must offer Undo Replace All, not Undo Typing")
+        undo.click()
         XCTAssertTrue(waitForText("1 of 2", in: window), "One Undo must bring every replaced value back")
     }
 
@@ -86,9 +90,10 @@ final class DataFileWindowUITests: UITestCase {
         let (window, grid) = try readyWindow(of: app)
 
         cellPoint(in: grid, row: 0).click()
-        app.menuBars.menuBarItems["Edit"].click()
-        app.menuBars.menuItems["Data"].hover()
-        let statistics = app.menuBars.menuItems["Column Statistics…"].firstMatch
+        let edit = app.menuBars.menuBarItems["Edit"]
+        edit.click()
+        edit.menus.menuItems["Data"].firstMatch.hover()
+        let statistics = edit.menus.menuItems["Column Statistics…"].firstMatch
         XCTAssertTrue(statistics.waitToExist(timeout: 5), "Edit > Data must offer Column Statistics")
         statistics.click()
 
@@ -98,7 +103,7 @@ final class DataFileWindowUITests: UITestCase {
         XCTAssertTrue(paris.waitToExist(timeout: 15), "The statistics popover must list Paris as a top value")
         paris.click()
 
-        XCTAssertTrue(waitForRowCount("2 of 4", in: window), "Picking a top value must filter to its rows")
+        XCTAssertTrue(waitForRowCount("2 of 4 rows", in: window), "Picking a top value must filter to its rows")
     }
 
     func testSwitchingSheetsShowsTheOtherSheet() throws {
@@ -162,13 +167,14 @@ final class DataFileWindowUITests: UITestCase {
         return grid.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 80, dy: dy))
     }
 
-    private func waitForRowCount(_ prefix: String, in window: XCUIElement) -> Bool {
+    /// A SwiftUI `Text` publishes its string as the element's value, not its label.
+    private func waitForRowCount(_ text: String, in window: XCUIElement) -> Bool {
         let count = window.staticTexts.matching(identifier: "data-file-row-count").firstMatch
-        return waitForPredicate(timeout: 15) { count.exists && count.label.hasPrefix(prefix) }
+        return waitForPredicate(timeout: 15) { count.exists && (count.value as? String) == text }
     }
 
     private func waitForText(_ text: String, in window: XCUIElement) -> Bool {
-        let match = window.staticTexts.matching(NSPredicate(format: "label == %@", text)).firstMatch
+        let match = window.staticTexts.matching(NSPredicate(format: "value == %@", text)).firstMatch
         return waitForPredicate(timeout: 15) { match.exists }
     }
 }

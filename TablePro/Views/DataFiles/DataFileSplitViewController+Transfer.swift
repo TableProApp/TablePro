@@ -12,6 +12,13 @@ extension DataFileSplitViewController {
         exportPresenter.present(request, on: window)
     }
 
+    func dismissTransientUI() {
+        exportPresenter.dismiss()
+        statisticsPopover?.close()
+        statisticsPopover = nil
+        dismissSheet()
+    }
+
     func importTargets() -> [ConnectedSessionSummary] {
         ConnectedSessionDirectory.connectedSessions().filter { !$0.isReadOnly }
     }
