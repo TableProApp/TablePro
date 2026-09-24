@@ -6372,10 +6372,16 @@
     "%@ does not allow NULL, so its default cannot be NULL" : {
 
     },
+    "%@ files cannot be imported into this connection." : {
+
+    },
     "%@ is invalid, so queries skip it and exports leave it out. Drop it, or rebuild it with REINDEX." : {
 
     },
     "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it." : {
+
+    },
+    "%@ is showing another sheet. Close it, then try again." : {
 
     },
     "%d added" : {
