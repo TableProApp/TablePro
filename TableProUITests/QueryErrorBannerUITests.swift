@@ -93,6 +93,46 @@ final class QueryErrorBannerUITests: UITestCase {
         )
     }
 
+    /// The grid skips its update while a cell viewer is open, and Run All still fires from inside
+    /// the viewer. The same failure run from there kept the previous heading, its row and the
+    /// viewer over a value the active result does not have.
+    func testAFailedRunAllFromAnOpenCellViewerKeepsNoHeadingFromThePreviousRun() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+        app.typeKey("t", modifierFlags: .command)
+
+        typeQuery("SELECT 1 AS first_col, 2 AS second_col; SELECT 3 AS third_col;", in: app)
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+
+        let grid = window.tables.matching(identifier: "data-grid").firstMatch
+        let previousHeading = columnHeading(beginningWith: "Column: third_col", in: grid)
+        XCTAssertTrue(
+            previousHeading.waitToExist(timeout: 20),
+            "The first run must end on its last result, headed third_col"
+        )
+        XCTAssertTrue(waitForClickableRows(in: grid), "The first run's row must be on screen to open")
+
+        typeQuery("SELECT 1 AS x; SELECT * FROM missing_table;", in: app)
+        gridPoint(in: grid, of: window, dy: 52).click()
+        app.typeKey(.return, modifierFlags: [])
+        let viewer = window.textViews.matching(NSPredicate(format: "value == %@", "3")).firstMatch
+        XCTAssertTrue(viewer.waitToExist(timeout: 10), "Return on the read-only cell must open its viewer")
+
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+
+        let banner = window.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(banner.waitToExist(timeout: 20), "Run All must fire from the viewer and show its error")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { !previousHeading.exists },
+            "The grid under the error must not keep the previous run's third_col heading"
+        )
+        XCTAssertFalse(
+            columnHeading(beginningWith: "Column: ", in: grid).exists,
+            "An error result has no columns, so the grid under it heads none"
+        )
+        XCTAssertFalse(viewer.exists, "The viewer must close with the row it was open on")
+    }
+
     private func columnHeading(beginningWith prefix: String, in grid: XCUIElement) -> XCUIElement {
         grid.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
     }
