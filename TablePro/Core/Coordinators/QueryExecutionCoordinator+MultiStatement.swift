@@ -38,7 +38,7 @@ extension QueryExecutionCoordinator {
         result: QueryResult,
         sql: String,
         index: Int,
-        baseQuery: String,
+        baseQuery: String?,
         baseQueryParameterValues: [String?]? = nil,
         tabId: UUID,
         anchor: StatementAnchor? = nil

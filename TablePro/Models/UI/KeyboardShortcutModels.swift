@@ -88,6 +88,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case findNext
     case findPrevious
     case useSelectionForFind
+    case aiReviewQuery
     case aiExplainQuery
     case aiOptimizeQuery
 
@@ -174,7 +175,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
-             .aiExplainQuery, .aiOptimizeQuery:
+             .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
@@ -208,7 +209,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
              .cancelQuery, .explainQuery, .formatQuery, .removeInvisibleCharacters, .foldAll, .unfoldAll,
              .toggleFold, .previousStatement, .nextStatement, .runStatementAndAdvance,
-             .previewSQL, .aiExplainQuery, .aiOptimizeQuery:
+             .previewSQL, .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
@@ -332,6 +333,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleWorkspaceRail: return String(localized: "Toggle Connections")
         case .showPreviousWorkspace: return String(localized: "Show Previous Connection")
         case .showNextWorkspace: return String(localized: "Show Next Connection")
+        case .aiReviewQuery: return String(localized: "Review with AI")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
         }
@@ -595,6 +597,7 @@ struct KeyboardSettings: Codable, Equatable {
         .findNext: .character("g", command: true),
         .findPrevious: .character("g", command: true, shift: true),
         .useSelectionForFind: .character("e", command: true),
+        .aiReviewQuery: .character("l", command: true, shift: true, option: true),
         .aiExplainQuery: .character("l", command: true),
         .aiOptimizeQuery: .character("l", command: true, option: true),
         .export: .character("e", command: true, shift: true),

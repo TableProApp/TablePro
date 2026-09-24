@@ -18,7 +18,8 @@ struct MultiStatementFailureTests {
         total: Int,
         error: String,
         plan: BatchTransactionPlan = .appTransaction,
-        sessionState: PluginSessionTransactionState = .idle
+        sessionState: PluginSessionTransactionState = .idle,
+        unit: MultiStatementUnit = .statement
     ) -> MultiStatementFailureReport {
         MultiStatementFailureContext(
             failure: failure,
@@ -26,7 +27,8 @@ struct MultiStatementFailureTests {
             executedCount: executed,
             totalCount: total,
             plan: plan,
-            sessionState: sessionState
+            sessionState: sessionState,
+            unit: unit
         ).report()
     }
 
@@ -238,5 +240,119 @@ struct MultiStatementFailureTests {
             plan: plan
         )
         #expect(report.message.contains("may or may not be saved"))
+    }
+
+    // MARK: - Batches
+
+    /// A batch that answered with a server error ran, so it is already counted among the executed: its position is the
+    /// executed count, not one past it.
+    @Test("A batch that answered with an error is numbered from its own output")
+    func batchErrorIsNumberedFromItsOutput() {
+        let report = Self.report(
+            .batch(sql: "SELECT * FROM missing"),
+            executed: 2,
+            total: 3,
+            error: "Line 7: Invalid object name 'missing'.",
+            plan: .autocommit,
+            unit: .batch
+        )
+        #expect(report.message.hasPrefix("Batch 2/3 failed: Line 7: Invalid object name 'missing'."))
+        #expect(report.resultLabel == "Error 2")
+        #expect(report.failedStatementIndex == 1)
+        #expect(report.failedSQL == "SELECT * FROM missing")
+    }
+
+    @Test("A lone batch reports its error without a position")
+    func loneBatchNeedsNoPosition() {
+        let report = Self.report(
+            .batch(sql: "SELECT 1/0"),
+            executed: 1,
+            total: 1,
+            error: "Line 1: Divide by zero error encountered.",
+            plan: .autocommit,
+            unit: .batch
+        )
+        #expect(report.message.hasPrefix("Line 1: Divide by zero error encountered."))
+        #expect(!report.message.contains("Batch 1/1"))
+        #expect(report.failedStatementIndex == 0)
+    }
+
+    /// The server carries on past most errors inside a batch, so what the note can promise is only what is certain.
+    @Test("An autocommit batch failure says what ran stays applied, batch by batch")
+    func autocommitBatchFailureNotesWhatStays() {
+        let first = Self.report(
+            .batch(sql: "x"), executed: 1, total: 2, error: "boom", plan: .autocommit, unit: .batch
+        )
+        #expect(first.message.hasSuffix("Any statement in the batch that ran stays applied."))
+        #expect(!first.message.contains("before it"))
+
+        let third = Self.report(
+            .batch(sql: "x"), executed: 3, total: 3, error: "boom", plan: .autocommit, unit: .batch
+        )
+        #expect(third.message.contains("The 2 batches before it stay applied."))
+    }
+
+    /// A script that opened its own transaction and failed before committing leaves it open, and a note saying the
+    /// work stays applied would be wrong: it is pending in that transaction.
+    @Test("A batch failure over an open transaction says the transaction is open instead")
+    func batchFailureReportsOpenTransaction() {
+        let report = Self.report(
+            .batch(sql: "BEGIN TRAN; INSERT INTO t VALUES (1); INSERT INTO t VALUES (1)"),
+            executed: 1,
+            total: 1,
+            error: "Line 1: Violation of PRIMARY KEY constraint.",
+            plan: .autocommit,
+            sessionState: .inTransaction,
+            unit: .batch
+        )
+        #expect(report.message.contains("still open"))
+        #expect(!report.message.contains("stays applied"))
+    }
+
+    /// Work done inside a transaction the user already had open is pending in it, or went with it when the error
+    /// ended it, and the session cannot say which, so the note claims neither.
+    @Test("A batch failure inside the user's own transaction never says the work stays applied")
+    func batchFailureInsideUserTransactionClaimsNothing() {
+        let ended = Self.report(
+            .batch(sql: "UPDATE t SET a = 1"),
+            executed: 1,
+            total: 1,
+            error: "Line 1: The transaction ended in the trigger.",
+            plan: .sessionTransaction,
+            sessionState: .idle,
+            unit: .batch
+        )
+        #expect(!ended.message.contains("stays applied"))
+
+        let stillOpen = Self.report(
+            .batch(sql: "UPDATE t SET a = 1"),
+            executed: 1,
+            total: 1,
+            error: "Line 1: boom",
+            plan: .sessionTransaction,
+            sessionState: .inTransaction,
+            unit: .batch
+        )
+        #expect(stillOpen.message.contains("still open"))
+    }
+
+    @Test("A batch that threw rather than answered is numbered one past the batches that ran")
+    func thrownBatchIsNumberedOnePastTheExecuted() {
+        let report = Self.report(
+            .statement(sql: "SELECT 2"),
+            executed: 1,
+            total: 3,
+            error: "Connection lost",
+            plan: .autocommit,
+            unit: .batch
+        )
+        #expect(report.message.hasPrefix("Batch 2/3 failed: Connection lost"))
+        #expect(report.failedStatementIndex == 1)
+    }
+
+    @Test("Every statement of a failed batch counts as having run")
+    func failedBatchCountsAsRun() {
+        #expect(MultiStatementFailure.batch(sql: "x").ranStatementCount(executedCount: 2, totalCount: 3) == 2)
+        #expect(MultiStatementFailure.statement(sql: "x").ranStatementCount(executedCount: 2, totalCount: 3) == 3)
     }
 }

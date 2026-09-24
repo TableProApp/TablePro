@@ -24,7 +24,7 @@ private struct BoundParameterValues: @unchecked Sendable {
 /// the lease, where the driver can say what the session is already holding. Only the second answer
 /// ran, so the failure banner and the status line are written from it.
 private struct MultiStatementRun {
-    let outcome: BatchStatementOutcome
+    let outcome: BatchStatementOutcome<QueryResult>
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
     var failureOutput: PluginServerOutput = .none
@@ -487,7 +487,7 @@ extension QueryExecutionCoordinator {
     /// The claim questions the run asks, in the one place that holds both the claim and the
     /// registry. Marking and unmarking go through here so a future commit point cannot invent its
     /// own ordering.
-    private func claimGate(for claim: TabExecutionClaim) -> BatchClaimGate {
+    func claimGate(for claim: TabExecutionClaim) -> BatchClaimGate {
         BatchClaimGate(
             isCurrent: { self.parent.tabExecution.isCurrent(claim) },
             enterCommitPhase: { self.parent.tabExecution.enterUninterruptiblePhase(claim) },

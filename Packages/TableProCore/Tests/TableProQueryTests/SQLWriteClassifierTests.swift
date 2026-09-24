@@ -194,6 +194,14 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite("SELECT 1 AS [a;b]", .mssql))
     }
 
+    @Test("a write after a GO line is seen on SQL Server, whose batches need no semicolon")
+    func goLineHidesAWrite() {
+        #expect(isWrite("SELECT 1\nGO\nDROP TABLE t", .mssql))
+        #expect(isWrite("SELECT 1\r\nGO 2 -- again\r\nDELETE FROM t", .mssql))
+        #expect(!isWrite("SELECT 1\nGO\nSELECT 2", .mssql))
+        #expect(!isWrite("SELECT 'a\nGO\nDROP TABLE t'", .mssql))
+    }
+
     @Test("an Oracle q'[...]' literal holds a quote")
     func alternativeQuoteHidesAWrite() {
         #expect(isWrite("SELECT q'[it's]' FROM dual; DELETE FROM t", .oracle))

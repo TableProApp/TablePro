@@ -363,6 +363,9 @@ struct MainContentView: View {
                 updateToolbarPendingState()
                 updateInspectorContext()
                 coordinator.trailingPaneState = trailingPaneState
+                trailingPaneState.assistant.editorSnapshot = { [weak coordinator = self.coordinator] in
+                    coordinator?.assistantEditorSnapshot ?? .empty
+                }
 
                 Self.lifecycleLogger.info(
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"

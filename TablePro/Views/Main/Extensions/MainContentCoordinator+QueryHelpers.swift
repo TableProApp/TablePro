@@ -9,11 +9,6 @@ import os
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func fixErrorWithAI(query: String, error: String) {
-        showAssistant()
-        aiViewModel?.handleFixError(query: query, error: error)
-    }
-
     /// The banner appears without the user doing anything, and macOS has no live region to mark it
     /// with, so an announcement is the only way VoiceOver hears about it. Announcements are
     /// app-scoped rather than window-scoped, so a background window has to stay quiet instead of

@@ -11,9 +11,14 @@ import Foundation
 ///
 /// Only text the user or the catalog supplies goes through here. A number, an identifier, a `0x`
 /// binary literal and a fixed catalog constant such as `'PRIMARY KEY'` must stay as they are.
+///
+/// Every replacement here matches by code unit (`.literal`), because the server reads the text one code unit at a time.
+/// A default `replacingOccurrences` matches whole grapheme clusters, so an apostrophe followed by a combining or format
+/// mark (U+0301, a zero-width joiner, 2,237 code points measured) was never doubled and ended the literal early, and a
+/// `%`, `_`, `[` or `\` followed by one was never escaped in a `LIKE` pattern.
 public enum MSSQLStringLiteral {
     public static func escaped(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func quoted(_ value: String) -> String {
@@ -36,10 +41,10 @@ public enum MSSQLStringLiteral {
     public static func escapeForLike(_ value: String) -> String {
         escaped(
             value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "%", with: "\\%")
-                .replacingOccurrences(of: "_", with: "\\_")
-                .replacingOccurrences(of: "[", with: "\\[")
+                .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+                .replacingOccurrences(of: "%", with: "\\%", options: .literal)
+                .replacingOccurrences(of: "_", with: "\\_", options: .literal)
+                .replacingOccurrences(of: "[", with: "\\[", options: .literal)
         )
     }
 
