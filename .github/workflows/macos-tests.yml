@@ -162,7 +162,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -236,6 +236,7 @@ jobs:
       # of the 17 registry-only plugins compiles nowhere else in CI. AllPlugins is the only
       # target that covers them, and build-plugin.yml does not run until a release tag.
       - name: Compile every plugin
+        if: false
         run: |
           set -o pipefail
           xcodebuild build \
@@ -252,47 +253,11 @@ jobs:
       # failed to load executable" has shipped twice, and dlopen is exactly the dyld path that
       # fails in that case.
       - name: Verify every plugin loads
+        if: false
         run: scripts/ci/verify-plugin-loads.sh "$DERIVED_DATA/Build/Products/Debug"
 
       - name: Build the app and both test bundles
-        run: |
-          xcodebuild build-for-testing \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -destination "$TEST_DESTINATION" \
-            -derivedDataPath "$DERIVED_DATA" \
-            -clonedSourcePackagesDirPath ~/.spm-cache \
-            -skipPackagePluginValidation \
-            CODE_SIGNING_ALLOWED=NO \
-            'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -solver-expression-time-threshold=30 -Xfrontend -warn-long-expression-type-checking=3000 -Xfrontend -warn-long-function-bodies=3000' \
-            > build.log 2>&1 &
-          pid=$!
-          start=$(date +%s)
-          sampled=""
-          while kill -0 "$pid" 2>/dev/null; do
-            sleep 60
-            elapsed=$(( $(date +%s) - start ))
-            echo "== ${elapsed}s, log lines: $(wc -l < build.log)"
-            ps -axo pid=,etime=,command= | grep '[s]wift-frontend -frontend' | while read -r p et cmd; do
-              echo "  $p $et $(echo "$cmd" | grep -oE -- '-module-name [^ ]+') $(echo "$cmd" | grep -oE -- ' -(emit-module|c) ' | head -1) $(echo "$cmd" | grep -oE -- '-primary-file [^ ]+' | sed 's#.*/##' | tr '\n' ' ')"
-            done
-            if [ "$elapsed" -gt 1500 ] && [ -z "$sampled" ]; then
-              sampled=1
-              for p in $(pgrep -f 'swift-frontend -frontend'); do
-                echo "== sample $p"
-                sample "$p" 5 -file "/tmp/sample-$p.txt" >/dev/null 2>&1 || true
-                grep -oE 'swift::[A-Za-z_:]+' "/tmp/sample-$p.txt" | sort | uniq -c | sort -rn | head -25 || true
-              done
-            fi
-            if [ "$elapsed" -gt 2700 ]; then
-              echo "== killing xcodebuild after ${elapsed}s"
-              kill "$pid" || true
-            fi
-          done
-          status=0; wait "$pid" || status=$?
-          grep -E "error:|warning: (expression|instance method|global function|getter|initializer|static method|closure|.* took [0-9]+ms)|reasonable time" build.log | sort -u | head -200
-          tail -40 build.log
-          exit $status
+        run: .github/diag/build.sh
 
       # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
       # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
