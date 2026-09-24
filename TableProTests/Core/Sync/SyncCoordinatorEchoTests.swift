@@ -449,6 +449,7 @@ struct SyncCoordinatorEchoTests {
             favoriteDatabasesStorage: favoriteDatabases,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: live.aiAccessApprovals,
             groupStorage: groups,
             tagStorage: tags,
             sshProfileStorage: SSHProfileStorage(

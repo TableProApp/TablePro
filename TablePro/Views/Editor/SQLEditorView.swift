@@ -27,7 +27,6 @@ struct SQLEditorView: View {
     var databaseType: DatabaseType?
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
-    var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
     /// Called once the editor has latched a focus claim. The owner's one-shot intent is cleared
@@ -66,7 +65,6 @@ struct SQLEditorView: View {
         coordinator.onAIAction = onAIAction
         coordinator.onSaveAsFavorite = onSaveAsFavorite
         coordinator.schemaProvider = schemaProvider
-        coordinator.connectionAIPolicy = connectionAIPolicy
         coordinator.databaseType = databaseType
         coordinator.tabID = tabID
         coordinator.connectionId = connectionId

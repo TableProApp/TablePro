@@ -106,6 +106,7 @@ final class WelcomeViewModelTests: XCTestCase {
             favoriteDatabasesStorage: live.favoriteDatabasesStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: live.aiAccessApprovals,
             groupStorage: groupStorage,
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,

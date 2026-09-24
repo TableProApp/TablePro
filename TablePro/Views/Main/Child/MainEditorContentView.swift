@@ -473,7 +473,6 @@ struct MainEditorContentView: View {
                         databaseType: coordinator.connection.type,
                         databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
-                        connectionAIPolicy: coordinator.connection.aiPolicy ?? settingsManager.ai.defaultConnectionPolicy,
                         tabID: tab.id,
                         claimFocusOnAppear: claimFocus,
                         onFocusClaimed: {
