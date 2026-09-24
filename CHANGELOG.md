@@ -523,6 +523,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
 - SQL Server statements written after another without a semicolon skipped Safe Mode, on Mac, iPhone and iPad.
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
+- Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
 
 ## [0.75.0] - 2026-09-18
 

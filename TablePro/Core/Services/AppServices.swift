@@ -23,6 +23,7 @@ struct AppServices {
     let favoriteDatabasesStorage: FavoriteDatabasesStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
+    let aiAccessApprovals: AIAccessApprovals
     let groupStorage: GroupStorage
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
@@ -55,6 +56,7 @@ struct AppServices {
         favoriteDatabasesStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
+        aiAccessApprovals: .shared,
         groupStorage: .shared,
         tagStorage: .shared,
         sshProfileStorage: .shared,

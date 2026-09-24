@@ -92,7 +92,6 @@ final class AIChatViewModel: ObservableObject {
 
     let services: AppServices
     var chatStorage: AIChatStorage { services.aiChatStorage }
-    @Published var sessionApprovedConnections: Set<UUID> = []
     var cachedSavedQueries: [UUID: SQLFavorite] = [:]
     private var savedQueryCancellables: Set<AnyCancellable> = []
 
@@ -339,7 +338,6 @@ final class AIChatViewModel: ObservableObject {
         messages = []
         errorMessage = nil
         activeConversationID = nil
-        sessionApprovedConnections = []
         streamingState = .idle
         for image in attachedImages {
             if case .cacheFile(let filename, _) = image.source {

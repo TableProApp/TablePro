@@ -811,6 +811,7 @@ extension DatabaseManager {
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)
+        aiAccessApprovals.revoke(connectionId)
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: .disconnected)
         )

@@ -146,6 +146,8 @@ Turn on **Enable inline suggestions while typing** in the AI tab; it is off by d
 
 The pause is the **Debounce** setting beside the toggle: 500 ms by default, adjustable from 100 to 3,000 ms in 50 ms steps. With Copilot active the suggestions come from Copilot's inline-completion model; every other provider serves them through chat completions.
 
+Suggestions follow the connection's AI policy, read again at every pause, so a policy you change in the connection form applies from the next one. **Always Allow** suggests right away. On **Ask Each Time**, suggestions start once you click **Allow** in the chat's **Allow AI Access** prompt for that connection, and stop when the connection disconnects. A **Never** connection gets no suggestions, and with Copilot active its editor text is not sent to Copilot either.
+
 ## What leaves your Mac
 
 Every message carries a system prompt built from **Settings > AI > Context**, so these settings decide what the provider sees on every turn, not only the first.
@@ -159,4 +161,4 @@ Every message carries a system prompt built from **Settings > AI > Context**, so
 
 Ollama, llama.cpp, and MLX run on your own machine, so nothing reaches a third party. Every other provider is a network call to that vendor under the terms of your account with them.
 
-Per connection, the **Advanced** pane of the connection form sets an AI policy: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, and **Never** also blocks external AI tool calls against that connection. External clients such as Raycast and Claude Desktop reach the same tools through the [External API](/external-api), bounded by the connection's **External Clients** level and the token's scope.
+Per connection, the **Advanced** pane of the connection form sets an AI policy: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**: the chat asks before its first message on a connection, and one **Allow** covers every chat and the inline suggestions on that connection until it disconnects. **Never** also blocks external AI tool calls against that connection. External clients such as Raycast and Claude Desktop reach the same tools through the [External API](/external-api), bounded by the connection's **External Clients** level and the token's scope.

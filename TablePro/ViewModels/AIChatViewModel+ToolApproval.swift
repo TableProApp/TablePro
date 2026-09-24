@@ -9,7 +9,7 @@ import os
 extension AIChatViewModel {
     func confirmAIAccess() {
         if let connectionID = connection?.id {
-            sessionApprovedConnections.insert(connectionID)
+            services.aiAccessApprovals.approve(connectionID)
         }
         guard case .awaitingApproval = streamingState else { return }
         streamingState = .idle

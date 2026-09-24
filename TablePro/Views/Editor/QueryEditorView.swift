@@ -18,7 +18,6 @@ struct QueryEditorView: View {
     var databaseType: DatabaseType?
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
-    var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
     var onFocusClaimed: (() -> Void)?
@@ -89,7 +88,6 @@ struct QueryEditorView: View {
                 databaseType: databaseType,
                 databaseScope: databaseScope,
                 connectionId: connectionId,
-                connectionAIPolicy: connectionAIPolicy,
                 tabID: tabID,
                 claimFocusOnAppear: claimFocusOnAppear,
                 onFocusClaimed: onFocusClaimed,

@@ -158,7 +158,7 @@ extension AIChatViewModel {
         let policy = connection?.aiPolicy ?? settings.defaultConnectionPolicy
 
         if policy == .askEachTime {
-            if let connectionID = connection?.id, sessionApprovedConnections.contains(connectionID) {
+            if let connectionID = connection?.id, services.aiAccessApprovals.isApproved(connectionID) {
                 return .alwaysAllow
             }
             return .askEachTime

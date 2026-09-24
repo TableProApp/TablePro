@@ -32,8 +32,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private let statementRunController = StatementRunController()
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     var schemaProvider: SQLSchemaProvider?
-    /// Connection-level AI policy for inline suggestions
-    var connectionAIPolicy: AIConnectionPolicy?
+    private let inlineAccessGate: AIConnectionAccessGate = .live
     private var contextMenu: AIEditorContextMenu?
     private var inlineSuggestionManager: InlineSuggestionManager?
     private var aiChatInlineSource: AIChatInlineSource?
@@ -41,7 +40,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private var copilotInlineSource: CopilotInlineSource?
     private var editorSettingsCancellable: AnyCancellable?
     private var aiSettingsCancellable: AnyCancellable?
-    private var lastInlineSourceKind: InlineSourceKind = .off
+    private var connectionAccessCancellable: AnyCancellable?
+    private var lastInlineSourceKind: InlineSuggestionSourceKind = .off
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     private var frameChangeTask: Task<Void, Never>?
@@ -131,6 +131,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private func cleanupMonitors() {
         editorSettingsCancellable = nil
         aiSettingsCancellable = nil
+        connectionAccessCancellable = nil
         frameChangeTask?.cancel()
         frameChangeTask = nil
     }
@@ -220,7 +221,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             self?.vimCursorManager?.updatePosition()
         }
 
-        if !isLargeDocument, !didDestroy, let tabID, let sync = copilotDocumentSync {
+        if !isLargeDocument, !didDestroy, let tabID, let sync = copilotDocumentSync,
+           resolvedInlineSourceKind == .copilot {
             let text = textView.string
             Task { await sync.didChangeText(tabID: tabID, newText: text) }
         }
@@ -487,18 +489,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         inlineSuggestionManager = manager
     }
 
-    private enum InlineSourceKind {
-        case off
-        case copilot
-        case ai
-    }
-
-    private var resolvedInlineSourceKind: InlineSourceKind {
-        let ai = AppSettingsManager.shared.ai
-        guard ai.enabled, ai.inlineSuggestionsEnabled, let active = ai.activeProvider else {
-            return .off
-        }
-        return active.type == .copilot ? .copilot : .ai
+    private var resolvedInlineSourceKind: InlineSuggestionSourceKind {
+        InlineSuggestionSourceKind.resolve(
+            settings: AppSettingsManager.shared.ai,
+            accessAllowed: inlineAccessGate.allowsUnpromptedAccess(to: connectionId)
+        )
     }
 
     private func resolveInlineSource() -> InlineSuggestionSource? {
@@ -515,14 +510,16 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
                 installCopilotInlineSource()
             }
             return copilotInlineSource
-        case .ai:
+        case .chatCompletion:
             if aiChatInlineSource == nil {
                 aiChatInlineSource = AIChatInlineSource(
                     schemaProvider: schemaProvider,
-                    connectionPolicy: connectionAIPolicy
+                    connectionId: connectionId,
+                    accessGate: inlineAccessGate
                 )
             }
             aiChatInlineSource?.schemaProvider = schemaProvider
+            aiChatInlineSource?.connectionId = connectionId
             return aiChatInlineSource
         }
     }
@@ -540,13 +537,16 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             DatabaseManager.shared.session(for: $0)?.resolvedBrowseDatabase
         } ?? "database"
 
-        Task {
+        Task { [weak self] in
             if let provider = capturedSchemaProvider, let dbType = capturedDBType {
                 await sync.preambleBuilder.buildPreamble(
                     schemaProvider: provider,
                     databaseName: dbName,
                     databaseType: dbType
                 )
+            }
+            guard let self, self.copilotDocumentSync === sync, self.resolvedInlineSourceKind == .copilot else {
+                return
             }
             if let tabID = capturedTabID {
                 sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
@@ -555,7 +555,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
     }
 
-    private func teardownInlineSources(except kind: InlineSourceKind) {
+    private func teardownInlineSources(except kind: InlineSuggestionSourceKind) {
         if kind != .copilot {
             if let tabID, let sync = copilotDocumentSync {
                 let id = tabID
@@ -564,7 +564,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             copilotDocumentSync = nil
             copilotInlineSource = nil
         }
-        if kind != .ai {
+        if kind != .chatCompletion {
             aiChatInlineSource = nil
         }
     }
@@ -701,6 +701,13 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
                 self.vimCursorManager?.updatePosition()
             }
         aiSettingsCancellable = AppEvents.shared.aiSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.handleInlineProviderChange()
+            }
+        connectionAccessCancellable = AppEvents.shared.connectionUpdated
+            .map { _ in () }
+            .merge(with: AppEvents.shared.connectionStatusChanged.map { _ in () })
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.handleInlineProviderChange()
