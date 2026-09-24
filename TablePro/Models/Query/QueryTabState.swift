@@ -295,7 +295,7 @@ struct PaginationState: Equatable {
         baseQueryForMore = sql
         baseQueryParameterValues = parameterValues
     }
-    var sortExecutionOverride: String?  // Derived ORDER BY query run for a grid sort; never written back to the editor
+    var sortExecutionOverride: ResultRerun?  // Derived ORDER BY query run for a grid sort; never written back to the editor
 
     /// Default page size constant (used when no explicit value is provided)
     /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize

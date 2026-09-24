@@ -80,6 +80,8 @@ Both use `:id`. Only the INSERT uses `:name`.
 
 Parameters are read when a query tab runs: `Cmd+Enter`, **Execute All Statements**, and the [run buttons in the gutter](/features/sql-editor#statement-markers). A parameterized query still goes through [safe mode](/features/safe-mode), so DROP, TRUNCATE, and DELETE without WHERE still ask first.
 
+Sorting a parameterized result by a column header binds the values it ran with, not the ones in the fields now.
+
 ## Settings
 
 **Settings > Editor > Query parameters (:name syntax)**, on by default. Turn it off and `:name` is sent to the database exactly as written.

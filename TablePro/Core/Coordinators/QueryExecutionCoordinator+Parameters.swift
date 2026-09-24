@@ -552,6 +552,9 @@ extension QueryExecutionCoordinator {
                 index: index,
                 baseQuery: statement.executableSQL,
                 baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
+                namedParameterStatement: statement.parameterValues == nil
+                    ? nil
+                    : NamedParameterStatement(sql: statement.originalSQL, parameters: history.parameters),
                 tabId: tabId,
                 anchor: statement.anchor
             )
@@ -640,9 +643,11 @@ extension QueryExecutionCoordinator {
             )
 
             let parameterValues = nativeParameters.map { $0 as? String }
+            let statement = originalSQL.map { NamedParameterStatement(sql: $0, parameters: originalParameters) }
             parent.tabManager.mutate(tabId: tabId) {
                 $0.pagination.baseQueryParameterValues = parameterValues
                 $0.display.activeResultSet?.baseQueryParameterValues = parameterValues
+                $0.display.activeResultSet?.namedParameterStatement = statement
             }
         }
     }
