@@ -888,7 +888,7 @@ struct MainEditorContentView: View {
             if let descriptor = coordinator.browseFilterDescriptor {
                 KeyPatternSearchBar(coordinator: coordinator, descriptor: descriptor)
             } else {
-                FilterPanelView(
+                QueryTabFilterPanel(
                     coordinator: coordinator,
                     tabManager: tabManager,
                     columns: rows.columns,

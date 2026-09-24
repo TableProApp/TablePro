@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import SwiftUI
 
 extension MainContentCoordinator {
     var selectedTabFilterState: TabFilterState {
@@ -16,48 +15,8 @@ extension MainContentCoordinator {
         return tab.tableContext.tableName
     }
 
-    func addFilter(columns: [String] = [], primaryKeyColumn: String? = nil) {
-        filterCoordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
-    }
-
     func addFilterForColumn(_ columnName: String) {
         filterCoordinator.addFilterForColumn(columnName)
-    }
-
-    func duplicateFilter(_ filter: TableFilter) {
-        filterCoordinator.duplicateFilter(filter)
-    }
-
-    func removeFilter(_ filter: TableFilter) {
-        filterCoordinator.removeFilter(filter)
-    }
-
-    func removeFilterAndReload(_ filter: TableFilter) {
-        filterCoordinator.removeFilterAndReload(filter)
-    }
-
-    func updateFilter(_ filter: TableFilter) {
-        filterCoordinator.updateFilter(filter)
-    }
-
-    func moveFilter(_ draggedID: UUID, onto targetID: UUID) {
-        filterCoordinator.moveFilter(draggedID, onto: targetID)
-    }
-
-    func moveFilter(_ filterID: UUID, direction: FilterCoordinator.FilterMoveDirection) {
-        filterCoordinator.moveFilter(filterID, direction: direction)
-    }
-
-    func canMoveFilter(_ filterID: UUID, direction: FilterCoordinator.FilterMoveDirection) -> Bool {
-        filterCoordinator.canMoveFilter(filterID, direction: direction)
-    }
-
-    func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
-        filterCoordinator.filterBinding(for: filter)
-    }
-
-    func filterLogicModeBinding() -> Binding<FilterLogicMode> {
-        filterCoordinator.filterLogicModeBinding()
     }
 
     func applySingleFilter(_ filter: TableFilter) {
@@ -89,35 +48,11 @@ extension MainContentCoordinator {
         filterCoordinator.showFilterPanel()
     }
 
-    func closeFilterPanel() {
-        filterCoordinator.closeFilterPanel()
-    }
-
     func saveLastFilters(of tab: QueryTab) {
         filterCoordinator.saveLastFilters(of: tab)
     }
 
     func clearFilterState() {
         filterCoordinator.clearFilterState()
-    }
-
-    func saveFilterPreset(name: String) {
-        filterCoordinator.saveFilterPreset(name: name)
-    }
-
-    func loadFilterPreset(_ preset: FilterPreset) {
-        filterCoordinator.loadFilterPreset(preset)
-    }
-
-    func loadAllFilterPresets() -> [FilterPreset] {
-        filterCoordinator.loadAllFilterPresets()
-    }
-
-    func deleteFilterPreset(_ preset: FilterPreset) {
-        filterCoordinator.deleteFilterPreset(preset)
-    }
-
-    func generateFilterPreviewSQL(databaseType: DatabaseType) -> String {
-        filterCoordinator.generateFilterPreviewSQL(databaseType: databaseType)
     }
 }

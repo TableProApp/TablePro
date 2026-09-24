@@ -6,20 +6,19 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("Filter Case Sensitivity Presentation")
 struct FilterCaseSensitivityPresentationTests {
-
     private func presentation(
         _ filterOperator: FilterOperator,
         isCaseSensitive: Bool,
         style: SQLDialectDescriptor.CaseSensitivityStyle
     ) -> FilterCaseSensitivityPresentation {
         FilterCaseSensitivityPresentation(
-            filterOperator: filterOperator, isCaseSensitive: isCaseSensitive, style: style
+            filterOperator: filterOperator, isCaseSensitive: isCaseSensitive, matching: .engine(style)
         )
     }
 
@@ -77,5 +76,27 @@ struct FilterCaseSensitivityPresentationTests {
     func testIndicatorHiddenWhenFixed() {
         #expect(presentation(.contains, isCaseSensitive: true, style: .collationDefined).showsIndicator == false)
         #expect(presentation(.contains, isCaseSensitive: true, style: .unsupported).showsIndicator == false)
+    }
+
+    @Test("Matching in memory lets every row with a case dimension choose, with nothing to explain")
+    func testInMemoryIsAdjustable() {
+        let contains = FilterCaseSensitivityPresentation(
+            filterOperator: .contains, isCaseSensitive: true, matching: .inMemory
+        )
+        #expect(contains.showsControl)
+        #expect(contains.isAdjustable)
+        #expect(contains.fixedReason == nil)
+        #expect(contains.showsIndicator)
+
+        let greaterThan = FilterCaseSensitivityPresentation(
+            filterOperator: .greaterThan, isCaseSensitive: true, matching: .inMemory
+        )
+        #expect(greaterThan.showsControl == false)
+        #expect(greaterThan.isAdjustable == false)
+    }
+
+    @Test("An operator with no case dimension never carries a fixed reason")
+    func testNoReasonWithoutCaseDimension() {
+        #expect(presentation(.isNull, isCaseSensitive: true, style: .collationDefined).fixedReason == nil)
     }
 }

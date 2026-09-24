@@ -29,7 +29,7 @@ struct CellFilterStateTests {
 
     @Test("With no filters the condition runs alone and the panel opens")
     func noFilters() {
-        let next = FilterCoordinator.cellFilterState(TabFilterState(), adding: added)
+        let next = TabFilterState.cellFilterState(TabFilterState(), adding: added)
 
         #expect(next.filters.map(\.id) == [added.id])
         #expect(next.appliedFilters.map(\.id) == [added.id])
@@ -41,7 +41,7 @@ struct CellFilterStateTests {
     func keepsRunningFilterOnAnotherColumn() {
         let country = TestFixtures.makeTableFilter(column: "country", op: .equal, value: "VN")
 
-        let next = FilterCoordinator.cellFilterState(running([country]), adding: added)
+        let next = TabFilterState.cellFilterState(running([country]), adding: added)
 
         #expect(conditions(next.appliedFilters) == ["country = VN", "status = paid"])
         #expect(next.filterLogicMode == .and)
@@ -51,7 +51,7 @@ struct CellFilterStateTests {
     func keepsRunningFilterOnTheSameColumn() {
         let notCancelled = TestFixtures.makeTableFilter(column: "status", op: .notEqual, value: "cancelled")
 
-        let next = FilterCoordinator.cellFilterState(running([notCancelled]), adding: added)
+        let next = TabFilterState.cellFilterState(running([notCancelled]), adding: added)
 
         #expect(conditions(next.appliedFilters) == ["status != cancelled", "status = paid"])
     }
@@ -64,7 +64,7 @@ struct CellFilterStateTests {
         state.commit = nil
         state.executedFilters = []
 
-        let next = FilterCoordinator.cellFilterState(state, adding: added)
+        let next = TabFilterState.cellFilterState(state, adding: added)
 
         #expect(next.filters.map(\.id) == [cleared.id, added.id])
         #expect(next.filters.map(\.isEnabled) == [false, true])
@@ -76,7 +76,7 @@ struct CellFilterStateTests {
         let applied = TestFixtures.makeTableFilter(column: "country", op: .equal, value: "VN")
         let draft = TestFixtures.makeTableFilter(column: "total", op: .greaterThan, value: "5")
 
-        let next = FilterCoordinator.cellFilterState(
+        let next = TabFilterState.cellFilterState(
             running([applied, draft], executed: [applied]), adding: added
         )
 
@@ -93,7 +93,7 @@ struct CellFilterStateTests {
         state.commit = .solo(soloed.id)
         state.executedFilters = state.appliedFilters
 
-        let next = FilterCoordinator.cellFilterState(state, adding: added)
+        let next = TabFilterState.cellFilterState(state, adding: added)
 
         #expect(conditions(next.appliedFilters) == ["country = VN", "status = paid"])
         #expect(next.filters.map(\.isEnabled) == [true, false, true])
@@ -105,7 +105,7 @@ struct CellFilterStateTests {
         var edited = original
         edited.value = "JP"
 
-        let next = FilterCoordinator.cellFilterState(
+        let next = TabFilterState.cellFilterState(
             running([edited], executed: [original]), adding: added
         )
 
@@ -117,7 +117,7 @@ struct CellFilterStateTests {
         let country = TestFixtures.makeTableFilter(column: "country", op: .equal, value: "VN")
         let sameButOff = TestFixtures.makeTableFilter(column: "status", op: .equal, value: "paid", isEnabled: false)
 
-        let next = FilterCoordinator.cellFilterState(
+        let next = TabFilterState.cellFilterState(
             running([country, sameButOff], executed: [country]), adding: added
         )
 
@@ -131,7 +131,7 @@ struct CellFilterStateTests {
         var state = running([country])
         state.filterLogicMode = .or
 
-        let next = FilterCoordinator.cellFilterState(state, adding: added)
+        let next = TabFilterState.cellFilterState(state, adding: added)
 
         #expect(conditions(next.appliedFilters) == ["country = VN", "status = paid"])
         #expect(next.filterLogicMode == .and)
@@ -144,7 +144,7 @@ struct CellFilterStateTests {
         var state = running([vn, jp])
         state.filterLogicMode = .or
 
-        let next = FilterCoordinator.cellFilterState(state, adding: added)
+        let next = TabFilterState.cellFilterState(state, adding: added)
 
         #expect(next.appliedFilters.map(\.id) == [added.id])
         #expect(next.filters.count == 3)
@@ -160,7 +160,7 @@ struct CellFilterStateTests {
         state.filterLogicMode = .or
         state.executedFilters = search
 
-        let next = FilterCoordinator.cellFilterState(state, adding: added)
+        let next = TabFilterState.cellFilterState(state, adding: added)
 
         #expect(next.appliedFilters.map(\.id) == [added.id])
         #expect(next.filterLogicMode == .and)
@@ -170,7 +170,7 @@ struct CellFilterStateTests {
     func persistedStateRestoresTheSameRows() {
         let cleared = TestFixtures.makeTableFilter(column: "total", op: .greaterThan, value: "5")
         let country = TestFixtures.makeTableFilter(column: "country", op: .equal, value: "VN")
-        let next = FilterCoordinator.cellFilterState(
+        let next = TabFilterState.cellFilterState(
             running([cleared, country], executed: [country]), adding: added
         )
 
@@ -188,15 +188,15 @@ struct CellFilterStateTests {
         let same = TestFixtures.makeTableFilter(column: "status", op: .equal, value: "paid")
         let other = TestFixtures.makeTableFilter(column: "country", op: .equal, value: "VN")
 
-        #expect(FilterCoordinator.isRunning(added, in: running([same, other])))
-        #expect(!FilterCoordinator.isRunning(added, in: running([other])))
+        #expect(TabFilterState.isRunning(added, in: running([same, other])))
+        #expect(!TabFilterState.isRunning(added, in: running([other])))
 
         var matchAny = running([same, other])
         matchAny.filterLogicMode = .or
-        #expect(!FilterCoordinator.isRunning(added, in: matchAny), "under Match any it widened the rows")
+        #expect(!TabFilterState.isRunning(added, in: matchAny), "under Match any it widened the rows")
 
         var editedAway = running([same])
         editedAway.executedFilters = [other]
-        #expect(!FilterCoordinator.isRunning(added, in: editedAway), "only what was fetched counts")
+        #expect(!TabFilterState.isRunning(added, in: editedAway), "only what was fetched counts")
     }
 }
