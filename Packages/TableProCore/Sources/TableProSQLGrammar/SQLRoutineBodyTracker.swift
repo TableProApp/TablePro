@@ -3,23 +3,30 @@ import Foundation
 /// Statement boundaries for the dialects whose only `;`-holding construct is a routine body written `BEGIN ... END`.
 ///
 /// A `BEGIN` opens a body only inside a statement that defines a routine, for the safety reason recorded on
-/// ``SqlBlockStructure/opensRoutineDefinition(_:)``. The `;` never belongs to the statement: every one of these
-/// engines accepts a statement without it.
+/// ``SqlBlockStructure/opensRoutineDefinition(_:)``. The `;` belongs to the statement only after a T-SQL `MERGE`, which
+/// ``SQLLexicalGrammar/terminatedMergeStatements`` asks for: these engines accept every other statement without it.
 public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     private var sawStatementKeyword = false
     private var definesRoutine = false
     private var depth = 0
     private var pendingBegin = false
     private var pendingEnd = false
+    private var merge: SQLMergeStatementTracker?
 
-    public init() {}
+    public init(grammar: SQLLexicalGrammar) {
+        self.init(merge: grammar.contains(.terminatedMergeStatements) ? SQLMergeStatementTracker() : nil)
+    }
+
+    private init(merge: SQLMergeStatementTracker?) {
+        self.merge = merge
+    }
 
     public var needsWords: Bool {
-        !sawStatementKeyword || definesRoutine
+        !sawStatementKeyword || definesRoutine || merge?.needsWords == true
     }
 
     public var terminator: SQLStatementTerminator {
-        .separator
+        merge?.endsInMerge == true ? .partOfStatement : .separator
     }
 
     public var acceptsBindParameters: Bool {
@@ -27,6 +34,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     }
 
     public mutating func observeWord(_ word: String) {
+        merge?.observeWord(word)
         if settlePending(before: word) { return }
         if !sawStatementKeyword {
             sawStatementKeyword = true
@@ -46,10 +54,12 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     }
 
     public mutating func observeSymbol(_ symbol: UInt16) {
+        merge?.observeSymbol(symbol)
         settlePendingBeforeNonWord()
     }
 
     public mutating func observeOpaqueToken() {
+        merge?.observeOpaqueToken()
         settlePendingBeforeNonWord()
     }
 
@@ -59,11 +69,13 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
             pendingEnd = false
             closeBlock()
         }
-        return depth == 0
+        let endsStatement = depth == 0
+        merge?.observeSemicolon(endsStatement: endsStatement)
+        return endsStatement
     }
 
     public mutating func reset() {
-        self = SQLRoutineBodyTracker()
+        self = SQLRoutineBodyTracker(merge: merge.map { _ in SQLMergeStatementTracker() })
     }
 
     // MARK: - Private

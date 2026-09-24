@@ -65,14 +65,17 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// A PL/SQL unit grammar is left out: it chooses statement boundaries rather than token rules, and an unknown
     /// engine keeps the routine-body boundaries every non-Oracle engine has. So is T-SQL's statement that needs no
     /// terminator, which would make every `open`, `close` or `return` column an unknown engine names a statement of its
-    /// own; an engine that runs statements without one says so through its plugin.
+    /// own; an engine that runs statements without one says so through its plugin. A `MERGE` that keeps its `;` is left
+    /// out for the same reason: an engine that refuses one without it says so through its plugin.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
         for typeId in profiles.keys.sorted() {
             guard let profile = profiles[typeId] else { continue }
             for reading in profile.readings {
-                let unitless = reading.subtracting([.plsqlBlocks, .delimiterDirective, .unterminatedStatements])
+                let unitless = reading.subtracting([
+                    .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
+                ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
                 }
@@ -125,10 +128,11 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// Azure SQL Edge 15.0 (the SQL Server 2019 engine), measured: brackets quote identifiers and `]]` escapes, block
     /// comments nest, a backslash is literal, a carriage return ends `--`, and T-SQL has no `$$`, `#` or `//` comment.
     /// A `GO` line is sqlcmd's, not the server's: sent to it, Azure SQL Edge answers Msg 102 and runs nothing. A
-    /// statement needs no `;`: `SELECT 1` followed by `DROP TABLE t` runs both.
+    /// statement needs no `;`: `SELECT 1` followed by `DROP TABLE t` runs both. A `MERGE` is the exception, and one
+    /// sent without its `;` fails the whole batch with Msg 10713.
     static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
-        .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements,
+        .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements, .terminatedMergeStatements,
     ]
 
     /// Spanner's GoogleSQL dialect on the emulator, measured, and BigQuery by the ZetaSQL grammar the two share: a

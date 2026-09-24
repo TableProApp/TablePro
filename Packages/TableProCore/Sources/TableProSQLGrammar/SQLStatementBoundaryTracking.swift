@@ -6,7 +6,8 @@ public enum SQLStatementTerminator: Equatable, Sendable {
     case separator
 
     /// It belongs to the statement's own grammar. A PL/SQL unit ends in `END;`, and measured on Oracle 23ai a block
-    /// sent without that `;` fails with PLS-00103 while a `CREATE PROCEDURE` sent without it is stored INVALID.
+    /// sent without that `;` fails with PLS-00103 while a `CREATE PROCEDURE` sent without it is stored INVALID. SQL
+    /// Server fails a batch whose `MERGE` has no `;` with Msg 10713.
     case partOfStatement
 }
 
@@ -44,7 +45,7 @@ public protocol SQLStatementBoundaryTracking {
 public enum SQLStatementBoundaries {
     /// The one place a grammar is matched to its statement boundaries, so no reader can pick a different one.
     public static func makeTracker(for grammar: SQLLexicalGrammar) -> any SQLStatementBoundaryTracking {
-        guard grammar.contains(.plsqlBlocks) else { return SQLRoutineBodyTracker() }
+        guard grammar.contains(.plsqlBlocks) else { return SQLRoutineBodyTracker(grammar: grammar) }
         return PLSQLUnitTracker()
     }
 }

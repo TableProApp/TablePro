@@ -23,7 +23,7 @@ struct SQLLexicalFeatureMappingTests {
         #expect(pairs.allSatisfy { $0.0.rawValue == $0.1.rawValue })
         #expect(grammarBits.rawValue == featureBits.rawValue)
         #expect(Set(pairs.map(\.1.rawValue)).count == pairs.count)
-        #expect(grammarBits.rawValue == (1 << 24) - 1)
+        #expect(grammarBits.rawValue == (1 << 25) - 1)
     }
 
     @Test("A grammar survives the trip through the kit's features")
