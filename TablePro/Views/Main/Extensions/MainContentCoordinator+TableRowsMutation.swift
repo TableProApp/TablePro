@@ -152,10 +152,17 @@ extension MainContentCoordinator {
     /// A plan or an error result carries no rows, and leaving the previous result's rows in the
     /// buffer means the next flush hands them to it, after which it renders a data grid instead of
     /// its plan or its error.
+    ///
+    /// It replaces the rows as wholly as a result switch does, so it takes the same full-replace
+    /// path. The grid skips its update while a cell editor or viewer is open, and only the full
+    /// replace closes them, so a failed Run All over an open viewer otherwise kept the previous
+    /// result's headings and selection under the error.
     func seedBufferFromActiveResult(tabId: UUID) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let rows = tabManager.tabs[idx].display.activeResultSet?.tableRows ?? TableRows()
         installTableRows(rows, for: tabId)
+        resetSelectionForNewResult(tabId: tabId)
+        notifyFullReplaceIfActive(tabId: tabId)
     }
 
     /// A tab's table context describes its newest execution, so moving to another result has to
