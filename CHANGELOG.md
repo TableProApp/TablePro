@@ -133,7 +133,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server errors raised inside a query shown as an empty or partial result.
 - SQL Server connection refusing every query after a failed statement until it reconnected.
 - `-1 row(s) affected` after SQL Server DDL.
-- Next SQL Server query stalling after a result cut at the row limit.
 - A quote, bracket or `?` in a comment breaking SQL Server query parameters.
 - Edits made while an iCloud sync was running reverted by that sync and never uploaded.
 - Saved queries unavailable until relaunch after their store failed to open once.
@@ -493,6 +492,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV inspector windows always opening as tabs, ignoring the system's tab setting.
 - SQL Server Verify CA refusing a certificate that does not name the host.
 - SQL Server login failing without a reason for a password longer than 128 bytes.
+- SQL Server connection that never answered again after Stop was pressed during a query.
+- SQL Server query cut at the row limit left running on the server, holding its locks and stalling the next query.
 
 ### Security
 

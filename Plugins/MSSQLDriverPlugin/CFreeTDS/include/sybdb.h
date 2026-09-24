@@ -69,12 +69,22 @@ typedef struct loginrec LOGINREC;
 #define INT_CANCEL  2
 #define INT_CONTINUE 1
 #define INT_EXIT    4
+// Valid only for SYBETIME: libtds sends an attention from the thread that timed out and keeps reading.
+#define INT_TIMEOUT 3
+
+// db-lib error numbers the driver acts on
+#define SYBETIME    20003
 
 // Error handler function types
 typedef int (*EHANDLEFUNC)(DBPROCESS *dbproc, int severity, int dberr, int oserr,
                            const char *dberrstr, const char *oserrstr);
 typedef int (*MHANDLEFUNC)(DBPROCESS *dbproc, DBINT msgno, int msgstate, int severity,
                            char *msgtext, char *srvname, char *proc, int line);
+
+// Interrupt handler function types. db-lib calls the check once a second while it waits on the socket,
+// and a handler answering INT_CANCEL reaches the error handler as SYBETIME.
+typedef int (*DB_DBCHKINTR_FUNC)(void *dbproc);
+typedef int (*DB_DBHNDLINTR_FUNC)(void *dbproc);
 
 // Core db-lib API
 extern RETCODE dbinit(void);
@@ -121,6 +131,7 @@ extern DBINT dbdatlen(DBPROCESS *dbproc, int colnum);
 
 extern RETCODE dbcancel(DBPROCESS *dbproc);
 extern RETCODE dbcanquery(DBPROCESS *dbproc);
+extern void dbsetinterrupt(DBPROCESS *dbproc, DB_DBCHKINTR_FUNC chkintr, DB_DBHNDLINTR_FUNC hndlintr);
 
 // Type conversion — converts a column value to a different TDS type (e.g. to SYBCHAR for display)
 extern DBINT dbconvert(DBPROCESS *dbproc, int srctype, const BYTE *src, DBINT srclen,

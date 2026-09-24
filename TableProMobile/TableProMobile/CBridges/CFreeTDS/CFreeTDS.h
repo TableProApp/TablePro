@@ -14,4 +14,12 @@ extern DBINT dbcount(DBPROCESS *dbproc);
 // carries every connection's encryption level with it, because dbsetlname has no field for one.
 extern void dbsetifile(char *filename);
 
+// The interrupt handler a Stop reaches the reading thread through, missing from the trimmed header in the same way.
+// `_dbsetinterrupt` is in libsybdb_ios-*.a (checked with nm). Values match FreeTDS 1.4.22 sybdb.h.
+#define INT_TIMEOUT 3
+#define SYBETIME    20003
+typedef int (*DB_DBCHKINTR_FUNC)(void *dbproc);
+typedef int (*DB_DBHNDLINTR_FUNC)(void *dbproc);
+extern void dbsetinterrupt(DBPROCESS *dbproc, DB_DBCHKINTR_FUNC chkintr, DB_DBHNDLINTR_FUNC hndlintr);
+
 #endif
