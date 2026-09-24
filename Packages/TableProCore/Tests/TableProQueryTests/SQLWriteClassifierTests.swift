@@ -202,6 +202,33 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite("SELECT 'a\nGO\nDROP TABLE t'", .mssql))
     }
 
+    @Test("SQL Server runs a statement written after another without a semicolon, measured on Azure SQL Edge 15",
+          arguments: [
+              "SELECT 1\nDROP TABLE t", "SELECT 1 DELETE FROM t", "SELECT 1 TRUNCATE TABLE t",
+              "SELECT 1DELETE FROM t", "SELECT $1DELETE FROM t", "SELECT 1 EXEC('DELETE FROM t')",
+              "SELECT DB_NAME() USE master",
+          ])
+    func unterminatedStatementIsAWrite(sql: String) {
+        #expect(isWrite(sql, .mssql))
+    }
+
+    @Test("a SQL Server read that only names a statement keyword is a read", arguments: [
+        "SELECT deleted_at, last_update FROM t", "SELECT [delete], \"update\" FROM t",
+        "SELECT 'DROP TABLE t' AS s -- DELETE FROM t", "SELECT 1\nSELECT 2",
+        "SELECT * FROM t WHERE id IN (SELECT id FROM s)", "SELECT CASE WHEN a = 1 THEN 'x' ELSE 'y' END FROM t",
+        "SELECT id FROM t ORDER BY id OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY", "SELECT 0xDELETE FROM t",
+    ])
+    func unterminatedReadIsARead(sql: String) {
+        #expect(!isWrite(sql, .mssql))
+    }
+
+    @Test("an engine that needs a semicolon reads a statement by its first word", arguments: [
+        DatabaseType.postgresql, .mysql, .sqlite, .oracle,
+    ])
+    func terminatedEngineReadsItsFirstWord(databaseType: DatabaseType) {
+        #expect(!isWrite("SELECT open, close, print FROM prices", databaseType))
+    }
+
     @Test("an Oracle q'[...]' literal holds a quote")
     func alternativeQuoteHidesAWrite() {
         #expect(isWrite("SELECT q'[it's]' FROM dual; DELETE FROM t", .oracle))
