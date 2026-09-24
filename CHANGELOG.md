@@ -518,6 +518,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
 - A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
 - `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
+- SQL Server statements written after another without a semicolon skipped Safe Mode, on Mac, iPhone and iPad.
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
 
 ## [0.75.0] - 2026-09-18

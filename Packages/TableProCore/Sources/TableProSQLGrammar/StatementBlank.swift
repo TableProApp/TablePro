@@ -47,7 +47,7 @@ public enum StatementBlank {
         return NSRange(content.startIndex..<content.endIndex, in: text)
     }
 
-    private static func scalar(in text: NSString, at offset: Int) -> Unicode.Scalar? {
+    static func scalar(in text: NSString, at offset: Int) -> Unicode.Scalar? {
         guard offset >= 0, offset < text.length else { return nil }
         let unit = text.character(at: offset)
         guard UTF16.isLeadSurrogate(unit) else { return Unicode.Scalar(unit) }

@@ -69,7 +69,7 @@ enum QueryClassifier {
         if let ledger = beancountClassification(trimmed, databaseType: databaseType) { return ledger }
         if let document = documentStoreClassification(trimmed, databaseType: databaseType) { return document }
         return readings.distinct(for: sql).reduce(QueryClassification.safe) { worst, grammar in
-            statements(of: sql, grammar: grammar).reduce(worst) { partial, statement in
+            runnableStatements(of: sql, grammar: grammar).reduce(worst) { partial, statement in
                 partial.escalated(with: statementClassification(statement, grammar: grammar, databaseType: databaseType))
             }
         }
@@ -93,7 +93,7 @@ enum QueryClassifier {
             return leadingKeyword(of: trimmed) == "DELETE" && !hasWhereClause(code: code)
         }
         return readings.distinct(for: sql).contains { grammar in
-            statements(of: sql, grammar: grammar).contains { statement in
+            runnableStatements(of: sql, grammar: grammar).contains { statement in
                 statementDeletesEverything(statement, grammar: grammar, databaseType: databaseType)
             }
         }
@@ -121,6 +121,14 @@ enum QueryClassifier {
     /// The statements `grammar` splits `sql` into, as the driver would receive them.
     static func statements(of sql: String, grammar: SQLLexicalGrammar) -> [String] {
         SQLStatementScanner.executableStatements(in: sql, grammar: grammar).map(\.sql)
+    }
+
+    /// Every statement the engine may run from `sql`: each one the driver receives, and on an engine that needs no
+    /// terminator, each one that begins inside it, as `SELECT 1` followed by `DROP TABLE t` does on SQL Server.
+    private static func runnableStatements(of sql: String, grammar: SQLLexicalGrammar) -> [String] {
+        statements(of: sql, grammar: grammar).flatMap { statement in
+            SQLUnterminatedStatements.runnable(in: statement, grammar: grammar)
+        }
     }
 
     private static func statementClassification(

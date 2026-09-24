@@ -11,7 +11,9 @@ import TableProSQLGrammar
 ///
 /// The batch is split into statements the way its engine lexes it, by the grammar the Mac reads
 /// too, and under every reading the engine could be using: iOS drivers send the whole text in one
-/// call, so a `DELETE` hidden behind a quote only one reading closes still runs.
+/// call, so a `DELETE` hidden behind a quote only one reading closes still runs. On an engine that
+/// needs no `;`, every statement that begins inside one is read as well, because SQL Server runs
+/// `SELECT 1` followed by `DROP TABLE t` as two statements.
 public enum SQLWriteClassifier {
     /// `EXPLAIN` and `PRAGMA` are deliberately absent: `EXPLAIN ANALYZE DELETE …` runs the delete on
     /// PostgreSQL, and `PRAGMA journal_mode = WAL` writes on SQLite and DuckDB.
@@ -33,7 +35,9 @@ public enum SQLWriteClassifier {
         let readings = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil)
         return readings.distinct(for: sql).contains { grammar in
             SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
-                statementWrites(statement.sql, grammar: grammar)
+                SQLUnterminatedStatements.runnable(in: statement.sql, grammar: grammar).contains { runnable in
+                    statementWrites(runnable, grammar: grammar)
+                }
             }
         }
     }

@@ -100,6 +100,26 @@ struct ExternalStatementGateTests {
         #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
     }
 
+    @Test("A write SQL Server runs without a terminator is refused on a connection read only for external clients",
+          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1"])
+    func unterminatedWriteRefusedOnReadOnlyConnection(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .mssql, externalAccess: .readOnly))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("A backup SQL Server runs after a read without a terminator is refused as a filesystem statement")
+    func unterminatedBackupRefused() {
+        let refused = refusal(statement("SELECT 1 BACKUP DATABASE d TO DISK = '/tmp/d.bak'", databaseType: .mssql))
+        #expect(refused == .denied(
+            String(
+                localized: """
+                Statements that read or write files, or that run server-side code, cannot be sent \
+                from outside the app. Run this one in TablePro instead.
+                """
+            )
+        ))
+    }
+
     @Test("A destructive statement is refused when the caller may not run one")
     func destructiveRefusedWithoutPermission() {
         let refused = refusal(statement("DROP TABLE users", allowsDestructive: false))
