@@ -63,6 +63,10 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         settlePendingBeforeNonWord()
     }
 
+    public mutating func observeGap() {
+        merge?.observeGap()
+    }
+
     public mutating func observeSemicolon() -> Bool {
         pendingBegin = false
         if pendingEnd {

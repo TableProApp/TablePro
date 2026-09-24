@@ -19,8 +19,8 @@ public enum SQLStatementTerminator: Equatable, Sendable {
 /// settled when that next token arrives. That is what lets the streaming import parser feed it across chunk
 /// boundaries without looking ahead.
 ///
-/// Words arrive uppercased. Comments and whitespace never arrive; a string literal, a quoted identifier or a
-/// dollar-quoted body arrives as ``observeOpaqueToken()``.
+/// Words arrive uppercased. Whitespace and comments arrive as ``observeGap()``; a string literal, a quoted identifier
+/// or a dollar-quoted body arrives as ``observeOpaqueToken()``.
 public protocol SQLStatementBoundaryTracking {
     /// Whether words still bear on where this statement ends. A reader that has to assemble words itself can stop
     /// doing so once this is false, which keeps a plain `INSERT` dump free of the cost.
@@ -36,6 +36,10 @@ public protocol SQLStatementBoundaryTracking {
     mutating func observeSymbol(_ symbol: UInt16)
     mutating func observeOpaqueToken()
 
+    /// Whitespace or a comment between two tokens, which keeps a word from continuing the name before it: `x$MERGE`
+    /// is one name in T-SQL, while `x$` and `MERGE` on the next line are a name and a statement.
+    mutating func observeGap()
+
     /// Returns whether this `;` ends the statement.
     mutating func observeSemicolon() -> Bool
 
@@ -47,5 +51,11 @@ public enum SQLStatementBoundaries {
     public static func makeTracker(for grammar: SQLLexicalGrammar) -> any SQLStatementBoundaryTracking {
         guard grammar.contains(.plsqlBlocks) else { return SQLRoutineBodyTracker(grammar: grammar) }
         return PLSQLUnitTracker()
+    }
+
+    /// Whether a statement `grammar` reads can own the `;` that ends it: a PL/SQL unit's, or a T-SQL `MERGE`'s. A
+    /// reader that ends a statement at every `;` and drops it is only right where none can.
+    public static func statementsCanOwnTerminator(in grammar: SQLLexicalGrammar) -> Bool {
+        !grammar.isDisjoint(with: [.plsqlBlocks, .terminatedMergeStatements])
     }
 }
