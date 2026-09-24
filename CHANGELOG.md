@@ -495,6 +495,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server connection that never answered again after Stop was pressed during a query.
 - SQL Server query cut at the row limit left running on the server, holding its locks and stalling the next query.
 - SQL Server statement that kept running on the server, and committed, after Disconnect.
+- SQL Server `MERGE` refused with Msg 10713 when run alone or as the last statement of a script.
 
 ### Security
 

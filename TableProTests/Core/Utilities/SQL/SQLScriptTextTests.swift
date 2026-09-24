@@ -162,6 +162,18 @@ struct SQLScriptTextTests {
             """)
     }
 
+    /// SQL Server fails a whole batch whose `MERGE` has no `;` with Msg 10713, and a procedure whose body ends in one.
+    @Test("A SQL Server MERGE keeps its ; in what is sent and in a script", arguments: [
+        "MERGE dbo.t AS t USING dbo.s AS s ON t.id = s.id WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id);",
+        "CREATE PROCEDURE dbo.p AS MERGE dbo.t AS t USING dbo.s AS s ON t.id = s.id WHEN MATCHED THEN DELETE;",
+    ])
+    func sqlServerMergeKeepsItsTerminator(statement: String) {
+        #expect(Self.sqlServer.sendableStatements(statement) == [statement])
+        #expect(Self.sqlServer.scriptText(forDriverText: statement) == statement)
+        #expect(Self.sqlServer.script([statement]) == "\(statement)\nGO")
+        #expect(Self.sqlServer.script([String(statement.dropLast())]) == "\(statement)\nGO")
+    }
+
     /// Measured on DM8: DISQL read everything after a procedure ending in `END;` as part of it and reported "The script
     /// file is not complete", while the same script with a `/` line after the procedure ran every statement.
     @Test("A Dameng script ends a unit with a / line and plain SQL with ;")
