@@ -146428,40 +146428,6 @@
     "SQL Server bacpac" : {
 
     },
-    "SQL Server connections use the system trust store. Per-connection CA and client certificate paths are not supported by FreeTDS dblib; configure them in `freetds.conf` if you need a custom trust anchor." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL Server 연결은 시스템 신뢰 저장소를 사용합니다. FreeTDS dblib은 연결별 CA 및 클라이언트 인증서 경로를 지원하지 않습니다. 사용자 지정 신뢰 앵커가 필요한 경우 `freetds.conf`에서 구성하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL Server bağlantıları sistem güven deposunu kullanır. FreeTDS dblib, bağlantıya özel CA ve istemci sertifikası yollarını desteklemez; özel bir güven kaynağına ihtiyacınız varsa bunları `freetds.conf` dosyasında yapılandırın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết nối SQL Server dùng kho tin cậy của hệ thống. FreeTDS dblib không hỗ trợ đường dẫn CA và chứng chỉ client theo từng kết nối; hãy cấu hình trong `freetds.conf` nếu bạn cần trust anchor tùy chỉnh."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL Server 连接使用系统信任存储。FreeTDS dblib 不支持按连接配置 CA 和客户端证书路径；如需自定义信任锚，请在 `freetds.conf` 中配置。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL Server 連線使用系統信任存放區。FreeTDS dblib 不支援按連線設定 CA 和用戶端憑證路徑；如果你需要自訂信任錨點，請在 `freetds.conf` 中設定。"
-          }
-        }
-      }
-    },
     "SQL statements" : {
 
     },
@@ -184121,6 +184087,36 @@
 
     },
     "%d more errors were not kept." : {
+
+    },
+    "FreeTDS could not set up the login." : {
+
+    },
+    "The Kerberos service principal name is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "The user name is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "The password is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "The database name is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "%ld is not a TCP port." : {
+
+    },
+    "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
+
+    },
+    "The CA certificate path cannot be passed to FreeTDS. Use a shorter path, without “;”, “#” or repeated spaces." : {
+
+    },
+    "The FreeTDS configuration could not be written: %@" : {
+
+    },
+    "Verify CA and Verify Identity check the server certificate against the system trust store. A custom CA and client certificates are not available for SQL Server." : {
 
     }
   },

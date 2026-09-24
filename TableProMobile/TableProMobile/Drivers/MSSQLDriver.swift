@@ -41,10 +41,10 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             password: password ?? "",
             database: connection.database,
             schema: MSSQLConnectionOptions.schema(from: connection.additionalFields),
-            encryptionFlag: DriverSSLConfiguration(
+            encryptionLevel: DriverSSLConfiguration(
                 sslEnabled: connection.sslEnabled,
                 configuration: connection.sslConfiguration
-            ).freetdsEncryptionFlag,
+            ).mssqlEncryptionLevel,
             loginTimeoutSeconds: Int(connection.additionalFields["mssqlLoginTimeout"] ?? "") ?? MSSQLConnectionOptions.defaultLoginTimeoutSeconds,
             authMethod: authMethod
         )

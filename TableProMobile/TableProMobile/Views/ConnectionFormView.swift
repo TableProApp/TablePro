@@ -104,8 +104,8 @@ struct ConnectionFormView: View {
                                 Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
-                            // FreeTDS db-lib only honors on/off encryption (DBSETENCRYPT). Per-connection
-                            // cert chain verification is not exposed, so only Disabled and Required are listed.
+                            // The iOS driver encrypts without checking the certificate, because this form collects
+                            // no CA file for FreeTDS, so only Disabled and Required are listed.
                             // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)

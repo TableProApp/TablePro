@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProMobile
 import TableProModels
+import TableProMSSQLCore
 import Testing
 
 @Suite("DriverSSLConfiguration")
@@ -53,12 +54,12 @@ struct DriverSSLConfigurationTests {
         #expect(DriverSSLConfiguration(mode: .verifyFull).postgresSSLMode == "verify-full")
     }
 
-    @Test("freetds encryption flag never downgrades verify modes to plaintext")
-    func freetdsMapping() {
-        #expect(DriverSSLConfiguration(mode: .disable).freetdsEncryptionFlag == "off")
-        #expect(DriverSSLConfiguration(mode: .require).freetdsEncryptionFlag == "require")
-        #expect(DriverSSLConfiguration(mode: .verifyCa).freetdsEncryptionFlag == "require")
-        #expect(DriverSSLConfiguration(mode: .verifyFull).freetdsEncryptionFlag == "require")
+    @Test("SQL Server encryption never downgrades verify modes to plaintext, and disable still encrypts the login")
+    func mssqlMapping() {
+        #expect(DriverSSLConfiguration(mode: .disable).mssqlEncryptionLevel == .request)
+        #expect(DriverSSLConfiguration(mode: .require).mssqlEncryptionLevel == .require)
+        #expect(DriverSSLConfiguration(mode: .verifyCa).mssqlEncryptionLevel == .require)
+        #expect(DriverSSLConfiguration(mode: .verifyFull).mssqlEncryptionLevel == .require)
     }
 
     @Test("CA path is ignored for non-verify modes")

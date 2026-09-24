@@ -4,33 +4,34 @@
 //
 
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
 import Testing
 
-@Suite("MSSQLSSLMapping.freetdsEncryptionFlag")
+@Suite("MSSQLSSLMapping.encryptionLevel")
 struct MSSQLSSLMappingTests {
-    @Test("disabled maps to off")
+    @Test("disabled maps to request: off would send the login unencrypted, and a server that forces encryption drops it")
     func disabled() {
-        #expect(MSSQLSSLMapping.freetdsEncryptionFlag(for: .disabled) == "off")
+        #expect(MSSQLSSLMapping.encryptionLevel(for: .disabled) == .request)
     }
 
     @Test("preferred maps to request")
     func preferred() {
-        #expect(MSSQLSSLMapping.freetdsEncryptionFlag(for: .preferred) == "request")
+        #expect(MSSQLSSLMapping.encryptionLevel(for: .preferred) == .request)
     }
 
     @Test("required maps to require")
     func required() {
-        #expect(MSSQLSSLMapping.freetdsEncryptionFlag(for: .required) == "require")
+        #expect(MSSQLSSLMapping.encryptionLevel(for: .required) == .require)
     }
 
     @Test("verifyCa maps to require")
     func verifyCa() {
-        #expect(MSSQLSSLMapping.freetdsEncryptionFlag(for: .verifyCa) == "require")
+        #expect(MSSQLSSLMapping.encryptionLevel(for: .verifyCa) == .require)
     }
 
     @Test("verifyIdentity maps to require")
     func verifyIdentity() {
-        #expect(MSSQLSSLMapping.freetdsEncryptionFlag(for: .verifyIdentity) == "require")
+        #expect(MSSQLSSLMapping.encryptionLevel(for: .verifyIdentity) == .require)
     }
 }

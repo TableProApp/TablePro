@@ -21066,6 +21066,30 @@
           }
         }
       }
+    },
+    "%ld is not a TCP port." : {
+
+    },
+    "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
+
+    },
+    "The CA certificate path cannot be passed to FreeTDS. Use a shorter path, without “;”, “#” or repeated spaces." : {
+
+    },
+    "The FreeTDS configuration could not be written: %@" : {
+
+    },
+    "FreeTDS could not set up the login." : {
+
+    },
+    "The user name is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "The password is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "The database name is longer than the 128 bytes FreeTDS takes." : {
+
     }
   },
   "version" : "1.0"
