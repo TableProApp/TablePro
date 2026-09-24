@@ -59,7 +59,22 @@ enum DataFilesBenchmark {
             try await TabularScanEngine.matchingRows(in: table, matcher: TabularRowMatcher(predicate: search))
         }
 
-        let all = Array(0..<table.rowCount)
+        let find = TabularFindQuery(
+            text: "refund",
+            matchesCase: false,
+            matchesWholeWords: false,
+            isRegularExpression: false,
+            columns: ids
+        )
+        let found = try await measure("find all refund in every column") {
+            try await TabularFinder.findAll(find, keys: table.rowOrder.keys, in: table)
+        }
+        print("  matches \(found.count)")
+
+        _ = try await measure("statistics for amount") {
+            try await TabularColumnStatistics.summarize(column: ids[3], kind: .decimal, keys: table.rowOrder.keys, in: table)
+        }
+
         _ = try await measure("sort amount (numeric)") {
             try await TabularSorter.sortedKeys(table.rowOrder.keys, in: table, by: [TabularSortKey(column: ids[3], ascending: true, numeric: true)])
         }

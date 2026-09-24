@@ -39,6 +39,43 @@ final class TabularEditingTests: XCTestCase {
         XCTAssertEqual(summary.topValues.first, TabularValueCount(value: "3", isEmpty: false, count: 2))
     }
 
+    func testMedianMatchesASortedReference() {
+        var generator = SystemRandomNumberGenerator()
+        for count in [1, 2, 3, 4, 5, 10, 101, 1_000] {
+            for _ in 0..<20 {
+                var numbers = (0..<count).map { _ in Double(Int.random(in: -50...50, using: &generator)) }
+                let sorted = numbers.sorted()
+                let middle = count / 2
+                let expected = count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+                XCTAssertEqual(TabularColumnStatistics.median(of: &numbers), expected, "\(sorted)")
+            }
+        }
+    }
+
+    func testTopValuesAcrossPartitionsMatchABruteForceRanking() async throws {
+        var generator = SystemRandomNumberGenerator()
+        let values = (0..<20_000).map { _ in "v\(Int.random(in: 0..<700, using: &generator))" }
+        let table = try await table("v\n" + values.joined(separator: "\n") + "\n")
+        let summary = try await TabularColumnStatistics.summarize(
+            column: table.columns[0].id,
+            kind: .text,
+            keys: table.rowOrder.keys,
+            in: table,
+            topValueLimit: 25
+        )
+        var counts: [String: Int] = [:]
+        for value in values { counts[value, default: 0] += 1 }
+        XCTAssertEqual(summary.distinctCount, counts.count)
+        XCTAssertEqual(summary.topValues.count, 25)
+        let threshold = counts.values.sorted(by: >)[24]
+        for entry in summary.topValues {
+            XCTAssertEqual(counts[entry.value], entry.count)
+            XCTAssertGreaterThanOrEqual(entry.count, threshold)
+        }
+        XCTAssertEqual(summary.topValues.map(\.count), summary.topValues.map(\.count).sorted(by: >))
+        XCTAssertEqual(Set(summary.topValues.map(\.value)).count, 25)
+    }
+
     func testFindHonoursCaseWholeWordsAndRegex() async throws {
         let table = try await table("a,b\ncat,Category\nCAT,dog\nconcat,cat5\n")
         let all = table.rowOrder.keys

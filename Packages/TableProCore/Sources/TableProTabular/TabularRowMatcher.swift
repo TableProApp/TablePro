@@ -3,6 +3,7 @@ import TableProTabularIO
 
 public final class TabularRowMatcher: @unchecked Sendable {
     public let columns: [TabularColumnID]
+    private let predicate: TabularRowPredicate
     private let root: Node
 
     private indirect enum Node {
@@ -20,7 +21,12 @@ public final class TabularRowMatcher: @unchecked Sendable {
             slots[column] = slot
         }
         self.columns = columns
+        self.predicate = predicate
         root = Self.compile(predicate, slots: slots)
+    }
+
+    public func privateCopy() -> TabularRowMatcher {
+        TabularRowMatcher(predicate: predicate)
     }
 
     public var isTrivial: Bool {

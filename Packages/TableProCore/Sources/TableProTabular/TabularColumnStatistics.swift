@@ -37,13 +37,27 @@ public struct TabularColumnSummary: Sendable, Equatable {
 
 public enum TabularColumnStatistics {
     public static let defaultTopValueLimit = 1_000
+    static let partitionCount = 16
+
+    private struct Occurrence: Sendable {
+        var count: Int
+        let firstKey: Int
+
+        func adding(_ other: Occurrence) -> Occurrence {
+            Occurrence(count: count + other.count, firstKey: min(firstKey, other.firstKey))
+        }
+    }
+
+    private typealias RankedEntry = (key: ValueHash, occurrence: Occurrence)
 
     private struct Partial: Sendable {
         var rowCount = 0
         var emptyCount = 0
-        var counts: [ValueHash: Int] = [:]
+        var counts = [[ValueHash: Occurrence]](repeating: [:], count: partitionCount)
         var numbers: [Double] = []
         var numberSum = 0.0
+        var minimum: Double?
+        var maximum: Double?
         var nonNumericCount = 0
         var earliestDate: String?
         var latestDate: String?
@@ -65,8 +79,8 @@ public enum TabularColumnStatistics {
             var partial = Partial()
             var cancelled = false
             var processed = 0
-            table.scan(columns: [column], keys: keys[chunk]) { _, cells in
-                accumulate(kind: cells.kinds[0], bytes: cells.bytes[0], numeric: numeric, isDate: isDate, into: &partial)
+            table.scan(columns: [column], keys: keys[chunk]) { key, cells in
+                accumulate(key: key, kind: cells.kinds[0], bytes: cells.bytes[0], numeric: numeric, isDate: isDate, into: &partial)
                 processed += 1
                 if processed == TabularScanEngine.cancellationStride {
                     counter.add(processed)
@@ -82,15 +96,17 @@ public enum TabularColumnStatistics {
             if cancelled { throw CancellationError() }
             return partial
         }
-        let merged = merge(partials)
+        var merged = merge(partials)
         try Task.checkCancellation()
-        let top = try await topValues(merged.counts, column: column, keys: keys, table: table, limit: topValueLimit)
+        let distinct = try await mergedCounts(partials, limit: topValueLimit)
+        try Task.checkCancellation()
+        let top = topValues(distinct.ranked, column: column, table: table)
         progress(1)
         return TabularColumnSummary(
             rowCount: merged.rowCount,
             emptyCount: merged.emptyCount,
-            distinctCount: merged.counts.count,
-            numeric: numeric ? numericSummary(merged) : nil,
+            distinctCount: distinct.count,
+            numeric: numeric ? numericSummary(&merged) : nil,
             nonNumericCount: numeric ? merged.nonNumericCount : 0,
             earliestDate: merged.earliestDate,
             latestDate: merged.latestDate,
@@ -101,6 +117,7 @@ public enum TabularColumnStatistics {
     }
 
     private static func accumulate(
+        key: Int,
         kind: TabularCellKind,
         bytes: UnsafeBufferPointer<UInt8>,
         numeric: Bool,
@@ -109,7 +126,8 @@ public enum TabularColumnStatistics {
     ) {
         partial.rowCount += 1
         let isEmpty = bytes.isEmpty || kind.isNullLike
-        partial.counts[ValueHash(bytes, isEmpty: isEmpty), default: 0] += 1
+        let hash = ValueHash(bytes, isEmpty: isEmpty)
+        partial.counts[hash.partition][hash, default: Occurrence(count: 0, firstKey: key)].count += 1
         guard !isEmpty else {
             partial.emptyCount += 1
             return
@@ -121,6 +139,8 @@ public enum TabularColumnStatistics {
             if let number = TabularValueGrammar.number(bytes) {
                 partial.numbers.append(number)
                 partial.numberSum += number
+                partial.minimum = min(partial.minimum ?? number, number)
+                partial.maximum = max(partial.maximum ?? number, number)
             } else {
                 partial.nonNumericCount += 1
             }
@@ -138,9 +158,10 @@ public enum TabularColumnStatistics {
         for partial in partials {
             merged.rowCount += partial.rowCount
             merged.emptyCount += partial.emptyCount
-            merged.counts.merge(partial.counts, uniquingKeysWith: +)
             merged.numbers.append(contentsOf: partial.numbers)
             merged.numberSum += partial.numberSum
+            if let value = partial.minimum { merged.minimum = min(merged.minimum ?? value, value) }
+            if let value = partial.maximum { merged.maximum = max(merged.maximum ?? value, value) }
             merged.nonNumericCount += partial.nonNumericCount
             if let value = partial.earliestDate, merged.earliestDate.map({ value < $0 }) ?? true {
                 merged.earliestDate = value
@@ -154,68 +175,118 @@ public enum TabularColumnStatistics {
         return merged
     }
 
-    private static func numericSummary(_ partial: Partial) -> TabularNumericSummary? {
-        guard !partial.numbers.isEmpty else { return nil }
-        let sorted = partial.numbers.sorted()
-        let middle = sorted.count / 2
-        let median = sorted.count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+    private static func mergedCounts(
+        _ partials: [Partial],
+        limit: Int
+    ) async throws -> (count: Int, ranked: [RankedEntry]) {
+        try await withThrowingTaskGroup(of: (count: Int, ranked: [RankedEntry]).self) { group in
+            for partition in 0..<partitionCount {
+                group.addTask {
+                    try Task.checkCancellation()
+                    var merged: [ValueHash: Occurrence] = [:]
+                    merged.reserveCapacity(partials.reduce(0) { $0 + $1.counts[partition].count })
+                    for partial in partials {
+                        merged.merge(partial.counts[partition]) { $0.adding($1) }
+                    }
+                    return (merged.count, rankedEntries(merged, limit: limit))
+                }
+            }
+            var count = 0
+            var candidates: [RankedEntry] = []
+            for try await partition in group {
+                count += partition.count
+                candidates.append(contentsOf: partition.ranked)
+            }
+            return (count, Array(candidates.sorted(by: rankOrder).prefix(max(0, limit))))
+        }
+    }
+
+    private static func numericSummary(_ partial: inout Partial) -> TabularNumericSummary? {
+        guard let minimum = partial.minimum, let maximum = partial.maximum, !partial.numbers.isEmpty else {
+            return nil
+        }
+        let count = partial.numbers.count
         return TabularNumericSummary(
-            count: sorted.count,
-            minimum: sorted[0],
-            maximum: sorted[sorted.count - 1],
+            count: count,
+            minimum: minimum,
+            maximum: maximum,
             sum: partial.numberSum,
-            mean: partial.numberSum / Double(sorted.count),
-            median: median
+            mean: partial.numberSum / Double(count),
+            median: median(of: &partial.numbers)
         )
     }
 
-    private static func topValues(
-        _ counts: [ValueHash: Int],
-        column: TabularColumnID,
-        keys: [Int],
-        table: TabularTable,
-        limit: Int
-    ) async throws -> [TabularValueCount] {
-        let ranked = rankedEntries(counts, limit: limit)
-        var wanted: [ValueHash: Int] = [:]
-        for entry in ranked {
-            wanted[entry.key] = entry.value
-        }
-        var found: [ValueHash: String] = [:]
-        var position = 0
-        while found.count < wanted.count, position < keys.count {
-            try Task.checkCancellation()
-            let end = min(keys.count, position + 65_536)
-            table.scan(columns: [column], keys: keys[position..<end]) { _, cells in
-                let bytes = cells.bytes[0]
-                let key = ValueHash(bytes, isEmpty: bytes.isEmpty || cells.kinds[0].isNullLike)
-                if wanted[key] != nil, found[key] == nil {
-                    found[key] = cells.string(at: 0)
+    static func median(of numbers: inout [Double]) -> Double {
+        let middle = numbers.count / 2
+        let upper = select(middle, in: &numbers)
+        guard numbers.count.isMultiple(of: 2) else { return upper }
+        let lower = numbers[0..<middle].max() ?? upper
+        return (lower + upper) / 2
+    }
+
+    private static func select(_ rank: Int, in numbers: inout [Double]) -> Double {
+        var low = 0
+        var high = numbers.count - 1
+        while low < high {
+            let pivot = medianOfThree(numbers[low], numbers[(low + high) / 2], numbers[high])
+            var left = low
+            var right = high
+            while left <= right {
+                while numbers[left] < pivot { left += 1 }
+                while numbers[right] > pivot { right -= 1 }
+                if left <= right {
+                    numbers.swapAt(left, right)
+                    left += 1
+                    right -= 1
                 }
-                return found.count < wanted.count
             }
-            position = end
+            if rank <= right {
+                high = right
+            } else if rank >= left {
+                low = left
+            } else {
+                return numbers[rank]
+            }
+        }
+        return numbers[rank]
+    }
+
+    private static func medianOfThree(_ first: Double, _ second: Double, _ third: Double) -> Double {
+        max(min(first, second), min(max(first, second), third))
+    }
+
+    private static func topValues(
+        _ ranked: [RankedEntry],
+        column: TabularColumnID,
+        table: TabularTable
+    ) -> [TabularValueCount] {
+        var texts: [Int: String] = [:]
+        table.scan(columns: [column], keys: ranked.map(\.occurrence.firstKey).sorted()) { key, cells in
+            texts[key] = cells.string(at: 0)
+            return true
         }
         return ranked.compactMap { entry in
-            guard let value = found[entry.key] else { return nil }
-            return TabularValueCount(value: value, isEmpty: entry.key.isEmpty, count: entry.value)
+            guard let value = texts[entry.occurrence.firstKey] else { return nil }
+            return TabularValueCount(value: value, isEmpty: entry.key.isEmpty, count: entry.occurrence.count)
         }
     }
 
-    private static func rankedEntries(_ counts: [ValueHash: Int], limit: Int) -> [(key: ValueHash, value: Int)] {
-        let byCount: ((key: ValueHash, value: Int), (key: ValueHash, value: Int)) -> Bool = { lhs, rhs in
-            lhs.value != rhs.value ? lhs.value > rhs.value : lhs.key.first < rhs.key.first
+    private static func rankOrder(_ lhs: RankedEntry, _ rhs: RankedEntry) -> Bool {
+        let left = lhs.occurrence.count
+        let right = rhs.occurrence.count
+        return left != right ? left > right : lhs.key.first < rhs.key.first
+    }
+
+    private static func rankedEntries(_ counts: [ValueHash: Occurrence], limit: Int) -> [RankedEntry] {
+        let entries = counts.map { (key: $0.key, occurrence: $0.value) }
+        guard entries.count > limit, limit > 0 else {
+            return Array(entries.sorted(by: rankOrder).prefix(max(0, limit)))
         }
-        guard counts.count > limit, limit > 0 else {
-            return Array(counts.sorted(by: byCount).prefix(max(0, limit)))
-        }
-        let threshold = counts.values.sorted(by: >)[limit - 1]
-        var chosen = counts.filter { $0.value > threshold }.map { (key: $0.key, value: $0.value) }
-        for entry in counts where entry.value == threshold {
-            guard chosen.count < limit else { break }
-            chosen.append((key: entry.key, value: entry.value))
-        }
-        return chosen.sorted(by: byCount)
+        let threshold = entries.map(\.occurrence.count).sorted(by: >)[limit - 1]
+        var chosen = entries.filter { $0.occurrence.count > threshold }
+        let tied = entries.filter { $0.occurrence.count == threshold }.sorted(by: rankOrder)
+        chosen.append(contentsOf: tied.prefix(max(0, limit - chosen.count)))
+        return chosen.sorted(by: rankOrder)
     }
 
     private static func scalarCount(_ bytes: UnsafeBufferPointer<UInt8>) -> Int {
@@ -231,6 +302,10 @@ struct ValueHash: Hashable, Sendable {
     let first: UInt64
     let second: UInt64
     let isEmpty: Bool
+
+    var partition: Int {
+        Int(truncatingIfNeeded: second % UInt64(TabularColumnStatistics.partitionCount))
+    }
 
     init(_ bytes: UnsafeBufferPointer<UInt8>, isEmpty: Bool) {
         self.isEmpty = isEmpty

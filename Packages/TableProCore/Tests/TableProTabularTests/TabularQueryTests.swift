@@ -132,4 +132,41 @@ final class TabularQueryTests: XCTestCase {
         )
         XCTAssertEqual(sorted, [9, 10, 6, 5, 2, 1, 4, 3, 8, 7, 11, 12])
     }
+
+    func testASortAcrossManyChunksMatchesAStableReferenceSort() async throws {
+        let count = TabularChunking.minimumChunkSize * 9 + 37
+        var generator = SystemRandomNumberGenerator()
+        let values = (0..<count).map { _ in Int.random(in: 0..<500, using: &generator) }
+        let text = "n,label\n" + values.map { "\($0),item \($0 % 7)" }.joined(separator: "\n") + "\n"
+        let table = try await table(text)
+        let byNumber = try await TabularSorter.sortedKeys(
+            table.rowOrder.keys,
+            in: table,
+            by: [TabularSortKey(column: table.columns[0].id, ascending: false, numeric: true)]
+        )
+        let expectedByNumber = table.rowOrder.keys.enumerated()
+            .sorted { lhs, rhs in
+                let left = values[lhs.offset]
+                let right = values[rhs.offset]
+                return left != right ? left > right : lhs.offset < rhs.offset
+            }
+            .map(\.element)
+        XCTAssertEqual(byNumber, expectedByNumber)
+        let byLabelThenNumber = try await TabularSorter.sortedKeys(
+            table.rowOrder.keys,
+            in: table,
+            by: [
+                TabularSortKey(column: table.columns[1].id, ascending: true, numeric: false),
+                TabularSortKey(column: table.columns[0].id, ascending: true, numeric: true)
+            ]
+        )
+        let expectedByLabel = table.rowOrder.keys.enumerated()
+            .sorted { lhs, rhs in
+                let left = (values[lhs.offset] % 7, values[lhs.offset], lhs.offset)
+                let right = (values[rhs.offset] % 7, values[rhs.offset], rhs.offset)
+                return left < right
+            }
+            .map(\.element)
+        XCTAssertEqual(byLabelThenNumber, expectedByLabel)
+    }
 }

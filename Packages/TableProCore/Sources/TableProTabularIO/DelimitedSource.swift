@@ -111,6 +111,7 @@ public struct DelimitedSource: TabularSource {
             let fileEnd = fileStart + raw.count
             var scratch: [UInt8] = []
             var buffer = TabularCellBuffer()
+            buffer.reserveThreadPrivateCapacity(slots: columns.count)
             for row in rows {
                 guard row >= 0, row < rowCount else { continue }
                 buffer.reset(slots: columns.count, fill: .text)

@@ -40,6 +40,12 @@ public struct TabularValueStore: Sendable, Equatable {
         kinds.append(kind)
     }
 
+    public mutating func appendBuilt(kind: TabularCellKind, _ build: (inout [UInt8]) -> Void) {
+        build(&bytes)
+        ends.append(bytes.count)
+        kinds.append(kind)
+    }
+
     public mutating func append(contentsOf other: TabularValueStore) {
         let offset = bytes.count
         bytes.append(contentsOf: other.bytes)

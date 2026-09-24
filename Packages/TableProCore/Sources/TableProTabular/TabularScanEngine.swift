@@ -39,9 +39,10 @@ public enum TabularScanEngine {
         let scope = (rows ?? 0..<table.rowCount).clamped(to: 0..<table.rowCount)
         guard !matcher.isTrivial else { return Array(scope) }
         let chunked = try await forEachChunk(of: scope, progress: progress) { chunk, counter in
+            let local = matcher.privateCopy()
             var matches: [Int] = []
-            let completed = scanChunk(table, columns: matcher.columns, rows: chunk, counter: counter) { row, cells in
-                if matcher.matches(cells) {
+            let completed = scanChunk(table, columns: local.columns, rows: chunk, counter: counter) { row, cells in
+                if local.matches(cells) {
                     matches.append(row)
                 }
             }

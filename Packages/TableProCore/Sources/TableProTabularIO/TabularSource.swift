@@ -43,9 +43,20 @@ public struct TabularCellBuffer {
     private var arena: [UInt8] = []
     private var resolved: [UnsafeBufferPointer<UInt8>] = []
 
+    public static let privateSlotSlack = 256
+    public static let privateArenaCapacity = 16_384
+
     public init() {}
 
     public var count: Int { kinds.count }
+
+    public mutating func reserveThreadPrivateCapacity(slots: Int) {
+        let capacity = max(slots, 0) + Self.privateSlotSlack
+        kinds.reserveCapacity(capacity)
+        locations.reserveCapacity(capacity)
+        resolved.reserveCapacity(capacity)
+        arena.reserveCapacity(Self.privateArenaCapacity)
+    }
 
     public mutating func reset(slots: Int, fill kind: TabularCellKind) {
         arena.removeAll(keepingCapacity: true)

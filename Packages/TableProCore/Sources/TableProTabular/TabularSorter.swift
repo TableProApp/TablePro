@@ -35,7 +35,7 @@ public enum TabularSorter {
         guard !keys.isEmpty, rows.count > 1 else { return rows }
         let extracted = try await extractKeys(rows, table: table, keys: keys) { progress($0 * 0.5) }
         try Task.checkCancellation()
-        let order = try await sortPositions(count: rows.count, keys: keys, columns: extracted)
+        let order = try await sortPositions(count: rows.count, buffers: extracted)
         progress(1)
         return order.map { rows[$0] }
     }
@@ -54,34 +54,33 @@ public enum TabularSorter {
         lowercased: Bool,
         into store: inout TabularValueStore
     ) {
-        var key: [UInt8] = []
-        key.reserveCapacity(bytes.count + 8)
-        var index = 0
-        let count = bytes.count
-        while index < count {
-            let byte = bytes[index]
-            guard TabularValueGrammar.isDigit(byte) else {
-                key.append(lowercased ? byte : TabularValueGrammar.asciiLowercase(byte))
-                index += 1
-                continue
+        store.appendBuilt(kind: .text) { key in
+            var index = 0
+            let count = bytes.count
+            while index < count {
+                let byte = bytes[index]
+                guard TabularValueGrammar.isDigit(byte) else {
+                    key.append(lowercased ? byte : TabularValueGrammar.asciiLowercase(byte))
+                    index += 1
+                    continue
+                }
+                var runEnd = index
+                while runEnd < count, TabularValueGrammar.isDigit(bytes[runEnd]) {
+                    runEnd += 1
+                }
+                var significant = index
+                while significant < runEnd, bytes[significant] == 0x30 {
+                    significant += 1
+                }
+                let length = runEnd - significant
+                key.append(UInt8(0x30 + (length / 1_000) % 10))
+                key.append(UInt8(0x30 + (length / 100) % 10))
+                key.append(UInt8(0x30 + (length / 10) % 10))
+                key.append(UInt8(0x30 + length % 10))
+                key.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[significant..<runEnd]))
+                index = runEnd
             }
-            var runEnd = index
-            while runEnd < count, TabularValueGrammar.isDigit(bytes[runEnd]) {
-                runEnd += 1
-            }
-            var significant = index
-            while significant < runEnd, bytes[significant] == 0x30 {
-                significant += 1
-            }
-            let length = runEnd - significant
-            key.append(UInt8(0x30 + (length / 1_000) % 10))
-            key.append(UInt8(0x30 + (length / 100) % 10))
-            key.append(UInt8(0x30 + (length / 10) % 10))
-            key.append(UInt8(0x30 + length % 10))
-            key.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[significant..<runEnd]))
-            index = runEnd
         }
-        key.withUnsafeBufferPointer { store.append($0, kind: .text) }
     }
 
     private static func extractKeys(
@@ -89,7 +88,7 @@ public enum TabularSorter {
         table: TabularTable,
         keys: [TabularSortKey],
         progress: @escaping @Sendable (Double) -> Void
-    ) async throws -> [ColumnKeys] {
+    ) async throws -> SortKeyBuffers {
         let columnIDs = keys.map(\.column)
         let perChunk = try await TabularScanEngine.forEachChunk(of: 0..<rows.count, progress: progress) { chunk, counter in
             var local = [ColumnKeys](repeating: ColumnKeys(), count: keys.count)
@@ -120,15 +119,7 @@ public enum TabularSorter {
             if cancelled { throw CancellationError() }
             return local
         }
-        var merged = [ColumnKeys](repeating: ColumnKeys(), count: keys.count)
-        for chunk in perChunk {
-            for index in merged.indices {
-                merged[index].buckets.append(contentsOf: chunk[index].buckets)
-                merged[index].numbers.append(contentsOf: chunk[index].numbers)
-                merged[index].text.append(contentsOf: chunk[index].text)
-            }
-        }
-        return merged
+        return SortKeyBuffers(keys: keys, count: rows.count, chunks: perChunk)
     }
 
     private static func append(
@@ -154,13 +145,13 @@ public enum TabularSorter {
         naturalKey(bytes, into: &keys.text)
     }
 
-    private static func sortPositions(count: Int, keys: [TabularSortKey], columns: [ColumnKeys]) async throws -> [Int] {
-        let comparator = PositionComparator(keys: keys, columns: columns)
+    private static func sortPositions(count: Int, buffers: SortKeyBuffers) async throws -> [Int] {
         let chunks = TabularChunking.ranges(count: count)
-        let sortedChunks = try await withThrowingTaskGroup(of: (Int, [Int]).self) { group in
+        var runs = try await withThrowingTaskGroup(of: (Int, [Int]).self) { group in
             for (index, chunk) in chunks.enumerated() {
                 group.addTask {
                     try Task.checkCancellation()
+                    let comparator = buffers.comparator
                     var positions = Array(chunk)
                     positions.sort { comparator.precedes($0, $1) }
                     return (index, positions)
@@ -172,73 +163,155 @@ public enum TabularSorter {
             }
             return results
         }
-        try Task.checkCancellation()
-        return merge(sortedChunks, comparator: comparator)
-    }
-
-    private static func merge(_ runs: [[Int]], comparator: PositionComparator) -> [Int] {
-        var heads = runs.indices.filter { !runs[$0].isEmpty }.map { (run: $0, offset: 0) }
-        var result: [Int] = []
-        result.reserveCapacity(runs.reduce(0) { $0 + $1.count })
-        while !heads.isEmpty {
-            var best = 0
-            for candidate in 1..<heads.count where comparator.precedes(
-                runs[heads[candidate].run][heads[candidate].offset],
-                runs[heads[best].run][heads[best].offset]
-            ) {
-                best = candidate
+        while runs.count > 1 {
+            try Task.checkCancellation()
+            let pairs = stride(from: 0, to: runs.count, by: 2).map { index in
+                (runs[index], index + 1 < runs.count ? runs[index + 1] : [])
             }
-            let head = heads[best]
-            result.append(runs[head.run][head.offset])
-            if head.offset + 1 < runs[head.run].count {
-                heads[best].offset += 1
-            } else {
-                heads.remove(at: best)
+            runs = try await withThrowingTaskGroup(of: (Int, [Int]).self) { group in
+                for (index, pair) in pairs.enumerated() {
+                    group.addTask {
+                        try Task.checkCancellation()
+                        return (index, merge(pair.0, pair.1, comparator: buffers.comparator))
+                    }
+                }
+                var merged = [[Int]](repeating: [], count: pairs.count)
+                for try await (index, run) in group {
+                    merged[index] = run
+                }
+                return merged
             }
         }
+        return withExtendedLifetime(buffers) { runs.first ?? [] }
+    }
+
+    private static func merge(_ left: [Int], _ right: [Int], comparator: PositionComparator) -> [Int] {
+        guard !right.isEmpty else { return left }
+        guard !left.isEmpty else { return right }
+        var result: [Int] = []
+        result.reserveCapacity(left.count + right.count)
+        var leftIndex = 0
+        var rightIndex = 0
+        while leftIndex < left.count, rightIndex < right.count {
+            if comparator.precedes(right[rightIndex], left[leftIndex]) {
+                result.append(right[rightIndex])
+                rightIndex += 1
+            } else {
+                result.append(left[leftIndex])
+                leftIndex += 1
+            }
+        }
+        result.append(contentsOf: left[leftIndex...])
+        result.append(contentsOf: right[rightIndex...])
         return result
     }
 
-    private struct PositionComparator: Sendable {
-        let keys: [TabularSortKey]
-        let columns: [ColumnKeys]
+    private struct ColumnView {
+        let buckets: UnsafeMutableBufferPointer<UInt8>
+        let numbers: UnsafeMutableBufferPointer<Double>
+        let textBytes: UnsafeMutableBufferPointer<UInt8>
+        let textEnds: UnsafeMutableBufferPointer<Int>
+        let ascending: Bool
+    }
+
+    private final class SortKeyBuffers: @unchecked Sendable {
+        let views: UnsafeMutableBufferPointer<ColumnView>
+
+        init(keys: [TabularSortKey], count: Int, chunks: [[ColumnKeys]]) {
+            views = .allocate(capacity: keys.count)
+            for (index, key) in keys.enumerated() {
+                let textByteCount = chunks.reduce(0) { $0 + $1[index].text.bytes.count }
+                let view = ColumnView(
+                    buckets: .allocate(capacity: count),
+                    numbers: .allocate(capacity: key.numeric ? count : 0),
+                    textBytes: .allocate(capacity: textByteCount),
+                    textEnds: .allocate(capacity: count),
+                    ascending: key.ascending
+                )
+                var position = 0
+                var byteOffset = 0
+                for chunk in chunks {
+                    let chunkKeys = chunk[index]
+                    Self.copy(chunkKeys.buckets, into: view.buckets, at: position)
+                    if key.numeric {
+                        Self.copy(chunkKeys.numbers, into: view.numbers, at: position)
+                    }
+                    Self.copy(chunkKeys.text.bytes, into: view.textBytes, at: byteOffset)
+                    for (offset, end) in chunkKeys.text.ends.enumerated() {
+                        view.textEnds[position + offset] = byteOffset + end
+                    }
+                    position += chunkKeys.buckets.count
+                    byteOffset += chunkKeys.text.bytes.count
+                }
+                views.initializeElement(at: index, to: view)
+            }
+        }
+
+        deinit {
+            for view in views {
+                view.buckets.deallocate()
+                view.numbers.deallocate()
+                view.textBytes.deallocate()
+                view.textEnds.deallocate()
+            }
+            views.deinitialize().deallocate()
+        }
+
+        var comparator: PositionComparator {
+            PositionComparator(views: UnsafeBufferPointer(views))
+        }
+
+        private static func copy<Element>(
+            _ source: [Element],
+            into destination: UnsafeMutableBufferPointer<Element>,
+            at offset: Int
+        ) {
+            guard !source.isEmpty, let base = destination.baseAddress else { return }
+            source.withUnsafeBufferPointer { source in
+                guard let sourceBase = source.baseAddress else { return }
+                (base + offset).initialize(from: sourceBase, count: source.count)
+            }
+        }
+    }
+
+    private struct PositionComparator: @unchecked Sendable {
+        let views: UnsafeBufferPointer<ColumnView>
 
         func precedes(_ lhs: Int, _ rhs: Int) -> Bool {
-            for (index, key) in keys.enumerated() {
-                let column = columns[index]
-                let leftBucket = column.buckets[lhs]
-                let rightBucket = column.buckets[rhs]
+            for view in views {
+                let leftBucket = view.buckets[lhs]
+                let rightBucket = view.buckets[rhs]
                 if leftBucket != rightBucket {
                     return leftBucket < rightBucket
                 }
                 if leftBucket == Bucket.empty.rawValue { continue }
                 let order: Int
                 if leftBucket == Bucket.number.rawValue {
-                    let left = column.numbers[lhs]
-                    let right = column.numbers[rhs]
+                    let left = view.numbers[lhs]
+                    let right = view.numbers[rhs]
                     order = left < right ? -1 : (left > right ? 1 : 0)
                 } else {
-                    order = compareText(column.text, lhs, rhs)
+                    order = compareText(view, lhs, rhs)
                 }
                 if order != 0 {
-                    return key.ascending ? order < 0 : order > 0
+                    return view.ascending ? order < 0 : order > 0
                 }
             }
             return lhs < rhs
         }
 
-        private func compareText(_ store: TabularValueStore, _ lhs: Int, _ rhs: Int) -> Int {
-            store.withValue(at: lhs) { _, left in
-                store.withValue(at: rhs) { _, right in
-                    let shared = min(left.count, right.count)
-                    if shared > 0, let leftBase = left.baseAddress, let rightBase = right.baseAddress {
-                        let result = memcmp(leftBase, rightBase, shared)
-                        if result != 0 { return result < 0 ? -1 : 1 }
-                    }
-                    if left.count == right.count { return 0 }
-                    return left.count < right.count ? -1 : 1
-                }
+        private func compareText(_ view: ColumnView, _ lhs: Int, _ rhs: Int) -> Int {
+            let leftStart = lhs == 0 ? 0 : view.textEnds[lhs - 1]
+            let rightStart = rhs == 0 ? 0 : view.textEnds[rhs - 1]
+            let leftCount = view.textEnds[lhs] - leftStart
+            let rightCount = view.textEnds[rhs] - rightStart
+            let shared = min(leftCount, rightCount)
+            if shared > 0, let base = view.textBytes.baseAddress {
+                let result = memcmp(base + leftStart, base + rightStart, shared)
+                if result != 0 { return result < 0 ? -1 : 1 }
             }
+            if leftCount == rightCount { return 0 }
+            return leftCount < rightCount ? -1 : 1
         }
     }
 }

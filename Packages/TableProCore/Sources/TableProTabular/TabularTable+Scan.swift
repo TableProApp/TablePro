@@ -40,6 +40,7 @@ public extension TabularTable {
         guard !ids.isEmpty else { return }
         let plan = ScanPlan(table: self, ids: ids)
         var buffer = TabularCellBuffer()
+        buffer.reserveThreadPrivateCapacity(slots: ids.count)
         var batch: [Int] = []
         var batchLabels: [Int] = []
         batch.reserveCapacity(4_096)

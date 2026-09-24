@@ -146,7 +146,6 @@ private struct JSONSlotMap {
 
 private struct JSONScanSession {
     private static let bulkScanRowCount = 256
-    private static let privateSlotSlack = 256
 
     private let base: UnsafePointer<UInt8>
     private let count: Int
@@ -191,8 +190,7 @@ private struct JSONScanSession {
 
     private mutating func reserveThreadPrivateCapacity(forRows rowCount: Int) {
         guard rowCount >= Self.bulkScanRowCount else { return }
-        buffer.reset(slots: slotCount + Self.privateSlotSlack, fill: .missing)
-        _ = buffer.withResolved { _ in true }
+        buffer.reserveThreadPrivateCapacity(slots: slotCount)
     }
 
     mutating func scan(row: Int, _ body: (Int, TabularRowCells) -> Bool) -> Bool {
