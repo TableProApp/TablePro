@@ -54,18 +54,14 @@ extension DataFileController {
             updated.deleteRows(keys: removed)
             return DataFileMutationOutcome(
                 table: updated,
-                message: Self.duplicatesMessage(removed: removed.count, remaining: updated.rowCount),
+                message: Self.duplicatesMessage(removed: removed.count),
                 removedKeys: removed
             )
         }
     }
 
-    nonisolated static func duplicatesMessage(removed: Int, remaining: Int) -> String {
-        String(
-            format: String(localized: "Removed %@ duplicate rows. %@ rows remain."),
-            removed.formatted(),
-            remaining.formatted()
-        )
+    nonisolated static func duplicatesMessage(removed: Int) -> String {
+        String(format: String(localized: "Removed %@."), DataFileCountPhrase.duplicateRows(removed))
     }
 }
 

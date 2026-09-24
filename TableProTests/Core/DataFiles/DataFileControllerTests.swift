@@ -419,4 +419,13 @@ struct DataFileControllerTests {
         #expect(DataFileController.jsonKind(for: "{broken", replacing: .object, columnKind: .text) == .text)
         #expect(DataFileController.jsonKind(for: "7", replacing: .text, columnKind: .integer) == .text)
     }
+
+    @Test("Count messages use the singular for one")
+    func countMessagesAgreeInNumber() {
+        #expect(DataFileController.replacementMessage(replacements: 1, cells: 1) == "Replaced 1 match in 1 cell.")
+        #expect(DataFileController.replacementMessage(replacements: 12, cells: 3) == "Replaced 12 matches in 3 cells.")
+        #expect(DataFileController.duplicatesMessage(removed: 1) == "Removed 1 duplicate row.")
+        #expect(DataFileController.changedCellsMessage(2) == "Changed 2 cells.")
+        #expect(DataFileCountPhrase.raggedRows(1) == "1 row has a different number of fields")
+    }
 }

@@ -202,9 +202,9 @@ extension DataFileController {
 
     nonisolated static func replacementMessage(replacements: Int, cells: Int) -> String {
         String(
-            format: String(localized: "Replaced %@ matches in %@ cells."),
-            replacements.formatted(),
-            cells.formatted()
+            format: String(localized: "Replaced %1$@ in %2$@."),
+            DataFileCountPhrase.matches(replacements),
+            DataFileCountPhrase.cells(cells)
         )
     }
 }

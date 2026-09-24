@@ -89,8 +89,8 @@ struct DataFileStatisticsView: View {
                 .font(.headline)
                 .lineLimit(1)
             Text(model.request.isFiltered
-                ? String(format: String(localized: "%@ visible rows"), model.request.keys.count.formatted())
-                : String(format: String(localized: "All %@ rows"), model.request.keys.count.formatted()))
+                ? DataFileCountPhrase.visibleRows(model.request.keys.count)
+                : DataFileCountPhrase.rows(model.request.keys.count))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -181,9 +181,9 @@ struct DataFileStatisticsView: View {
         .help(String(localized: "Filter rows with this value"))
         .accessibilityIdentifier("data-file-statistics-value")
         .accessibilityLabel(String(
-            format: String(localized: "%@, %@ rows"),
+            format: String(localized: "%1$@, %2$@"),
             value.isEmpty ? String(localized: "(empty)") : value.value,
-            value.count.formatted()
+            DataFileCountPhrase.rows(value.count)
         ))
     }
 }

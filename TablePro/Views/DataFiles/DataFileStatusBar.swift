@@ -18,7 +18,7 @@ struct DataFileStatusBar: View {
                     Text("\(controller.selectedRowIndices.count) selected")
                 }
                 if controller.raggedRowCount > 0 {
-                    Text(String(format: String(localized: "%@ rows have a different number of fields"), controller.raggedRowCount.formatted()))
+                    Text(DataFileCountPhrase.raggedRows(controller.raggedRowCount))
                         .help(String(localized: "Those rows have more or fewer fields than the first row. Missing fields read as empty."))
                 }
             }

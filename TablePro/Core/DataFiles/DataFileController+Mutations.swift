@@ -131,8 +131,6 @@ extension DataFileController {
     }
 
     nonisolated static func changedCellsMessage(_ count: Int) -> String {
-        count == 1
-            ? String(localized: "Changed 1 cell.")
-            : String(format: String(localized: "Changed %@ cells."), count.formatted())
+        String(format: String(localized: "Changed %@."), DataFileCountPhrase.cells(count))
     }
 }
