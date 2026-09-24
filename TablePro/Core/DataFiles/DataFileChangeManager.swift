@@ -1,5 +1,5 @@
 //
-//  InspectorChangeManager.swift
+//  DataFileChangeManager.swift
 //  TablePro
 //
 
@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 
 @MainActor
-final class InspectorChangeManager: ChangeManaging {
+final class DataFileChangeManager: ChangeManaging {
     private(set) var reloadVersion: Int = 0
 
     var hasChanges: Bool { false }

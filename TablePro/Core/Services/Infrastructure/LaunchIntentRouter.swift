@@ -28,9 +28,9 @@ internal final class LaunchIntentRouter {
                  .reopenClosedTab:
                 try await TabRouter.shared.route(intent)
 
-            case .openInspectorFile(let url):
-                Self.logger.debug("LaunchIntentRouter.route(.openInspectorFile(\(url.lastPathComponent, privacy: .private(mask: .hash))))")
-                try await openInspectorDocument(at: url)
+            case .openDataFile(let url):
+                Self.logger.debug("LaunchIntentRouter.route(.openDataFile(\(url.lastPathComponent, privacy: .private(mask: .hash))))")
+                try await openDataFileDocument(at: url)
 
             case .importConnection(let exportable):
                 WelcomeRouter.shared.routeImport(exportable)
@@ -62,11 +62,11 @@ internal final class LaunchIntentRouter {
         }
     }
 
-    private func openInspectorDocument(at url: URL) async throws {
-        Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .private(mask: .hash))")
+    private func openDataFileDocument(at url: URL) async throws {
+        Self.logger.debug("LaunchIntentRouter.openDataFileDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .private(mask: .hash))")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, alreadyOpen, error in
-                Self.logger.debug("LaunchIntentRouter.openInspectorDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.publicLogShape ?? "nil", privacy: .public) \(error?.localizedDescription ?? "nil", privacy: .private)")
+                Self.logger.debug("LaunchIntentRouter.openDataFileDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.publicLogShape ?? "nil", privacy: .public) \(error?.localizedDescription ?? "nil", privacy: .private)")
                 if let error {
                     continuation.resume(throwing: error)
                     return
@@ -145,7 +145,7 @@ internal final class LaunchIntentRouter {
         case .openConnection, .openTable, .openQuery, .openAgentSession, .openDatabaseURL,
              .openDatabaseFile, .reopenClosedTab, .openSampleDatabase:
             title = String(localized: "Connection Failed")
-        case .openSQLFile, .openInspectorFile:
+        case .openSQLFile, .openDataFile:
             title = String(localized: "Could Not Open File")
         case .importConnection, .openConnectionShare, .startMCPServer:
             title = String(localized: "Action Failed")

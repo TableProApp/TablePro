@@ -10,10 +10,10 @@ internal enum ConnectionWindowIdentity {
         identifier == WindowIdentifier.connection
     }
 
-    internal static func isDocumentInspectorWindow(_ identifier: String?) -> Bool {
+    internal static func isDataFileWindow(_ identifier: String?) -> Bool {
         guard let identifier else { return false }
-        return identifier == WindowIdentifier.documentInspector
-            || identifier.hasPrefix("\(WindowIdentifier.documentInspector)-")
+        return identifier == WindowIdentifier.dataFile
+            || identifier.hasPrefix("\(WindowIdentifier.dataFile)-")
     }
 
     internal static func isPrimaryWindow(_ identifier: String?) -> Bool {

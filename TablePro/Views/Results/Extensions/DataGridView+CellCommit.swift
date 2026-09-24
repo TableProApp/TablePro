@@ -7,7 +7,7 @@ import AppKit
 import os
 import TableProPluginKit
 
-private let cellCommitLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
+private let cellCommitLogger = Logger(subsystem: "com.TablePro", category: "DataGrid")
 
 extension TableViewCoordinator {
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {

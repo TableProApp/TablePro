@@ -229,16 +229,13 @@ targets:
       - target: CSVImport
         embed: true
         copy: { destination: plugins }
-      - target: CSVInspectorPlugin
-        embed: true
-        copy: { destination: plugins }
       - package: TableProEditor
         products: [TableProEditorKit, TableProTextEngine]
       - package: TableProGrammars
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -412,9 +409,6 @@ targets:
       - Plugins/CSVExportPlugin/CSVExportPlugin.swift
       - Plugins/CSVImportPlugin/CSVImportOptions.swift
       - Plugins/CSVImportPlugin/CSVImportParsing.swift
-      - Plugins/CSVInspectorPlugin/CSVDocument.swift
-      - Plugins/CSVInspectorPlugin/CSVRowStore.swift
-      - Plugins/CSVInspectorPlugin/CSVWriter.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
@@ -751,7 +745,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1061,15 +1055,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVImportPlugin
-
-  CSVInspectorPlugin:
-    templates: [DriverPlugin]
-    templateAttributes:
-      folder: CSVInspectorPlugin
-      principalClass: CSVInspectorPlugin
-    dependencies:
-      - package: TableProCore
-        product: TableProLogRedaction
 
   # ─── Plugins published to the registry ────────────────────────────────────────
 
@@ -1431,7 +1416,6 @@ aggregateTargets:
       - BigQueryDriverPlugin
       - CSVExport
       - CSVImport
-      - CSVInspectorPlugin
       - CassandraDriver
       - ClickHouseDriver
       - CloudflareD1DriverPlugin

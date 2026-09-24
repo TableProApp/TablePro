@@ -19,17 +19,18 @@ public extension TabularTable {
         return keys
     }
 
-    func outputRows(sourceHeaderNames: [String]?) -> TabularOutputRows {
-        TabularOutputRows(table: self, sourceHeaderNames: sourceHeaderNames)
+    func outputRows(sourceHeaderNames: [String]?, copiesSourceRows: Bool = true) -> TabularOutputRows {
+        TabularOutputRows(table: self, sourceHeaderNames: sourceHeaderNames, copiesSourceRows: copiesSourceRows)
     }
 }
 
 public struct TabularOutputRows: Sequence {
     public let table: TabularTable
     public let sourceHeaderNames: [String]?
+    public let copiesSourceRows: Bool
 
     public func makeIterator() -> Iterator {
-        Iterator(table: table, sourceHeaderNames: sourceHeaderNames)
+        Iterator(table: table, sourceHeaderNames: sourceHeaderNames, copiesSourceRows: copiesSourceRows)
     }
 
     public struct Iterator: IteratorProtocol {
@@ -44,9 +45,9 @@ public struct TabularOutputRows: Sequence {
         private var blockPosition = 0
         private var nextRow = 0
 
-        init(table: TabularTable, sourceHeaderNames: [String]?) {
+        init(table: TabularTable, sourceHeaderNames: [String]?, copiesSourceRows: Bool) {
             self.table = table
-            let pristine = table.hasSourceLayout
+            let pristine = copiesSourceRows && table.hasSourceLayout
             layoutIsPristine = pristine
             let touched = pristine ? table.touchedKeys : []
             self.touched = touched

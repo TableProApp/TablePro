@@ -76,16 +76,6 @@ extension PluginManager {
             registeredAny = true
         }
 
-        if let inspectorPlugin = instance as? any DocumentInspectorPlugin {
-            if !declared.contains(.documentInspector) {
-                Self.logger.warning("Plugin '\(pluginId)' conforms to DocumentInspectorPlugin but does not declare .documentInspector capability - registering anyway")
-            }
-            let inspectorId = type(of: inspectorPlugin).inspectorId
-            inspectorPlugins[inspectorId] = inspectorPlugin
-            Self.logger.debug("Registered inspector plugin '\(pluginId)' for id '\(inspectorId)'")
-            registeredAny = true
-        }
-
         if registeredAny {
             pluginInstances[pluginId] = instance
         }
@@ -96,7 +86,6 @@ extension PluginManager {
         let isDriver = pluginType is any DriverPlugin.Type
         let isExporter = pluginType is any ExportFormatPlugin.Type
         let isImporter = pluginType is any ImportFormatPlugin.Type
-        let isInspector = pluginType is any DocumentInspectorPlugin.Type
 
         if declared.contains(.databaseDriver) && !isDriver {
             Self.logger.warning("Plugin '\(pluginId)' declares .databaseDriver but does not conform to DriverPlugin")
@@ -106,9 +95,6 @@ extension PluginManager {
         }
         if declared.contains(.importFormat) && !isImporter {
             Self.logger.warning("Plugin '\(pluginId)' declares .importFormat but does not conform to ImportFormatPlugin")
-        }
-        if declared.contains(.documentInspector) && !isInspector {
-            Self.logger.warning("Plugin '\(pluginId)' declares .documentInspector but does not conform to DocumentInspectorPlugin")
         }
     }
 

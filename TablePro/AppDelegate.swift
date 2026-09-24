@@ -30,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MainMenuBuilder.syncKeyEquivalentsOnKeyWindowChange()
         LaunchTracer.shared.mark(.menuInstalled)
 
-        _ = InspectorDocumentController()
+        _ = DataFileDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         if #available(macOS 14.0, *) {
             FeatureTipsBootstrap.configure()
@@ -41,7 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        Logger(subsystem: "com.TablePro", category: "CSVInspector")
+        Logger(subsystem: "com.TablePro", category: "DataFiles")
             .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .public)")
         AppLaunchCoordinator.shared.handleOpenURLs(urls)
     }
@@ -224,7 +224,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
 
-        let csvLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
+        let csvLogger = Logger(subsystem: "com.TablePro", category: "DataFiles")
         let isPrimary = AppLaunchCoordinator.isMainWindow(window)
         if isPrimary {
             let remaining = NSApp.windows.filter {
