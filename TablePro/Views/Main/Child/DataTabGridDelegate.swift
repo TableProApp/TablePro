@@ -165,20 +165,8 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
         guard let coordinator, coordinator.canFilterRows,
               let grid = tableViewCoordinator,
-              let tab = coordinator.tabManager.selectedTab,
-              let row = grid.displayRow(at: displayRow) else { return nil }
-        let visualState = grid.visualState(for: displayRow)
-        guard !visualState.isInserted, !visualState.isModified(columnIndex: dataColumn) else { return nil }
-        let tableRows = grid.tableRowsProvider()
-        let columns = tableRows.columns
-        guard columns.indices.contains(dataColumn), dataColumn < row.values.count else { return nil }
-
-        let tabId = tab.id
-        return CellFilterMenuBuilder.menuItem(
-            columnName: columns[dataColumn],
-            columnType: dataColumn < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumn] : nil,
-            value: row.values[dataColumn]
-        ) { [weak coordinator] filter in
+              let tabId = coordinator.tabManager.selectedTab?.id else { return nil }
+        return grid.cellFilterMenuItem(forRow: displayRow, dataColumn: dataColumn) { [weak coordinator] filter in
             coordinator?.applyCellFilter(filter, forTab: tabId)
         }
     }

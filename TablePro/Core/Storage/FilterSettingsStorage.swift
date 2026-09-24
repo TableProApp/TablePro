@@ -20,6 +20,17 @@ enum FilterDefaultColumn: String, CaseIterable, Identifiable, Codable {
         case .anyColumn: return String(localized: "Any Column")
         }
     }
+
+    func columnName(columns: [String], primaryKeyColumn: String?, offersRawFilter: Bool) -> String {
+        switch self {
+        case .rawSQL:
+            return offersRawFilter ? TableFilter.rawSQLColumn : columns.first ?? ""
+        case .primaryKey:
+            return primaryKeyColumn ?? columns.first ?? ""
+        case .anyColumn:
+            return columns.first ?? ""
+        }
+    }
 }
 
 enum FilterDefaultOperator: String, CaseIterable, Identifiable, Codable {

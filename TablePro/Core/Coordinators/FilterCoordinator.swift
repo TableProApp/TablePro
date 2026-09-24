@@ -298,227 +298,38 @@ final class FilterCoordinator: ObservableObject {
         parent.tabManager.selectedTab?.filterState ?? TabFilterState()
     }
 
-    // MARK: - Filter Management
-
-    func addFilter(columns: [String] = [], primaryKeyColumn: String? = nil) {
-        let settings = FilterSettingsStorage.shared.loadSettings()
-        var newFilter = TableFilter()
-
-        switch settings.defaultColumn {
-        case .rawSQL:
-            newFilter.columnName = TableFilter.rawSQLColumn
-        case .primaryKey:
-            if let pk = primaryKeyColumn {
-                newFilter.columnName = pk
-            } else if let firstColumn = columns.first {
-                newFilter.columnName = firstColumn
+    var selectedTabFilterStateBinding: Binding<TabFilterState> {
+        Binding(
+            get: { [weak self] in
+                self?.selectedTabFilterState ?? TabFilterState()
+            },
+            set: { [weak self] newValue in
+                self?.mutateSelectedTabFilterState { $0 = newValue }
             }
-        case .anyColumn:
-            if let firstColumn = columns.first {
-                newFilter.columnName = firstColumn
-            }
-        }
-
-        newFilter.filterOperator = settings.defaultOperator.toFilterOperator()
-
-        mutateSelectedTabFilterState { state in
-            state.filters.append(newFilter)
-        }
+        )
     }
+
+    // MARK: - Filter Management
 
     /// One CONTAINS row per searchable column, joined with OR, replacing the filter set. Only the
     /// find bar calls this, and only when no filters are applied, because `filterLogicMode` is one
     /// mode for the whole array: switching it to OR would silently loosen filters the user wrote.
     func applyCrossColumnSearch(term: String, columns: [String]) {
         guard !columns.isEmpty else { return }
-
-        let filters = columns.map { column in
-            var filter = TableFilter()
-            filter.columnName = column
-            filter.filterOperator = .contains
-            filter.value = term
-            filter.isEnabled = true
-            return filter
-        }
-
-        applyFilters(filters, logicMode: .or)
+        applyFilters(TabFilterState.crossColumnSearchFilters(term: term, columns: columns), logicMode: .or)
     }
 
     func addFilterForColumn(_ columnName: String) {
         let settings = FilterSettingsStorage.shared.loadSettings()
-        var newFilter = TableFilter()
-        newFilter.columnName = columnName
-        newFilter.filterOperator = settings.defaultOperator.toFilterOperator()
-
         mutateSelectedTabFilterState { state in
-            state.filters.append(newFilter)
-            if !state.isVisible {
-                state.isVisible = true
-            }
+            state.addFilter(forColumn: columnName, settings: settings)
         }
     }
 
     func setFKFilter(_ filter: TableFilter) {
         mutateSelectedTabFilterState { state in
-            state.filters = [filter]
-            state.commit = .all
-            state.isVisible = true
-            state.filterLogicMode = .and
+            state.setReferenceFilter(filter)
         }
-    }
-
-    func duplicateFilter(_ filter: TableFilter) {
-        let copy = TableFilter(
-            id: UUID(),
-            columnName: filter.columnName,
-            filterOperator: filter.filterOperator,
-            value: filter.value,
-            secondValue: filter.secondValue,
-            isEnabled: filter.isEnabled,
-            rawSQL: filter.rawSQL
-        )
-        mutateSelectedTabFilterState { state in
-            if let index = state.filters.firstIndex(where: { $0.id == filter.id }) {
-                state.filters.insert(copy, at: index + 1)
-            } else {
-                state.filters.append(copy)
-            }
-        }
-    }
-
-    func removeFilter(_ filter: TableFilter) {
-        mutateSelectedTabFilterState { state in
-            state.filters.removeAll { $0.id == filter.id }
-            if case .solo(let id) = state.commit, id == filter.id {
-                state.commit = nil
-            }
-        }
-    }
-
-    enum RemoveFilterOutcome: Equatable {
-        case noChange
-        case clear
-        case reapply([TableFilter])
-    }
-
-    static func removeFilterOutcome(
-        removing filter: TableFilter,
-        from appliedFilters: [TableFilter]
-    ) -> RemoveFilterOutcome {
-        guard appliedFilters.contains(where: { $0.id == filter.id }) else { return .noChange }
-        let remaining = appliedFilters.filter { $0.id != filter.id }
-        return remaining.isEmpty ? .clear : .reapply(remaining)
-    }
-
-    func removeFilterAndReload(_ filter: TableFilter) {
-        let outcome = Self.removeFilterOutcome(
-            removing: filter,
-            from: selectedTabFilterState.appliedFilters
-        )
-        removeFilter(filter)
-        switch outcome {
-        case .noChange:
-            break
-        case .clear:
-            clearAppliedFiltersAndReload()
-        case .reapply(let remaining):
-            applyFilters(remaining)
-        }
-    }
-
-    func updateFilter(_ filter: TableFilter) {
-        mutateSelectedTabFilterState { state in
-            if let index = state.filters.firstIndex(where: { $0.id == filter.id }) {
-                state.filters[index] = filter
-            }
-        }
-    }
-
-    enum FilterMoveDirection {
-        case up
-        case down
-    }
-
-    struct FilterMove: Equatable {
-        let source: IndexSet
-        let destination: Int
-    }
-
-    static func filterMove(
-        in filters: [TableFilter],
-        moving draggedID: UUID,
-        onto targetID: UUID
-    ) -> FilterMove? {
-        guard draggedID != targetID,
-              let from = filters.firstIndex(where: { $0.id == draggedID }),
-              let target = filters.firstIndex(where: { $0.id == targetID }) else { return nil }
-        return FilterMove(source: IndexSet(integer: from), destination: from < target ? target + 1 : target)
-    }
-
-    static func filterMove(
-        in filters: [TableFilter],
-        moving filterID: UUID,
-        direction: FilterMoveDirection
-    ) -> FilterMove? {
-        guard let from = filters.firstIndex(where: { $0.id == filterID }) else { return nil }
-        switch direction {
-        case .up:
-            guard from > 0 else { return nil }
-            return FilterMove(source: IndexSet(integer: from), destination: from - 1)
-        case .down:
-            guard from < filters.count - 1 else { return nil }
-            return FilterMove(source: IndexSet(integer: from), destination: from + 2)
-        }
-    }
-
-    func moveFilter(_ draggedID: UUID, onto targetID: UUID) {
-        guard let move = Self.filterMove(
-            in: selectedTabFilterState.filters,
-            moving: draggedID,
-            onto: targetID
-        ) else { return }
-        applyFilterMove(move)
-    }
-
-    func moveFilter(_ filterID: UUID, direction: FilterMoveDirection) {
-        guard let move = Self.filterMove(
-            in: selectedTabFilterState.filters,
-            moving: filterID,
-            direction: direction
-        ) else { return }
-        applyFilterMove(move)
-    }
-
-    func canMoveFilter(_ filterID: UUID, direction: FilterMoveDirection) -> Bool {
-        Self.filterMove(in: selectedTabFilterState.filters, moving: filterID, direction: direction) != nil
-    }
-
-    private func applyFilterMove(_ move: FilterMove) {
-        mutateSelectedTabFilterState { state in
-            state.filters.move(fromOffsets: move.source, toOffset: move.destination)
-        }
-    }
-
-    func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
-        Binding(
-            get: { [weak self] in
-                self?.selectedTabFilterState.filters.first { $0.id == filter.id } ?? filter
-            },
-            set: { [weak self] newValue in
-                self?.updateFilter(newValue)
-            }
-        )
-    }
-
-    func filterLogicModeBinding() -> Binding<FilterLogicMode> {
-        Binding(
-            get: { [weak self] in
-                self?.selectedTabFilterState.filterLogicMode ?? .and
-            },
-            set: { [weak self] newValue in
-                self?.mutateSelectedTabFilterState { $0.filterLogicMode = newValue }
-            }
-        )
     }
 
     // MARK: - Apply
@@ -526,9 +337,7 @@ final class FilterCoordinator: ObservableObject {
     func applySingleFilter(_ filter: TableFilter) {
         guard filter.isValid else { return }
         mutateSelectedTabFilterState { state in
-            state.filters = [filter]
-            state.commit = .all
-            state.isVisible = true
+            state.applySingleFilter(filter)
         }
     }
 
@@ -554,54 +363,10 @@ final class FilterCoordinator: ObservableObject {
     /// Narrows what the grid shows by one more condition, which a cell's Filter menu offers.
     func applyCellFilter(_ filter: TableFilter) {
         guard canFilterRows, filter.isValid,
-              !Self.isRunning(filter, in: selectedTabFilterState) else { return }
+              !TabFilterState.isRunning(filter, in: selectedTabFilterState) else { return }
         applyTransition { state in
-            state = Self.cellFilterState(state, adding: filter)
+            state = TabFilterState.cellFilterState(state, adding: filter)
         }
-    }
-
-    /// Whether the rows on screen were already fetched with this condition, so adding it would
-    /// change nothing but the page.
-    static func isRunning(_ filter: TableFilter, in state: TabFilterState) -> Bool {
-        guard state.executedFilters.contains(where: { $0.hasSameCondition(as: filter) }) else { return false }
-        return state.filterLogicMode == .and || state.executedFilters.count == 1
-    }
-
-    /// The filter state that shows what the grid showed, and only rows matching `filter` too.
-    ///
-    /// What the grid showed is `executedFilters`, never `appliedFilters`: rows typed and never
-    /// applied, and rows left in the panel by Clear, resolve as applied under `.all` without having
-    /// run. So a row stays checked only when it is running, every other row is unchecked rather than
-    /// removed, and the commit becomes `.all` over exactly the checked rows, which is also what the
-    /// saved state restores. A row that already holds the condition is checked instead of repeated.
-    ///
-    /// Under Match any, a condition can only be added to one running row or none, where the two
-    /// modes agree and the mode becomes Match all. With two or more running rows the condition
-    /// cannot join them, so it runs alone.
-    static func cellFilterState(_ state: TabFilterState, adding filter: TableFilter) -> TabFilterState {
-        let executedIDs = Set(state.executedFilters.map(\.id))
-        let runningIDs = Set(state.filters.lazy.map(\.id).filter(executedIDs.contains))
-        let keepsRunningRows = state.filterLogicMode == .and || runningIDs.count <= 1
-        let keptIDs = keepsRunningRows ? runningIDs : []
-        let existingID = state.filters.first { $0.hasSameCondition(as: filter) }?.id
-
-        var next = state
-        next.filters = state.filters.map { row in
-            var row = row
-            row.isEnabled = keptIDs.contains(row.id) || row.id == existingID
-            return row
-        }
-        if existingID == nil {
-            var added = filter
-            added.isEnabled = true
-            next.filters.append(added)
-        }
-        if keepsRunningRows {
-            next.filterLogicMode = .and
-        }
-        next.commit = .all
-        next.isVisible = true
-        return next
     }
 
     /// Writes the commit, persists it and re-queries, all behind the discard guard.
@@ -722,30 +487,8 @@ final class FilterCoordinator: ObservableObject {
 
     func clearFilterState() {
         mutateSelectedTabFilterState { state in
-            state.filters = []
-            state.commit = nil
+            state.clearFilters()
         }
-    }
-
-    // MARK: - Filter Presets
-
-    func saveFilterPreset(name: String) {
-        let preset = FilterPreset(name: name, filters: selectedTabFilterState.filters)
-        FilterPresetStorage.shared.savePreset(preset)
-    }
-
-    func loadFilterPreset(_ preset: FilterPreset) {
-        mutateSelectedTabFilterState { state in
-            state.filters = preset.filters
-        }
-    }
-
-    func loadAllFilterPresets() -> [FilterPreset] {
-        FilterPresetStorage.shared.loadAllPresets()
-    }
-
-    func deleteFilterPreset(_ preset: FilterPreset) {
-        FilterPresetStorage.shared.deletePreset(preset)
     }
 
     // MARK: - SQL Preview
@@ -790,5 +533,17 @@ final class FilterCoordinator: ObservableObject {
         var newState = parent.tabManager.tabs[index].filterState
         mutate(&newState)
         parent.tabManager.mutate(at: index) { $0.filterState = newState }
+    }
+}
+
+extension FilterCoordinator: FilterPanelActions {
+    func focusGrid() {
+        parent.focusActiveGrid()
+    }
+}
+
+extension FilterCoordinator: FilterSQLPreviewing {
+    func filterPreviewSQL() -> String {
+        generateFilterPreviewSQL(databaseType: parent.connection.type)
     }
 }

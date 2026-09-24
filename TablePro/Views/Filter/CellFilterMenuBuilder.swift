@@ -70,7 +70,7 @@ enum CellFilterMenuBuilder {
         guard ColumnTypeSQLQuoting.hasEqualityOperator(columnType),
               (text as NSString).length <= maxValueLength,
               text == text.trimmingCharacters(in: .whitespaces) else { return false }
-        return !HighlightCondition.readsAsNullLiteral(text, columnType: columnType)
+        return !FilterOperand.readsAsNullLiteral(text, columnType: columnType)
     }
 
     private static func comparisonOperators(for columnType: ColumnType) -> [FilterOperator] {

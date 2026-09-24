@@ -15,28 +15,13 @@ struct HighlightCondition {
         case text
     }
 
-    private struct Operand {
-        let text: String
-        let number: Decimal?
-        let boolean: Bool?
-        let isNullLiteral: Bool
-
-        init(_ raw: String, allowsNullLiteral: Bool) {
-            let trimmed = raw.trimmingCharacters(in: .whitespaces)
-            text = raw
-            number = HighlightCondition.number(from: trimmed)
-            boolean = StoredBoolean.value(of: trimmed)
-            isNullLiteral = allowsNullLiteral && HighlightCondition.isNullKeyword(trimmed)
-        }
-    }
-
     private let filterOperator: FilterOperator
     private let valueKind: ValueKind
     private let comparesCaseInsensitively: Bool
     private let supportsEmptyString: Bool
-    private let operand: Operand
-    private let secondOperand: Operand
-    private let listOperands: [Operand]
+    private let operand: FilterOperand
+    private let secondOperand: FilterOperand
+    private let listOperands: [FilterOperand]
     private let regex: NSRegularExpression?
 
     init(rule: HighlightRule, columnType: ColumnType?) {
@@ -45,11 +30,10 @@ struct HighlightCondition {
         comparesCaseInsensitively = rule.filterOperator.supportsCaseSensitivity && !rule.isCaseSensitive
         supportsEmptyString = ColumnTypeSQLQuoting.supportsEmptyStringComparison(columnType)
 
-        let allowsNullLiteral = Self.allowsNullLiteral(for: columnType)
-        operand = Operand(rule.value, allowsNullLiteral: allowsNullLiteral)
-        secondOperand = Operand(rule.secondValue ?? "", allowsNullLiteral: allowsNullLiteral)
+        operand = FilterOperand(rule.value, columnType: columnType)
+        secondOperand = FilterOperand(rule.secondValue ?? "", columnType: columnType)
         listOperands = rule.filterOperator == .inList || rule.filterOperator == .notInList
-            ? Self.listItems(rule.value).map { Operand($0, allowsNullLiteral: allowsNullLiteral) }
+            ? FilterOperand.list(rule.value, columnType: columnType)
             : []
         regex = rule.filterOperator == .regex
             ? Self.regularExpression(rule.value, ignoresCase: comparesCaseInsensitively)
@@ -134,8 +118,8 @@ struct HighlightCondition {
         }
     }
 
-    private func order(_ text: String, against operand: Operand) -> ComparisonResult {
-        if prefersNumbers, let lhs = Self.number(from: text), let rhs = operand.number {
+    private func order(_ text: String, against operand: FilterOperand) -> ComparisonResult {
+        if prefersNumbers, let lhs = FilterOperand.number(from: text), let rhs = operand.number {
             return Self.compare(lhs, rhs)
         }
         if prefersBooleans, let lhs = StoredBoolean.value(of: text), let rhs = operand.boolean {
@@ -230,31 +214,6 @@ struct HighlightCondition {
         case .text, .date, .timestamp, .datetime, .blob, .json, .enumType, .set, .spatial, .array, .none:
             return .text
         }
-    }
-
-    private static func listItems(_ input: String) -> [String] {
-        input.split(separator: ",", omittingEmptySubsequences: true).compactMap {
-            let trimmed = $0.trimmingCharacters(in: .whitespaces)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-    }
-
-    static func readsAsNullLiteral(_ text: String, columnType: ColumnType?) -> Bool {
-        allowsNullLiteral(for: columnType) && isNullKeyword(text.trimmingCharacters(in: .whitespaces))
-    }
-
-    private static func allowsNullLiteral(for columnType: ColumnType?) -> Bool {
-        !ColumnTypeSQLQuoting.isKnownTextLike(columnType)
-    }
-
-    private static func isNullKeyword(_ text: String) -> Bool {
-        text.caseInsensitiveCompare("NULL") == .orderedSame
-    }
-
-    static func number(from text: String) -> Decimal? {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard PluginNumericLiteral.isValid(trimmed) else { return nil }
-        return Decimal(string: trimmed, locale: Locale(identifier: "en_US_POSIX"))
     }
 
     private static func compare<Value: Comparable>(_ lhs: Value, _ rhs: Value) -> ComparisonResult {

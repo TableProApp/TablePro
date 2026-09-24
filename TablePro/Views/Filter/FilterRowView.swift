@@ -10,11 +10,12 @@ struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
     let completions: [String]
-    var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .unsupported
+    var caseMatching: FilterCaseMatching = .engine(.unsupported)
     var enumValuesByColumn: [String: [String]] = [:]
     var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
     var columnMenu: FilterColumnMenu = .empty
     var fieldPaths: [PluginFieldPath] = []
+    var offersRawFilter = true
     var rawFilterLabel = String(localized: "Raw SQL")
     let onAdd: () -> Void
     let onDuplicate: () -> Void
@@ -168,8 +169,10 @@ struct FilterRowView: View {
     private var columnPicker: some View {
         HStack(spacing: 4) {
             Picker("", selection: $filter.columnName) {
-                Text(rawFilterLabel).tag(TableFilter.rawSQLColumn)
-                Divider()
+                if offersRawFilter || filter.isRawSQL {
+                    Text(rawFilterLabel).tag(TableFilter.rawSQLColumn)
+                    Divider()
+                }
                 ForEach(columns, id: \.self) { column in
                     Text(column).tag(column)
                 }
@@ -308,7 +311,7 @@ struct FilterRowView: View {
         FilterCaseSensitivityPresentation(
             filterOperator: filter.filterOperator,
             isCaseSensitive: filter.isCaseSensitive,
-            style: caseSensitivityStyle
+            matching: caseMatching
         )
     }
 
