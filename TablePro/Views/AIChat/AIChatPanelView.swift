@@ -15,6 +15,8 @@ struct AIChatPanelView: View {
     let connection: DatabaseConnection
     var currentQuery: String?
     var queryResults: String?
+    var editorTarget: AssistantEditorTarget?
+    var editorSnapshot: (() -> AssistantEditorSnapshot)?
 
     @ObservedObject var viewModel: AIChatViewModel
     /// Fills its column in the trailing pane, and takes a reading measure in the window's content
@@ -552,6 +554,7 @@ struct AIChatPanelView: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
+        .disabled(viewModel.isStreaming)
         .help(String(localized: "Slash commands"))
     }
 
@@ -607,8 +610,10 @@ struct AIChatPanelView: View {
     // MARK: - Helpers
 
     private func updateContext() {
-        viewModel.currentQuery = currentQuery
+        let live = editorSnapshot?()
+        viewModel.currentQuery = live.map(\.currentQuery) ?? currentQuery
         viewModel.queryResults = queryResults
+        viewModel.editorTarget = live.map(\.target) ?? editorTarget
     }
 
     /// Hide system turns and user turns that exist only to carry tool-result

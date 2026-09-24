@@ -1062,25 +1062,10 @@ final class MainContentCoordinator: ObservableObject {
             tabManager.mutate(at: index) { $0.pagination.sortExecutionOverride = nil }
             sql = sortOverride
             sourceOffset = nil
-        } else if let firstCursor = cursorPositions.first,
-                  firstCursor.range.length > 0 {
-            // Execute selected text only
-            let nsQuery = fullQuery as NSString
-            let clampedRange = NSIntersectionRange(
-                firstCursor.range,
-                NSRange(location: 0, length: nsQuery.length)
-            )
-            sql = nsQuery.substring(with: clampedRange)
-            sourceOffset = clampedRange.location
         } else {
-            let statement = QueryStatementScanner.locatedStatementAtCursor(
-                in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0,
-                model: statementModel,
-                grammar: lexicalGrammar
-            )
-            sql = statement.sql
-            sourceOffset = statement.offset
+            let target = selectionOrStatementAtCursor(in: fullQuery)
+            sql = target.sql
+            sourceOffset = target.offset
         }
 
         executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: bypassRowLimit, sourceOffset: sourceOffset)

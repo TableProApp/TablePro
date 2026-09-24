@@ -31,8 +31,8 @@ struct QueryEditorView: View {
     var onExecuteQuery: (() -> Void)?
     var onRunStatement: ((String, Int) -> Bool)?
     var isExecuting: Bool = false
-    var onAIExplain: ((String) -> Void)?
-    var onAIOptimize: ((String) -> Void)?
+    var currentAIAvailability: (() -> AIQueryActionAvailability)?
+    var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
 
     let scope: QueryScopeBarModel
@@ -59,6 +59,7 @@ struct QueryEditorView: View {
                 isExecuting: isExecuting,
                 vimMode: settingsManager.editor.vimModeEnabled ? vimMode : nil,
                 showsHistoryTip: showsHistoryTip,
+                onAIAction: { action in onAIAction?(action, .selectionOrStatementAtCursor) },
                 onRun: onRun,
                 onRunAllStatements: onRunAllStatements,
                 onRunWithoutLimit: onRunWithoutLimit,
@@ -102,8 +103,8 @@ struct QueryEditorView: View {
                 onExecuteQuery: onExecuteQuery,
                 onRunStatement: onRunStatement,
                 isExecuting: isExecuting,
-                onAIExplain: onAIExplain,
-                onAIOptimize: onAIOptimize,
+                currentAIAvailability: currentAIAvailability,
+                onAIAction: onAIAction,
                 onSaveAsFavorite: onSaveAsFavorite
             )
             .frame(minHeight: 100)

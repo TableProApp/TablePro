@@ -58,6 +58,7 @@ struct MenuValidationContext: Equatable {
     /// executing and unstoppable at the same time, and `Cmd+.` must dim rather than fire into it.
     var isQueryStoppable = false
     var hasQueryText = false
+    var canRunAIQueryActions = false
     var canClearQuery = false
     var canClearResults = false
     var hasPendingChanges = false
@@ -499,12 +500,10 @@ extension MainSplitViewController: NSMenuItemValidation {
                 isExecuting: context.isQueryExecuting,
                 supportsExplain: context.supportsExplain
             )
-        /// Both hand their statement to the assistant, which will not open with the feature off.
-        /// They validated on the query alone, so with AI off the item stayed enabled, the shortcut
-        /// fired and nothing happened at all: no pane, no alert, nothing.
-        case #selector(explainQueryWithAI(_:)),
+        case #selector(reviewQueryWithAI(_:)),
+             #selector(explainQueryWithAI(_:)),
              #selector(optimizeQueryWithAI(_:)):
-            return context.isConnected && context.hasQueryText && AppSettingsManager.shared.ai.enabled
+            return context.canRunAIQueryActions
         case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
             return context.hasEditorForFind
         case #selector(removeInvisibleCharacters(_:)):
@@ -593,6 +592,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryExecuting: actions.isQueryExecuting,
             isQueryStoppable: actions.isQueryStoppable,
             hasQueryText: actions.hasQueryText,
+            canRunAIQueryActions: actions.aiQueryActionAvailability.isEnabled,
             canClearQuery: actions.canClearQuery,
             canClearResults: actions.canClearResults,
             hasPendingChanges: actions.hasPendingChanges,

@@ -15,43 +15,17 @@ extension AIChatViewModel {
     }()
 
     func runSlashCommand(_ command: SlashCommand, body: String = "") {
+        guard !isStreaming else { return }
         inputText = ""
         clearError()
 
         let invocationText = body.isEmpty ? "/\(command.name)" : "/\(command.name) \(body)"
-        let databaseType = connection?.type ?? .mysql
-
-        switch command {
-        case .help:
-            let helpMarkdown = Self.helpMarkdown
-            if let last = messages.last, last.role == .assistant, last.plainText == helpMarkdown {
-                return
-            }
-            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
-            messages.append(ChatTurn(role: .assistant, blocks: [.text(helpMarkdown)]))
-        case .explain:
-            guard let query = resolveQuery(body: body, command: command) else { return }
-            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
-            sendWithWalkthroughContext(
-                prompt: AIPromptTemplates.explainQuery(query, databaseType: databaseType),
-                beforeSQL: query
-            )
-        case .optimize:
-            guard let query = resolveQuery(body: body, command: command) else { return }
-            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
-            sendWithWalkthroughContext(
-                prompt: AIPromptTemplates.optimizeQuery(query, databaseType: databaseType),
-                beforeSQL: query
-            )
-        case .fix:
-            guard let query = resolveQuery(body: body, command: command) else { return }
-            messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
-            let lastError = queryResults ?? ""
-            sendWithWalkthroughContext(
-                prompt: AIPromptTemplates.fixError(query: query, error: lastError, databaseType: databaseType),
-                beforeSQL: query
-            )
+        guard let action = command.queryAction else {
+            showHelp(invocationText: invocationText)
+            return
         }
+        guard let request = slashRequest(for: action, command: command, body: body) else { return }
+        runQueryAction(request, invocationText: invocationText)
     }
 
     func runCustomSlashCommand(_ command: CustomSlashCommand, body: String = "") async {
@@ -59,6 +33,7 @@ extension AIChatViewModel {
             Self.logger.warning("runCustomSlashCommand called with invalid command: name=\(command.name, privacy: .public)")
             return
         }
+        guard !isStreaming else { return }
         inputText = ""
         clearError()
         let invocationText = body.isEmpty ? "/\(command.name)" : "/\(command.name) \(body)"
@@ -77,33 +52,48 @@ extension AIChatViewModel {
         sendWithContext(prompt: prompt)
     }
 
-    func handleExplainSelection(_ selectedText: String) {
-        guard !selectedText.isEmpty else { return }
-        startNewConversation()
-        let databaseType = connection?.type ?? .mysql
-        let prompt = AIPromptTemplates.explainQuery(selectedText, databaseType: databaseType)
-        sendWithWalkthroughContext(prompt: prompt, beforeSQL: selectedText)
+    private func showHelp(invocationText: String) {
+        let helpMarkdown = Self.helpMarkdown
+        if let last = messages.last, last.role == .assistant, last.plainText == helpMarkdown {
+            return
+        }
+        messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
+        messages.append(ChatTurn(role: .assistant, blocks: [.text(helpMarkdown)]))
     }
 
-    func handleOptimizeSelection(_ selectedText: String) {
-        guard !selectedText.isEmpty else { return }
-        startNewConversation()
+    private func slashRequest(for action: AIQueryAction, command: SlashCommand, body: String) -> AIQueryRequest? {
         let databaseType = connection?.type ?? .mysql
-        let prompt = AIPromptTemplates.optimizeQuery(selectedText, databaseType: databaseType)
-        sendWithWalkthroughContext(prompt: prompt, beforeSQL: selectedText)
-    }
+        let target = editorTarget
+        let statement: String
+        var failure: String?
 
-    private func resolveQuery(body: String, command: SlashCommand) -> String? {
-        if !body.isEmpty {
-            return body
+        if action == .fixError {
+            guard let error = target?.errorMessage, !error.isEmpty else {
+                errorMessage = String(localized: "/fix needs a query that failed. Run the query first.")
+                return nil
+            }
+            failure = error
+            statement = body.isEmpty ? (target?.errorQuery ?? currentQuery ?? "") : body
+        } else {
+            statement = body.isEmpty ? (currentQuery ?? "") : body
         }
-        if let editorQuery = currentQuery, !editorQuery.isEmpty {
-            return editorQuery
+
+        guard !statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = String(
+                format: String(localized: "/%@ needs a query: type one in the editor or after the command."),
+                command.name
+            )
+            return nil
         }
-        errorMessage = String(
-            format: String(localized: "/%@ needs a query: type one in the editor or after the command."),
-            command.name
+
+        return AIQueryRequest(
+            action: action,
+            statement: statement,
+            editorText: currentQuery,
+            scope: target?.scope,
+            databaseType: databaseType,
+            source: body.isEmpty ? target.map { QueryEditorAnchor(tabId: $0.tabId) } : nil,
+            errorMessage: failure
         )
-        return nil
     }
 }

@@ -18,6 +18,7 @@ import Foundation
 @MainActor
 internal final class AssistantState: ObservableObject {
     @Published internal var context: AssistantContext = .empty
+    internal var editorSnapshot: (() -> AssistantEditorSnapshot)?
 
     private let connectionId: UUID?
     private let registry: AgentSessionRegistry
