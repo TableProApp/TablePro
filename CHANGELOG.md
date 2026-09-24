@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
 - Invalid PostgreSQL indexes named on the table's **Indexes** tab.
 - Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
+- **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command.
 
 ### Changed
 
@@ -90,6 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
 - Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
 - Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read.
+- Columns, indexes, foreign keys and row counts of the tables a query uses, sent with every AI query action.
+- Selection or the statement at the cursor, not the whole tab, as what **Explain with AI** and **Optimize with AI** send.
+- Explain and Optimize with AI in the editor's context menu without a selection.
+- Tables for the MCP `review_query` and `propose_indexes` prompts read from the SQL, up to 12, with the ones not found named.
 
 ### Removed
 
@@ -436,6 +441,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
 - PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
 - Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
+- **Apply to Editor** replacing the whole query tab with one rewritten statement.
+- AI schema context describing the sidebar's database instead of the query tab's.
+- The query and results of another tab sent as context with an AI query action.
+- `/fix` sending the result grid in place of the query's error.
+- AI query commands enabled on a connection whose AI access is **Never**.
+- The chat message after a declined AI request answered as a SQL rewrite.
 
 ### Security
 

@@ -19,6 +19,7 @@ extension AIChatViewModel {
     func denyAIAccess() {
         guard case .awaitingApproval = streamingState else { return }
         streamingState = .idle
+        clearPendingWalkthrough()
         if let last = messages.last, last.role == .user {
             messages.removeLast()
         }

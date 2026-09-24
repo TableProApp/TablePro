@@ -8,41 +8,28 @@
 import Foundation
 import TableProPluginKit
 
-/// Centralized prompt templates for AI-powered editor features
 enum AIPromptTemplates {
-    /// Build a prompt asking AI to explain a query
-    @MainActor static func explainQuery(_ query: String, databaseType: DatabaseType = .mysql) -> String {
-        let (typeName, lang) = queryInfo(for: databaseType)
-        return explainQuery(query, typeName: typeName, language: lang)
+    static func queryActionPrompt(
+        _ action: AIQueryAction,
+        statement: String,
+        typeName: String,
+        language: String,
+        withStructure: Bool = true,
+        errorMessage: String? = nil,
+        explainPlan: String? = nil
+    ) -> String {
+        var prompt = action.instruction(typeName: typeName, withStructure: withStructure)
+            + "\n\n" + MarkdownFence.wrap(statement, language: language)
+        if action == .fixError, let errorMessage, !errorMessage.isEmpty {
+            prompt += "\n\nError:\n" + MarkdownFence.wrap(errorMessage, language: "text")
+        }
+        if let explainPlan, !explainPlan.isEmpty {
+            prompt += "\n\nExplain plan:\n" + MarkdownFence.wrap(explainPlan, language: "text")
+        }
+        return prompt
     }
 
-    /// Build a prompt asking AI to optimize a query
-    @MainActor static func optimizeQuery(_ query: String, databaseType: DatabaseType = .mysql) -> String {
-        let (typeName, lang) = queryInfo(for: databaseType)
-        return optimizeQuery(query, typeName: typeName, language: lang)
-    }
-
-    /// Build a prompt asking AI to fix a query that produced an error
-    @MainActor static func fixError(query: String, error: String, databaseType: DatabaseType = .mysql) -> String {
-        let (typeName, lang) = queryInfo(for: databaseType)
-        return fixError(query: query, error: error, typeName: typeName, language: lang)
-    }
-
-    // MARK: - Non-isolated overloads
-
-    static func explainQuery(_ query: String, typeName: String, language: String) -> String {
-        "Explain this \(typeName):\n\n```\(language)\n\(query)\n```"
-    }
-
-    static func optimizeQuery(_ query: String, typeName: String, language: String) -> String {
-        "Optimize this \(typeName) for better performance:\n\n```\(language)\n\(query)\n```"
-    }
-
-    static func fixError(query: String, error: String, typeName: String, language: String) -> String {
-        "This \(typeName) failed with an error. Please fix it.\n\nQuery:\n```\(language)\n\(query)\n```\n\nError: \(error)"
-    }
-
-    @MainActor private static func queryInfo(for databaseType: DatabaseType) -> (typeName: String, language: String) {
+    @MainActor static func queryInfo(for databaseType: DatabaseType) -> (typeName: String, language: String) {
         let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         let editorLanguage = snapshot?.editorLanguage ?? .sql
         let lang = editorLanguage.codeBlockTag

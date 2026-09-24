@@ -36,6 +36,7 @@ extension TextView {
     /// selected. Anywhere else it selects the word under the pointer, so a menu item that reads the selection acts
     /// on what was clicked rather than on whatever was selected beforehand.
     private func moveSelectionForContextClick(_ event: NSEvent) {
+        contextClickWordRange = nil
         guard isSelectable,
               let offset = layoutManager.textOffsetAtPoint(self.convert(event.locationInWindow, from: nil)) else {
             return
@@ -45,5 +46,6 @@ extension TextView {
         let wordRange = findWordBoundary(at: offset)
         selectionManager.setSelectedRange(wordRange)
         selectionManager.textSelections.first?.pivot = wordRange.location
+        contextClickWordRange = wordRange
     }
 }

@@ -89,7 +89,7 @@ extension AIChatViewModel {
             await ensureColumnsLoaded(forTable: name)
         case .savedQuery(let id, _):
             await ensureSavedQueryLoaded(id: id)
-        case .currentQuery, .queryResult, .file:
+        case .currentQuery, .queryResult, .file, .queryContext:
             break
         }
     }

@@ -64,14 +64,20 @@ struct MCPPromptSchemaReader: Sendable {
 
     private let services: MCPToolServices
     private let source: any MCPCompletionSchemaSource
+    private let metadata: (any ScopedMetadataProviding)?
 
     init(services: MCPToolServices) {
         self.init(services: services, source: MCPBridgeCompletionSchemaSource(services: services))
     }
 
-    init(services: MCPToolServices, source: any MCPCompletionSchemaSource) {
+    init(
+        services: MCPToolServices,
+        source: any MCPCompletionSchemaSource,
+        metadata: (any ScopedMetadataProviding)? = nil
+    ) {
         self.services = services
         self.source = source
+        self.metadata = metadata
     }
 
     func target(
@@ -124,6 +130,40 @@ struct MCPPromptSchemaReader: Sendable {
         } catch {
             throw Self.mapped(error)
         }
+    }
+
+    func queryContext(target: MCPPromptTarget, statement: String, explainPlan: String?) async throws -> QueryContextSnapshot {
+        let databaseType: DatabaseType
+        do {
+            databaseType = try await services.connectionBridge.ensureConnected(target.scope.connectionId)
+        } catch {
+            throw Self.mapped(error)
+        }
+        return await Self.buildQueryContext(
+            target: target,
+            databaseType: databaseType,
+            statement: statement,
+            explainPlan: explainPlan,
+            metadata: metadata
+        )
+    }
+
+    @MainActor
+    private static func buildQueryContext(
+        target: MCPPromptTarget,
+        databaseType: DatabaseType,
+        statement: String,
+        explainPlan: String?,
+        metadata: (any ScopedMetadataProviding)?
+    ) async -> QueryContextSnapshot {
+        let input = QueryContextInput.make(
+            statement: statement,
+            scope: target.scope,
+            databaseType: databaseType,
+            serverVersion: target.serverVersion,
+            explainPlan: explainPlan
+        )
+        return await QueryContextBuilder(metadata: metadata ?? DatabaseManager.shared).build(input)
     }
 
     func tableDetails(target: MCPPromptTarget, tables: [String]) async -> [MCPPromptTableDetail] {

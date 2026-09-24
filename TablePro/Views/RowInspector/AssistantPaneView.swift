@@ -50,6 +50,8 @@ internal struct AssistantPaneView: View {
                     connection: connection,
                     currentQuery: state.context.currentQuery,
                     queryResults: state.context.queryResults,
+                    editorTarget: state.context.editorTarget,
+                    editorSnapshot: state.editorSnapshot,
                     viewModel: viewModel
                 )
             } else {

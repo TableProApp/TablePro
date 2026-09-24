@@ -32,6 +32,7 @@ struct QueryEditorBar: View {
     /// menu, which is the control that produces the history it is telling the reader about.
     let showsHistoryTip: Bool
 
+    let onAIAction: (AIQueryAction) -> Void
     let onRun: () -> Void
     let onRunAllStatements: () -> Void
     let onRunWithoutLimit: () -> Void
@@ -62,6 +63,10 @@ struct QueryEditorBar: View {
 
             editingCommands
 
+            if commands.aiActions.isVisible {
+                aiControl
+            }
+
             explainControl
 
             runControl
@@ -87,6 +92,33 @@ struct QueryEditorBar: View {
         .labelStyle(.iconOnly)
         .controlSize(.small)
         .fixedSize()
+    }
+
+    private var aiControl: some View {
+        ControlGroup {
+            Button(String(localized: "Review"), systemImage: "sparkles") { onAIAction(.review) }
+                .labelStyle(.titleAndIcon)
+                .help(commands.aiReviewHint)
+                .accessibilityLabel(AIQueryAction.review.menuTitle)
+                .accessibilityIdentifier("query-ai-review")
+
+            Menu {
+                ForEach(AIQueryAction.editorActions, id: \.self) { action in
+                    Button(action.menuTitle, systemImage: action.systemImage) { onAIAction(action) }
+                }
+            } label: {
+                Label { Text("AI Actions") } icon: { EmptyView() }
+            }
+            .labelStyle(.iconOnly)
+            .menuIndicator(.visible)
+            .help(String(localized: "AI Actions"))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(String(localized: "AI Actions"))
+            .accessibilityIdentifier("query-ai-menu")
+        }
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(!commands.aiActions.isEnabled)
     }
 
     /// A plain button when the engine has one plan to offer, and a pull-down when it has several.
