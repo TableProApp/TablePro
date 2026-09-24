@@ -196,26 +196,56 @@ internal enum TransferResultAlert {
         alert.messageText = String(localized: "Import failed")
         alert.alertStyle = .critical
         alert.addButton(withTitle: String(localized: "Done"))
+        alert.informativeText = importFailureText(for: error)
 
         if let pluginError = error as? PluginImportError,
-           case .statementFailed(let statement, let line, let underlyingError) = pluginError {
-            alert.informativeText = RevealedText(String(
-                format: String(localized: "Failed at line %lld. %@"),
-                Int64(line),
-                underlyingError.localizedDescription
-            )).plainText
+           case .statementFailed(let statement, _, _) = pluginError {
             alert.accessoryView = TransferReportView(
                 shown: statement,
                 copied: failureReport(for: error) ?? statement
             )
             alert.layout()
-        } else {
-            alert.informativeText = RevealedText(
-                error?.localizedDescription ?? String(localized: "Unknown error")
-            ).plainText
         }
 
         AlertHelper.present(alert, in: window) { _ in completion() }
+    }
+
+    /// The text of a failed import's alert: the line it stopped at and the first of the database's errors.
+    internal static func importFailureText(for error: (any Error)?) -> String {
+        guard let pluginError = error as? PluginImportError,
+              case .statementFailed(_, let line, let underlyingError) = pluginError else {
+            return RevealedText(error?.localizedDescription ?? String(localized: "Unknown error")).plainText
+        }
+        return RevealedText(String(
+            format: String(localized: "Failed at line %lld. %@"),
+            Int64(line),
+            shownErrors(underlyingError.localizedDescription)
+        )).plainText
+    }
+
+    /// The most of a failure's errors an alert's text holds, in lines and in UTF-16 units. A SQL Server batch raises
+    /// one error per statement that failed and the driver keeps up to 1,000, one line each, while an alert grows to fit
+    /// its text: measured, 1,000 lines made one 54,135 points tall, its Done button far below the screen, and 1,000
+    /// units on one line keep it at 423 points. Copy Details carries all of it.
+    internal static let shownErrorLineLimit = 5
+    internal static let shownErrorLengthLimit = 1_000
+
+    /// The start of `description` the alert has room for, and where the rest is.
+    internal static func shownErrors(_ description: String) -> String {
+        let lines = description.components(separatedBy: "\n")
+        let firstLines = lines.prefix(shownErrorLineLimit).joined(separator: "\n")
+        let shown = cut(firstLines, toUnits: shownErrorLengthLimit) ?? firstLines
+        guard shown != description else { return description }
+        return shown + "\n" + String(localized: "Copy Details copies the rest.")
+    }
+
+    /// `text` cut to `limit` UTF-16 units on a character boundary, with an ellipsis saying there is more, or nil when
+    /// it already fits.
+    internal static func cut(_ text: String, toUnits limit: Int) -> String? {
+        let source = text as NSString
+        guard source.length > limit else { return nil }
+        let end = source.rangeOfComposedCharacterSequence(at: limit).location
+        return source.substring(to: end) + "\u{2026}"
     }
 
     /// The report a failed import puts in its accessory, so the line, the reason and the failing
@@ -310,6 +340,17 @@ internal final class TransferReportView: NSView {
     private static let textHeight: CGFloat = 140
     private static let spacing: CGFloat = 8
 
+    /// The most of a report the box shows. A failed statement can be a whole SQL Server batch, and the text view lays
+    /// out a paragraph whole on the main thread: measured, a 15 million unit batch holding one 5 million unit line
+    /// blocked it for 67 seconds and took 2.7 GB, where the first 10,000 units took 0.1 seconds. Copy Details still
+    /// carries every unit.
+    internal static let shownLengthLimit = 10_000
+
+    /// `text` cut to `shownLengthLimit` on a character boundary, with an ellipsis saying there is more.
+    internal static func shownText(_ text: String) -> String {
+        TransferResultAlert.cut(text, toUnits: shownLengthLimit) ?? text
+    }
+
     private let report: String
 
     internal convenience init(report: String) {
@@ -328,7 +369,7 @@ internal final class TransferReportView: NSView {
             height: Self.textHeight + Self.spacing + button.frame.height
         ))
 
-        let scroll = TransferResultAlert.scrollingText(RevealedText(shown).plainText)
+        let scroll = TransferResultAlert.scrollingText(RevealedText(Self.shownText(shown)).plainText)
         scroll.frame = NSRect(
             x: 0,
             y: button.frame.height + Self.spacing,

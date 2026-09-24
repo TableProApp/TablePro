@@ -6,6 +6,9 @@
 //  the batch reaches the server whole, and the `GO` line reaches it not at all. The parser streams the file in 64 KiB
 //  chunks, so a `GO` line can be cut in two by a chunk boundary, and the split must not depend on where it falls.
 //
+//  A file with no `GO` line at all was written to run a statement at a time, the way TablePro wrote every SQL Server
+//  dump before it wrote `GO` lines, so it is still cut at each `;`.
+//
 
 import Foundation
 @testable import TablePro
@@ -90,10 +93,60 @@ struct SQLFileParserBatchTests {
         ])
     }
 
-    @Test("A script with no GO line is one batch, so a variable is still declared where it is read")
-    func scriptWithoutGoIsOneBatch() async throws {
-        let script = "DECLARE @x INT = 1;\nINSERT INTO t (v) VALUES (@x);\n"
+    /// Read as one batch, this dump fails on its view with Msg 111, "'CREATE VIEW' must be the first statement in a
+    /// query batch", and runs none of its statements.
+    @Test("A dump with no GO line runs a statement at a time, and the count agrees")
+    func dumpWithoutGoRunsStatements() async throws {
+        let dump = """
+        -- TablePro SQL Export
+        -- Database Type: SQL Server
+
+        CREATE TABLE [dbo].[t] ([a] int NOT NULL);
+
+        INSERT INTO [dbo].[t] ([a]) VALUES (1), (2);
+
+        -- View: v
+        CREATE VIEW [dbo].[v] AS SELECT a FROM dbo.t;
+        """
+        #expect(try await Self.runs(dump) == [
+            Run(statement: "CREATE TABLE [dbo].[t] ([a] int NOT NULL)", line: 4),
+            Run(statement: "INSERT INTO [dbo].[t] ([a]) VALUES (1), (2)", line: 6),
+            Run(statement: "CREATE VIEW [dbo].[v] AS SELECT a FROM dbo.t", line: 9),
+        ])
+        #expect(try await Self.count(dump) == 3)
+    }
+
+    @Test("One GO line makes the whole file a script of batches, so a variable is declared where it is read")
+    func oneGoLineReadsTheFileInBatches() async throws {
+        let script = "DECLARE @x INT = 1;\nINSERT INTO t (v) VALUES (@x);\nGO\n"
         #expect(try await Self.statements(script) == ["DECLARE @x INT = 1;\nINSERT INTO t (v) VALUES (@x);"])
+        #expect(try await Self.count(script) == 1)
+    }
+
+    @Test(
+        "A GO inside a literal, a quoted identifier or a comment does not make a file a script of batches",
+        arguments: [
+            "SELECT 'a\nGO\nb';",
+            "SELECT N'a\nGO\nb';",
+            "SELECT [a\nGO\nb] FROM t;",
+            "SELECT \"a\nGO\nb\" FROM t;",
+            "SELECT 2 /* a\nGO\n*/;",
+            "SELECT 2 /* outer /* inner */\nGO\nouter */;",
+        ]
+    )
+    func goInsideNonCodeLeavesStatements(statement: String) async throws {
+        let script = "SELECT 1;\n\(statement)"
+        #expect(try await Self.statements(script) == ["SELECT 1", String(statement.dropLast())])
+        #expect(try await Self.count(script) == 2)
+    }
+
+    @Test("A statement keeps the comments written inside it, so the server's line numbers count the file's lines")
+    func statementKeepsItsComments() async throws {
+        let script = "-- lead\nSELECT a--glued\nFROM t;\nCREATE PROCEDURE p AS\nBEGIN\n/* inside */\nSELECT 1;\nEND;"
+        #expect(try await Self.runs(script) == [
+            Run(statement: "SELECT a--glued\nFROM t", line: 2),
+            Run(statement: "CREATE PROCEDURE p AS\nBEGIN\n/* inside */\nSELECT 1;\nEND", line: 4),
+        ])
     }
 
     @Test("GO n runs the batch n times, and the count says so")
@@ -121,8 +174,8 @@ struct SQLFileParserBatchTests {
         arguments: ["GO;", "GO 0", "GOTO done", "go_table", "GO5", "GO /* c */", "SELECT 1 GO", "/* c */ GO"]
     )
     func rejectedLines(line: String) async throws {
-        let script = "SELECT 1\n\(line)\nSELECT 2"
-        #expect(try await Self.statements(script) == [script])
+        let batch = "SELECT 1\n\(line)\nSELECT 2"
+        #expect(try await Self.statements(batch + "\nGO") == [batch])
     }
 
     @Test("GO inside a literal, a quoted identifier or a comment separates nothing, across lines too", arguments: [
@@ -135,13 +188,13 @@ struct SQLFileParserBatchTests {
         "SELECT 1 -- note\nGO_ON\nSELECT 2",
     ])
     func goInsideNonCode(script: String) async throws {
-        #expect(try await Self.statements(script) == [script])
+        #expect(try await Self.statements(script + "\nGO") == [script])
     }
 
     @Test("An unterminated block comment swallows every GO line after it, as sqlcmd reads it")
     func unterminatedCommentSwallowsGo() async throws {
-        let script = "SELECT 1\n/* open\nGO\nSELECT 2\nGO"
-        #expect(try await Self.statements(script) == [script])
+        let script = "SELECT 1;\nGO\nSELECT 2\n/* open\nGO\nSELECT 3\nGO"
+        #expect(try await Self.statements(script) == ["SELECT 1;", "SELECT 2\n/* open\nGO\nSELECT 3\nGO"])
     }
 
     @Test("Comments stay in the batch, so the server's line numbers count the file's lines")
@@ -199,7 +252,9 @@ struct SQLFileParserBatchTests {
         let script = "SELECT 'a\n'GO\nSELECT 2"
         for boundary in 0..<(script as NSString).length {
             let padding = "--" + String(repeating: "x", count: Self.chunkSize - boundary - 3) + "\n"
-            #expect(try await Self.statements(padding + script) == [padding + script], "boundary \(boundary)")
+            #expect(try await Self.statements(padding + script + "\nGO") == [padding + script], "boundary \(boundary)")
+            #expect(try await Self.statements(padding + script + ";\nSELECT 3;") == [script, "SELECT 3"],
+                    "boundary \(boundary), no GO line")
         }
     }
 
@@ -218,8 +273,8 @@ struct SQLFileParserBatchTests {
 
     @Test("A batch below the cut length keeps every statement together")
     func shortBatchIsNotCut() async throws {
-        let script = "INSERT t VALUES (1);\nINSERT t VALUES (2);\nINSERT t VALUES (3);"
-        #expect(try await Self.statements(script) == [script])
+        let batch = "INSERT t VALUES (1);\nINSERT t VALUES (2);\nINSERT t VALUES (3);"
+        #expect(try await Self.statements(batch + "\nGO") == [batch])
     }
 
     @Test("An engine without batches still splits at each semicolon and drops its comments")

@@ -705,6 +705,7 @@ targets:
       - Plugins/SQLExportPlugin/SQLExportSessionScope.swift
       - Plugins/SQLExportPlugin/SQLExportSnapshot.swift
       - Plugins/SQLExportPlugin/SQLExportStatementBudget.swift
+      - Plugins/SQLExportPlugin/SQLExportStatementEnd.swift
       - Plugins/SQLImportPlugin/SQLImportFailure.swift
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
