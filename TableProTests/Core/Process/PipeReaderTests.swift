@@ -56,21 +56,14 @@ struct PipeReaderTests {
         reader.start { received.append($0) }
 
         let payload = Data((0 ..< 3 * DescriptorRead.pipeCapacity).map { UInt8($0 % 251) })
-        let writer = pipe.fileHandleForWriting
-        Thread.detachNewThread {
-            try? writer.write(contentsOf: payload)
-            try? writer.close()
-        }
+        BackgroundPipeWriter.write([payload], to: pipe.fileHandleForWriting, pausingBeforeEach: 0)
 
         try await waitUntil { received.data.count == payload.count && handle.readabilityHandler == nil }
         #expect(received.data == payload)
     }
 
-    /// The order that crashed a dump: the process exits, the termination handler drains the pipe
-    /// while a readability callback Foundation had already dispatched waits, and the callback then
-    /// reads a pipe that is empty with its writer still open.
     @Test("A callback dispatched before a drain reads nothing when it runs after it", .timeLimit(.minutes(1)))
-    func dispatchedCallbackAfterDrainReadsNothing() throws {
+    func dispatchedCallbackAfterDrainReadsNothing() async throws {
         let pipe = Pipe()
         defer { withExtendedLifetime(pipe) {} }
         let handle = pipe.fileHandleForReading
@@ -80,16 +73,19 @@ struct PipeReaderTests {
         let dispatched = try #require(handle.readabilityHandler)
 
         try pipe.fileHandleForWriting.write(contentsOf: Data("early".utf8))
-        reader.stop(drainingUpTo: DescriptorRead.pipeCapacity)
+        let drained: Void? = await HeldOpenWriter(pipe.fileHandleForWriting).finishedOnItsOwnThread {
+            reader.stop(drainingUpTo: DescriptorRead.pipeCapacity)
+        }
+        try #require(drained != nil)
         #expect(received.data == Data("early".utf8))
 
-        dispatched(handle)
         try pipe.fileHandleForWriting.write(contentsOf: Data("late".utf8))
         dispatched(handle)
 
         #expect(received.data == Data("early".utf8))
         let descriptor = handle.fileDescriptor
         #expect(fcntl(descriptor, F_GETFL) & O_NONBLOCK == 0)
+        try pipe.fileHandleForWriting.close()
         #expect(try DescriptorRead.availableBytes(from: descriptor) == Data("late".utf8))
     }
 
@@ -114,8 +110,11 @@ struct PipeReaderTests {
         reader.stop()
     }
 
-    @Test("A drain takes what the pipe holds up to its limit and leaves the descriptor blocking")
-    func drainStopsAtTheLimitWithoutWaitingOnTheWriter() throws {
+    @Test(
+        "A drain takes what the pipe holds up to its limit and leaves the descriptor blocking",
+        .timeLimit(.minutes(1))
+    )
+    func drainStopsAtTheLimitWithoutWaitingOnTheWriter() async throws {
         let pipe = Pipe()
         defer { withExtendedLifetime(pipe) {} }
         let handle = pipe.fileHandleForReading
@@ -126,11 +125,15 @@ struct PipeReaderTests {
 
         let buffered = Data((0 ..< 10_000).map { UInt8($0 % 251) })
         try pipe.fileHandleForWriting.write(contentsOf: buffered)
-        reader.stop(drainingUpTo: 4_096)
+        let drained: Void? = await HeldOpenWriter(pipe.fileHandleForWriting).finishedOnItsOwnThread {
+            reader.stop(drainingUpTo: 4_096)
+        }
 
+        #expect(drained != nil)
         #expect(received.data == buffered.prefix(4_096))
         let descriptor = handle.fileDescriptor
         #expect(fcntl(descriptor, F_GETFL) & O_NONBLOCK == 0)
+        try pipe.fileHandleForWriting.close()
         #expect(try DescriptorRead.availableBytes(from: descriptor) == buffered.dropFirst(4_096))
     }
 
@@ -144,13 +147,8 @@ struct PipeReaderTests {
         reader.start { received.append($0) }
         handle.readabilityHandler = nil
 
-        let writer = pipe.fileHandleForWriting
-        try writer.write(contentsOf: Data("before".utf8))
-        Thread.detachNewThread {
-            Thread.sleep(forTimeInterval: 0.2)
-            try? writer.write(contentsOf: Data(" after".utf8))
-            try? writer.close()
-        }
+        try pipe.fileHandleForWriting.write(contentsOf: Data("before".utf8))
+        BackgroundPipeWriter.write([Data(" after".utf8)], to: pipe.fileHandleForWriting, pausingBeforeEach: 0.2)
         reader.stopAtEndOfFile()
 
         #expect(received.data == Data("before after".utf8))

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Darwin
 import Foundation
 import Testing
 
@@ -66,5 +67,43 @@ struct ProcessNativeDumpRunnerTests {
         let result = await runner.result
         #expect(result.exitCode == 4)
         #expect(result.stderr.utf8.count <= cap)
+    }
+
+    @Test(
+        "A stderr callback dispatched before the tool exited leaves the pipe alone once the result is in",
+        .timeLimit(.minutes(1))
+    )
+    func lateStderrCallbackLeavesThePipeAlone() async throws {
+        let gate = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-dump-gate-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: gate) }
+        let pipe = Pipe()
+        defer { withExtendedLifetime(pipe) {} }
+        let survivingDescriptor = dup(pipe.fileHandleForWriting.fileDescriptor)
+        try #require(survivingDescriptor >= 0)
+        let survivingWriter = FileHandle(fileDescriptor: survivingDescriptor, closeOnDealloc: true)
+        defer { try? survivingWriter.close() }
+
+        let runner = ProcessNativeDumpRunner(
+            command: command("while [ ! -e '\(gate.path)' ]; do sleep 0.01; done; printf '%s' 'refused' >&2; exit 5"),
+            stderrPipe: pipe
+        )
+        try runner.start()
+        let handle = pipe.fileHandleForReading
+        let dispatched = try #require(handle.readabilityHandler)
+        #expect(FileManager.default.createFile(atPath: gate.path, contents: nil))
+
+        let result = try #require(await HeldOpenWriter(survivingWriter).finished { await runner.result })
+        #expect(result.exitCode == 5)
+        #expect(result.stderr == "refused")
+
+        try survivingWriter.write(contentsOf: Data("late".utf8))
+        dispatched(handle)
+
+        let descriptor = handle.fileDescriptor
+        #expect(handle.readabilityHandler == nil)
+        #expect(fcntl(descriptor, F_GETFL) & O_NONBLOCK == 0)
+        try survivingWriter.close()
+        #expect(try DescriptorRead.availableBytes(from: descriptor) == Data("late".utf8))
     }
 }

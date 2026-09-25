@@ -46,29 +46,7 @@ enum CLIToolVersionProbe {
             return nil
         }
         guard process.terminationStatus == 0 else { return nil }
-        return String(data: readAvailable(from: pipe.fileHandleForReading), encoding: .utf8)
-    }
-
-    /// What the pipe holds now, rather than what it holds at EOF.
-    ///
-    /// The tool has exited, so its own output is already here. `readDataToEndOfFile` would wait for
-    /// every writer to close instead, and a wrapper that prints its version, starts a helper that
-    /// inherits standard output and exits leaves that EOF to the helper: the deadline above covers
-    /// only the process, so the read has none and the dump never starts.
-    private static func readAvailable(from handle: FileHandle) -> Data {
-        let descriptor = handle.fileDescriptor
-        let flags = fcntl(descriptor, F_GETFL)
-        guard flags != -1, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != -1 else { return Data() }
-
-        var output = Data()
-        var buffer = [UInt8](repeating: 0, count: 4_096)
-        while output.count < outputCap {
-            let received = buffer.withUnsafeMutableBytes { raw in
-                read(descriptor, raw.baseAddress, raw.count)
-            }
-            guard received > 0 else { break }
-            output.append(contentsOf: buffer[0 ..< received])
-        }
-        return output
+        let output = DescriptorRead.bufferedBytes(from: pipe.fileHandleForReading.fileDescriptor, upTo: outputCap)
+        return String(data: output, encoding: .utf8)
     }
 }

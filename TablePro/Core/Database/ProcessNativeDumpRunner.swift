@@ -9,11 +9,9 @@ import Foundation
 final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private let command: NativeDumpCommand
     private let process = Process()
-    private let stderrPipe = Pipe()
+    private let stderrPipe: Pipe
     private let stderrReader: PipeReader
     private let stateLock = NSLock()
-    /// Separate from `stateLock`, which `cancel()` takes and which must never wait on a pipe.
-    private let stderrLock = NSLock()
     private var stderrBuffer = Data()
     private var wasCancelled = false
     private var terminationResult: NativeDumpRunResult?
@@ -21,8 +19,9 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private var redirectedHandle: FileHandle?
     private var credentialsFileURL: URL?
 
-    init(command: NativeDumpCommand) {
+    init(command: NativeDumpCommand, stderrPipe: Pipe = Pipe()) {
         self.command = command
+        self.stderrPipe = stderrPipe
         stderrReader = PipeReader(stderrPipe.fileHandleForReading)
     }
 
@@ -46,12 +45,9 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
             self.stderrReader.stop(drainingUpTo: stderrCap)
             self.releaseRedirection()
 
-            self.stderrLock.lock()
+            self.stateLock.lock()
             let stderrText = String(data: self.stderrBuffer, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            self.stderrLock.unlock()
-
-            self.stateLock.lock()
             let result = NativeDumpRunResult(
                 exitCode: proc.terminationStatus,
                 stderr: stderrText,
@@ -78,8 +74,8 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     }
 
     private func append(_ chunk: Data, cap: Int) {
-        stderrLock.lock()
-        defer { stderrLock.unlock() }
+        stateLock.lock()
+        defer { stateLock.unlock() }
         stderrBuffer.append(chunk)
         if stderrBuffer.count > cap {
             stderrBuffer = Data(stderrBuffer.suffix(cap))

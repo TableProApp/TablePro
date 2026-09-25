@@ -144,11 +144,6 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
         }
     }
 
-    /// The termination handler can run before the pipe delivers its last readability callback, so
-    /// what is still buffered is drained on the way out: a dropped final line is how a process that
-    /// announced itself ready right before exiting reads as one that never did. A callback that was
-    /// already dispatched has finished its delivery by the time the reader stops, so no line can
-    /// reach the stream after it has been closed.
     private func finish(exitCode: Int32) {
         stdoutReader.stop()
         stderrReader.stopAtEndOfFile()
