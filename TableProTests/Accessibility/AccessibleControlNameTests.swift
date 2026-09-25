@@ -49,10 +49,18 @@ struct AccessibleControlNameTests {
         for control in Self.labelledControls {
             let source = try String(contentsOf: root.appendingPathComponent(control.path), encoding: .utf8)
             #expect(
-                source.contains(".accessibilityLabel") && source.contains(control.label),
+                Self.names(control.label, in: source),
                 "\(control.path) lost the accessibility label for \(control.label)"
             )
         }
+    }
+
+    /// A `Menu` is named by its `Label`: `.accessibilityLabel` on a menu leaves it nameless, which
+    /// `MenuDisclosureIndicatorTests` guards, so the label's own `Text` counts as the name.
+    private static func names(_ label: String, in source: String) -> Bool {
+        let namedByModifier = source.contains(".accessibilityLabel") && source.contains(label)
+        let namedByLabel = source.contains("Label { Text(\"\(label)\") }")
+        return namedByModifier || namedByLabel
     }
 
     /// The find bar's clear button is the one that had neither a label nor a tooltip, so nothing

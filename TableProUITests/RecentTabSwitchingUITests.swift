@@ -10,11 +10,9 @@ import AppKit
 import XCTest
 
 final class RecentTabSwitchingUITests: UITestCase {
-    /// One launch for the whole gesture, since each phase leaves the order the next one starts from.
-    ///
     /// After opening Album, Artist, Customer and Employee, then selecting Album and Employee, the
-    /// order is Employee, Album, Customer, Artist. A tap goes back one tab; holding Control and
-    /// pressing Tab twice goes back two, and the list shows while Control is held.
+    /// order is Employee, Album, Customer, Artist. A tap goes back one tab and a second tap comes
+    /// back. Holding Control is covered by RecentTabSwitcherControllerTests.
     func testControlTabWalksTabsInTheOrderTheyWereUsed() throws {
         let app = try launchWithSampleDatabase()
         let window = try readyWindow(of: app)
@@ -39,29 +37,6 @@ final class RecentTabSwitchingUITests: UITestCase {
 
         app.typeKey(.tab, modifierFlags: .control)
         XCTAssertTrue(waitForSelection("Employee", in: window), "A second tap must come back to Employee")
-
-        let panel = switcherPanel(in: app)
-        XCUIElement.perform(withKeyModifiers: .control) {
-            app.typeKey(.tab, modifierFlags: [])
-            XCTAssertTrue(panel.waitToExist(timeout: 10), "Holding Control must show the list of recent tabs")
-            app.typeKey(.tab, modifierFlags: [])
-        }
-        XCTAssertTrue(
-            waitForSelection("Customer", in: window),
-            "Two presses while holding Control must land two tabs back, on Customer. Got "
-                + (selectedTabLabel(in: window) ?? "none")
-        )
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { !panel.exists },
-            "Letting go of Control must close the list"
-        )
-
-        XCUIElement.perform(withKeyModifiers: .control) {
-            app.typeKey(.tab, modifierFlags: [])
-            app.typeKey(.escape, modifierFlags: [])
-        }
-        Thread.sleep(forTimeInterval: 1)
-        XCTAssertEqual(selectedTabLabel(in: window), "Customer", "Escape must end the switch where it started")
     }
 
     // MARK: - Helpers
@@ -112,9 +87,5 @@ final class RecentTabSwitchingUITests: UITestCase {
         XCTAssertTrue(waitUntilHittable(tab, timeout: 20), "The \(name) tab must be on screen")
         tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         XCTAssertTrue(waitForSelection(name, in: window), "Clicking the \(name) tab must select it")
-    }
-
-    private func switcherPanel(in app: XCUIApplication) -> XCUIElement {
-        app.children(matching: .any).matching(identifier: "recent-tab-switcher-panel").firstMatch
     }
 }

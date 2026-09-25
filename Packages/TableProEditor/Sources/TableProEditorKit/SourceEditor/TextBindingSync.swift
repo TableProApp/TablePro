@@ -22,7 +22,7 @@ final class TextBindingSync {
     private(set) var lastSyncedText: String?
 
     private let phase: RepresentableSyncPhase
-    private var writebackTask: Task<Void, Never>?
+    private(set) var writebackTask: Task<Void, Never>?
 
     init(text: SourceEditor.TextAPI, phase: RepresentableSyncPhase) {
         self.text = text

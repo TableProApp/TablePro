@@ -55,8 +55,6 @@ final class KeyHandlingTableView: NSTableView {
         isRaisingOverlay = true
         defer { isRaisingOverlay = false }
         raiseSelectionOverlayIfNeeded(subview: subview)
-        raiseOverlayIfNeeded(coordinator?.overlayEditor, subview: subview)
-        raiseOverlayIfNeeded(coordinator?.overlayViewer, subview: subview)
     }
 
     private func raiseSelectionOverlayIfNeeded(subview: NSView) {
@@ -65,16 +63,6 @@ final class KeyHandlingTableView: NSTableView {
               subview !== selectionOverlay,
               subviews.last !== selectionOverlay else { return }
         addSubview(selectionOverlay)
-    }
-
-    private func raiseOverlayIfNeeded(_ overlay: CellOverlayBase?, subview: NSView) {
-        guard let overlay,
-              overlay.isActive,
-              let container = overlay.containerView,
-              container !== subview,
-              container.superview === self,
-              subviews.last !== container else { return }
-        overlay.raiseToFront()
     }
 
     var selection = TableSelection() {

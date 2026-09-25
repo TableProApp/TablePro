@@ -1199,6 +1199,8 @@ struct TableViewCoordinatorLayoutTests {
             tableIdentityChanged: true
         )
         let tableView = try #require(coordinator.tableView)
+        let scrollView = NSScrollView()
+        scrollView.documentView = tableView
         tableView.dataSource = coordinator
         tableView.delegate = coordinator
         coordinator.updateCache()
@@ -1234,5 +1236,6 @@ struct TableViewCoordinatorLayoutTests {
         #expect(column.width > originalWidth)
         #expect(coordinator.columnPresentation(for: 0, in: rows).accessory == .foreignKey)
         #expect(coordinator.userSizedColumnNames.isEmpty)
+        withExtendedLifetime(scrollView) {}
     }
 }

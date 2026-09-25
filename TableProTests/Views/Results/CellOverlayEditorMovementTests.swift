@@ -18,10 +18,13 @@ struct CellOverlayEditorMovementTests {
         let editor: CellOverlayEditor
         let textView: NSTextView
         let tableView: KeyHandlingTableView
+        let scrollView: NSScrollView
     }
 
     private func makeEditing(value: String, selection: NSRange) -> Editing {
         let tableView = KeyHandlingTableView()
+        let scrollView = NSScrollView()
+        scrollView.documentView = tableView
         let editor = CellOverlayEditor()
         editor.install(
             in: tableView,
@@ -34,7 +37,7 @@ struct CellOverlayEditorMovementTests {
         CellOverlayBase.applyCellTextLayout(to: textView)
         textView.string = value
         textView.setSelectedRange(selection)
-        return Editing(editor: editor, textView: textView, tableView: tableView)
+        return Editing(editor: editor, textView: textView, tableView: tableView, scrollView: scrollView)
     }
 
     private struct Outcome {

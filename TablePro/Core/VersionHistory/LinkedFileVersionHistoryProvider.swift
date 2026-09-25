@@ -94,10 +94,10 @@ internal struct LinkedFileVersionHistoryProvider: VersionHistoryProvider {
     func prepareDiscard() async throws -> VersionRestorePlan {
         let client = try makeClient()
         let current = try currentBytes()
-        let staged = try await gitCall { try await client.blob(revision: "", path: indexPath, in: directory) }
-        try Self.rejectLargeFileStoragePointer(staged)
         let directory = directory
         let indexPath = indexPath
+        let staged = try await gitCall { try await client.blob(revision: "", path: indexPath, in: directory) }
+        try Self.rejectLargeFileStoragePointer(staged)
         return writePlan(
             replacing: current,
             with: staged,

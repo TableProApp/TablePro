@@ -76,120 +76,114 @@ struct MSSQLFreeTDSConfigFileTests {
     }
 
     @Test("Host names that differ only in case are one entry, as libtds reads them")
-    func caseInsensitiveNames() throws {
+    func caseInsensitiveNames() async throws {
         let lower = try entry("db.example.com", encryption: .request)
         let upper = try entry("DB.example.com", encryption: .require)
+        let file = file
         let order = OrderLog()
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let holding = DispatchSemaphore(value: 0)
 
-        DispatchQueue.global().async {
+        let holder = runOnOwnThread {
             try? file.withEntry(lower, waitingAtMost: 10) {
                 order.append("lower in")
-                holding.signal()
+                holding.open()
                 released.wait()
                 order.append("lower out")
             }
         }
-        holding.wait()
-        let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        await holding.wait()
+        let waiter = runOnOwnThread {
             try? file.withEntry(upper, waitingAtMost: 10) { order.append("upper in") }
-            done.signal()
         }
-        Thread.sleep(forTimeInterval: 0.2)
+        try await Task.sleep(for: .milliseconds(200))
         released.signal()
-        done.wait()
+        await holder.wait()
+        await waiter.wait()
 
         #expect(order.entries == ["lower in", "lower out", "upper in"])
     }
 
     @Test("A different entry for a host waits for the first dbopen, then finds its own settings")
-    func conflictingEntryWaits() throws {
+    func conflictingEntryWaits() async throws {
         let plain = try entry("db.example.com", encryption: .request)
         let encrypted = try entry("db.example.com", encryption: .require)
+        let file = file
         let order = OrderLog()
-        let holding = DispatchSemaphore(value: 0)
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let done = DispatchSemaphore(value: 0)
         let seenByEncrypted = Box<String?>(nil)
 
-        DispatchQueue.global().async {
+        let holder = runOnOwnThread {
             try? file.withEntry(plain, waitingAtMost: 10) {
                 order.append("plain in")
-                holding.signal()
+                holding.open()
                 released.wait()
                 order.append("plain out")
             }
         }
-        holding.wait()
-        DispatchQueue.global().async {
+        await holding.wait()
+        let waiter = runOnOwnThread {
             try? file.withEntry(encrypted, waitingAtMost: 10) {
                 order.append("encrypted in")
                 seenByEncrypted.value = contents()
             }
-            done.signal()
         }
-        Thread.sleep(forTimeInterval: 0.2)
+        try await Task.sleep(for: .milliseconds(200))
         #expect(order.entries == ["plain in"])
         released.signal()
-        done.wait()
+        await holder.wait()
+        await waiter.wait()
 
         #expect(order.entries == ["plain in", "plain out", "encrypted in"])
         #expect(seenByEncrypted.value == encrypted.text)
     }
 
     @Test("A connect to another host does not wait on one that has not returned")
-    func otherHostsDoNotWait() throws {
+    func otherHostsDoNotWait() async throws {
         let slow = try entry("slow.example.com")
         let fast = try entry("fast.example.com")
-        let holding = DispatchSemaphore(value: 0)
+        let file = file
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let finished = DispatchSemaphore(value: 0)
 
-        DispatchQueue.global().async {
+        let holder = runOnOwnThread {
             try? file.withEntry(slow, waitingAtMost: 10) {
-                holding.signal()
+                holding.open()
                 released.wait()
             }
-            finished.signal()
         }
-        holding.wait()
+        await holding.wait()
         let ranWhileSlowHeld = try file.withEntry(fast, waitingAtMost: 10) { contents()?.contains(fast.text) == true }
         released.signal()
-        finished.wait()
+        await holder.wait()
 
         #expect(ranWhileSlowHeld)
     }
 
     @Test("Connects to two ports on one address, as every SSH tunnel is, do not wait on each other")
-    func portsOnOneAddressDoNotWait() throws {
+    func portsOnOneAddressDoNotWait() async throws {
         let silent = try entry("127.0.0.1", port: 50_001)
         let live = try entry("127.0.0.1", port: 50_002, encryption: .request)
-        let holding = DispatchSemaphore(value: 0)
+        let file = file
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let silentFinished = DispatchSemaphore(value: 0)
-        let liveFinished = DispatchSemaphore(value: 0)
         let seen = Box<String?>(nil)
 
-        DispatchQueue.global().async {
+        let silentConnect = runOnOwnThread {
             try? file.withEntry(silent, waitingAtMost: 10) {
-                holding.signal()
+                holding.open()
                 released.wait()
             }
-            silentFinished.signal()
         }
-        holding.wait()
-        DispatchQueue.global().async {
+        await holding.wait()
+        let liveConnect = runOnOwnThread {
             try? file.withEntry(live, waitingAtMost: 10) { seen.value = contents() }
-            liveFinished.signal()
         }
-        let liveRanWhileSilentHeld = liveFinished.wait(timeout: .now() + 2) == .success
+        let liveRanWhileSilentHeld = await liveConnect.opens(within: .seconds(2))
         released.signal()
-        silentFinished.wait()
-        if !liveRanWhileSilentHeld {
-            liveFinished.wait()
-        }
+        await silentConnect.wait()
+        await liveConnect.wait()
 
         #expect(liveRanWhileSilentHeld)
         #expect(seen.value?.contains(silent.text) == true)
@@ -197,106 +191,99 @@ struct MSSQLFreeTDSConfigFileTests {
     }
 
     @Test("A connect waiting for a name goes before a later one that matches the entry holding it")
-    func waitingEntryIsNotOvertaken() throws {
+    func waitingEntryIsNotOvertaken() async throws {
         let plain = try entry("db.example.com", encryption: .request)
         let encrypted = try entry("db.example.com", encryption: .require)
+        let file = file
         let order = OrderLog()
-        let holding = DispatchSemaphore(value: 0)
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let done = DispatchSemaphore(value: 0)
 
-        DispatchQueue.global().async {
+        let holder = runOnOwnThread {
             try? file.withEntry(plain, waitingAtMost: 10) {
                 order.append("first plain in")
-                holding.signal()
+                holding.open()
                 released.wait()
                 order.append("first plain out")
             }
         }
-        holding.wait()
-        DispatchQueue.global().async {
+        await holding.wait()
+        let encryptedConnect = runOnOwnThread {
             try? file.withEntry(encrypted, waitingAtMost: 10) { order.append("encrypted in") }
-            done.signal()
         }
-        #expect(waitUntil { file.waitingConnections(named: "db.example.com") == 1 })
-        DispatchQueue.global().async {
+        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 1 })
+        let secondPlainConnect = runOnOwnThread {
             try? file.withEntry(plain, waitingAtMost: 10) { order.append("second plain in") }
-            done.signal()
         }
-        #expect(waitUntil { file.waitingConnections(named: "db.example.com") == 2 })
+        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 2 })
         #expect(order.entries == ["first plain in"])
         released.signal()
-        done.wait()
-        done.wait()
+        await holder.wait()
+        await encryptedConnect.wait()
+        await secondPlainConnect.wait()
 
         #expect(order.entries == ["first plain in", "first plain out", "encrypted in", "second plain in"])
     }
 
     @Test("A connect that cannot have the name in time gives up with the reason and leaves the line")
-    func boundedWaitGivesUp() throws {
+    func boundedWaitGivesUp() async throws {
         let plain = try entry("db.example.com", encryption: .request)
         let encrypted = try entry("db.example.com", encryption: .require)
-        let holding = DispatchSemaphore(value: 0)
+        let file = file
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let finished = DispatchSemaphore(value: 0)
 
-        DispatchQueue.global().async {
+        let holder = runOnOwnThread {
             try? file.withEntry(plain, waitingAtMost: 10) {
-                holding.signal()
+                holding.open()
                 released.wait()
             }
-            finished.signal()
         }
-        holding.wait()
+        await holding.wait()
         #expect(throws: MSSQLFreeTDSConfigError.nameInUse("db.example.com")) {
             try file.withEntry(encrypted, waitingAtMost: 0.2) {}
         }
         let waitingAfterGivingUp = file.waitingConnections(named: "db.example.com")
         let joinedTheHolder = try file.withEntry(plain, waitingAtMost: 0.2) { true }
         released.signal()
-        finished.wait()
+        await holder.wait()
 
         #expect(waitingAfterGivingUp == 0)
         #expect(joinedTheHolder)
     }
 
     @Test("A connect whose caller gave up leaves the line as soon as the waits are interrupted")
-    func abandonedWaitLeavesTheLine() throws {
+    func abandonedWaitLeavesTheLine() async throws {
         let plain = try entry("db.example.com", encryption: .request)
         let encrypted = try entry("db.example.com", encryption: .require)
-        let holding = DispatchSemaphore(value: 0)
+        let file = file
+        let holding = Latch()
         let released = DispatchSemaphore(value: 0)
-        let holderFinished = DispatchSemaphore(value: 0)
-        let waiterFinished = DispatchSemaphore(value: 0)
         let abandoned = Box(false)
         let waiterError = Box<Error?>(nil)
         let ran = Box(false)
 
-        DispatchQueue.global().async {
+        let holder = runOnOwnThread {
             try? file.withEntry(plain, waitingAtMost: 10) {
-                holding.signal()
+                holding.open()
                 released.wait()
             }
-            holderFinished.signal()
         }
-        holding.wait()
-        DispatchQueue.global().async {
+        await holding.wait()
+        let waiter = runOnOwnThread {
             do {
                 try file.withEntry(encrypted, waitingAtMost: 30, givingUpWhen: { abandoned.value }) { ran.value = true }
             } catch {
                 waiterError.value = error
             }
-            waiterFinished.signal()
         }
-        #expect(waitUntil { file.waitingConnections(named: "db.example.com") == 1 })
+        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 1 })
         abandoned.value = true
         file.interruptWaits()
-        let leftInTime = waiterFinished.wait(timeout: .now() + 2) == .success
+        let leftInTime = await waiter.opens(within: .seconds(2))
         released.signal()
-        holderFinished.wait()
-        if !leftInTime {
-            waiterFinished.wait()
-        }
+        await holder.wait()
+        await waiter.wait()
 
         #expect(leftInTime)
         #expect(waiterError.value is CancellationError)
@@ -316,13 +303,63 @@ struct MSSQLFreeTDSConfigFileTests {
     }
 }
 
-private func waitUntil(_ condition: () -> Bool) -> Bool {
-    let deadline = Date(timeIntervalSinceNow: 5)
+private func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+    let deadline = ContinuousClock.now + limit
     while !condition() {
-        guard Date() < deadline else { return false }
-        Thread.sleep(forTimeInterval: 0.01)
+        guard ContinuousClock.now < deadline else { return false }
+        try? await Task.sleep(for: .milliseconds(10))
     }
     return true
+}
+
+private func runOnOwnThread(_ work: @escaping @Sendable () -> Void) -> Latch {
+    let finished = Latch()
+    let thread = Thread {
+        work()
+        finished.open()
+    }
+    thread.start()
+    return finished
+}
+
+private final class Latch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var opened: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isOpen
+    }
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let released = waiters
+        waiters = []
+        lock.unlock()
+        for waiter in released {
+            waiter.resume()
+        }
+    }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            guard !isOpen else {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            waiters.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    func opens(within limit: Duration) async -> Bool {
+        await eventually(within: limit) { opened }
+    }
 }
 
 private final class OrderLog: @unchecked Sendable {

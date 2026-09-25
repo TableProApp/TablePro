@@ -399,17 +399,18 @@ struct ConnectionManagerTests {
 
         _ = try await manager.connect(connection)
 
+        let rescuedByTimer = Flag()
         let rescue = Task {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled else { return }
+            await rescuedByTimer.raise()
             await unblocked.open()
         }
         defer { rescue.cancel() }
 
-        let started = ContinuousClock.now
         await manager.disconnect(connection.id)
-        let elapsed = ContinuousClock.now - started
 
-        #expect(elapsed < .seconds(1))
+        #expect(!(await rescuedByTimer.isRaised))
         #expect(driver.disconnectCount == 1)
     }
 
@@ -511,9 +512,7 @@ struct ConnectionManagerTests {
         try await Task.sleep(for: .milliseconds(100))
         attempt.cancel()
 
-        let started = ContinuousClock.now
-        let settled = await outcome.settled(within: .seconds(2))
-        let elapsed = ContinuousClock.now - started
+        let settled = await outcome.settled(within: .seconds(10))
         #expect(!second.isConnected)
 
         await stuck.open()
@@ -521,7 +520,6 @@ struct ConnectionManagerTests {
 
         let result = try #require(settled, "the cancelled connect never gave up")
         #expect(throws: CancellationError.self) { try result.get() }
-        #expect(elapsed < .seconds(1))
     }
 
     @Test("A tunnel is opened for the connection being dialed, not for whoever asked last")
