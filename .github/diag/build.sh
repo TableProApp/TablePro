@@ -2,6 +2,9 @@
 set -u
 OUT="$PWD/diag-out"
 mkdir -p "$OUT"
+BACKUP="${RUNNER_TEMP:-/tmp}/orig-TableProTests"
+python3 .github/diag/suites.py TableProTests "$BACKUP"
+git diff --stat | tail -1
 python3 -u .github/diag/sample.py "$OUT" > "$OUT/sampler.log" 2>&1 &
 sampler=$!
 
@@ -25,12 +28,6 @@ python3 .github/diag/log_events.py "$OUT/build.raw.log"
 
 python3 .github/diag/report.py "$OUT" 120 150
 
-echo "== replay TablePro batches"
-python3 -u .github/diag/replay_batches.py "$OUT" 900 2700 TablePro
-cp "$OUT/replay-results.json" "$OUT/replay-results-TablePro.json" 2>/dev/null
-
-git fetch --depth=1 origin diag/ci-compile-tail && git checkout FETCH_HEAD -- .github/diag/ && git log -1 --format='diag scripts at %h %s' FETCH_HEAD
-if [ -x .github/diag/phase3.sh ]; then
-  .github/diag/phase3.sh "$OUT"
-fi
+echo "== emit-module A/B on this runner: display-name-only @Suite removed (fixed) vs the original sources"
+python3 -u .github/diag/emit_ab.py "$OUT" "$PWD/TableProTests" "$BACKUP" 1500
 exit 0
