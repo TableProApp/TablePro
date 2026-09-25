@@ -1,6 +1,6 @@
 ---
 title: iCloud Sync
-description: Sync connections, table favorites, settings, and SSH profiles across Macs and iOS via iCloud
+description: Sync connections across Macs, iPhone, and iPad, plus settings, favorites, and profiles between Macs
 ---
 
 Sync needs a Starter or Team [license](/features/licensing) and starts off. Press `Cmd+,`, open **Settings > Sync**, turn on **Sync this Mac with iCloud**, pick the categories, and click **Sync Now**. The iPhone and iPad app shares the same CloudKit data but carries connections, groups, and tags only.
@@ -24,10 +24,10 @@ Each synced category has its own toggle under **Sync Categories**.
 | **Table Favorites** | Yes | The names shown in the Favorites tab and pinned in table lists |
 | **Database Favorites** | Yes | Favorited databases and their Development / Testing / Production tags |
 | **Saved Queries** | Yes | Saved SQL and their folders |
-| **Settings** | Yes | General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, and AI settings, plus custom AI slash commands and saved per-table column widths and order |
+| **Settings** | Yes | Between Macs only. General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, and AI settings, including whether **Show recent connections** is on, plus custom AI slash commands and saved per-table column widths and order |
 | **Linked SQL Folders** | No | Folder paths are per-Mac. Link the same Git repo on each Mac after cloning. The cached file index stays local too |
 | **Sidebar state** | No | The sidebar's database filter and recent tables lists stay on each Mac |
-| **Connection list order** | No | Recent connections, the sort order and the order of favorites stay on each device |
+| **Connection list order** | No | Recent-connection history, the sort order and the order of favorites stay on each device. **Show recent connections** belongs to synced Settings on Macs, but app settings do not cross to iPhone or iPad |
 
 A sync runs at launch, when you switch back to the app, and 2 seconds after you change anything synced.
 
