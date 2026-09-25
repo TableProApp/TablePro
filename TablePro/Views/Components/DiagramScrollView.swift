@@ -29,13 +29,14 @@ final class DiagramScrollView: NSScrollView, ZoomCommandResponding {
     override class var isCompatibleWithResponsiveScrolling: Bool { true }
 
     /// SwiftUI makes this view with no size and gives it one on a later layout pass. The first tile
-    /// with a size is the earliest point a saved offset lands where it was left, so the restore runs
-    /// here rather than in each diagram, which is how the plan diagram came to never restore at all.
+    /// with a size is the earliest point a saved offset lands where it was left, or a fit has a
+    /// viewport to fit to, so both run here rather than in each diagram, which is how the plan
+    /// diagram came to never restore at all.
     override func tile() {
         super.tile()
         guard !hasSettled, !contentView.bounds.isEmpty else { return }
         hasSettled = true
-        zoomController?.restoreScrollPositionIfLaidOut()
+        zoomController?.placeDocumentIfLaidOut()
         (documentView as? DiagramViewportSettling)?.viewportDidSettle()
     }
 

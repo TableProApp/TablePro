@@ -55,7 +55,6 @@ final class ERDiagramViewModel: ObservableObject {
     }
 
     @Published var loadState: LoadState = .loading
-    @Published var needsInitialFit = true
     @Published var graph: ERDiagramGraph = .empty
     @Published var isCompactMode = false {
         didSet { rebuildVisibleGraph() }
@@ -175,7 +174,7 @@ final class ERDiagramViewModel: ObservableObject {
             loadPersistedPositions()
             invalidateCachedRects()
             loadState = .loaded
-            needsInitialFit = true
+            viewport.fitToWindowOnceLaidOut()
 
             Self.logger.debug("ER diagram loaded: \(self.graph.nodes.count) tables, \(self.graph.edges.count) edges")
         } catch {

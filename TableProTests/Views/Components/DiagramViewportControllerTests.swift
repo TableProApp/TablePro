@@ -112,6 +112,95 @@ struct DiagramViewportControllerTests {
         #expect(second.magnification == 1.5)
     }
 
+    @Test("A fit asked for before the diagram has a viewport lands on the first layout that gives it one")
+    func fitWaitsForTheFirstSizedLayout() {
+        let content = CGSize(width: 3_000, height: 2_000)
+        let viewport = DiagramViewportController()
+        viewport.fitToWindowOnceLaidOut()
+
+        let scrollView = makeScrollView(content: content, visible: .zero)
+        viewport.attach(to: scrollView)
+        #expect(scrollView.magnification == 1.0)
+
+        scrollView.setFrameSize(CGSize(width: 600, height: 400))
+        scrollView.tile()
+
+        #expect(abs(scrollView.magnification - 0.2) < 0.0001)
+        #expect(scrollView.documentVisibleRect.width >= content.width - 0.5)
+        #expect(scrollView.documentVisibleRect.height >= content.height - 0.5)
+    }
+
+    @Test("A fit asked for once the scroll view has a size lands at once")
+    func fitOnASizedViewportLandsAtOnce() {
+        let (viewport, scrollView) = makeAttached(
+            content: CGSize(width: 1_000, height: 800), visible: CGSize(width: 500, height: 400)
+        )
+
+        viewport.fitToWindowOnceLaidOut()
+
+        #expect(abs(scrollView.magnification - 0.5) < 0.0001)
+    }
+
+    @Test("A diagram taken away before it was ever laid out still fits when it comes back")
+    func pendingFitSurvivesACanvasThatNeverHadASize() {
+        let content = CGSize(width: 3_000, height: 2_000)
+        let viewport = DiagramViewportController()
+        viewport.fitToWindowOnceLaidOut()
+        let first = makeScrollView(content: content, visible: .zero)
+        viewport.attach(to: first)
+        viewport.detach(from: first)
+
+        let second = makeScrollView(content: content, visible: .zero)
+        viewport.attach(to: second)
+        second.setFrameSize(CGSize(width: 600, height: 400))
+        second.tile()
+
+        #expect(abs(second.magnification - 0.2) < 0.0001)
+    }
+
+    @Test("Coming back to a fitted diagram keeps the zoom and offset chosen since, rather than fitting again")
+    func landedFitIsNotAppliedAgainOnReturn() {
+        let content = CGSize(width: 3_000, height: 2_000)
+        let viewport = DiagramViewportController()
+        viewport.fitToWindowOnceLaidOut()
+        let first = makeScrollView(content: content, visible: .zero)
+        viewport.attach(to: first)
+        first.setFrameSize(CGSize(width: 600, height: 400))
+        first.tile()
+
+        first.magnification = 0.75
+        viewport.scrollBy(CGSize(width: 300, height: 200))
+        let offset = first.contentView.bounds.origin
+        viewport.detach(from: first)
+
+        let second = makeScrollView(content: content, visible: .zero)
+        viewport.attach(to: second)
+        second.setFrameSize(CGSize(width: 600, height: 400))
+        second.tile()
+
+        #expect(second.magnification == 0.75)
+        #expect(abs(second.contentView.bounds.origin.x - offset.x) < 0.5)
+        #expect(abs(second.contentView.bounds.origin.y - offset.y) < 0.5)
+    }
+
+    @Test("A fit asked for after a canvas was torn down replaces the offset it left")
+    func fitReplacesAPendingOffset() {
+        let content = CGSize(width: 3_000, height: 2_000)
+        let (viewport, first) = makeAttached(content: content, visible: CGSize(width: 600, height: 400))
+        viewport.scrollBy(CGSize(width: 700, height: 450))
+        viewport.detach(from: first)
+
+        viewport.fitToWindowOnceLaidOut()
+        let second = makeScrollView(content: content, visible: .zero)
+        viewport.attach(to: second)
+        second.setFrameSize(CGSize(width: 600, height: 400))
+        second.tile()
+
+        #expect(abs(second.magnification - 0.2) < 0.0001)
+        #expect(abs(second.contentView.bounds.origin.x) < 0.5)
+        #expect(abs(second.contentView.bounds.origin.y) < 0.5)
+    }
+
     @Test("A canvas torn down after its replacement attached leaves the replacement attached")
     func staleDetachLeavesTheReplacementAttached() {
         let (viewport, first) = makeAttached()
