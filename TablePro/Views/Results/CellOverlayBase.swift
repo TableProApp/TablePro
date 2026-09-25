@@ -33,12 +33,6 @@ class CellOverlayBase: NSObject {
     var containerView: NSView? { container }
     var tableView: NSTableView? { hostTableView }
 
-    func raiseToFront() {
-        guard let container, let hostTableView, container.superview === hostTableView else { return }
-        guard hostTableView.subviews.last !== container else { return }
-        hostTableView.addSubview(container)
-    }
-
     func install(
         in tableView: NSTableView,
         row: Int,
@@ -50,11 +44,20 @@ class CellOverlayBase: NSObject {
         self.row = row
         self.column = column
         self.columnIndex = columnIndex
-        tableView.addSubview(container)
+        Self.mount(container, over: tableView)
         self.container = container
         setOverlayCell(CellPosition(row: row, column: columnIndex), in: tableView)
         selectionOverlay(in: tableView)?.needsDisplay = true
         installDismissObservers()
+    }
+
+    static func mount(_ container: CellOverlayContainerView, over tableView: NSTableView) {
+        guard let scrollView = tableView.enclosingScrollView else {
+            tableView.addSubview(container)
+            return
+        }
+        container.frame = scrollView.convert(container.frame, from: tableView)
+        scrollView.addSubview(container, positioned: .above, relativeTo: scrollView.contentView)
     }
 
     /// The cell under the overlay draws no text of its own behind it. A drawn cell has no view to
