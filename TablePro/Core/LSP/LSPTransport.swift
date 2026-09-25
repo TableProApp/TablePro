@@ -40,6 +40,7 @@ actor LSPTransport {
     private var stdinPipe: Pipe?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
+    private var stderrReader: PipeReader?
     private var nextRequestID: Int = 1
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (Data) -> Void] = [:]
@@ -81,13 +82,12 @@ actor LSPTransport {
             }
         }
 
-        // Drain stderr to prevent pipe buffer from filling
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
-                Self.logger.debug("LSP stderr: \(text)")
-            }
+        let stderrReader = PipeReader(stderr.fileHandleForReading)
+        stderrReader.start { data in
+            guard let text = String(data: data, encoding: .utf8) else { return }
+            Self.logger.debug("LSP stderr: \(text)")
         }
+        self.stderrReader = stderrReader
 
         try proc.run()
 
@@ -115,8 +115,9 @@ actor LSPTransport {
         if let stdoutHandle = stdoutPipe?.fileHandleForReading {
             try? stdoutHandle.close()
         }
+        stderrReader?.stop()
+        stderrReader = nil
         if let stderrHandle = stderrPipe?.fileHandleForReading {
-            stderrHandle.readabilityHandler = nil
             try? stderrHandle.close()
         }
 

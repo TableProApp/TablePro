@@ -127,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pre-connect script failures sometimes reported without the script's own error message.
 - Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
 - Variables declared in a SQL Server script lost after its first statement. (#3078)
 - Later SQL Server result sets shown under the first one's columns, or crashing the app.

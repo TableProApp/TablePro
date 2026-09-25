@@ -10,10 +10,9 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private let command: NativeDumpCommand
     private let process = Process()
     private let stderrPipe = Pipe()
+    private let stderrReader: PipeReader
     private let stateLock = NSLock()
-    /// Held across the read as well as the append, so a chunk can never be taken out of the pipe by
-    /// one reader and still be missing from the buffer when another snapshots it. Separate from
-    /// `stateLock`, which `cancel()` takes and which must never wait on a pipe.
+    /// Separate from `stateLock`, which `cancel()` takes and which must never wait on a pipe.
     private let stderrLock = NSLock()
     private var stderrBuffer = Data()
     private var wasCancelled = false
@@ -24,6 +23,7 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 
     init(command: NativeDumpCommand) {
         self.command = command
+        stderrReader = PipeReader(stderrPipe.fileHandleForReading)
     }
 
     func start() throws {
@@ -37,18 +37,13 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 
         try attachRedirection(for: command)
 
-        stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            guard let self else { return }
-            self.stderrLock.lock()
-            let chunk = handle.availableData
-            self.append(chunk, cap: stderrCap)
-            self.stderrLock.unlock()
+        stderrReader.start { [weak self] chunk in
+            self?.append(chunk, cap: stderrCap)
         }
 
         process.terminationHandler = { [weak self] proc in
             guard let self else { return }
-            self.stderrPipe.fileHandleForReading.readabilityHandler = nil
-            self.drainStderr(cap: stderrCap)
+            self.stderrReader.stop(drainingUpTo: stderrCap)
             self.releaseRedirection()
 
             self.stderrLock.lock()
@@ -82,51 +77,9 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
         }
     }
 
-    /// Takes whatever the pipe still holds once the process has gone.
-    ///
-    /// The readability source and the process reaper run on independent queues, so bytes written
-    /// just before the child exits can still be in the pipe when `terminationHandler` reads the
-    /// buffer, and a tool that exits on its first argument writes everything it has to say in that
-    /// window. Measured with a harness mirroring this class against a child that writes 66 bytes
-    /// and exits immediately: 2 of 300 runs captured nothing at all, and with this drain 0 of 300
-    /// did. What the user saw instead was "Process exited with code 7" and no message.
-    /// Takes whatever the pipe still holds once the process has gone.
-    ///
-    /// The readability source and the process reaper run on independent queues, so a tool that
-    /// exits on its first argument can have written everything it has to say and still be waiting
-    /// to be read. Measured with a harness mirroring this class against a child that writes 66
-    /// bytes and exits at once: between 1 and 6 of every 300 runs captured nothing at all, the rate
-    /// rising with load, and 0 of 1,200 with the drain and the lock above. What the sheet showed
-    /// instead was the exit code alone.
-    ///
-    /// The child has exited, so everything it wrote is already in the pipe's buffer and a
-    /// non-blocking read takes all of it. `readDataToEndOfFile` would take it too and then wait for
-    /// every writer to close, which a grandchild that inherited this end would never do, hanging
-    /// the termination handler and with it the run. The read stops at the cap for the same reason:
-    /// a grandchild still writing would otherwise keep the loop fed for as long as it cared to, and
-    /// nothing downstream, including the credentials file's removal, happens until it returns.
-    private func drainStderr(cap: Int) {
-        let descriptor = stderrPipe.fileHandleForReading.fileDescriptor
-        let flags = fcntl(descriptor, F_GETFL)
-        guard flags != -1, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != -1 else { return }
-
-        var buffer = [UInt8](repeating: 0, count: 4_096)
-        var taken = 0
-        stderrLock.lock()
-        while taken < cap {
-            let received = buffer.withUnsafeMutableBytes { raw in
-                read(descriptor, raw.baseAddress, raw.count)
-            }
-            guard received > 0 else { break }
-            taken += received
-            append(Data(buffer[0 ..< received]), cap: cap)
-        }
-        stderrLock.unlock()
-    }
-
-    /// Call with `stderrLock` held.
     private func append(_ chunk: Data, cap: Int) {
-        guard !chunk.isEmpty else { return }
+        stderrLock.lock()
+        defer { stderrLock.unlock() }
         stderrBuffer.append(chunk)
         if stderrBuffer.count > cap {
             stderrBuffer = Data(stderrBuffer.suffix(cap))

@@ -59,11 +59,9 @@ enum PreConnectHookRunner {
             // the pipe buffer fills and the child blocks on write — deadlocking
             // with waitUntilExit() on the parent side.
             let stderrCollector = StderrCollector()
-            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                if !chunk.isEmpty {
-                    stderrCollector.append(chunk)
-                }
+            let stderrReader = PipeReader(stderrPipe.fileHandleForReading)
+            stderrReader.start { chunk in
+                stderrCollector.append(chunk)
             }
 
             try process.run()
@@ -78,7 +76,7 @@ enum PreConnectHookRunner {
             process.waitUntilExit()
             timeoutTask.cancel()
 
-            stderrPipe.fileHandleForReading.readabilityHandler = nil
+            stderrReader.stop(drainingUpTo: DescriptorRead.pipeCapacity)
             let stderr = stderrCollector.result
 
             if process.terminationReason == .uncaughtSignal {
