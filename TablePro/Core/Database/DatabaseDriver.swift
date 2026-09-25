@@ -278,6 +278,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func renameSchema(name: String, to newName: String) async throws
 
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String?
+
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws
+
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]?
 
     func renameSchemaStatements(name: String, to newName: String) -> [String]?
@@ -545,6 +549,14 @@ extension DatabaseDriver {
 
     func renameSchema(name: String, to newName: String) async throws {
         throw PluginDriverUnsupportedOperation.renameSchema
+    }
+
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String? {
+        throw PluginDriverUnsupportedOperation.writeDocument
+    }
+
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {
+        throw PluginDriverUnsupportedOperation.writeDocument
     }
 
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }

@@ -31,6 +31,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridShowAllColumns()
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem]
     func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem]
+    func dataGridDocumentMenuItems(forRow displayRow: Int) -> [NSMenuItem]
     func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem?
     func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem?
     func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem?
@@ -83,6 +84,7 @@ extension DataGridViewDelegate {
     func dataGridShowAllColumns() {}
     func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem] { [] }
     func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] { [] }
+    func dataGridDocumentMenuItems(forRow displayRow: Int) -> [NSMenuItem] { [] }
     func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? { nil }
     func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? { nil }
     func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem? { nil }

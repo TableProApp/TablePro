@@ -109,6 +109,10 @@ extension MainSplitViewController {
         commandActions?.duplicateRow()
     }
 
+    @objc func insertDocument(_ sender: Any?) {
+        commandActions?.insertDocument()
+    }
+
     @objc func restorePreviousValues(_ sender: Any?) {
         commandActions?.restorePreviousValues()
     }

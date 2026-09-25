@@ -39,6 +39,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsDocumentEditing: true,
                     supportsOpportunisticTLS: false,
                     authenticationIsDatabaseScoped: true
                 ),

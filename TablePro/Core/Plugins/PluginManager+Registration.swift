@@ -594,6 +594,11 @@ extension PluginManager {
             .capabilities.supportsDropSchema ?? false
     }
 
+    func supportsDocumentEditing(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsDocumentEditing ?? false
+    }
+
     func supportsRenameTable(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsRenameTable ?? false

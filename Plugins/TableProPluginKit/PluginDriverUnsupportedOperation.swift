@@ -19,6 +19,7 @@ public enum PluginDriverUnsupportedOperation: Error, LocalizedError, Sendable {
     case renameTable
     case renameDatabase
     case renameSchema
+    case writeDocument
 
     public var errorDescription: String? {
         switch self {
@@ -28,6 +29,8 @@ public enum PluginDriverUnsupportedOperation: Error, LocalizedError, Sendable {
             return String(localized: "This database cannot be renamed")
         case .renameSchema:
             return String(localized: "This database cannot rename a schema")
+        case .writeDocument:
+            return String(localized: "This database does not store whole documents")
         }
     }
 }
