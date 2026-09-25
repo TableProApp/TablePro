@@ -64,6 +64,8 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether to share anonymous usage analytics
     var shareAnalytics: Bool
 
+    var showRecentConnections: Bool
+
     /// Whether the sidebar shows a Recent section with recently opened tables
     var showRecentTables: Bool
 
@@ -93,6 +95,7 @@ struct GeneralSettings: Codable, Equatable {
         language: .system,
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
+        showRecentConnections: true,
         showRecentTables: false,
         showObjectComments: true,
         showObjectIcons: true,
@@ -108,6 +111,7 @@ struct GeneralSettings: Codable, Equatable {
         language: AppLanguage = .system,
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
+        showRecentConnections: Bool = true,
         showRecentTables: Bool = false,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
@@ -121,6 +125,7 @@ struct GeneralSettings: Codable, Equatable {
         self.language = language
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.shareAnalytics = shareAnalytics
+        self.showRecentConnections = showRecentConnections
         self.showRecentTables = showRecentTables
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
@@ -137,6 +142,7 @@ struct GeneralSettings: Codable, Equatable {
         language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 60
         shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
+        showRecentConnections = try container.decodeIfPresent(Bool.self, forKey: .showRecentConnections) ?? true
         showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
         showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true

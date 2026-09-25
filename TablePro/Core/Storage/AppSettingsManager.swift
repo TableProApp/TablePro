@@ -15,6 +15,9 @@ final class AppSettingsManager: ObservableObject {
             if oldValue.showWorkspaceRail != general.showWorkspaceRail {
                 appEvents.workspaceRailVisibilityChanged.send(())
             }
+            if oldValue.showRecentConnections != general.showRecentConnections {
+                appEvents.connectionListStateChanged.send(())
+            }
             if oldValue.connectionHealthCheck != general.connectionHealthCheck {
                 appEvents.connectionHealthCheckChanged.send(())
             }

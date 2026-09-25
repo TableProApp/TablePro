@@ -16276,6 +16276,40 @@
         }
       }
     },
+    "Adds a Recent section to the welcome window and connection switcher with the last five connections you opened." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근에 연 연결 5개를 표시하는 최근 항목 섹션을 시작 윈도우와 연결 전환기에 추가합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoş geldiniz penceresine ve bağlantı değiştiriciye, en son açtığınız beş bağlantıyı gösteren bir Son Kullanılanlar bölümü ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm mục Gần đây vào cửa sổ chào mừng và trình chuyển đổi kết nối, hiển thị năm kết nối bạn mở gần nhất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在欢迎窗口和连接切换器中添加“最近”区域，显示你最近打开的五个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在歡迎視窗與連線切換器中加入「最近」區塊，顯示你最近開啟的五個連線。"
+          }
+        }
+      }
+    },
     "Adjust Limit" : {
       "localizations" : {
         "ko" : {
@@ -141890,6 +141924,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示查詢歷史"
+          }
+        }
+      }
+    },
+    "Show recent connections" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 연결 보기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son bağlantıları göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiện kết nối gần đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示最近的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示最近的連線"
           }
         }
       }

@@ -284,6 +284,7 @@ final class WelcomeViewModel: ObservableObject {
             query: query,
             favoritesOrder: listPreferences.favoritesOrder,
             lastConnected: recentConnections.lastConnected,
+            includesRecent: services.appSettings.general.showRecentConnections,
             externalSections: [
                 LibraryExternalSection(kind: .linkedFolders, entries: presentableLinkedConnections.map(\.libraryEntry)),
                 LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryEntry)),

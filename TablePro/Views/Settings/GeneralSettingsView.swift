@@ -133,6 +133,13 @@ struct GeneralSettingsView: View {
             }
 
             Section("Connections") {
+                Toggle("Show recent connections", isOn: $settings.showRecentConnections)
+                    .accessibilityIdentifier("show-recent-connections-toggle")
+                    .help(String(localized: """
+                        Adds a Recent section to the welcome window and connection switcher with the last five \
+                        connections you opened.
+                        """))
+
                 Picker("Check connections:", selection: $settings.connectionHealthCheck) {
                     ForEach(ConnectionHealthCheck.allCases) { option in
                         Text(option.title).tag(option)

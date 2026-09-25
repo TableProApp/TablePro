@@ -39,6 +39,7 @@ struct ConnectionSwitcherEntry: Identifiable {
 
 struct ConnectionSwitcherPopover: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     /// An explicit closure rather than `@Environment(\.dismiss)`, because the presenter owns the
     /// surface: `dismiss` reaches a SwiftUI presentation, and this content is hosted in an AppKit
     /// popover or panel that SwiftUI knows nothing about. `PopoverPresenter` hands every caller the
@@ -203,7 +204,8 @@ struct ConnectionSwitcherPopover: View {
             groups: groups,
             isFiltering: isFiltering,
             favorites: sortMode == .manual ? favorites : saved.filter(\.isFavorite),
-            recent: Array(recent)
+            recent: Array(recent),
+            includesRecent: settingsManager.general.showRecentConnections
         )
     }
 
@@ -392,7 +394,8 @@ internal enum ConnectionSwitcherSections {
         groups: [ConnectionGroup],
         isFiltering: Bool,
         favorites: [DatabaseConnection] = [],
-        recent: [DatabaseConnection] = []
+        recent: [DatabaseConnection] = [],
+        includesRecent: Bool = true
     ) -> [FieldDrivenListSection<ConnectionSwitcherEntry>] {
         var sections = [
             FieldDrivenListSection(
@@ -420,7 +423,7 @@ internal enum ConnectionSwitcherSections {
                 items: favorites.map(entry)
             ))
         }
-        if !recent.isEmpty {
+        if includesRecent, !recent.isEmpty {
             sections.append(FieldDrivenListSection(
                 id: "recent",
                 title: String(localized: "RECENT"),
@@ -428,7 +431,8 @@ internal enum ConnectionSwitcherSections {
             ))
         }
 
-        let listedIds = Set(favorites.map(\.id)).union(recent.map(\.id))
+        let recentIds = includesRecent ? recent.map(\.id) : []
+        let listedIds = Set(favorites.map(\.id)).union(recentIds)
         let library = saved.filter { !listedIds.contains($0.id) }
         let graph = LibraryGroupGraph(groups: groups)
         var byGroup: [UUID: [DatabaseConnection]] = [:]
