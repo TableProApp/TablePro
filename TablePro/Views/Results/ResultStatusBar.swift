@@ -110,13 +110,9 @@ struct ResultStatusBar: View {
                 )
             }
             if model.controls.showsReadout {
-                readoutCluster
-                    .frame(
-                        minWidth: 0,
-                        idealWidth: StatusBarLayoutMetrics.readoutIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .leading
-                    )
+                readoutZone(readoutCluster)
+            } else if model.controls.showsExecutionWithoutReadout {
+                readoutZone(executionIndicator)
             } else {
                 Spacer(minLength: 0)
             }
@@ -214,17 +210,30 @@ struct ResultStatusBar: View {
     private var executionReadout: some View {
         if execution.isActive {
             separator
-            ExecutionIndicatorView(
-                isExecuting: execution.isExecuting,
-                lastTiming: execution.lastTiming,
-                canStop: execution.canStop,
-                onCancel: execution.onCancel
-            )
+            executionIndicator
         }
         if isRefreshingSchema {
             DelayedProgressIndicator(isActive: true)
                 .accessibilityLabel(String(localized: "Refreshing"))
         }
+    }
+
+    private var executionIndicator: some View {
+        ExecutionIndicatorView(
+            isExecuting: execution.isExecuting,
+            lastTiming: execution.lastTiming,
+            canStop: execution.canStop,
+            onCancel: execution.onCancel
+        )
+    }
+
+    private func readoutZone(_ content: some View) -> some View {
+        content.frame(
+            minWidth: 0,
+            idealWidth: StatusBarLayoutMetrics.readoutIdealWidth,
+            maxWidth: .infinity,
+            alignment: .leading
+        )
     }
 
     /// Punctuation, so VoiceOver must not read it as an element of its own.

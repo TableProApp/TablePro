@@ -65,6 +65,52 @@ struct ResultStatusModelTests {
         #expect(!result.controls.showsReadout)
     }
 
+    @Test("A query tab running before it has any result reports the execution alone")
+    func firstRunReportsTheExecution() {
+        var running = PaginationState()
+        running.isLoading = true
+        let snapshot = makeSnapshot(
+            tabType: .query,
+            rowCount: 0,
+            hasColumns: false,
+            hasTableName: false,
+            pagination: running
+        )
+        let result = model(snapshot)
+        #expect(!result.controls.showsReadout)
+        #expect(result.controls.showsExecutionWithoutReadout)
+    }
+
+    @Test("A query tab with no result and nothing running reports nothing")
+    func idleTabWithoutResultReportsNoExecution() {
+        let snapshot = makeSnapshot(tabType: .query, rowCount: 0, hasColumns: false, hasTableName: false)
+        #expect(!model(snapshot).controls.showsExecutionWithoutReadout)
+    }
+
+    @Test("A running query with a result on screen reports the execution inside the readout")
+    func runWithAResultKeepsTheReadout() {
+        var running = PaginationState()
+        running.isLoading = true
+        let snapshot = makeSnapshot(tabType: .query, rowCount: 5, hasTableName: false, pagination: running)
+        let result = model(snapshot)
+        #expect(result.controls.showsReadout)
+        #expect(!result.controls.showsExecutionWithoutReadout)
+    }
+
+    @Test("Structure mode never reports an execution on its own")
+    func structureModeReportsNoBareExecution() {
+        var running = PaginationState()
+        running.isLoading = true
+        let snapshot = makeSnapshot(
+            tabType: .table,
+            rowCount: 0,
+            hasColumns: false,
+            hasTableName: false,
+            pagination: running
+        )
+        #expect(!model(snapshot, viewMode: .structure).controls.showsExecutionWithoutReadout)
+    }
+
     @Test("A table with a known total reports the offset range")
     func tableReportsRange() {
         let snapshot = makeSnapshot(

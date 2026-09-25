@@ -36,6 +36,7 @@ enum ResultStatusReadout: Equatable {
 struct ResultStatusControls: Equatable {
     var showsModeSwitcher = false
     var showsReadout = false
+    var showsExecutionWithoutReadout = false
     var showsLoadingMore = false
     var showsExactCountAction = false
     var showsCountInProgress = false
@@ -104,6 +105,7 @@ struct ResultStatusModel: Equatable {
         let describesAResult = isTable ? snapshot.hasTableName : snapshot.hasColumns
 
         controls.showsReadout = viewMode.showsResultScope && describesAResult
+        controls.showsExecutionWithoutReadout = viewMode.showsResultScope && !describesAResult && pagination.isLoading
         controls.showsLoadingMore = controls.showsReadout && pagination.isLoadingMore
 
         /// Withheld until nothing is still resolving the total. Offered against a total that is
