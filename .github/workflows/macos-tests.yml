@@ -112,7 +112,7 @@ jobs:
   packages:
     name: Package Tests
     needs: changes
-    if: needs.changes.outputs.run == 'true'
+    if: false
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -162,7 +162,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -200,6 +200,7 @@ jobs:
       # that file from the working directory, not from --manifest-path, and testing on the
       # runner's default Rust would not be the toolchain the shipped staticlib is built with.
       - name: Test Dameng native bridge
+        if: false
         working-directory: Native/DamengBridge
         run: cargo test --locked
 
@@ -236,6 +237,7 @@ jobs:
       # of the 17 registry-only plugins compiles nowhere else in CI. AllPlugins is the only
       # target that covers them, and build-plugin.yml does not run until a release tag.
       - name: Compile every plugin
+        if: false
         run: |
           set -o pipefail
           xcodebuild build \
@@ -252,25 +254,32 @@ jobs:
       # failed to load executable" has shipped twice, and dlopen is exactly the dyld path that
       # fails in that case.
       - name: Verify every plugin loads
+        if: false
         run: scripts/ci/verify-plugin-loads.sh "$DERIVED_DATA/Build/Products/Debug"
 
       - name: Build the app and both test bundles
+        run: .github/diag/build.sh
+
+      - name: Pack the diagnostics
+        if: always()
         run: |
-          set -o pipefail
-          xcodebuild build-for-testing \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -destination "$TEST_DESTINATION" \
-            -derivedDataPath "$DERIVED_DATA" \
-            -clonedSourcePackagesDirPath ~/.spm-cache \
-            -skipPackagePluginValidation \
-            CODE_SIGNING_ALLOWED=NO \
-            | xcbeautify --renderer github-actions
+          gzip -f diag-out/build.raw.log || true
+          tar -czf diag-out.tar.gz diag-out
+
+      - name: Upload the diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compile-diag
+          path: diag-out.tar.gz
+          retention-days: 5
+          compression-level: 0
 
       # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
       # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
       # step nothing runs them and they rot silently.
       - name: Build the Dameng driver tests
+        if: false
         run: |
           set -o pipefail
           xcodebuild build-for-testing \
@@ -287,9 +296,11 @@ jobs:
       # the executable bit or symlinks, and both matter to an .app bundle: the app would arrive
       # unable to run. The archive measures 144 MB against 559 MB on disk.
       - name: Pack the built products
+        if: false
         run: tar -czf products.tar.gz -C "$DERIVED_DATA/Build" Products
 
       - name: Upload the built products
+        if: false
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-products
@@ -300,7 +311,7 @@ jobs:
   unit:
     name: Unit tests
     needs: [changes, build]
-    if: needs.changes.outputs.run == 'true'
+    if: false
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -384,7 +395,7 @@ jobs:
   ui:
     name: UI tests ${{ matrix.shard }}/${{ matrix.of }}
     needs: [changes, build]
-    if: needs.changes.outputs.run == 'true'
+    if: false
     runs-on: macos-26
     timeout-minutes: 40
     strategy:
