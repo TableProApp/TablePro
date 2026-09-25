@@ -27,6 +27,6 @@ while IFS=$'\t' read -r file argv probe seconds status; do
 done < "$OUT/picked.tsv"
 
 echo "== replay the long TableProTests batches"
-python3 -u .github/diag/replay_batches.py "$OUT" 900 1500 TableProTests
+python3 -u .github/diag/replay_batches.py "$OUT" 900 900 TableProTests
 cp "$OUT/replay-results.json" "$OUT/replay-results-TableProTests.json" 2>/dev/null
 exit 0
