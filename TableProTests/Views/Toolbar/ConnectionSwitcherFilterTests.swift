@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProConnectionLibrary
 import TableProPluginKit
 import Testing
 
@@ -83,6 +84,21 @@ struct ConnectionSwitcherSelectionTests {
 struct ConnectionSwitcherSectionsTests {
     private func connection(_ name: String, groupId: UUID? = nil, sortOrder: Int = 0) -> DatabaseConnection {
         DatabaseConnection(name: name, groupId: groupId, sortOrder: sortOrder)
+    }
+
+    private func library(
+        _ connections: [DatabaseConnection],
+        groups: [ConnectionGroup],
+        lastConnected: [UUID: Date],
+        includesRecent: Bool = true
+    ) -> LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
+        LibraryOutlineRequest(
+            connections: connections,
+            groups: groups,
+            tags: [],
+            lastConnected: lastConnected,
+            includesRecent: includesRecent
+        )
     }
 
     private func titles(_ sections: [FieldDrivenListSection<ConnectionSwitcherEntry>]) -> [String] {
@@ -258,19 +274,48 @@ struct ConnectionSwitcherSectionsTests {
         #expect(names(sections) == [[], ["acme-prod"], ["acme-staging"], ["acme-local"]])
     }
 
-    @Test("Hiding Recent returns its connections to their normal group")
-    func hiddenRecentFallsBackToGroup() {
+    @Test("The library's favorites and recent connections lead the groups, newest recent first")
+    func libraryShortcutsLeadTheGroups() {
         let acme = ConnectionGroup(name: "Acme")
-        let recent = connection("acme-staging", groupId: acme.id)
-        let other = connection("acme-local", groupId: acme.id)
+        var favorite = connection("acme-prod", groupId: acme.id, sortOrder: 0)
+        favorite.isFavorite = true
+        let older = connection("acme-staging", groupId: acme.id, sortOrder: 1)
+        let newer = connection("acme-qa", groupId: acme.id, sortOrder: 2)
+        let other = connection("acme-local", groupId: acme.id, sortOrder: 3)
 
         let sections = ConnectionSwitcherSections.build(
             active: [],
-            saved: [recent, other],
-            groups: [acme],
-            isFiltering: false,
-            recent: [recent],
-            includesRecent: false
+            library: library(
+                [favorite, older, newer, other],
+                groups: [acme],
+                lastConnected: [
+                    favorite.id: Date(timeIntervalSince1970: 3),
+                    older.id: Date(timeIntervalSince1970: 1),
+                    newer.id: Date(timeIntervalSince1970: 2),
+                ]
+            ),
+            isFiltering: false
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "FAVORITES", "RECENT", "ACME"])
+        #expect(names(sections) == [[], ["acme-prod"], ["acme-qa", "acme-staging"], ["acme-local"]])
+    }
+
+    @Test("Hiding Recent returns its connections to their normal group")
+    func hiddenRecentFallsBackToGroup() {
+        let acme = ConnectionGroup(name: "Acme")
+        let recent = connection("acme-staging", groupId: acme.id, sortOrder: 0)
+        let other = connection("acme-local", groupId: acme.id, sortOrder: 1)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            library: library(
+                [recent, other],
+                groups: [acme],
+                lastConnected: [recent.id: Date()],
+                includesRecent: false
+            ),
+            isFiltering: false
         )
 
         #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME"])

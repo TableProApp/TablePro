@@ -31,9 +31,4 @@ final class SidebarSystemContainersUITests: UITestCase {
             "Choosing the View Options entry turns on the setting Settings shows"
         )
     }
-
-    private func isOn(_ toggle: XCUIElement) -> Bool {
-        if let number = toggle.value as? Int { return number == 1 }
-        return (toggle.value as? String) == "1"
-    }
 }

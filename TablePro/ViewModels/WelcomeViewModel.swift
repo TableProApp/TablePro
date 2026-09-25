@@ -100,6 +100,7 @@ final class WelcomeViewModel: ObservableObject {
     @Published private(set) var outline: LibraryOutline = .empty
     @Published private(set) var outlineRevision = 0
     @Published private(set) var sortMode: LibrarySortMode
+    private(set) var showsRecent: Bool
     @Published var expandedGroupIds: Set<UUID> = [] {
         didSet { groupExpansionStore.save(expandedGroupIds) }
     }
@@ -140,6 +141,7 @@ final class WelcomeViewModel: ObservableObject {
 
     private var connectionUpdatedCancellable: AnyCancellable?
     private var listStateCancellable: AnyCancellable?
+    private var showsRecentCancellable: AnyCancellable?
     private var linkedFoldersCancellable: AnyCancellable?
     private var teamLibraryCancellable: AnyCancellable?
     private var licenseCancellable: AnyCancellable?
@@ -169,6 +171,7 @@ final class WelcomeViewModel: ObservableObject {
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
         self.sortMode = listPreferences.sortMode
+        self.showsRecent = listPreferences.showsRecent
         let storedExpansion = groupExpansionStore.load()
         self.hasStoredGroupExpansion = storedExpansion != nil
         self.expandedGroupIds = storedExpansion ?? []
@@ -284,7 +287,7 @@ final class WelcomeViewModel: ObservableObject {
             query: query,
             favoritesOrder: listPreferences.favoritesOrder,
             lastConnected: recentConnections.lastConnected,
-            includesRecent: services.appSettings.general.showRecentConnections,
+            includesRecent: showsRecent,
             externalSections: [
                 LibraryExternalSection(kind: .linkedFolders, entries: presentableLinkedConnections.map(\.libraryEntry)),
                 LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryEntry)),
@@ -373,6 +376,12 @@ final class WelcomeViewModel: ObservableObject {
         rebuildOutline()
     }
 
+    private func showsRecentDidChange(_ showsRecent: Bool) {
+        guard showsRecent != self.showsRecent else { return }
+        self.showsRecent = showsRecent
+        rebuildOutline()
+    }
+
     // MARK: - Setup
 
     func refreshImportableApp() {
@@ -400,6 +409,12 @@ final class WelcomeViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.listStateDidChange()
+            }
+
+        showsRecentCancellable = listPreferences.$showsRecent
+            .dropFirst()
+            .sink { [weak self] showsRecent in
+                self?.showsRecentDidChange(showsRecent)
             }
 
         linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate

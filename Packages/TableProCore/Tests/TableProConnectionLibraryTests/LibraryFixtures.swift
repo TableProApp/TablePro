@@ -34,6 +34,7 @@ func request(
     query: LibraryQuery = LibraryQuery(),
     favoritesOrder: [UUID] = [],
     lastConnected: [UUID: Date] = [:],
+    includesFavorites: Bool = true,
     includesRecent: Bool = true,
     externalSections: [LibraryExternalSection] = []
 ) -> LibraryOutlineRequest<FixtureConnection, FixtureGroup, FixtureTag> {
@@ -45,6 +46,7 @@ func request(
         query: query,
         favoritesOrder: favoritesOrder,
         lastConnected: lastConnected,
+        includesFavorites: includesFavorites,
         includesRecent: includesRecent,
         externalSections: externalSections
     )

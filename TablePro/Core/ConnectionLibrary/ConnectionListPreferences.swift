@@ -8,14 +8,16 @@ import Foundation
 import TableProConnectionLibrary
 
 @MainActor
-internal final class ConnectionListPreferences {
+internal final class ConnectionListPreferences: ObservableObject {
     internal static let shared = ConnectionListPreferences()
+    internal static let defaultShowsRecent = true
 
     private let defaults: UserDefaults
     private let appEvents: AppEvents
 
     internal private(set) var sortMode: LibrarySortMode
     internal private(set) var favoritesOrder: [UUID]
+    @Published internal private(set) var showsRecent: Bool
 
     internal init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
@@ -27,6 +29,8 @@ internal final class ConnectionListPreferences {
             .flatMap(LibrarySortMode.init(rawValue:)) ?? .manual
         favoritesOrder = (defaults.stringArray(forKey: PreferenceKeys.connectionListFavoritesOrder.name) ?? [])
             .compactMap(UUID.init(uuidString:))
+        showsRecent = defaults.object(forKey: PreferenceKeys.connectionListShowsRecent.name) as? Bool
+            ?? Self.defaultShowsRecent
     }
 
     internal func setSortMode(_ mode: LibrarySortMode) {
@@ -43,5 +47,17 @@ internal final class ConnectionListPreferences {
         favoritesOrder = unique
         defaults.set(unique.map(\.uuidString), forKey: PreferenceKeys.connectionListFavoritesOrder.name)
         appEvents.connectionListStateChanged.send(())
+    }
+
+    internal func setShowsRecent(_ showsRecent: Bool) {
+        guard showsRecent != self.showsRecent else { return }
+        defaults.set(showsRecent, forKey: PreferenceKeys.connectionListShowsRecent.name)
+        self.showsRecent = showsRecent
+    }
+
+    internal func resetShowsRecent() {
+        defaults.removeObject(forKey: PreferenceKeys.connectionListShowsRecent.name)
+        guard showsRecent != Self.defaultShowsRecent else { return }
+        showsRecent = Self.defaultShowsRecent
     }
 }

@@ -145,14 +145,27 @@ struct LibraryOutlineBuilderTests {
     @Test("Recent can be hidden without changing the connection list")
     func recentSectionHidden() {
         let recent = FixtureConnection(name: "recent")
-        let outline = LibraryOutlineBuilder.build(request(
+        let hidden = request(
             connections: [recent],
             lastConnected: [recent.id: Date()],
             includesRecent: false
-        ))
+        )
+        let outline = LibraryOutlineBuilder.build(hidden)
 
+        #expect(LibraryOutlineBuilder.recentIds(hidden).isEmpty)
         #expect(outline.section(.recent) == nil)
         #expect(outline.connectionIds(in: .connections) == [recent.id])
+    }
+
+    @Test("Favorites can be hidden without changing the connection list")
+    func favoritesSectionHidden() {
+        let favorite = FixtureConnection(name: "prod", isFavorite: true)
+        let hidden = request(connections: [favorite], includesFavorites: false)
+        let outline = LibraryOutlineBuilder.build(hidden)
+
+        #expect(LibraryOutlineBuilder.favoriteIds(hidden).isEmpty)
+        #expect(outline.section(.favorites) == nil)
+        #expect(outline.connectionIds(in: .connections) == [favorite.id])
     }
 
     @Test("Favorites and Recent are hidden while searching")

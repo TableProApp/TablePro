@@ -1,6 +1,6 @@
 ---
 title: General Settings
-description: Language, startup behavior, tabs, connections, sidebar layout, query timeout, the command line tool, updates, and reset
+description: Language, startup behavior, tabs, sidebar layout, connections, query timeout, the command line tool, updates, and reset
 ---
 
 Most of this tab takes effect the moment you click. Language waits for a restart, and the query timeout reaches a connection only when that connection opens.
@@ -36,10 +36,9 @@ Icons, comments, system databases and schemas, partitions, and row size are also
 
 ## Connections
 
-| Setting | Default | What it does |
-|---------|---------|--------------|
-| **Show recent connections** | On | The **Recent** saved-connection section in the welcome window and **Switch Connection**. Turning it off hides the section without clearing that Mac's history; [Settings sync](/features/icloud-sync#what-syncs) carries the visibility choice between Macs |
-| **Check connections** | Every 30 seconds | Runs a small query on each open connection to detect a dropped one. The other choices are **Every 5 minutes**, **Every 15 minutes**, and **Only when I use the connection** |
+**Show recent connections** is on out of the box and puts a [Recent section](/connections#organize-connections) in the welcome window and **Switch Connection**. Turning it off hides the section and keeps the history. **Clear Recent**, on the **Recent connection history** row, forgets it, which also starts sorting by **Last Connected** over. The switch and the history both stay on this Mac.
+
+**Check connections** sets how often each open connection is checked for a dropped session. The choices, and what a failed check starts, are under [Connection health](/connections/connection-form#connection-health).
 
 ## Query timeout
 

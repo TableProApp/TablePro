@@ -132,28 +132,7 @@ struct GeneralSettingsView: View {
                 .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
             }
 
-            Section("Connections") {
-                Toggle("Show recent connections", isOn: $settings.showRecentConnections)
-                    .accessibilityIdentifier("show-recent-connections-toggle")
-                    .help(String(localized: """
-                        Adds a Recent section to the welcome window and connection switcher with the last five \
-                        connections you opened.
-                        """))
-
-                Picker("Check connections:", selection: $settings.connectionHealthCheck) {
-                    ForEach(ConnectionHealthCheck.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .accessibilityIdentifier("connection-health-check-picker")
-                .help(String(localized: """
-                    TablePro runs a small query on each open connection so it can notice a dropped \
-                    one and reconnect before you hit it. Only when I use the connection stops that \
-                    background traffic, which is what a database that sleeps when idle, or bills \
-                    per query, needs; TablePro then checks the connection the first time you use \
-                    it after a pause.
-                    """))
-            }
+            ConnectionsSettingsSection(healthCheck: $settings.connectionHealthCheck)
 
             Section("Query Execution") {
                 Picker("Query timeout:", selection: $settings.queryTimeoutSeconds) {

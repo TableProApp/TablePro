@@ -190,6 +190,11 @@ internal class UITestCase: XCTestCase {
         UITestPoll.until(timeout: timeout, condition)
     }
 
+    internal func isOn(_ toggle: XCUIElement) -> Bool {
+        if let number = toggle.value as? Int { return number == 1 }
+        return (toggle.value as? String) == "1"
+    }
+
     /// The precondition a click actually has. `waitForExistence` only says the element is in the
     /// tree, which a row inside a pane that is still animating open already is; the click then
     /// lands on a moving target, the app hit-tests the point to nothing, and the event goes

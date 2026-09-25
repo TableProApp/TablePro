@@ -22,17 +22,4 @@ struct AppSettingsStorageResetTests {
         #expect(defaults.string(forKey: SidebarPersistenceKey.defaultLayout) == nil)
         #expect(defaults.object(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == nil)
     }
-
-    @Test("Reset restores recent connection visibility")
-    func resetRestoresRecentConnections() throws {
-        let suite = "settings-reset-recents-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let storage = AppSettingsStorage(userDefaults: defaults)
-        storage.saveGeneral(GeneralSettings(showRecentConnections: false))
-
-        storage.resetToDefaults()
-
-        #expect(storage.loadGeneral().showRecentConnections)
-    }
 }

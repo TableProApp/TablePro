@@ -45,46 +45,6 @@ struct GeneralSettingsTests {
     }
 }
 
-struct GeneralSettingsRecentConnectionsTests {
-    @Test("Defaults to on")
-    func defaultsOn() {
-        #expect(GeneralSettings.default.showRecentConnections)
-        #expect(GeneralSettings().showRecentConnections)
-    }
-
-    @Test("Settings saved before the key existed keep recent connections visible")
-    func decodesMissingKeyAsOn() throws {
-        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
-
-        #expect(decoded.showRecentConnections)
-    }
-
-    @Test("Round-trips when turned off")
-    func roundTripsDisabled() throws {
-        var settings = GeneralSettings()
-        settings.showRecentConnections = false
-
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-
-        #expect(!decoded.showRecentConnections)
-    }
-
-    @Test("Recent connections and recent tables are independent")
-    func independentFromRecentTables() throws {
-        var settings = GeneralSettings()
-        settings.showRecentConnections = false
-        settings.showRecentTables = true
-
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-
-        #expect(!decoded.showRecentConnections)
-        #expect(decoded.showRecentTables)
-    }
-}
-
 struct GeneralSettingsObjectIconsTests {
     @Test("Defaults to on")
     func defaultsOn() {
