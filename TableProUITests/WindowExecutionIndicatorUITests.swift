@@ -52,12 +52,10 @@ final class WindowExecutionIndicatorUITests: UITestCase {
             executionStop(in: window).waitToExist(timeout: 15),
             "A running query must offer Stop in the status bar"
         )
-        let indicator = executionIndicator(in: window)
-        if !indicator.exists {
-            let untyped = window.descendants(matching: .any)["execution-indicator"].firstMatch
-            let found = untyped.exists ? "element type \(untyped.elementType.rawValue)" : "nothing"
-            XCTFail("The status bar must report a query that is running; the identifier resolved to \(found)")
-        }
+        XCTAssertTrue(
+            executionIndicator(in: window).exists,
+            "The status bar must report a query that is running"
+        )
 
         let settled = waitForPredicate(timeout: 90) {
             !executionIndicator(in: window).exists && !executionStop(in: window).exists
