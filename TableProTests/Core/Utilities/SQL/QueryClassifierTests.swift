@@ -8,7 +8,6 @@ import Foundation
 import TableProSQLGrammar
 import Testing
 
-@Suite("QueryClassifier isExplainStatement")
 struct QueryClassifierExplainTests {
     @Test("Detects EXPLAIN and EXPLAIN ANALYZE variants")
     func detectsExplainVariants() {
@@ -47,7 +46,6 @@ struct QueryClassifierExplainTests {
     }
 }
 
-@Suite("QueryClassifier explainedStatement")
 struct QueryClassifierExplainedStatementTests {
     @Test("Preserves line comments between EXPLAIN options and the statement")
     func preservesLineCommentBeforeStatement() throws {
@@ -92,7 +90,6 @@ struct QueryClassifierExplainedStatementTests {
     }
 }
 
-@Suite("QueryClassifier classification with leading comments")
 struct QueryClassifierLeadingCommentTests {
     @Test("isWriteQuery detects writes preceded by comments")
     func writeDetectionWithComments() {
@@ -117,7 +114,6 @@ struct QueryClassifierLeadingCommentTests {
     }
 }
 
-@Suite("QueryClassifier keyword boundary handling")
 struct QueryClassifierKeywordBoundaryTests {
     @Test("isWriteQuery detects writes followed by newline or tab")
     func writeDetectionAcrossWhitespace() {
@@ -141,7 +137,6 @@ struct QueryClassifierKeywordBoundaryTests {
     }
 }
 
-@Suite("QueryClassifier parenthesised statements")
 struct QueryClassifierParenthesisedTests {
     @Test("leadingKeyword reaches past opening parentheses")
     func leadingKeywordSkipsParens() {
@@ -174,7 +169,6 @@ struct QueryClassifierParenthesisedTests {
     }
 }
 
-@Suite("QueryClassifier isMultiStatement")
 struct QueryClassifierMultiStatementTests {
     @Test("A trailing comment after the terminating semicolon is not a second statement")
     func trailingCommentIsNotMultiStatement() {
@@ -204,7 +198,6 @@ struct QueryClassifierMultiStatementTests {
 
 /// T-SQL needs no `;` between statements. Each text below was sent whole to Azure SQL Edge 15.0, which ran every
 /// statement in it, so the classifier has to tier the ones written after the first as well.
-@Suite("QueryClassifier statements SQL Server runs without a terminator")
 struct QueryClassifierUnterminatedStatementTests {
     struct Case: CustomTestStringConvertible, Sendable {
         let sql: String

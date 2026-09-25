@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLBoundaryValidator")
 struct SQLBoundaryValidatorTests {
     @Test("Plain filter conditions are allowed")
     func allowsPlainConditions() {

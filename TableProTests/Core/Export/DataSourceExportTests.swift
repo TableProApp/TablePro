@@ -48,7 +48,6 @@ private final class StubMQLFormat: StubFormat, @unchecked Sendable {
     init() {}
 }
 
-@Suite("Data source export")
 @MainActor
 struct DataSourceExportTests {
     private func request(

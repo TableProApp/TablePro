@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("SQL Keywords")
 struct SQLKeywordsTests {
 
     @Test("Keywords collection not empty")

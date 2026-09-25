@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Databend literal inlining")
 struct DatabendLiteralTests {
     @Test("A string literal escapes the characters Databend interprets")
     func escapesInterpretedCharacters() {
@@ -77,7 +76,6 @@ struct DatabendLiteralTests {
     }
 }
 
-@Suite("Databend result shape")
 struct DatabendResultShapeTests {
     @Test("A BOOLEAN arrives as a one-character SMALLINT, which no integer type shares")
     func booleanWireShape() {

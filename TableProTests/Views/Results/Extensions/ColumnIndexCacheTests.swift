@@ -11,7 +11,6 @@ private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("TableViewCoordinator column index cache")
 @MainActor
 struct ColumnIndexCacheTests {
     private func makeCoordinator() -> TableViewCoordinator {

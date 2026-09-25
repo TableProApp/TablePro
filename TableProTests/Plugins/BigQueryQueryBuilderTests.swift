@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("BigQueryQueryBuilder - Browse Query")
 struct BigQueryQueryBuilderBrowseTests {
     @Test("Browse query returns tagged string")
     func browseReturnsTag() {
@@ -29,7 +28,6 @@ struct BigQueryQueryBuilderBrowseTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Filtered Query")
 struct BigQueryQueryBuilderFilteredTests {
     @Test("Filtered query returns filter tag")
     func filteredReturnsTag() {
@@ -62,7 +60,6 @@ struct BigQueryQueryBuilderFilteredTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Search Query")
 struct BigQueryQueryBuilderSearchTests {
     @Test("Search query returns search tag")
     func searchReturnsTag() {
@@ -85,7 +82,6 @@ struct BigQueryQueryBuilderSearchTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Combined Query")
 struct BigQueryQueryBuilderCombinedTests {
     @Test("Combined query returns combined tag")
     func combinedReturnsTag() {
@@ -113,7 +109,6 @@ struct BigQueryQueryBuilderCombinedTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - isTaggedQuery")
 struct BigQueryQueryBuilderIsTaggedTests {
     @Test("Tagged queries return true")
     func taggedQueriesDetected() {
@@ -140,7 +135,6 @@ struct BigQueryQueryBuilderIsTaggedTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - SQL Generation")
 struct BigQueryQueryBuilderSQLTests {
     private func params(
         table: String = "users",
@@ -313,7 +307,6 @@ struct BigQueryQueryBuilderSQLTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Column names in the tag")
 struct BigQueryQueryBuilderTagColumnTests {
     @Test("Browse tags carry the column names")
     func browseCarriesColumns() {
@@ -350,7 +343,6 @@ struct BigQueryQueryBuilderTagColumnTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Exact Count")
 struct BigQueryQueryBuilderExactCountTests {
     @Test("A count without filters has no WHERE clause")
     func countWithoutFilters() {

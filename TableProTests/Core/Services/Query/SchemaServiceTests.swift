@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SchemaService")
 @MainActor
 struct SchemaServiceTests {
     private func unnamedDatabase(_ connectionId: UUID) -> DatabaseScope {

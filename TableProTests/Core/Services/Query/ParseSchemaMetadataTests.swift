@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("QueryExecutor.parseSchemaMetadata - column comments")
 @MainActor
 struct ParseSchemaMetadataTests {
     private func column(_ name: String, comment: String?) -> ColumnInfo {

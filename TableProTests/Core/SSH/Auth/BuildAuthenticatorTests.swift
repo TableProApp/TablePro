@@ -20,7 +20,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("LibSSH2TunnelFactory.buildAuthenticator")
 struct BuildAuthenticatorTests {
     private func resolved(
         host: String = "ssh.example.com",

@@ -11,7 +11,6 @@ private func parseJson(_ text: String?) -> Any? {
     return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
 }
 
-@Suite("RedisKeySummary - probe commands")
 struct RedisKeySummaryCommandTests {
     @Test("a string key is read with GET so the whole value arrives")
     func stringPreviewReadsWholeValue() {
@@ -46,7 +45,6 @@ struct RedisKeySummaryCommandTests {
     }
 }
 
-@Suite("RedisKeySummary - previews are valid JSON")
 struct RedisKeySummaryJsonTests {
     @Test("a hash preview parses back to the same fields")
     func hashRoundTrips() {
@@ -102,7 +100,6 @@ struct RedisKeySummaryJsonTests {
     }
 }
 
-@Suite("RedisKeySummary - values are never cut")
 struct RedisKeySummaryLengthTests {
     @Test("an element far past the old 1,000 character cap survives whole")
     func longElementSurvives() {

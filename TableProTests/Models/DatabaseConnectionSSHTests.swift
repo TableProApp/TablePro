@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("DatabaseConnection effectiveSSHConfig")
 struct DatabaseConnectionSSHTests {
     @Test("No profile and no sshProfileId returns inline sshConfig")
     func inlineSSHConfigWithoutProfile() {

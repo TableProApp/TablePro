@@ -29,7 +29,6 @@ private final class RetargetColumnLayoutPersister: ColumnLayoutPersisting {
     }
 }
 
-@Suite("MainContentCoordinator handleTabChange")
 @MainActor
 struct MainContentCoordinatorTabSwitchTests {
     private func makeCoordinator(

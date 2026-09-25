@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("XAIOAuthClient")
 struct XAIOAuthClientTests {
     private func queryItems(_ url: URL?) -> [String: String] {
         guard let url, let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

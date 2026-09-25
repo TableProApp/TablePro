@@ -12,7 +12,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL statement scanner - located ranges")
 struct SQLStatementRangeTests {
 
     private func substring(_ sql: String, _ range: NSRange) -> String {

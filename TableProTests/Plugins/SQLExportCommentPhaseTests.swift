@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL export comments")
 struct SQLExportCommentPhaseTests {
     private final class StubExportDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String

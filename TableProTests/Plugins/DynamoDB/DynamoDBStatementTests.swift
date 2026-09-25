@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB statement parsing")
 struct DynamoDBStatementTests {
     struct WindowCase: Sendable, CustomTestStringConvertible {
         let clause: String

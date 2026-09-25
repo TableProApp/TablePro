@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Sortable header emphasis")
 @MainActor
 struct SortableHeaderEmphasisTests {
     @Test("Emphasis needs both the key window and table focus")

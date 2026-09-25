@@ -10,7 +10,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Editor tab strip interaction")
 struct EditorTabStripInteractionTests {
     private static let trackWidth: CGFloat = 604
 

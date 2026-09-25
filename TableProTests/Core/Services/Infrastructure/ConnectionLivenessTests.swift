@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection liveness")
 struct ConnectionLivenessPhaseTests {
     private static let failure = ConnectionFailureInfo(message: "The connection stopped responding.")
 
@@ -93,7 +92,6 @@ struct ConnectionLivenessPhaseTests {
     }
 }
 
-@Suite("Connection liveness reporting")
 struct ConnectionLivenessReportingTests {
     private func session(liveness: ConnectionLiveness, status: ConnectionStatus) -> ConnectionSession {
         var session = ConnectionSession(connection: TestFixtures.makeConnection())
@@ -228,7 +226,6 @@ struct ReconnectDegradationTests {
     }
 }
 
-@Suite("Health monitor give-up")
 struct ConnectionHealthMonitorAbortTests {
     /// The abort used to leave the state latched mid-reconnect, so the loop woke on every interval
     /// for the life of the app to fail its own guard and return.

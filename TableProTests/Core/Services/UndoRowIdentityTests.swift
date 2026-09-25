@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Undo row identity")
 struct UndoRowIdentityTests {
     private static let columns = ["id", "name"]
 

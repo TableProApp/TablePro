@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Database URL Scheme Detection")
 @MainActor
 struct DatabaseURLSchemeTests {
 

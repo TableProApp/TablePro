@@ -11,7 +11,6 @@ import TableProTextEngine
 import Testing
 
 @MainActor
-@Suite("Remove Invisible Characters command")
 struct RemoveInvisibleCharactersCommandTests {
     private func makeEditor(_ text: String) -> (SQLEditorCoordinator, TextViewController) {
         let controller = EditorControllerFixture.make(string: text)

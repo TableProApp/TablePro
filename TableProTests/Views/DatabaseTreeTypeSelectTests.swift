@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Database tree type select")
 struct DatabaseTreeTypeSelectTests {
     private static let upArrow: UInt16 = 126
     private static let downArrow: UInt16 = 125

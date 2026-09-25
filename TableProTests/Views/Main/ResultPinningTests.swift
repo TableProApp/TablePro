@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ResultPinning")
 struct ResultPinningTests {
     @Test("A new execution replaces unpinned results and keeps pinned ones")
     @MainActor

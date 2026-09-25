@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Open Quickly Recent identity")
 @MainActor
 struct QuickSwitcherRecentIdentityTests {
     private let connectionId = UUID()

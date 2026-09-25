@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ClaudeAgentProvider")
 struct ClaudeAgentProviderTests {
     @Test("Inference arguments constrain the CLI to a chat backend and end with the prompt")
     func inferenceArgumentsConstrainTheAgent() {
@@ -116,7 +115,6 @@ struct ClaudeAgentProviderTests {
     }
 }
 
-@Suite("ClaudeAgentCLI")
 struct ClaudeAgentCLITests {
     @Test("Auth status decodes a signed-in subscription account")
     func authStatusDecodesSubscription() {
@@ -157,7 +155,6 @@ struct ClaudeAgentCLITests {
     }
 }
 
-@Suite("ClaudeAgentDisclosure")
 struct ClaudeAgentDisclosureTests {
     @Test("Every note carries text and a unique identifier")
     func notesAreWellFormed() {
@@ -191,7 +188,6 @@ struct ClaudeAgentDisclosureTests {
     }
 }
 
-@Suite("AgentCLIDiscovery")
 struct AgentCLIDiscoveryTests {
     @Test("The first executable candidate wins")
     func firstExecutableCandidateWins() {
@@ -231,7 +227,6 @@ struct AgentCLIDiscoveryTests {
     }
 }
 
-@Suite("ClaudeAgentMCPBridge")
 struct ClaudeAgentMCPBridgeTests {
     @Test("The MCP config carries the bearer token and TablePro's server name")
     func configCarriesScopedToken() throws {
@@ -249,7 +244,6 @@ struct ClaudeAgentMCPBridgeTests {
     }
 }
 
-@Suite("ClaudeAgent registration")
 struct ClaudeAgentRegistrationTests {
     @Test("Claude Agent needs no API key, so the settings sheet shows no key field")
     func claudeAgentUsesNoAPIKey() {

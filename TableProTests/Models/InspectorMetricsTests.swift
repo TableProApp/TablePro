@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Inspector metrics")
 struct InspectorMetricsTests {
     /// Every surface in the pane sits on one edge. It did not: the header was 10, the filter bar 8,
     /// the field list 24 and table info 30, so changing the selection moved every value sideways.

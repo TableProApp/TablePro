@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Beancount SQL projection")
 struct BeancountProjectionTests {
     @Test("projects transactions and full posting semantics")
     func projectsTransactionsAndPostings() async throws {

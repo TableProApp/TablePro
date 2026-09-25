@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace listings honour the connection grant")
 struct MCPWorkspaceToolTests {
     private let granted = UUID()
     private let withheld = UUID()

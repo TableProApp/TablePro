@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Per-object command eligibility")
 struct DatabaseObjectToolEligibilityTests {
     private let support = DatabaseObjectToolEligibility.Support(
         canRefreshMaterializedViews: true,
@@ -45,7 +44,6 @@ struct DatabaseObjectToolEligibilityTests {
     }
 }
 
-@Suite("Materialized view refresh prompt")
 struct MaterializedViewRefreshPromptTests {
     private func prompt(
         _ availability: PluginConcurrentRefreshAvailability?,
@@ -109,7 +107,6 @@ struct MaterializedViewRefreshPromptTests {
     }
 }
 
-@Suite("Object comment draft")
 struct ObjectCommentDraftTests {
     @Test("A draft starts from the stored comment")
     func startsFromStoredComment() {
@@ -163,7 +160,6 @@ struct ObjectCommentDraftTests {
 }
 
 @MainActor
-@Suite("Object source refs for views")
 struct DatabaseObjectRefViewKindTests {
     private func table(_ name: String, type: TableInfo.TableType) -> TableInfo {
         TableInfo(name: name, type: type, rowCount: nil, schema: "sales")

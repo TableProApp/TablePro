@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableViewCoordinator find over binary columns")
 @MainActor
 struct TableViewCoordinatorFindTests {
     /// Row 0 decodes under Text, row 1 does not and falls back to hex `0x89504E47`.

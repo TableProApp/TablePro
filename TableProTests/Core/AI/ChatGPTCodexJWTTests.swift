@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatGPTCodexJWT")
 struct ChatGPTCodexJWTTests {
     private func makeIDToken(
         accountID: String?,

@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("MySQL latin1")
 struct MySQLLatin1Tests {
     private static let serverUTF8ForUpperHalf: [String] = [
         "E282AC", "C281", "E2809A", "C692", "E2809E", "E280A6", "E280A0", "E280A1",

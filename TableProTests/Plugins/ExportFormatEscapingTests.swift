@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Markdown export escaping")
 struct MarkdownExportEscapingTests {
 
     /// A pipe closes a cell, so a value holding one would end the cell early and shift every
@@ -66,7 +65,6 @@ struct MarkdownExportEscapingTests {
     }
 }
 
-@Suite("HTML export escaping")
 struct HTMLExportEscapingTests {
 
     /// Every value in an export comes from the database, so a value holding markup reaches a file
@@ -99,7 +97,6 @@ struct HTMLExportEscapingTests {
     }
 }
 
-@Suite("XML export escaping")
 struct XMLExportEscapingTests {
 
     @Test("The five predefined entities are escaped")
@@ -141,7 +138,6 @@ struct XMLExportEscapingTests {
     }
 }
 
-@Suite("Parquet type mapping")
 struct ParquetTypeMapperTests {
 
     @Test("Integer families map to BIGINT")
@@ -214,7 +210,6 @@ struct ParquetTypeMapperTests {
     }
 }
 
-@Suite("Shared row writers")
 struct PluginRowWritersTests {
 
     /// The values in an export come from the database rather than from the person opening the

@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection workspace registry")
 @MainActor
 struct ConnectionWorkspaceRegistryTests {
     private static let alpha = UUID(uuidString: "00000000-0000-0000-0000-0000000000A1")

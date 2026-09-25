@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("EditorSettings keyword case")
 struct EditorSettingsKeywordCaseTests {
     private func decode(_ json: String) throws -> EditorSettings {
         try JSONDecoder().decode(EditorSettings.self, from: Data(json.utf8))

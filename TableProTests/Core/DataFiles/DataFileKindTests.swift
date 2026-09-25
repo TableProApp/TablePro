@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Data file kinds")
 struct DataFileKindTests {
     private func kind(_ name: String) -> DataFileKind? {
         DataFileKind.classify(URL(fileURLWithPath: "/tmp/\(name)"))

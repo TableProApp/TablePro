@@ -10,7 +10,6 @@ import Testing
 /// Every fixture here is the literal output of `SHOW CREATE TABLE` or `SHOW CREATE VIEW` on
 /// MariaDB 12.3, or of `SELECT sql FROM sqlite_master` on SQLite, so the rewriter is judged against
 /// what a driver really hands the export.
-@Suite("SQL export DDL rewriter")
 struct SQLExportDDLRewriterTests {
     private static let stripping = SQLExportDDLRewriter(
         dialect: .mysql,

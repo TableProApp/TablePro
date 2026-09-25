@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Leading-rows statements")
 @MainActor
 struct LeadingRowsStatementTests {
     private let grammar = DatabaseType.cloudflareR2SQL.lexicalGrammar

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CLIExecutableFinder")
 struct CLIExecutableFinderTests {
     @Test("findExecutable returns nil for a nonexistent binary")
     func findExecutableNonexistent() {

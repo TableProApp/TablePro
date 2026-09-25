@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("RowSortComparator")
 struct RowSortComparatorTests {
     @Test("numeric string ordering treats 10 > 2")
     func numericOrdering() {

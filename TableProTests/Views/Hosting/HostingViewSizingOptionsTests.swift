@@ -11,7 +11,6 @@ import Testing
 /// AppKit view. CLAUDE.md's rule about that cost, and about a nested minimum reaching the window's
 /// split dividers, is written entirely in terms of `NSHostingController`; `NSHostingView` inherits
 /// none of it. A host pinned to a container it does not size states `[]`.
-@Suite("Hosting view sizing options")
 struct HostingViewSizingOptionsTests {
     /// Each host is pinned by constraints or by the enclosing table's own row geometry, so none of
     /// them may publish a size of its own. A window's `contentView` is deliberately not on this

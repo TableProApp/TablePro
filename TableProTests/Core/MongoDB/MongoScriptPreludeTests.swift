@@ -12,7 +12,6 @@ import Testing
 /// This is where the reported bug is pinned: `db.dt_DispatchRule.find()` worked and
 /// `db.dt_DispatchRule.find({status: 1})` did not, because the condition was a JavaScript object
 /// literal and the old path handed its text straight to libbson's strict JSON parser.
-@Suite("MongoScriptPrelude")
 struct MongoScriptPreludeTests {
     /// A stand-in for the driver: records every request and answers from a script of replies.
     final class RecordingHost {

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("FocusQueryTabTool")
 struct FocusQueryTabToolTests {
     private let tool = FocusQueryTabTool()
 

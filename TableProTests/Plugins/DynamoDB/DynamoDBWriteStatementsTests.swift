@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB write statements")
 struct DynamoDBWriteStatementsTests {
     typealias CellChange = (columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)
 

@@ -13,7 +13,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL lexical feature mapping")
 struct SQLLexicalFeatureMappingTests {
     @Test("Every grammar fact has exactly one kit feature, on the same bit")
     func everyFactHasAPartner() {

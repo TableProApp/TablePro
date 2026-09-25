@@ -36,7 +36,6 @@ private final class ResultStubDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 }
 
-@Suite("Result column classification hints")
 struct PluginResultColumnHintsTests {
     private func column(_ name: String, declared: String, hint: String?) -> PluginColumnInfo {
         PluginColumnInfo(

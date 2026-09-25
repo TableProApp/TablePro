@@ -69,7 +69,6 @@ private enum FormFixture {
     }
 }
 
-@Suite("Create Table form state")
 struct CreateTableFormStateTests {
     private func index(_ entryId: UUID) -> CreateTableFormState.Location {
         .entry(sectionId: "indexes", entryId: entryId)
@@ -409,7 +408,6 @@ struct CreateTableFormStateTests {
 }
 
 @MainActor
-@Suite("Create Table draft form")
 struct CreateTableDraftFormTests {
     @Test("A draft resolves its form once and keeps it")
     func resolvesFormOnce() {

@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Postgres Column Type Resolver")
 struct PostgresColumnTypeResolverTests {
     private let enumLabels = [
         "app.mood": ["sad", "ok", "happy"],

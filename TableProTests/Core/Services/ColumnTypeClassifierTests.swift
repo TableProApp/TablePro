@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Column Type Classifier")
 struct ColumnTypeClassifierTests {
     private let classifier = ColumnTypeClassifier()
 

@@ -12,7 +12,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("SQL favorite deletion sync")
 struct SQLFavoriteDeletionSyncTests {
     private let storage: SQLFavoriteStorage
     private let metadata: SyncMetadataStorage

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Process native dump runner")
 struct ProcessNativeDumpRunnerTests {
     private func command(_ script: String) -> NativeDumpCommand {
         NativeDumpCommand(

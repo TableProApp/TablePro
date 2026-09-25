@@ -11,7 +11,6 @@ import Testing
 @testable import TablePro
 @testable import TableProPluginKit
 
-@Suite("SQL Statement Generator - Parameter Style")
 struct SQLStatementGeneratorParameterStyleTests {
     // MARK: - Helper Methods
 

@@ -27,7 +27,6 @@ import Testing
 /// Both answer 35 under XCTest, where no plugin bundle ever loads, but the registry is a
 /// process-global singleton and suites that register a synthetic type run alongside this one.
 @MainActor
-@Suite("PluginMetadataRegistry engine count")
 struct PluginMetadataRegistryTypeCountTests {
     private static let expectedTypeIds: Set<String> = [
         "Beancount", "BigQuery", "Cassandra", "ClickHouse", "Cloudflare D1", "Cloudflare R2 SQL",

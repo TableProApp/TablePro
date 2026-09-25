@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ForeignKeyTopologicalSort")
 struct ForeignKeyTopologicalSortTests {
     private func table(_ name: String, _ schema: String? = nil) -> ForeignKeyTopologicalSort.Table {
         ForeignKeyTopologicalSort.Table(name: name, schema: schema)

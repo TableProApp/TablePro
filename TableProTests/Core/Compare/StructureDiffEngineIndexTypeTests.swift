@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Structure diff index types")
 struct StructureDiffEngineIndexTypeTests {
     private static let table = PluginTableInfo(name: "items", schema: "public", comment: nil)
 

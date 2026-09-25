@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("StoredConnection tag persistence")
 struct StoredConnectionTagTests {
     @Test("Round trips multiple tag IDs")
     func roundTripMultiple() throws {

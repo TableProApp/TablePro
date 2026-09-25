@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CursorAgentProvider")
 struct CursorAgentProviderTests {
     @Test("Inference arguments stream JSON, pass model and workspace, and end with the prompt")
     func inferenceArgumentsFull() {

@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace rail scroll geometry")
 struct WorkspaceRailScrollGeometryTests {
     private static let layouts = [
         WorkspaceRailMetrics.small,

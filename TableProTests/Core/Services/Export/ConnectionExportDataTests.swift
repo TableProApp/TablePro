@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection Export Data")
 @MainActor
 struct ConnectionExportDataTests {
     private func makeConnection(name: String = "Dev") -> DatabaseConnection {
@@ -50,7 +49,6 @@ struct ConnectionExportDataTests {
     }
 }
 
-@Suite("Connection Export Passphrase State")
 struct ConnectionExportPassphraseStateTests {
     @Test("empty passphrase is not exportable")
     func testEmpty() {

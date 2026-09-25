@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TabSessionRegistry+TableRows")
 @MainActor
 struct TabSessionRegistryTableRowsTests {
     @Test("tableRows(for:) returns empty TableRows on first access without creating a session")

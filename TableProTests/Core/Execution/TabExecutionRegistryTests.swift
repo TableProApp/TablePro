@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabExecutionRegistry")
 struct TabExecutionRegistryTests {
     @Test("A fresh claim is current")
     func freshClaimIsCurrent() {

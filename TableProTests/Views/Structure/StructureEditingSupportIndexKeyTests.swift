@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Structure editing index key parts")
 @MainActor
 struct StructureEditingSupportIndexKeyTests {
     private static let columns = ["owner's_id", "created_at", "tenant_id", "a", "b", "c", "email", "name", "created"]

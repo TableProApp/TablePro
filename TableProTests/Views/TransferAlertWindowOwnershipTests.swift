@@ -17,7 +17,6 @@ import Testing
 /// `AlertHelper.resolveWindow` falls back to the same key window and a sheet window clears
 /// `isContentWindow` (it is not an `NSPanel` and it is `.titled`). Nothing at runtime can tell a
 /// dying sheet from a healthy one, so the rule has to hold at the call site (#2314).
-@Suite("Transfer alert window ownership")
 struct TransferAlertWindowOwnershipTests {
     private static let directories = [
         "TablePro/Views/Import",

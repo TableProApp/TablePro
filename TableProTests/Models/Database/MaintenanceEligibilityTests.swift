@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Maintenance eligibility")
 struct MaintenanceEligibilityTests {
     private func operation(
         _ name: String,

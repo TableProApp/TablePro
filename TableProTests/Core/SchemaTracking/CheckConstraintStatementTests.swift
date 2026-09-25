@@ -58,7 +58,6 @@ private final class ConstraintDDLDriver: PluginDatabaseDriver, @unchecked Sendab
     }
 }
 
-@Suite("Check constraint statement generation")
 struct CheckConstraintStatementTests {
     private func constraint(
         name: String,

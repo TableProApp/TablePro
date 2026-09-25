@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TabSessionRegistry")
 @MainActor
 struct TabSessionRegistryTests {
     @Test("session(for:) returns nil for an unregistered id")

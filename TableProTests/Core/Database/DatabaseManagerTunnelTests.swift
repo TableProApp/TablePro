@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseManager tunnel rewrite")
 @MainActor
 struct DatabaseManagerTunnelTests {
     @Test("Tunneled connection rewrites the endpoint and keeps the password source")

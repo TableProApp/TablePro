@@ -21,7 +21,6 @@ import Testing
 /// context, which cannot touch a static on a `@MainActor` suite.
 private let statusBarHostWidths: [CGFloat] = [1_400, 1_200, 900, 720, 600, 500, 440, 400, 380, 320, 300]
 
-@Suite("ResultStatusBar Layout")
 @MainActor
 struct ResultStatusBarLayoutTests {
     private func makeBar(

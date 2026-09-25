@@ -23,7 +23,6 @@ private final class DocumentReplacementRecorder: TextViewCoordinator {
 }
 
 @MainActor
-@Suite("Query diagnostics refresh")
 struct QueryDiagnosticsRefreshTests {
     private func makeEditor(_ text: String = "") -> (SQLEditorCoordinator, TextViewController) {
         let coordinator = SQLEditorCoordinator()
@@ -135,7 +134,6 @@ struct QueryDiagnosticsRefreshTests {
 }
 
 @MainActor
-@Suite("Query diagnostic messages")
 struct QueryDiagnosticMessageTests {
     private func makeChecked(_ text: String) -> (QueryDiagnosticsController, TextViewController) {
         let controller = EditorControllerFixture.make(string: text)

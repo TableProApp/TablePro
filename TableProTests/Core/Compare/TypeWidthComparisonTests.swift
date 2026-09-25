@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Type width comparison")
 struct TypeWidthComparisonTests {
     private func postgres(_ old: String, _ new: String) -> TypeWidthComparison.Outcome {
         TypeWidthComparison.classify(from: old, to: new, family: .postgres)

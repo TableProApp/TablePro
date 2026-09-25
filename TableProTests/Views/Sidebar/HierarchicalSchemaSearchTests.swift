@@ -10,7 +10,6 @@ import Testing
 
 /// Oracle, Snowflake, BigQuery and the other engines grouped by hierarchical schema list every
 /// schema of the database, and the sidebar filter judges each one without reading it.
-@Suite("Hierarchical schema search")
 struct HierarchicalSchemaSearchTests {
     private func table(_ name: String, _ schema: String) -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
@@ -198,7 +197,6 @@ struct HierarchicalSchemaSearchTests {
 
 /// The measured case behind the change: a search over 200 schemas, three of which hold a match.
 /// Before it, the first keystroke loaded every schema, two queries each here and three on Oracle.
-@Suite("Hierarchical schema search cost")
 @MainActor
 struct HierarchicalSchemaSearchCostTests {
     private let connectionId = UUID()

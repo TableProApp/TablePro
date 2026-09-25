@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("StructureDefinitionDiffPresentation")
 struct StructureDefinitionDiffPresentationTests {
     @Test("the target is the before side and the source is the after side")
     func targetIsBeforeAndSourceIsAfter() {

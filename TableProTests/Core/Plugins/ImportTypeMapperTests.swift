@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Import Type Mapper")
 struct ImportTypeMapperTests {
     @Test("PostgreSQL maps inferred types to native SQL types")
     func testPostgres() {

@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("RowOperationsManager - binary cell copy")
 @MainActor
 struct RowOperationsManagerBinaryCopyTests {
     private func makeManagerAndRows(binaryRow: [PluginCellValue]) -> (RowOperationsManager, TableRows) {

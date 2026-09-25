@@ -14,7 +14,6 @@ import Testing
 /// anything was staged. So the "+" in the Foreign Keys tab, which stages a blank row immediately,
 /// produced `ADD CONSTRAINT "" FOREIGN KEY () REFERENCES "" ()` on MySQL and PostgreSQL and
 /// "Unsupported schema operation: Add foreign key ''" on SQLite.
-@Suite("Structure Change Validation")
 @MainActor
 struct StructureChangeValidationTests {
     private func loadedManager(foreignKeys: [ForeignKeyInfo] = []) -> StructureChangeManager {

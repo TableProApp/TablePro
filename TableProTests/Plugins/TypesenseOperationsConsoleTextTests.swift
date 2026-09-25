@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Typesense object operations as console text")
 struct TypesenseOperationsConsoleTextTests {
     @Test("Dropping a collection is the native request")
     func dropIsNative() throws {

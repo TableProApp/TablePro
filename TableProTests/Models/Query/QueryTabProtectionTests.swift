@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("QueryTab protection predicates")
 struct QueryTabProtectionTests {
     @Test("A blank scratch query tab holds no work")
     func blankScratchTabHoldsNoWork() {

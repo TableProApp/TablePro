@@ -12,7 +12,6 @@ import TableProPluginKit
 import TableProTextEngine
 import Testing
 
-@Suite("VimTextBufferAdapter Incremental LineCount")
 @MainActor
 struct VimTextBufferAdapterPerfTests {
     private final class StubDelegate: TextViewDelegate {}

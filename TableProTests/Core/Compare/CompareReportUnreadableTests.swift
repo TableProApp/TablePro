@@ -11,7 +11,6 @@ import Testing
 /// only and suggests dropping it, while the row carrying the reason sits beside it under Could Not
 /// Compare. Generating a script from that state wrote `DROP TABLE` against the target for a table
 /// the comparison never managed to read.
-@Suite("Compare report over an unreadable object")
 struct CompareReportUnreadableTests {
     private func identity(_ name: String) -> CompareObjectIdentity {
         CompareObjectIdentity(kind: .table, schema: nil, name: name)

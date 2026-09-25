@@ -29,7 +29,6 @@ enum BsonUuidFixture {
     }
 }
 
-@Suite("MongoDB UUID Codec")
 struct MongoDBUuidCodecTests {
     /// Vectors from the MongoDB BSON Binary UUID specification test plan.
     @Suite("Specification vectors")

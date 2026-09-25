@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Statement Generator PK Regression")
 struct SQLStatementGeneratorPKRegressionTests {
     private func makeGenerator(
         tableName: String = "users",

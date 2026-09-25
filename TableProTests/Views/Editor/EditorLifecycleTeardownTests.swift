@@ -42,7 +42,6 @@ private struct DismantleProbe: NSViewControllerRepresentable {
 }
 
 @MainActor
-@Suite("Editor lifecycle teardown")
 struct EditorLifecycleTeardownTests {
     @Test("releaseHeavyState keeps the document")
     func releaseHeavyStateKeepsDocument() {

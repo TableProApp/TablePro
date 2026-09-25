@@ -25,7 +25,6 @@ private final class FakeRewindKeychain: KeychainStoring, @unchecked Sendable {
     }
 }
 
-@Suite("Rewind snapshot storage")
 struct RewindSnapshotStorageTests {
     private let connectionId = UUID()
 

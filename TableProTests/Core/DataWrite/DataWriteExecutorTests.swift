@@ -87,7 +87,6 @@ private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
-@Suite("Data write execution")
 struct DataWriteExecutorTests {
     private func plan(
         expectedRowCount: Int?,
@@ -352,7 +351,6 @@ struct DataWriteExecutorTests {
     }
 }
 
-@Suite("Data write transaction ownership")
 struct WriteTransactionOwnerTests {
     @Test("An engine without transactions is nobody's to wrap")
     func withoutTransactionsNobodyOwnsOne() {

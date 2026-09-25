@@ -13,7 +13,6 @@ import Testing
 /// `SET DEFAULT` and `CREATE INDEX`: a view takes the first and refuses the second, a materialized
 /// view does the opposite, and that alone rules out sharing one row between them or collapsing the
 /// object's kind to a single read-only Bool. (#2726)
-@Suite("Structure Edit Eligibility")
 struct StructureEditEligibilityTests {
     private func allows(
         _ operation: StructureEditOperation,

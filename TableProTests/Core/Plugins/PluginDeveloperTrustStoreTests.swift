@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PluginDeveloperTrustStore")
 struct PluginDeveloperTrustStoreTests {
     private func makeStore() -> PluginDeveloperTrustStore {
         let suiteName = "com.TablePro.tests.pluginTrust.\(UUID().uuidString)"
@@ -80,7 +79,6 @@ struct PluginDeveloperTrustStoreTests {
     }
 }
 
-@Suite("PluginSignatureTrust")
 struct PluginSignatureTrustTests {
     @Test("a first-party bundle needs no consent, a third-party one does")
     func consentRequirement() {

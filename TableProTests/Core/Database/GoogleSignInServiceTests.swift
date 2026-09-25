@@ -5,7 +5,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Google OAuth sign-in")
 struct GoogleSignInServiceTests {
     private struct StubDriverError: PluginDriverError {
         let pluginErrorMessage = "Request had invalid authentication credentials."

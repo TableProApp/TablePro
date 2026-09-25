@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace rail metrics")
 struct WorkspaceRailMetricsTests {
     @Test("Rail width follows the system sidebar icon size")
     func widthFollowsRowSizeStyle() {

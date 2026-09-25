@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("WhatsNewContent")
 struct WhatsNewContentTests {
     @Test("Takes the title from the leading heading and keeps the rest as body")
     func parsesTitleAndBody() {

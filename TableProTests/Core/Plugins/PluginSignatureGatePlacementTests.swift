@@ -14,7 +14,6 @@ import Testing
 /// code, so a check there buys nothing but the Plugins pane's rejected list, which
 /// `sweepPluginSignatures()` now fills off the main actor after the first frame. The two calls that
 /// do load code must keep verifying, immediately before `PluginBundleLoader.load`.
-@Suite("Plugin signature gate placement")
 struct PluginSignatureGatePlacementTests {
     @Test("Discovery and lazy registration do not verify signatures")
     func launchPathDoesNotVerifySignatures() throws {

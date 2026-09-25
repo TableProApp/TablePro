@@ -62,7 +62,6 @@ private actor FakeVersionHistoryProvider: VersionHistoryProvider {
 }
 
 @MainActor
-@Suite("VersionHistoryViewModel")
 struct VersionHistoryViewModelTests {
     private static let past = VersionHistoryReference.savedQueryVersion(id: 7)
     private static let older = VersionHistoryReference.savedQueryVersion(id: 3)
@@ -239,7 +238,6 @@ struct VersionHistoryViewModelTests {
     }
 }
 
-@Suite("VersionComparison")
 struct VersionComparisonTests {
     @Test("Equal text is identical, different text is a line diff that keeps blank lines")
     func outcomes() {
@@ -263,7 +261,6 @@ struct VersionComparisonTests {
     }
 }
 
-@Suite("VersionHistoryPage")
 struct VersionHistoryPageTests {
     @Test("The current version's baseline is the newest past version, a past version's is the current one")
     func baselines() {

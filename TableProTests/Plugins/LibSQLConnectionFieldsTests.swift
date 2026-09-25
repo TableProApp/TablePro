@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("libSQL connection fields")
 struct LibSQLConnectionFieldsTests {
     private func libsqlFields() throws -> [ConnectionField] {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()

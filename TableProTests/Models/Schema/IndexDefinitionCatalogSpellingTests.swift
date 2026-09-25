@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Editable index catalog spellings")
 struct IndexDefinitionCatalogSpellingTests {
     private static let keys = "USING btree (tenant_id, lower(email)) INCLUDE (name)"
     private static let predicate = "(m = 'a'::src.mood)"

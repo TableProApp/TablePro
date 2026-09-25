@@ -18,7 +18,6 @@ private final class EditedRowLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Value filter after an edit takes a row out of its match")
 @MainActor
 struct ValueFilterEditedRowTests {
     private struct Fixture {

@@ -12,7 +12,7 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@MainActor @Suite("CommandActions close selection")
+@MainActor
 struct CommandActionsCloseSelectionTests {
     private struct Harness {
         let actions: MainContentCommandActions

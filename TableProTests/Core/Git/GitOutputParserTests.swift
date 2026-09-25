@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Git output parsers")
 struct GitOutputParserTests {
     private func bytes(_ string: String) -> Data {
         Data(string.utf8)
@@ -154,7 +153,6 @@ struct GitOutputParserTests {
     }
 }
 
-@Suite("GitFileStatus")
 struct GitFileStatusTests {
     @Test("Badge letters follow the change, with conflict and untracked first")
     func badges() {
@@ -200,7 +198,6 @@ struct GitFileStatusTests {
     }
 }
 
-@Suite("Git executable and command hardening")
 struct GitCommandHardeningTests {
     @Test("The locator never offers the installer shim, and reads the developer directory without running anything")
     func locatorSkipsShim() {
@@ -286,7 +283,6 @@ struct GitCommandHardeningTests {
     }
 }
 
-@Suite("FileTextLoader.decode")
 struct FileTextLoaderDecodeTests {
     @Test("Byte order marks pick the encoding, UTF-32 before the UTF-16 prefix it shares")
     func byteOrderMarks() throws {

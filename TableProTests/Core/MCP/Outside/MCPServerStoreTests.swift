@@ -32,7 +32,6 @@ private final class LockedKeychain: KeychainStoring, @unchecked Sendable {
     func delete(forKey key: String) {}
 }
 
-@Suite("MCPServerStore")
 @MainActor
 struct MCPServerStoreTests {
     private func makeDefaults() -> UserDefaults {

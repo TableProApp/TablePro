@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("Beancount include resolver")
 struct BeancountIncludeResolverTests {
     @Test("collects the main ledger and every included file")
     func resolvesIncludes() throws {

@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection attempt registry")
 struct ConnectionAttemptRegistryTests {
     @Test("The only attempt for a connection is current")
     func singleAttemptIsCurrent() {

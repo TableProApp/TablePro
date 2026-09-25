@@ -40,7 +40,6 @@ private final class RecordingTransport: ChatTransport, @unchecked Sendable {
     func testConnection() async throws -> Bool { true }
 }
 
-@Suite("AI chat inline source honours the connection's AI policy")
 @MainActor
 internal struct AIChatInlineSourceTests {
     private let connectionId = UUID()
@@ -161,7 +160,6 @@ internal struct AIChatInlineSourceTests {
     }
 }
 
-@Suite("Inline suggestion source kind")
 internal struct InlineSuggestionSourceKindTests {
     private func settings(providerType: AIProviderType, inlineEnabled: Bool = true) -> AISettings {
         let provider = AIProviderConfig(name: "Test", type: providerType)

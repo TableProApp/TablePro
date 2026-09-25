@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("PasswordSource Codable")
 struct PasswordSourceCodableTests {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()

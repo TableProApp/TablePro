@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ValueDisplayFormatStorage")
 @MainActor
 struct ValueDisplayFormatStorageTests {
     private func makeStorage() throws -> (ValueDisplayFormatStorage, UserDefaults) {

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Jump to Column menu validation")
 @MainActor
 struct JumpToColumnMenuValidationTests {
     private let selector = #selector(MainSplitViewController.jumpToColumn(_:))

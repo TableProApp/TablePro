@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram graph builder")
 struct ERDiagramGraphBuilderTests {
     private func column(
         _ name: String,

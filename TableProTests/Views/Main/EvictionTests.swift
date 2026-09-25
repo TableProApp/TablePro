@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cross-Window Tab Eviction")
 @MainActor
 struct EvictionTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

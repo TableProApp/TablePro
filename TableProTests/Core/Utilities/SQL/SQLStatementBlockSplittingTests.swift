@@ -13,7 +13,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL statement scanner - block splitting")
 struct SQLStatementBlockSplittingTests {
 
     // MARK: - Routine bodies

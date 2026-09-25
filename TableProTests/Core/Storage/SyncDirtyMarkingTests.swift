@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Per-record sync marks")
 @MainActor
 struct SyncDirtyMarkingTests {
     private let unique = UUID().uuidString

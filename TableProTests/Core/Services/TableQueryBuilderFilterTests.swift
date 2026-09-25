@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Table Query Builder - Filtered Query Fallback")
 struct TableQueryBuilderFilteredQueryTests {
     /// The dialect is what carries the quoting and the operators, so a builder without one emits no
     /// WHERE at all: that is what `TableQueryBuilderNoSQLTests` asserts for MongoDB. These cases are
@@ -86,7 +85,6 @@ struct TableQueryBuilderFilteredQueryTests {
     }
 }
 
-@Suite("Table Query Builder - Filtered Count")
 struct TableQueryBuilderFilteredCountTests {
     private static let mysqlDialect = SQLDialectDescriptor(
         identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
@@ -145,7 +143,6 @@ struct TableQueryBuilderFilteredCountTests {
     }
 }
 
-@Suite("Table Query Builder - Pagination Clause")
 struct TableQueryBuilderPaginationTests {
     private static let trinoDialect = SQLDialectDescriptor(
         identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
@@ -214,7 +211,6 @@ struct TableQueryBuilderPaginationTests {
     }
 }
 
-@Suite("Table Query Builder - NoSQL Nil Dialect Fallback")
 struct TableQueryBuilderNoSQLTests {
     // MongoDB has no SQL dialect — should produce bare SELECT without WHERE
     private let builder = TableQueryBuilder(databaseType: .mongodb, pagination: .offset)

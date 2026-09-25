@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Delta")
 struct DeltaTests {
     @Test("cellChanged equality matches on row and column")
     func cellChangedEquality() {

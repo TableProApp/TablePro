@@ -9,7 +9,6 @@ import Foundation
 import Testing
 import TableProPluginKit
 
-@Suite("Redis Statement Generator")
 struct RedisStatementGeneratorTests {
 
     // MARK: - INSERT
@@ -768,7 +767,6 @@ struct RedisStatementGeneratorTests {
     }
 }
 
-@Suite("Redis Statement Generator - key browse columns")
 struct RedisStatementGeneratorBrowseColumnTests {
     private static let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]
 

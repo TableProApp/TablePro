@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Database switcher refresh")
 @MainActor
 struct DatabaseSwitcherRefreshTests {
     private func makeViewModel(currentDatabase: String? = nil) -> DatabaseSwitcherViewModel {

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("BlobFormattingService - compact hex (grid context)")
 @MainActor
 struct BlobFormattingServiceCompactHexTests {
     @Test("Issue #1188 exact value renders as 0xD38CE566...534F")
@@ -58,7 +57,6 @@ struct BlobFormattingServiceCompactHexTests {
     }
 }
 
-@Suite("BlobFormattingService - byte count")
 @MainActor
 struct BlobFormattingServiceByteCountTests {
     @Test("Issue #1188 exact value reports 48 bytes (not 98)")
@@ -82,7 +80,6 @@ struct BlobFormattingServiceByteCountTests {
     }
 }
 
-@Suite("BlobFormattingService - hex dump (detail context)")
 @MainActor
 struct BlobFormattingServiceHexDumpTests {
     @Test("Issue #1188 first 16 bytes match expected hex dump line")
@@ -113,7 +110,6 @@ struct BlobFormattingServiceHexDumpTests {
     }
 }
 
-@Suite("BlobFormattingService - editable hex (edit context)")
 @MainActor
 struct BlobFormattingServiceEditableHexTests {
     @Test("Issue #1188 produces space-separated hex bytes")
@@ -140,7 +136,6 @@ struct BlobFormattingServiceEditableHexTests {
     }
 }
 
-@Suite("BlobFormattingService - parseHex round-trip")
 @MainActor
 struct BlobFormattingServiceParseHexTests {
     @Test("parseHex round-trips issue #1188 bytes via isoLatin1")

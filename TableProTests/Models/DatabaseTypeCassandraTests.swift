@@ -2,7 +2,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("DatabaseType Cassandra Properties")
 struct DatabaseTypeCassandraTests {
     @Test("Cassandra raw value is Cassandra")
     func cassandraRawValue() {

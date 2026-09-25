@@ -10,7 +10,6 @@ import Testing
 /// `SHOW IMPORTED KEYS` reports `pk_database_name` beside `pk_schema_name`, and the driver read only
 /// the second, so a key pointing into another database resolved to the current one's same-named
 /// table. Snowflake names objects in three parts, so the database is the half that was missing.
-@Suite("Snowflake imported keys")
 struct SnowflakeImportedKeysTests {
     @Test("A key into another database reports that database")
     func crossDatabaseKeyReportsItsDatabase() {

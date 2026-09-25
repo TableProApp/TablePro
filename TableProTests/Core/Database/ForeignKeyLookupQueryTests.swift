@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyLookupQuery")
 struct ForeignKeyLookupQueryTests {
     private let key = ForeignKeyLookupColumn(name: "ArtistId", type: .integer(rawType: "INTEGER"))
     private let label = ForeignKeyLookupColumn(name: "Name", type: .text(rawType: "NVARCHAR(120)"))

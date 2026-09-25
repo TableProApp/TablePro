@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TreeFilter")
 struct TreeFilterTests {
     @Test("nested matches preserve identities and reveal their ancestors")
     func nestedMatchesPreserveIdentitiesAndRevealAncestors() throws {
@@ -214,7 +213,6 @@ struct TreeFilterTests {
     }
 }
 
-@Suite("TreeProjectionCache")
 @MainActor
 struct TreeProjectionCacheTests {
     @Test("repeated reads for the same document and query compute once")
@@ -261,7 +259,6 @@ struct TreeProjectionCacheTests {
     }
 }
 
-@Suite("TreeDisclosureState")
 struct TreeDisclosureStateTests {
     private let auto: Set<String> = ["$.match"]
     private let defaults: Set<String> = ["$.top"]

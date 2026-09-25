@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Quick highlight ordering")
 @MainActor
 struct QuickHighlightOrderingTests {
     private func makeCoordinator() -> (MainContentCoordinator, UUID) {

@@ -13,7 +13,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQLFileParser - Oracle PL/SQL units")
 struct SQLFileParserPLSQLTests {
     private static let chunkSize = 65_536
 

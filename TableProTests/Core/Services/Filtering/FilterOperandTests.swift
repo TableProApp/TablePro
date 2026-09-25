@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Filter operand")
 struct FilterOperandTests {
     private static let text = ColumnType.text(rawType: "VARCHAR")
     private static let integer = ColumnType.integer(rawType: "INT")

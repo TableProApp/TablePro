@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQL check constraint definitions")
 struct PostgreSQLCheckConstraintDefinitionTests {
     @Test("the CHECK keyword and the parentheses PostgreSQL adds are removed")
     func stripsKeywordAndWrapper() {
@@ -51,7 +50,6 @@ struct PostgreSQLCheckConstraintDefinitionTests {
     }
 }
 
-@Suite("SQLite check constraint parsing")
 struct SQLiteCheckConstraintParserTests {
     private let createStatement = """
         CREATE TABLE t (
@@ -117,7 +115,6 @@ struct SQLiteCheckConstraintParserTests {
     }
 }
 
-@Suite("MySQL server version floors")
 struct MySQLServerVersionTests {
     @Test("MariaDB 10.1 has generated columns but no GENERATION_EXPRESSION column")
     func generationExpressionFloor() {
@@ -144,7 +141,6 @@ struct MySQLServerVersionTests {
     }
 }
 
-@Suite("MSSQL check constraint definitions")
 struct MSSQLCheckConstraintDefinitionTests {
     @Test("the wrapping parentheses SQL Server adds are removed")
     func stripsWrapper() {

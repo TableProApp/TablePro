@@ -16,7 +16,6 @@ import Testing
 /// character was thrown away. What catches it is ``adoptsRestatement``: the store always answers
 /// with a different string than the editor holds, and adopting that answer is the bug.
 @MainActor
-@Suite("JSON field editing model")
 struct JsonFieldEditingModelTests {
     private static func makeState(value: String, type: ColumnType) -> MultiRowEditState {
         let state = MultiRowEditState()

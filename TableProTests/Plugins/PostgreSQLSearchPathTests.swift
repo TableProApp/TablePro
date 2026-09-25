@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.setSearchPath")
 struct PostgreSQLSearchPathTests {
     @Test("quotes the schema as an identifier")
     func plainSchema() {

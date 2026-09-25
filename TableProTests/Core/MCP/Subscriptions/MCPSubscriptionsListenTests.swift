@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SubscriptionsListenHandler")
 struct MCPSubscriptionsListenTests {
     @Test("Handler declares subscriptions/listen and is modern only")
     func metadata() {

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AIChatViewModel.executeToolUses")
 @MainActor
 struct ExecuteToolUsesTests {
     /// Stub tool that returns a fixed response when invoked. Tracks invocation

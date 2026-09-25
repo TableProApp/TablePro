@@ -10,7 +10,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Query plan diagram canvas")
 @MainActor
 struct QueryPlanDiagramCanvasViewTests {
     @MainActor

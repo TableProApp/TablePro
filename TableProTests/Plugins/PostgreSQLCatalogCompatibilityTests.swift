@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLTableListing.query")
 struct PostgreSQLFetchTablesQueryTests {
     @Test("Always selects base tables and views from information_schema")
     func alwaysIncludesBaseTables() {
@@ -68,7 +67,6 @@ struct PostgreSQLFetchTablesQueryTests {
     }
 }
 
-@Suite("PostgreSQLCatalogPresence")
 struct PostgreSQLCatalogPresenceTests {
     @Test("Parses a single present catalog")
     func parsesSingleCatalog() {

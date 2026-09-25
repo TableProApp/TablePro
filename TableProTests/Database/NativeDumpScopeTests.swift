@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Native dump object scope")
 struct NativeDumpScopeTests {
     private func connection(type: DatabaseType, database: String = "sales") -> DatabaseConnection {
         DatabaseConnection(
@@ -282,7 +281,6 @@ struct NativeDumpScopeTests {
     }
 }
 
-@Suite("DuckDB in-engine dump statements")
 struct DuckDBDumpStatementTests {
     private func connection() -> DatabaseConnection {
         var connection = DatabaseConnection(

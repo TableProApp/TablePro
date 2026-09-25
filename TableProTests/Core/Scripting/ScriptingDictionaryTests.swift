@@ -15,7 +15,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Scripting dictionary")
 struct ScriptingDictionaryTests {
     // MARK: - Loading
 

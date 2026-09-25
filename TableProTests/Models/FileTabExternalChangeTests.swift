@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("File tab external change")
 @MainActor
 struct FileTabExternalChangeTests {
     private func makeFile(contents: String) throws -> URL {

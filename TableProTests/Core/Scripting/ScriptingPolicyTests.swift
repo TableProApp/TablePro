@@ -25,7 +25,6 @@ private actor RecordingExecutionGate: ExecutionGate {
     var lastRequest: OperationRequest? { requests.last }
 }
 
-@Suite("Scripting policy")
 struct ScriptingPolicyTests {
     private func authorized() -> OperationDecision {
         .authorized(

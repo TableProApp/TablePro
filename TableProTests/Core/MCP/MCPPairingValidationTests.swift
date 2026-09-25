@@ -15,7 +15,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Pairing Validation")
 struct MCPPairingValidationTests {
     private func url(_ value: String) throws -> URL {
         try #require(URL(string: value))

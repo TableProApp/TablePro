@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgreSQL Object Catalog Queries")
 struct PostgreSQLObjectQueryTests {
     /// information_schema.routines shows only what the caller has a privilege on and repeats a
     /// name once per overload, which is what produced duplicate rows and an arbitrary definition.
@@ -115,7 +114,6 @@ struct PostgreSQLObjectQueryTests {
     }
 }
 
-@Suite("MySQL Object Catalog Queries")
 struct MySQLObjectQueryTests {
     @Test("The DDL statement is schema-qualified")
     func routineDefinitionIsQualified() {
@@ -277,7 +275,6 @@ struct MySQLObjectQueryTests {
     }
 }
 
-@Suite("MSSQL Object Catalog Queries")
 struct MSSQLObjectQueryTests {
     /// INFORMATION_SCHEMA.ROUTINES.ROUTINE_DEFINITION is nvarchar(4000) and silently truncates,
     /// which looks like a procedure that ends mid-statement.
@@ -403,7 +400,6 @@ struct MSSQLObjectQueryTests {
     }
 }
 
-@Suite("Oracle Object Catalog Queries")
 struct OracleObjectQueryTests {
     @Test("The trigger list selects the body the old query never asked for")
     func triggerListSelectsBody() {

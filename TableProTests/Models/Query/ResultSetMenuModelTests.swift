@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ResultSetMenuModel")
 struct ResultSetMenuModelTests {
     /// The count is what the deleted strip showed at a glance and a closed menu cannot. Carrying it
     /// in the button's own title is the whole mitigation, so it is worth a test.

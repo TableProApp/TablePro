@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL index rows are grouped in the order the server sent them")
 struct MySQLIndexGroupingTests {
     private func row(
         _ index: String,

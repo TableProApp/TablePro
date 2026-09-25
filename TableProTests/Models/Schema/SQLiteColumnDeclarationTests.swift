@@ -12,7 +12,6 @@ import Testing
 ///
 /// Every refusal and every boundary here was measured against SQLite 3.54, and several of them
 /// refute what the published railroad diagrams say.
-@Suite("SQLite Column Declaration")
 struct SQLiteColumnDeclarationTests {
     private func parse(_ text: String) throws -> SQLiteColumnDeclaration {
         try #require(SQLiteColumnDeclaration.parse(text))

@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Entra ID device code flow")
 struct EntraOAuthTests {
     @Test("Builds a form body with stable ordering and percent encoding")
     func encodesFormBody() throws {
@@ -112,7 +111,6 @@ struct EntraOAuthTests {
     }
 }
 
-@Suite("Entra ID token storage")
 struct EntraTokenStoreTests {
     @Test("A token counts as stale once it is inside the refresh margin")
     func appliesRefreshMargin() {
@@ -144,7 +142,6 @@ struct EntraTokenStoreTests {
     }
 }
 
-@Suite("Entra ID credential resolution")
 struct EntraCredentialResolverTests {
     private let clientFields = [
         EntraField.clientId: "11111111-2222-3333-4444-555555555555",
@@ -217,7 +214,6 @@ struct EntraCredentialResolverTests {
     }
 }
 
-@Suite("Entra ID connection fields")
 struct EntraAuthFieldsTests {
     @Test("Both fields appear only for the driver's own Entra option")
     func gatesOnTheDriverAuthMethod() {

@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Write Back Types")
 struct MongoDBWriteBackTypeTests {
     private func update(
         column: String,

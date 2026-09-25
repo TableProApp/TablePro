@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSHAuthMethod form contract")
 struct SSHAuthMethodTests {
     @Test("None is the only method without two-factor authentication")
     func noneHidesTwoFactor() {

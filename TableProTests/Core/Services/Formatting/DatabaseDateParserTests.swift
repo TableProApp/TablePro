@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseDateParser")
 struct DatabaseDateParserTests {
     /// Every spelling TablePro's drivers put on the wire. Display, the chart's time axis and the
     /// cell editor all read this one list, which is what stops a second grammar drifting from it.

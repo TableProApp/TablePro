@@ -46,7 +46,6 @@ final class StubAuthenticating: OperationAuthenticating, @unchecked Sendable {
 }
 
 @MainActor
-@Suite("ExecutionGate")
 struct ExecutionGateTests {
     private func makeGate(
         level: SafeModeLevel,

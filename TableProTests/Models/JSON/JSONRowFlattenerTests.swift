@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONRowFlattener")
 struct JSONRowFlattenerTests {
     private let reference = JSONForeignKeyRef(
         column: "language_id",

@@ -14,7 +14,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MCP Composite Authenticator")
 struct MCPCompositeAuthenticatorTests {
     private func makeValidated(
         label: String = "test",

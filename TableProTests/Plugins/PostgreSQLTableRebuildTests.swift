@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQL column reorder rebuild script")
 struct PostgreSQLTableRebuildTests {
     private static let capabilities = PostgreSQLCapabilities(serverVersion: 170_011)
 

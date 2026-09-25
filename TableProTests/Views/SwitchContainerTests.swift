@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SwitchContainer")
 @MainActor
 struct SwitchContainerTests {
     @Test("switchContainer routes Oracle to a schema switch")

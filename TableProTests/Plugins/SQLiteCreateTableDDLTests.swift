@@ -8,7 +8,6 @@ import Testing
 import TableProPluginKit
 
 /// Every expectation was checked against sqlite3 3.54.0 before it was written here.
-@Suite("SQLite CREATE TABLE DDL")
 struct SQLiteCreateTableDDLTests {
     private func definition(
         columns: [PluginColumnDefinition] = [

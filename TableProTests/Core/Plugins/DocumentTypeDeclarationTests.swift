@@ -11,7 +11,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Bundle document type declarations")
 struct DocumentTypeDeclarationTests {
     private func infoPlist() throws -> [String: Any] {
         let plistURL = Bundle(for: AppDelegate.self)

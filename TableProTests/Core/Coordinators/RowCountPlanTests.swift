@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("RowCountPlan")
 @MainActor
 struct RowCountPlanTests {
     private func filtered() -> TabFilterState {
@@ -108,7 +107,6 @@ struct RowCountPlanTests {
     }
 }
 
-@Suite("RowCountOutcome")
 struct RowCountOutcomeTests {
     @Test("A positive estimate is applied and stays marked approximate")
     func positiveEstimateApplies() throws {

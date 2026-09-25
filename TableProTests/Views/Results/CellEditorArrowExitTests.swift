@@ -10,7 +10,6 @@ import Testing
 
 /// Up and Down carry the inline editor to the adjacent row, so a value that holds line breaks has
 /// to keep them for its own lines and give them up only at the line at that end (#2569).
-@Suite("Cell editor arrow exit")
 struct CellEditorArrowExitTests {
     private func exit(_ value: String, selection: NSRange) -> CellEditorArrowExit {
         CellEditorArrowExit(text: value as NSString, selection: selection)

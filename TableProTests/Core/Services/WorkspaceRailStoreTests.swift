@@ -4,7 +4,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Workspace rail entries")
 @MainActor
 struct WorkspaceRailStoreTests {
     private func makeSession(
@@ -411,7 +410,6 @@ struct WorkspaceRailStoreTests {
     }
 }
 
-@Suite("Workspace rail cell text")
 @MainActor
 struct WorkspaceRailCellTextTests {
     private func makeEntry(
@@ -635,7 +633,6 @@ struct WorkspaceRailCellTextTests {
     }
 }
 
-@Suite("Workspace rail type select")
 @MainActor
 struct WorkspaceRailTypeSelectTests {
     private func entry(name: String, container: String) -> WorkspaceRailEntry {

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MentionDetector")
 struct MentionDetectorTests {
     @Test("Empty text returns nil")
     func emptyText() {

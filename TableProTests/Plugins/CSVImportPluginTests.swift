@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("CSV Import Plugin")
 struct CSVImportPluginTests {
     private func data(_ text: String) -> Data {
         Data(text.utf8)

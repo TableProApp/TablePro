@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redshift table catalog rows")
 struct RedshiftTableCatalogTests {
     @Test("any listed type naming a view is a view, everything else a table")
     func listingTypes() {

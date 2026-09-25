@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SQLFavoriteStorage")
 struct SQLFavoriteStorageTests {
     private let storage: SQLFavoriteStorage
 

@@ -21,7 +21,6 @@ private struct MissingIntegrityKeySource: IntegrityKeySource {
     func key() -> SymmetricKey? { nil }
 }
 
-@Suite("Connection store integrity")
 struct ConnectionStoreIntegrityTests {
     private let integrity = ConnectionStoreIntegrity(
         keySource: FixedIntegrityKeySource(material: Data(repeating: 0x5A, count: 32))

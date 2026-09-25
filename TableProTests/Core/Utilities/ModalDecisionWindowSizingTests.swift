@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Modal decision window sizing")
 @MainActor
 struct ModalDecisionWindowSizingTests {
     private let available = NSSize(width: 1_440, height: 900)

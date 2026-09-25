@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Batch transaction plan")
 struct BatchTransactionPlanTests {
     private static let textPlans: [BatchTransactionPlan] = [.appTransaction, .scriptTransaction, .autocommit]
 
@@ -63,7 +62,6 @@ struct BatchTransactionPlanTests {
     }
 }
 
-@Suite("Session transaction state, as the app reads it")
 struct SessionTransactionStateTests {
     @Test(
         "Nothing the app owns opens a transaction over one the session is holding",

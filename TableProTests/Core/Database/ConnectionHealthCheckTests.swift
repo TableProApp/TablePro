@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection health check setting")
 struct ConnectionHealthCheckTests {
     @Test("on demand schedules nothing")
     func onDemandHasNoInterval() {

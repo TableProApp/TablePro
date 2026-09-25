@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MarkdownBlockParser")
 struct MarkdownBlockParserTests {
     @Test("Closed fenced code block is marked closed")
     func closedFence() {

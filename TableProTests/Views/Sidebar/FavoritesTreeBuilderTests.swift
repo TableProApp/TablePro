@@ -11,7 +11,6 @@ import Testing
 /// Issue #3045. A connection reads its own folders and favorites plus every global one, and the two
 /// tables are read separately, so a favorite can arrive naming a folder that did not. Placing one
 /// by `folderId == parentId` alone put it at no level at all.
-@Suite("Favorites tree builder")
 struct FavoritesTreeBuilderTests {
     private func folder(
         id: UUID = UUID(),

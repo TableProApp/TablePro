@@ -12,7 +12,6 @@ import Testing
 /// Every expectation here was measured against MariaDB 12.3.3 and MySQL 8.4.11 client tools, run
 /// against a MariaDB server with TLS off, a MariaDB server with a self-signed certificate and a
 /// MySQL server with its own.
-@Suite("MySQL client arguments")
 struct MySQLClientArgumentsTests {
     private func ssl(
         _ mode: SSLMode,

@@ -13,7 +13,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Diagram paint coverage under magnification")
 @MainActor
 struct DiagramPaintCoverageTests {
     private static let canvasSize = CGSize(width: 2_400, height: 1_600)

@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("GridRect")
 struct GridRectTests {
     @Test("rect from two coords spans the bounding box regardless of order")
     func betweenCoordsHandlesOrder() {
@@ -39,7 +38,6 @@ struct GridRectTests {
     }
 }
 
-@Suite("GridSelection")
 struct GridSelectionTests {
     private let rect = GridRect(rows: 0...2, columns: 0...1)
     private let active = GridCoord(row: 0, displayColumn: 0)
@@ -147,7 +145,6 @@ private final class OneRowTableSource: NSObject, NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int { 1 }
 }
 
-@Suite("GridSelection column markers")
 struct GridSelectionColumnMarkerTests {
     /// A marker whose block no longer reaches the last row is not a whole column any more. Keeping
     /// it told the heading and the column commands otherwise, while the fill, the copy and the
@@ -184,7 +181,6 @@ struct GridSelectionColumnMarkerTests {
     }
 }
 
-@Suite("GridSelectionController gestures")
 @MainActor
 struct GridSelectionControllerTests {
     @Test("plain click without drag leaves the selection empty")

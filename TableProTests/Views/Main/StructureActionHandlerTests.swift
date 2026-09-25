@@ -10,7 +10,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("StructureViewActionHandler")
+@MainActor
 struct StructureActionHandlerTests {
     // MARK: - Helpers
 

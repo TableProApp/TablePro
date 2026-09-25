@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection form extensions")
 @MainActor
 struct AdvancedPaneExtensionTests {
     private let vec = LoadableExtension(path: "/opt/homebrew/lib/vec0.dylib")

@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONRowFilter")
 struct JSONRowFilterTests {
     private func makeRoot() -> JSONRowNode {
         JSONRowNodeBuilder.build(

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Database Connection Username")
 struct DatabaseConnectionUsernameTests {
     @Test("Username defaults to empty, never a fabricated account name")
     func usernameDefaultsToEmpty() {

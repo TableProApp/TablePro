@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("VimKeyRouteResolver")
 struct VimKeyRouteResolverTests {
     private static let outsideInsertModes: [VimMode] = [
         .normal,

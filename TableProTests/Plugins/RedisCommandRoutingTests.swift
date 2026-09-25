@@ -35,7 +35,6 @@ private func commandEntry(
     ])
 }
 
-@Suite("Redis command routing - key extraction")
 struct RedisCommandRoutingKeyTests {
     let routing = RedisCommandRouting()
 
@@ -86,7 +85,6 @@ struct RedisCommandRoutingKeyTests {
     }
 }
 
-@Suite("Redis command routing - policies")
 struct RedisCommandRoutingPolicyTests {
     let routing = RedisCommandRouting()
 
@@ -198,7 +196,6 @@ struct RedisCommandRoutingPolicyTests {
     }
 }
 
-@Suite("Redis command routing - COMMAND reply")
 struct RedisCommandRoutingParsingTests {
     @Test("Reads key positions from the server's own answer")
     func parsesKeyPositions() throws {
@@ -370,7 +367,6 @@ struct RedisCommandRoutingParsingTests {
     }
 }
 
-@Suite("Redis command routing - how far a command fans out on a cluster")
 struct RedisClusterFanOutTests {
     let routing = RedisCommandRouting()
 
@@ -401,7 +397,6 @@ struct RedisClusterFanOutTests {
     }
 }
 
-@Suite("Redis command routing - key index arithmetic")
 struct RedisCommandSpecIndexTests {
     private func spec(first: Int, last: Int, step: Int) -> RedisCommandSpec {
         RedisCommandSpec(

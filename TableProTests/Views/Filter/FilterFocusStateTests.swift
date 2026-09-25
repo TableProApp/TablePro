@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Filter Focus State")
 struct FilterFocusStateTests {
     @Test("Claims focus when requested id matches identity")
     func testClaimFocus_newRequestClaims() {

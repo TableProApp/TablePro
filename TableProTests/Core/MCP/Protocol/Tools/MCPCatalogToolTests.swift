@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Enumerated tool arguments are checked, never guessed")
 struct MCPEnumeratedArgumentTests {
     private func call(
         _ tool: any MCPToolImplementation,

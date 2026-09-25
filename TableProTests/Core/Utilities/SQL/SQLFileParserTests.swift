@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SQLFileParser dialect-aware parsing")
 struct SQLFileParserTests {
     private static func parse(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory

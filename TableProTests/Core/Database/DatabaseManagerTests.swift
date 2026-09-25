@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseManager Session-Scoped Accessors")
 @MainActor
 struct DatabaseManagerSessionTests {
     @Test("driver(for:) returns nil for unknown connection ID")
@@ -140,7 +139,6 @@ private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDat
     }
 }
 
-@Suite("DatabaseManager database switch")
 @MainActor
 struct DatabaseManagerDatabaseSwitchTests {
     @Test("bySchema engines move the driver to the plugin default and record what it is using")

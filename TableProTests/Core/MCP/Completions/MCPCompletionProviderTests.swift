@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPCompletionProvider")
 struct MCPCompletionProviderTests {
     @Test("Completing a prompt connection argument offers the readable connection names")
     func completesConnectionNames() async {
@@ -351,7 +350,6 @@ struct MCPCompletionProviderTests {
     }
 }
 
-@Suite("MCPCompletionReference")
 struct MCPCompletionReferenceTests {
     @Test("A prompt reference decodes from its type and name")
     func decodesPromptReference() throws {
@@ -422,7 +420,6 @@ struct MCPCompletionReferenceTests {
     }
 }
 
-@Suite("MCPCompletionResult")
 struct MCPCompletionResultTests {
     @Test("A result serialises values, total, and hasMore")
     func jsonShape() {
@@ -455,7 +452,6 @@ struct MCPCompletionResultTests {
     }
 }
 
-@Suite("CompletionCompleteHandler")
 struct CompletionCompleteHandlerTests {
     @Test("Handler declares completion/complete and the resources read scope")
     func metadata() {

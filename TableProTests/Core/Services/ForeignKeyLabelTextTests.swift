@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyLabelText")
 struct ForeignKeyLabelTextTests {
     @Test("Two values read as one line")
     func twoValuesJoin() {

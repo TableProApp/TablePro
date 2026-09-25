@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("DescribeTableTool")
 struct DescribeTableToolTests {
     private let tool = DescribeTableTool()
 

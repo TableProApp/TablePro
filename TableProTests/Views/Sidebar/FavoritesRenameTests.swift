@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Favorites rename")
 struct FavoritesRenameResolverTests {
     private let folderId = UUID()
 
@@ -83,7 +82,6 @@ struct FavoritesRenameResolverTests {
 
 /// The editor lives inside the cell now, which is what makes `NSOutlineView` lay it out through a
 /// disclosure change instead of leaving it painted over a neighbouring row.
-@Suite("Favorites rename cell")
 @MainActor
 struct FavoritesRenameCellTests {
     private func makeCell() -> FavoritesOutlineCellView<Text> {

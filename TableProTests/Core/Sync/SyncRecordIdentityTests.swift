@@ -9,7 +9,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("Push identities survive a shortened record name")
 @MainActor
 struct SyncRecordIdentityTests {
     private static let zone = CKRecordZone.ID(zoneName: "TableProZone", ownerName: CKCurrentUserDefaultName)

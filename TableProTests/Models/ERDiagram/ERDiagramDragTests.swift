@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram dragging")
 @MainActor
 struct ERDiagramDragTests {
     private func makeViewModel() -> ERDiagramViewModel {

@@ -9,7 +9,6 @@ import Testing
 
 /// The two lists under File > Session are filled when they open, so what they put in the menu is
 /// never seen by the suites that walk the built menu bar. These ask the delegates directly.
-@Suite("File > Session lists")
 @MainActor
 struct SessionMenuDelegateTests {
     private func makeRegistry() -> AgentSessionRegistry {

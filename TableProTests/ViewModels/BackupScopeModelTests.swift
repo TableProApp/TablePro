@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Backup scope selection")
 @MainActor
 struct BackupScopeModelTests {
 

@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Editable Index Definition")
 struct IndexDefinitionTests {
     // MARK: - placeholder Tests
 

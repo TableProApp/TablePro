@@ -13,7 +13,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Inspector edit policy")
 struct InspectorEditPolicyTests {
     private func makeField(
         name: String = "payload",

@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis reply - a queued acknowledgement is not an answer")
 struct RedisQueuedReplyShapeTests {
     @Test("A +QUEUED simple string is the acknowledgement")
     func statusIsQueued() {
@@ -64,7 +63,6 @@ struct RedisQueuedReplyShapeTests {
     }
 }
 
-@Suite("Redis command channel - the run choke point")
 struct RedisCommandChannelRunTests {
     @Test("run(_: [String]) refuses a queued acknowledgement")
     func stringOverloadRefusesQueued() async throws {
@@ -105,7 +103,6 @@ struct RedisCommandChannelRunTests {
     }
 }
 
-@Suite("Redis queued command policy")
 struct RedisQueuedCommandPolicyTests {
     /// A one-row `QUEUED` status in the data grid reads as an empty table, so the two walks the app
     /// builds for itself say the keyspace could not be read instead.
@@ -137,7 +134,6 @@ struct RedisQueuedCommandPolicyTests {
 /// one position out. The translation therefore belongs to the one function that dispatches an
 /// operation, not to a route. The plugin imports CRedis, which this target cannot, so the guard is a
 /// source scan.
-@Suite("Redis queued translation source scan")
 struct RedisQueuedTranslationSourceScanTests {
     private static let pluginDirectory: URL = {
         var directory = URL(fileURLWithPath: #filePath)
@@ -164,7 +160,6 @@ struct RedisQueuedTranslationSourceScanTests {
     }
 }
 
-@Suite("Redis command channel - the default keyspace walk")
 struct RedisCommandChannelScanTests {
     @Test("A queued SCAN is refused rather than read as an empty keyspace")
     func queuedScanIsRefused() async throws {

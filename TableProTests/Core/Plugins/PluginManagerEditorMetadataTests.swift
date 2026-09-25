@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginManager editor metadata")
 @MainActor
 struct PluginManagerEditorMetadataTests {
     @Test("a variant type resolves its own dialect rather than the primary plugin's")

@@ -27,7 +27,6 @@ private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
     }
 }
 
-@Suite("Main menu structure")
 @MainActor
 struct MainMenuStructureTests {
     @Test("What's New stays reachable from Help without an active connection")
@@ -132,7 +131,6 @@ struct MainMenuStructureTests {
     }
 }
 
-@Suite("Main menu shortcut coverage")
 @MainActor
 struct MainMenuShortcutCoverageTests {
     @Test("Every customizable action reaches exactly one menu item")
@@ -318,7 +316,6 @@ struct MainMenuShortcutCoverageTests {
 /// Agent mode's sessions and the assistant's conversations had no menu-bar home at all: the rail's
 /// buttons and the trailing pane's header menu were the only routes, so none of the seven commands
 /// could be found by search, rebound, or reached with the rail collapsed or the pane closed.
-@Suite("File > Session")
 @MainActor
 struct FileSessionMenuTests {
     private func sessionMenu() -> NSMenu? {
@@ -397,7 +394,6 @@ struct FileSessionMenuTests {
     }
 }
 
-@Suite("Main menu validation")
 @MainActor
 struct MainMenuValidationTests {
     private func enabled(_ selector: Selector, _ context: MenuValidationContext) -> Bool {
@@ -916,7 +912,6 @@ struct MainMenuValidationTests {
     }
 }
 
-@Suite("Database menu commands")
 @MainActor
 struct DatabaseMenuCommandTests {
     private func databaseMenu() -> NSMenu? {

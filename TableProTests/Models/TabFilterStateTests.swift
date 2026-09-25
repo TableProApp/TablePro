@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabFilterState")
 struct TabFilterStateTests {
     @Test("appliedFilters is empty when nothing is committed")
     func noCommitYieldsEmpty() {

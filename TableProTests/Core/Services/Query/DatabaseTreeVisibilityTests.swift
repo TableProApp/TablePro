@@ -1,7 +1,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseTreeVisibility")
 struct DatabaseTreeVisibilityTests {
     private let databases: [DatabaseMetadata] = [
         .minimal(name: "analytics"),

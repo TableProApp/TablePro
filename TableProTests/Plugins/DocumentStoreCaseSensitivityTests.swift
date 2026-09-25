@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Case Sensitivity")
 struct MongoDBCaseSensitivityTests {
     private let builder = MongoDBQueryBuilder()
 
@@ -71,7 +70,6 @@ struct MongoDBCaseSensitivityTests {
     }
 }
 
-@Suite("Elasticsearch Case Sensitivity")
 struct ElasticsearchCaseSensitivityTests {
     private let keywordField = ["status": ElasticsearchFieldInfo(type: "keyword", hasKeywordSubfield: false)]
 
@@ -147,7 +145,6 @@ struct ElasticsearchCaseSensitivityTests {
     }
 }
 
-@Suite("etcd Case Sensitivity")
 struct EtcdCaseSensitivityTests {
     private let builder = EtcdQueryBuilder()
 
@@ -181,7 +178,6 @@ struct EtcdCaseSensitivityTests {
     }
 }
 
-@Suite("BigQuery Case Sensitivity")
 struct BigQueryCaseSensitivityTests {
     private func sql(_ op: String, _ value: String, isCaseSensitive: Bool) -> String {
         let query = BigQueryQueryBuilder.encodeFilteredQuery(

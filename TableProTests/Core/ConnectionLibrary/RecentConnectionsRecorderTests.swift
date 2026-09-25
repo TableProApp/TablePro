@@ -10,7 +10,6 @@ import TableProSyncTransport
 import Testing
 
 @MainActor
-@Suite("Recent connections recorder")
 struct RecentConnectionsRecorderTests {
     private let defaults: UserDefaults
     private let appEvents = AppEvents()

@@ -11,7 +11,6 @@ import Testing
 /// Every expectation here was measured against the engine, or read off its grammar. The grid used
 /// to offer all five actions everywhere, so a DuckDB user picking CASCADE reached
 /// `Parser Error: FOREIGN KEY constraints cannot use CASCADE, SET NULL or SET DEFAULT`.
-@Suite("Foreign key dialect")
 struct ForeignKeyDialectTests {
     @Test("DuckDB takes only NO ACTION and RESTRICT, on delete and on update")
     func duckdb() {

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MCP CSV export")
 struct MCPCsvExportTests {
     @Test("CSV quotes a bare carriage return so a cell never splits a row")
     func csvQuotesCarriageReturn() {
@@ -68,7 +67,6 @@ struct MCPCsvExportTests {
     }
 }
 
-@Suite("MCP SQL export follows the connection dialect")
 struct MCPSqlExportDialectTests {
     private let postgres = MCPSqlExportDialect(
         identifierQuote: "\"",
@@ -178,7 +176,6 @@ struct MCPSqlExportDialectTests {
     }
 }
 
-@Suite("MCP JSON export")
 struct MCPJsonExportTests {
     @Test("Each row becomes an object keyed by column name")
     func rowsBecomeObjects() throws {
@@ -203,7 +200,6 @@ struct MCPJsonExportTests {
     }
 }
 
-@Suite("MCP export destination")
 struct MCPExportDestinationTests {
     private func downloadsRoot() throws -> URL {
         let root = try #require(

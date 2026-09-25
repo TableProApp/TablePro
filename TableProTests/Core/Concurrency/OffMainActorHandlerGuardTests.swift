@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("Off-main-actor callback isolation")
 struct OffMainActorHandlerGuardTests {
     @Test("Every Dispatch source handler declares its own isolation")
     func dispatchSourceHandlersDeclareTheirIsolation() throws {

@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL token cursor")
 struct SQLTokenCursorTests {
     private static func tokens(_ sql: String, grammar: SQLLexicalGrammar) -> [SQLTokenCursor.Token] {
         var cursor = SQLTokenCursor(sql, grammar: grammar)

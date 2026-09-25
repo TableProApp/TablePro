@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Tunnel command model")
 struct TunnelCommandModelTests {
     private func kubectlConfig() -> TunnelCommandConfiguration {
         TunnelCommandConfiguration(

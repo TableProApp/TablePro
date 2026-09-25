@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("RedisKeyTreeViewModel buildTree")
 @MainActor
 struct RedisKeyTreeBuildTests {
     @Test("Empty keys produces empty tree")
@@ -240,7 +239,6 @@ struct RedisKeyTreeBuildTests {
 
 // MARK: - RedisKeyNode Model Tests
 
-@Suite("RedisKeyNode")
 struct RedisKeyNodeTests {
     @Test("Namespace id starts with ns:")
     func namespaceId() {
@@ -281,7 +279,6 @@ struct RedisKeyNodeTests {
 
 // MARK: - DisplayNodes Tests
 
-@Suite("RedisKeyTreeContent displayNodes")
 struct RedisKeyTreeDisplayTests {
     @Test("displayNodes returns the whole tree when search is empty")
     func emptySearch() {
@@ -337,7 +334,6 @@ struct RedisKeyTreeDisplayTests {
 
 // MARK: - Rows
 
-@Suite("RedisKeyTreeRows")
 struct RedisKeyTreeRowsTests {
     private let content = RedisKeyTreeContent(
         database: "0",

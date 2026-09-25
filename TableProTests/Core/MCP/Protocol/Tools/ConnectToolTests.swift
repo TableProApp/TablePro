@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ConnectTool")
 struct ConnectToolTests {
     private let tool = ConnectTool()
 

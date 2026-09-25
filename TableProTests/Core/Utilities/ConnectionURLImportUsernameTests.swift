@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection URL Import Username")
 @MainActor
 struct ConnectionURLImportUsernameTests {
     private func parse(_ urlString: String) throws -> ParsedConnectionURL {

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLite extension call scanner")
 struct SQLiteExtensionCallScannerTests {
     private func onlyBuiltins(_ sql: String) -> Bool {
         SQLiteExtensionCallScanner.callsOnlyBuiltins(sql, readings: DatabaseType.sqlite.lexicalReadings)

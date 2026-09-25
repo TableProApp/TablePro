@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Row inspector edits reach the grid")
 @MainActor
 struct InspectorFieldEditStagingTests {
     @MainActor

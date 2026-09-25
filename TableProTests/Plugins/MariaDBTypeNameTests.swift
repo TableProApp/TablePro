@@ -5,7 +5,6 @@
 
 import Testing
 
-@Suite("MariaDB type name resolution")
 struct MariaDBTypeNameTests {
     private func resolve(typeRaw: UInt32, charsetnr: UInt32 = 33, flags: UInt = 0, length: UInt = 0) -> String {
         mariaDBTypeName(typeRaw: typeRaw, flags: flags, charsetnr: charsetnr, length: length)

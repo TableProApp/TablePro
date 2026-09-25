@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Table Query Builder MSSQL")
 struct TableQueryBuilderMSSQLTests {
     private let builder: TableQueryBuilder
 

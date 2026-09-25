@@ -13,7 +13,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Composer highlight preference")
 struct ComposerHighlightPreferenceTests {
     @Test("The highlight paints when it is on and no system setting overrides it")
     func paintsWhenEnabled() {

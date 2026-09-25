@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query classifier lexing")
 struct QueryClassifierLexicalTests {
     struct Bypass: CustomTestStringConvertible, Sendable {
         let engine: DatabaseType

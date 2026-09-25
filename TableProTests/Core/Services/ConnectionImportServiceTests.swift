@@ -5,7 +5,6 @@ import TableProSyncTransport
 
 @testable import TablePro
 
-@Suite("Connection Import Service")
 @MainActor
 struct ConnectionImportServiceTests {
     @Test("duplicate matching uses host port database and username case-insensitively")

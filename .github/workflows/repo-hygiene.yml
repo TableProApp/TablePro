@@ -18,6 +18,7 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "TableProTests/**/*.swift"
       - "project.yml"
       - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
       - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
@@ -34,6 +35,7 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "TableProTests/**/*.swift"
       - "project.yml"
       - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
       - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
@@ -117,6 +119,16 @@ jobs:
 
       - name: Validate the log privacy check
         run: python3 scripts/ci/test_check_log_privacy.py
+
+      # Every top-level @Suite is a peer macro the compiler files in module-scope lookup, and each
+      # @Suite expansion walks all of them, so the test module's compile time grows with the square
+      # of their count. 2,336 of them held TableProTests' emit-module job at 544 to 626 seconds on the
+      # build runner, and 2,200 of those only renamed their type. Only a @Suite with a trait is kept.
+      - name: Check no top-level test type carries a @Suite without a trait
+        run: python3 scripts/ci/check-test-suite-attributes.py
+
+      - name: Validate the test suite attribute check
+        run: python3 scripts/ci/test_check_test_suite_attributes.py
 
       # A plugin's String(localized:) resolves against Bundle.main, which is the host app, so its
       # strings live in the app's catalog. Xcode extracts per target and the plugin targets are not

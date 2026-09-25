@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Quick switcher across schemas")
 @MainActor
 struct QuickSwitcherCrossSchemaTests {
     private func table(_ name: String, _ schema: String?, type: TableInfo.TableType = .table) -> TableInfo {

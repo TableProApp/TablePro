@@ -10,7 +10,6 @@ import Testing
 /// single-broker one, which is why issue #2993 survived a full integration suite: with one
 /// broker every partition's leader and every group's coordinator is the broker the client is
 /// already holding, so a driver that routes nothing is indistinguishable from a correct one.
-@Suite("Kafka routing")
 struct KafkaRoutingTests {
     // MARK: - Error code classification
 

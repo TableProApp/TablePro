@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Confusable SQL characters")
 struct SQLConfusableCharacterScannerTests {
     private func scan(_ text: String, _ grammar: SQLLexicalGrammar) -> [ConfusableSQLCharacterMatch] {
         SQLConfusableCharacterScanner.scan(text as NSString, grammar: grammar)
@@ -282,7 +281,6 @@ struct SQLConfusableCharacterScannerTests {
 }
 
 @MainActor
-@Suite("Confusable SQL characters in the editor's diagnostics")
 struct SQLConfusableCharacterDiagnosticsTests {
     @Test("A confusable character is a warning, and a stray closer is still an error")
     func severities() {

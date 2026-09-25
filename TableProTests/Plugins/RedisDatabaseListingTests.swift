@@ -14,7 +14,6 @@ import Testing
 
 private struct TransportFailure: Error, Equatable {}
 
-@Suite("Redis metadata read - what counts as the server declining")
 struct RedisMetadataReadTests {
     static let declined: [String] = [
         "ERR unknown command 'CONFIG', with args beginning with: 'GET' 'databases' ",
@@ -52,7 +51,6 @@ struct RedisMetadataReadTests {
     }
 }
 
-@Suite("Redis command channel - metadata reads")
 struct RedisCommandChannelMetadataReadTests {
     @Test("A declined read answers nil instead of throwing")
     func declinedReadIsNil() async throws {
@@ -96,7 +94,6 @@ struct RedisCommandChannelMetadataReadTests {
     }
 }
 
-@Suite("Redis database count")
 struct RedisDatabaseCountTests {
     @Test("Reads the count out of CONFIG GET databases")
     func readsReportedCount() {
@@ -174,7 +171,6 @@ struct RedisDatabaseCountTests {
     }
 }
 
-@Suite("Redis command channel - database listing")
 struct RedisDatabaseListingTests {
     private static let removedConfig = RedisReply.error(
         "ERR unknown command 'CONFIG', with args beginning with: 'GET' 'databases' "
@@ -283,7 +279,6 @@ struct RedisDatabaseListingTests {
 /// every master answers and the channel sums. Measured on a two-master redis-server 8.10.1
 /// cluster with `-dbsize` on one master, and with that master busy running a script: both used
 /// to report the other master's count as the whole keyspace.
-@Suite("Redis command channel - cluster database listing")
 struct RedisClusterDatabaseListingTests {
     @Test("A cluster lists one database and counts its keys with DBSIZE")
     func countsWithDbsize() async throws {

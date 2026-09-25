@@ -99,7 +99,6 @@ private struct ReorderableGrid {
     }
 }
 
-@Suite("Column display order")
 @MainActor
 struct GridColumnDisplayOrderTests {
     @Test("a display position resolves to the data index of the column drawn there")

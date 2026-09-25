@@ -19,7 +19,6 @@ import Testing
 /// The pair table is the contract, and `everyBrowseOnlyItemHasAMenuTwin` derives it back out of the
 /// toolbar so the table cannot be the only thing that knows: an item made browse-only there without
 /// an entry here fails rather than ships enabled on the menu bar.
-@Suite("Menu and toolbar agree about the content mode")
 @MainActor
 struct MenuContentModeParityTests {
     /// One command, spelled for each surface.

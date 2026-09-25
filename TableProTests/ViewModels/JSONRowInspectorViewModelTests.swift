@@ -14,7 +14,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("JSONRowInspectorViewModel")
 struct JSONRowInspectorViewModelTests {
     private static let connectionId = UUID(uuidString: "00000000-0000-0000-0000-0000000000AA") ?? UUID()
 

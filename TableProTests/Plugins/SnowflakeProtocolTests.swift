@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Snowflake Binding Encoder")
 struct SnowflakeBindingEncoderTests {
     @Test("Keys are 1-based string indices")
     func testKeysAreOneBased() {
@@ -47,7 +46,6 @@ struct SnowflakeBindingEncoderTests {
     }
 }
 
-@Suite("Snowflake Retry Policy")
 struct SnowflakeRetryPolicyTests {
     @Test("Transient statuses are retried")
     func testTransientStatuses() {
@@ -90,7 +88,6 @@ struct SnowflakeRetryPolicyTests {
     }
 }
 
-@Suite("Snowflake Re-Auth Classification")
 struct SnowflakeReAuthTests {
     @Test("Session and token expiry codes trigger re-authentication")
     func testReauthCodes() {
@@ -126,7 +123,6 @@ struct SnowflakeReAuthTests {
     }
 }
 
-@Suite("Plugin Session Context")
 struct PluginSessionContextTests {
     @Test("Round-trips through Codable")
     func testCodableRoundTrip() throws {
@@ -145,7 +141,6 @@ struct PluginSessionContextTests {
     }
 }
 
-@Suite("Snowflake Heartbeat Interval")
 struct SnowflakeHeartbeatIntervalTests {
     @Test("Interval is a quarter of master validity, clamped to 15 to 60 minutes")
     func testIntervalClamping() {

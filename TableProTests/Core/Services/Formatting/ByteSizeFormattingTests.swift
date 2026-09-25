@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Byte and duration formatting")
 struct ByteSizeFormattingTests {
     @Test("Sizes carry a unit and scale up")
     func sizesScale() {
@@ -63,7 +62,6 @@ struct ByteSizeFormattingTests {
     }
 }
 
-@Suite("Date display formatting")
 @MainActor
 struct DateDisplayFormattingTests {
     @Test("A fixed pattern renders in the Gregorian calendar whatever the region is")

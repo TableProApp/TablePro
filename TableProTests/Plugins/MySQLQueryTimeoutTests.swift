@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("MySQL query timeout enforcement")
 struct MySQLQueryTimeoutTests {
     @Test("A server timeout starts at MySQL 5.7.8")
     func mysqlFloor() {

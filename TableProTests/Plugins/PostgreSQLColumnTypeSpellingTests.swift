@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLColumnTypeSpelling")
 struct PostgreSQLColumnTypeSpellingTests {
     private func resolve(
         declared: String?,
@@ -129,7 +128,6 @@ struct PostgreSQLColumnTypeSpellingTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries schema-relative read")
 struct PostgreSQLSchemaRelativeReadTests {
     @Test("The prefix narrows the path to pg_catalog and the schema, with the identifier quoted")
     func prefixQuotesTheSchema() {

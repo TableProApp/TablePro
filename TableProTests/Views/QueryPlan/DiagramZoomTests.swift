@@ -9,7 +9,6 @@ import CoreGraphics
 @testable import TablePro
 import Testing
 
-@Suite("Diagram Zoom")
 struct DiagramZoomTests {
     @Test("pinch scales from the gesture start")
     func scalesFromGestureStart() {

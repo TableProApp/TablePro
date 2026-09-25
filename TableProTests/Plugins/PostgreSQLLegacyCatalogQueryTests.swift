@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL catalog reads that PostgreSQL 9.1 accepts")
 struct PostgreSQLLegacyCatalogQueryTests {
     private static let constructsMissingBefore96 = [
         "to_regclass", "LATERAL", "WITH ORDINALITY", "json", "array_remove", "array_position", "FILTER (",
@@ -75,7 +74,6 @@ struct PostgreSQLLegacyCatalogQueryTests {
     }
 }
 
-@Suite("PostgreSQL foreign key catalog read")
 struct PostgreSQLForeignKeyQueryTests {
     private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
     private static let beforeConstraintParent = PostgreSQLCapabilities(serverVersion: 100_021)
@@ -163,7 +161,6 @@ struct PostgreSQLForeignKeyQueryTests {
     }
 }
 
-@Suite("PostgreSQL index catalog read")
 struct PostgreSQLIndexQueryTests {
     private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
 
@@ -213,7 +210,6 @@ struct PostgreSQLIndexQueryTests {
     }
 }
 
-@Suite("PostgreSQL check constraint columns")
 struct PostgreSQLCheckConstraintColumnTests {
     @Test("Column names come back whole from the array literal the server prints")
     func hostileNames() {
@@ -236,7 +232,6 @@ struct PostgreSQLCheckConstraintColumnTests {
     }
 }
 
-@Suite("PostgreSQL sequence reads")
 struct PostgreSQLSequenceQueryTests {
     @Test("pg_sequences is read wherever it exists, and every other server reads the sequences one by one")
     func sourceSelection() {
@@ -361,7 +356,6 @@ struct PostgreSQLSequenceQueryTests {
     }
 }
 
-@Suite("PostgreSQL collation and table metadata reads")
 struct PostgreSQLCollationAndMetadataQueryTests {
     @Test("Before PostgreSQL 10 every collation but the default is a libc one")
     func legacyCollations() {
@@ -388,7 +382,6 @@ struct PostgreSQLCollationAndMetadataQueryTests {
     }
 }
 
-@Suite("PostgreSQL grant reads")
 struct PostgreSQLGrantQueryTests {
     @Test("aclexplode runs in a subquery's select list, which PostgreSQL 9.1 accepts")
     func grantsAvoidLateral() {
@@ -407,7 +400,6 @@ struct PostgreSQLGrantQueryTests {
     }
 }
 
-@Suite("PostgreSQL catalog booleans")
 struct PostgreSQLCatalogBooleanTests {
     @Test("The driver hands a boolean column over as true or false, and a text cast may say t or f")
     func spellings() {

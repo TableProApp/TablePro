@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPPromptCatalog")
 struct MCPPromptCatalogTests {
     @Test("The catalog advertises at least one prompt")
     func catalogIsNotEmpty() {

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Row To Statement Converter")
 @MainActor
 struct SQLRowToStatementConverterTests {
     // MARK: - Test Dialect Helpers

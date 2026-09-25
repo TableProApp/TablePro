@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("WindowTitleResolver.resolveWindow")
 @MainActor
 struct WindowTitleResolverWindowTests {
     private static func connection(name: String = "Prod DB") -> DatabaseConnection {

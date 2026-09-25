@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("FileConflictPresentation")
 struct FileConflictPresentationTests {
     @Test("an unchanged line is plain on both sides")
     func unchangedIsPlain() {

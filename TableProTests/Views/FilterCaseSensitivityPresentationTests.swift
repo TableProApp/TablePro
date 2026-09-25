@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Filter Case Sensitivity Presentation")
 struct FilterCaseSensitivityPresentationTests {
     private func presentation(
         _ filterOperator: FilterOperator,

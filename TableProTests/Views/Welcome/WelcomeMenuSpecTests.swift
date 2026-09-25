@@ -8,7 +8,6 @@ import Foundation
 import TableProConnectionLibrary
 import Testing
 
-@Suite("Welcome menu spec")
 struct WelcomeMenuSpecTests {
     private func context(
         rows: [LibraryRowID],

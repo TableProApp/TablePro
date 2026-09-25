@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Index type")
 struct IndexTypeTests {
     private typealias IndexType = EditableIndexDefinition.IndexType
 
@@ -53,7 +52,6 @@ struct IndexTypeTests {
     }
 }
 
-@Suite("Index type paste")
 struct IndexTypePasteTests {
     private static func index(_ type: String) -> EditableIndexDefinition {
         EditableIndexDefinition.from(IndexInfo(name: "ix", columns: ["a"], isUnique: false, isPrimary: false, type: type))

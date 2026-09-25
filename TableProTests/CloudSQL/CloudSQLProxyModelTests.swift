@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Cloud SQL Auth Proxy model")
 struct CloudSQLProxyModelTests {
     @Test("CloudSQLProxyConfiguration round-trips through Codable")
     func configurationRoundTrip() throws {

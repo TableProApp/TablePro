@@ -3,7 +3,6 @@ import Foundation
 import TableProImport
 import Testing
 
-@Suite("RDS discovery reconciliation")
 struct RDSDiscoveryReconcilerTests {
     private func exportable(
         name: String = "orders",

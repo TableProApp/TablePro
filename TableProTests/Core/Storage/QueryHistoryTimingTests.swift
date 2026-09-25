@@ -12,7 +12,6 @@ import SQLite3
 import TableProPluginKit
 import Testing
 
-@Suite("QueryHistory timing")
 struct QueryHistoryTimingTests {
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 

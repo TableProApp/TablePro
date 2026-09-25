@@ -13,7 +13,6 @@ import Testing
 /// the parent's own primary key has to be fetched before the rows can be grouped. The single-table
 /// read asked for it and the bulk read did not, and nothing made the two agree. Both now name the
 /// parents through this.
-@Suite("SQLite Foreign Key Parents")
 struct SQLiteForeignKeyParentsTests {
     /// A `PRAGMA foreign_key_list` row with the table name already stripped: id, seq, table, from,
     /// to, on_update, on_delete.

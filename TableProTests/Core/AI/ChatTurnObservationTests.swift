@@ -12,7 +12,6 @@ import Testing
 /// The granularity these assert is now `objectWillChange` per object rather than
 /// `@Observable`'s per property: a mutation inside a block must not wake the turn or the
 /// view model, or the whole chat re-renders on every streamed token.
-@Suite("ChatTurn observation granularity")
 @MainActor
 struct ChatTurnObservationTests {
     private func makeStreamingTurn() -> (ChatTurn, ChatContentBlock) {

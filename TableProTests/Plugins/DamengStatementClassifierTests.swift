@@ -1,7 +1,6 @@
 import Testing
 @testable import TablePro
 
-@Suite("Dameng statement classifier")
 struct DamengStatementClassifierTests {
     @Test("recognizes row-producing statements after comments")
     func recognizesRowStatements() {

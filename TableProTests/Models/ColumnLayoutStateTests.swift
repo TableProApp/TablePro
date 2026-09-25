@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ColumnLayoutState")
 struct ColumnLayoutStateTests {
     @Test("Default has empty widths")
     func defaultEmptyWidths() {

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Field driven list row emphasis")
 @MainActor
 struct FieldDrivenListEmphasisTests {
     /// The headless test host never gives a window the keyboard, so the one input the chooser rule

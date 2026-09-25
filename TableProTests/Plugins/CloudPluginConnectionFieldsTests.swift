@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cloud plugin connection fields")
 struct CloudPluginConnectionFieldsTests {
     private func registrySnapshot(forTypeId typeId: String) throws -> PluginMetadataSnapshot {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()

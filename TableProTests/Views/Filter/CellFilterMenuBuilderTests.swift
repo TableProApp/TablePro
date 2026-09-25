@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cell filter menu builder")
 @MainActor
 struct CellFilterMenuBuilderTests {
     private func operators(

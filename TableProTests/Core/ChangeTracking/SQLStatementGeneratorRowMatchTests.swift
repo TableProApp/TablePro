@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator: keyless row match exclusions")
 @MainActor
 struct SQLStatementGeneratorRowMatchTests {
     private let columns = ["id", "name", "payload", "tags"]

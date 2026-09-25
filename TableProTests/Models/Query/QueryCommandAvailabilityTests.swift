@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("QueryCommandAvailability")
 struct QueryCommandAvailabilityTests {
     @Test("A connected tab with text can run, explain, format and favorite")
     func liveTab() {

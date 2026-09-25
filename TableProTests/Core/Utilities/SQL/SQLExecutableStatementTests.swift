@@ -12,7 +12,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL executable statements")
 struct SQLExecutableStatementTests {
 
     /// Execution used to run through its own filter and the spans through another. The two trim different character

@@ -19,7 +19,6 @@ private actor CancellationWitness {
     }
 }
 
-@Suite("Cancellation reaches the running statement")
 struct MCPToolCancellationTests {
     private let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: "public")
 

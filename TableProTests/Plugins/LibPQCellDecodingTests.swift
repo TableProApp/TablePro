@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQCellDecoding")
 struct LibPQCellDecodingTests {
     private static let textOid: UInt32 = 25
     private static let booleanOid: UInt32 = 16

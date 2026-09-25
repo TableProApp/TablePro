@@ -16,7 +16,6 @@ import Testing
 /// `PostgreSQLObjectQueries.quoteLiteral` is the single answer, and these cases pin both halves of
 /// it: an `E''` string whenever the value holds a backslash, and output byte-identical to plain
 /// quote doubling whenever it does not.
-@Suite("PostgreSQL literal quoting")
 struct PostgreSQLLiteralQuotingTests {
     private static let caps = PostgreSQLCapabilities.assumingModernWhenUnknown(170_000)
 
@@ -139,7 +138,6 @@ struct PostgreSQLLiteralQuotingTests {
 /// literal: `''E'a\\b''` is valid SQL that matches nothing, and a plain `'\(name)'` only misbehaves
 /// on a server running the legacy setting. So the guard is a source scan, the same shape
 /// `IndexDDLOwnershipTests` and `SyncMapperFieldAccessTests` use.
-@Suite("PostgreSQL literal quoting source scan")
 struct PostgreSQLLiteralQuotingSourceScanTests {
     /// `PostgreSQLObjectQueries` owns the quoting and is the one file allowed to write the quotes
     /// itself. `LibPQConnectionString` builds a libpq conninfo string, whose quoting rules are

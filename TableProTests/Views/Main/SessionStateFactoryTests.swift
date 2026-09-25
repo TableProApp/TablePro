@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SessionStateFactory")
 struct SessionStateFactoryTests {
     // MARK: - Helpers
 

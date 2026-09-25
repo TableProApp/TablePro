@@ -17,7 +17,6 @@ import Testing
 /// reads hints only after a delay, if the user has not turned them off. So a button carrying a
 /// perfectly good localized string in `.help()` and nothing in `.accessibilityLabel()` announces
 /// its SF Symbol name, or nothing at all.
-@Suite("Accessible control names")
 struct AccessibleControlNameTests {
     /// Every one of these had a name in `.help()` and none in `.accessibilityLabel()`. The pairs
     /// are (file, the label string that must appear in it), so the test fails if a label is dropped
@@ -106,7 +105,6 @@ struct AccessibleControlNameTests {
 /// measured, so a sorted column is announced only when its header cell is told directly. The plan
 /// outline gives every column a `sortDescriptorPrototype`, so all of them are click-sortable, and
 /// none of them said which way it was sorted.
-@Suite("Query plan sort direction")
 @MainActor
 struct QueryPlanSortDirectionTests {
     @Test("The sorted column publishes its direction and the others publish none")

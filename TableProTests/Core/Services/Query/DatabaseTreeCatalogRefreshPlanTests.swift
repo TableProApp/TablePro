@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Database tree catalog refresh plan")
 struct DatabaseTreeCatalogRefreshPlanTests {
     private typealias ObjectsKey = DatabaseTreeMetadataService.ObjectsKey
     private typealias DatabaseKey = DatabaseTreeMetadataService.DatabaseKey

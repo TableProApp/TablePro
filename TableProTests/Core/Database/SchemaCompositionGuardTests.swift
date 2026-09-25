@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("Schema composition guard")
 struct SchemaCompositionGuardTests {
     private static let appDirectory: URL = {
         var url = URL(fileURLWithPath: #filePath)

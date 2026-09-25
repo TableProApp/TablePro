@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL index key list")
 struct SQLIndexKeyListTests {
     private static let sqlite = SQLiteIndexCatalog.lexicalFeatures
 

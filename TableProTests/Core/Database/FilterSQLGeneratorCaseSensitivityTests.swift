@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Filter SQL Generator Case Sensitivity")
 struct FilterSQLGeneratorCaseSensitivityTests {
 
     private static let postgresql = SQLDialectDescriptor(

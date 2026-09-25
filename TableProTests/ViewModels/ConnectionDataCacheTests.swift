@@ -11,7 +11,6 @@ import Testing
 
 /// Issue #3016. The Favorites tab reads its whole Queries tree out of this cache, so the cache has
 /// to outlive a tab switch and has to publish what it loads.
-@Suite("Connection data cache")
 @MainActor
 struct ConnectionDataCacheTests {
     private func snapshot(folderNamed name: String) -> ConnectionFavoritesSnapshot {

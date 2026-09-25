@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("PostGISSpatialRewrite.conversionQuery")
 struct PostGISConversionQueryTests {
     private let geometry = PostGISType(name: "geometry", schema: "public")
     private let geography = PostGISType(name: "geography", schema: "gis")
@@ -67,7 +66,6 @@ struct PostGISConversionQueryTests {
     }
 }
 
-@Suite("PostGISSpatialRewrite.arrayLiteral")
 struct PostGISArrayLiteralTests {
     @Test("Single hex value is quoted")
     func singleValue() {

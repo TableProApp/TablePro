@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL statement splitting")
 struct SQLStatementSplittingTests {
     @Test("The engine's own features keep a dollar-quoted body, a nested comment and a bracket whole")
     func featuresKeepEngineLiteralsWhole() {

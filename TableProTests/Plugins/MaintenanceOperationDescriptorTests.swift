@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Maintenance operation descriptors")
 struct MaintenanceOperationDescriptorTests {
     private func postgres(_ name: String) throws -> PluginMaintenanceOperation {
         try #require(PostgreSQLMaintenance.operations.first { $0.name == name })

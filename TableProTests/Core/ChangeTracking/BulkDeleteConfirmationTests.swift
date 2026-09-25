@@ -6,7 +6,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("Bulk Delete Confirmation")
 struct BulkDeleteConfirmationTests {
     @Test("No confirmation when nothing is being deleted")
     func testNotRequiredWithoutDeletes() {

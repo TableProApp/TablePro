@@ -14,7 +14,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AI schema context")
 struct SchemaContextForAITests {
     private static func provider(tables: [TableInfo], columns: [String: [ColumnInfo]]) -> SQLSchemaProvider {
         let source = SQLSchemaProvider.ColumnMetadataSource(

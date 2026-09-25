@@ -12,7 +12,6 @@ import Testing
 /// `1146 Table 'db.information_schema' doesn't exist`. A result set is the server's answer, so the
 /// driver never sends a statement of its own to invent one. The plugin imports CMariaDB, which this
 /// target cannot, so the guard is a source scan.
-@Suite("MySQL result synthesis source scan")
 struct MySQLResultSynthesisSourceScanTests {
     private static let pluginDirectory: URL = {
         var directory = URL(fileURLWithPath: #filePath)

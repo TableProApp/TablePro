@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL table listing")
 struct MySQLTableListingTests {
     private func row(_ cells: String?...) -> [PluginCellValue] {
         cells.map(PluginCellValue.fromOptional)

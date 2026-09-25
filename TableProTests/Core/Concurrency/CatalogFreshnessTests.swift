@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CatalogFreshness")
 struct CatalogFreshnessTests {
     @Test("A key never fetched is not current")
     func neverFetched() {

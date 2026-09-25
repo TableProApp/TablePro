@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Query Completion Ranking")
 struct QueryCompletionRankingTests {
     // MARK: - The session pool
 

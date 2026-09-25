@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Split divider cursor geometry")
 @MainActor
 struct SplitDividerCursorGeometryTests {
     @Test("A vertical split places one padded, full-height rect over the divider")

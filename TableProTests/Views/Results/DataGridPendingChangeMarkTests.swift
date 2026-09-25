@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Pending change marks")
 @MainActor
 struct DataGridPendingChangeMarkTests {
     private let palette = DataGridCellPalette(

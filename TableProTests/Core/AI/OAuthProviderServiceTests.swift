@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("OAuth provider abstraction")
 @MainActor
 struct OAuthProviderServiceTests {
     @Test("Registry dispatches OAuth providers to a service and others to nil")

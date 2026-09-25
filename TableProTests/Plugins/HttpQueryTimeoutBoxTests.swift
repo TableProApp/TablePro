@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("HttpQueryTimeoutBox")
 struct HttpQueryTimeoutBoxTests {
     @Test("Default-initialized box exposes bootstrap policy")
     func defaultBoxIsBootstrap() {

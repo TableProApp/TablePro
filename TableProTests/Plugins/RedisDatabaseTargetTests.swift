@@ -14,7 +14,6 @@ import Testing
 
 private struct Refused: Error, Equatable {}
 
-@Suite("Redis KEYBROWSE - the database it reads")
 struct RedisKeyBrowseDatabaseTests {
     private func database(of command: String) throws -> Int? {
         guard case .keyBrowse(_, _, _, _, let database) = try RedisCommandParser.parse(command) else {
@@ -64,7 +63,6 @@ struct RedisKeyBrowseDatabaseTests {
     }
 }
 
-@Suite("Redis command channel - moving to a database")
 struct RedisMoveToDatabaseTests {
     /// A read-only ACL user is refused SELECT even for the database it is already on, which made
     /// the first sidebar click on a Redis connection fail for that user.
@@ -115,7 +113,6 @@ struct RedisMoveToDatabaseTests {
     }
 }
 
-@Suite("Redis command channel - a read on another database")
 struct RedisWithDatabaseTests {
     @Test("On the session's own database only the read runs")
     func sameDatabaseRunsBodyOnly() async throws {
@@ -161,7 +158,6 @@ struct RedisWithDatabaseTests {
     }
 }
 
-@Suite("Redis command channel - one database's key count")
 struct RedisKeyCountTests {
     @Test("The session's own database is counted exactly")
     func currentDatabaseUsesDbsize() async throws {
@@ -211,7 +207,6 @@ struct RedisKeyCountTests {
     }
 }
 
-@Suite("Redis session database - where the session is and where it belongs")
 struct RedisSessionDatabaseTests {
     @Test("A selection moves both, a visit moves only where the session is")
     func selectedAndVisited() {
@@ -256,7 +251,6 @@ struct RedisSessionDatabaseTests {
     }
 }
 
-@Suite("Redis command channel - a visit the app abandoned")
 struct RedisAbandonedVisitTests {
     /// A cancelled stream lets go of the driver before its return SELECT reaches the server, so
     /// the next command could have run on the database the stream was reading.
@@ -313,7 +307,6 @@ struct RedisAbandonedVisitTests {
     }
 }
 
-@Suite("Redis grid writes - the database they belong to")
 struct RedisWriteAddressingTests {
     private static let writes: [RedisDatabaseTarget.Statement] = [
         (statement: "SET \"k\" \"v\"", parameters: []),
@@ -352,7 +345,6 @@ struct RedisWriteAddressingTests {
     }
 }
 
-@Suite("Redis key tree - the database it lists")
 struct RedisKeyTreeDatabaseTests {
     /// The tree's read is a walk of the keyspace plus one TYPE per key, run inside the database the
     /// tree names. A typed SELECT moves where the session belongs, which the read has to leave alone.

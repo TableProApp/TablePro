@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP settings")
 struct MCPSettingsTests {
     @Test("The server is off until the user turns it on")
     func defaultIsDisabled() {

@@ -5,7 +5,6 @@
 
 import Testing
 
-@Suite("MySQL Socket Timeout")
 struct MySQLSocketTimeoutTests {
     @Test("No limit maps to an infinite socket timeout")
     func noLimitIsInfinite() {

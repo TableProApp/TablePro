@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistoryGrouping")
 struct QueryHistoryGroupingTests {
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)

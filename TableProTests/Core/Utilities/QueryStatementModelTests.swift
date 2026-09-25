@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("QueryStatementModel")
 struct QueryStatementModelTests {
     @Test("MongoDB splits as JavaScript, everything else as SQL")
     func modelPerType() {

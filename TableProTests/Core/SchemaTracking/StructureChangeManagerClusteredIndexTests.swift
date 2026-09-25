@@ -10,7 +10,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Structure change manager clustered index adds")
+@MainActor
 struct StructureChangeManagerClusteredIndexTests {
     private typealias IndexType = EditableIndexDefinition.IndexType
 

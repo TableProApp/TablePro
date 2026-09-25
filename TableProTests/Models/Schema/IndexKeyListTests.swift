@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Index key list")
 struct IndexKeyListTests {
     private static let columns = ["id", "tenant_id", "email", "a", "b", "v", "Weird, Name", "owner's_id", "lower(v)"]
 

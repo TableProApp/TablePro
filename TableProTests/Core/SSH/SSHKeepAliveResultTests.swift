@@ -10,7 +10,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("sshKeepAliveDidFail")
 struct SSHKeepAliveResultTests {
     @Test("A sent keep-alive is not a failure")
     func successIsNotFailure() {

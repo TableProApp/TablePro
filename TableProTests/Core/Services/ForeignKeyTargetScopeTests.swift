@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Foreign key target scope")
 struct ForeignKeyTargetScopeTests {
     private let connectionId = UUID()
 

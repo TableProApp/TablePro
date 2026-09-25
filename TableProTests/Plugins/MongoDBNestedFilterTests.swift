@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MongoDB Nested Field Filtering")
 struct MongoDBNestedFilterTests {
     private func filter(
         _ column: String,

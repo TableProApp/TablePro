@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Quick Switcher history items")
 struct QuickSwitcherHistoryItemTests {
     private func makeEntry(query: String, connectionId: UUID = UUID(), at date: Date = Date()) -> QueryHistoryEntry {
         QueryHistoryEntry(

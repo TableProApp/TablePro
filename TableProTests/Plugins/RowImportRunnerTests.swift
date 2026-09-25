@@ -51,7 +51,6 @@ private final class MockImportSink: PluginImportDataSink, @unchecked Sendable {
     func enableForeignKeyChecks() async throws {}
 }
 
-@Suite("Row Import Runner")
 struct RowImportRunnerTests {
     private func entry(_ line: Int, _ value: String = "v") -> RowImportRunner.Entry {
         (line, ["c": .text(value)])

@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Oracle server-side export qualification")
 struct ServerSideExportOracleQualificationTests {
     private func oracleStatement(table: String = "ORDERS", schema: String? = nil) -> String {
         ServerSideExport.statement(

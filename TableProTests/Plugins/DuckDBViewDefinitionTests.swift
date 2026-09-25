@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB view definition")
 struct DuckDBViewDefinitionTests {
     @Test("A stored CREATE VIEW is promoted so it can be run again")
     func createViewBecomesReplaceable() {

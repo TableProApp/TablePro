@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator handleRefresh")
 @MainActor
 struct MainContentCoordinatorRefreshTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

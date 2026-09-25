@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Container switch planner")
 struct ContainerSwitchPlannerTests {
     // MARK: - Engines with both dimensions
 

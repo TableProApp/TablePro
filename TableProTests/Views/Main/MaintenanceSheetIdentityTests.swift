@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Maintenance sheet identity")
 struct MaintenanceSheetIdentityTests {
     private func operation(_ name: String) -> PluginMaintenanceOperation {
         PluginMaintenanceOperation(name: name, appliesTo: [.table], scope: .object)

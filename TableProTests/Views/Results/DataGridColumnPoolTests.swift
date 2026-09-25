@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DataGridColumnPool")
 @MainActor
 struct DataGridColumnPoolTests {
     private func makeTableView() -> NSTableView {

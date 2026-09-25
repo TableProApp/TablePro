@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPSubscriptionFilter")
 struct MCPSubscriptionFilterTests {
     @Test("Params without a notifications object are invalid")
     func notificationsIsRequired() {
@@ -129,7 +128,6 @@ struct MCPSubscriptionFilterTests {
     }
 }
 
-@Suite("MCPSubscriptionRegistry")
 struct MCPSubscriptionRegistryTests {
     @Test("Opening a subscription answers with the subset the server honours")
     func openReturnsHonouredFilter() async {
@@ -398,7 +396,6 @@ struct MCPSubscriptionRegistryTests {
     }
 }
 
-@Suite("MCPSubscriptionNotification")
 struct MCPSubscriptionNotificationTests {
     @Test("Every notification method is namespaced under notifications/")
     func methodNames() {

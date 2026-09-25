@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection window identity")
 struct ConnectionWindowIdentityTests {
     @Test("The document inspector is not a connection window")
     func inspectorIsNotAConnectionWindow() {

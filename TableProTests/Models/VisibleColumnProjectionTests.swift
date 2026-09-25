@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("VisibleColumnProjection")
 struct VisibleColumnProjectionTests {
     private let columns = ["id", "name", "email"]
     private let columnTypes: [ColumnType] = [

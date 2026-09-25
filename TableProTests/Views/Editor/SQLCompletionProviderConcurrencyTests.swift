@@ -13,7 +13,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Completion Provider Concurrency")
 struct SQLCompletionProviderConcurrencyTests {
     private func makeProvider() -> SQLCompletionProvider {
         SQLCompletionProvider(schemaProvider: SQLSchemaProvider())

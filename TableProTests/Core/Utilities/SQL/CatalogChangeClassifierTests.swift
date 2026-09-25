@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CatalogChangeClassifier")
 struct CatalogChangeClassifierTests {
     private func kinds(_ sql: String, _ type: DatabaseType = .postgresql) -> CatalogObjectKinds {
         CatalogChangeClassifier.effect(of: sql, databaseType: type).kinds

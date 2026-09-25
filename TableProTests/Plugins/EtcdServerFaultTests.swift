@@ -14,7 +14,6 @@ private func etcdBody(_ json: String) -> Data {
     Data(json.utf8)
 }
 
-@Suite("EtcdServerFault - classification")
 struct EtcdServerFaultClassificationTests {
     @Test("etcd 3.6 reports a missing token as InvalidArgument, not Unauthorized")
     func missingTokenOnEtcd36() {
@@ -105,7 +104,6 @@ struct EtcdServerFaultClassificationTests {
     }
 }
 
-@Suite("EtcdServerFault - decoding")
 struct EtcdServerFaultDecodingTests {
     @Test("A plain text body survives as the message")
     func plainTextBody() {

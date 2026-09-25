@@ -43,7 +43,6 @@ private func textual(_ direction: LibPQCopyDirection) -> LibPQCopy {
     LibPQCopy(direction: direction, format: .textual)
 }
 
-@Suite("LibPQPendingResultDrain")
 struct LibPQPendingResultDrainTests {
     @Test("An idle connection drains without ending anything")
     func idleConnection() {

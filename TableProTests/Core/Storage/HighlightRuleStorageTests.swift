@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Highlight rule storage")
 @MainActor
 struct HighlightRuleStorageTests {
     private let directory: URL

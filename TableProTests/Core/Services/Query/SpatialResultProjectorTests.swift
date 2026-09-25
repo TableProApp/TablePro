@@ -54,7 +54,6 @@ private func onlyColumn(_ tableRows: TableRows) -> SpatialColumn {
     )
 }
 
-@Suite("SpatialColumn")
 struct SpatialColumnTests {
     @Test("Only spatial columns are offered")
     func onlySpatialColumns() {
@@ -144,7 +143,6 @@ struct SpatialColumnTests {
     }
 }
 
-@Suite("SpatialResultProjector")
 struct SpatialResultProjectorTests {
     @Test("EWKT points project to shapes tagged with their row")
     func projectsPoints() async {

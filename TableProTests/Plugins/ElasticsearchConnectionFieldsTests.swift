@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Elasticsearch connection fields")
 struct ElasticsearchConnectionFieldsTests {
     private func elasticsearchFields() throws -> [ConnectionField] {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()

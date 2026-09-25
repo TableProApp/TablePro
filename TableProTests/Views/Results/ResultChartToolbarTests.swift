@@ -8,7 +8,6 @@ import SwiftUI
 import Testing
 
 @MainActor
-@Suite("Result chart toolbar")
 struct ResultChartToolbarTests {
     @Test("Controls stack when the result pane is narrow")
     func controlsStackAtNarrowWidth() throws {

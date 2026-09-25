@@ -3,7 +3,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("FavoriteTablesStorage")
 @MainActor
 struct FavoriteTablesStorageTests {
     private func makeStorage() throws -> (FavoriteTablesStorage, SyncMetadataStorage) {

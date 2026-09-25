@@ -13,7 +13,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL statement scanner - Oracle PL/SQL units")
 struct SQLStatementPLSQLSplittingTests {
     @Test("Each statement reaches the driver as Oracle accepts it", arguments: PLSQLScriptCorpus.cases)
     func corpusSplitsAsMeasured(example: PLSQLScriptCase) {

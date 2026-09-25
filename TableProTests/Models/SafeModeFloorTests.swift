@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Safe Mode floor")
 @MainActor
 struct SafeModeFloorTests {
     private func remoteFileConnection(preferred: SafeModeLevel = .silent) -> DatabaseConnection {

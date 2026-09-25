@@ -82,7 +82,6 @@ private final class ParkingProvider: ScopedMetadataProviding {
     }
 }
 
-@Suite("Materialized view concurrent refresh note")
 struct MaterializedViewConcurrentRefreshNoteTests {
     @Test("Nothing is shown before the server has answered")
     func nothingBeforeAnAnswer() {

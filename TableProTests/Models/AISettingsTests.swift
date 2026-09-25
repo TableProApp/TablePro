@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AISettings")
 struct AISettingsTests {
     @Test("default has enabled true")
     func defaultEnabledIsTrue() {
@@ -128,7 +127,6 @@ struct AISettingsTests {
 
 // MARK: - Active Provider
 
-@Suite("AISettings.activeProvider")
 struct AISettingsActiveProviderTests {
     private func makeProvider(name: String = "Test", type: AIProviderType = .claude) -> AIProviderConfig {
         AIProviderConfig(name: name, type: type)

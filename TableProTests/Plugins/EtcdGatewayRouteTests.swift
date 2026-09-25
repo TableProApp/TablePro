@@ -13,7 +13,6 @@ private func gatewayBody(_ text: String) -> Data {
     Data(text.utf8)
 }
 
-@Suite("EtcdGatewayRoute")
 struct EtcdGatewayRouteTests {
     @Test("v3 is tried before the legacy prefixes")
     func prefixOrder() {

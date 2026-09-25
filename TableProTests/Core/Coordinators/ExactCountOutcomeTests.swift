@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Count Exactly outcome")
 struct ExactCountOutcomeTests {
     private struct Throttled: LocalizedError {
         var errorDescription: String? { "Rate exceeded" }

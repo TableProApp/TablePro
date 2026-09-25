@@ -12,7 +12,7 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@MainActor @Suite("CommandActions focus gate")
+@MainActor
 struct CommandActionsFocusGateTests {
     private func makeSUT() -> MainContentCommandActions {
         let connection = TestFixtures.makeConnection()

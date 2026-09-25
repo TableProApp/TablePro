@@ -9,7 +9,6 @@ import Security
 import Testing
 @testable import TablePro
 
-@Suite("Keychain Access Control")
 struct KeychainAccessControlTests {
     @Test("AfterFirstUnlock constant is available for syncable items")
     func correctConstantAvailable() {

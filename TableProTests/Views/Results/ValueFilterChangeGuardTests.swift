@@ -42,7 +42,6 @@ private final class DeferringDelegate: DataGridViewDelegate {
     }
 }
 
-@Suite("Value filter change guard")
 @MainActor
 struct ValueFilterChangeGuardTests {
     private func makeCoordinator(delegate: (any DataGridViewDelegate)? = nil) -> TableViewCoordinator {

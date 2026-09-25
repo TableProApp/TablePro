@@ -7,7 +7,6 @@ import Testing
 /// SCRAM's cryptography and the two rules that decide whether a hostile broker can get past
 /// it. The exchange itself needs a live connection, so what is pinned here is everything that
 /// can be checked without one: the key derivation, and the guards that reject a broker.
-@Suite("Kafka SASL")
 struct KafkaSASLTests {
     // MARK: - Key derivation
 

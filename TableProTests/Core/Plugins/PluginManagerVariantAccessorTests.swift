@@ -21,7 +21,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginManager variant accessors")
 @MainActor
 struct PluginManagerVariantAccessorTests {
     private var manager: PluginManager { PluginManager.shared }

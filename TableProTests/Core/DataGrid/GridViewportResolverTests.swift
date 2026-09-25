@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Grid viewport resolver")
 struct GridViewportResolverTests {
     private static let keyColumns = ["id"]
 

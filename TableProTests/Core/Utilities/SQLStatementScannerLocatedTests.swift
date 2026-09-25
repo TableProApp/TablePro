@@ -12,7 +12,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL Statement Scanner — locatedStatementAtCursor")
 struct SQLStatementScannerLocatedTests {
 
     // MARK: - Offset correctness

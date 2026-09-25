@@ -13,7 +13,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("Query classifier - Oracle PL/SQL blocks")
 struct QueryClassifierPLSQLTests {
     @Test("A block runs server-side code and is at least a write", arguments: [
         "BEGIN DBMS_OUTPUT.PUT_LINE('x'); END;",

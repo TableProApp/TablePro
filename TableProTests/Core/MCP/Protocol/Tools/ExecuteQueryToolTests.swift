@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ExecuteQueryTool")
 struct ExecuteQueryToolTests {
     private let tool = ExecuteQueryTool()
 

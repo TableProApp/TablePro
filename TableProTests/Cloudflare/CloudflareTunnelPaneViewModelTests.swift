@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Cloudflare tunnel pane validation")
 @MainActor
 struct CloudflareTunnelPaneViewModelTests {
     @Test("disabled tunnel reports no validation issues")

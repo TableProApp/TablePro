@@ -13,7 +13,6 @@ import TableProSyncTransport
 @testable import TablePro
 import Testing
 
-@Suite("License state presentation")
 struct LicenseSyncPresentationTests {
     private static let everyStatus: [LicenseStatus] = [
         .unlicensed, .active, .expired, .suspended, .deactivated, .validationFailed

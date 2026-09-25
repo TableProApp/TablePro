@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Dotenv Connection Extractor")
 struct DotenvConnectionExtractorTests {
     private let directory = URL(fileURLWithPath: "/tmp/project")
 

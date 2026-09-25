@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Loadable extension list")
 struct LoadableExtensionListTests {
     @Test("An empty or blank value is an empty list")
     func emptyValueDecodesToNothing() throws {

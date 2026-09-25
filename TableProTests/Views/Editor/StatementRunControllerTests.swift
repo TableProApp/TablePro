@@ -16,7 +16,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Statement run controls")
 @MainActor
 struct StatementRunControllerTests {
 

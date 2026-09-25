@@ -12,7 +12,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Structure NULL default")
+@MainActor
 struct StructureNullDefaultTests {
     private func column(default defaultValue: String?, isNullable: Bool = true) -> EditableColumnDefinition {
         var column = EditableColumnDefinition.placeholder()

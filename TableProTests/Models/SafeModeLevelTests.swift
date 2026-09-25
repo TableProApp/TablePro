@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("SafeModeLevel")
 struct SafeModeLevelTests {
 
     // MARK: - Raw Values

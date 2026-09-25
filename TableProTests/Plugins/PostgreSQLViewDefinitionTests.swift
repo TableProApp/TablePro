@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQL view definition")
 struct PostgreSQLViewDefinitionTests {
     private let body = " SELECT id,\n    v\n   FROM sales.orders\n  WHERE (id > 0);"
 

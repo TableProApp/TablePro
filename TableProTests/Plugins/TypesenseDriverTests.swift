@@ -29,7 +29,6 @@ private let booksFields: [String: TypesenseField] = [
     "tag": field("tag", "string", sortable: true, optional: true),
 ]
 
-@Suite("Typesense - Console Parser")
 struct TypesenseConsoleParserTests {
     @Test("Parses method, path, and JSON body")
     func parsesFullRequest() {
@@ -77,7 +76,6 @@ struct TypesenseConsoleParserTests {
     }
 }
 
-@Suite("Typesense - Schema")
 struct TypesenseSchemaTests {
     private let response: [String: Any] = [
         "name": "books",
@@ -221,7 +219,6 @@ struct TypesenseSchemaTests {
     }
 }
 
-@Suite("Typesense - Filter Builder")
 struct TypesenseFilterBuilderTests {
     private func clause(_ column: String, _ op: String, _ value: String, second: String? = nil) throws -> String {
         try TypesenseFilterBuilder.clause(
@@ -417,7 +414,6 @@ struct TypesenseFilterBuilderTests {
     }
 }
 
-@Suite("Typesense - Query Builder")
 struct TypesenseQueryBuilderTests {
     @Test("A tagged search round-trips through its encoding")
     func taggedSearchRoundTrips() throws {
@@ -554,7 +550,6 @@ struct TypesenseQueryBuilderTests {
     }
 }
 
-@Suite("Typesense - Collection Operations")
 struct TypesenseOperationsTests {
     /// Without these the app composes its own SQL and sends it to `execute`. Measured before the
     /// fix: exporting sent `SELECT * FROM c`, dropping sent `DROP TABLE c` and truncating sent
@@ -610,7 +605,6 @@ struct TypesenseOperationsTests {
     }
 }
 
-@Suite("Typesense - API Keys")
 struct TypesenseApiKeysTests {
     private let payload: [String: Any] = [
         "keys": [
@@ -682,7 +676,6 @@ struct TypesenseApiKeysTests {
     }
 }
 
-@Suite("Typesense - Path Encoding")
 struct TypesensePathEncodingTests {
     @Test("A slash never survives into the path, so a segment stays one segment")
     func encodesSlashes() {
@@ -740,7 +733,6 @@ struct TypesensePathEncodingTests {
     }
 }
 
-@Suite("Typesense - Statement Generator")
 struct TypesenseStatementGeneratorTests {
     private let columns = ["id", "title", "year", "inprint", "authors"]
 

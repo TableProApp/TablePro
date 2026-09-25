@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator — No Primary Key")
 struct SQLStatementGeneratorNoPKTests {
     // MARK: - Helper Methods
 

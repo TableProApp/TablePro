@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistoryEntry")
 struct QueryHistoryEntryTests {
     private func makeEntry(
         query: String,

@@ -3,7 +3,6 @@ import TableProGoogleCloud
 import TableProPluginKit
 import Testing
 
-@Suite("BigQuery credential factory")
 struct BigQueryCredentialFactoryTests {
     private static let serviceAccountJSON = """
         {"type":"service_account","client_email":"reader@key-project.iam.gserviceaccount.com",\
@@ -120,7 +119,6 @@ struct BigQueryCredentialFactoryTests {
     }
 }
 
-@Suite("BigQuery driver errors")
 struct BigQueryErrorTests {
     @Test("A sign-in failure carries SQLSTATE 28000")
     func signInRequiredIsInvalidAuthorization() {

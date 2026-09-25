@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Data Change Manager Extended")
 struct DataChangeManagerExtendedTests {
     private func makeManager(
         columns: [String] = ["id", "name", "email"],

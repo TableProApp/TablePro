@@ -34,7 +34,6 @@ private final class SchemaSwitchLatch {
     }
 }
 
-@Suite("SwitchSchema")
 @MainActor
 struct SwitchSchemaTests {
     /// A schema switch waiting for the driver is dropped when the connection is closed and opened

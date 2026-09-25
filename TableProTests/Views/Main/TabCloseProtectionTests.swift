@@ -13,7 +13,7 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Tab close protection")
+@MainActor
 struct TabCloseProtectionTests {
     private static let columns = ["id", "name", "email"]
     private static let originalRow: [PluginCellValue] = [.text("1"), .text("ada"), .text("ada@example.com")]

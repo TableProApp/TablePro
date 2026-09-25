@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Advanced pane external access")
 @MainActor
 struct AdvancedPaneViewModelTests {
     @Test("Loads external access from the connection")

@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("QueryTabManager editor focus claim")
 @MainActor
 struct QueryTabManagerFocusTests {
     @Test("addTab with claimFocus sets pendingFocusTabId to the new tab")

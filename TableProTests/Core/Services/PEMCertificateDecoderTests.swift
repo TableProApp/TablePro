@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PEM certificate decoder")
 struct PEMCertificateDecoderTests {
     private static let derBytes = Data([0x30, 0x82, 0x01, 0x0A, 0x02, 0x01, 0x00])
 

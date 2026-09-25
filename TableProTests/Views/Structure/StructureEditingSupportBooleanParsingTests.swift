@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("StructureEditingSupport Boolean Parsing")
 @MainActor
 struct StructureEditingSupportBooleanParsingTests {
     private static let postgresOrderedFields: [StructureColumnField] = [

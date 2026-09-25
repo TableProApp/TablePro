@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQByteaDecoder - hex format")
 struct LibPQByteaDecoderHexTests {
     @Test("Empty input returns empty Data")
     func emptyInput() {
@@ -75,7 +74,6 @@ struct LibPQByteaDecoderHexTests {
     }
 }
 
-@Suite("LibPQByteaDecoder - escape format")
 struct LibPQByteaDecoderEscapeTests {
     @Test("Plain ASCII bytes pass through")
     func plainAscii() {
@@ -123,7 +121,6 @@ struct LibPQByteaDecoderEscapeTests {
     }
 }
 
-@Suite("LibPQByteaDecoder - issue #1188 regression")
 struct LibPQByteaDecoderIssue1188Tests {
     @Test("Issue #1188 exact value decodes to 48 bytes")
     func issue1188ExactValue() {
@@ -153,7 +150,6 @@ struct LibPQByteaDecoderIssue1188Tests {
     }
 }
 
-@Suite("LibPQByteaDecoder - hex round-trip")
 struct LibPQByteaDecoderEncodeTests {
     @Test("encodeHexText produces canonical \\xHH format")
     func canonicalHexEncoding() {

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("CustomSlashCommandStorage")
 @MainActor
 struct CustomSlashCommandStorageTests {
     private func makeStorage() -> CustomSlashCommandStorage {

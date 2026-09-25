@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("WindowTitleResolver.resolveTitle from payload")
 @MainActor
 struct WindowTitleResolverPayloadTitleTests {
     @Test("Nil payload falls back to SQL Query")
@@ -259,7 +258,6 @@ struct WindowTitleResolverPayloadTitleTests {
     }
 }
 
-@Suite("WindowTitleResolver.resolveTitle from tab")
 @MainActor
 struct WindowTitleResolverTabTitleTests {
     private let connection = DatabaseConnection(name: "MyConnection", type: .postgresql)
@@ -294,7 +292,6 @@ struct WindowTitleResolverTabTitleTests {
     }
 }
 
-@Suite("WindowTitleResolver.sanitizeTitle")
 @MainActor
 struct WindowTitleResolverSanitizeTests {
     @Test("Non-blank candidate passes through")
@@ -318,7 +315,6 @@ struct WindowTitleResolverSanitizeTests {
     }
 }
 
-@Suite("QueryTab.fileDisplayTitle")
 struct QueryTabFileDisplayTitleTests {
     @Test("Returns FileManager display name for the URL")
     func returnsFileManagerDisplayName() {
@@ -342,7 +338,6 @@ struct QueryTabFileDisplayTitleTests {
     }
 }
 
-@Suite("QueryTabManager.addTab with sourceFileURL")
 @MainActor
 struct QueryTabManagerAddTabSourceFileTests {
     @Test("Tab title uses the shared file display title helper")

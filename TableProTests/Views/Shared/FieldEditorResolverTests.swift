@@ -9,7 +9,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("FieldEditorResolver")
 struct FieldEditorResolverTests {
     @Test("JSON column resolves to .json")
     func jsonColumnReturnsJson() {
@@ -198,7 +197,6 @@ struct FieldEditorResolverTests {
 }
 
 @MainActor
-@Suite("FieldEditorResolver image content")
 struct FieldEditorResolverImageTests {
     private func encodedPng() -> Data {
         guard let representation = NSBitmapImageRep(

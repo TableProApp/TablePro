@@ -15,7 +15,6 @@ import Foundation
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQLFileParser - SQL Server batches")
 struct SQLFileParserBatchTests {
     private struct Run: Equatable {
         let statement: String

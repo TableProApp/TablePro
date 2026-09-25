@@ -13,7 +13,6 @@ import Testing
 /// 320x320 box it invented and then resize the window from the origin it had already chosen. The
 /// popover walked up and left off its own anchor. These assert the size is known before anything is
 /// presented, since that is the only input the placement has.
-@Suite("Popover presenter publishes its content size before showing")
 @MainActor
 struct PopoverPresenterTests {
     private struct FixedContent: View {

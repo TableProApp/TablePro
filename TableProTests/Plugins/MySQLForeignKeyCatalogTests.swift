@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL foreign key catalog merge")
 struct MySQLForeignKeyCatalogTests {
     private func column(
         _ table: String,

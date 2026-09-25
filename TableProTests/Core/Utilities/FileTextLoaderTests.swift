@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("File text loader")
 struct FileTextLoaderTests {
     private static let headerLength = 4_096
     private static let reportedName = "B\u{E1}o c\u{E1}o doanh thu"

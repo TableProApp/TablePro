@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Cloudflare tunnel model")
 struct CloudflareModelTests {
     @Test("CloudflareConfiguration round-trips through Codable")
     func configurationRoundTrip() throws {

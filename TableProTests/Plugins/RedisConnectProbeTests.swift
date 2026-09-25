@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis connect probe")
 struct RedisConnectProbeTests {
     @Test("a reply with no error means the server bound the session")
     func successEstablishes() {

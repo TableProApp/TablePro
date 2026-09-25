@@ -5,7 +5,6 @@ import TableProSyncTransport
 import Testing
 
 @MainActor
-@Suite("Sync coordinator push and pull cycle")
 struct SyncCoordinatorEchoTests {
     private static let zoneID = CKRecordZone.ID(
         zoneName: CloudKitSyncEngine.zoneName,

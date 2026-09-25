@@ -65,7 +65,6 @@ private final class RunnerHarness: @unchecked Sendable {
     }
 }
 
-@Suite("MySQL statement deadline runner")
 struct MySQLStatementDeadlineRunnerTests {
     private let deadline = MySQLStatementDeadline(seconds: 5, scope: .selectStatements)
 

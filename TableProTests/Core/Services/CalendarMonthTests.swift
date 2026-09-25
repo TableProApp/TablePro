@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Calendar Month")
 struct CalendarMonthTests {
     private func calendar(firstWeekday: Int) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)

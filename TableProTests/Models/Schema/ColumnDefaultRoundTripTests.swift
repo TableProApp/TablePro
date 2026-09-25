@@ -11,7 +11,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("Column default round trip")
 struct ColumnDefaultRoundTripTests {
     private func menuSQL(_ type: DatabaseType) -> [String] {
         ColumnDefaultVocabulary.options(for: type).compactMap(\.sql)
@@ -83,7 +82,6 @@ struct ColumnDefaultRoundTripTests {
     }
 }
 
-@Suite("SQL string literal")
 struct SQLStringLiteralTests {
     @Test(
         "A single-quoted literal reads back as the text it stands for",

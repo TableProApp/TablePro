@@ -8,7 +8,6 @@
 import Foundation
 import Testing
 
-@Suite("Snowflake SQL Escaping")
 struct SnowflakeSQLTests {
     // MARK: - Literals
 

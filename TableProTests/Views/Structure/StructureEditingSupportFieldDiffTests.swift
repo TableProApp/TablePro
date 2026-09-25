@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("StructureEditingSupport Field Diff")
 @MainActor
 struct StructureEditingSupportFieldDiffTests {
     // MARK: - Fixtures
@@ -246,7 +245,6 @@ struct StructureEditingSupportFieldDiffTests {
 
 // MARK: - undoDelete(for:at:)
 
-@Suite("StructureChangeManager Row-Specific Undo Delete")
 @MainActor
 struct StructureChangeManagerUndoDeleteTests {
     private func makeManagerWithSchema() -> StructureChangeManager {

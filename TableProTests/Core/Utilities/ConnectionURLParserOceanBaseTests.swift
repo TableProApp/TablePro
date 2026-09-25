@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection URL Parser - OceanBase")
 struct ConnectionURLParserOceanBaseTests {
     @Test("Full oceanbase URL with default port")
     func testFullURLDefaultPort() {

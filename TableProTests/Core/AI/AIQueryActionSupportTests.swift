@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AIQueryActionAvailability")
 struct AIQueryActionAvailabilityTests {
     private func availability(
         aiEnabled: Bool = true,
@@ -62,7 +61,6 @@ struct AIQueryActionAvailabilityTests {
     }
 }
 
-@Suite("AIQueryTarget")
 struct AIQueryTargetTests {
     @Test("A word the right-click selected sends the statement around it")
     func contextClickWordUsesStatement() {
@@ -79,7 +77,6 @@ struct AIQueryTargetTests {
     }
 }
 
-@Suite("WalkthroughApplyPlan")
 struct WalkthroughApplyPlanTests {
     private let tabId = UUID()
     private let text = "SELECT 1;\nSELECT * FROM t WHERE a = 1;\nSELECT 3;"
@@ -128,7 +125,6 @@ struct WalkthroughApplyPlanTests {
     }
 }
 
-@Suite("Query context attachment")
 struct QueryContextAttachmentTests {
     private func attachment() -> QueryContextAttachment {
         QueryContextAttachment(connectionId: UUID(), database: "shop", schema: "public", statement: "SELECT * FROM orders")
@@ -177,7 +173,6 @@ struct QueryContextAttachmentTests {
     }
 }
 
-@Suite("AI query action shortcuts")
 struct AIQueryActionShortcutTests {
     @Test("Every AI query shortcut is an editor-context command, Review on Option-Shift-Command-L")
     func shortcuts() {

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SortableHeaderView chrome rendering")
 @MainActor
 struct SortableHeaderRenderingTests {
     private struct Grid {

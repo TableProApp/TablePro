@@ -13,7 +13,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("MCP explain statement")
 struct MCPExplainStatementTests {
     private func message(of attempt: () throws -> String) -> String? {
         do {

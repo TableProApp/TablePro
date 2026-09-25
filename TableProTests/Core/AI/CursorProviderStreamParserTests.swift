@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CursorProvider SSE stream parsing")
 struct CursorProviderStreamParserTests {
     private func deltas(from lines: [String]) -> [CursorProvider.StreamParser.Output] {
         var parser = CursorProvider.StreamParser()

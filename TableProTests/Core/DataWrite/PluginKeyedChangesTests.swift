@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Plugin keyed changes")
 struct PluginKeyedChangesTests {
     @Test("Every row gets its own key, and the key agrees across the changes and the sets")
     func keysAgreeAcrossCollections() {

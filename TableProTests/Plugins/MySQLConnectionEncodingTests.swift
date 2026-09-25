@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL connection encoding")
 struct MySQLConnectionEncodingTests {
     @Test("A missing, empty or unknown field value is plain UTF-8")
     func fieldValueParsing() {

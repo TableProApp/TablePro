@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Field driven list context menu")
 @MainActor
 struct FieldDrivenListMenuTests {
     private static let rowCount = 3

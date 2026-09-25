@@ -19,7 +19,6 @@ private func keys(_ names: String...) -> [Data] { names.map { Data($0.utf8) } }
 
 private let refusal = "NOPERM No permissions to access a key"
 
-@Suite("Redis partial cluster write - when a split write counts as partly applied")
 struct RedisPartialClusterWriteAssemblyTests {
     private let nodes = ["127.0.0.1:6505", "127.0.0.1:6506"]
 
@@ -122,7 +121,6 @@ struct RedisPartialClusterWriteAssemblyTests {
     }
 }
 
-@Suite("Redis partial cluster write - what the detail lists")
 struct RedisPartialClusterWriteDetailTests {
     @Test("A command sent whole to every node names the nodes it ran on")
     func broadcastNamesNodes() throws {
@@ -169,7 +167,6 @@ struct RedisPartialClusterWriteDetailTests {
     }
 }
 
-@Suite("Redis partial cluster write - reading one shard's reply")
 struct RedisShardPartOutcomeTests {
     @Test("An error is a refusal, a queued acknowledgement is queued, anything else ran")
     func outcomes() {

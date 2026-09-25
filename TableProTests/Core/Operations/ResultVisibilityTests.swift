@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Result visibility")
 struct ResultVisibilityTests {
     @Test("A result counts as on screen only when all three axes agree")
     func allThreeAxesMustAgree() {

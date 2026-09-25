@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLContextAnalyzer Windowing")
 struct SQLContextAnalyzerWindowingTests {
     private let analyzer = SQLContextAnalyzer()
 

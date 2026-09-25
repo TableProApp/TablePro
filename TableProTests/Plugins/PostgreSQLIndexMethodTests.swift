@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL index access method")
 struct PostgreSQLIndexMethodTests {
     private static let table = #""dst"."items""#
 

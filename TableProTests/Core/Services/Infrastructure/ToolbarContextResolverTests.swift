@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Toolbar context resolver")
 struct ToolbarContextResolverTests {
     /// `TabType` is not `CaseIterable`, so the list is written out. A ninth kind fails the
     /// exhaustive switch in the resolver before it can fail here.

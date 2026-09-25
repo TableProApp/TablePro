@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("Icon-only control labels")
 struct IconOnlyControlLabelTests {
     private static let labelMarker = "} label: {"
 

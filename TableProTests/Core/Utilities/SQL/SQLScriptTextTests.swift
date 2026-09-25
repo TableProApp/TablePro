@@ -13,7 +13,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQLScriptText")
 struct SQLScriptTextTests {
     private static let oracle = SQLScriptText(databaseType: .oracle)
     private static let mysql = SQLScriptText(databaseType: .mysql)

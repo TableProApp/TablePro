@@ -10,7 +10,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Create Table draft builder")
 struct CreateTableDraftBuilderTests {
     private func column(
         _ name: String,

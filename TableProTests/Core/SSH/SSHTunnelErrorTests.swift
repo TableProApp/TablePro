@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSHTunnelError")
 struct SSHTunnelErrorTests {
     // MARK: - Port Bind Failure Classification
 

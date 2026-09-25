@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableViewCoordinator value filter")
 @MainActor
 struct TableViewCoordinatorValueFilterTests {
     private func makeCoordinator() -> TableViewCoordinator {

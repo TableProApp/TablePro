@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("VimKeyInterceptor key claims")
 @MainActor
 struct VimKeyInterceptorFocusTests {
     private func makeInterceptor(text: String = "SELECT * FROM users;") -> (VimEngine, VimKeyInterceptor) {

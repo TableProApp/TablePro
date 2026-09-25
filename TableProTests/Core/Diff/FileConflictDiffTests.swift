@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("FileConflictDiff")
 struct FileConflictDiffTests {
     private func linePairs(mine: String, disk: String) -> [DiffPair]? {
         guard case .lineDiff(let pairs) = FileConflictDiff.comparison(mine: mine, disk: disk) else {

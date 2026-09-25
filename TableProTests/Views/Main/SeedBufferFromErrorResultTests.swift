@@ -150,7 +150,6 @@ private final class SeedFixture {
     }
 }
 
-@Suite("Seeding the row buffer from an error result")
 @MainActor
 struct SeedBufferFromErrorResultTests {
     private static let previous = TableRows.from(

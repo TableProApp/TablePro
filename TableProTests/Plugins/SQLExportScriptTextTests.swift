@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL export script text")
 struct SQLExportScriptTextTests {
     private final class DefinitionDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String

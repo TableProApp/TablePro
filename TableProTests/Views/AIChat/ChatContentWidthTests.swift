@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Chat content width")
 @MainActor
 struct ChatContentWidthTests {
     @Test("A pane conversation is capped at nothing and a reading one at a column")

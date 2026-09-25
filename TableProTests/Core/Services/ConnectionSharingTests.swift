@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Connection Sharing")
 @MainActor
 struct ConnectionSharingTests {
 

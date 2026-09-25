@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AgentSessionRegistry")
 @MainActor
 struct AgentSessionRegistryTests {
     private func makeStore() -> AgentSessionStore {

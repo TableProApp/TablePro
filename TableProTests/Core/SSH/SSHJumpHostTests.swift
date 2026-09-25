@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH Jump Host")
 struct SSHJumpHostTests {
     @Test("proxyJumpString formats correctly")
     func testProxyJumpString() {

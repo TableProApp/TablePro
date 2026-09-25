@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Data grid cell appearance")
 @MainActor
 struct DataGridCellAppearanceTests {
     private let palette = DataGridCellPalette(

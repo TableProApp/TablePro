@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabDiskState decoding")
 struct TabDiskStateDecodingTests {
     @Test("Drops tabs with an unknown legacy tab type and keeps the valid ones")
     func dropsUnknownLegacyTabType() throws {

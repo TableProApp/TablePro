@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Chat image drop report")
 struct ChatImageDropReportTests {
     @Test("A drop with nothing to report says nothing")
     func noFailuresIsSilent() {

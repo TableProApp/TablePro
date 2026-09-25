@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseTreeFilter qualified and cross-schema search")
 struct DatabaseTreeFilterQualifiedSearchTests {
     private func table(_ name: String, schema: String?) -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: 0, schema: schema)

@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("CoordinatorSidebarActions")
 struct CoordinatorSidebarActionsTests {
     // MARK: - Helpers
 

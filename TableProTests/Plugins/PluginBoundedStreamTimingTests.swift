@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginBoundedStream timing")
 struct PluginBoundedStreamTimingTests {
     private func stream(
         header: PluginStreamHeader,

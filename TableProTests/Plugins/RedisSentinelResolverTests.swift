@@ -41,7 +41,6 @@ private actor FakeSentinelTransport: RedisSentinelTransport {
     func recordedAsks() -> [RedisNodeAddress] { asked }
 }
 
-@Suite("Redis Sentinel resolver - iteration")
 struct RedisSentinelResolverIterationTests {
     @Test("Stops at the first Sentinel that knows the primary")
     func stopsAtFirstAnswer() async throws {
@@ -106,7 +105,6 @@ struct RedisSentinelResolverIterationTests {
     }
 }
 
-@Suite("Redis Sentinel resolver - failures")
 struct RedisSentinelResolverFailureTests {
     @Test("No Sentinels configured is its own error")
     func noSentinels() async {
@@ -206,7 +204,6 @@ struct RedisSentinelResolverFailureTests {
     }
 }
 
-@Suite("Redis Sentinel resolver - reply parsing")
 struct RedisSentinelReplyParsingTests {
     @Test("A two-element reply is the primary's address")
     func parsesAddress() throws {
@@ -275,7 +272,6 @@ struct RedisSentinelReplyParsingTests {
     }
 }
 
-@Suite("Redis Sentinel error messages")
 struct RedisSentinelErrorPresenterTests {
     @Test("An unknown group names the group and what the quorum monitors")
     func unknownGroupMessage() {

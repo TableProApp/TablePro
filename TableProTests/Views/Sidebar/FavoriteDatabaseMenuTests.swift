@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FavoriteDatabaseMenu")
 struct FavoriteDatabaseMenuTests {
     @Test("One database that is not a favorite offers Add to Favorites with nothing checked")
     func singleNonFavorite() {

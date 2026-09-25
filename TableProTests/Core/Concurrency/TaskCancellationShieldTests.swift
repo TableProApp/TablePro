@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Task cancellation shield")
 struct TaskCancellationShieldTests {
     /// What the shield exists for. A driver reads `Task.isCancelled` or installs a
     /// `withTaskCancellationHandler`, and a COMMIT sent from an already-cancelled task would be

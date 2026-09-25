@@ -12,7 +12,6 @@ import Testing
 /// coordinator where only a running app could reach it. It did not work, and nothing said so. The
 /// hit test is pure now so this suite can prove it without a map view: a renderer's `path` and its
 /// `point(for:)` both work unattached.
-@Suite("ResultMapHitTesting")
 @MainActor
 struct ResultMapHitTestingTests {
     /// Six separated boxes over San Francisco, in the same shape the projector produces.

@@ -4,7 +4,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("QueryTab.buildBaseTableQuery")
 struct QueryTabBaseQueryTests {
     init() {
         FakeMSSQLPluginRegistration.registerIfNeeded()

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLite Table Respecifier")
 struct SQLiteTableRespecifierTests {
     private let createSQL = """
         CREATE TABLE x(

@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Remote database file")
 struct RemoteDatabaseFileTests {
     // MARK: - Identity
 

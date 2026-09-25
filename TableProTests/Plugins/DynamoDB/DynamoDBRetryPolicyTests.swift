@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB retry policy")
 struct DynamoDBRetryPolicyTests {
     struct DelayCase: Sendable, CustomTestStringConvertible {
         let attempt: Int

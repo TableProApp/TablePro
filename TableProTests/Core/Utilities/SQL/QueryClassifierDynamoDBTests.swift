@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryClassifier DynamoDB requests")
 struct QueryClassifierDynamoDBTests {
     private func tier(_ sql: String) -> QueryTier {
         QueryClassifier.classifyTier(sql, databaseType: .dynamodb)
@@ -217,7 +216,6 @@ struct QueryClassifierDynamoDBTests {
     }
 }
 
-@Suite("CatalogChangeClassifier DynamoDB requests")
 struct CatalogChangeClassifierDynamoDBTests {
     private func kinds(_ sql: String) -> CatalogObjectKinds {
         CatalogChangeClassifier.effect(of: sql, databaseType: .dynamodb).kinds

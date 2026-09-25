@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("App activation policy")
 struct AppActivationPolicyTests {
     @Test("The bridge's launch flag makes the session a machine's")
     func launchFlagResolvesOrigin() {

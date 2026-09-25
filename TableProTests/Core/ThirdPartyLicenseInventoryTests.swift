@@ -14,7 +14,6 @@ import Testing
 /// relicensed at 3.0, Redis at 7.4 and again at 8.0. So the shipped version is checked against
 /// the pin in the build scripts, and a mismatch fails here rather than being auto-corrected,
 /// because the right response to a bump is for a person to re-read the upstream licence.
-@Suite("Third-party license inventory")
 struct ThirdPartyLicenseInventoryTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

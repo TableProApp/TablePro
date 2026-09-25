@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Row count task lifecycle")
 @MainActor
 struct RowCountTaskLifecycleTests {
     @Test("A tab's second row count cancels its first")

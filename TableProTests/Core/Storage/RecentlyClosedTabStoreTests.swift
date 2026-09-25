@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("RecentlyClosedTabStore")
 struct RecentlyClosedTabStoreTests {
     private func makeStore() throws -> (store: RecentlyClosedTabStore, directory: URL) {
         let directory = FileManager.default.temporaryDirectory

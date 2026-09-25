@@ -8,7 +8,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("Batch transaction policy")
 struct BatchTransactionPolicyTests {
     private static func plan(_ statements: [String], _ type: DatabaseType) -> BatchTransactionPlan {
         BatchTransactionPolicy.plan(

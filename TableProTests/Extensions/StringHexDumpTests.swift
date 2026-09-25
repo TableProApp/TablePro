@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("String+HexDump")
 struct StringHexDumpTests {
     // MARK: - Hex Dump
 

@@ -14,7 +14,6 @@ import Testing
 /// value", the one Finder and Activity Monitor use in list columns, and it is a glyph rather than a
 /// sentence to rewrite. Log messages are not user-facing. The JetBrains keychain service names need
 /// no exemption: they spell the character `\u{2014}`, so the literal never appears in the source.
-@Suite("User-facing strings carry no em dash")
 struct UserFacingEmDashGuardTests {
     private static let emDash: Character = "\u{2014}"
     private static let placeholderGlyph = "\"\u{2014}\""
@@ -110,7 +109,6 @@ struct UserFacingEmDashGuardTests {
     }
 }
 
-@Suite("Em dash guard classifies lines correctly")
 struct UserFacingEmDashClassifierTests {
     private func offends(_ line: String, previous: String = "") -> Bool {
         UserFacingEmDashGuardTests.carriesProseEmDash(line: line, previous: previous)

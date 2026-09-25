@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Filter list operand call sites")
 struct FilterListOperandPinningTests {
     private static let mysql = SQLDialectDescriptor(
         identifierQuote: "`", keywords: [], functions: [], dataTypes: [],

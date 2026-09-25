@@ -12,7 +12,6 @@ import Testing
 /// silence and still counted as inserted, so "Import completed" reported more rows than reached the
 /// database. Refusing it makes the count honest: Skip and Continue records the row against its
 /// line, and the stop modes halt on a mapping that matches nothing.
-@Suite("Import sink column mapping")
 @MainActor
 struct ImportDataSinkAdapterMappingTests {
     private func adapter(mapping: [String: String]) -> ImportDataSinkAdapter {

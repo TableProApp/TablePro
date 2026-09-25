@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MariaDBFieldClassifier")
 struct MariaDBFieldClassifierTests {
     @Test("makeColumnMeta reads PRIMARY KEY, NOT NULL, and AUTO_INCREMENT flags")
     func makeColumnMetaReadsKeyFlags() {

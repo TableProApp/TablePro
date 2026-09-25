@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Loadable extension approvals")
 @MainActor
 struct LoadableExtensionApprovalStoreTests {
     private let defaults: UserDefaults
