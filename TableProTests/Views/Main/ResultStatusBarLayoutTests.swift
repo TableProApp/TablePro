@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -30,10 +31,12 @@ struct ResultStatusBarLayoutTests {
         viewMode: ResultsViewMode,
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil,
-        structureFooter: StructureFooterCapability = StructureFooterCapability()
+        structureFooter: StructureFooterCapability = StructureFooterCapability(),
+        tabId: UUID = UUID(),
+        execution: ExecutionReadout? = nil
     ) -> ResultStatusBar {
         let snapshot = StatusBarSnapshot(
-            tabId: UUID(),
+            tabId: tabId,
             tabType: tabType,
             hasRows: rowCount > 0,
             hasColumns: hasColumns,
@@ -83,8 +86,8 @@ struct ResultStatusBarLayoutTests {
                 onRequestExactCount: {}
             ),
             structureFooter: structureFooter,
-            execution: ExecutionReadout(
-                tabId: UUID(),
+            execution: execution ?? ExecutionReadout(
+                tabId: tabId,
                 execution: TabExecutionRegistry(),
                 lastTiming: nil,
                 onCancel: {}
@@ -208,6 +211,70 @@ struct ResultStatusBarLayoutTests {
         #expect(ResultsViewMode.json.showsRowFilters)
         #expect(!ResultsViewMode.chart.showsRowFilters)
         #expect(!ResultsViewMode.structure.showsRowFilters)
+    }
+
+    @Test("The indicator a first run revealed is the one still on screen when the result lands")
+    func revealedIndicatorOutlivesTheResultLanding() async throws {
+        let tabId = UUID()
+        var registry = TabExecutionRegistry()
+        let bar = { (hasColumns: Bool, timing: PluginQueryTiming?) in
+            self.makeBar(
+                rowCount: hasColumns ? 5 : 0,
+                hasColumns: hasColumns,
+                tabType: .query,
+                viewMode: .data,
+                tabId: tabId,
+                execution: ExecutionReadout(tabId: tabId, execution: registry, lastTiming: timing, onCancel: {})
+            )
+        }
+        let host = NSHostingView(rootView: bar(false, nil))
+        let window = hostingWindow(for: host)
+        defer { window.contentView = nil }
+
+        #expect(spinners(in: host).isEmpty, "An idle tab showed a spinner")
+
+        let work = registry.beginUnclaimedWork(for: tabId)
+        host.rootView = bar(false, nil)
+        let revealed = await settle(host) { !spinners(in: host).isEmpty }
+        let spinner = try #require(revealed ? spinners(in: host).first : nil, "The first run never revealed a spinner")
+
+        registry.endUnclaimedWork(work, for: tabId)
+        host.rootView = bar(true, PluginQueryTiming(total: 0.6))
+        host.layoutSubtreeIfNeeded()
+
+        #expect(
+            spinners(in: host).contains { $0 === spinner },
+            "The result landing replaced the revealed indicator instead of letting it serve its dwell"
+        )
+        #expect(await settle(host) { spinners(in: host).isEmpty }, "The spinner outlived its dwell")
+    }
+
+    private func hostingWindow(for host: NSView) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: StatusBarChrome.height),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        return window
+    }
+
+    private func settle(_ host: NSView, until condition: () -> Bool) async -> Bool {
+        for _ in 0 ..< 150 {
+            host.layoutSubtreeIfNeeded()
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        host.layoutSubtreeIfNeeded()
+        return condition()
+    }
+
+    private func spinners(in view: NSView) -> [NSProgressIndicator] {
+        let own = (view as? NSProgressIndicator).map { [$0] } ?? []
+        return own + view.subviews.flatMap(spinners(in:))
     }
 
     // MARK: - Width

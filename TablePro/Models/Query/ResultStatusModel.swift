@@ -36,7 +36,7 @@ enum ResultStatusReadout: Equatable {
 struct ResultStatusControls: Equatable {
     var showsModeSwitcher = false
     var showsReadout = false
-    var showsExecutionWithoutReadout = false
+    var showsExecution = false
     var showsLoadingMore = false
     var showsExactCountAction = false
     var showsCountInProgress = false
@@ -90,6 +90,7 @@ struct ResultStatusModel: Equatable {
 
         controls.showsModeSwitcher = snapshot.availableModes.count > 1
         controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
+        controls.showsExecution = viewMode.reportsExecution
 
         /// A plan keeps the bar so it stays choosable and pinnable, and gives up everything the bar
         /// says about rows. It has none, and reporting "No rows" under a plan states something
@@ -105,7 +106,6 @@ struct ResultStatusModel: Equatable {
         let describesAResult = isTable ? snapshot.hasTableName : snapshot.hasColumns
 
         controls.showsReadout = viewMode.showsResultScope && describesAResult
-        controls.showsExecutionWithoutReadout = viewMode.showsResultScope && !describesAResult && pagination.isLoading
         controls.showsLoadingMore = controls.showsReadout && pagination.isLoadingMore
 
         /// Withheld until nothing is still resolving the total. Offered against a total that is
