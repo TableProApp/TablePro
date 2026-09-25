@@ -143,7 +143,7 @@ actor BridgeProxy {
         self.discovery = discovery
         self.logger = logger
         self.stdout = BridgeStdout(handle: stdout)
-        self.hostLines = BridgeStdin.lines(from: stdin)
+        self.hostLines = BridgeStdin.lines(from: stdin, logger: logger)
     }
 
     func run() async {
@@ -524,12 +524,19 @@ enum BridgeJson {
 }
 
 enum BridgeStdin {
-    static func lines(from handle: FileHandle) -> AsyncStream<Data> {
+    static func lines(from handle: FileHandle, logger: any MCPBridgeLogger) -> AsyncStream<Data> {
         AsyncStream { continuation in
             let reader = Task.detached(priority: .userInitiated) {
+                let descriptor = handle.fileDescriptor
                 var buffer = Data()
                 while !Task.isCancelled {
-                    let chunk = handle.availableData
+                    let chunk: Data
+                    do {
+                        chunk = try DescriptorRead.availableBytes(from: descriptor)
+                    } catch {
+                        logger.log(.error, "Reading stdin failed: \(error.localizedDescription)")
+                        break
+                    }
                     if chunk.isEmpty { break }
                     buffer.append(chunk)
                     while let newline = buffer.firstIndex(of: 0x0A) {
