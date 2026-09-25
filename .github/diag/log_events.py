@@ -18,5 +18,5 @@ for target, stamps in compiles.items():
     per_minute = collections.Counter(s[:5] for s in stamps)
     print("%s SwiftCompile lines=%d first=%s last=%s per-minute=%s" % (target, len(stamps), stamps[0], stamps[-1],
                                                                        " ".join("%s:%d" % kv for kv in sorted(per_minute.items()))))
-for event in events[:120]:
+for event in events:
     print(event)
