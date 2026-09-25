@@ -8,7 +8,6 @@ import TableProMSSQLCore
 import TableProPluginKit
 import Testing
 
-@Suite("MSSQLSSLMapping.encryptionLevel")
 struct MSSQLSSLMappingTests {
     @Test("disabled maps to request: off would send the login unencrypted, and a server that forces encryption drops it")
     func disabled() {

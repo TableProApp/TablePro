@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQL frontmatter")
 struct SQLFrontmatterTests {
     @Test("Split keeps each header line's own text and line ending")
     func splitKeepsRawHeaderLines() {

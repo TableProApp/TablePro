@@ -13,7 +13,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ResultSet ownership")
 struct ResultSetOwnershipTests {
     @Test("ResultSet declares no stored property that QueryTab already owns")
     func resultSetDoesNotMirrorTheTab() throws {

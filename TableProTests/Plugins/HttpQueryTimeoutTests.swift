@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("HttpQueryTimeout")
 struct HttpQueryTimeoutTests {
     @Test("Default values match the documented bootstrap policy")
     func defaultsMatchBootstrap() {

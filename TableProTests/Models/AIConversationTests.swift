@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AIConversation")
 struct AIConversationTests {
     private func makeUserTurn(_ text: String) -> ChatTurnWire {
         ChatTurnWire(role: .user, blocks: [.text(text)])

@@ -8,7 +8,6 @@
 import Foundation
 import Testing
 
-@Suite("Snowflake Session Key")
 struct SnowflakeSessionKeyTests {
     private func key(
         connectionId: String = "A",

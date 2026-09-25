@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgresRestoreDiagnostics")
 struct PostgresRestoreDiagnosticsTests {
     private static let pgRestore17IntoServer92 = """
         pg_restore: error: could not execute query: ERROR:  unrecognized configuration parameter "lock_timeout"

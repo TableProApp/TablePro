@@ -42,7 +42,6 @@ private final class MockClipboardProvider: ClipboardProvider {
 }
 
 @MainActor
-@Suite("RowOperationsManager Copy")
 struct RowOperationsManagerCopyTests {
     private static let defaultColumns = ["id", "name", "email"]
 

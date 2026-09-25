@@ -8,7 +8,6 @@ import Foundation
 import Testing
 import TableProSyncTransport
 
-@Suite("Sync metadata storage environment")
 struct SyncMetadataStorageEnvironmentTests {
     @Test("The app's sync metadata storage writes into the app storage environment's defaults")
     func appDefaultFollowsTheStorageEnvironment() {

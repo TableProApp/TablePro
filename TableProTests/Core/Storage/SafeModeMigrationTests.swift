@@ -12,7 +12,6 @@ import TableProPluginKit
 import Testing
 import TableProSyncTransport
 
-@Suite("SafeModeMigration")
 @MainActor
 struct SafeModeMigrationTests {
     private let storage: ConnectionStorage

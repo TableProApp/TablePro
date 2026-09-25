@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AgentArtifactProjection")
 @MainActor
 struct AgentArtifactProjectionTests {
     private func toolUse(id: String, query: String, approval: ToolApprovalState = .approved) -> ChatContentBlock {

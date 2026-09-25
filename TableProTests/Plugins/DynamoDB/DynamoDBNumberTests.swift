@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB number")
 struct DynamoDBNumberTests {
     struct PartsCase: Sendable, CustomTestStringConvertible {
         let text: String

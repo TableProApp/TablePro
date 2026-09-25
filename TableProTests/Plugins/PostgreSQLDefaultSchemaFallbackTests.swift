@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries default schema fallback")
 struct PostgreSQLDefaultSchemaFallbackTests {
     @Test("asks the server for the active schema first")
     func currentSchemaQuery() {
@@ -41,7 +40,6 @@ struct PostgreSQLDefaultSchemaFallbackTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.probe")
 struct PostgreSQLSchemaProbeTests {
     @Test("reports the schema when the first cell holds text")
     func schemaFromText() {

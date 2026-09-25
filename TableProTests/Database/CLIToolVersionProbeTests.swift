@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("CLI tool version probe")
 struct CLIToolVersionProbeTests {
     private func script(_ body: String) throws -> String {
         let url = FileManager.default.temporaryDirectory

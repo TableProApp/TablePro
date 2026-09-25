@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SqlDiff")
 struct SqlDiffTests {
     @Test("computeSplit marks unchanged lines")
     func splitUnchanged() {

@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Schema Form Rules")
 struct SchemaFormRulesTests {
     private let privileges = [
         PluginPrivilegeDescriptor(name: "USAGE", label: "Usage"),

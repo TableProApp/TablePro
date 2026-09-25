@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ResultStatusModel")
 struct ResultStatusModelTests {
     private func makeSnapshot(
         tabType: TabType? = .table,
@@ -475,7 +474,6 @@ struct ResultStatusModelTests {
     }
 }
 
-@Suite("ResultsModeAvailability")
 struct ResultsModeAvailabilityTests {
     @Test("A table tab offers every mode")
     func tableTabOffersAllModes() {

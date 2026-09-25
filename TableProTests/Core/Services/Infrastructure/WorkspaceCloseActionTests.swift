@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace close scope")
 @MainActor
 struct WorkspaceCloseActionTests {
     @Test("An entry beside another of the same connection closes its container")

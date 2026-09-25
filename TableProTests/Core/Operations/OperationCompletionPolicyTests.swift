@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("OperationCompletionPolicy")
 struct OperationCompletionPolicyTests {
     private let connectionId = UUID()
     private let tabId = UUID()

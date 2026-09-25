@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("ConnectionToolbarState")
 struct ConnectionToolbarStateTests {
     // MARK: - reset
 

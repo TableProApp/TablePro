@@ -8,7 +8,6 @@ import Testing
 
 /// The support question is asked on every toolbar and menu validation pass, so it is answered
 /// without building a provider. It has to give the answer building one would.
-@Suite("Server dashboard provider factory")
 @MainActor
 struct ServerDashboardQueryProviderFactoryTests {
     @Test("Support is answered without a provider, and agrees with building one for every known engine")

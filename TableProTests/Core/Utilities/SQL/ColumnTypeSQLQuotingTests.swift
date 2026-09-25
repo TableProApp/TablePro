@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Column Type SQL Quoting")
 struct ColumnTypeSQLQuotingTests {
     @Test("An integer column only treats a plain integer as numeric")
     func integerColumnNumericShapes() {

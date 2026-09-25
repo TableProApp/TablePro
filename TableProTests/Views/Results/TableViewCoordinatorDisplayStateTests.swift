@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableViewCoordinator retained display state")
 @MainActor
 struct TableViewCoordinatorDisplayStateTests {
     private static let rows = TableRows(

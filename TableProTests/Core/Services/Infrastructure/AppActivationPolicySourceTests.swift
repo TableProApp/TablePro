@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("App activation policy call sites")
 struct AppActivationPolicySourceTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

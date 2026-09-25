@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL non-code spans")
 struct SQLNonCodeSpanTests {
     private func end(
         _ text: String,

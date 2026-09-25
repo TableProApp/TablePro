@@ -45,7 +45,6 @@ private final class StubClipboard: ClipboardProvider {
     var hasGridRows: Bool { hasGridRowsValue }
 }
 
-@Suite("pasteCellsFromClipboard routing")
 @MainActor
 struct CellPasteRoutingTests {
     private func makeCoordinator(columns: [String], rowCount: Int) -> TableViewCoordinator {

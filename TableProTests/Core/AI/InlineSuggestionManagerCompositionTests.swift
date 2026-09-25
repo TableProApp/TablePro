@@ -53,7 +53,6 @@ private final class RecordingInlineSource: InlineSuggestionSource {
     }
 }
 
-@Suite("Inline suggestions during an input method composition")
 @MainActor
 internal struct InlineSuggestionManagerCompositionTests {
     @MainActor

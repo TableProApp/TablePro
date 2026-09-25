@@ -16,7 +16,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Cancelled execution ownership")
 @MainActor
 struct CancelledExecutionOwnershipTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

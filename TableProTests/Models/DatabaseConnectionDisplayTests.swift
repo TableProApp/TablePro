@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseConnection display")
 struct DatabaseConnectionDisplayTests {
     @Test("Relational connection shows database after host")
     func relationalShowsDatabase() {

@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL functional key parts")
 struct MySQLFunctionalKeyPartsTests {
     private static let expressionIndex = PluginIndexDefinition(
         name: "ix",

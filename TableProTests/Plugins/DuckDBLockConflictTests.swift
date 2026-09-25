@@ -12,7 +12,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB lock conflict")
 struct DuckDBLockConflictTests {
     private static let readWriteHolder = """
         IO Error: Could not set lock on file "/tmp/scratch/t.duckdb": Conflicting lock is held in \

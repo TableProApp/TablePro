@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Structure Change Manager catalog spellings")
 struct StructureChangeManagerCatalogSpellingTests {
     @MainActor private func loadedManager() -> StructureChangeManager {
         let manager = StructureChangeManager()

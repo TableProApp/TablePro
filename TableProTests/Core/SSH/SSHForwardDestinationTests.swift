@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSH forward destination")
 struct SSHForwardDestinationTests {
     @Test("A connection without a socket path forwards to its host and port")
     func defaultsToTCP() {

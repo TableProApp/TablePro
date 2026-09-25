@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("OpenAICompatibleProvider wire encoding")
 struct OpenAICompatibleProviderEncodingTests {
     private func makeProvider() -> OpenAICompatibleProvider {
         OpenAICompatibleProvider(

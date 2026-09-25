@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Result chart selection")
 struct ResultChartSelectionTests {
     @Test("Categorical selection includes every series at the selected X value")
     func categoricalSelectionIncludesEverySeries() throws {

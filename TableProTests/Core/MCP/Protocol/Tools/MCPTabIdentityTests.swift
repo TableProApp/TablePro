@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP tab and window identity")
 struct MCPTabIdentityTests {
     private let tabId = UUID()
     private let connectionId = UUID()

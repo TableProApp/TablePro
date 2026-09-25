@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Loadable extension loader")
 struct LoadableExtensionLoaderTests {
     private final class FakeHandle {
         var calls: [String] = []

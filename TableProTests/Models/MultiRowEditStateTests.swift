@@ -10,7 +10,7 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@MainActor @Suite("MultiRowEditState")
+@MainActor
 struct MultiRowEditStateTests {
 
     // MARK: - Helper

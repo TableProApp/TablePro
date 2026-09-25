@@ -11,7 +11,6 @@ import Testing
 
 /// A bundle travels between Macs, so a profile in one has to arrive as something the receiving Mac
 /// can resolve. Names travel; ids and secrets do not.
-@Suite("Credential profile sharing")
 @MainActor
 struct CredentialProfileSharingTests {
     @Test("A profile's password never reaches an export bundle")

@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ImportState")
 struct ImportStateTests {
     @Test("Default init has correct defaults")
     func defaultInitHasCorrectDefaults() {

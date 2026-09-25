@@ -14,7 +14,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Tab execution observation")
 struct TabExecutionObservationTests {
     private final class ChangeCounter {
         private(set) var sends = 0

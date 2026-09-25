@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL catalog SQL shared with iOS")
 struct PostgreSQLCatalogSQLPinTests {
     @Test("The listing iOS runs, with the optional catalogs and without comments or partitions")
     func iOSListing() {

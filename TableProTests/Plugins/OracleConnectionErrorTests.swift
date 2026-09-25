@@ -6,7 +6,6 @@ import Testing
 /// is `Packages/TableProOracle/Tests/TableProOracleCoreTests/OracleConnectErrorClassifierTests`
 /// and is where the classification that ships is pinned. The two sets have already drifted and
 /// nothing forces them to agree; a green run here says nothing about the driver.
-@Suite("Oracle channel-fatal error classification")
 struct OracleConnectionErrorTests {
     @Test("Decode and connection failures are treated as channel-fatal")
     func channelFatalCodes() {
@@ -23,7 +22,6 @@ struct OracleConnectionErrorTests {
     }
 }
 
-@Suite("Oracle connect error classification")
 struct OracleConnectErrorClassifierTests {
     @Test("An unclean shutdown is a dropped handshake")
     func uncleanShutdownIsDropped() {

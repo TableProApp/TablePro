@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Recent tab order across a window's connections")
 @MainActor
 struct RecentTabOrderTests {
     private func source(_ manager: QueryTabManager, connection: UUID) -> RecentTabSource {

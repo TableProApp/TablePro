@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Explain Plan Format Resolution")
 struct ExplainPlanFormatResolutionTests {
     private let mysqlVariants = [
         ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .mysqlComposite),

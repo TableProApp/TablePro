@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseType MSSQL")
 struct DatabaseTypeMSSQLTests {
     // MARK: - Basic Properties
 

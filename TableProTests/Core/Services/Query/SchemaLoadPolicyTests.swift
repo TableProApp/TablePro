@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SchemaLoadPolicy")
 struct SchemaLoadPolicyTests {
     private struct Boom: Error, LocalizedError {
         var errorDescription: String? { "Switching to schema 'APP_SCHEMA' timed out." }

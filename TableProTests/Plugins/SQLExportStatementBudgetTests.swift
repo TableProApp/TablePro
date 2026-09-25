@@ -11,7 +11,6 @@ import Testing
 
 /// The budget only means something if the number it counts is the number the file gets, so every
 /// case here re-measures the statement it was handed rather than trusting the accumulator's tally.
-@Suite("SQL export statement budget")
 struct SQLExportStatementBudgetTests {
     private static let prefix = "INSERT INTO `t` (`id`, `payload`) VALUES\n"
     private static let upsertSuffix = "\nON DUPLICATE KEY UPDATE `payload` = VALUES(`payload`)"

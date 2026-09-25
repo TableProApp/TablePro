@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis DB prefix - parsing")
 struct RedisDatabasePrefixParsingTests {
     @Test("DB names the database a command runs on, as an index or as the sidebar spells it")
     func parsesDatabaseAndCommand() throws {
@@ -48,7 +47,6 @@ struct RedisDatabasePrefixParsingTests {
     }
 }
 
-@Suite("Redis grid writes - naming their database without a transaction")
 struct RedisNamedDatabaseAddressingTests {
     private static let writes: [RedisDatabaseTarget.Statement] = [
         (statement: "SET \"k\" \"v\"", parameters: []),

@@ -7,7 +7,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("MemoryPressureAdvisor")
 @MainActor
 struct MemoryPressureAdvisorTests {
     @Test("budget returns positive value")

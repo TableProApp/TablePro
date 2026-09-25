@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("PendingChanges - row identity")
 struct PendingChangesRowIdentityTests {
     @Test("Undoing one row of a batch leaves the survivors' values on their own rows")
     func partialBatchUndoKeepsSurvivorValues() {
@@ -96,7 +95,6 @@ struct PendingChangesRowIdentityTests {
     }
 }
 
-@Suite("PendingChanges - change order")
 struct PendingChangesSequenceTests {
     @Test("Every recorded change gets a rising sequence number")
     func sequenceRises() {

@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("GridDisplayOrderResolver")
 @MainActor
 struct GridDisplayOrderResolverTests {
     private func makeTableRows() -> TableRows {

@@ -11,7 +11,6 @@ import Testing
 /// tooltip from three different switches, and only the Foreign Keys one asked about the object at
 /// all. So a view offered an enabled "Add Column" over a statement PostgreSQL always refuses, with
 /// nothing to explain it. (#2726)
-@Suite("Structure Footer Policy")
 struct StructureFooterPolicyTests {
     private func resolve(
         tab: StructureTab,

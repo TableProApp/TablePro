@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AIProviderError.isRetryable")
 struct AIProviderErrorTests {
     @Test("Transient transport failures are retryable")
     func transientErrorsAreRetryable() {

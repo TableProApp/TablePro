@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Create Table draft builder expression indexes")
 struct CreateTableDraftBuilderIndexExpressionTests {
     private func column(_ name: String) -> EditableColumnDefinition {
         EditableColumnDefinition(

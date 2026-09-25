@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Network pane socket forwarding")
 @MainActor
 struct NetworkPaneSocketForwardTests {
     @Test("An absolute socket file path raises no issue")

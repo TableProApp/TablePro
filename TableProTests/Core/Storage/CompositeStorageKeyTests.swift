@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CompositeStorageKey")
 struct CompositeStorageKeyTests {
     @Test("Distinct database/schema/table scopes produce distinct keys")
     func distinctScopesDiffer() {

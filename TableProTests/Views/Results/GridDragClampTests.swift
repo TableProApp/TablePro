@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("GridDragClamp")
 struct GridDragClampTests {
     private let firstPresented = 1
     private let lastPresented = 4

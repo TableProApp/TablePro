@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("DateFormattingService column-type buckets")
 @MainActor
 struct DateFormattingServiceTests {
     @Test("DATE column with datetime wire value formats to date only")
@@ -91,7 +90,6 @@ struct DateFormattingServiceTests {
 /// A wall clock alone does not name an instant, so the offset the database sent is printed with it.
 /// The offset is the literal text off the value, never a pattern token: a token prints the
 /// formatter's zone, which for a value carrying none is the reader's own. (#2702)
-@Suite("DateFormattingService time zone display")
 @MainActor
 struct DateFormattingServiceTimeZoneTests {
     @Test("An offset-bearing timestamp keeps its offset")

@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Loop Correction")
 struct QueryPlanLoopCorrectionTests {
     private let parser = PostgreSQLPlanParser()
 

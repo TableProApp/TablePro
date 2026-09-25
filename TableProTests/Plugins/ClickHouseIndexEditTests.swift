@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouse index edits")
 struct ClickHouseIndexEditTests {
     private var driver: ClickHousePluginDriver {
         ClickHousePluginDriver(config: DriverConnectionConfig(

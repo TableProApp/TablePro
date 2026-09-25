@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AllSchemaTablesDemand")
 @MainActor
 struct AllSchemaTablesDemandTests {
     private let service = DatabaseTreeMetadataService.shared

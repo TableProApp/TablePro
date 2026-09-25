@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Local OpenAI-compatible provider registration")
 struct LocalProviderRegistrationTests {
     init() {
         AIProviderRegistration.registerAll()

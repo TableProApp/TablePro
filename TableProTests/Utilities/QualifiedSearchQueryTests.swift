@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QualifiedSearchQuery")
 struct QualifiedSearchQueryTests {
     @Test("A schema and a name")
     func schemaAndName() throws {

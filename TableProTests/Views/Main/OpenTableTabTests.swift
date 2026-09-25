@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("OpenTableTab")
 struct OpenTableTabTests {
     // MARK: - Empty tabs path (no switching)
 

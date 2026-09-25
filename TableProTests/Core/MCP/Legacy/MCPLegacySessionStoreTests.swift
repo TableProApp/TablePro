@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP legacy session store")
 struct MCPLegacySessionStoreTests {
     @Test("A minted session id is printable, unique and well formed")
     func mintedSessionIdsAreWellFormed() {

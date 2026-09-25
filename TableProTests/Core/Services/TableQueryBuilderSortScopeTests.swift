@@ -78,7 +78,6 @@ private final class SortRecordingDriver: PluginDatabaseDriver, @unchecked Sendab
     }
 }
 
-@Suite("TableQueryBuilder sort scope")
 struct TableQueryBuilderSortScopeTests {
     private let displayColumns = ["_id", "name", "email", "createdAt"]
 

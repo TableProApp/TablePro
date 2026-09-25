@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ListConnectionsTool")
 struct ListConnectionsToolTests {
     private let tool = ListConnectionsTool()
 

@@ -12,7 +12,6 @@ import Testing
 /// capability flags, and every call site in the Structure tab asks it rather than reading a flag of
 /// its own. They used to read them separately, which is how the footer, the Edit menu's Add Row, the
 /// row context menu and the grid's own paste path each got to a different answer. (#2726)
-@Suite("Structure Edit Gate")
 @MainActor
 struct StructureEditGateTests {
     private func gate(_ kind: TableInfo.TableType, _ type: DatabaseType = .postgresql) -> StructureEditGate {

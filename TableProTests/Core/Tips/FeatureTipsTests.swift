@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FeatureTipsPlan")
 struct FeatureTipsPlanTests {
     private let support = URL(fileURLWithPath: "/tmp/tablepro-support", isDirectory: true)
 
@@ -67,7 +66,6 @@ struct FeatureTipsPlanTests {
     }
 }
 
-@Suite("FeatureTipCatalog")
 struct FeatureTipCatalogTests {
     @available(macOS 14.0, *)
     @Test("Tip ids are stored keys, so they never change")
@@ -86,7 +84,6 @@ struct FeatureTipCatalogTests {
     }
 }
 
-@Suite("FeatureTipCopy")
 struct FeatureTipCopyTests {
     @Test("A bound shortcut is named in the message")
     func withShortcut() {

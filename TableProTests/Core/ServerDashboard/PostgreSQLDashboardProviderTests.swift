@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL server dashboard across server versions")
 struct PostgreSQLDashboardProviderTests {
     private struct QueryFailure: Error {}
 

@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyLabelColumn")
 struct ForeignKeyLabelColumnTests {
     private let key = ForeignKeyLookupColumn(name: "id", type: .integer(rawType: "INTEGER"))
 

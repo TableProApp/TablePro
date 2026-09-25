@@ -8,7 +8,6 @@ import Foundation
 import TableProSQLGrammar
 import Testing
 
-@Suite("QueryTableReferenceResolver")
 struct QueryTableReferenceResolverTests {
     private func names(_ sql: String, grammar: SQLLexicalGrammar = .ansi) -> [String] {
         QueryTableReferenceResolver.sqlReferences(in: sql, grammar: grammar).map(\.displayName)

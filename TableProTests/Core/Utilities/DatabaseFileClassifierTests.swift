@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Database file classifier")
 struct DatabaseFileClassifierTests {
     private static let sqliteHeader = Array("SQLite format 3\u{0}".utf8)
 

@@ -7,7 +7,6 @@ import Dispatch
 import Foundation
 import Testing
 
-@Suite("MySQL statement watch")
 struct MySQLStatementWatchTests {
     @Test("An expiry while the statement runs interrupts once, and end reports it")
     func expiryWhileRunning() {

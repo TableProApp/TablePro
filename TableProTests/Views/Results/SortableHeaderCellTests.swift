@@ -5,7 +5,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("SortableHeaderCell")
 struct SortableHeaderCellTests {
     @Test("Title rect uses data cell horizontal padding")
     func titleRectUsesDataCellHorizontalPadding() {
@@ -119,7 +118,6 @@ struct SortableHeaderCellTests {
 }
 
 @MainActor
-@Suite("DataGridView.makeRowNumberColumn")
 struct DataGridRowNumberColumnTests {
     @Test("Row-number column header uses a right-aligned SortableHeaderCell")
     func rowNumberHeaderIsRightAlignedSortableCell() throws {

@@ -8,7 +8,6 @@ import Testing
 /// gap here is a topic that cannot be read at all. Measured against a live broker: producing
 /// one topic per codec and reading the stored batch attribute back gave gzip, snappy, lz4 and
 /// zstd unchanged, with xerial framing on snappy and the LZ4 frame format on lz4.
-@Suite("Kafka compression")
 struct KafkaCompressionTests {
     private static let payload = Data(
         "{\"codec\":\"test\",\"n\":1,\"pad\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}".utf8

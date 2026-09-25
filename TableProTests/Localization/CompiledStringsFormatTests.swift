@@ -11,7 +11,6 @@ import Testing
 /// binary property list that `CFBundle` reads natively, and the two are indistinguishable at
 /// runtime: every lookup resolves the same, so dropping the setting from `Configs/Base.xcconfig`
 /// would put the weight back without a single visible symptom.
-@Suite("Compiled localizations ship as binary property lists")
 struct CompiledStringsFormatTests {
     @Test("Every shipped language compiles to a binary property list")
     func everyLanguageIsBinary() throws {

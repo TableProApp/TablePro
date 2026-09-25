@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ResultEditability")
 struct ResultEditabilityTests {
     private func origin(
         tableName: String? = "users",

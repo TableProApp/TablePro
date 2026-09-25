@@ -10,7 +10,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Diagram zoom commands")
 @MainActor
 struct DiagramZoomCommandTests {
     private struct Fixture {

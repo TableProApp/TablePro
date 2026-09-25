@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Oracle column statements")
 struct OracleColumnStatementsTests {
     private static let table = "\"HR\".\"T\""
 

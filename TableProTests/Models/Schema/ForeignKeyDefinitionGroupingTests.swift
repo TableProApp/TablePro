@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Editable Foreign Key Definition grouping")
 struct ForeignKeyDefinitionGroupingTests {
     private static let rows = [
         ForeignKeyInfo(

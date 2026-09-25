@@ -4,7 +4,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Table Query Builder implicit schema")
 struct TableQueryBuilderImplicitSchemaTests {
     private func builder(for databaseType: DatabaseType) throws -> TableQueryBuilder {
         let dialect = try #require(PluginManager.shared.sqlDialect(for: databaseType))

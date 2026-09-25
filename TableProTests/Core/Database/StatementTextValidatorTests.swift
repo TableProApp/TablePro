@@ -46,7 +46,6 @@ private final class ExecutionRecordingDriver: PluginDatabaseDriver, @unchecked S
     }
 }
 
-@Suite("A statement holding a NUL character is never sent")
 struct StatementTextValidatorTests {
     private let truncatingDelete = "DELETE FROM t\u{0} WHERE id = 1"
 

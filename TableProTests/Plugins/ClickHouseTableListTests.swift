@@ -9,7 +9,6 @@ import Testing
 /// The table list read `currentDatabase()` whatever database it was asked about, so a caller holding
 /// one connection and asking about each database in turn, which the export dialog does, was answered
 /// about the session's database every time and listed its tables under every name.
-@Suite("ClickHouse table list")
 struct ClickHouseTableListTests {
     @Test("A named database is what the read filters on")
     func namedDatabaseIsFiltered() {

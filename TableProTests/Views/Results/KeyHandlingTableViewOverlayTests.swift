@@ -18,7 +18,6 @@ private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("KeyHandlingTableView overlay stacking")
 @MainActor
 struct KeyHandlingTableViewOverlayTests {
     private func makeCoordinator() -> TableViewCoordinator {

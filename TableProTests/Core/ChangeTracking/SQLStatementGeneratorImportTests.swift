@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator - row import")
 struct SQLStatementGeneratorImportTests {
     private func makeGenerator(
         table: String = "users",

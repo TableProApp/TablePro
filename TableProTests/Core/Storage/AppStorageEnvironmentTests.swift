@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("AppStorageEnvironment")
 struct AppStorageEnvironmentTests {
     private let sandbox = AppStorageEnvironment.sandboxVariable
     private let uiTesting = AppStorageEnvironment.uiTestingVariable

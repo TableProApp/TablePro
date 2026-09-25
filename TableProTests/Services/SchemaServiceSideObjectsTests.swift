@@ -95,7 +95,6 @@ private final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
-@Suite("SchemaService side objects")
 @MainActor
 struct SchemaServiceSideObjectsTests {
     private let boom = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])

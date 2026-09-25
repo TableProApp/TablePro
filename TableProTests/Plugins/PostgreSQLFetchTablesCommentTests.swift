@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLTableListing.query comments")
 struct PostgreSQLFetchTablesCommentTests {
     @Test("Base query selects the table comment via obj_description")
     func baseQuerySelectsComment() {

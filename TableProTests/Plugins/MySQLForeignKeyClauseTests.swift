@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL foreign key clause")
 struct MySQLForeignKeyClauseTests {
     /// Verbatim `SHOW CREATE TABLE db1.t_child` on MySQL 8.4.11. MariaDB 11.4.13 prints the same
     /// clauses, differing only in `int(11)` and the table's collation.
@@ -168,7 +167,6 @@ struct MySQLForeignKeyClauseTests {
     }
 }
 
-@Suite("MySQL omitted foreign key action")
 struct MySQLOmittedForeignKeyActionTests {
     /// Measured by declaring one two-column key with no action clause and reading
     /// `information_schema.REFERENTIAL_CONSTRAINTS` back.

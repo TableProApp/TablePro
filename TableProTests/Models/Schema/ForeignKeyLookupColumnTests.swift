@@ -12,7 +12,6 @@ import Testing
 /// its own and which ones carry the search. It answers a closed list of character type names,
 /// because `ColumnTypeClassifier` files everything it does not recognise under `.text` and a `LIKE`
 /// against a `uuid`, an enum or an array is an error on PostgreSQL rather than an empty result.
-@Suite("ForeignKeyLookupColumn")
 struct ForeignKeyLookupColumnTests {
     private func column(_ rawType: String?) -> ForeignKeyLookupColumn {
         ForeignKeyLookupColumn(name: "c", type: .text(rawType: rawType))

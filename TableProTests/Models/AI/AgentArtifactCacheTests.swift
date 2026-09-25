@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AgentArtifactCache")
 @MainActor
 struct AgentArtifactCacheTests {
     /// Counting in a class rather than a captured `var`, because a `@MainActor` closure is `Sendable`

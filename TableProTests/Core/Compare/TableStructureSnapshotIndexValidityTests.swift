@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Invalid indexes in Compare and Object Copy")
 struct TableStructureSnapshotIndexValidityTests {
     private static let table = PluginTableInfo(name: "orders", type: "TABLE", schema: "public", comment: nil)
 

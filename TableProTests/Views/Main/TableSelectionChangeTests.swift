@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("TableSelectionAction")
 struct TableSelectionChangeTests {
 
     // MARK: - Single click (exactly one table added)

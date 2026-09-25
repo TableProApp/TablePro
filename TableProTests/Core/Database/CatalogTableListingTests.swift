@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("CatalogTableListing")
 @MainActor
 struct CatalogTableListingTests {
     private struct ListingFailed: Error {}

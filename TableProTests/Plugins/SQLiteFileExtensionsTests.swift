@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("SQLite file extension registration")
 struct SQLiteFileExtensionsTests {
     private static let canonical: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
 

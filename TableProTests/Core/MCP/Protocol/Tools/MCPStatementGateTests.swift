@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPStatementGate refuses before it runs anything")
 struct MCPStatementGateRefusalTests {
     private func refusal(
         sql: String,
@@ -154,7 +153,6 @@ struct MCPStatementGateRefusalTests {
     }
 }
 
-@Suite("MCPStatementGate consent policy")
 struct MCPStatementGateConsentPolicyTests {
     private func metadata(
         safeMode: SafeModeLevel,

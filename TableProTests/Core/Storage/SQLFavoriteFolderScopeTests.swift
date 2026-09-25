@@ -11,7 +11,6 @@ import Testing
 /// Issue #3045. A folder now carries a scope the user can set, and setting it writes that folder
 /// and nothing else: `FavoritesTreeBuilder` places every relative whose container a connection
 /// cannot resolve, so a walk would only reach records the user never selected.
-@Suite("SQL favorite folder scope")
 struct SQLFavoriteFolderScopeTests {
     private let storage: SQLFavoriteStorage
 

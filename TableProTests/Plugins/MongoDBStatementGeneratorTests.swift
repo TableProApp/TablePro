@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Statement Generator")
 struct MongoDBStatementGeneratorTests {
     // MARK: - INSERT
 

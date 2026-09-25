@@ -9,7 +9,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@Suite("Filter Move")
 @MainActor
 struct FilterMoveTests {
     private static let mysqlDialect = SQLDialectDescriptor(

@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Export Preselection")
 struct ExportPreselectionTests {
     @Test("Named tables only select inside the current container")
     func namedTablesStayInCurrentContainer() {

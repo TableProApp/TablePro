@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("IN Clause Converter")
 struct InClauseConverterTests {
     private func makeConverter(
         columnIndex: Int,

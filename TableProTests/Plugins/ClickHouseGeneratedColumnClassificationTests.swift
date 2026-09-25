@@ -5,7 +5,6 @@
 
 import Testing
 
-@Suite("ClickHouse Generated Column Classification")
 struct ClickHouseGeneratedColumnClassificationTests {
     @Test("MATERIALIZED columns are generated")
     func materialized() {

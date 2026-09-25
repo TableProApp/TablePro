@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("UserDefinedTypeInfo")
 struct UserDefinedTypeInfoTests {
     @Test("Identity is the qualified name, so an edited enum is still the same row")
     func identityIgnoresLabelsAndDefinition() {

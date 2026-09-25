@@ -15,7 +15,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SwitchDatabase")
 @MainActor
 struct SwitchDatabaseTests {
     private func withConnectedCoordinator(

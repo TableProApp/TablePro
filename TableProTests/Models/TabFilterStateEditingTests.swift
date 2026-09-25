@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabFilterState editing")
 struct TabFilterStateEditingTests {
     private func state(_ filters: [TableFilter], commit: FilterCommit? = nil) -> TabFilterState {
         var state = TabFilterState()

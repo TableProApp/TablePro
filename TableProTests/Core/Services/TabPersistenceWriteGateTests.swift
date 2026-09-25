@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Tab persistence write gate")
 @MainActor
 struct TabPersistenceWriteGateTests {
     private func makeTab(_ title: String) -> QueryTab {

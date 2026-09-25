@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseTreeNode")
 struct DatabaseTreeNodeTests {
     private func tableRef(_ name: String, schema: String? = "public") -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(database: "shop", schema: schema, table: TableInfo(name: name, type: .table, rowCount: 0))

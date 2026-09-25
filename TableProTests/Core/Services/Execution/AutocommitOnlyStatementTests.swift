@@ -34,7 +34,6 @@ private enum AutocommitOnlyFixture {
     }
 }
 
-@Suite("Autocommit-only statements, PostgreSQL")
 struct AutocommitOnlyStatementPostgreSQLTests {
     @Test(
         "PostgreSQL 17 refuses these inside a transaction block",
@@ -125,7 +124,6 @@ struct AutocommitOnlyStatementPostgreSQLTests {
     }
 }
 
-@Suite("Autocommit-only statements, Redshift and CockroachDB")
 struct AutocommitOnlyStatementWarehouseTests {
     @Test(
         "Redshift restricts its own statements as well as PostgreSQL's",
@@ -165,7 +163,6 @@ struct AutocommitOnlyStatementWarehouseTests {
     }
 }
 
-@Suite("Autocommit-only statements, MySQL")
 struct AutocommitOnlyStatementMySQLTests {
     @Test(
         "MySQL 8.4 and MariaDB 11.4 refuse these inside a transaction",
@@ -257,7 +254,6 @@ struct AutocommitOnlyStatementMySQLTests {
     }
 }
 
-@Suite("Autocommit-only statements, SQLite and DuckDB")
 struct AutocommitOnlyStatementEmbeddedTests {
     @Test(
         "SQLite refuses or silently ignores these inside a transaction",
@@ -337,7 +333,6 @@ struct AutocommitOnlyStatementEmbeddedTests {
     }
 }
 
-@Suite("Autocommit-only statements, SQL Server and unknown engines")
 struct AutocommitOnlyStatementSQLServerTests {
     @Test(
         "T-SQL cannot hold these in an explicit transaction",

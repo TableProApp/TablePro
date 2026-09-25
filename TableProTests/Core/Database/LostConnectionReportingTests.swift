@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Plugin driver adapter and a lost connection")
 struct PluginDriverAdapterLostConnectionTests {
     @Test("the adapter forwards the driver's lost connection and leaves its own status alone")
     func forwardsTheFactWithoutRewritingStatus() async throws {

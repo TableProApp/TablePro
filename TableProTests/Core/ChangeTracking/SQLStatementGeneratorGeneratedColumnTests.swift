@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator generated columns")
 struct SQLStatementGeneratorGeneratedColumnTests {
     private func makeGenerator(
         generatedColumns: Set<String> = ["full_name"]

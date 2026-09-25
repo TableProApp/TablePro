@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Schema Change")
 struct SchemaChangeTests {
     // MARK: - Helper Methods
 

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connected session directory")
 @MainActor
 struct ConnectedSessionDirectoryTests {
     private func session(

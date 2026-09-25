@@ -77,7 +77,6 @@ private final class LegacyPartitionDriver: PluginDatabaseDriver, @unchecked Send
     }
 }
 
-@Suite("Partition support stays optional for plugins")
 struct PluginDriverAdapterPartitionDefaultTests {
     @Test("A driver that implements neither partition method resolves through the protocol default")
     func unimplementedFetchPartitionsReturnsEmpty() async throws {

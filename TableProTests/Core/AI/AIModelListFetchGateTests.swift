@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AI model list fetch gate")
 struct AIModelListFetchGateTests {
     @Test("A provider that cannot fetch a model list is blocked whatever the key")
     func blocksWhenNotFetchable() {

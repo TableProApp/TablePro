@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseType TiDB")
 struct DatabaseTypeTiDBTests {
     @Test("rawValue is TiDB")
     func rawValue() {

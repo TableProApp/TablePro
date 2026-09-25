@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSequenceReference")
 struct PostgreSQLSequenceReferenceTests {
     private let ordersSequence = PostgreSQLSequenceReference(
         qualifiedName: "sales.orders_id_seq", relativeName: "orders_id_seq"

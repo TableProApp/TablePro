@@ -8,7 +8,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("BeekeeperEncryptor")
 struct BeekeeperEncryptorTests {
     @Test
     func decryptsStringEncryptedInSimpleEncryptorFormat() throws {

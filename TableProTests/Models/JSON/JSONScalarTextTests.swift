@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONScalarText")
 struct JSONScalarTextTests {
     private let sample = Data((0..<200).map { UInt8($0 % 256) })
 

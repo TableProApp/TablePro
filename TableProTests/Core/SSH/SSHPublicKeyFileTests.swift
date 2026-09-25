@@ -37,7 +37,6 @@ enum SSHPublicKeyFixture {
     }
 }
 
-@Suite("SSH public key file")
 struct SSHPublicKeyFileTests {
     private static let ed25519 = "ssh-ed25519"
     private static let certificate = "ssh-ed25519-cert-v01@openssh.com"

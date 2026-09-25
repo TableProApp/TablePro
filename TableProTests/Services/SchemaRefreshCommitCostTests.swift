@@ -204,7 +204,6 @@ final class SingleDriverMetadataProvider: ScopedMetadataProviding {
 
 /// Oracle lists its objects one schema at a time, and a sidebar search used to leave every schema
 /// of the database loaded.
-@Suite("SchemaRefreshService commit cost")
 @MainActor
 struct SchemaRefreshCommitCostTests {
     private let connectionId = UUID()

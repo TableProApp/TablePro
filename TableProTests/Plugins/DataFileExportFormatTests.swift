@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Data file export through the bundled formats")
 struct DataFileExportFormatTests {
     private static func dataSource() -> QueryResultExportDataSource {
         let rows = TableRows.from(

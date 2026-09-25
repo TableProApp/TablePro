@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSH profile applied to a linked connection")
 @MainActor
 struct SSHProfileAppliedTests {
     private func makeProfile(

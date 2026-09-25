@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("ClickHouse Capabilities")
 struct ClickHouseCapabilitiesTests {
     @Test("The write-exception setting needs ClickHouse 23.8 or later")
     func writeExceptionSettingGate() {

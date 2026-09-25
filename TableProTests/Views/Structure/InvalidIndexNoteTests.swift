@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Invalid index note")
 struct InvalidIndexNoteTests {
     private static func index(_ name: String, valid: Bool = true) -> IndexInfo {
         IndexInfo(name: name, columns: ["code"], isUnique: false, isPrimary: false, type: "BTREE", isValid: valid)

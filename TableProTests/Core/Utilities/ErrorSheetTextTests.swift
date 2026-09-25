@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Error sheet text")
 struct ErrorSheetTextTests {
     @Test("A database message shows its hidden characters in the error sheet")
     func revealsHiddenCharacters() {

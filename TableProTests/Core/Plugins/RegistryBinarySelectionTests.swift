@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("RegistryPlugin.resolvedBinary v2 selection")
 struct RegistryBinarySelectionTests {
 
     private func makePlugin(binaries: [RegistryBinary]) -> RegistryPlugin {
@@ -144,7 +143,6 @@ struct RegistryBinarySelectionTests {
     }
 }
 
-@Suite("RegistryPlugin.resolvedBinary reports a stale app truthfully")
 struct RegistryStaleAppTests {
 
     private func makePlugin(kits: [Int]) -> RegistryPlugin {

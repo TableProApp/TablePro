@@ -16,7 +16,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("SQL folding performance guards")
 @MainActor
 struct SQLFoldPerformanceGuardTests {
 

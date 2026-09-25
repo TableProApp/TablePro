@@ -10,7 +10,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@Suite("Filter Value Text Field Suggestions")
 struct FilterValueTextFieldTests {
     @Test("Prefix match is case-insensitive and preserves original case")
     func testSuggestions_prefixMatchCaseInsensitive() {

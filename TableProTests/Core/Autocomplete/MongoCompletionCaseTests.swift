@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MongoDB completion case")
 @MainActor
 struct MongoCompletionCaseTests {
     private func service() -> MongoCompletionService {

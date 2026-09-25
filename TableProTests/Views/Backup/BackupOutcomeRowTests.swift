@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Backup outcome rows")
 struct BackupOutcomeRowTests {
     private func outcome(
         _ database: String,

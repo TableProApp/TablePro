@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Editor tab run layout")
 struct EditorTabRunLayoutTests {
     private static let trackWidth: CGFloat = 604
 

@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("LicenseManagerDecision")
 struct LicenseManagerDecisionTests {
     private static let thisMachine = "9f86d081884c7d659a2feaa0c55ad015"
     private static let otherMachine = "0000000000000000000000000000dead"

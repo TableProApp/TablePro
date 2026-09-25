@@ -3,7 +3,6 @@ import Foundation
 import TableProImport
 import Testing
 
-@Suite("TeamCatalogPublisher")
 @MainActor
 struct TeamCatalogPublisherTests {
     private func makeTempDirectory() throws -> URL {

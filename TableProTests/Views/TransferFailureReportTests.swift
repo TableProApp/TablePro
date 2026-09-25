@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Transfer failure report")
 @MainActor
 struct TransferFailureReportTests {
     private func failure(line: Int, message: String, statement: String) -> PluginImportResult.ImportStatementError {

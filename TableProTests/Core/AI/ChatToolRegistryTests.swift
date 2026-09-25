@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ChatToolRegistry")
 @MainActor
 struct ChatToolRegistryTests {
     private struct StubTool: ChatTool {

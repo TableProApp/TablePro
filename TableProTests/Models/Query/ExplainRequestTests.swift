@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Explain Request")
 struct ExplainRequestTests {
     private let postgresVariants = [
         ExplainVariant(

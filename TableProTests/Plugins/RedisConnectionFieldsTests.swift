@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis connection fields")
 struct RedisConnectionFieldsTests {
     private func redisFields() throws -> [ConnectionField] {
         let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "Redis"))
@@ -103,7 +102,6 @@ struct RedisConnectionFieldsTests {
     }
 }
 
-@Suite("Connection field visibility across panes")
 struct ConnectionFieldCrossPaneVisibilityTests {
     private let mode = ConnectionField(
         id: "redisMode",

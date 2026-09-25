@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("SurrealDB - CBOR codec")
 struct SurrealDBCBORTests {
     private func roundTrip(_ value: SurrealValue) throws -> SurrealValue {
         try SurrealCBOR.decode(SurrealCBOR.encode(value))
@@ -129,7 +128,6 @@ struct SurrealDBCBORTests {
     }
 }
 
-@Suite("SurrealDB - value display")
 struct SurrealDBDisplayTests {
     @Test("Record ids render as table:id")
     func recordIds() {

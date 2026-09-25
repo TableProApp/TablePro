@@ -8,7 +8,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("TriggerSQLParser")
 struct TriggerSQLParserTests {
     @Test("Parses BEFORE INSERT")
     func beforeInsert() {

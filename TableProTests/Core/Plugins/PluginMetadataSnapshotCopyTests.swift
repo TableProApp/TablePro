@@ -15,7 +15,6 @@ import Testing
 ///
 /// These hold the helpers to carrying the structure-editing capabilities across, which is what
 /// decides whether the Structure tab offers a foreign key edit at all.
-@Suite("Plugin Metadata Snapshot Copying")
 struct PluginMetadataSnapshotCopyTests {
     private var sqliteType: DatabaseType { .sqlite }
 

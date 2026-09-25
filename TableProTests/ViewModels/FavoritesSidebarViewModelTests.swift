@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FavoriteNode")
 struct FavoriteNodeTests {
     // MARK: - Helpers
 
@@ -295,7 +294,6 @@ struct FavoriteNodeTests {
 
 /// Issue #3016. The view model publishes the Favorites tab's whole Queries tree, but that tree
 /// lives in a cache of its own, and SwiftUI hears only the object a property wrapper names.
-@Suite("Favorites sidebar cache observation")
 @MainActor
 struct FavoritesSidebarCacheObservationTests {
     private func waitForEmission(from counter: EmissionCounter, timeout: TimeInterval = 5) async {

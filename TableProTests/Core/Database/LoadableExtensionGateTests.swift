@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Loadable extension gate")
 @MainActor
 struct LoadableExtensionGateTests {
     private let approvals: LoadableExtensionApprovalStore

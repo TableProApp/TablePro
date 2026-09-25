@@ -11,7 +11,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Structure index type menu")
+@MainActor
 struct StructureIndexTypeMenuTests {
     private func connection() -> DatabaseConnection {
         DatabaseConnection(name: "Test", host: "localhost", port: 5_432, database: "test", username: "u", type: .postgresql)

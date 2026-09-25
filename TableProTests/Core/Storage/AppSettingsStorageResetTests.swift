@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AppSettingsStorage reset")
 struct AppSettingsStorageResetTests {
     @Test("Reset clears the selected settings pane and default sidebar layout")
     func resetClearsUIOrphans() throws {

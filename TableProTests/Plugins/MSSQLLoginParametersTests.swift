@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("MSSQLLoginParameters.build")
 struct MSSQLLoginParametersTests {
     private func build(database: String) -> [MSSQLLoginParameter] {
         MSSQLLoginParameters.build(

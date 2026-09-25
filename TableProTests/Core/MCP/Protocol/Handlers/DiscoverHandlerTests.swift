@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("DiscoverHandler")
 struct DiscoverHandlerTests {
     @Test("The handler answers server/discover")
     func methodName() {

@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis key slot - measured vectors")
 struct RedisKeySlotVectorTests {
     static let measured: [(key: String, slot: Int)] = [
         ("foo", 12_182),
@@ -37,7 +36,6 @@ struct RedisKeySlotVectorTests {
     }
 }
 
-@Suite("Redis key slot - hash tags")
 struct RedisKeySlotHashTagTests {
     static let measured: [(key: String, slot: Int)] = [
         ("{user1000}.following", 3_443),
@@ -82,7 +80,6 @@ struct RedisKeySlotHashTagTests {
     }
 }
 
-@Suite("Redis key slot - cross-slot detection")
 struct RedisKeySlotCrossSlotTests {
     @Test("Keys sharing a hash tag are same-slot")
     func sharedTagIsSameSlot() {
@@ -101,7 +98,6 @@ struct RedisKeySlotCrossSlotTests {
     }
 }
 
-@Suite("Redis key slot - grouping keys by slot")
 struct RedisKeySlotGroupingTests {
     @Test("Keys group by slot in the order each slot first appears")
     func firstSeenOrder() {

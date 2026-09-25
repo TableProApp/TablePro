@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SSH config tokens")
 struct SSHConfigTokensTests {
     private static let context = SSHTokenContext(
         originalHost: "tok",
@@ -224,7 +223,6 @@ struct SSHConfigTokensTests {
     }
 }
 
-@Suite("SSH path utilities")
 struct SSHPathExpansionTests {
     @Test("A leading tilde expands to the home directory")
     func expandsTilde() {

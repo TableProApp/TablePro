@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Project Config File Matcher")
 struct ProjectConfigFileMatcherTests {
 
     @Test("Real dotenv files are classified with their tier")

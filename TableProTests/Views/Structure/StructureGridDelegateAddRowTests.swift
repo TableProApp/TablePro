@@ -12,7 +12,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("StructureGridDelegate add and delete row routing")
+@MainActor
 struct StructureGridDelegateAddRowTests {
     private func makeDelegate(
         selectedTab: StructureTab = .columns,

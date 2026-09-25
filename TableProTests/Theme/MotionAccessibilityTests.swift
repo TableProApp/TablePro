@@ -7,7 +7,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Motion accessibility")
 struct MotionAccessibilityTests {
     @Test("Reduce Motion drops the animation")
     func reduceMotionDropsAnimation() {

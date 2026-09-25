@@ -12,7 +12,6 @@ import Testing
 /// its struct default the moment a plugin loaded is what silently disabled MongoDB's database-scoped
 /// authentication (#1970), and the same shape here would put the Structure tab's whole per-kind gate
 /// back to tables only for every build with the PostgreSQL plugin installed. (#2726)
-@Suite("Structure Edit Matrix Curation")
 @MainActor
 struct StructureEditMatrixCurationTests {
     @Test("PostgreSQL is curated with the measured per-kind matrix")

@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS query request signing")
 struct AWSQueryRequestTests {
     private static let credentials = AWSCredentials(
         accessKeyId: "AKIAIOSFODNN7EXAMPLE",

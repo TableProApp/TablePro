@@ -11,7 +11,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Edit > Find")
 @MainActor
 struct FindMenuItemsTests {
     private func findSubmenu() throws -> NSMenu {

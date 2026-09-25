@@ -11,7 +11,6 @@ import Testing
 
 /// The stores a deleted connection leaves behind that can only be reached with `await`, and the
 /// drift guard over the three sites that delete one.
-@Suite("Connection local state purge")
 struct ConnectionLocalStatePurgeTests {
     private func makeHistory() -> (QueryHistoryManager, QueryHistoryStorage) {
         let storage = QueryHistoryStorage(

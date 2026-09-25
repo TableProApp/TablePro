@@ -67,7 +67,6 @@ private final class MockCustomPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 // MARK: - ConnectionMode Tests
 
-@Suite("ConnectionMode Enum")
 struct ConnectionModeTests {
     @Test("Raw values match expected strings")
     func rawValues() {
@@ -87,7 +86,6 @@ struct ConnectionModeTests {
 
 // MARK: - EditorLanguage Tests
 
-@Suite("EditorLanguage Enum")
 struct EditorLanguageTests {
     @Test("Equatable for known cases")
     func equatable() {
@@ -118,7 +116,6 @@ struct EditorLanguageTests {
 
 // MARK: - GroupingStrategy Tests
 
-@Suite("GroupingStrategy Enum")
 struct GroupingStrategyTests {
     @Test("Raw values match expected strings")
     func rawValues() {
@@ -140,7 +137,6 @@ struct GroupingStrategyTests {
 
 // MARK: - DriverPlugin Protocol Defaults
 
-@Suite("DriverPlugin Protocol Defaults")
 struct DriverPluginDefaultsTests {
     @Test("Default requiresAuthentication is true")
     func requiresAuthentication() {
@@ -247,7 +243,6 @@ struct DriverPluginDefaultsTests {
 
 // MARK: - Custom Override Verification
 
-@Suite("DriverPlugin Custom Overrides")
 struct DriverPluginCustomOverridesTests {
     @Test("Custom plugin overrides all defaults correctly")
     func customOverrides() {
@@ -288,7 +283,6 @@ struct DriverPluginCustomOverridesTests {
 // because .tableplugin bundles are loaded at runtime by the main app, not the test runner.
 // The protocol defaults and override mechanism are fully covered by the mock-based tests above.
 
-@Suite("Registry defaults auto-limit styles")
 struct RegistryAutoLimitStyleTests {
     private var defaults: [String: PluginMetadataSnapshot] {
         Dictionary(

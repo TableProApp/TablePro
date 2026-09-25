@@ -11,7 +11,6 @@ import AppKit
 import TableProEditorKit
 import Testing
 
-@Suite("Editor theme bridge")
 struct EditorThemeBridgeTests {
     @MainActor
     @Test("The theme's operator and function colours reach the editor")

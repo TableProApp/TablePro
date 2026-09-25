@@ -56,7 +56,6 @@ private final class LookupDriver: LookupBaseDriver, PluginDatabaseDriver, @unche
     func switchDatabase(to database: String) async throws {}
 }
 
-@Suite("Primary key constraint lookup")
 @MainActor
 struct PrimaryKeyConstraintLookupTests {
     private static func adapter(_ driver: LookupDriver) -> PluginDriverAdapter {

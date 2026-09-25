@@ -12,7 +12,6 @@ import Testing
 /// to open a real connection and click Export. These pin the ones that shipped as bugs: a schema
 /// section that stayed shut over a correctly ticked row, a container listed with no objects in it,
 /// and a row losing its checkboxes across the reload a format change causes.
-@Suite("Export tree building")
 @MainActor
 struct ExportTreeBuilderTests {
     private final class FakeReader: ExportMetadataReading {
@@ -357,7 +356,6 @@ struct ExportTreeBuilderTests {
 /// What the export dialog's own `information_schema.TABLES` read makes of each `TABLE_TYPE` it can
 /// be answered with. The read builds a driver of its own, so no test reaches it through
 /// `ExportMetadataReading`; the mapping is pinned here and the reader has nothing else to decide.
-@Suite("Export catalog table types")
 struct ExportCatalogTableTypeTests {
     /// Measured on MySQL 8.4.11 and MariaDB 11.4.13: every one of `information_schema`'s 78 and 82
     /// objects is `SYSTEM VIEW`. Read as a system table, `PluginExportObjectKind.from` answers

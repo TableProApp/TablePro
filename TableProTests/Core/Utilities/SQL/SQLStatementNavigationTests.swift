@@ -12,7 +12,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL statement navigation")
 struct SQLStatementNavigationTests {
 
     private let threeStatements = "SELECT 1;\nSELECT 2;\nSELECT 3;"

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ToolApprovalCenter")
 @MainActor
 struct ToolApprovalCenterTests {
     private let session = UUID()

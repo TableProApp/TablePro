@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("QueryExecutor")
 @MainActor
 struct QueryExecutorTests {
     // MARK: - SQL parsing (delegates to QuerySqlParser)

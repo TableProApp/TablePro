@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("LicenseTier")
 struct LicenseTierTests {
     // MARK: - Parsing
 

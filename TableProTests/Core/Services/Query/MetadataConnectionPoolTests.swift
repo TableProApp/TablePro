@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MetadataConnectionPool timeouts")
 @MainActor
 struct MetadataConnectionPoolTests {
     @Test("connect passes through when the driver responds in time")
@@ -475,7 +474,6 @@ struct MetadataConnectionPoolIdleEvictionTests {
     }
 }
 
-@Suite("MetadataConnectionPool connection plan")
 @MainActor
 struct MetadataConnectionPoolPlanTests {
     @Test("A database-scoped engine keeps its configured database and switches after connecting")

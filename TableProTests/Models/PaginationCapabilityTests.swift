@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Pagination capability")
 @MainActor
 struct PaginationCapabilityTests {
     private let leadingRows = PaginationCapability.leadingRowsOnly(maximumRows: 10_000)

@@ -17,7 +17,6 @@ private actor SettingsProviderProbe {
     }
 }
 
-@Suite("ExportDataTool arguments")
 struct ExportDataToolArgumentTests {
     private let tool = ExportDataTool()
 
@@ -186,7 +185,6 @@ struct ExportDataToolArgumentTests {
     }
 }
 
-@Suite("ExportDataTool statement building")
 struct ExportDataToolStatementTests {
     @Test("A plain read exports on Redis, MongoDB and etcd without needing a SQL dialect")
     func plainReadsExportOnNonSqlEngines() async throws {

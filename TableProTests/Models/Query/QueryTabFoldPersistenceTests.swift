@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Query tab fold persistence")
 @MainActor
 struct QueryTabFoldPersistenceTests {
 

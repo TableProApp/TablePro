@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("External statement gate lexing")
 struct ExternalStatementGateLexicalTests {
     private func refusal(
         _ sql: String,

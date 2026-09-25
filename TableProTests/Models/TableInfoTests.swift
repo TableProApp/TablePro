@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableInfo")
 struct TableInfoTests {
     // MARK: - Identifiable
 

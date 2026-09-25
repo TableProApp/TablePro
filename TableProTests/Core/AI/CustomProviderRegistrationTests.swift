@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Custom provider registration")
 struct CustomProviderRegistrationTests {
     private func descriptor() -> AIProviderDescriptor? {
         AIProviderRegistration.registerAll()

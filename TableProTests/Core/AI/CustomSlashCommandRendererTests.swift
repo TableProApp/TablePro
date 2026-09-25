@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("CustomSlashCommandRenderer")
 struct CustomSlashCommandRendererTests {
     private func makeCommand(template: String) -> CustomSlashCommand {
         CustomSlashCommand(name: "test", description: "", promptTemplate: template)

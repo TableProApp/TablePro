@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Highlight rule set")
 struct HighlightRuleSetTests {
     private let columns = ["id", "status", "total"]
     private let types: [ColumnType] = [.integer(rawType: "INT"), .text(rawType: "VARCHAR"), .decimal(rawType: "DECIMAL")]
@@ -82,7 +81,6 @@ struct HighlightRuleSetTests {
     }
 }
 
-@Suite("Highlight rule descriptions and quick rules")
 @MainActor
 struct HighlightRuleDescriptionTests {
     @Test("A comparison reads as column, symbol and quoted value")

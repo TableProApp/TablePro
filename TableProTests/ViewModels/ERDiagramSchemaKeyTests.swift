@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram schema key")
 @MainActor
 struct ERDiagramSchemaKeyTests {
     @Test("A schema key carries the schema the diagram was opened on")

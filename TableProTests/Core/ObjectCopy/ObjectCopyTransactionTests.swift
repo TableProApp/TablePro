@@ -80,7 +80,6 @@ private final class RecordingCopyDriver: PluginDatabaseDriver, @unchecked Sendab
     }
 }
 
-@Suite("Object copy transactions")
 @MainActor
 struct ObjectCopyTransactionTests {
     private func endpoint(_ database: String) -> DatabaseEndpoint {

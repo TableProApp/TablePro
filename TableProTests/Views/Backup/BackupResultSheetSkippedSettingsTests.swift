@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("BackupResultSheet skipped settings note")
 struct BackupResultSheetSkippedSettingsTests {
     @Test("No note when nothing was skipped")
     func noSettings() {

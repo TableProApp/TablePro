@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AI Endpoint Resolution")
 struct AIEndpointTests {
     private func chatURL(_ configured: String, _ style: AIEndpointStyle, model: String = "m") -> String? {
         AIEndpoint(configured, style: style)?.chatURL(model: model, style: style)?.absoluteString

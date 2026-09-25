@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries partition awareness")
 struct PostgreSQLPartitionFilterTests {
     private func awareQuery() -> String {
         PostgreSQLTableListing.query(
@@ -146,7 +145,6 @@ struct PostgreSQLPartitionFilterTests {
     }
 }
 
-@Suite("A partition is whatever relkind says it is")
 struct PluginPartitionRelationTypeTests {
     @Test("Underscore and lower-case spellings resolve to the same relation")
     func normalisesDeclaredSpellings() {
@@ -173,7 +171,6 @@ struct PluginPartitionRelationTypeTests {
     }
 }
 
-@Suite("PostgreSQL partition bounds read as the server spells them")
 struct PostgreSQLPartitionBoundTests {
     @Test("The FOR VALUES prefix every row repeats is dropped")
     func stripsSharedPrefix() {
@@ -209,7 +206,6 @@ struct PostgreSQLPartitionBoundTests {
     }
 }
 
-@Suite("PostgreSQL table listing degradation ladder")
 struct PostgreSQLTableListingLadderTests {
     @Test("Partition awareness survives every rung that only drops columns")
     func partitionAwarenessDegradesLast() {

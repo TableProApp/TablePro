@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL session footprint")
 struct MySQLSessionFootprintTests {
     private func footprint(after statements: String...) -> MySQLSessionFootprint {
         var footprint = MySQLSessionFootprint()
@@ -351,7 +350,6 @@ struct MySQLSessionFootprintTests {
     }
 }
 
-@Suite("MySQL idle release policy")
 struct MySQLIdleReleaseTests {
     @Test("Anything that is not a positive number of minutes means never")
     func malformedValuesMeanNever() {

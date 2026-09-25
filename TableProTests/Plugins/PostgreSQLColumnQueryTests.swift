@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.columnsQuery")
 struct PostgreSQLColumnsQueryTests {
     private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
     private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
@@ -125,7 +124,6 @@ struct PostgreSQLColumnsQueryTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnsQuery materialized views")
 struct PostgreSQLMaterializedViewColumnsQueryTests {
     private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
     private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
@@ -270,7 +268,6 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
     }
 }
 
-@Suite("RedshiftSchemaQueries.columnsQuery")
 struct RedshiftColumnsQueryTests {
     @Test("single-table query filters on the requested schema and table")
     func singleTableFiltersOnRequestedSchema() {
@@ -316,7 +313,6 @@ struct RedshiftColumnsQueryTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnDDLQuery")
 struct PostgreSQLColumnDDLQueryTests {
     private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
     private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
@@ -367,7 +363,6 @@ struct PostgreSQLColumnDDLQueryTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnDDL")
 struct PostgreSQLColumnDDLParsingTests {
     private func row(
         _ table: String?,

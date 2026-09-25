@@ -61,7 +61,7 @@ private enum RefusalReason {
     static let rename = "Renaming a check constraint needs PostgreSQL 9.2 or later."
 }
 
-@MainActor @Suite("Schema operation refusal")
+@MainActor
 struct SchemaOperationRefusalTests {
     private static let generatedReason = RefusalReason.generated
     private static let brinReason = RefusalReason.brin

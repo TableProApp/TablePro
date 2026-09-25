@@ -69,7 +69,6 @@ private final class ScopeRoutingMetadataProvider: ScopedMetadataProviding {
     func browseScope(for connectionId: UUID) -> DatabaseScope? { nil }
 }
 
-@Suite("SchemaRefreshService")
 @MainActor
 struct SchemaRefreshServiceTests {
     private func makeService(

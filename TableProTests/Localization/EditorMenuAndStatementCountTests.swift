@@ -12,7 +12,6 @@ import Testing
 /// a review sheet. One was English in every language because the menu was built from literals; the
 /// other chose between two whole keys in Swift, which is the shape that cannot survive a language
 /// with more than two plural categories.
-@Suite("Editor menu and statement count")
 struct EditorMenuAndStatementCountTests {
     /// Measured on this toolchain: `String(localized:)` hands back the key verbatim,
     /// `(^[1 statement](inflect: true))`, so a counted noun that has to end up in a `String` still

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONTreeParser")
 struct JSONTreeParserTests {
     @Test("Long string nodes keep the full display value")
     func longStringNodesKeepFullDisplayValue() {

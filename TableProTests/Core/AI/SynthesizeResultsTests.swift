@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AIChatViewModel.synthesizeResults")
 struct SynthesizeResultsTests {
     private func block(_ id: String, _ approval: ToolApprovalState) -> ToolUseBlock {
         ToolUseBlock(id: id, name: "execute_query", input: .object([:]), approvalState: approval)

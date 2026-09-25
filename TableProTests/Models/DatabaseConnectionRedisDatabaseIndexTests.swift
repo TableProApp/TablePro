@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseConnection Redis database index")
 struct DatabaseConnectionRedisDatabaseIndexTests {
     private func redis(
         field: String? = nil,

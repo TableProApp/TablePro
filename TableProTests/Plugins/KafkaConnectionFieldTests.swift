@@ -6,7 +6,6 @@ import Testing
 
 /// Kafka names encryption and authentication in one setting; TablePro carries them in two.
 /// These pin the resolution, because getting it wrong sends a password in the clear.
-@Suite("Kafka connection fields")
 struct KafkaConnectionFieldTests {
     private func fields(_ securityProtocol: String, mechanism: String? = nil) -> [String: String] {
         var result = ["kafkaSecurityProtocol": securityProtocol]

@@ -12,7 +12,6 @@ private struct StubError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-@Suite("SQL import failure composition")
 struct SQLImportFailureTests {
     private func statementFailure() -> PluginImportError {
         PluginImportError.statementFailed(

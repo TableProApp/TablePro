@@ -10,7 +10,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@Suite("SidebarContextMenuLogicTests")
 struct SidebarContextMenuLogicTests {
     // MARK: - isView
 

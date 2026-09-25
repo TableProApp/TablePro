@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AIChatViewModel Query Actions")
 @MainActor
 struct AIChatViewModelActionTests {
     private func request(

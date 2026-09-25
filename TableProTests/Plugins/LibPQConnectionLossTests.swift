@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("libpq connection loss")
 struct LibPQConnectionLossTests {
     private static let serverMessage = LibPQPluginError(
         message: "FATAL:  terminating connection due to idle-session timeout",
@@ -118,7 +117,6 @@ struct LibPQConnectionLossTests {
 /// The app reads a driver error's message to tell an authentication failure from a refusal, and
 /// PostgreSQL sends those as a FATAL, which is exactly the shape that now carries an explanation
 /// as well. Both classifiers have to keep working through it.
-@Suite("libpq connection loss and the app's error classifiers")
 @MainActor
 struct LibPQConnectionLossClassifierTests {
     @Test("an authentication FATAL lost with the connection is still an authentication failure")

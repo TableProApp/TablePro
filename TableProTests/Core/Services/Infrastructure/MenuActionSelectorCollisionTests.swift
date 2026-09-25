@@ -12,7 +12,6 @@ import Testing
 /// Connection, and the rail sits ahead of the controller in the chain. The menu item validated as
 /// enabled and then did nothing at all, because the rail's handler reads `representedObject`, which
 /// only its own items carry. Nothing failed to compile and no test covered it.
-@Suite("Menu action selector collisions")
 @MainActor
 struct MenuActionSelectorCollisionTests {
     /// Every nested controller that can sit ahead of `MainSplitViewController` in a window's

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Structure tab availability")
 struct StructureTabAvailabilityTests {
     private static let legacyMySQL = StructureServerSupport(
         unsupportedColumnFields: [],

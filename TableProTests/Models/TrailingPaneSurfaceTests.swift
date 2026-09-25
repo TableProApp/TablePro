@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Trailing pane surface")
 struct TrailingPaneSurfaceTests {
     @Test("The assistant is the only surface a setting takes away")
     func assistantIsTheOnlyOptionalSurface() {
@@ -49,7 +48,6 @@ struct TrailingPaneSurfaceTests {
     }
 }
 
-@Suite("Inspector view mode")
 struct InspectorViewModeTests {
     /// Both modes are renderings of one selection, which is what makes them one exclusive choice in
     /// the pane header's menu rather than two commands. The assistant used to be a third case here.

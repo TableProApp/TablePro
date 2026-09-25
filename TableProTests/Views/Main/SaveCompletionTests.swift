@@ -44,7 +44,7 @@ private final class StubSaveDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
-@MainActor @Suite("Save Completion")
+@MainActor
 struct SaveCompletionTests {
     // MARK: - Helpers
 

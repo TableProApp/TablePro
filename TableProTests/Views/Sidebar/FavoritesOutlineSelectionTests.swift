@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Favorites outline selection")
 @MainActor
 struct FavoritesOutlineSelectionTests {
     private func table(_ name: String, schema: String? = "public") -> TableInfo {

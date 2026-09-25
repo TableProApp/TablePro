@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JavaScriptStatementScanner")
 struct JavaScriptStatementScannerTests {
     private func texts(_ source: String) -> [String] {
         JavaScriptStatementScanner.executableStatements(in: source).map(\.trimmed)

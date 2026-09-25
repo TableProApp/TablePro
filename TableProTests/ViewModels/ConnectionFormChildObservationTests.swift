@@ -14,7 +14,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Connection form child observation")
 struct ConnectionFormChildObservationTests {
     private final class ChangeCounter {
         private(set) var sends = 0

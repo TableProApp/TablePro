@@ -9,7 +9,6 @@ private func encodedJSON<T: Encodable>(_ value: T) throws -> String {
     return try #require(String(bytes: try encoder.encode(value), encoding: .utf8))
 }
 
-@Suite("BigQuery placeholder binding")
 struct BigQueryPlaceholderBindingTests {
     @Test("Question marks become numbered named parameters")
     func rewritesPlaceholders() throws {
@@ -59,7 +58,6 @@ struct BigQueryPlaceholderBindingTests {
     }
 }
 
-@Suite("BigQuery query parameter encoding")
 struct BigQueryQueryParameterEncodingTests {
     private func parameter(
         _ value: PluginCellValue,
@@ -156,7 +154,6 @@ struct BigQueryQueryParameterEncodingTests {
     }
 }
 
-@Suite("BigQuery dry run parameter discovery")
 struct BigQueryDryRunDiscoveryTests {
     private static let dryRunResponse = """
         {
@@ -222,7 +219,6 @@ struct BigQueryDryRunDiscoveryTests {
     }
 }
 
-@Suite("BigQuery job polling")
 struct BigQueryJobPollingTests {
     @Test("A query timeout of zero sets no deadline and no job timeout")
     func zeroMeansNoLimit() {

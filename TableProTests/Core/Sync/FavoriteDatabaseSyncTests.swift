@@ -9,7 +9,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("Favorite database sync")
 struct FavoriteDatabaseSyncTests {
     private static let zoneID = CKRecordZone.ID(
         zoneName: "TableProSync",

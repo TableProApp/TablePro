@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Strict tool schema audit")
 struct StrictToolSchemaTests {
     private let tools: [any ChatTool] = [
         ListConnectionsChatTool(),

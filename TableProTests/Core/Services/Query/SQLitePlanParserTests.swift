@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLite Plan Parser")
 struct SQLitePlanParserTests {
     private let parser = SQLitePlanParser()
 

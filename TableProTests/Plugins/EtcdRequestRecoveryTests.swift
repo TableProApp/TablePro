@@ -23,7 +23,6 @@ private let rejectedToken = recoveryFault(code: 16, message: "etcdserver: invali
 private let deniedPermission = recoveryFault(code: 7, message: "etcdserver: permission denied")
 private let authOff = recoveryFault(code: 9, message: "etcdserver: authentication is not enabled")
 
-@Suite("EtcdRequestRecovery")
 struct EtcdRequestRecoveryTests {
     @Test("A rejected token is refreshed once")
     func rejectedTokenRefreshes() {

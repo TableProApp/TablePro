@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis AUTH command")
 struct RedisAuthCommandTests {
     @Test("no credentials at all sends no AUTH")
     func noCredentials() {

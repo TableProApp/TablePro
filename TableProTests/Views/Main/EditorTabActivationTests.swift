@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Editor Tab Activation")
 struct EditorTabActivationTests {
     private static func resolve(
         clickCount: Int,

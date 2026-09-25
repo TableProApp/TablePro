@@ -30,7 +30,6 @@ private let multi = Step(command: "MULTI", reply: .status("OK"))
 private let queuedSet = Step(command: "SET", reply: .status("QUEUED"))
 private let watch = Step(command: "WATCH", reply: .status("OK"))
 
-@Suite("Redis session footprint - what a reply leaves on the session")
 struct RedisSessionFootprintTests {
     @Test("MULTI opens a block, and a queued command confirms one")
     func multiOpensBlock() {
@@ -118,7 +117,6 @@ struct RedisSessionFootprintTests {
     }
 }
 
-@Suite("Redis session footprint - which commands may be sent")
 struct RedisSessionFootprintAdmissionTests {
     @Test("A clean session holds nothing back")
     func cleanSession() {
@@ -180,7 +178,6 @@ struct RedisSessionFootprintAdmissionTests {
     }
 }
 
-@Suite("Redis session footprint - the errors the user reads")
 struct RedisSessionFootprintErrorTests {
     @Test("A held-back command names itself and what held it back")
     func heldBackMessages() {
@@ -204,7 +201,6 @@ struct RedisSessionFootprintErrorTests {
     }
 }
 
-@Suite("Redis command channel - an open block and the app's own commands")
 struct RedisCommandChannelOpenBlockTests {
     @Test("The database listing is held back from an open block and sends nothing")
     func listingHeldBack() async throws {

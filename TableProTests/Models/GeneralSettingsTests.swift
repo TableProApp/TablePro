@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AppLanguage")
 struct AppLanguageTests {
     @Test("Includes Korean with its standard locale identifier and native name")
     func includesKorean() {
@@ -22,7 +21,6 @@ struct AppLanguageTests {
     }
 }
 
-@Suite("GeneralSettings.showRecentTables")
 struct GeneralSettingsTests {
     @Test("Defaults to off")
     func defaultsOff() {
@@ -47,7 +45,6 @@ struct GeneralSettingsTests {
     }
 }
 
-@Suite("GeneralSettings.showObjectIcons")
 struct GeneralSettingsObjectIconsTests {
     @Test("Defaults to on")
     func defaultsOn() {
@@ -82,7 +79,6 @@ struct GeneralSettingsObjectIconsTests {
     }
 }
 
-@Suite("GeneralSettings.showWorkspaceRail")
 struct GeneralSettingsWorkspaceRailTests {
     @Test("Defaults to on")
     func defaultsOn() {
@@ -107,7 +103,6 @@ struct GeneralSettingsWorkspaceRailTests {
     }
 }
 
-@Suite("GeneralSettings.showSystemContainers")
 struct GeneralSettingsSystemContainersTests {
     @Test("Defaults to off")
     func defaultsOff() {
@@ -132,7 +127,6 @@ struct GeneralSettingsSystemContainersTests {
     }
 }
 
-@Suite("GeneralSettings update-preference removal")
 struct GeneralSettingsUpdatePreferenceTests {
     @Test("A settings blob still carrying automaticallyCheckForUpdates decodes without it")
     func decodesBlobCarryingTheRemovedKey() throws {
@@ -153,7 +147,6 @@ struct GeneralSettingsUpdatePreferenceTests {
     }
 }
 
-@Suite("GeneralSettings.showPartitions")
 struct GeneralSettingsPartitionsTests {
     @Test("Defaults to on")
     func defaultsOn() {

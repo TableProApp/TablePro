@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AI model catalog")
 struct AIModelCatalogTests {
     private let claude = AIProviderType.claude.rawValue
 

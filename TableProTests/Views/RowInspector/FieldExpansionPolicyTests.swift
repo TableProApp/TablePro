@@ -11,7 +11,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Field expansion policy")
 struct FieldExpansionPolicyTests {
     /// Only these three consume `isExpanded`. Offering the control anywhere else flipped an icon
     /// and resized nothing, which is what the docs page had to be narrowed to match.

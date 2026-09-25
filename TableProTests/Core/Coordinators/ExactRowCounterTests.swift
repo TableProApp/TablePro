@@ -71,7 +71,6 @@ private final class CountStubDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
-@Suite("Exact row count routing")
 struct ExactRowCounterTests {
     private static let countSQL = "SELECT COUNT(*) FROM `Orders`"
 

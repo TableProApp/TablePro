@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DynamoDB curated metadata parity")
 struct DynamoDBMetadataParityTests {
     private func curated() throws -> PluginMetadataSnapshot {
         try #require(PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == "DynamoDB" }?.snapshot)

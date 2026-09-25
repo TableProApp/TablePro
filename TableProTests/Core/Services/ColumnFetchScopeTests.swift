@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ColumnFetchScope")
 struct ColumnFetchScopeTests {
     private let columns = ["id", "name", "email", "payload"]
 

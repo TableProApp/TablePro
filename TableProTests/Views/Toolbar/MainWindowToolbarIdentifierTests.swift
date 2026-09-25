@@ -13,7 +13,6 @@ import Testing
 /// toolbar identifier and autosaves its configuration, so a repeated identifier is a launch crash
 /// rather than a duplicated button.
 @MainActor
-@Suite("Main window toolbar identifiers")
 struct MainWindowToolbarIdentifierTests {
     @Test("No identifier is listed twice in the default set")
     func defaultIdentifiersAreUnique() {

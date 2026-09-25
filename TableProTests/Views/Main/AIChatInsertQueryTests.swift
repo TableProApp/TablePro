@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AIChatInsertQuery")
 struct AIChatInsertQueryTests {
     @Test("Reuses the selected query tab only when it is empty")
     @MainActor

@@ -17,7 +17,6 @@ import TableProPluginKit
 import TableProTextEngine
 import Testing
 
-@Suite("Query Completion Adapter Lifecycle")
 struct QueryCompletionAdapterLifecycleTests {
     @Test("engine returns keyword completions with no schema provider")
     func keywordsAvailableWithoutSchema() async {

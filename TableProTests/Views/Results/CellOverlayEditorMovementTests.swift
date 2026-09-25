@@ -11,7 +11,6 @@ import Testing
 
 /// The overlay is a text view rather than a field editor, so the four selectors AppKit would have
 /// turned into an `NSTextMovement` are read here instead (#2569).
-@Suite("Cell overlay editor movement")
 @MainActor
 struct CellOverlayEditorMovementTests {
     private struct Editing {

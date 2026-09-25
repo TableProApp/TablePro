@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Export Models")
 struct ExportModelsTests {
 
     @MainActor @Test("Export configuration default format is csv")

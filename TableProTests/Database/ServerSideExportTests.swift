@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Server-side export")
 struct ServerSideExportTests {
     private func statement(
         _ type: DatabaseType,
@@ -207,7 +206,6 @@ struct ServerSideExportTests {
     }
 }
 
-@Suite("SQL Server dump")
 struct SQLServerDumpTests {
     private func command(kind: NativeDumpKind, username: String = "sa") throws -> NativeDumpCommand {
         var sslConfig = SSLConfiguration()

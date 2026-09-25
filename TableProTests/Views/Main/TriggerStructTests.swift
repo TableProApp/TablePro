@@ -12,7 +12,6 @@ import Testing
 
 // MARK: - InspectorTrigger Tests
 
-@Suite("InspectorTrigger")
 struct InspectorTriggerTests {
     private func trigger(
         tableName: String? = "users",
@@ -84,7 +83,6 @@ struct InspectorTriggerTests {
 
 // MARK: - PendingChangeTrigger Tests
 
-@Suite("PendingChangeTrigger")
 struct PendingChangeTriggerTests {
     private func makeTrigger(
         hasDataChanges: Bool = false,

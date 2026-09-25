@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Batch commit statement")
 struct BatchCommitStatementTests {
     private static func matches(_ sql: String, type: DatabaseType = .postgresql) -> Bool {
         BatchCommitStatement.matches(sql, grammar: type.lexicalGrammar)

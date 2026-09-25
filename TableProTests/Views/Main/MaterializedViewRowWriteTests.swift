@@ -25,7 +25,6 @@ private final class MaterializedViewClipboard: ClipboardProvider {
     var hasGridRows: Bool { gridRows != nil }
 }
 
-@Suite("Materialized view row writes")
 @MainActor
 struct MaterializedViewRowWriteTests {
     private func makeCoordinator() -> MainContentCoordinator {

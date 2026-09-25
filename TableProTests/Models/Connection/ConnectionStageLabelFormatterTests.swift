@@ -17,7 +17,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection stage labels")
 struct ConnectionStageLabelFormatterTests {
     private static func connection(
         name: String = "Prod DB",

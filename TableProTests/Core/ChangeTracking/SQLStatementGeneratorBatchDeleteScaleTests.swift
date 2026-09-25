@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator: Batch Delete Scale")
 struct SQLStatementGeneratorBatchDeleteScaleTests {
     private func makeGenerator(
         columns: [String],

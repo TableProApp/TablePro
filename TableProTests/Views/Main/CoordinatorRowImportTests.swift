@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Coordinator row import entry")
 @MainActor
 struct CoordinatorRowImportTests {
     private final class ErrorRecorder {

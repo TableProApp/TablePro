@@ -11,7 +11,6 @@ import Testing
 /// The connection's own Database field after the database it names is renamed or dropped. A
 /// reconnect and Reopen Last Session both read it, so a stale one opens the connection onto
 /// nothing every time.
-@Suite("Saved connection database adoption")
 @MainActor
 struct SavedConnectionDatabaseAdoptionTests {
     private func makeStorage() -> ConnectionStorage {

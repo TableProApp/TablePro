@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Oracle object query qualification")
 struct OracleObjectQueriesQualificationTests {
     private static let bareDictionary = try! NSRegularExpression(
         pattern: #"\b(ALL|DBA|USER)_[A-Z_]+\b|\bDUAL\b|V\$[A-Z_]+"#

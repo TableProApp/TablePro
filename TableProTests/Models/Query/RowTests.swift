@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("RowID")
 struct RowIDTests {
     @Test("Two inserted RowIDs have different UUIDs")
     func insertedFactoriesProduceDistinctUUIDs() {
@@ -33,7 +32,6 @@ struct RowIDTests {
     }
 }
 
-@Suite("Row")
 struct RowTests {
     @Test("Subscript returns the cell at a valid column")
     func subscriptReadsValidColumn() {

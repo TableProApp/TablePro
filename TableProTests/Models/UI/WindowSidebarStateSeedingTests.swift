@@ -10,7 +10,6 @@ import Testing
 /// An all-empty expansion set means "collapsed everything" as much as it means "never
 /// opened", so the seed has to record that it ran rather than infer it from emptiness.
 @MainActor
-@Suite("Sidebar tree expansion seeding")
 struct WindowSidebarStateSeedingTests {
     private func makeDefaults() -> UserDefaults {
         let suiteName = "com.TablePro.tests.sidebarSeeding.\(UUID().uuidString)"

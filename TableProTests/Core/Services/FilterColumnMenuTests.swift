@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Filter Column Menu")
 struct FilterColumnMenuTests {
     private func path(_ path: String, depth: Int, arrays: [String] = [], type: String = "VARCHAR") -> PluginFieldPath {
         PluginFieldPath(path: path, typeName: type, depth: depth, arrayPrefixes: arrays)

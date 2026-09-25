@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLColumnClauses collation")
 struct PostgreSQLColumnCollationClauseTests {
     private func column(
         dataType: String = "CHARACTER VARYING",

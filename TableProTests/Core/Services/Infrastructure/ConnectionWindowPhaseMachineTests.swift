@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection window phase machine")
 struct ConnectionWindowPhaseMachineTests {
     private static let failure = ConnectionFailureInfo(
         message: "Could not connect to the server.",

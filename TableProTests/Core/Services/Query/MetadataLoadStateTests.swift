@@ -1,7 +1,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("MetadataLoadState")
 struct MetadataLoadStateTests {
     @Test("value returns the payload only for loaded")
     func valueOnlyWhenLoaded() {

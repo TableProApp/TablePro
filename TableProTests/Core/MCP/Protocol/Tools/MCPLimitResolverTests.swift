@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPLimitResolver")
 struct MCPLimitResolverTests {
     private func settings(
         defaultRowLimit: Int = 500,

@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Tab query tasks")
 struct TabQueryTasksTests {
     @Test("Installing on an idle tab displaces nothing")
     func installOnIdleTabDisplacesNothing() {

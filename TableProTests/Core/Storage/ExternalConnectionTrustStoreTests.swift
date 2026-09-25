@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("ExternalConnectionTrustStore")
 struct ExternalConnectionTrustStoreTests {
     private func makeStore() throws -> ExternalConnectionTrustStore {
         let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"

@@ -14,7 +14,6 @@ import Testing
 /// The expected strings here are not a preference. Each was run against a live MariaDB 12.3 and
 /// sqlite3 while fixing #2630, and what each engine accepted is recorded beside it. CI reaches
 /// neither engine, so these tests are the record of that measurement.
-@Suite("SQL export dialect")
 struct SQLExportDialectTests {
 
     private func dialect(for type: DatabaseType) -> SQLDialectDescriptor? {
@@ -110,7 +109,6 @@ struct SQLExportDialectTests {
 }
 
 /// A result set has no schema, so a query export must write neither `CREATE` nor `DROP`.
-@Suite("Query export options")
 struct QueryExportOptionsTests {
 
     private func column(_ id: String, _ label: String) -> PluginExportOptionColumn {
@@ -158,7 +156,6 @@ struct QueryExportOptionsTests {
 /// Measured: MariaDB accepts it and the manual says it does nothing ("permitted to make porting
 /// easier"); sqlite3 rejects `DROP TABLE IF EXISTS "fields" CASCADE;` outright with
 /// `near "CASCADE": syntax error`. The clause was previously emitted for every engine.
-@Suite("SQL export drop clause")
 struct SQLExportDropClauseTests {
 
     private final class StubExportDataSource: PluginExportDataSource, @unchecked Sendable {

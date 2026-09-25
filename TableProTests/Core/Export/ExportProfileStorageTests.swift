@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Export profiles")
 struct ExportProfileStorageTests {
 
     private func databases() -> [ExportDatabaseItem] {
@@ -166,7 +165,6 @@ struct ExportProfileStorageTests {
     }
 }
 
-@Suite("Import error report")
 struct ImportErrorReportTests {
 
     private let errors = [

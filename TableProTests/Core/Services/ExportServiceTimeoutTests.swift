@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("ExportService Statement Timeout")
 struct ExportServiceTimeoutTests {
     private func makeService(driver: MockDatabaseDriver) -> ExportService {
         ExportService(driver: driver, databaseType: .mysql)

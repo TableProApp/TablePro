@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("SQLEditorCoordinator")
 struct SQLEditorCoordinatorTests {
     @Test("Initial isDestroyed is false")
     func initialIsDestroyedIsFalse() {

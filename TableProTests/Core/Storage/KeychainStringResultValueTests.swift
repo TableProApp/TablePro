@@ -8,7 +8,6 @@ import os
 @testable import TablePro
 import Testing
 
-@Suite("KeychainStringResult.value")
 struct KeychainStringResultValueTests {
     private let logger = Logger(subsystem: "com.TablePro.tests", category: "keychain")
 

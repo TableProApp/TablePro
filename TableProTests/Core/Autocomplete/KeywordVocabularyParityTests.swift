@@ -13,7 +13,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Keyword vocabulary parity")
 struct KeywordVocabularyParityTests {
     /// The uppercaser only ever looks at one word at a time, so a multi-word entry such as
     /// `ORDER BY` can never match and is not expected in the set.

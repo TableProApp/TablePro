@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouse Connection")
 struct ClickHouseConnectionTests {
     private static func unescapeTsvField(_ field: String) -> String {
         ClickHouseResponseClassifier.unescapeTsvField(field)

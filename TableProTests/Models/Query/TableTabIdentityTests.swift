@@ -9,7 +9,6 @@ import Testing
 
 /// Closing tabs after a drop compared bare table names, so dropping `analytics.users` also closed
 /// the tab on `public.users` and threw away its row buffer with nothing to undo it.
-@Suite("Table tab identity")
 struct TableTabIdentityTests {
     private func ref(_ name: String, database: String?, schema: String?) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(

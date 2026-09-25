@@ -11,7 +11,6 @@ import Testing
 /// The version strings here are verbatim output from the binaries on a Mac with both families
 /// installed, including the renamed copy that proves the token comes from the build rather than
 /// from `argv[0]`.
-@Suite("MySQL dump tool identifier")
 struct MySQLDumpToolIdentifierTests {
     private static let mariaDB = "/opt/homebrew/bin/mysqldump from 12.3.3-MariaDB, client 10.20 for osx10.21 (arm64)"
     private static let renamedMariaDB = "./totally-not-mariadb from 12.3.3-MariaDB, client 10.20 for osx10.21 (arm64)"

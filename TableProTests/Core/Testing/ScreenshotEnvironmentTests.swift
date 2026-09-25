@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ScreenshotEnvironment frame")
 struct ScreenshotEnvironmentTests {
     @Test("Reads the size the marketing shots are cut to")
     func readsWidthAndHeight() throws {

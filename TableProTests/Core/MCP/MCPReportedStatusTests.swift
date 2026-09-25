@@ -16,7 +16,6 @@
 import Foundation
 import Testing
 
-@Suite("MCP connection health reporting")
 struct MCPReportedStatusTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

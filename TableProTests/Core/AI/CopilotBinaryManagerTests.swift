@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Copilot binary manager")
 struct CopilotBinaryManagerTests {
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory

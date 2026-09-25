@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Editing a declared type")
 struct StructureDeclaredTypeEditTests {
     @MainActor private func loadedManager() -> StructureChangeManager {
         let manager = StructureChangeManager()

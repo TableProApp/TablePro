@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AppSettingsStorage startup migration")
 struct AppSettingsStorageMigrationTests {
     private let generalKey = "com.TablePro.settings.general"
 

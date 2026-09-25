@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP legacy era adapter")
 struct MCPLegacyEraAdapterTests {
     @Test("A request whose _meta declares a protocol version is served by the modern era")
     func modernMetaSelectsTheModernEra() async throws {

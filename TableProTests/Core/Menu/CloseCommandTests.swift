@@ -27,7 +27,6 @@ private func fileMenu() -> NSMenu {
     return menu.items.first { $0.title == String(localized: "File") }?.submenu ?? NSMenu()
 }
 
-@Suite("Close command binding")
 @MainActor
 struct CloseCommandBindingTests {
     @Test("Command W is bound to the close command every window implements")
@@ -87,7 +86,6 @@ struct CloseCommandBindingTests {
     }
 }
 
-@Suite("Close command title resolution")
 @MainActor
 struct CloseCommandTitleResolverTests {
     @Test("The responder that takes the command names it")

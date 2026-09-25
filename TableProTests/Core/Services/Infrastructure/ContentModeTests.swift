@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Agent mode")
 @MainActor
 struct ContentModeTests {
     /// The one field that makes a mode toggle repaint anything. Without it the phase holds, the

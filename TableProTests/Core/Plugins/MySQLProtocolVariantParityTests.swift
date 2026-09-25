@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL-protocol variants agree across the family lists")
 @MainActor
 struct MySQLProtocolVariantParityTests {
     nonisolated private static let variants: [DatabaseType] = [.mariadb, .tidb, .databend, .oceanbase]

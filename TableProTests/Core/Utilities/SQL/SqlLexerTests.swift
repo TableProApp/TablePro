@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL lexer")
 struct SqlLexerTests {
 
     @Test("A line comment runs to the newline, not past it")

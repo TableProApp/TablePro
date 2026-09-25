@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Rails Database YAML Extractor")
 struct RailsDatabaseYamlExtractorTests {
     private let root = URL(fileURLWithPath: "/tmp/rails-project")
 
@@ -106,7 +105,6 @@ struct RailsDatabaseYamlExtractorTests {
     }
 }
 
-@Suite("Docker Compose Extractor")
 struct DockerComposeExtractorTests {
 
     private func extract(_ contents: String, environment: DotenvDocument? = nil) -> [ScannedConnectionCandidate] {
@@ -500,7 +498,6 @@ struct DockerComposeExtractorTests {
     }
 }
 
-@Suite("Spring YAML Extractor")
 struct SpringYamlExtractorTests {
 
     @Test("A nested datasource block is read")

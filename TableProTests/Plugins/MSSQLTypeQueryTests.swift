@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MSSQL Type Catalog Queries")
 struct MSSQLTypeQueryTests {
     @Test("Only user-defined types are listed, and the three kinds are separated")
     func listsOnlyUserDefinedTypes() {
@@ -71,7 +70,6 @@ struct MSSQLTypeQueryTests {
     }
 }
 
-@Suite("MSSQL Type Definition Synthesis")
 struct MSSQLTypeDefinitionTests {
     /// Executed verbatim against SQL Server 2022 and accepted.
     @Test("An alias type rebuilds its CREATE TYPE ... FROM statement")

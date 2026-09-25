@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("MySQL character set decoding")
 struct MySQLCharacterSetTests {
     private func decode(_ bytes: [UInt8], as name: String) -> String {
         bytes.withUnsafeBytes { MySQLCharacterSet(serverName: name).decode($0) }

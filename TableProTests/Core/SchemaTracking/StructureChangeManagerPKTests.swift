@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Structure Change Manager Primary Key Detection")
 struct StructureChangeManagerPKTests {
 
     // MARK: - Helpers

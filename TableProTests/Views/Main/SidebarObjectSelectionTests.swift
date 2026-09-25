@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SidebarObjectSelection")
 struct SidebarObjectSelectionTests {
     private let connectionId = UUID()
 

@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace rail order store")
 @MainActor
 struct WorkspaceRailOrderStoreTests {
     private func makeId(container: String = "app") -> WorkspaceID {

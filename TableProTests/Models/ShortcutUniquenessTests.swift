@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Keyboard shortcut uniqueness")
 struct ShortcutUniquenessTests {
     @Test("No two actions ship the same default key equivalent")
     func defaultsAreUnique() {

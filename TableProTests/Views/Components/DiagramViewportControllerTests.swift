@@ -10,7 +10,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Diagram Viewport Controller")
 @MainActor
 struct DiagramViewportControllerTests {
     private func makeScrollView(content: CGSize, visible: CGSize) -> DiagramScrollView {

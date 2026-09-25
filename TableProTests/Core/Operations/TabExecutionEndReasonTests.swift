@@ -10,7 +10,6 @@ import Testing
 /// The reason is a required parameter rather than a defaulted one on purpose: a new way to end an
 /// execution is then a compile error at the new call site instead of a silent gap. The list of
 /// cancel sites this replaced was already incomplete when it was written.
-@Suite("Execution end reasons")
 struct TabExecutionEndReasonTests {
     @Test("Invalidating a claimed tab reports what was ended and why")
     func invalidateReportsTheEndedExecution() {

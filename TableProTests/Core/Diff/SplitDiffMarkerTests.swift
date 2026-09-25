@@ -6,7 +6,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("Split diff marker")
 struct SplitDiffMarkerTests {
     @Test("A removed line is marked only on the before side")
     func removedMarksBeforeOnly() {

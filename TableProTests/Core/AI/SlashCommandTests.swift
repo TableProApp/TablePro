@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SlashCommand")
 struct SlashCommandTests {
     @Test("parse recognizes known commands at the start of input")
     func parsesKnownCommand() {

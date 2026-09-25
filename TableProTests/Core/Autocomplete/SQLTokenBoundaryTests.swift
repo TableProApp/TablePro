@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLTokenBoundary")
 struct SQLTokenBoundaryTests {
     @Test("Segment start covers the whole typed word")
     func segmentStartPlainWord() {

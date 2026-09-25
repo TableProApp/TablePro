@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPClientSession content")
 struct MCPClientSessionDecodingTests {
     @Test("Text parts are joined in order")
     func textPartsAreJoined() {

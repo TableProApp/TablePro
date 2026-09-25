@@ -133,7 +133,6 @@ enum DynamoDBDriverFixture {
     }
 }
 
-@Suite("DynamoDB driver over a scripted transport")
 struct DynamoDBDriverTests {
     private typealias Fixture = DynamoDBDriverFixture
 

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Maintenance submenu population")
 @MainActor
 struct MaintenanceMenuDelegateTests {
     private func keyDownEvent() -> NSEvent? {
@@ -56,7 +55,6 @@ struct MaintenanceMenuDelegateTests {
     }
 }
 
-@Suite("New tab responder chain")
 @MainActor
 struct NewWindowForTabResponderTests {
     @Test("AppDelegate does not claim newWindowForTab, so AppKit disables it off editor windows")

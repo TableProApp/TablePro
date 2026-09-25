@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL Plan Parser")
 struct MySQLPlanParserTests {
     private let parser = MySQLPlanParser()
 

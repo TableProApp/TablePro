@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SidebarSearch")
 struct SidebarSearchTests {
     @Test("A plain search admits every container and matches names")
     func plainSearch() {

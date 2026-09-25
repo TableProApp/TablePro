@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB attribute value")
 struct DynamoDBAttributeValueTests {
     struct ValueCase: Sendable, CustomTestStringConvertible {
         let name: String

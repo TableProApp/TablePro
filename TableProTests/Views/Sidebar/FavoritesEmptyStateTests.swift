@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FavoritesEmptyState")
 struct FavoritesEmptyStateTests {
     private func input(
         isInitialLoadComplete: Bool = true,

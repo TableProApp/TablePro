@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL check constraints")
 struct MySQLCheckConstraintsTests {
     @Test("7.5 prints constraints unindented, and each expression matches CHECK_CLAUSE")
     func tidb75() {

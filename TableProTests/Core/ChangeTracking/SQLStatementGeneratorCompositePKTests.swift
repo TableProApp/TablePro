@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Statement Generator — Composite Primary Key")
 struct SQLStatementGeneratorCompositePKTests {
     // MARK: - Helpers
 

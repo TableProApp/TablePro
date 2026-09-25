@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("FilterSettingsStorage")
 @MainActor
 struct FilterSettingsStorageTests {
     private func makeStorage() -> (storage: FilterSettingsStorage, directory: URL) {

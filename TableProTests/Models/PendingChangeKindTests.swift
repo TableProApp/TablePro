@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Pending change kind")
 struct PendingChangeKindTests {
     private static let contentKinds: [TabType] = [
         .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource,

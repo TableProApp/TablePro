@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("PendingChanges - record")
 struct PendingChangesRecordTests {
     @Test("Empty by default")
     func emptyByDefault() {
@@ -108,7 +107,6 @@ struct PendingChangesRecordTests {
     }
 }
 
-@Suite("PendingChanges - undo")
 struct PendingChangesUndoTests {
     @Test("Undo row deletion clears delete state")
     func undoRowDeletion() {
@@ -163,7 +161,6 @@ struct PendingChangesUndoTests {
     }
 }
 
-@Suite("PendingChanges - replay")
 struct PendingChangesReplayTests {
     @Test("Reapply cell change with no existing change")
     func reapplyCellWithoutExisting() {
@@ -204,7 +201,6 @@ struct PendingChangesReplayTests {
     }
 }
 
-@Suite("PendingChanges - snapshot")
 struct PendingChangesSnapshotTests {
     @Test("Snapshot round-trip preserves state")
     func snapshotRoundTrip() {
@@ -228,7 +224,6 @@ struct PendingChangesSnapshotTests {
     }
 }
 
-@Suite("PendingChanges - clear and consume")
 struct PendingChangesLifecycleTests {
     @Test("Clear empties all internal state")
     func clearResets() {

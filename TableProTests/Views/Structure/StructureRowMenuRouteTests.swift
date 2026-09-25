@@ -30,7 +30,6 @@ private final class StructureRouteLayoutPersister: ColumnLayoutPersisting {
 /// runner: an open contextual menu is not a child of the application element, and the titles that
 /// would discriminate (`Export Results…`) also sit in the menu bar, so an app-rooted query answers
 /// from there whatever the contextual menu holds.
-@Suite("Structure row menu route")
 @MainActor
 struct StructureRowMenuRouteTests {
     /// Only the structure menu builds this.

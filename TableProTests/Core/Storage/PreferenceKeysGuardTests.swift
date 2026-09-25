@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Preference key registry & guard")
 struct PreferenceKeysGuardTests {
     @Test("Registered keys are unique and namespaced")
     func registryIsCleanlyNamespaced() {

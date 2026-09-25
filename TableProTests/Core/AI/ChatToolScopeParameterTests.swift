@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Chat tool scope parameters")
 struct ChatToolScopeParameterTests {
     private static func nullableTypes(_ schema: JsonValue?, property: String) -> [String] {
         let type = schema?["properties"]?[property]?["type"]

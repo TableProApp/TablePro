@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("HistoryClearSummary")
 struct HistoryClearSummaryTests {
     private let everySource = Set(QueryHistorySource.allCases)
 

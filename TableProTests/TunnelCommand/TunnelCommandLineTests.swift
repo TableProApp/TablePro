@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Tunnel command line")
 struct TunnelCommandLineTests {
     @Test("splits on whitespace")
     func splitsOnWhitespace() throws {

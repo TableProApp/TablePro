@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ConfirmDestructiveOperationTool")
 struct ConfirmDestructiveOperationToolTests {
     private let tool = ConfirmDestructiveOperationTool()
 

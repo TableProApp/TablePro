@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyLabelChoice")
 struct ForeignKeyLabelChoiceTests {
     private func roundTrip(_ choice: ForeignKeyLabelChoice) -> ForeignKeyLabelChoice {
         ForeignKeyLabelChoice(storedData: choice.storedData)

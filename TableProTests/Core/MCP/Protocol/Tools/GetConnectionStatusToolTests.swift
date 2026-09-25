@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("GetConnectionStatusTool")
 struct GetConnectionStatusToolTests {
     private let tool = GetConnectionStatusTool()
 

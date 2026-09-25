@@ -31,7 +31,6 @@ private let liveValidatedSelectors: Set<Selector> = [
     #selector(MainSplitViewController.retryConnection),
 ]
 
-@Suite("Menu validation coverage")
 @MainActor
 struct MenuValidationCoverageTests {
     /// A command the window implements and the menu carries, with no arm in `resolvedEnablement`,

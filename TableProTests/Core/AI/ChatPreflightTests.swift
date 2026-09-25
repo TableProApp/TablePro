@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Chat preflight")
 struct ChatPreflightTests {
     private func text(_ length: Int) -> String {
         String(repeating: "a", count: length)

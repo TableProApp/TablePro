@@ -35,7 +35,6 @@ private struct StubChatTool: ChatTool {
     }
 }
 
-@Suite("Outside MCP tool scope")
 @MainActor
 struct MCPRemoteToolScopeTests {
     private func makeStore() -> MCPServerStore {

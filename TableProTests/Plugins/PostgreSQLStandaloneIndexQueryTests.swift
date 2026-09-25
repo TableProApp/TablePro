@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL standalone index read")
 struct PostgreSQLStandaloneIndexQueryTests {
     private static let sql = PostgreSQLIndexQueries.standaloneIndexQuery(schema: "shop", table: "orders")
 
@@ -58,7 +57,6 @@ struct PostgreSQLStandaloneIndexQueryTests {
     }
 }
 
-@Suite("PostgreSQL table DDL constraints read")
 struct PostgreSQLTableDDLConstraintsQueryTests {
     @Test("Exclusion constraints are written with the table, beside primary key, unique and check constraints")
     func exclusionConstraintsAreIncluded() {

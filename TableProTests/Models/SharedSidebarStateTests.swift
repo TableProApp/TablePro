@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SharedSidebarState")
 struct SharedSidebarStateTests {
     // MARK: - Registry
 

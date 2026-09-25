@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableRowsSorting")
 struct TableRowsSortingTests {
     private func makeRows() -> TableRows {
         var rows = TableRows(

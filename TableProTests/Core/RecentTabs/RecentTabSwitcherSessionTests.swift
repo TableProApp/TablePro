@@ -19,7 +19,6 @@ private func candidates(_ count: Int) -> [RecentTabCandidate] {
     }
 }
 
-@Suite("Recent tab switcher session")
 struct RecentTabSwitcherSessionTests {
     @Test("Nothing to switch to with fewer than two tabs")
     func needsTwoCandidates() {
@@ -118,7 +117,6 @@ struct RecentTabSwitcherSessionTests {
     }
 }
 
-@Suite("Recent tab switcher keys")
 struct RecentTabSwitcherKeyCommandTests {
     private func resolve(
         _ key: KeyCode,

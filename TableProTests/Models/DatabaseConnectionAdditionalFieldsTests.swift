@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseConnection.additionalFields")
 struct DatabaseConnectionAdditionalFieldsTests {
     // MARK: - Defaults
 

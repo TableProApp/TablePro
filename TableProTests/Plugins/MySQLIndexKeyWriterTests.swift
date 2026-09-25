@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL index key writer")
 @MainActor
 struct MySQLIndexKeyWriterTests {
     private func catalogRow(

@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Editable Foreign Key Definition")
 struct ForeignKeyDefinitionTests {
     // MARK: - placeholder Tests
 

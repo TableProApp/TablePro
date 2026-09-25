@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("HostKeyStore")
 struct HostKeyStoreTests {
     /// Create a temporary file path for test isolation
     private func makeTempFilePath() -> String {

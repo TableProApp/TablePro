@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("RDS describe response parsing")
 struct RDSDescribeResponseParserTests {
     static let instancesXML = """
     <DescribeDBInstancesResponse xmlns="http://rds.amazonaws.com/doc/2014-10-31/">

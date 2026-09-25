@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Transaction engine family")
 struct TransactionEngineFamilyTests {
     @Test(
         "Every PostgreSQL-compatible engine reads the PostgreSQL rules",

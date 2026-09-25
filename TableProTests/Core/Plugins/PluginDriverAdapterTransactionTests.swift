@@ -44,7 +44,6 @@ private final class ModeAwareTransactionDriver: TransactionDriverBase, PluginDat
     }
 }
 
-@Suite("PluginDriverAdapter transaction access mode")
 struct PluginDriverAdapterTransactionTests {
     private func connection() -> DatabaseConnection {
         DatabaseConnection(

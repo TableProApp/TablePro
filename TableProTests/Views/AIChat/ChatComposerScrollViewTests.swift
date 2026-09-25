@@ -8,7 +8,6 @@ import AppKit
 import Testing
 
 @MainActor
-@Suite("ChatComposerScrollView layout")
 struct ChatComposerScrollViewTests {
     private func makeComposer(width: CGFloat, height: CGFloat = 40) -> ChatComposerScrollView {
         let textView = ChatComposerNSTextView.make()
@@ -109,7 +108,6 @@ struct ChatComposerScrollViewTests {
 }
 
 @MainActor
-@Suite("ChatComposerNSTextView accessibility")
 struct ChatComposerTextViewAccessibilityTests {
     /// The placeholder is painted in `draw(_:)` and never reaches the accessibility tree, so this
     /// value is the only name the AI chat field has. It went unset from #2097 until #2995 because

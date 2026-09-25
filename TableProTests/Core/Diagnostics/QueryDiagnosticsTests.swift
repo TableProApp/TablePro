@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Query Diagnostics")
 struct QueryDiagnosticsTests {
     private let sql = SQLDiagnosticsProducer()
     private let mql = MongoDiagnosticsProducer()

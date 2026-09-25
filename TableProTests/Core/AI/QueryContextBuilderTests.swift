@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("QueryContextBuilder")
 @MainActor
 struct QueryContextBuilderTests {
     private let connectionId = UUID()

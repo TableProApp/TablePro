@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("CoordinatorEditorLoad")
 struct CoordinatorEditorLoadTests {
     // MARK: - Helpers
 

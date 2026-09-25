@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("LicensePresentation")
 struct LicensePresentationTests {
     // MARK: - Which layout the pane shows
 

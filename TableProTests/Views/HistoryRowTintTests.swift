@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("History row tints on a selection fill")
 @MainActor
 struct HistoryRowTintTests {
     private func entry(wasSuccessful: Bool) -> QueryHistoryEntry {

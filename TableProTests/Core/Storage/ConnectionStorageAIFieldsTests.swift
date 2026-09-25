@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 import TableProSyncTransport
 
-@Suite("ConnectionStorage AI Fields")
 @MainActor
 struct ConnectionStorageAIFieldsTests {
     private let storage: ConnectionStorage

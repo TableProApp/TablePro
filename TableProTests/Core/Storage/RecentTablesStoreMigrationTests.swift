@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("RecentTablesStore migration")
 @MainActor
 struct RecentTablesStoreMigrationTests {
     @Test("Migrates the legacy RecentTables.v1 key to the namespaced key")

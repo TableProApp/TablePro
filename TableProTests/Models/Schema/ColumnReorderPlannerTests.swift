@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Column Reorder Planner")
 struct ColumnReorderPlannerTests {
     private let current = ["a", "b", "c", "d"]
 

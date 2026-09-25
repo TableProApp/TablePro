@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("Editor tab strip glass")
 struct EditorTabStripGlassGuardTests {
     /// The strip may carry exactly one Liquid Glass surface, and it is the new-tab button.
     ///

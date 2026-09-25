@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQConnectionString")
 struct LibPQConnectionStringTests {
     private func build(
         user: String = "postgres",

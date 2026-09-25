@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Project Folder File Walker")
 struct ProjectFolderFileWalkerTests {
     private let root: URL
     private let outside: URL

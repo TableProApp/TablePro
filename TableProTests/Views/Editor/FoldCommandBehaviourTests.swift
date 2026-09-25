@@ -13,7 +13,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Fold commands")
 @MainActor
 struct FoldCommandBehaviourTests {
     private let script = """

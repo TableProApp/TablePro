@@ -13,7 +13,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Workspace rail cell rendering")
 @MainActor
 struct WorkspaceRailCellRenderingTests {
     private static let layout = WorkspaceRailMetrics.medium

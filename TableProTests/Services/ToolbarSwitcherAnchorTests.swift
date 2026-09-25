@@ -16,7 +16,6 @@ import Testing
 /// The decision reads the app's own record of what it hid and `NSToolbar.items`, and nothing
 /// AppKit reports about visibility, because one Customize Toolbar visit is measured to leave
 /// `visibleItems` and `NSToolbarItem.isVisible` over-reporting for good.
-@Suite("ToolbarSwitcherPresenter anchor resolution")
 @MainActor
 struct ToolbarSwitcherAnchorTests {
     private static let identifier = NSToolbarItem.Identifier("com.TablePro.tests.anchor")

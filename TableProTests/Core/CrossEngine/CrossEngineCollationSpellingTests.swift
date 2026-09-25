@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cross-engine collation spelling")
 struct CrossEngineCollationSpellingTests {
     private func snapshot(ddlCollation: String?) -> TableStructureSnapshot {
         let code = EditableColumnDefinition(

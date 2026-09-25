@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Tunnel command import")
 @MainActor
 struct TunnelCommandImportTests {
     private func exportableCommand() -> ExportableTunnelCommand {

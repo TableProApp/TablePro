@@ -8,7 +8,6 @@ import Testing
 import TableProPluginKit
 @testable import TablePro
 
-@Suite("executeUserQuery applies row cap and respects user SQL")
 struct ExecuteUserQueryTests {
 
     @Test("Caps result at rowCap and marks isTruncated when there are more rows than the cap")

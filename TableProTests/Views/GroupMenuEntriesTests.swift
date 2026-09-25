@@ -6,7 +6,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("Group menu entries")
 struct GroupMenuEntriesTests {
     private func group(
         _ name: String,

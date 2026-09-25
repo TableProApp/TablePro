@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("CockroachRelationSQL")
 struct CockroachRelationSQLTests {
     @Test("SHOW CREATE TABLE names the requested schema")
     func showCreateTableNamesRequestedSchema() {

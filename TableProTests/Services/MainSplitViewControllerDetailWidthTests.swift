@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Split pane holding priority")
 @MainActor
 struct SplitPaneHoldingPriorityTests {
     private static let dragThatCannotResizeWindow: Float = 490
@@ -29,7 +28,6 @@ struct SplitPaneHoldingPriorityTests {
     }
 }
 
-@Suite("MainSplitViewController detail width")
 @MainActor
 struct MainSplitViewControllerDetailWidthTests {
     @Test("Nil tab type falls back to the default detail minimum")

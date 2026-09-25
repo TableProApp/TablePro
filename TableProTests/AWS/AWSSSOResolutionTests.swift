@@ -26,7 +26,6 @@ sso_account_id = 222222222222
 sso_role_name = LegacyRole
 """
 
-@Suite("AWSSSO - INI parsing")
 struct AWSSSOIniParsingTests {
     @Test("comment lines and empty lines are skipped")
     func skipsCommentsAndEmptyLines() {
@@ -57,7 +56,6 @@ struct AWSSSOIniParsingTests {
     }
 }
 
-@Suite("AWSSSO - parseProfileSettings")
 struct AWSSSOProfileSettingsTests {
     @Test("modern profile resolves all fields from sso-session block")
     func resolvesModernProfile() throws {
@@ -118,7 +116,6 @@ struct AWSSSOProfileSettingsTests {
     }
 }
 
-@Suite("AWSSSO - readAccessToken")
 struct AWSSSOTokenCacheTests {
     private func makeCacheDirectory() throws -> String {
         let dir = NSTemporaryDirectory() + "AWSSSOTokenCacheTests_\(UUID().uuidString)/"
@@ -258,7 +255,6 @@ private final class AWSSSOStubProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
-@Suite("AWSSSO - fetchRoleCredentials")
 struct AWSSSOFetchTests {
     private let settings = AWSSSOProfileSettings(
         accountId: "111111111111",

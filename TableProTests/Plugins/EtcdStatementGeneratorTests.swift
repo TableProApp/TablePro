@@ -11,7 +11,6 @@ import TableProPluginKit
 
 // MARK: - INSERT
 
-@Suite("EtcdStatementGenerator - INSERT")
 struct EtcdStatementGeneratorInsertTests {
     @Test("Basic insert generates put command")
     func basicInsert() {
@@ -333,7 +332,6 @@ struct EtcdStatementGeneratorInsertTests {
 
 // MARK: - UPDATE
 
-@Suite("EtcdStatementGenerator - UPDATE")
 struct EtcdStatementGeneratorUpdateTests {
     @Test("Value change generates put with original key")
     func valueChange() {
@@ -554,7 +552,6 @@ struct EtcdStatementGeneratorUpdateTests {
 
 // MARK: - DELETE
 
-@Suite("EtcdStatementGenerator - DELETE")
 struct EtcdStatementGeneratorDeleteTests {
     @Test("Basic delete generates del command")
     func basicDelete() {
@@ -633,7 +630,6 @@ struct EtcdStatementGeneratorDeleteTests {
 
 // MARK: - Batch / Multiple Changes
 
-@Suite("EtcdStatementGenerator - Batch")
 struct EtcdStatementGeneratorBatchTests {
     @Test("Multiple changes in one batch")
     func multipleBatch() {

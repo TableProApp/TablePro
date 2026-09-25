@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Privilege effectiveness")
 struct PrivilegeEffectivenessTests {
     private let table = PluginPrivilegeScope.table(database: "app", schema: "public", table: "orders")
     private let column = PluginPrivilegeScope.column(
@@ -134,7 +133,6 @@ struct PrivilegeEffectivenessTests {
     }
 }
 
-@Suite("Scope summary")
 struct ScopeSummaryTests {
     private let descriptors = [
         PluginPrivilegeDescriptor(name: "SELECT", label: "Select"),
@@ -192,7 +190,6 @@ struct ScopeSummaryTests {
     }
 }
 
-@Suite("Password generator")
 struct PasswordGeneratorTests {
     @Test("Generates the requested length from an unambiguous alphabet")
     func generatesLength() {
@@ -208,7 +205,6 @@ struct PasswordGeneratorTests {
     }
 }
 
-@Suite("Privilege categories")
 struct PrivilegeCategoryTests {
     @Test("Known keys map to localized titles in a stable order")
     func mapsKnownKeys() {

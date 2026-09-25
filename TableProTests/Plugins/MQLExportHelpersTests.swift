@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MQL Export Helpers")
 struct MQLExportHelpersTests {
     private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"
 

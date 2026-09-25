@@ -13,7 +13,6 @@ import Testing
 /// `DatabaseConnection` is either written by the form or carried over untouched.
 /// A property that is neither is one the connection form silently resets on save,
 /// which is how the favorite mark, the sort order and the AI tool grants were lost.
-@Suite("Connection form edits coverage")
 struct ConnectionFormEditsCoverageTests {
     private static let writtenByForm: Set<String> = [
         "name",

@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB catalog")
 struct DynamoDBCatalogTests {
     private static let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
     private static let local = DynamoDBCatalog.Scope(endpoint: "http://localhost:8000", region: "us-east-1", identity: "local")

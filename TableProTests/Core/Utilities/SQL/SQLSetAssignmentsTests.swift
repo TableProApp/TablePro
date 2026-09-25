@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL SET assignments")
 struct SQLSetAssignmentsTests {
     private static func assignments(_ sql: String, readsList: Bool = true) -> [SQLSetAssignment] {
         var cursor = SQLTokenCursor(sql, grammar: TestGrammar.mysql)

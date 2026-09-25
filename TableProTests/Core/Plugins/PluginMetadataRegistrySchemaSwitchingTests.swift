@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("PluginMetadataRegistry schema switching")
 struct PluginMetadataRegistrySchemaSwitchingTests {
     private func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
         PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)

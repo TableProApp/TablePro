@@ -21,7 +21,6 @@ private final class SpyPrompt: ExternalConnectionPrompting {
 }
 
 @MainActor
-@Suite("ExternalConnectionGate")
 struct ExternalConnectionGateTests {
     private func makeStore() throws -> ExternalConnectionTrustStore {
         let suite = "ExternalConnectionGateTests.\(UUID().uuidString)"

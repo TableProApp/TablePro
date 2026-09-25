@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("InlineSuggestionManager Focus Lifecycle")
 @MainActor
 struct InlineSuggestionManagerFocusTests {
     @Test("Initial state: isEditorFocused is false")

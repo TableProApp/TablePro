@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("NavicatCipher")
 struct NavicatCipherTests {
     @Test("Decrypts a Navicat 12+ (AES) password")
     func decryptsV2GoldenVector() {

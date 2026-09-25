@@ -6,7 +6,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL server flavor")
 struct MySQLServerFlavorTests {
     private static let databendBanner = "8.0.90-v1.2.881-ca29960f5c(rust-1.94.0-nightly-2026-04-17T02:30:29.281093406Z)"
 

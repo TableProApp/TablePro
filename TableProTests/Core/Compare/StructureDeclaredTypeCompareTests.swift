@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Declared types in a structure comparison")
 struct StructureDeclaredTypeCompareTests {
     private func column(
         _ name: String,
@@ -257,7 +256,6 @@ struct StructureDeclaredTypeCompareTests {
     }
 }
 
-@Suite("Schema-relative spelling")
 struct SchemaRelativeSpellingTests {
     @Test("A name qualified with the table's own schema loses the qualifier")
     func ownSchemaQualifierGoes() {

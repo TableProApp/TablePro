@@ -70,7 +70,6 @@ private final class MockMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Send
 }
 
 @MainActor
-@Suite("MSSQL Driver")
 struct MSSQLDriverTests {
     // MARK: - Helpers
 

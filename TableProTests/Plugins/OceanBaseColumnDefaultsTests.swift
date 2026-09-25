@@ -5,7 +5,6 @@
 
 import Testing
 
-@Suite("OceanBase column defaults")
 struct OceanBaseColumnDefaultsTests {
     private static let tableOptions = "ORGANIZATION INDEX DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC "
         + "COMPRESSION = 'zstd_1.3.8' REPLICA_NUM = 1 BLOCK_SIZE = 16384 USE_BLOOM_FILTER = FALSE "

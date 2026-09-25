@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouse dialect parity")
 struct ClickHouseDialectParityTests {
     /// Measured on ClickHouse 26.9.1.52 with `SELECT name, case_insensitive FROM system.functions`.
     /// Only the `case_insensitive = 1` rows tolerate any other spelling, and the plugin declares

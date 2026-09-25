@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("list_types tool schema")
 struct UserDefinedTypeToolSchemaTests {
     @Test("list_types declares every field the bridge emits")
     func outputSchemaIsComplete() throws {

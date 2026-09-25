@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("SQL Fold Scanner")
 struct SQLFoldScannerTests {
 
     private func regions(_ sql: String, grammar: SQLLexicalGrammar = TestGrammar.standard) -> [SQLFoldRegion] {
@@ -319,7 +318,6 @@ struct SQLFoldScannerTests {
     }
 }
 
-@Suite("SQL fold event ordering")
 struct SQLFoldEventOrderingTests {
 
     private func structure(_ sql: String, grammar: SQLLexicalGrammar = TestGrammar.standard) -> SQLFoldStructure {

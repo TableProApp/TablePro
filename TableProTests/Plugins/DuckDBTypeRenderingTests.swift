@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB type rendering")
 struct DuckDBTypeRenderingTests {
     @Test("Timestamp flavors the value API cannot decode need a text projection")
     func undecodableTimestampsRequireProjection() {

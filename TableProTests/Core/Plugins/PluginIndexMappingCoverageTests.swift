@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Plugin index mapping coverage")
 struct PluginIndexMappingCoverageTests {
     @Test("Index fixtures built with the published initializer are caught")
     func fixturesFromThePublishedInitializerAreCaught() {

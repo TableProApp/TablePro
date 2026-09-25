@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSHForwardFailure to SSHTunnelError")
 struct SSHForwardFailureMappingTests {
     private static let tcp = SSHForwardDestination.tcp(host: "db.internal", port: 3_306)
     private static let socket = SSHForwardDestination.unixSocket(path: "/var/run/mysqld/mysqld.sock")

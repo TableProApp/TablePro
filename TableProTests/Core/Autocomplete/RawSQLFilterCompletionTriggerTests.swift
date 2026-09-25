@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Raw SQL Filter Completion Trigger")
 struct RawSQLFilterCompletionTriggerTests {
     private static func dialect(identifierQuote: String, dataTypes: Set<String>) -> SQLDialectDescriptor {
         SQLDialectDescriptor(

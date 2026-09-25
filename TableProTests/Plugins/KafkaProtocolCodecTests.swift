@@ -10,7 +10,6 @@ import Testing
 /// the broker consumes what it can and closes the socket, so the only symptom is a dropped
 /// connection with no diagnostic. Every expectation below was measured against a live Apache
 /// Kafka 4.3.1 broker before it was written down.
-@Suite("Kafka protocol codec")
 struct KafkaProtocolCodecTests {
     // MARK: - Varints
 

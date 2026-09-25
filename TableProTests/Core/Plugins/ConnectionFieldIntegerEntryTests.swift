@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection field integer entry")
 struct ConnectionFieldIntegerEntryTests {
     private let redisIndexes = ConnectionField.IntRange(0...2_147_483_646)
     private let signed = ConnectionField.IntRange(-10...10)

@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL index key parts")
 struct PostgreSQLIndexKeyPartTests {
     private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
     private static let beforeCoveringIndexes = PostgreSQLCapabilities(serverVersion: 100_021)
@@ -148,7 +147,6 @@ struct PostgreSQLIndexKeyPartTests {
     }
 }
 
-@Suite("PostgreSQL index DDL spelling read")
 struct PostgreSQLIndexDDLQueryTests {
     @Test("The prefix is built on the server with quote_ident, the way pg_get_indexdef quotes")
     func prefixUsesQuoteIdent() {
@@ -208,7 +206,6 @@ struct PostgreSQLIndexDDLQueryTests {
     }
 }
 
-@Suite("PostgreSQL index clauses")
 struct PostgreSQLIndexClausesTests {
     private static let table = #""dst"."users""#
 

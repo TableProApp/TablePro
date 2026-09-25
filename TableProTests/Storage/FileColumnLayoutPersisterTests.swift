@@ -13,7 +13,6 @@ private struct LegacyColumnLayoutPayload: Decodable {
     let columnWidths: [String: CGFloat]
 }
 
-@Suite("FileColumnLayoutPersister")
 @MainActor
 struct FileColumnLayoutPersisterTests {
     private func makeIsolatedPersister() -> (FileColumnLayoutPersister, URL) {

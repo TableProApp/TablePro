@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("CSV Row Converter")
 struct CsvRowConverterTests {
     private func makeConverter(columns: [String], columnTypes: [ColumnType]) -> CsvRowConverter {
         CsvRowConverter(columns: columns, columnTypes: columnTypes)

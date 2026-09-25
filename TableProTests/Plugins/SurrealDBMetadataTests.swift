@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SurrealDB - registry metadata")
 @MainActor
 struct SurrealDBMetadataTests {
     private var snapshot: PluginMetadataSnapshot? {

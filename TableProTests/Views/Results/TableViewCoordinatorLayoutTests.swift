@@ -28,7 +28,6 @@ private final class FakeColumnLayoutPersister: ColumnLayoutPersisting {
     }
 }
 
-@Suite("TableViewCoordinator.savedColumnLayout")
 @MainActor
 struct TableViewCoordinatorLayoutTests {
     private func makeCoordinator(

@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP statement consent guard")
 struct MCPStatementConsentGuardTests {
     private static let gateSource: String = {
         var url = URL(fileURLWithPath: #filePath)

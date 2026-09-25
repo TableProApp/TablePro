@@ -15,7 +15,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Result switch identity")
 @MainActor
 struct ResultSwitchIdentityTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

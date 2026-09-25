@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis connection mode")
 struct RedisConnectionModeTests {
     @Test("An unset mode is standalone, so an existing connection keeps working")
     func defaultsToStandalone() {
@@ -34,7 +33,6 @@ struct RedisConnectionModeTests {
     }
 }
 
-@Suite("Redis host list parsing")
 struct RedisHostListParserTests {
     @Test("A comma-separated list becomes one address per entry")
     func parsesList() {
@@ -86,7 +84,6 @@ struct RedisHostListParserTests {
     }
 }
 
-@Suite("Redis server info")
 struct RedisServerInfoTests {
     private let clusterInfo = "# Server\r\nredis_version:8.10.1\r\nredis_mode:cluster\r\n"
     private let sentinelInfo = "# Server\r\nredis_version:8.10.1\r\nredis_mode:sentinel\r\n"
@@ -142,7 +139,6 @@ struct RedisServerInfoTests {
     }
 }
 
-@Suite("Redis topology diagnostics")
 struct RedisTopologyDiagnosticsTests {
     @Test("Standalone pointed at a cluster member says to switch to Cluster")
     func standaloneAtCluster() throws {

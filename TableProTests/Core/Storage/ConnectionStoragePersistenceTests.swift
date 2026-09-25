@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSyncTransport
 import Testing
 
-@Suite("ConnectionStorage Persistence")
 @MainActor
 struct ConnectionStoragePersistenceTests {
     private let storage: ConnectionStorage

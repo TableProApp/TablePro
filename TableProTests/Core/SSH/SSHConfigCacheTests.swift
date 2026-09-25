@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH config cache")
 struct SSHConfigCacheTests {
     @Test("Returns cached document while file unchanged")
     func cachedReadIsStable() async throws {

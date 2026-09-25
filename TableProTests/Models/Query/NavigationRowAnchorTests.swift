@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("NavigationRowAnchor")
 struct NavigationRowAnchorTests {
     private let columns = ["id", "region", "name"]
     private let values: ContiguousArray<PluginCellValue> = [.text("42"), .text("eu"), .text("Ada")]

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Extensions list in the connection form")
 struct LoadableExtensionListModelTests {
     private let directory: URL
 

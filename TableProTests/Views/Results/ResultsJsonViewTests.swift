@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ResultsJsonView")
 struct ResultsJsonViewTests {
     private func makeTableRows() -> TableRows {
         let rows: ContiguousArray<Row> = [

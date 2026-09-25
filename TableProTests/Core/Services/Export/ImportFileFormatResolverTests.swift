@@ -10,7 +10,6 @@ import UniformTypeIdentifiers
 
 /// The four bundled importers, spelled here rather than read from `PluginManager` because plugins
 /// never load under XCTest.
-@Suite("Import file format resolution")
 struct ImportFileFormatResolverTests {
     private let sql = ImportFormatOption(id: "sql", name: "SQL", acceptedFileExtensions: ["sql", "gz"])
     private let csv = ImportFormatOption(id: "csv", name: "CSV", acceptedFileExtensions: ["csv", "tsv"])

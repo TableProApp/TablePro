@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Legacy initialize handler")
 struct LegacyInitializeHandlerTests {
     @Test("The handler answers initialize for legacy clients only, and needs no scope")
     func handlerIdentity() {

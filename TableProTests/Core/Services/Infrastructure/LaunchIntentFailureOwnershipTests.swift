@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Launch intent failure ownership")
 @MainActor
 struct LaunchIntentFailureOwnershipTests {
     private static let underlying = PluginError.pluginDisabled(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite")

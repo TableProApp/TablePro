@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryTabManager.tabTitle")
 @MainActor
 struct QueryTabManagerTabTitleTests {
     @Test("Returns plain name when schema is nil")

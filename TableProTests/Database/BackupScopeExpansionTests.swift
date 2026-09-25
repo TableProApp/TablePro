@@ -11,7 +11,6 @@ import Testing
 /// Measured with pg_dump 17.11: `-t '"public"."orders"'` on a partitioned parent emits
 /// `CREATE TABLE` and nothing else, and restoring that archive gives one empty partitioned table
 /// with count 0. Naming the parent and every descendant with one `-t` each restores all three rows.
-@Suite("Backup scope partition expansion")
 @MainActor
 struct BackupScopeExpansionTests {
     private func partition(

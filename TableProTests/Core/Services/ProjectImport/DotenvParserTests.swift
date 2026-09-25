@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Dotenv Parser")
 struct DotenvParserTests {
 
     private func value(_ source: String, _ key: String, env: [String: String] = [:]) -> String? {

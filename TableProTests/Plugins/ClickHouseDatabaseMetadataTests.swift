@@ -10,7 +10,6 @@ import Testing
 /// `system.tables` has no row for a database that holds no tables, so a database list built from it dropped every
 /// empty database, and the database switcher lost them the moment its metadata pass replaced the first list. The
 /// rows here are what ClickHouse 24.8 returned for `SHOW DATABASES` and the per-database aggregate.
-@Suite("ClickHouse database metadata")
 struct ClickHouseDatabaseMetadataTests {
     private let names = ["INFORMATION_SCHEMA", "default", "empty_db", "information_schema", "populated_db", "system"]
 

@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator table metadata cache")
 @MainActor
 struct MainContentCoordinatorTableMetadataTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

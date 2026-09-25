@@ -7,7 +7,6 @@ import Foundation
 import Testing
 import TableProSyncTransport
 
-@Suite("Sync push batch planner")
 struct SyncPushBatchPlannerTests {
     @Test("The default limit is the server's documented 250 items per request")
     func defaultLimitMatchesServer() {

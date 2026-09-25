@@ -51,7 +51,6 @@ private final class ReportingSessionDriver: BaseSessionDriver, PluginDatabaseDri
     func sessionTransactionState() async -> PluginSessionTransactionState { state }
 }
 
-@Suite("PluginDriverAdapter session transaction state")
 struct PluginDriverAdapterSessionTransactionTests {
     private func makeAdapter(driver: any PluginDatabaseDriver) -> PluginDriverAdapter {
         PluginDriverAdapter(

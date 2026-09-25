@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("ConnectionURLFormatter SSH Profile Resolution")
 @MainActor
 struct ConnectionURLFormatterSSHProfileTests {
     @Test("Inline SSH config produces URL with inline SSH user and host")

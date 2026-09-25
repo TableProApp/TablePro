@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query tab manager records when each tab was last selected")
 @MainActor
 struct QueryTabManagerRecencyTests {
     /// A selection is recorded once the main queue turn it happened in has finished.

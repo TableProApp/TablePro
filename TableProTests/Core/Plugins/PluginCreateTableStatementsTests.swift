@@ -37,7 +37,6 @@ private final class SingleStringDDLDriver: PluginDatabaseDriver, @unchecked Send
     }
 }
 
-@Suite("Create table statements")
 struct PluginCreateTableStatementsTests {
     private let definition = PluginCreateTableDefinition(
         tableName: "t",

@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Elasticsearch - Console Parser")
 struct ElasticsearchConsoleParserTests {
     @Test("Parses method, path, and JSON body")
     func parsesFullRequest() {
@@ -40,7 +39,6 @@ struct ElasticsearchConsoleParserTests {
     }
 }
 
-@Suite("Elasticsearch - Query Builder Encoding")
 struct ElasticsearchQueryBuilderEncodingTests {
     private let builder = ElasticsearchQueryBuilder()
 
@@ -73,7 +71,6 @@ struct ElasticsearchQueryBuilderEncodingTests {
     }
 }
 
-@Suite("Elasticsearch - Query DSL")
 struct ElasticsearchQueryDSLTests {
     private let textField = ["title": ElasticsearchFieldInfo(type: "text", hasKeywordSubfield: true)]
     private let keywordField = ["status": ElasticsearchFieldInfo(type: "keyword", hasKeywordSubfield: false)]
@@ -512,7 +509,6 @@ struct ElasticsearchQueryDSLTests {
     }
 }
 
-@Suite("Elasticsearch - Appended ORDER BY")
 struct ElasticsearchOrderByTests {
     @Test("Extracts a single appended ORDER BY from the tagged query")
     func singleOrderBy() {
@@ -542,7 +538,6 @@ struct ElasticsearchOrderByTests {
     }
 }
 
-@Suite("Elasticsearch - Mapping Flattener")
 struct ElasticsearchMappingFlattenerTests {
     @Test("Flattens nested objects into dotted paths and records keyword subfields")
     func flattenMapping() {
@@ -810,7 +805,6 @@ struct ElasticsearchMappingFlattenerTests {
     }
 }
 
-@Suite("Elasticsearch - Statement Generator")
 struct ElasticsearchStatementGeneratorTests {
     private func generator() -> ElasticsearchStatementGenerator {
         ElasticsearchStatementGenerator(

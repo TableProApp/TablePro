@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQL comment statements")
 struct PostgreSQLCommentStatementsTests {
     private func row(relkind: String, column: String?, description: String?) -> [String?] {
         [relkind, column, description]

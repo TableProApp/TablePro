@@ -13,7 +13,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Fold preview hit testing")
 @MainActor
 struct FoldPreviewHitTestTests {
     private let script = """

@@ -61,7 +61,6 @@ private final class HighlightGrid {
     }
 }
 
-@Suite("Grid coordinator highlight rules")
 @MainActor
 struct TableViewCoordinatorHighlightTests {
     private let paid = HighlightRule(columnName: "status", value: "paid", color: .green)

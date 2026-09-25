@@ -64,7 +64,6 @@ private final class FormDriver: BaseFormDriver, PluginDatabaseDriver, @unchecked
     }
 }
 
-@Suite("Create Table form bridge")
 struct PluginDriverAdapterCreateTableFormTests {
     private func makeAdapter(driver: any PluginDatabaseDriver) -> PluginDriverAdapter {
         PluginDriverAdapter(connection: DatabaseConnection(name: "Test", type: .redis), pluginDriver: driver)

@@ -15,7 +15,6 @@ import Testing
 
 // MARK: - QueryTab sourceFileURL Property Tests
 
-@Suite("QueryTab sourceFileURL")
 struct QueryTabSourceFileURLTests {
     @Test("QueryTab stores sourceFileURL when set")
     func storesSourceFileURL() {
@@ -36,7 +35,6 @@ struct QueryTabSourceFileURLTests {
 
 // MARK: - QueryTabManager Deduplication Tests
 
-@Suite("QueryTabManager SQL file deduplication")
 struct QueryTabManagerDeduplicationTests {
     @Test("addTab with sourceFileURL creates new tab when no duplicate exists")
     @MainActor
@@ -162,7 +160,6 @@ struct QueryTabManagerDeduplicationTests {
 
 // MARK: - EditorTabPayload sourceFileURL Tests
 
-@Suite("EditorTabPayload sourceFileURL")
 struct EditorTabPayloadSourceFileURLTests {
     @Test("EditorTabPayload carries sourceFileURL")
     func carriesSourceFileURL() {
@@ -192,7 +189,6 @@ struct EditorTabPayloadSourceFileURLTests {
 
 // MARK: - SessionStateFactory sourceFileURL Propagation Tests
 
-@Suite("SessionStateFactory sourceFileURL propagation")
 struct SessionStateFactorySourceFileURLTests {
     @Test("SessionStateFactory propagates sourceFileURL to tab")
     @MainActor
@@ -215,7 +211,6 @@ struct SessionStateFactorySourceFileURLTests {
 
 // MARK: - PersistedTab sourceFileURL Round-Trip Tests
 
-@Suite("PersistedTab sourceFileURL persistence")
 struct PersistedTabSourceFileURLTests {
     @Test("PersistedTab preserves sourceFileURL through encode/decode")
     func roundTripsSourceFileURL() throws {
@@ -254,7 +249,6 @@ struct PersistedTabSourceFileURLTests {
 
 // MARK: - WindowLifecycleMonitor Source File Tracking Tests
 
-@Suite("WindowLifecycleMonitor source file tracking")
 @MainActor
 struct WindowLifecycleMonitorSourceFileTests {
     @Test("window(forSourceFile:) returns nil for unregistered URL")

@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 /// Oracle lists its objects one schema at a time, and every COMMIT reports a catalog change.
-@Suite("SchemaService stale schemas")
 @MainActor
 struct SchemaServiceStaleSchemaTests {
     private let connectionId = UUID()

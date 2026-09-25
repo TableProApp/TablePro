@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Table transfer")
 struct TableTransferServiceTests {
 
     @Test("A row is keyed by its header's column names, in order")

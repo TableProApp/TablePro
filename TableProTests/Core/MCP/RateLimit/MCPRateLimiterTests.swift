@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Rate Limiter")
 struct MCPRateLimiterTests {
     private let attacker = MCPRateLimitKey.authFailure(address: .remote("203.0.113.9"))
 

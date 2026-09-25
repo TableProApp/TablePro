@@ -10,7 +10,6 @@ import TableProSyncTransport
 import Testing
 
 @MainActor
-@Suite("Sync coordinator SQL favorite pull")
 struct SyncCoordinatorSQLFavoritePullTests {
     private static let zoneID = CKRecordZone.ID(
         zoneName: CloudKitSyncEngine.zoneName,

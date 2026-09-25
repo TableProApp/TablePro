@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPResult")
 struct MCPResultTests {
     private let serverInfo = MCPImplementation(name: "tablepro", title: "TablePro", version: "1.2.3")
 

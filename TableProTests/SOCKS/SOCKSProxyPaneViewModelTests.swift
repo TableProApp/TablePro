@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("SOCKS proxy pane view model")
 struct SOCKSProxyPaneViewModelTests {
     @Test("disabled reports no issues")
     func disabledNoIssues() {

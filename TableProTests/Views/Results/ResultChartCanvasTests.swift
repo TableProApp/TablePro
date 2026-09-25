@@ -9,7 +9,6 @@ import SwiftUI
 import Testing
 
 @MainActor
-@Suite("ResultChartCanvas")
 struct ResultChartCanvasTests {
     @Test("Every chart type renders in both appearances", arguments: ResultChartType.allCases, [ColorScheme.light, .dark])
     func renders(type: ResultChartType, colorScheme: ColorScheme) {

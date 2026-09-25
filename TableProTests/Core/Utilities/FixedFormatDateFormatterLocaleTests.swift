@@ -10,7 +10,6 @@ import Testing
 /// machine set to the Buddhist or Japanese calendar writes 2569 or R7 where the format meant 2026.
 /// Apple's own guidance is to pin a POSIX locale for every fixed format. These values reach cell
 /// text, the clipboard and export files, so this is wrong data rather than a display glitch.
-@Suite("Fixed-format date formatters")
 struct FixedFormatDateFormatterLocaleTests {
     @Test("A fixed format under a non-Gregorian calendar needs the POSIX locale to stay Gregorian")
     func posixLocaleKeepsTheGregorianYear() throws {

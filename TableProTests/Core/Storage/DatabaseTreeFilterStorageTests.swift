@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("DatabaseTreeFilterStorage")
 struct DatabaseTreeFilterStorageTests {
     private func makeStorage() throws -> DatabaseTreeFilterStorage {
         let suite = "DatabaseTreeFilterStorageTests.\(UUID().uuidString)"

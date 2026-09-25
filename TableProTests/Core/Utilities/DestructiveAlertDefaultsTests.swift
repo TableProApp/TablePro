@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Destructive alert defaults")
 @MainActor
 struct DestructiveAlertDefaultsTests {
     private static let escape = "\u{1B}"

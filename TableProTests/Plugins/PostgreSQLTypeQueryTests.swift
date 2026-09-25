@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgreSQL type catalog queries")
 struct PostgreSQLTypeQueryTests {
     @Test("The listing reads pg_type for enums, composites, domains and ranges in one schema")
     func listReadsPgType() {

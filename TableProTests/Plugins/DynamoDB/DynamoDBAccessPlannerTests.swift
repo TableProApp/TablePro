@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("DynamoDB access planning")
 struct DynamoDBAccessPlannerTests {
     struct Scenario: Sendable, CustomTestStringConvertible {
         let name: String

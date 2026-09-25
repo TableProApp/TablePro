@@ -6,7 +6,6 @@
 @testable import TableProPluginKit
 import Testing
 
-@Suite("Plugin query cancellation gate")
 struct PluginQueryCancellationGateTests {
     @Test("Cancelling while no query is running is a no-op")
     func cancelWhileIdleReturnsNil() {

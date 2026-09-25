@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Plugin table kind decoder")
 struct PluginTableKindDecoderTests {
     @Test("Every table-like spelling a driver sends decodes to its own kind")
     func knownSpellingsDecode() {

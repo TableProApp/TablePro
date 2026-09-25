@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Agent launch routing")
 @MainActor
 struct AgentLaunchRoutingTests {
     /// The welcome window's second way in goes through the one chokepoint every connection intent

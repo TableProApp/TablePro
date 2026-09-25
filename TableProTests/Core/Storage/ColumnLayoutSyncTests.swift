@@ -8,7 +8,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("Column layout sync")
 @MainActor
 struct ColumnLayoutSyncTests {
     private func makePersister() throws -> (FileColumnLayoutPersister, SyncChangeTracker) {

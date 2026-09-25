@@ -72,7 +72,6 @@ private final class StubAardvark: StubExportFormat, @unchecked Sendable {
     init() {}
 }
 
-@Suite("Export format catalog")
 struct ExportFormatCatalogTests {
 
     private func ids(_ plugins: [any ExportFormatPlugin]) -> [String] {

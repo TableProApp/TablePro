@@ -7,7 +7,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("GridValueFilterState")
 struct GridValueFilterStateTests {
     @Test("set marks a column active")
     func setMarksColumnActive() {

@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis database index")
 struct RedisDatabaseIndexTests {
     @Test("the dedicated field wins over the database name")
     func fieldWins() {

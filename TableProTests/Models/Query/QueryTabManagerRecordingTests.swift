@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("QueryTabManager.onTableOpened")
 @MainActor
 struct QueryTabManagerRecordingTests {
     private struct Opened: Equatable {

@@ -12,7 +12,6 @@
 import Foundation
 import Testing
 
-@Suite("Connection window pane house rules")
 struct TrailingPaneHouseRuleTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

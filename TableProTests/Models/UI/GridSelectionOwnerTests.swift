@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("GridSelectionOwner")
 struct GridSelectionOwnerTests {
     @Test("A table tab showing data owns a data selection")
     func tableTabWithDataMode() {

@@ -12,7 +12,6 @@ import Testing
 /// It used to list every level whatever held the connection, with nothing saying why a weaker one
 /// changed nothing: Agent mode raised the floor to Alert silently, and a pick of Silent was stored
 /// while the level on screen stayed put.
-@Suite("Safe Mode list")
 @MainActor
 struct SafeModeMenuDelegateTests {
     private static let agentFloor = SafeModeFloor(level: .alert, reason: .agentMode)

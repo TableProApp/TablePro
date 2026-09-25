@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Commit outcome diagnosis")
 struct CommitOutcomeDiagnosisTests {
     /// The sentences the engines actually produce when the socket went before the answer did.
     @Test(

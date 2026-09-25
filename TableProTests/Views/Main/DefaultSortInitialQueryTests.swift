@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Default sort resolves before the first table query is dispatched")
 @MainActor
 struct DefaultSortInitialQueryTests {
     private func makeCoordinator(tableName: String) -> (MainContentCoordinator, QueryTabManager, Int) {

@@ -9,7 +9,7 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@MainActor @Suite("Source file disk change handling")
+@MainActor
 struct SourceFileDiskChangeHandlingTests {
     private struct Harness {
         let coordinator: MainContentCoordinator

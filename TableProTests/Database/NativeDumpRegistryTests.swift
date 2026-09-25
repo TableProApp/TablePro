@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Native dump registry")
 struct NativeDumpRegistryTests {
     private func connection(
         type: DatabaseType,

@@ -32,7 +32,6 @@ private func parsedValue(of statement: String) -> Data? {
     return value
 }
 
-@Suite("Redis write path - values survive the command round-trip")
 struct RedisWriteRoundTripTests {
     @Test("a plain value produces a readable command")
     func plainValueStaysReadable() {
@@ -131,7 +130,6 @@ struct RedisWriteRoundTripTests {
     }
 }
 
-@Suite("RedisCommandParser - binary arguments")
 struct RedisCommandParserBinaryTests {
     @Test("SET carries a binary value through")
     func setCarriesBinary() {

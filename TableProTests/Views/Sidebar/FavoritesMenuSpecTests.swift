@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Favorites contextual menu")
 struct FavoritesMenuSpecTests {
     private func context(
         clicked: FavoritesOutlineNode.Kind?,

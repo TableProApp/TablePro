@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Loopback host")
 struct LoopbackHostTests {
     @Test("The named loopback spellings are loopback")
     func acceptsNames() {
