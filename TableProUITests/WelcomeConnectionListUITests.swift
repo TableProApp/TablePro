@@ -11,6 +11,43 @@ final class WelcomeConnectionListUITests: UITestCase {
         }
     }
 
+    func testShowRecentConnectionsSettingHidesAndRestoresTheSection() throws {
+        let app = try launchWithSampleDatabase()
+        let fileMenu = app.menuBars.menuBarItems["File"]
+        fileMenu.click()
+        fileMenu.menus.menuItems["Manage Connections"].click()
+
+        let welcome = app.windows["welcome"]
+        XCTAssertTrue(welcome.waitToExist(timeout: 10))
+        let list = welcome.outlines["welcome-connection-list"]
+        XCTAssertTrue(list.waitToExist(timeout: 10))
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { self.rows(named: "Chinook (Sample)", in: list).count == 2 },
+            "The opened sample must appear in Recent and Connections"
+        )
+
+        app.menuBars.menuItems["Settings…"].click()
+        let generalPaneButton = app.toolbars.buttons["General"]
+        XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
+        generalPaneButton.click()
+
+        let toggle = app.switches["show-recent-connections-toggle"].firstMatch
+        XCTAssertTrue(toggle.waitToExist(timeout: 10))
+        XCTAssertTrue(isOn(toggle), "Recent connections must be shown by default")
+
+        toggle.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { self.rows(named: "Chinook (Sample)", in: list).count == 1 },
+            "Turning the setting off must remove only the Recent copy"
+        )
+
+        toggle.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { self.rows(named: "Chinook (Sample)", in: list).count == 2 },
+            "Turning the setting back on must restore the retained Recent entry"
+        )
+    }
+
     func testAddToFavoritesListsTheConnectionUnderFavoritesAndInPlace() throws {
         let (app, list) = try launchWithSeededConnections()
         let target = row(named: "charlie-prod", in: list)
@@ -110,6 +147,11 @@ final class WelcomeConnectionListUITests: UITestCase {
             .map { ($0, row(named: $0, in: list).frame.minY) }
             .sorted { $0.1 < $1.1 }
             .map(\.0)
+    }
+
+    private func isOn(_ toggle: XCUIElement) -> Bool {
+        if let number = toggle.value as? Int { return number == 1 }
+        return (toggle.value as? String) == "1"
     }
 
     private func seedConnections() throws {

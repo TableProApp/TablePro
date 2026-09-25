@@ -258,6 +258,25 @@ struct ConnectionSwitcherSectionsTests {
         #expect(names(sections) == [[], ["acme-prod"], ["acme-staging"], ["acme-local"]])
     }
 
+    @Test("Hiding Recent returns its connections to their normal group")
+    func hiddenRecentFallsBackToGroup() {
+        let acme = ConnectionGroup(name: "Acme")
+        let recent = connection("acme-staging", groupId: acme.id)
+        let other = connection("acme-local", groupId: acme.id)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            saved: [recent, other],
+            groups: [acme],
+            isFiltering: false,
+            recent: [recent],
+            includesRecent: false
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME"])
+        #expect(names(sections) == [[], ["acme-staging", "acme-local"]])
+    }
+
     @Test("A group nested past the cap still gets a section")
     func deepGroupStillListed() {
         let one = ConnectionGroup(name: "One")
