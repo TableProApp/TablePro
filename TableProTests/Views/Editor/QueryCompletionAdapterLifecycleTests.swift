@@ -305,6 +305,37 @@ struct QueryCompletionAdapterLifecycleTests {
         #expect(service.rankingInputCounts == [400, 400])
     }
 
+    // MARK: - The session's token
+
+    @MainActor
+    @Test("a session re-ranks its own token and declines the next one")
+    func sessionDeclinesACursorOnAnotherToken() async {
+        let service = TokenBoundCompletionService(labels: ["select", "set", "update", "users"])
+        let adapter = QueryCompletionAdapter(serviceForTesting: service)
+        let controller = EditorControllerFixture.make(string: "se")
+
+        _ = await adapter.completionSuggestionsRequested(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "se"),
+            isManualTrigger: false
+        )
+
+        controller.textView.setText("sel")
+        let sameToken = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "sel")
+        )?.map(\.label)
+
+        controller.textView.setText("se u")
+        let nextToken = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "se u")
+        )?.map(\.label)
+
+        #expect(sameToken == ["select"])
+        #expect(nextToken == nil)
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -353,6 +384,46 @@ private struct PinnedKeywordCase {
 
     func restore() {
         AppSettingsManager.shared.editor.keywordCase = previous
+    }
+}
+
+@MainActor
+private final class TokenBoundCompletionService: QueryCompletionService {
+    private let items: [SQLCompletionItem]
+
+    init(labels: [String]) {
+        items = labels.map { SQLCompletionItem.keyword($0) }
+    }
+
+    var triggerCharacters: Set<String> { [] }
+
+    func seedItems() -> [SQLCompletionItem] { [] }
+
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession? {
+        _ = isManualTrigger
+        let start = tokenStart(in: text, endingAt: offset)
+        return QueryCompletionSession(
+            items: items,
+            candidates: items,
+            replacementRange: NSRange(location: start, length: offset - start)
+        )
+    }
+
+    func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+        let lowerPrefix = prefix.lowercased()
+        return items.filter { $0.filterText.hasPrefix(lowerPrefix) }
+    }
+
+    func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
+        SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
+    }
+
+    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+        _ = keywords
     }
 }
 
