@@ -126,8 +126,8 @@ final class DataGridRowGutterView: NSView {
         guard rowNumberColumn >= 0 else { return }
 
         /// The same rule the header uses. An identity check on the first responder is not it: while
-        /// a cell is being edited the responder is a descendant field editor, and the row and the
-        /// header both stay emphasized, so the strip would turn grey on its own.
+        /// a cell is being edited or viewed the responder is the overlay's text view beside the
+        /// table, and the header stays emphasized, so the strip would turn grey on its own.
         let emphasized = SortableHeaderEmphasis.isEmphasized(
             tableViewHoldsFocus: SortableHeaderEmphasis.holdsFocus(tableView: tableView, in: tableView.window),
             isKeyWindow: tableView.window?.isKeyWindow ?? false

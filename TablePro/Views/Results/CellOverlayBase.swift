@@ -40,22 +40,23 @@ class CellOverlayBase: NSObject {
         columnIndex: Int,
         container: CellOverlayContainerView
     ) {
+        guard let scrollView = tableView.enclosingScrollView else { return }
         self.hostTableView = tableView
         self.row = row
         self.column = column
         self.columnIndex = columnIndex
-        Self.mount(container, over: tableView)
+        Self.mount(container, over: tableView, in: scrollView)
         self.container = container
         setOverlayCell(CellPosition(row: row, column: columnIndex), in: tableView)
         selectionOverlay(in: tableView)?.needsDisplay = true
         installDismissObservers()
     }
 
-    static func mount(_ container: CellOverlayContainerView, over tableView: NSTableView) {
-        guard let scrollView = tableView.enclosingScrollView else {
-            tableView.addSubview(container)
-            return
-        }
+    private static func mount(
+        _ container: CellOverlayContainerView,
+        over tableView: NSTableView,
+        in scrollView: NSScrollView
+    ) {
         container.frame = scrollView.convert(container.frame, from: tableView)
         scrollView.addSubview(container, positioned: .above, relativeTo: scrollView.contentView)
     }

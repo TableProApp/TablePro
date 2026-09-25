@@ -195,6 +195,24 @@ struct CellOverlayAccessibilityTests {
         #expect(overlayIndex < gutterIndex)
     }
 
+    @Test("The grid's scroll view clips an overlay taller than the rows left below its cell")
+    func theGridClipsTheOverlay() throws {
+        let grid = try makeGrid(isEditable: false)
+        DataGridView.installRowGutter(
+            scrollView: grid.scrollView,
+            tableView: grid.tableView,
+            coordinator: grid.coordinator
+        )
+        let gutter = try #require(grid.coordinator.rowGutter)
+        defer { gutter.detachTableGeometryObserver() }
+        let viewer = try openViewer(in: grid)
+        defer { viewer.dismiss() }
+        let container = try #require(viewer.containerView)
+
+        #expect(container.superview === grid.scrollView)
+        #expect(grid.scrollView.clipsToBounds)
+    }
+
     @Test("The overlay lies over the cell it opened on")
     func theOverlayCoversItsCell() throws {
         let grid = try makeGrid(isEditable: false)
@@ -217,6 +235,7 @@ struct CellOverlayAccessibilityTests {
             let viewer = try openViewer(in: grid)
             let container = try #require(viewer.containerView)
             let text = try textView(of: viewer)
+            #expect(isPublished(text, from: grid.window))
 
             viewer.dismiss()
 

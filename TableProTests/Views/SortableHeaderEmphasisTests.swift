@@ -42,14 +42,27 @@ struct SortableHeaderEmphasisTests {
         #expect(SortableHeaderEmphasis.holdsFocus(tableView: table, in: window))
     }
 
-    /// A cell edit installs the field editor below the table, so focus has to be resolved by
-    /// ancestry. Keying on identity alone dropped the header out of emphasis mid-edit.
+    /// Focus has to be resolved by ancestry. Keying on identity alone dropped the header out of
+    /// emphasis mid-edit.
     @Test("A responder inside the table still counts as focus")
     func descendantIsFirstResponder() {
         let (window, table) = makeWindow()
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 50, height: 20))
         table.addSubview(field)
         _ = window.makeFirstResponder(field)
+        #expect(SortableHeaderEmphasis.holdsFocus(tableView: table, in: window))
+    }
+
+    /// The grid mounts its cell editor and viewer in the table's scroll view, beside the table
+    /// rather than inside it, so accessibility can reach them.
+    @Test("A responder in the table's scroll view, beside the table, still counts as focus")
+    func scrollViewDescendantIsFirstResponder() throws {
+        let (window, table) = makeWindow()
+        let scrollView = try #require(table.enclosingScrollView)
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 50, height: 20))
+        scrollView.addSubview(field, positioned: .above, relativeTo: scrollView.contentView)
+        _ = window.makeFirstResponder(field)
+        #expect(!field.isDescendant(of: table))
         #expect(SortableHeaderEmphasis.holdsFocus(tableView: table, in: window))
     }
 
