@@ -213,7 +213,7 @@ final class ConnectionWindowChromeUITests: UITestCase {
 
     /// The runner's screen is 1024pt wide, and a window pinned wider than its screen overflows the
     /// toolbar's items into the overflow menu, where none of them is in the toolbar to find. That is
-    /// unmeasurable rather than wrong, so it skips, the way `InspectorToolbarPlacementUITests` does.
+    /// unmeasurable rather than wrong, so it skips.
     private func skipUnlessTheScreenFitsThePinnedWindow() throws {
         let width = NSScreen.main?.frame.width ?? 0
         try XCTSkipUnless(
