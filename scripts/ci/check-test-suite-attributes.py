@@ -10,17 +10,21 @@ declarations that refer to each other by unique name, and every one of those loo
 whole placeholder list, expanding every other top-level @Suite in the module to see what it
 declared.
 
-Measured on the macOS Tests build job (Xcode 26.4.1, 3 vCPU, 7 GB): with 2,309 top-level @Suite
-attributes in TableProTests, the target's emit-module job ran for 544 to 626 seconds, the longest
-compile job in the whole build, and half of the samples taken in it sat in that lookup. Removing
-the 2,173 that carried only a display name took the emit-module job to 290 seconds on the same
-runner, and the target's compile batches, summed, from 3,958 to 2,373 seconds. The emit-module
+Measured on the macOS Tests build job (Xcode 26.4.1, 3 vCPU, 7 GB): with 2,336 top-level @Suite
+attributes in TableProTests, 2,200 of them carrying only a display name, the target's emit-module
+job ran for 544 to 626 seconds, the longest compile job in the whole build, and half of the samples
+taken in it sat in that lookup. Removing 2,173 of those 2,200 took the emit-module job to 290
+seconds on the same runner, and the target's compile batches, summed, from 3,958 to 2,373 seconds. The emit-module
 window had tracked the count as it grew: 238 seconds at 1,644 suites, 340 at 1,826, 622 at 2,163.
 
 So a top-level @Suite is allowed only when it carries a trait (.serialized, .enabled(if:),
 .disabled, .timeLimit, a tag), which is the one thing an unannotated type cannot express. Nested
 suites and @Test functions are not checked: their expansions are members of a type, and member
-lookup does not walk the module.
+lookup does not walk the module. A nested @Suite still costs emit-module time that grows linearly,
+so it is not a way to keep a display name for free.
+
+Only TableProTests is scanned. The cost is quadratic in each module's own count, and the other
+test modules hold 108 top-level suites or fewer, where it stays under a second.
 
 Pure text, no Xcode: it runs on Ubuntu in about a second, and test_check_test_suite_attributes.py
 pins what it must and must not report.
@@ -120,16 +124,19 @@ class SwiftText:
             position += 1
         return position
 
-    def top_level_attributes(self) -> list[tuple[int, int]]:
-        """(start, end) of every @Suite attribute at brace depth zero, arguments included."""
+    def top_level_attributes(self) -> tuple[list[tuple[int, int]], bool]:
+        """(start, end) of every @Suite attribute at brace depth zero, arguments included, and whether
+        the file's braces balanced. When they do not, depth zero cannot be told from a nested scope,
+        so the attributes found are not a complete answer."""
         text = self.text
         found: list[tuple[int, int]] = []
         depth = 0
+        balanced = True
         position = 0
         while True:
             match = INTERESTING.search(text, position)
             if match is None:
-                return found
+                return found, balanced and depth == 0
             position = match.start()
             skipped = self.non_code_end(position)
             if skipped is not None:
@@ -139,7 +146,10 @@ class SwiftText:
             if character == "{":
                 depth += 1
             elif character == "}":
-                depth = max(depth - 1, 0)
+                if depth == 0:
+                    balanced = False
+                else:
+                    depth -= 1
             elif character == "@" and depth == 0:
                 attribute = ATTRIBUTE.match(text, position)
                 if attribute is not None:
@@ -198,26 +208,47 @@ def carries_a_trait(arguments: list[str]) -> bool:
     return any(not is_string_literal(argument) for argument in arguments)
 
 
-def offenders(root: Path) -> list[tuple[str, int, str]]:
+def scan(root: Path) -> tuple[list[tuple[str, int, str]], list[str]]:
+    """The top-level @Suite attributes with no trait, and the files whose braces did not balance."""
     found: list[tuple[str, int, str]] = []
+    unreadable: list[str] = []
     for path in sorted((root / SCANNED).rglob("*.swift")):
         text = path.read_text(encoding="utf-8", errors="replace")
         if "Suite" not in text:
             continue
         source = SwiftText(text)
-        for start, end in source.top_level_attributes():
+        attributes, balanced = source.top_level_attributes()
+        relative = path.relative_to(root).as_posix()
+        if not balanced:
+            unreadable.append(relative)
+        for start, end in attributes:
             if carries_a_trait(source.arguments(start, end)):
                 continue
             line = text.count("\n", 0, start) + 1
             attribute = " ".join(text[start:end].split())
-            found.append((path.relative_to(root).as_posix(), line, attribute))
-    return found
+            found.append((relative, line, attribute))
+    return found, unreadable
+
+
+def offenders(root: Path) -> list[tuple[str, int, str]]:
+    return scan(root)[0]
 
 
 def main_for(root: Path) -> int:
-    found = offenders(root)
-    if not found:
+    found, unreadable = scan(root)
+    if not found and not unreadable:
         return 0
+
+    for path in unreadable:
+        print(f"{path}: braces do not balance as this check reads them, so it cannot tell top level from nested")
+    if unreadable:
+        print(
+            "The check reads Swift braces without a compiler and does not understand a regex literal or an #if whose "
+            "branches open a scope differently. Restructure the file so each branch opens and closes its own braces."
+        )
+        print()
+    if not found:
+        return 1
 
     for path, line, attribute in found:
         print(f"{path}:{line}: {attribute}")

@@ -130,8 +130,32 @@ class CheckTestSuiteAttributesTests(unittest.TestCase):
             self.assertEqual(check.main_for(self.root), 0)
         self.assertEqual(output.getvalue(), "")
 
+    def test_a_file_whose_braces_do_not_balance_fails_instead_of_passing(self) -> None:
+        conditional_header = (
+            "#if canImport(AppKit)\n"
+            "extension Foo: NSObjectProtocol {\n"
+            "#else\n"
+            "extension Foo {\n"
+            "#endif\n"
+            "    func a() {}\n"
+            "}\n\n"
+            '@Suite("After the conditional header")\n'
+            "struct AfterTests {}\n"
+        )
+        self.write("TableProTests", "ConditionalHeader.swift", conditional_header)
+        self.write("TableProTests", "ExtraClose.swift", '}\n@Suite("After a stray brace")\nstruct StrayTests {}\n')
+        _, unreadable = check.scan(self.root)
+        self.assertEqual(
+            unreadable,
+            ["TableProTests/ConditionalHeader.swift", "TableProTests/ExtraClose.swift"],
+        )
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(check.main_for(self.root), 1)
+        self.assertIn("TableProTests/ConditionalHeader.swift: braces do not balance", output.getvalue())
+
     def test_the_repository_itself_is_clean(self) -> None:
-        self.assertEqual(check.offenders(ROOT), [])
+        self.assertEqual(check.scan(ROOT), ([], []))
 
 
 if __name__ == "__main__":

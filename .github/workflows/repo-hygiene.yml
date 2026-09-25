@@ -122,8 +122,8 @@ jobs:
 
       # Every top-level @Suite is a peer macro the compiler files in module-scope lookup, and each
       # @Suite expansion walks all of them, so the test module's compile time grows with the square
-      # of their count. 2,309 of them held TableProTests' emit-module job at 544 to 626 seconds on the
-      # build runner, and 2,173 of those only renamed their type. Only a @Suite with a trait is kept.
+      # of their count. 2,336 of them held TableProTests' emit-module job at 544 to 626 seconds on the
+      # build runner, and 2,200 of those only renamed their type. Only a @Suite with a trait is kept.
       - name: Check no top-level test type carries a @Suite without a trait
         run: python3 scripts/ci/check-test-suite-attributes.py
 
