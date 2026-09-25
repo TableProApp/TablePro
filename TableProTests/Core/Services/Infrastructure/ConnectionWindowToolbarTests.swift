@@ -44,7 +44,8 @@ struct ConnectionWindowToolbarTests {
         if #available(macOS 15.0, *) {
             #expect(database.isHidden, "A file-based connection has no container to switch")
             #expect(!drawn.contains(MainWindowToolbar.database))
-            #expect(toolbar.items.filter(\.isHidden).map(\.itemIdentifier) == [MainWindowToolbar.database])
+            let hidden = toolbar.items.filter { $0.isHidden }.map(\.itemIdentifier)
+            #expect(hidden == [MainWindowToolbar.database])
         } else {
             #expect(drawn.contains(MainWindowToolbar.database), "Below macOS 15 the container capsule stands")
         }
