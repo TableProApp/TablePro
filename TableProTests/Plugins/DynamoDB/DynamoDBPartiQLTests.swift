@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB PartiQL reading")
 struct DynamoDBPartiQLTests {
     struct KindCase: Sendable, CustomTestStringConvertible {
         let statement: String

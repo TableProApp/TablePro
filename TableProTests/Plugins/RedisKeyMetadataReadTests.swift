@@ -18,7 +18,6 @@ private struct TransportFailure: Error, Equatable {}
 private let keyDenied = RedisReply.error("NOPERM No permissions to access a key")
 private let typeDenied = RedisReply.error("NOPERM User notype has no permissions to run the 'type' command")
 
-@Suite("Redis metadata read - classifying one reply")
 struct RedisMetadataReadAnswerTests {
     static let declined: [RedisReply] = [
         keyDenied,
@@ -63,7 +62,6 @@ struct RedisMetadataReadAnswerTests {
     }
 }
 
-@Suite("Redis metadata reads - one pipeline")
 struct RedisMetadataReadsPipelineTests {
     @Test("A refusal stays in its own place and the keys around it answer")
     func refusalStaysInPlace() async throws {
@@ -91,7 +89,6 @@ struct RedisMetadataReadsPipelineTests {
     }
 }
 
-@Suite("Redis key descriptions - TYPE and TTL")
 struct RedisKeyDescriptionReadTests {
     @Test("A key the user may not read has no type and no TTL, not UNKNOWN and -1")
     func unreadableKeyIsUnknown() async throws {
@@ -161,7 +158,6 @@ struct RedisKeyDescriptionReadTests {
     }
 }
 
-@Suite("Redis key contents - length and preview")
 struct RedisKeyContentsReadTests {
     @Test("A key of unknown type gets no probe at all")
     func unknownKindSendsNoProbe() async throws {
@@ -241,7 +237,6 @@ struct RedisKeyContentsReadTests {
     }
 }
 
-@Suite("Redis key type names")
 struct RedisKeyTypeNamesTests {
     @Test("A declined TYPE is nil and an answered one is its name")
     func declinedIsNil() async throws {

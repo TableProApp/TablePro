@@ -12,7 +12,6 @@
 import Foundation
 import Testing
 
-@Suite("Reduce Motion gate")
 struct ReduceMotionGateTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

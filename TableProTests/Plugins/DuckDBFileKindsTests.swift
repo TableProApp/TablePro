@@ -8,7 +8,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB file kinds")
 struct DuckDBFileKindsTests {
     @Test("The database formats lead, so the file field's placeholder names one")
     func databaseFormatsComeFirst() {

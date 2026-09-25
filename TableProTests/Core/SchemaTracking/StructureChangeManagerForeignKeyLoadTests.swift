@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Structure Change Manager foreign key load")
 struct StructureChangeManagerForeignKeyLoadTests {
     private static let rows = [
         ForeignKeyInfo(

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Table DDL composition")
 struct TableDDLComposerTests {
     private let tableDDL = "CREATE TABLE \"app\".\"orders\" (\n    id integer\n)"
     private let comment = "COMMENT ON TABLE \"app\".\"orders\" IS 'Orders table'"

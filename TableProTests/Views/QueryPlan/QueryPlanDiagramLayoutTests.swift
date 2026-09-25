@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Diagram Layout")
 struct QueryPlanDiagramLayoutTests {
     private func node(
         _ operation: String,

@@ -52,7 +52,6 @@ actor FakeMCPTokenStore: MCPTokenStoreProtocol {
     }
 }
 
-@Suite("MCP Bearer Token Authenticator")
 struct MCPBearerTokenAuthenticatorTests {
     private func makeValidated(
         label: String = "test",

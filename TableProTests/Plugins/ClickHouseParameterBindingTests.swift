@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouse Parameter Binding")
 struct ClickHouseParameterBindingTests {
     @Test("Text parameters become named HTTP substitutions")
     func textParametersBecomeNamedSubstitutions() {

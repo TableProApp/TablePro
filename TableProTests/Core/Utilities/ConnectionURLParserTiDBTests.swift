@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection URL Parser - TiDB")
 struct ConnectionURLParserTiDBTests {
     @Test("Full tidb URL with default port")
     func testFullURLDefaultPort() {

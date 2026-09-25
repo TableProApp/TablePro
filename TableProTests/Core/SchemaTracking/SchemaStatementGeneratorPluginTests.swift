@@ -84,7 +84,6 @@ private final class MockPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 }
 
-@Suite("Schema Statement Generator - Plugin Delegation")
 struct SchemaStatementGeneratorPluginTests {
     // MARK: - Helpers
 

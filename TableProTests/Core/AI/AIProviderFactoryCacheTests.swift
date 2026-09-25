@@ -13,7 +13,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AIProviderFactory cache")
 @MainActor
 struct AIProviderFactoryCacheTests {
     private func makeConfig(

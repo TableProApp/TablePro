@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Table-scoped settings registry")
 @MainActor
 struct TableScopedSettingsRegistryTests {
     @MainActor

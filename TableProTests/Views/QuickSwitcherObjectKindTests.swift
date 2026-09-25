@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Quick Switcher object kind")
 @MainActor
 struct QuickSwitcherObjectKindTests {
     @Test("A cross-connection row keeps the table type it was built from")

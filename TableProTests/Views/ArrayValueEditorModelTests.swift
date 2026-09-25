@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Array Value Editor Model")
 struct ArrayValueEditorModelTests {
     private let labels = ["sad", "ok", "happy"]
 

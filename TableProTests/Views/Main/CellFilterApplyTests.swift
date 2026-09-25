@@ -18,7 +18,6 @@ private final class CellFilterLayoutPersister: ColumnLayoutPersisting {
 }
 
 /// The cell menu's Filter item, from the menu the data tab's delegate builds to the query it runs.
-@Suite("Cell filter apply")
 @MainActor
 struct CellFilterApplyTests {
     private let rows = TableRows.from(

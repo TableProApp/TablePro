@@ -17,7 +17,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Statement decoration performance guards")
 struct StatementRunPerformanceGuardTests {
 
     @Test("A full scan of a large script stays fast enough to run on a typing pause")

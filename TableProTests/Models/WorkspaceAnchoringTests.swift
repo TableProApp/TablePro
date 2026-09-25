@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace anchoring")
 @MainActor
 struct WorkspaceAnchoringTests {
     private func queryTab(

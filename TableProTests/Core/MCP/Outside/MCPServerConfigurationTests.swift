@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPServerConfiguration")
 struct MCPServerConfigurationTests {
     private func url(_ string: String) -> URL? { URL(string: string) }
 

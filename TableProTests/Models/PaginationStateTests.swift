@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Pagination State")
 struct PaginationStateTests {
     @Test("Default page size is 1000")
     func defaultPageSize() {

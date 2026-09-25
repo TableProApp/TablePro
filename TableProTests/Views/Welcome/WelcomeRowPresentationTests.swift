@@ -9,7 +9,6 @@ import TableProConnectionLibrary
 import Testing
 
 @MainActor
-@Suite("Welcome row presentation")
 struct WelcomeRowPresentationTests {
     private func tag(_ name: String) -> ConnectionTag {
         ConnectionTag(name: name, color: .blue)

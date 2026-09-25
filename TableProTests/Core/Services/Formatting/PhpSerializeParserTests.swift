@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PhpSerializeParser - scalar tokens")
 struct PhpSerializeParserScalarTests {
     @Test("null token parses to .null")
     func nullToken() {
@@ -68,7 +67,6 @@ struct PhpSerializeParserScalarTests {
     }
 }
 
-@Suite("PhpSerializeParser - strings")
 struct PhpSerializeParserStringTests {
     @Test("ASCII string parses")
     func asciiString() {
@@ -106,7 +104,6 @@ struct PhpSerializeParserStringTests {
     }
 }
 
-@Suite("PhpSerializeParser - arrays")
 struct PhpSerializeParserArrayTests {
     @Test("empty array parses")
     func emptyArray() {
@@ -156,7 +153,6 @@ struct PhpSerializeParserArrayTests {
     }
 }
 
-@Suite("PhpSerializeParser - objects")
 struct PhpSerializeParserObjectTests {
     @Test("object with public property")
     func publicProperty() {
@@ -203,7 +199,6 @@ struct PhpSerializeParserObjectTests {
     }
 }
 
-@Suite("PhpSerializeParser - special tokens")
 struct PhpSerializeParserSpecialTests {
     @Test("C token returns .serializable with class + payload")
     func serializableToken() {
@@ -251,7 +246,6 @@ struct PhpSerializeParserSpecialTests {
     }
 }
 
-@Suite("PhpSerializeParser - depth cap")
 struct PhpSerializeParserDepthTests {
     @Test("looksLikePhpSerialized accepts valid PHP-like prefix")
     func looksLikePositive() {

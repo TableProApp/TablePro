@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Column order merge")
 struct ColumnOrderMergeTests {
     @Test("A column missing from the capture keeps its stored position")
     func absentColumnKeepsItsSlot() {

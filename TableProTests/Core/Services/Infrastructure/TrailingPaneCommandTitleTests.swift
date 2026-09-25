@@ -13,7 +13,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Trailing pane command titles")
 struct TrailingPaneCommandTitleTests {
     private struct Row {
         let mode: ConnectionWorkspaceContentMode

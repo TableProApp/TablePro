@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator lazyLoadCurrentTabIfNeeded")
 @MainActor
 struct MainContentCoordinatorLazyLoadTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

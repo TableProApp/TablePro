@@ -50,7 +50,6 @@ private struct SQLiteTestError: Error {
     let message: String
 }
 
-@Suite("SQLite index catalog")
 @MainActor
 struct SQLiteIndexCatalogTests {
     private static let table = """

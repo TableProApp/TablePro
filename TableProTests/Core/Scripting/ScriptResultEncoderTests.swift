@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Script result encoding")
 struct ScriptResultEncoderTests {
     private func rows(of record: [String: Any]) throws -> [[String]] {
         let raw = try #require(record[ScriptingKeys.QueryResult.rows] as? [[String: Any]])

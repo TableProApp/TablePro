@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Dameng system schemas")
 struct DamengSystemSchemasTests {
     @Test("The app lists the same system schemas the plugin does")
     func curatedListMatchesThePlugin() {

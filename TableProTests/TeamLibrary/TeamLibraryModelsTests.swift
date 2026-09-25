@@ -11,7 +11,6 @@ import Foundation
 import TableProImport
 import Testing
 
-@Suite("TeamLibraryModels")
 struct TeamLibraryModelsTests {
     @Test("pull response decodes the snake_case wire format")
     func decodesPullResponse() throws {

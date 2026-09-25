@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Connection URL Parser")
 struct ConnectionURLParserTests {
 
     // MARK: - PostgreSQL

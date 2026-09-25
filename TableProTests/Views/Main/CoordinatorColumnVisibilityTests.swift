@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator column visibility helpers")
 @MainActor
 struct CoordinatorColumnVisibilityTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

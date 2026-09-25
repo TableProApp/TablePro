@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("PostgreSQLDumpToolLocator")
 struct PostgreSQLDumpToolLocatorTests {
     private func makeInstall(root: URL, name: String, binary: String, fileManager: FileManager) throws {
         let bin = root.appendingPathComponent("\(name)/bin", isDirectory: true)

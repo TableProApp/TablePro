@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Database tree selection policy")
 struct DatabaseTreeSelectionPolicyTests {
     private func tableRef(_ name: String) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(

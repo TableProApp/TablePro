@@ -11,7 +11,6 @@ import Testing
 /// schema never declares is a silent disagreement: the tool answers with keys the client was told
 /// would not be there. `list_routines` shipped exactly that, emitting `return_type` and `language`
 /// against a schema that declared neither.
-@Suite("Routine and trigger tool schemas")
 struct RoutineAndTriggerToolSchemaTests {
     private func itemProperties(_ schema: JsonValue?, array: String) throws -> Set<String> {
         let output = try #require(schema)

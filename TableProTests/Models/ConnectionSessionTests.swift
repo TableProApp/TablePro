@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ConnectionSession.isContentViewEquivalent")
 struct ConnectionSessionEquivalenceTests {
     // MARK: - Helpers
 
@@ -126,7 +125,6 @@ struct ConnectionSessionEquivalenceTests {
     }
 }
 
-@Suite("ConnectionSession State")
 struct ConnectionSessionStateTests {
     private func makeSession(status: ConnectionStatus = .disconnected) -> ConnectionSession {
         let connection = TestFixtures.makeConnection()

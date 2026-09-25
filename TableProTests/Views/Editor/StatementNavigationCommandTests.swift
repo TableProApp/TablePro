@@ -16,7 +16,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Statement navigation commands")
 @MainActor
 struct StatementNavigationCommandTests {
 

@@ -29,7 +29,6 @@ private final class StubTableView: NSTableView {
     override var selectedRowIndexes: IndexSet { stubbedSelection }
 }
 
-@Suite("DataGridView+Selection.tableViewSelectionDidChange")
 @MainActor
 struct DataGridSelectionTests {
     private func makeCoordinator(box: SelectionBox) -> TableViewCoordinator {
@@ -94,7 +93,6 @@ struct DataGridSelectionTests {
     }
 }
 
-@Suite("DataGridView+Selection published row selection")
 @MainActor
 struct PublishedRowSelectionTests {
     private func makeCoordinator(box: SelectionBox) -> TableViewCoordinator {

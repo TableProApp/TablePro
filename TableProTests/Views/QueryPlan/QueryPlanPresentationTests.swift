@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Presentation")
 struct QueryPlanPresentationTests {
     private var samplePlan: QueryPlan {
         QueryPlan(

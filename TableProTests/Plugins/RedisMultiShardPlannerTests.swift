@@ -20,7 +20,6 @@ private func slotOf(_ key: Data) -> Int {
     (String(data: key, encoding: .utf8)?.hasPrefix("a") ?? false) ? 100 : 200
 }
 
-@Suite("Redis multi-shard planner - splitting")
 struct RedisMultiShardPlannerSplitTests {
     @Test("Keys are grouped by the slot they hash to")
     func groupsBySlot() throws {
@@ -107,7 +106,6 @@ struct RedisMultiShardPlannerSplitTests {
     }
 }
 
-@Suite("Redis multi-shard planner - reassembly")
 struct RedisMultiShardPlannerScatterTests {
     @Test("MGET comes back in the order the caller asked for its keys")
     func preservesKeyOrder() throws {

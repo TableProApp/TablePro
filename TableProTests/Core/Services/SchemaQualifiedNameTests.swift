@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Schema-qualified names")
 struct SchemaQualifiedNameTests {
     private static func quote(_ name: String) -> String {
         "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""

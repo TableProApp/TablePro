@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL transaction tracking")
 struct SQLTransactionTrackingTests {
     @Test("Every spelling that opens a transaction is recognised")
     func recognisesOpeningStatements() {

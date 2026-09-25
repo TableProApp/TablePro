@@ -75,7 +75,6 @@ private func wkbPolygon(_ rings: [[(Double, Double)]]) -> [UInt8] {
 
 // MARK: - Tests
 
-@Suite("GeometryWKBParser")
 struct GeometryWKBParserTests {
     @Test("Point: little-endian binary produces WKT")
     func testPoint() {

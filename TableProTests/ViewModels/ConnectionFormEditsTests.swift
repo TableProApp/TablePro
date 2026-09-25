@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection form edits")
 struct ConnectionFormEditsTests {
     private func edits(
         additionalFields: [String: String] = [:],

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DataGridUpdateSnapshot reload gate")
 struct DataGridUpdateSnapshotTests {
     private func makeSnapshot(
         rowDisplayCount: Int = 3,

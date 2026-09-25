@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Native dump destinations")
 struct NativeDumpDestinationTests {
     private let directory = URL(fileURLWithPath: "/tmp/backups")
 

@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQLCompletionCasing")
 struct SQLCompletionCasingTests {
     private func applied(_ items: [SQLCompletionItem], _ prefix: String, _ policy: SQLKeywordCase = .default)
         -> [SQLCompletionItem] {

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Code block height estimation")
 struct CodeBlockHeightEstimatorTests {
     private static var font: NSFont { NSFont.monospacedSystemFont(ofSize: 12, weight: .regular) }
 

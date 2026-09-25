@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Agent session confirmation")
 struct AgentSessionConfirmationTests {
     /// Closing keeps the conversation, so an idle session is closed without a question. A busy one
     /// loses the reply or the statement it is holding, which is the part worth asking about.

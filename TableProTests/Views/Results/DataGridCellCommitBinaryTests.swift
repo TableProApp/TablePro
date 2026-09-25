@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cell commit - typed binary writes survive delegate notification")
 @MainActor
 struct DataGridCellCommitBinaryTests {
     @Test("PluginCellValue.fromOptional(.bytes.asText) lossily becomes .null")

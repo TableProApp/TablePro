@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatTurn streaming + block interleaving")
 @MainActor
 struct ChatTurnInterleavingTests {
     @Test("appendStreamingToken creates a streaming text block on first token")

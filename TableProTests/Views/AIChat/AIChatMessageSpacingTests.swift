@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AI chat message spacing")
 @MainActor
 struct AIChatMessageSpacingTests {
     private func turn(_ role: ChatRole) -> ChatTurn {

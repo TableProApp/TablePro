@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLFavoriteKeywordValidator")
 struct SQLFavoriteKeywordValidatorTests {
     @Test("Empty keyword is valid regardless of availability")
     func emptyKeywordIsValid() {
@@ -54,7 +53,6 @@ struct SQLFavoriteKeywordValidatorTests {
     }
 }
 
-@Suite("SQLFavoriteEditValidation")
 struct SQLFavoriteEditValidationTests {
     @Test("Blank name blocks save")
     func blankNameBlocks() {
@@ -101,7 +99,6 @@ struct SQLFavoriteEditValidationTests {
     }
 }
 
-@Suite("SQLFavoriteSizeValidation")
 struct SQLFavoriteSizeValidationTests {
     private static let limit = SQLFavoriteSizeValidation.maximumSyncableByteCount
 
@@ -153,7 +150,6 @@ struct SQLFavoriteSizeValidationTests {
 }
 
 @MainActor
-@Suite("SQLFavoriteKeywordField")
 struct SQLFavoriteKeywordFieldTests {
     @Test("Validation reflects the availability check result")
     func reflectsAvailability() async {

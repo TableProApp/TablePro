@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Snowflake Statement Generator")
 struct SnowflakeStatementGeneratorTests {
     private func generator(
         columns: [String] = ["id", "name", "payload"],
@@ -110,7 +109,6 @@ struct SnowflakeStatementGeneratorTests {
     }
 }
 
-@Suite("Snowflake DDL Generator")
 struct SnowflakeDDLGeneratorTests {
     private let generator = SnowflakeDDLGenerator(qualifiedTable: { "\"DB\".\"PUBLIC\".\"\($0)\"" })
 
@@ -226,7 +224,6 @@ struct SnowflakeDDLGeneratorTests {
     }
 }
 
-@Suite("Snowflake Schema Queries")
 struct SnowflakeSchemaQueriesTests {
     @Test("SHOW statements quote identifiers")
     func testShowQuoting() {

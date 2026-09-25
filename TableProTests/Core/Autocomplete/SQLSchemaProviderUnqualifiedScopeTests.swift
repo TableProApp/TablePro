@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQLSchemaProvider unqualified scope")
 struct SQLSchemaProviderUnqualifiedScopeTests {
     private static func postgresDriver() -> MockDatabaseDriver {
         let driver = MockDatabaseDriver(connection: TestFixtures.makeConnection(type: .postgresql))

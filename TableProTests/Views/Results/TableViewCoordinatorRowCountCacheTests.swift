@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableViewCoordinator cachedRowCount sync")
 @MainActor
 struct TableViewCoordinatorRowCountCacheTests {
     private func makeCoordinator(rows: ContiguousArray<Row>) -> TableViewCoordinator {

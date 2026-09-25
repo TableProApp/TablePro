@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Inspector field layout")
 struct InspectorFieldLayoutTests {
     private static let everyKind: [FieldEditorKind] = [
         .singleLine,

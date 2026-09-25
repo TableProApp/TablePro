@@ -29,7 +29,6 @@ import Testing
 /// holds above the container's other content, so the first two attempts at this strip painted the
 /// glass over the selected tab's own title and then over its close button, leaving a tab whose
 /// label was dimmer than its neighbours' and which had no visible way to close it.
-@Suite("Editor tab strip chrome")
 @MainActor
 struct EditorTabStripChromeTests {
     private static let width: CGFloat = 600

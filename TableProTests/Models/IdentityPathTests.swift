@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("IdentityPath")
 struct IdentityPathTests {
     @Test("Components holding neither the separator nor a backslash join unchanged")
     func plainComponentsJoinUnchanged() {

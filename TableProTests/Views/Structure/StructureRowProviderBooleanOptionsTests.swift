@@ -12,7 +12,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("StructureRowProvider boolean options")
+@MainActor
 struct StructureRowProviderBooleanOptionsTests {
     private func makeManager() -> StructureChangeManager {
         let manager = StructureChangeManager()

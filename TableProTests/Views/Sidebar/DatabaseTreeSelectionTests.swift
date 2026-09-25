@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Database Tree Selection Identity")
 struct DatabaseTreeSelectionTests {
     private func makeTable(_ name: String, schema: String? = nil) -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
@@ -46,7 +45,6 @@ struct DatabaseTreeSelectionTests {
     }
 }
 
-@Suite("Selection Delta")
 struct SelectionDeltaTests {
     @Test("Single addition is detected")
     func singleAdditionDetected() {

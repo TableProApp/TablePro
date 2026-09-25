@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLVersionedStatements")
 struct PostgreSQLVersionedStatementsTests {
     private static let v91 = PostgreSQLCapabilities(serverVersion: 90_124)
     private static let v92 = PostgreSQLCapabilities(serverVersion: 90_223)

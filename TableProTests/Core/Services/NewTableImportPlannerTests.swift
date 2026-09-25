@@ -9,7 +9,6 @@ import Testing
 /// A failed row import into a new table leaves that table behind, so the retry finds the name
 /// taken. Creating again fails on the name; importing into it as it stands writes the rows the
 /// first attempt kept a second time.
-@Suite("New table import planning")
 struct NewTableImportPlannerTests {
     private let createSQL = "CREATE TABLE people (name TEXT)"
 

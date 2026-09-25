@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ValueDisplayFormat")
 struct ValueDisplayFormatTests {
     @Test("rawValue strings stay stable")
     func rawValueStability() {

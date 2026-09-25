@@ -14,7 +14,6 @@ import Testing
 
 // MARK: - SQL Escaping Correctness
 
-@Suite("PostgreSQL SQL Escaping Correctness")
 struct PostgreSQLSQLEscapingCorrectness {
 
     @Test("ANSI escaping preserves backslashes")
@@ -51,7 +50,6 @@ struct PostgreSQLSQLEscapingCorrectness {
 
 // MARK: - DDL Assembly
 
-@Suite("PostgreSQL DDL Assembly")
 struct PostgreSQLDDLAssembly {
 
     /// Mirrors how `PostgreSQLPluginDriver.fetchTableDDL` assembles its statement. Indexes are no
@@ -215,7 +213,6 @@ private final class MockPostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     func rollbackTransaction() async throws {}
 }
 
-@Suite("DDL Loading Flow with Mock Driver")
 struct DDLLoadingFlowTests {
 
     private func loadDDL(using driver: MockPostgreSQLDriver, table: String) async throws -> String {

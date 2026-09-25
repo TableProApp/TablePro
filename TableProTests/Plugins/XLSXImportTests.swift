@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("XLSX sheet parsing")
 struct XLSXSheetParserTests {
     /// `A` is 0 and `AA` is 26, so the letters are base-26 with no zero digit. Getting this wrong
     /// puts every column past Z in the wrong place.

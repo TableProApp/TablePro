@@ -7,7 +7,7 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@MainActor @Suite("Opening a SQL file from Finder or File > Open")
+@MainActor
 struct SQLFileOpeningTests {
     private func makeFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory

@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MCP connection approval")
 struct MCPConnectionApprovalTests {
     private let connectionA = UUID()
 

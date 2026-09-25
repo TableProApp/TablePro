@@ -10,7 +10,6 @@ import Testing
 /// A cell's Filter item narrows what the grid shows by one condition, so the next state has to run
 /// exactly the rows that were running plus the new one, and has to say so in the panel's checkboxes,
 /// which is also what the saved state restores.
-@Suite("Cell filter state")
 @MainActor
 struct CellFilterStateTests {
     private let added = TestFixtures.makeTableFilter(column: "status", op: .equal, value: "paid")

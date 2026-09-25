@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("DynamoDB filter translation")
 struct DynamoDBFilterTranslatorTests {
     struct Translation {
         let outcome: DynamoDBFilterTranslator.Outcome
@@ -467,7 +466,6 @@ struct DynamoDBFilterTranslatorTests {
     }
 }
 
-@Suite("DynamoDB client-side predicates")
 struct DynamoDBClientPredicateMatchingTests {
     static func predicate(
         _ op: String,

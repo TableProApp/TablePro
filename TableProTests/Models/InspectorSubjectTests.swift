@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Inspector subject")
 struct InspectorSubjectTests {
     @Test("A row names its table and its position")
     func rowNamesTableAndPosition() {

@@ -47,7 +47,6 @@ private final class OverrideQueryCompletionProfileDriver: QueryCompletionProfile
     }
 }
 
-@Suite("PluginDriverAdapter query completion profile")
 struct PluginDriverAdapterQueryCompletionProfileTests {
     private func connection() -> DatabaseConnection {
         DatabaseConnection(

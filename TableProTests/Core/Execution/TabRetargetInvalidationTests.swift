@@ -9,7 +9,6 @@ import Testing
 
 /// Pins the confirmed race: clicking table B while table A's query is in flight used to block B's
 /// query entirely and then paint A's rows into the tab that had already become B.
-@Suite("Tab retarget invalidates in-flight execution")
 struct TabRetargetInvalidationTests {
     @Test("A result that started before the retarget is not current after it")
     func retargetInvalidatesInFlightResult() {
@@ -119,7 +118,6 @@ struct TabRetargetInvalidationTests {
     }
 }
 
-@Suite("DriverCancellationPolicy")
 struct DriverCancellationPolicyTests {
     @Test("Only untracked leases stay invisible to cancellation")
     func trackingReflectsPolicy() {

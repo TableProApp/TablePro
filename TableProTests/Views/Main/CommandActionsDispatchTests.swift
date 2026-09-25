@@ -40,7 +40,7 @@ private final class CommandActionsLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@MainActor @Suite("CommandActions Dispatch")
+@MainActor
 struct CommandActionsDispatchTests {
     // MARK: - Helpers
 

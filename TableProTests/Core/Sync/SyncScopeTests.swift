@@ -8,7 +8,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("Sync scope")
 @MainActor
 struct SyncScopeTests {
     @Test("Every current record type is declared synced")

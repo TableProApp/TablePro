@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Stream Projection")
 struct MongoStreamProjectionTests {
     private func text(_ value: Any, _ kind: BsonValueKind) -> PluginCellValue {
         PluginCellValue.fromOptional("\(value)")

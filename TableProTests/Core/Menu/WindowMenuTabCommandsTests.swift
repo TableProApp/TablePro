@@ -20,7 +20,6 @@ private final class FiringTarget: NSObject {
     @objc func fire(_ sender: Any?) { fired += 1 }
 }
 
-@Suite("Window menu tab commands")
 @MainActor
 struct WindowMenuTabCommandsTests {
     private func windowItems(_ keyboard: KeyboardSettings = KeyboardSettings()) throws -> [NSMenuItem] {
@@ -130,7 +129,6 @@ struct WindowMenuTabCommandsTests {
     }
 }
 
-@Suite("Recent tab switching menu validation")
 struct RecentTabMenuValidationTests {
     private let selectors = [
         #selector(MainSplitViewController.switchToRecentTab(_:)),
@@ -199,7 +197,6 @@ struct RecentTabMenuValidationTests {
 /// Show Previous and Next Tab and Select Tab 1 to 9 move a strip's selection. Validated on
 /// `isConnected` alone they stayed lit in Agent mode, where no strip is drawn, and with a tab count
 /// that left them nothing to do.
-@Suite("Tab navigation menu validation")
 struct TabNavigationMenuValidationTests {
     private func context(tabs: Int, agent: Bool = false, number: Int? = nil) -> MenuValidationContext {
         var context = MenuValidationContext()

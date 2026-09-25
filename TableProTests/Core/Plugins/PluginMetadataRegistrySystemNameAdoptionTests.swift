@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginMetadataRegistry system name adoption")
 struct PluginMetadataRegistrySystemNameAdoptionTests {
     private func curated(_ typeId: String) -> PluginMetadataSnapshot? {
         PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)

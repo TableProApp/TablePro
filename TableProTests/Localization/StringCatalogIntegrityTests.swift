@@ -16,7 +16,6 @@ import Testing
 /// Style choices that legitimately differ by language are deliberately not asserted: Chinese renders
 /// terminal punctuation and ellipses full width, and 232 shipped translations pass two or more
 /// arguments in plain `%@` order rather than positionally.
-@Suite("String catalogs agree with their source strings")
 struct StringCatalogIntegrityTests {
     @Test("Every translation consumes the arguments its source passes")
     func argumentsMatchSource() throws {
@@ -413,7 +412,6 @@ struct StringCatalog {
     }
 }
 
-@Suite("Format specifier parsing")
 struct FormatSpecifierTests {
     @Test("A plain specifier carries no argument index")
     func plainSpecifier() {
@@ -454,7 +452,6 @@ struct FormatSpecifierTests {
     }
 }
 
-@Suite("String catalog rule checks")
 struct StringCatalogRuleTests {
     private static func complaint(
         source: String,

@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Spanner registry snapshot")
 struct SpannerRegistrySnapshotTests {
     private func snapshot() throws -> PluginMetadataSnapshot {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()

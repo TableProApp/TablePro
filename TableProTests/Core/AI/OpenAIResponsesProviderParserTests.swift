@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("OpenAIResponsesProvider stream parser")
 struct OpenAIResponsesProviderParserTests {
     private func parse(_ json: [String: Any], state: inout ResponsesStreamState) throws -> [ChatStreamEvent] {
         try OpenAIResponsesProvider.parseEvent(json, state: &state)

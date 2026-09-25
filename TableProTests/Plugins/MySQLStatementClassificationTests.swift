@@ -6,7 +6,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL Statement Classification")
 struct MySQLStatementClassificationTests {
     @Test("SELECT is read-only")
     func selectIsReadOnly() {
@@ -48,7 +47,6 @@ struct MySQLStatementClassificationTests {
     }
 }
 
-@Suite("MySQL Replay Safety")
 struct MySQLReplaySafetyTests {
     /// The only caller asks this to decide whether to run a statement a second time after the
     /// connection dropped, so a plain read is the only thing that may say yes.

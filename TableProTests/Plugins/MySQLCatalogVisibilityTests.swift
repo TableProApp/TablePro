@@ -12,7 +12,6 @@
 import Foundation
 import Testing
 
-@Suite("MySQL catalog visibility rule")
 struct MySQLCatalogVisibilityRuleTests {
     @Test("A catalog with rows describes the database, whatever SHOW says")
     func rowsSettleIt() {
@@ -74,7 +73,6 @@ private func settlesBlindness(_ error: any Error) -> Bool {
     (error as? ScriptedFailure)?.settles ?? false
 }
 
-@Suite("MySQL catalog fallback")
 struct MySQLCatalogFallbackTests {
     private final class Script: @unchecked Sendable {
         private let lock = NSLock()

@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Server table definition")
 struct MSSQLTableDefinitionSQLTests {
     private static func column(_ name: String, primaryKey: Bool = false) -> PluginColumnDefinition {
         PluginColumnDefinition(name: name, dataType: "INT", isNullable: !primaryKey, isPrimaryKey: primaryKey)

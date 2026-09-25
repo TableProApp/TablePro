@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Default Unix socket path per database type")
 struct SocketPathPlaceholderTests {
     @Test("MySQL and MariaDB use the mysqld socket")
     func mysqlFamilyUsesMysqldSocket() {

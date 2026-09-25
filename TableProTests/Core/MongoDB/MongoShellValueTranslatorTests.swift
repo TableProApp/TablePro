@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Shell Value Translator")
 struct MongoShellValueTranslatorTests {
     private static let oid = "507f1f77bcf86cd799439011"
     private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"

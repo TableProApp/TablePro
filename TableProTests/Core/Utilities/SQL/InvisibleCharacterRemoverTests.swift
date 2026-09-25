@@ -10,7 +10,6 @@ import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Remove invisible characters")
 struct InvisibleCharacterRemoverTests {
     private func clean(
         _ text: String,

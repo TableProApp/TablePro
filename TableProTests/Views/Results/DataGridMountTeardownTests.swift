@@ -21,7 +21,6 @@ private final class StubLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("DataGridView mount teardown")
 @MainActor
 struct DataGridMountTeardownTests {
     private func makeCoordinator() -> TableViewCoordinator {

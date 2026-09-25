@@ -24,7 +24,6 @@ import Testing
 /// `isVisible` whatever its receiver, and the one read allowed there is named: the switcher's
 /// `toolbar.isVisible`, which is whether the toolbar itself is shown and was measured to read
 /// correctly after a palette visit.
-@Suite("Toolbar visibility reads")
 struct ToolbarSourceAccessTests {
     private static let rootDirectory: URL = {
         var directory = URL(fileURLWithPath: #filePath)

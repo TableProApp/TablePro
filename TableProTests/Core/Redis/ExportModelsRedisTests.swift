@@ -2,7 +2,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Export format filtering for Redis")
 struct ExportModelsRedisTests {
 
     @Test("ExportObjectItem supports optionValues for generic per-object options")

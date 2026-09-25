@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("OperationDurationFormatter")
 struct OperationDurationFormatterTests {
     @Test("Under a minute reads in seconds")
     func secondsOnly() {

@@ -8,7 +8,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("SQL favorite remote apply")
 struct SQLFavoriteRemoteApplyTests {
     private let storage: SQLFavoriteStorage
     private let metadata: SyncMetadataStorage

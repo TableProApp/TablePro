@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("A detached value window writes the rows it was opened for")
 @MainActor
 struct MultiRowEditStateDetachedCommitTests {
     private func makeState(rowIDs: [RowID], values: [[String?]]) -> MultiRowEditState {

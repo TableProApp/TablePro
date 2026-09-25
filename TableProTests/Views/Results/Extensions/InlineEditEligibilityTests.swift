@@ -16,7 +16,6 @@ private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Inline edit eligibility")
 @MainActor
 struct InlineEditEligibilityTests {
     private func makeCoordinator(columnType: ColumnType, value: String) -> TableViewCoordinator {

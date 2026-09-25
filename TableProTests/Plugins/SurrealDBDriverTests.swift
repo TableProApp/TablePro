@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SurrealDB - SurrealQL escaping")
 struct SurrealQLTests {
     @Test("Identifiers are backtick-quoted only when they need it")
     func identifiers() {
@@ -68,7 +67,6 @@ struct SurrealQLTests {
     }
 }
 
-@Suite("SurrealDB - query builder")
 struct SurrealQueryBuilderTests {
     private let scope = SurrealScope(namespace: "ns", database: "db")
 
@@ -159,7 +157,6 @@ struct SurrealQueryBuilderTests {
     }
 }
 
-@Suite("SurrealDB - field kinds across 2.x and 3.x")
 struct SurrealFieldKindTests {
     @Test("Optional fields parse on both versions")
     func optionals() {
@@ -205,7 +202,6 @@ struct SurrealFieldKindTests {
     }
 }
 
-@Suite("SurrealDB - INFO parsing across 2.x and 3.x")
 struct SurrealInfoParserTests {
     @Test("Table list reads schemafull on 3.x and full on 2.x")
     func schemafullFlag() {
@@ -288,7 +284,6 @@ struct SurrealInfoParserTests {
     }
 }
 
-@Suite("SurrealDB - row flattening")
 struct SurrealRowFlattenerTests {
     @Test("Columns are the union of top-level keys, id first")
     func union() {
@@ -329,7 +324,6 @@ struct SurrealRowFlattenerTests {
     }
 }
 
-@Suite("SurrealDB - statement generation")
 struct SurrealStatementGeneratorTests {
     private let scope = SurrealScope(namespace: "ns", database: "db")
     private let columns = ["id", "name", "age"]
@@ -467,7 +461,6 @@ struct SurrealStatementGeneratorTests {
     }
 }
 
-@Suite("SurrealDB - cell coding")
 struct SurrealCellCoderTests {
     @Test("Text coerces to the column's declared type")
     func typed() {
@@ -529,7 +522,6 @@ struct SurrealCellCoderTests {
     }
 }
 
-@Suite("SurrealDB - connection config")
 struct SurrealDBConnectionConfigTests {
     private func config(_ level: String, namespace: String = "ns", extra: [String: String] = [:]) -> SurrealDBConnectionConfig {
         var fields = ["sdbAuthLevel": level]

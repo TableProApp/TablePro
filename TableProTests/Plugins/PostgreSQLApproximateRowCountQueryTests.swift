@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.approximateRowCount")
 struct PostgreSQLApproximateRowCountQueryTests {
     @Test("The estimate is read from the named schema and table")
     func namesSchemaAndTableAsLiterals() {

@@ -18,7 +18,6 @@ private final class NoopReloadLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Grid viewport across a reload")
 @MainActor
 struct GridReloadViewportTests {
     private struct Fixture {

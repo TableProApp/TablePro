@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ValueDisplayDetector")
 @MainActor
 struct ValueDisplayDetectorTests {
     private func detect(

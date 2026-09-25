@@ -14,7 +14,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Connection form transport")
 struct ConnectionFormTransportTests {
     private func coordinator(type: DatabaseType = .mysql) -> ConnectionFormCoordinator {
         let coordinator = ConnectionFormCoordinator(connectionId: nil)

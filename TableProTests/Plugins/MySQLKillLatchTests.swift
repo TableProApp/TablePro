@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("MySQL kill latch")
 struct MySQLKillLatchTests {
     @Test("Nothing to absorb before a kill has gone out")
     func idleLatchAbsorbsNothing() {
@@ -79,7 +78,6 @@ struct MySQLKillLatchTests {
 
 /// The absorb step has to sit where every statement passes, not beside one of them. `streamQuery`
 /// was the gap the design left: an export right after a Stop collected the kill instead.
-@Suite("MySQL statement entry points")
 struct MySQLStatementEntryPointGuardTests {
     @Test("Every statement entry point goes through the wrapper that absorbs a latched kill")
     func everyStatementEntryPointUsesTheWrapper() throws {

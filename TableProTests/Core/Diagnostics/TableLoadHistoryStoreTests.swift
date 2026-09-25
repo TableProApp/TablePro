@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TableLoadHistoryStore")
 struct TableLoadHistoryStoreTests {
     private static let stamp = TableLoadRuntimeStamp(
         appVersion: "0.68.0",

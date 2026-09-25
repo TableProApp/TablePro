@@ -17,7 +17,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Result buffer handoff guard")
 struct ResultBufferHandoffGuardTests {
     @Test("Every file that replaces a tab's results also hands the row buffer back")
     func replacementSitesFlushTheBuffer() throws {

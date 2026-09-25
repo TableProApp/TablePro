@@ -34,7 +34,6 @@ private final class Latch {
     }
 }
 
-@Suite("Session switches count as in-flight work")
 @MainActor
 struct SessionSwitchOperationTrackingTests {
     @Test("A schema switch is in flight while the driver is running it")

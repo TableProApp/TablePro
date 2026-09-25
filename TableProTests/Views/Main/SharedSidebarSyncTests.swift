@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Shared Sidebar Sync Invariants")
 struct SharedSidebarSyncTests {
     // MARK: - Helpers
 

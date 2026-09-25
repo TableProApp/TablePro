@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Plugin structure mapping")
 struct PluginStructureMappingTests {
     private static let columns = PluginStructureFixtures.columns
 

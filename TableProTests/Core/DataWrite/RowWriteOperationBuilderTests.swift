@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Row write operation capture")
 struct RowWriteOperationBuilderTests {
     private let columns = ["id", "name", "updated_at"]
     private let target = DataWriteTarget(database: "shop", schema: nil, table: "users")

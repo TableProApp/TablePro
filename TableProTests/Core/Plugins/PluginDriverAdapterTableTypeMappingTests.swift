@@ -53,7 +53,6 @@ private final class StubTableTypeDriver: PluginDatabaseDriver, @unchecked Sendab
     }
 }
 
-@Suite("PluginDriverAdapter table type mapping")
 struct PluginDriverAdapterTableTypeMappingTests {
     private func makeAdapter(driver: StubTableTypeDriver) -> PluginDriverAdapter {
         let connection = DatabaseConnection(name: "Test", type: .postgresql)

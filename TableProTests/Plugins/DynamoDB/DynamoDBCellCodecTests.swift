@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB cell codec")
 struct DynamoDBCellCodecTests {
     struct CellCase: Sendable, CustomTestStringConvertible {
         let name: String

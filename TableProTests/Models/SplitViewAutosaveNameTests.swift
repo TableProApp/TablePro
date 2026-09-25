@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Split view autosave name")
 struct SplitViewAutosaveNameTests {
     /// A real user's saved widths and collapse states hang off this exact string. Versioning it
     /// discards all of them, so production must keep the bare name whatever the sandbox does.

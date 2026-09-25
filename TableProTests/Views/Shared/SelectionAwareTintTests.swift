@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Selection Aware Tint")
 struct SelectionAwareTintTests {
     @Test("A prominent selection background takes the selected-content colour")
     func prominentBackgroundUsesSelectedContentColor() {

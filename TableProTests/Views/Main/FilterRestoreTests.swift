@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("FilterRestore")
 @MainActor
 struct FilterRestoreTests {
     private func settings(

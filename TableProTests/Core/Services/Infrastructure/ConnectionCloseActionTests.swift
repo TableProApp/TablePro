@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection close decision")
 @MainActor
 struct ConnectionCloseActionTests {
     /// The case the old command failed on. A connection the window hosts but that has no session

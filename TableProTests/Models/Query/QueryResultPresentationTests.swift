@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("QueryResultPresentation")
 struct QueryResultPresentationTests {
     @Test("A fresh query tab shows nothing rather than an empty grid")
     func idleTab() {

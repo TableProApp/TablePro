@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ContextItem.savedQuery Codable migration")
 struct ContextItemSavedQueryCodableTests {
     @Test("Decodes legacy payload missing the name field")
     func decodesLegacyMissingName() throws {

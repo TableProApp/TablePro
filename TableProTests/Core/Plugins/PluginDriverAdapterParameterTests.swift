@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Plugin Driver Adapter Parameters")
 struct PluginDriverAdapterParameterTests {
     @Test("A non-finite number binds SQL null, not the text NULL")
     func nonFiniteBindsNull() {

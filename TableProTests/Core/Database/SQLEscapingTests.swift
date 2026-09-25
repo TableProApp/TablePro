@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("SQL Escaping")
 struct SQLEscapingTests {
 
     // MARK: - escapeStringLiteral Tests (ANSI SQL)

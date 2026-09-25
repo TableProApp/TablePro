@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLite Foreign Key Clause")
 struct SQLiteForeignKeyClauseTests {
     private func clauses(_ sql: String) throws -> [SQLiteForeignKeyClause] {
         let parsed = try #require(SQLiteTableDDL.parse(createTableSQL: sql))

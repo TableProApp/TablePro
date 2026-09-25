@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLCompletionInsertion")
 struct SQLCompletionInsertionTests {
     @Test("Favorite with a marker inserts stripped text with the caret at the marker")
     func favoriteWithMarker() {

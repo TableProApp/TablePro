@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONRowNodeBuilder")
 struct JSONRowNodeBuilderTests {
     private func reference(column: String, table: String = "language") -> JSONForeignKeyRef {
         JSONForeignKeyRef(

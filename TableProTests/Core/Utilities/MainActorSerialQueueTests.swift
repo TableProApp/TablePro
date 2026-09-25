@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Main actor serial queue")
 @MainActor
 struct MainActorSerialQueueTests {
     @MainActor

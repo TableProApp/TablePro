@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSHTunnelError.isUserCancelledAuthentication")
 struct CompositeAuthenticatorCancellationTests {
     @Test("A cancelled auth failure is recognized as a user cancellation")
     func cancelledReasonIsUserCancelled() {

@@ -64,7 +64,6 @@ private final class SqlStandardStubDriver: PluginDatabaseDriver, @unchecked Send
 
 // MARK: - isNumericLiteral
 
-@Suite("isNumericLiteral")
 struct IsNumericLiteralTests {
 
     @Test("Integers")
@@ -110,7 +109,6 @@ struct IsNumericLiteralTests {
 
 // MARK: - escapedParameterValue
 
-@Suite("escapedParameterValue (MySQL-style)")
 struct EscapedParameterValueTests {
     private let driver = StubDriver()
 
@@ -166,7 +164,6 @@ struct EscapedParameterValueTests {
     }
 }
 
-@Suite("escapedParameterValue (SQL-standard, no backslash escape)")
 struct SqlStandardEscapeTests {
     private let driver = SqlStandardStubDriver()
 

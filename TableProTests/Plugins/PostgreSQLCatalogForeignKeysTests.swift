@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLCatalogForeignKeys")
 struct PostgreSQLCatalogForeignKeysTests {
     private func row(
         identity: String = "100",

@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("StructureRowProvider filter and sort")
+@MainActor
 struct StructureRowProviderTests {
     private func makeColumn(_ name: String) -> EditableColumnDefinition {
         EditableColumnDefinition(
@@ -119,7 +119,7 @@ struct StructureRowProviderTests {
     }
 }
 
-@MainActor @Suite("StructureRowProvider modified and deleted state")
+@MainActor
 struct StructureRowProviderChangeStateTests {
     private func loadedManager() -> StructureChangeManager {
         let manager = StructureChangeManager()

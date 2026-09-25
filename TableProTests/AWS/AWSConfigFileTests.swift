@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS config and credentials file resolution")
 struct AWSConfigFileTests {
     private let config = """
     [default]

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Linked SQL favorite metadata rewrite")
 struct LinkedSQLFavoriteWriterTests {
     private typealias Metadata = SQLFrontmatter.Metadata
 

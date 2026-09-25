@@ -12,7 +12,6 @@ import Testing
 /// while `serverVersion()` read it with no lock at all, which ThreadSanitizer reported as a data
 /// race against PostgreSQL 17.11. Nothing at runtime shows such a race, and the class imports
 /// CLibPQ, which this target cannot, so the guard is a source scan.
-@Suite("LibPQPluginConnection source scan")
 struct LibPQPluginConnectionSourceScanTests {
     private static let connectionSource: URL = {
         var directory = URL(fileURLWithPath: #filePath)

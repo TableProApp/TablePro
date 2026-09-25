@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TableScope decode")
 struct TableScopeDecodeTests {
     @Test("Round-trips a full scope through the storage component")
     func roundTrips() {

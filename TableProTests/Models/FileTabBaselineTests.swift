@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("File tab baseline")
 @MainActor
 struct FileTabBaselineTests {
     private func makeFile(contents: String) throws -> URL {

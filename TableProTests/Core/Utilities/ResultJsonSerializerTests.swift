@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ResultJsonSerializer")
 struct ResultJsonSerializerTests {
     private func makeTableRows() -> TableRows {
         let rows: ContiguousArray<Row> = [

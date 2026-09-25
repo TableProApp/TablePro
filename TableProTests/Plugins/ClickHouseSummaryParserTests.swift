@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouseSummaryParser")
 struct ClickHouseSummaryParserTests {
     @Test("Reads the elapsed nanoseconds a modern server sends")
     func readsElapsed() {

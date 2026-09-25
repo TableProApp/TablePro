@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Editor tab strip layout")
 struct EditorTabStripLayoutTests {
     private static let ids = (0..<5).map { _ in UUID() }
 

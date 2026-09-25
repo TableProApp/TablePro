@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("StatusBarSnapshot")
 struct StatusBarSnapshotTests {
     private func makeSnapshot(
         tabType: TabType? = .table,

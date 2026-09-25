@@ -9,7 +9,6 @@ import TableProSyncTransport
 @testable import TablePro
 import Testing
 
-@Suite("Sync coordinator token expiry")
 struct SyncCoordinatorTokenExpiryTests {
     @Test("The expired token thrown by the engine is recognised")
     func recognisesTheEngineError() {

@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("StructureInspectorRowBuilder")
+@MainActor
 struct StructureInspectorRowBuilderTests {
     private func loadedManager() -> StructureChangeManager {
         let manager = StructureChangeManager()

@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("DatabaseType")
 struct DatabaseTypeTests {
 
     @Test("MySQL default port is 3306")

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DuckDB transaction probe")
 struct DuckDBTransactionProbeTests {
     /// Measured against the shipped libduckdb v1.5.2: outside a transaction two calls answered 6
     /// then 10, and inside one they both answered 12.

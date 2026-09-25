@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Column classification hint")
 struct ColumnClassificationHintTests {
     private func columnInfo(
         _ name: String,
@@ -115,7 +114,6 @@ struct ColumnClassificationHintTests {
     }
 }
 
-@Suite("Classifier inputs")
 struct ClassifierInputScanTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

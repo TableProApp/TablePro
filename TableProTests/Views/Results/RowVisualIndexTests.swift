@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("RowVisualIndex row identity")
 @MainActor
 struct RowVisualIndexTests {
     private func makeManager() -> DataChangeManager {

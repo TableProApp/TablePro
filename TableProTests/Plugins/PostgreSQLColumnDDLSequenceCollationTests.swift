@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.columnDDLQuery sequences and collation")
 struct PostgreSQLColumnDDLQuerySequenceCollationTests {
     private let query = PostgreSQLSchemaQueries.columnDDLQuery(
         schema: "sales", table: "orders", capabilities: PostgreSQLCapabilities(serverVersion: 170_000)
@@ -60,7 +59,6 @@ struct PostgreSQLColumnDDLQuerySequenceCollationTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnDDL sequences and collation")
 struct PostgreSQLColumnDDLParsingSequenceCollationTests {
     private func row(
         _ expression: String?,
@@ -121,7 +119,6 @@ struct PostgreSQLColumnDDLParsingSequenceCollationTests {
     }
 }
 
-@Suite("PostgreSQL dependent sequences and the column DDL read")
 struct PostgreSQLSequenceDependencyParityTests {
     @Test("Both read the column default's pg_depend rows, each with its own correlation")
     func bothStartFromTheColumnDefaultDependency() {

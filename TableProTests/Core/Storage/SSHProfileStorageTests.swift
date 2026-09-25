@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSH profile storage")
 @MainActor
 struct SSHProfileStorageTests {
     private let storage: SSHProfileStorage

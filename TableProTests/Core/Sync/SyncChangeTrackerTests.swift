@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SyncChangeTracker")
 @MainActor
 struct SyncChangeTrackerTests {
     private let metadata: SyncMetadataStorage

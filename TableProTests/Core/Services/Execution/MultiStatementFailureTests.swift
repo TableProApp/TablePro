@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Multi-statement failure report")
 struct MultiStatementFailureTests {
     private static let syntaxError = "You have an error in your SQL syntax near 'READ WRITE'"
 

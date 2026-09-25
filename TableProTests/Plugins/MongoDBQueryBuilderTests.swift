@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Query Builder")
 struct MongoDBQueryBuilderTests {
     private let builder = MongoDBQueryBuilder()
 

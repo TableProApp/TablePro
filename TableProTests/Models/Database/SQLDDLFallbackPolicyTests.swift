@@ -9,7 +9,6 @@ import TableProConnectionLibrary
 import TableProPluginKit
 import Testing
 
-@Suite("SQL DDL fallback policy")
 struct SQLDDLFallbackPolicyTests {
     @Test("Engines with SQL DDL keep the generated statement")
     func sqlEnginesFabricate() {

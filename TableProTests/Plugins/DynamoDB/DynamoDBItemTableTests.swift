@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB item table")
 struct DynamoDBItemTableTests {
     struct ClassificationCase: Sendable, CustomTestStringConvertible {
         let value: DynamoDBAttributeValue

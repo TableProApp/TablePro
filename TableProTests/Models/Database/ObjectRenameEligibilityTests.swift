@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Object rename eligibility")
 struct ObjectRenameEligibilityTests {
     private func context(
         activeDatabase: String? = "app",

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("File text writer")
 struct FileTextWriterTests {
     private struct RefusedAttribute: Error {}
 

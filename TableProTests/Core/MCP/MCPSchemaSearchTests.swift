@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("search_schema reach")
 @MainActor
 struct MCPSchemaSearchTests {
     private struct ReadFailed: Error {}
@@ -246,7 +245,6 @@ struct MCPSchemaSearchTests {
     }
 }
 
-@Suite("search_schema payload")
 struct MCPSchemaSearchPayloadTests {
     @Test("A blank schema is not a named one, and any other string is")
     func namedSchemaFollowsTheScope() throws {

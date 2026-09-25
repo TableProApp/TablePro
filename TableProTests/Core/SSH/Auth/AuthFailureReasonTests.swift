@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSHTunnelError.authenticationFailed reason")
 struct AuthFailureReasonTests {
     @Test("Verification-code reason mentions the authenticator, not the password")
     func verificationCodeMessage() {

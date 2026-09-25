@@ -11,7 +11,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("SampleDatabaseService install/reset lifecycle")
 struct SampleDatabaseServiceTests {
     private static let bundledMarker = Data("BUNDLED-CHINOOK-V1".utf8)
 

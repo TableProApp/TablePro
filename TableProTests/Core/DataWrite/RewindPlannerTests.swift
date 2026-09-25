@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Rewind planning")
 @MainActor
 struct RewindPlannerTests {
     private let columns = ["id", "name"]

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("AIProviderDescriptor capabilities")
 struct AIProviderCapabilitiesTests {
     init() {
         AIProviderRegistration.registerAll()

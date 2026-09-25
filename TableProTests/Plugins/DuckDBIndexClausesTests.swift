@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DuckDB index clauses")
 struct DuckDBIndexClausesTests {
     private func keys(_ sql: String?) -> DuckDBIndexClauses.KeyParts {
         DuckDBIndexClauses.keyParts(ofCreateIndex: sql)

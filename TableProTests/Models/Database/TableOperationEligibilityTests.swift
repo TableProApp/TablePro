@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Table operation eligibility")
 struct TableOperationEligibilityTests {
     private func table(
         _ name: String,

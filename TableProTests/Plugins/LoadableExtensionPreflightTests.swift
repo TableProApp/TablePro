@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Loadable extension preflight")
 struct LoadableExtensionPreflightTests {
     private let directory: URL
 

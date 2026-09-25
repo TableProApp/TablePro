@@ -19,7 +19,6 @@ import Testing
 /// the only factory that reports 2 is `NSEvent(cgEvent:)`, whose location is a screen point. The
 /// button half of the contract is covered on its own below.
 @MainActor
-@Suite("Editor tab middle click")
 struct EditorTabMiddleClickTests {
     /// Chosen so the track measures the 604pt the strip's other tests use: the view gives up
     /// `stripInset` at the leading edge and the new-tab button plus its spacing at the trailing.
@@ -230,7 +229,6 @@ struct EditorTabMiddleClickTests {
 
 /// `buttonNumber` is the only thing that tells the wheel button from the side buttons, and
 /// `NSEvent(cgEvent:)` is the one factory that can carry it into a test.
-@Suite("Middle mouse button")
 struct NSEventMouseButtonTests {
     private func press(_ button: CGMouseButton) throws -> NSEvent {
         let cgEvent = try #require(

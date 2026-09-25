@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabQueryContent.Equatable")
 struct TabQueryContentEqualityTests {
     @Test("Equal when all fields match")
     func equalWhenIdentical() {

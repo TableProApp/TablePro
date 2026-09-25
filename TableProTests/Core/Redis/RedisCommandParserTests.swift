@@ -9,7 +9,6 @@ import Testing
 
 // MARK: - Key Commands
 
-@Suite("RedisCommandParser - Key Commands")
 struct RedisCommandParserKeyCommandTests {
     @Test("GET parses key")
     func getCommand() throws {
@@ -275,7 +274,6 @@ struct RedisCommandParserKeyCommandTests {
 
 // MARK: - Hash Commands
 
-@Suite("RedisCommandParser - Hash Commands")
 struct RedisCommandParserHashTests {
     @Test("HGET parses key and field")
     func hgetCommand() throws {
@@ -334,7 +332,6 @@ struct RedisCommandParserHashTests {
 
 // MARK: - List Commands
 
-@Suite("RedisCommandParser - List Commands")
 struct RedisCommandParserListTests {
     @Test("LRANGE parses key, start, stop")
     func lrangeCommand() throws {
@@ -392,7 +389,6 @@ struct RedisCommandParserListTests {
 
 // MARK: - Set Commands
 
-@Suite("RedisCommandParser - Set Commands")
 struct RedisCommandParserSetTests {
     @Test("SMEMBERS parses key")
     func smembersCommand() throws {
@@ -440,7 +436,6 @@ struct RedisCommandParserSetTests {
 
 // MARK: - Sorted Set Commands
 
-@Suite("RedisCommandParser - Sorted Set Commands")
 struct RedisCommandParserSortedSetTests {
     @Test("ZRANGE parses key, start, stop")
     func zrangeCommand() throws {
@@ -547,7 +542,6 @@ struct RedisCommandParserSortedSetTests {
 
 // MARK: - Stream Commands
 
-@Suite("RedisCommandParser - Stream Commands")
 struct RedisCommandParserStreamTests {
     @Test("XRANGE parses key, start, end")
     func xrangeCommand() throws {
@@ -585,7 +579,6 @@ struct RedisCommandParserStreamTests {
 
 // MARK: - Server Commands
 
-@Suite("RedisCommandParser - Server Commands")
 struct RedisCommandParserServerTests {
     @Test("PING")
     func pingCommand() throws {
@@ -722,7 +715,6 @@ struct RedisCommandParserServerTests {
 
 // MARK: - Error Cases
 
-@Suite("RedisCommandParser - Error Cases")
 struct RedisCommandParserErrorTests {
     @Test("Empty input throws emptySyntax")
     func emptyInput() {
@@ -752,7 +744,6 @@ struct RedisCommandParserErrorTests {
 
 // MARK: - Tokenizer
 
-@Suite("RedisCommandParser - Tokenizer")
 struct RedisCommandParserTokenizerTests {
     @Test("Double-quoted strings are parsed correctly")
     func doubleQuotedString() throws {
@@ -882,7 +873,6 @@ struct RedisCommandParserTokenizerTests {
     }
 }
 
-@Suite("RedisCommandParser - KEYBROWSE round-trip")
 struct RedisKeyBrowseRoundTripTests {
     private let builder = RedisQueryBuilder()
 
@@ -927,7 +917,6 @@ struct RedisKeyBrowseRoundTripTests {
     }
 }
 
-@Suite("RedisCommandParser - arguments a typed case cannot carry")
 struct RedisCommandParserVerbatimTests {
     @Test(
         "A recognised command with arguments its typed case cannot carry goes out exactly as typed",
@@ -993,7 +982,6 @@ struct RedisCommandParserVerbatimTests {
     }
 }
 
-@Suite("RedisCommandParser - statements the app builds stay typed")
 struct RedisCommandParserAppStatementTests {
     private static let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]
 

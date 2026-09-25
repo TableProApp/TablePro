@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("Query batch planning")
 @MainActor
 struct QueryBatchPlannerTests {
     private static let reporterScript = """

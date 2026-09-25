@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP index encoding")
 struct MCPIndexEncodingTests {
     @Test("Expressions and INCLUDE columns are listed when an index has them")
     func expressionsAndIncludedColumnsAreEncoded() {

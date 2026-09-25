@@ -15,7 +15,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DisplayedResultReader")
 struct DisplayedResultReaderTests {
     private func makeTableRows() -> TableRows {
         let rows: ContiguousArray<Row> = [

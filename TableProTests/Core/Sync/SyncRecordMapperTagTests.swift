@@ -3,7 +3,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SyncRecordMapper connection tags")
 struct SyncRecordMapperTagTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 

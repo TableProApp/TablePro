@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB table management statements")
 struct DynamoDBTableManagementTests {
     private typealias Field = DynamoDBTableDefinition.Field
 

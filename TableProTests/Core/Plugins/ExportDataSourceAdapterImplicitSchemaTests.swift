@@ -47,7 +47,6 @@ private final class SchemaLessStubDriver: PluginDatabaseDriver, @unchecked Senda
     }
 }
 
-@Suite("Export data source and the implicit schema")
 struct ExportDataSourceAdapterImplicitSchemaTests {
     private func adapter(for type: DatabaseType) -> ExportDataSourceAdapter {
         let driver = PluginDriverAdapter(

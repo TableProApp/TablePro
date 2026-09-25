@@ -12,7 +12,6 @@ import Testing
 /// counted noun: `String(format:)` resolves a plural variation, but only when the catalog declares
 /// one. A sentence whose counted noun follows a later argument cannot be reached that way, so those
 /// carry their own singular in Swift and are pinned here as separate keys.
-@Suite("Compare counted strings")
 struct CompareCountedStringTests {
     @Test("A single change reads as one change")
     func singleChangeReadsAsSingular() {

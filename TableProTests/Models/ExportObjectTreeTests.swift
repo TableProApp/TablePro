@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Export object kinds")
 struct ExportObjectKindTests {
 
     @Test("Dump order creates every dependency before the thing that needs it")
@@ -66,7 +65,6 @@ struct ExportObjectKindTests {
     }
 }
 
-@Suite("Export outline tree")
 struct ExportOutlineTreeTests {
 
     private func database(named name: String, objects: [ExportObjectItem]) -> ExportDatabaseItem {
@@ -171,7 +169,6 @@ struct ExportOutlineTreeTests {
     }
 }
 
-@Suite("Export object option masking")
 struct ExportObjectOptionMaskingTests {
 
     private let columns = [
@@ -235,7 +232,6 @@ struct ExportObjectOptionMaskingTests {
     }
 }
 
-@Suite("Export preselection with object kinds")
 struct ExportPreselectionKindTests {
 
     /// A routine and a table can share a name, and a sidebar preselection is about tables. Without

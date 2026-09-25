@@ -14,7 +14,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Database type chooser model")
 struct DatabaseTypeChooserModelTests {
     /// Named explicitly rather than taken from `PluginManager`, which loads no plugins under XCTest.
     private func model() -> DatabaseTypeChooserModel {

@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ClearQueryResults")
 struct ClearQueryResultsTests {
     @Test("Clearing results empties rows, result sets, and execution state")
     @MainActor

@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TabNavigationHistory")
 struct TabNavigationHistoryTests {
     private func makeEntry(
         table: String,

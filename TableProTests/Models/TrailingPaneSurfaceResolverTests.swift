@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Trailing pane surface resolver")
 struct TrailingPaneSurfaceResolverTests {
     @Test(
         "Agent mode draws the result pane whatever the user last chose",

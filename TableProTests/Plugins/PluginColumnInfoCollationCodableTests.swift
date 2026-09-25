@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginColumnInfo collation spelling Codable")
 struct PluginColumnInfoCollationCodableTests {
     @Test("The collation spelling round-trips through JSON encoding")
     func ddlCollationRoundTrip() throws {

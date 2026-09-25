@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("get_server_dashboard payload")
 struct MCPServerDashboardPayloadTests {
     @Test("Panels that all read come back without an errors object")
     func noFailures() throws {

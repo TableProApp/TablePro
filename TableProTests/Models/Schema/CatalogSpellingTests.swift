@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Catalog spelling")
 struct CatalogSpellingTests {
     private let type = CatalogSpelling(value: "geometry", spelling: "public.geometry(Point,4326)")
 

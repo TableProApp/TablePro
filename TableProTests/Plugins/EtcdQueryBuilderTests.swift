@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("EtcdQueryBuilder - Browse Query")
 struct EtcdQueryBuilderBrowseTests {
     private let builder = EtcdQueryBuilder()
 
@@ -69,7 +68,6 @@ struct EtcdQueryBuilderBrowseTests {
     }
 }
 
-@Suite("EtcdQueryBuilder - Filtered Query")
 struct EtcdQueryBuilderFilteredTests {
     private let builder = EtcdQueryBuilder()
 
@@ -197,7 +195,6 @@ struct EtcdQueryBuilderFilteredTests {
 
 // TODO: Re-enable when buildCombinedQuery API is restored
 #if false
-@Suite("EtcdQueryBuilder - Combined Query")
 struct EtcdQueryBuilderCombinedTests {
     private let builder = EtcdQueryBuilder()
 
@@ -251,7 +248,6 @@ struct EtcdQueryBuilderCombinedTests {
 }
 #endif
 
-@Suite("EtcdQueryBuilder - Count Query")
 struct EtcdQueryBuilderCountTests {
     private let builder = EtcdQueryBuilder()
 
@@ -274,7 +270,6 @@ struct EtcdQueryBuilderCountTests {
     }
 }
 
-@Suite("EtcdQueryBuilder - Tag Detection and Parsing")
 struct EtcdQueryBuilderTagTests {
     @Test("isTaggedQuery detects range tag")
     func detectsRangeTag() {

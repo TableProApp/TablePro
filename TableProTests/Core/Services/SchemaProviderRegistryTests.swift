@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("SchemaProviderRegistry")
 @MainActor
 struct SchemaProviderRegistryTests {
     private func scope(

@@ -20,7 +20,6 @@ private final class ContextSource {
 /// What the Actions pull-down draws for a context. The resolver decides the entries and is pinned by
 /// its own suite; this pins how they become menu items, which is where a target, a missing
 /// `representedObject` or a lost chord would break the menu without the resolver noticing.
-@Suite("Connection actions menu delegate")
 @MainActor
 struct ConnectionActionsMenuDelegateTests {
     private static func context(

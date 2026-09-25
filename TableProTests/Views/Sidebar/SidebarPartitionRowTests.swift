@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("What a partition row and its parent say")
 struct SidebarPartitionRowTests {
     @Test("A table the engine says nothing about shows no count, and an empty parent shows zero")
     func countLabelSeparatesUnknownFromEmpty() {
@@ -80,7 +79,6 @@ struct SidebarPartitionRowTests {
     }
 }
 
-@Suite("A refresh notices a partition count that moved on its own")
 struct PartitionCountRefreshTests {
     private func table(_ name: String, partitionCount: Int?) -> TableInfo {
         TableInfo(

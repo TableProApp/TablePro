@@ -15,7 +15,6 @@ import Testing
 /// eagerly loaded (which the app logs as "declared no TableProProvides* capability keys ...;
 /// eager loading will block startup") and its type never reaches `lazyDriverURLs`, so picking
 /// Typesense in the connection form offers to download a plugin that is already installed.
-@Suite("Typesense plugin manifest")
 struct TypesensePluginManifestTests {
     private static let infoPlist: URL = {
         var url = URL(fileURLWithPath: #filePath)
@@ -62,7 +61,6 @@ struct TypesensePluginManifestTests {
     }
 }
 
-@Suite("Typesense connection fields")
 struct TypesenseConnectionFieldsTests {
     private func typesenseFields() throws -> [ConnectionField] {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()

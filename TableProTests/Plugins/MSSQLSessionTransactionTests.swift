@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Server session transaction")
 struct MSSQLSessionTransactionTests {
     @Test("A transaction count above zero is an open transaction")
     func openTransactionIsCounted() {

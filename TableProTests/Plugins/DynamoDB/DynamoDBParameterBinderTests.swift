@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB parameter binder")
 struct DynamoDBParameterBinderTests {
     struct KeyCase: Sendable, CustomTestStringConvertible {
         let role: DynamoDBPartiQL.ParameterRole

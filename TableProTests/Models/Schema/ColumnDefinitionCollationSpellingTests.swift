@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("EditableColumnDefinition collation spelling")
 struct ColumnDefinitionCollationSpellingTests {
     private func column(
         collation: String? = "C",

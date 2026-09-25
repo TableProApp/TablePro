@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MongoDiagnosticsProducer")
 struct MongoDiagnosticsProducerTests {
     private let producer = MongoDiagnosticsProducer()
 
@@ -77,7 +76,6 @@ struct MongoDiagnosticsProducerTests {
     }
 }
 
-@Suite("MongoShellCommandRecognizer")
 struct MongoShellCommandRecognizerTests {
     @Test("The two shell lines are recognised")
     func shellLines() {
@@ -98,7 +96,6 @@ struct MongoShellCommandRecognizerTests {
     }
 }
 
-@Suite("JavaScriptSyntaxChecker")
 struct JavaScriptSyntaxCheckerTests {
     @Test("Valid JavaScript reports nothing")
     func valid() {

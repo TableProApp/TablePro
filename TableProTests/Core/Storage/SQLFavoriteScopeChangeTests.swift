@@ -11,7 +11,6 @@ import Testing
 /// A global favorite is in every connection's list, so moving one into a single connection takes it
 /// out of every other connection's. The event has to say so, or the sidebar, the editor's keyword
 /// expansion and the Quick Switcher all go on offering a favorite that has left them.
-@Suite("SQL favorite scope changes")
 struct SQLFavoriteScopeChangeTests {
     private let storage: SQLFavoriteStorage
 

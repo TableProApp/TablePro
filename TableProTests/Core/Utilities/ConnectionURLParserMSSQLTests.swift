@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Connection URL Parser — MSSQL")
 struct ConnectionURLParserMSSQLTests {
 
     @Test("Full MSSQL URL with default port")

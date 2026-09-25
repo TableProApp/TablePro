@@ -20,7 +20,6 @@ private final class CountingToolbar: NSToolbar {
 /// The context is written onto a live toolbar through `isHidden`, onto the items the app placed and
 /// onto nothing else. These run against a real `NSToolbar`, because the rules they pin are about
 /// what AppKit does with the writes, which no pure test can see.
-@Suite("Toolbar hidden set")
 @MainActor
 struct ToolbarHiddenSetTests {
     /// The app's own items in the order the default set gives them, without the spaces and tracking

@@ -99,7 +99,6 @@ private final class RefreshMockDriver: DatabaseDriver, @unchecked Sendable {
     func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
 }
 
-@Suite("SchemaService refresh keeps content visible")
 @MainActor
 struct SchemaServiceRefreshTests {
     private func loadedService(

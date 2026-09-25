@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Request Rate Limits")
 struct MCPRequestRateLimitTests {
     @Test("Failures from one address share a bucket whatever token was guessed")
     func wrongGuessesShareTheAddressBucket() async {

@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB endpoint resolution")
 struct DynamoDBEndpointTests {
     struct RegionCase: Sendable, CustomTestStringConvertible {
         let region: String

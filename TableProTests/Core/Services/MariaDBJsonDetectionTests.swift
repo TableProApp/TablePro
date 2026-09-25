@@ -14,7 +14,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MariaDB JSON Detection")
 struct MariaDBJsonDetectionTests {
     private let classifier = ColumnTypeClassifier()
 

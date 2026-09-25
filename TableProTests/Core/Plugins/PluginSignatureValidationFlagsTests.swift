@@ -12,7 +12,6 @@ import Testing
 /// signed by other teams, so dyld validates nothing and `SecStaticCodeCheckValidity` is the entire
 /// load decision. Two of its flags are what make that decision cover a real bundle: nested code,
 /// and the strict resource envelope.
-@Suite("Plugin signature validation flags")
 struct PluginSignatureValidationFlagsTests {
     @Test("Nested Mach-O inside a plugin bundle is verified")
     func flagsCheckNestedCode() {

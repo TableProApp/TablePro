@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Connection URL Formatter")
 @MainActor
 struct ConnectionURLFormatterTests {
     // MARK: - Basic URLs

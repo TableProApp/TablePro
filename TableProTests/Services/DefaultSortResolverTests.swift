@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("DefaultSortResolver")
 struct DefaultSortResolverTests {
     private let columns = ["id", "name", "created_at"]
 

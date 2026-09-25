@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ColumnType Badge Labels")
 struct ColumnTypeBadgeLabelTests {
     // MARK: - Redis-Specific Overrides
 

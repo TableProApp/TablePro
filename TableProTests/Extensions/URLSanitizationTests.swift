@@ -3,7 +3,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("URL Sanitization")
 struct URLSanitizationTests {
 
     @Test("URL with password replaces password with ***")

@@ -10,7 +10,6 @@ import Testing
 
 /// Uses PGlite because it cannot open a pooled connection, so every read stays on the injected
 /// session driver, and because it groups by schema with `pg_catalog` as a system schema.
-@Suite("DatabaseTreeMetadataService all-schema tables")
 @MainActor
 struct DatabaseTreeAllSchemaTablesTests {
     private struct ListingFailed: Error {}

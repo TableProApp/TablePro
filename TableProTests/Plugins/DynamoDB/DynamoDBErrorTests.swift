@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB errors")
 struct DynamoDBErrorTests {
     struct CategoryCase: Sendable, CustomTestStringConvertible {
         let code: String

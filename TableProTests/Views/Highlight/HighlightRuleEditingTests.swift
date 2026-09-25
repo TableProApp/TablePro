@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Highlight rule editing")
 @MainActor
 struct HighlightRuleEditingTests {
     private func rule(

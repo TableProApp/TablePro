@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("GridSelectionRestore")
 struct GridSelectionRestoreTests {
     private func rect(rows: ClosedRange<Int>, columns: ClosedRange<Int>) -> GridSelection {
         GridSelection(

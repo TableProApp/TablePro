@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Linked SQL favorite encoding")
 struct LinkedSQLFavoriteEncodingTests {
     private func favorite(encodedAs encodingName: String) -> LinkedSQLFavorite {
         LinkedSQLFavorite(

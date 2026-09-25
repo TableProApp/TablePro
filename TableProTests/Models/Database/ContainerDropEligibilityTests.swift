@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Container Drop Eligibility")
 struct ContainerDropEligibilityTests {
     private func context(
         activeDatabase: String? = "sales",

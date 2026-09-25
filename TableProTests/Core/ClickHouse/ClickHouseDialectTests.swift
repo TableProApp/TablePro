@@ -10,7 +10,6 @@ import Testing
 @testable import TablePro
 import TableProPluginKit
 
-@Suite("ClickHouse Dialect")
 struct ClickHouseDialectTests {
 
     @Test("SQLDialectDescriptor with ClickHouse-style config")

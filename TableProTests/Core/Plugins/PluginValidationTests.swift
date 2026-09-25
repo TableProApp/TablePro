@@ -130,7 +130,6 @@ struct ValidateDriverDescriptorTests {
 
 // MARK: - PluginError.invalidDescriptor Formatting
 
-@Suite("PluginError.invalidDescriptor")
 struct PluginErrorInvalidDescriptorTests {
 
     @Test("error description includes plugin ID and reason")
@@ -159,7 +158,6 @@ struct PluginErrorInvalidDescriptorTests {
 
 // MARK: - validateConnectionFields Tests
 
-@Suite("PluginManager.validateConnectionFields")
 struct ValidateConnectionFieldsTests {
 
     @Test("duplicate field IDs are detected")

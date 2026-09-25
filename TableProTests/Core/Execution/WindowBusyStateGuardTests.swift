@@ -15,7 +15,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Window busy state guard")
 struct WindowBusyStateGuardTests {
     @Test("Nothing stores or writes a second copy of whether the window is busy")
     func noStoredWindowExecutionFlag() throws {

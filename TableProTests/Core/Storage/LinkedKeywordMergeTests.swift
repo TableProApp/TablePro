@@ -11,7 +11,6 @@ import Testing
 /// Two linked `.sql` files may declare the same keyword, and nothing stops them: the files are
 /// edited outside the app and the index holds no uniqueness. Which one the keyword reached used to
 /// be decided by whichever disk read finished first, so it changed between launches.
-@Suite("Linked keyword merge")
 struct LinkedKeywordMergeTests {
     private func candidate(
         keyword: String = "daily",

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Connection actions menu resolver")
 struct ConnectionActionsMenuResolverTests {
     private static let tabKinds: [TabType] = [
         .query, .table, .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource,

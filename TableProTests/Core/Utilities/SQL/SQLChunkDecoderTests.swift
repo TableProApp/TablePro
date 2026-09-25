@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SQL chunk decoding")
 struct SQLChunkDecoderTests {
     private func decodeInChunks(_ data: Data, encoding: String.Encoding, chunk size: Int) -> String? {
         var decoder = SQLChunkDecoder(encoding: encoding)

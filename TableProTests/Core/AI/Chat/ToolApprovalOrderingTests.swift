@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ToolApprovalCenter ordering")
 @MainActor
 struct ToolApprovalOrderingTests {
     private let session = UUID()

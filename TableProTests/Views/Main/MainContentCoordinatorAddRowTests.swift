@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator add row")
 @MainActor
 struct MainContentCoordinatorAddRowTests {
     private func makeCoordinator(
@@ -122,7 +121,6 @@ struct MainContentCoordinatorAddRowTests {
     }
 }
 
-@Suite("MainContentCommandActions result view")
 @MainActor
 struct MainContentCommandActionsResultViewTests {
     private func makeActions(

@@ -100,7 +100,6 @@ private final class HostedGrid {
     }
 }
 
-@Suite("Data grid over a result with no columns")
 @MainActor
 struct DataGridEmptyResultColumnsTests {
     private static func result(_ columns: [String], rowCount: Int = 1) -> TableRows {

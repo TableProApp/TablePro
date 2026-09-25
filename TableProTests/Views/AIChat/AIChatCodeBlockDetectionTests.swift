@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AIChatCodeBlockView.detectLanguage")
 struct AIChatCodeBlockDetectionTests {
     @Test("SQL prefixes are detected case-insensitively")
     func sqlPrefixes() {

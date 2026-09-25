@@ -21,7 +21,6 @@
 import Foundation
 import Testing
 
-@Suite("Editor tab strip gesture convention")
 struct EditorTabStripGestureConventionTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

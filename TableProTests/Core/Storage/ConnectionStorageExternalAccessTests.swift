@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 import TableProSyncTransport
 
-@Suite("ConnectionStorage External Access")
 @MainActor
 struct ConnectionStorageExternalAccessTests {
     private let storage: ConnectionStorage

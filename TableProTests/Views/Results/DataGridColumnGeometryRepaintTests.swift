@@ -21,7 +21,6 @@ private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
 /// drew it. AppKit resizes a row view only when the table's total width moves, which it does not
 /// while the columns still fit inside the viewport, so every column geometry change on a grid
 /// narrower than its scroll view used to leave the body painting the layout it last drew (#2449).
-@Suite("Data grid column geometry repaint")
 @MainActor
 struct DataGridColumnGeometryRepaintTests {
     private struct Grid {

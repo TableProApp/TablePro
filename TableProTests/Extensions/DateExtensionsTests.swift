@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Date Extensions")
 struct DateExtensionsTests {
     @Test("Recent date returns relative string")
     func testRecentDate() {

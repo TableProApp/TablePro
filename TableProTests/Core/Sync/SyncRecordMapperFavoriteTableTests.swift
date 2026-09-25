@@ -4,7 +4,6 @@ import Foundation
 import Testing
 import TableProSyncTransport
 
-@Suite("SyncRecordMapper favorite tables")
 struct SyncRecordMapperFavoriteTableTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 

@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection window pane resolver")
 struct ConnectionWindowPaneResolverTests {
     private static let failure = ConnectionFailureInfo(message: "Could not connect to the server.")
 

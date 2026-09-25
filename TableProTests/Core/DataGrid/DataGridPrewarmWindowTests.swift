@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Data grid prewarm window")
 struct DataGridPrewarmWindowTests {
     @Test("The window is bounded by the margin, not by the number of loaded rows")
     func windowDoesNotGrowWithRowCount() {

@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Answers of a repeated batch")
 struct QueryBatchResultTests {
     private func answer(resultSets: Int, rowsAffected: Int = 0, errorAfter: Int? = nil) -> QueryBatchResult {
         QueryBatchResult(

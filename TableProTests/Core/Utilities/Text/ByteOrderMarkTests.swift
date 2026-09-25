@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Byte order mark")
 struct ByteOrderMarkTests {
     @Test("Each mark is recognised at the start of its text")
     func recognisesEachMark() {

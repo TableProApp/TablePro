@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("LibPQStringConformance")
 struct LibPQStringConformanceTests {
     @Test("Every session turns standard_conforming_strings on")
     func sessionSetupForcesStandardConformingStrings() {

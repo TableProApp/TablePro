@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Server output capture")
 struct ServerOutputCaptureTests {
     private struct StatementFailed: Error {}
 

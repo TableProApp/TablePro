@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Field value state")
 struct FieldValueStateTests {
     private func makeField(
         original: String?,

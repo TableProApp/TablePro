@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableRowLogicTests")
 struct TableRowLogicTests {
     // MARK: - Accessibility Label
 

@@ -9,7 +9,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 import Testing
 
-@Suite("Database access bridge statement text")
 struct DatabaseAccessBridgeStatementTests {
     @Test(
         "Invisible characters and trailing semicolons come off an external statement",

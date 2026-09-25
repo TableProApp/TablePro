@@ -13,7 +13,6 @@ import Testing
 /// has its own collapsed sidebar and inspector. Keyed by connection id in a static, the second
 /// window to enter Agent mode overwrote what the first had recorded, and the first then came out of
 /// the mode with the second window's layout.
-@Suite("Browse collapse state ownership")
 @MainActor
 struct BrowseCollapseStateOwnershipTests {
     private static let connectionId = UUID(uuidString: "00000000-0000-0000-0000-0000000000D4")

@@ -76,7 +76,6 @@ private final class MockSSEProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
-@Suite("SSEEventStream")
 struct SSEEventStreamTests {
     private func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral

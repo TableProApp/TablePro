@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SqlWalkthroughAnchor")
 struct SqlWalkthroughAnchorTests {
     @Test("An in-range before anchor is valid")
     func validBefore() {

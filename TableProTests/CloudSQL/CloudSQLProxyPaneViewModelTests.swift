@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Cloud SQL Auth Proxy pane view model")
 struct CloudSQLProxyPaneViewModelTests {
     @Test("disabled reports no issues")
     func disabledNoIssues() {

@@ -22,7 +22,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Menu query scope guard")
 struct MenuQueryScopeGuardTests {
     /// Every title a tab can give a window, and therefore every title AppKit can add to the Window
     /// menu. Taken from `WindowTitleResolver.resolveTitle`'s own switch rather than retyped, so a

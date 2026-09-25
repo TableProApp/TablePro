@@ -26,7 +26,6 @@ private final class RowStore {
     }
 }
 
-@Suite("TableViewCoordinator row identity")
 @MainActor
 struct TableViewCoordinatorRowIdentityTests {
     private func makeManager() -> DataChangeManager {

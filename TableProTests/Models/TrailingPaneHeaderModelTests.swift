@@ -13,7 +13,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Trailing pane header")
 @MainActor
 struct TrailingPaneHeaderModelTests {
     // MARK: - Segments and title
@@ -180,7 +179,6 @@ struct TrailingPaneHeaderModelTests {
 /// The result column's answer to what it can draw. A connection that is down is the reason no
 /// session can run, so it is named as such rather than reported as an empty session list, and a
 /// session that exists is drawn only over a connection that is up.
-@Suite("Trailing pane unavailable reason")
 struct TrailingPaneUnavailableReasonTests {
     @Test("A live connection with no session says no session is open")
     func liveConnectionHasNoSession() {

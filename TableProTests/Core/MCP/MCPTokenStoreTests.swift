@@ -51,7 +51,6 @@ private final class InMemoryCredentialStore: MCPTokenCredentialStoring, @uncheck
     }
 }
 
-@Suite("MCP Token Store")
 struct MCPTokenStoreTests {
     private func makeStore(
         _ credentialStore: InMemoryCredentialStore = InMemoryCredentialStore()

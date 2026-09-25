@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDBSSLMapping")
 struct MongoDBSSLMappingTests {
     @Test("Disabled returns empty parameter list")
     func testDisabled() {

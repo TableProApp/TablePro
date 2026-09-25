@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryClassifier fails closed")
 struct QueryClassifierFailClosedTests {
     @Test("Statements the keyword table does not know are treated as writes")
     func unknownKeywordIsWrite() {
@@ -252,7 +251,6 @@ struct QueryClassifierFailClosedTests {
     }
 }
 
-@Suite("QueryClassifier comment boundaries")
 struct QueryClassifierCommentBoundaryTests {
     @Test(
         "A line comment ends at a carriage return as well as a line feed",
@@ -342,7 +340,6 @@ struct QueryClassifierCommentBoundaryTests {
     }
 }
 
-@Suite("QueryClassifier non-SQL engines")
 struct QueryClassifierNonSqlTests {
     @Test("MongoDB read methods stay safe and writes never look like reads")
     func mongoTiers() {

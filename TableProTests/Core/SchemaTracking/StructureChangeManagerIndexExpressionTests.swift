@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Structure Change Manager expression indexes")
 @MainActor
 struct StructureChangeManagerIndexExpressionTests {
     private static let keys = "USING btree (tenant_id, lower(email)) INCLUDE (name)"

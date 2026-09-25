@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SelectSourceTableParser")
 struct SelectSourceTableParserTests {
     private static let unknownEngineReadings = SQLLexicalReadings.resolve(
         databaseTypeId: "Unknown Whatever",

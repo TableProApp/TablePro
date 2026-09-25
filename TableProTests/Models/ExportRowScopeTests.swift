@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Export row scope")
 struct ExportRowScopeTests {
 
     @Test("An empty scope exports everything")

@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouse Response Classifier")
 struct ClickHouseResponseClassifierTests {
     private let matchingFormatHeaders = ["X-ClickHouse-Format": "TabSeparatedWithNamesAndTypes"]
 

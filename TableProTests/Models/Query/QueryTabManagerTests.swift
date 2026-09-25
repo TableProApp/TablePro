@@ -14,7 +14,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("QueryTabManager.selectedTabAndIndex")
 @MainActor
 struct QueryTabManagerSelectedTabAndIndexTests {
     @Test("returns nil when no tab is selected")

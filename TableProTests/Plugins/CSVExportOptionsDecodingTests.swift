@@ -11,7 +11,6 @@ import Testing
 /// build knew. A synthesized `Decodable` throws `keyNotFound` for the rest and never falls back to
 /// the property's default, and `PluginSettingsStorage.load` answers a throwing decode with nil, so
 /// one added option silently resets every choice the user had already made.
-@Suite("CSV export options decoding")
 struct CSVExportOptionsDecodingTests {
     @Test("A payload that predates the encoding options keeps the choices it does carry")
     func legacyPayloadKeepsItsValues() throws {

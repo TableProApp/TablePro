@@ -5,7 +5,6 @@
 
 import Testing
 
-@Suite("ClickHouse Table Operations")
 struct ClickHouseTableOperationsTests {
     @Test("MergeTree engine classifies as TABLE")
     func mergeTreeIsTable() {

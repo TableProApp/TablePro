@@ -74,7 +74,7 @@ private final class DefaultStructureStubDriver: PluginDatabaseDriver, @unchecked
     }
 }
 
-@MainActor @Suite("Structure server support")
+@MainActor
 struct StructureServerSupportTests {
     private static let additionalFields: Set<StructureColumnField> = [
         .primaryKey, .generated, .generationExpression

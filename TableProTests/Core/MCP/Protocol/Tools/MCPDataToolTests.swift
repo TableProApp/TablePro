@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPFilterArguments")
 struct MCPFilterArgumentsTests {
     private func arguments(_ filters: [JsonValue]) -> JsonValue {
         .object(["filters": .array(filters)])
@@ -134,7 +133,6 @@ struct MCPFilterArgumentsTests {
     }
 }
 
-@Suite("CountRowsTool")
 struct CountRowsToolTests {
     private let tool = CountRowsTool()
 
@@ -196,7 +194,6 @@ struct CountRowsToolTests {
     }
 }
 
-@Suite("InsertRowsTool")
 struct InsertRowsToolTests {
     private let tool = InsertRowsTool()
 
@@ -278,7 +275,6 @@ struct InsertRowsToolTests {
     }
 }
 
-@Suite("QuoteIdentifiersTool")
 struct QuoteIdentifiersToolTests {
     private let tool = QuoteIdentifiersTool()
 

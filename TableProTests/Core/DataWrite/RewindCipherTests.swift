@@ -31,7 +31,6 @@ private final class LockedKeychain: KeychainStoring, @unchecked Sendable {
     func delete(forKey key: String) {}
 }
 
-@Suite("Rewind record protection")
 struct RewindCipherTests {
     private func record() -> RewindRecord {
         RewindRecord(

@@ -26,7 +26,6 @@ private func entry(
 
 private let keyRefusal = "NOPERM No permissions to access a key"
 
-@Suite("Redis cluster channel - how far a command goes")
 struct RedisClusterDispatchTests {
     @Test("CONFIG SET goes to every node")
     func configSetReachesEveryNode() async throws {
@@ -108,7 +107,6 @@ struct RedisClusterDispatchTests {
     }
 }
 
-@Suite("Redis cluster channel - a split write only some shards applied")
 struct RedisClusterPartialWriteTests {
     @Test("A split DEL one shard refused names the keys the other already deleted")
     func refusedPart() async throws {
@@ -182,7 +180,6 @@ struct RedisClusterPartialWriteTests {
     }
 }
 
-@Suite("Redis cluster channel - numbered databases")
 struct RedisClusterDatabaseSelectionTests {
     private static let sixteen = (StubRedisCluster.servedDatabases(16), StubRedisCluster.servedDatabases(16))
 

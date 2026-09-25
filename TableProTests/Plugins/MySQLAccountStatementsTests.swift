@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL account statements")
 struct MySQLAccountStatementsTests {
     private static let user = PluginPrincipalRef(name: "u", host: "%")
 

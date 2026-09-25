@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MongoDB Shell Parser Chained Methods")
 struct MongoShellParserChainedMethodTests {
     @Test("aggregate keeps a chained limit as a pipeline stage")
     func testAggregateChainedLimitBecomesStage() throws {

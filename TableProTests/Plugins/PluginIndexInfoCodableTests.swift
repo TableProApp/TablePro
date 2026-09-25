@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginIndexInfo and PluginIndexDefinition index fields")
 struct PluginIndexInfoCodableTests {
     @Test("A payload written before the new fields existed decodes with none of them")
     func legacyPayloadDecodesToNil() throws {

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("RedisCommandParser - KEYTREE")
 struct RedisKeyTreeCommandTests {
     @Test("KEYTREE with a limit parses to a key tree operation")
     func parsesLimit() throws {
@@ -89,7 +88,6 @@ struct RedisKeyTreeCommandTests {
     }
 }
 
-@Suite("Redis key tree - the commands the app builds parse as the driver reads them")
 struct RedisKeyTreeAppCommandTests {
     @Test("The tree's listing names its database and its limit")
     func listingRoundTrips() throws {

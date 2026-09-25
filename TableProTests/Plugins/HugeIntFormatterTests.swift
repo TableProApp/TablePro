@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("HugeIntFormatter")
 struct HugeIntFormatterTests {
     @Test("Zero")
     func zero() {

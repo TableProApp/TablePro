@@ -5,7 +5,6 @@ import Testing
 /// The filter field belongs to the window, not to the connection under it. It used to be hidden
 /// until a session arrived, so the sidebar was a bare column for the length of every connect and
 /// the field appeared alongside the object list.
-@Suite("Sidebar container chrome")
 @MainActor
 struct SidebarContainerChromeTests {
     @Test("The filter field stands before a connection is up, dimmed")

@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("RecentTablesStore")
 @MainActor
 struct RecentTablesStoreTests {
     private func makeStore() throws -> RecentTablesStore {

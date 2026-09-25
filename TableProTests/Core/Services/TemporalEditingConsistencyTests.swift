@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Temporal Editing Consistency")
 struct TemporalEditingConsistencyTests {
     // MARK: - The editor's fields decide what is written
 

@@ -15,7 +15,6 @@ import Testing
 
 // MARK: - stringValue
 
-@Suite("RedisReply - stringValue")
 struct RedisReplyStringValueTests {
     @Test("string case returns the string")
     func stringCase() {
@@ -63,7 +62,6 @@ struct RedisReplyStringValueTests {
 
 // MARK: - intValue
 
-@Suite("RedisReply - intValue")
 struct RedisReplyIntValueTests {
     @Test("integer case returns the integer")
     func integerCase() {
@@ -110,7 +108,6 @@ struct RedisReplyIntValueTests {
 
 // MARK: - stringArrayValue
 
-@Suite("RedisReply - stringArrayValue")
 struct RedisReplyStringArrayValueTests {
     @Test("array of strings returns string array")
     func arrayOfStrings() {
@@ -157,7 +154,6 @@ struct RedisReplyStringArrayValueTests {
 
 // MARK: - arrayValue
 
-@Suite("RedisReply - arrayValue")
 struct RedisReplyArrayValueTests {
     @Test("array returns the inner array")
     func arrayCase() {

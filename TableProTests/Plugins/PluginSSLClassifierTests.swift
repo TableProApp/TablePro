@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQ SSL Classifier")
 struct LibPQClassifierTests {
     @Test("Classifies the AWS RDS rejection in #1298 as serverRejectedPlaintext")
     func testRDSPattern() {
@@ -56,7 +55,6 @@ struct LibPQClassifierTests {
     }
 }
 
-@Suite("MariaDB SSL Classifier")
 struct MariaDBClassifierTests {
     @Test("CR_SSL_CONNECTION_ERROR with cipher message → cipherMismatch")
     func testSSLConnectionError() {
@@ -94,7 +92,6 @@ struct MariaDBClassifierTests {
     }
 }
 
-@Suite("MongoDB SSL Classifier")
 struct MongoDBClassifierTests {
     @Test("Atlas internal-error handshake failure → unknown, not cipherMismatch")
     func testAtlasInternalErrorHandshake() {
@@ -139,7 +136,6 @@ struct MongoDBClassifierTests {
     }
 }
 
-@Suite("Redis SSL Classifier")
 struct RedisClassifierTests {
     @Test("No shared cipher → cipherMismatch")
     func testNoSharedCipher() {
@@ -158,7 +154,6 @@ struct RedisClassifierTests {
     }
 }
 
-@Suite("Oracle SSL Classifier")
 struct OracleClassifierTests {
     @Test("ORA-29024 → cipherMismatch")
     func testORA29024() {
@@ -182,7 +177,6 @@ struct OracleClassifierTests {
     }
 }
 
-@Suite("ClickHouse SSL Classifier")
 struct ClickHouseClassifierTests {
     @Test("URLError.secureConnectionFailed → cipherMismatch")
     func testSecureConnectionFailed() {
@@ -209,7 +203,6 @@ struct ClickHouseClassifierTests {
     }
 }
 
-@Suite("Cassandra Client Key Classifier")
 struct CassandraClassifierTests {
     private let encryptedPkcs8 = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIF...\n-----END ENCRYPTED PRIVATE KEY-----"
     private let encryptedPkcs1 = """

@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SupportLinks")
 struct SupportLinksTests {
     private static let everyReferrer: [SupportReferrer] =
         [.supportWindow, .aboutPanel, .licenseSettings, .activationSheet]

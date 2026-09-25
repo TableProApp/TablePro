@@ -8,7 +8,6 @@ import TableProMSSQLCore
 import TableProPluginKit
 import Testing
 
-@Suite("MSSQL FreeTDS config")
 struct MSSQLFreeTDSConfigTests {
     private func entry(
         host: String = "db.example.com",

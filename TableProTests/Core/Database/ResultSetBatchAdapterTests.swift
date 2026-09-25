@@ -77,7 +77,6 @@ private final class BatchAnsweringDriver: PluginDatabaseDriver, @unchecked Senda
     }
 }
 
-@Suite("A batch sent whole reaches the app with every result set")
 struct ResultSetBatchAdapterTests {
     private func makeAdapter(declaresBatches: Bool) -> (PluginDriverAdapter, BatchAnsweringDriver) {
         let driver = BatchAnsweringDriver(declaresBatches: declaresBatches)

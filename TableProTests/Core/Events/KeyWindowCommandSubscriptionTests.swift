@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Key window command subscription")
 @MainActor
 struct KeyWindowCommandSubscriptionTests {
     private final class Received {

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Copilot schema preamble")
 @MainActor
 struct CopilotPreambleBuilderTests {
     /// The preamble fetched every table's columns with no schema and keyed them by the bare name,

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("PostgreSQLServerVersion")
 struct PostgreSQLServerVersionTests {
     @Test(
         "Parses the strings drivers and tools report into server_version_num form",
@@ -57,7 +56,6 @@ struct PostgreSQLServerVersionTests {
     }
 }
 
-@Suite("PostgreSQLDumpToolCompatibility")
 struct PostgreSQLDumpToolCompatibilityTests {
     private func version(_ text: String) throws -> PostgreSQLServerVersion {
         try #require(PostgreSQLServerVersion(text))

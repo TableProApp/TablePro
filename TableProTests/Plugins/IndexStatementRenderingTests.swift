@@ -10,7 +10,6 @@ import Testing
 /// The four engines whose `CREATE INDEX` has to be built from catalog rows rather than read back
 /// from the engine. The catalog queries themselves need a live server, so what is pinned here is
 /// the rendering: given the rows those queries return, this is the SQL that goes in the dump.
-@Suite("Index statement rendering")
 struct IndexStatementRenderingTests {
     @Suite("SQL Server")
     struct SQLServer {

@@ -12,7 +12,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Tab display - Output mode")
 struct TabDisplayOutputModeTests {
     private static func result(printing lines: [String]) -> ResultSet {
         let result = ResultSet(label: "Result")

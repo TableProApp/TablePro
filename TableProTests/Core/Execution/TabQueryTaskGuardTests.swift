@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("Per-tab cancellation guard")
 struct TabQueryTaskGuardTests {
     /// The window's single handle is gone. A reintroduced one is the bug: every start path cancels
     /// whatever it holds, so tab B's Run kills tab A's batch and rolls it back.

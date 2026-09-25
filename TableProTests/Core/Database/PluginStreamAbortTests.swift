@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Row stream abort reaches a producer that polls it")
 struct PluginStreamAbortTests {
     @Test("Terminating the stream sets the flag, and a serial-queue producer stops early")
     func serialQueueProducerStopsEarly() async throws {

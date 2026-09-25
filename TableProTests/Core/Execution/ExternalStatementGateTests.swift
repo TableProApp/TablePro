@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("External statement gate")
 struct ExternalStatementGateTests {
     private func statement(
         _ sql: String,

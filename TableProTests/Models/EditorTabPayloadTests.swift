@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("EditorTabPayload")
 struct EditorTabPayloadTests {
 
     @Test("Each init creates unique ID")

@@ -88,7 +88,6 @@ private final class LineWritingFormat: ExportFormatPlugin, @unchecked Sendable {
     }
 }
 
-@Suite("Export service data source entry")
 @MainActor
 struct ExportServiceDataSourceTests {
     private func temporaryURL() -> URL {

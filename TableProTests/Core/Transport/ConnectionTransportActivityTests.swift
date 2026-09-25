@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ConnectionTransportActivity")
 struct ConnectionTransportActivityTests {
     private let totals = TransportByteTotals(received: 4_096, sent: 1_024)
 

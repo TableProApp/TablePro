@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Batch statement run")
 @MainActor
 struct BatchStatementRunTests {
     private static let statements = ["INSERT INTO t VALUES (1)", "VACUUM", "SELECT 1"]

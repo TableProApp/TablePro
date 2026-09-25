@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DynamoDB client")
 struct DynamoDBClientTests {
     private static let exampleDate = Date(timeIntervalSince1970: 1_440_938_160)
 

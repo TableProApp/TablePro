@@ -10,7 +10,6 @@ import TableProSyncTransport
 @testable import TablePro
 
 @MainActor
-@Suite("FavoriteDatabasesStorage")
 struct FavoriteDatabasesStorageTests {
     private static let storageKey = "com.TablePro.favoriteDatabases"
 

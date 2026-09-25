@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgreSQL type definitions")
 struct PostgreSQLTypeDefinitionTests {
     private func record(
         name: String = "mood",

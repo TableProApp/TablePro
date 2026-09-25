@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Structure grid delegates as inspector row sources")
+@MainActor
 struct StructureGridDelegateInspectorTests {
     private func connection() -> DatabaseConnection {
         DatabaseConnection(

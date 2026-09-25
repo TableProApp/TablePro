@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("WelcomeListState")
 struct WelcomeListStateTests {
     private func input(
         hasAnyConnection: Bool = true,

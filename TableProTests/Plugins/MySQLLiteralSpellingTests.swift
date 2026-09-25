@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("MySQL literal spelling")
 struct MySQLLiteralSpellingTests {
     private let session = MySQLLiteralSpelling.quoteDoubling
 

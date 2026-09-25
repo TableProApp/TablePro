@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("RedshiftExternalSchemaQueries")
 struct RedshiftExternalSchemaQueriesTests {
     private var allQueries: [String] {
         [
@@ -117,7 +116,6 @@ struct RedshiftExternalSchemaQueriesTests {
     }
 }
 
-@Suite("RedshiftExternalSchemaQueries.classifyTableType")
 struct RedshiftExternalTableTypeTests {
     @Test("a table stays an external table")
     func tableIsExternalTable() {
@@ -154,7 +152,6 @@ struct RedshiftExternalTableTypeTests {
     }
 }
 
-@Suite("RedshiftExternalSchemaQueries column classifiers")
 struct RedshiftExternalColumnClassifierTests {
     @Test("only an explicit false marks a column required")
     func nullabilityDefaultsToPermissive() {

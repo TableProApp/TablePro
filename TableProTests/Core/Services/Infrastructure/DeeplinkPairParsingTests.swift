@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Pairing deep link parsing")
 @MainActor
 struct DeeplinkPairParsingTests {
     private let firstId = UUID()

@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Agent identity preference")
 struct AgentIdentityPreferenceTests {
     private static let ed25519 = "ssh-ed25519"
     private static let certificate = "ssh-ed25519-cert-v01@openssh.com"

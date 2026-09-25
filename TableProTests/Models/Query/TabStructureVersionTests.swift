@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("QueryTabManager.tabStructureVersion")
 @MainActor
 struct TabStructureVersionTests {
 

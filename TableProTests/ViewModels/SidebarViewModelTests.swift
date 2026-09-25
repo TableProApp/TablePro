@@ -83,7 +83,6 @@ private func makeRef(_ name: String, database: String? = nil, schema: String? = 
 
 // MARK: - Tests
 
-@Suite("SidebarViewModel")
 struct SidebarViewModelTests {
 
     // MARK: - Batch Toggle Truncate
@@ -295,7 +294,6 @@ private func makeViewModel(
     )
 }
 
-@Suite("SidebarViewModel multi-section")
 struct SidebarViewModelMultiSectionTests {
     @Test("tables of kind splits by TableType raw value")
     @MainActor
@@ -523,7 +521,6 @@ struct SidebarViewModelMultiSectionTests {
     }
 }
 
-@Suite("SidebarViewModel search debounce")
 struct SidebarViewModelSearchDebounceTests {
     @Test("filterQuery updates immediately on first non-empty input")
     @MainActor

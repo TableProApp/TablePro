@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Editable Column Definition")
 struct ColumnDefinitionTests {
     // MARK: - placeholder Tests
 

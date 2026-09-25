@@ -10,7 +10,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("SQLEditorCoordinator menu escape")
 struct SQLEditorCoordinatorEscapeMenuTests {
     @Test("handleEscapeFromMenu returns false when no editor is focused")
     func returnsFalseWhenNothingToHandle() {

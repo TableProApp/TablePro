@@ -15,7 +15,6 @@ private struct LegacyPersistedTabWidths: Decodable {
     let columnWidths: [String: CGFloat]?
 }
 
-@Suite("PersistedTab round-trip")
 @MainActor
 struct PersistedTabRoundTripTests {
     private func tableTab(query: String = "SELECT 1") -> QueryTab {

@@ -16,7 +16,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginKit ABI resilience")
 struct PluginKitABIResilienceTests {
     private func makeMinimalDriver() -> any PluginDatabaseDriver {
         FakeMSSQLPluginDriver()

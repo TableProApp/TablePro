@@ -42,7 +42,6 @@ private actor ExportPause {
     }
 }
 
-@Suite("SQL export for an engine that runs scripts in batches")
 struct SQLExportBatchSeparatorTests {
     private final class ServerDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String

@@ -11,7 +11,6 @@ import Testing
 /// From macOS 27 AppKit hides menu item symbol images by default. Where the image is the only thing
 /// telling two rows apart, a connection colour, a folder colour, an engine glyph, a Safe Mode level,
 /// a drift warning, the row loses its meaning rather than its decoration.
-@Suite("Menu item image visibility")
 struct MenuItemImageVisibilityTests {
     @Test("An informative image is set and, on macOS 27, marked visible")
     func informativeImageIsMarkedVisible() {

@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SQLFavorite versions")
 struct SQLFavoriteVersionTests {
     private let storage: SQLFavoriteStorage
     private let defaults: UserDefaults

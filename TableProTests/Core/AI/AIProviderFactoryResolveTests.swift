@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AIProviderFactory.resolve")
 @MainActor
 struct AIProviderFactoryResolveTests {
     /// Each test uses a unique provider id so the factory cache (keyed by id)

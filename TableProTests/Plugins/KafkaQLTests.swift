@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("KafkaQL")
 struct KafkaQLTests {
     private func consume(_ input: String) throws -> KafkaConsumeQuery {
         guard case .consume(let query) = try KafkaQL.parse(input) else {

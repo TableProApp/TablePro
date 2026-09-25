@@ -12,7 +12,6 @@ import Testing
 /// materialized view. So a matview reached the Structure tab as a table and was offered column, index
 /// and constraint edits PostgreSQL always refuses. The kind now travels beside the Bool, and a tab an
 /// older build saved with the Bool false still carries the kind that refuses its rows. (#2726)
-@Suite("Tab Object Kind")
 @MainActor
 struct TabObjectKindTests {
     private func tableTab() -> QueryTab {

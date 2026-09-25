@@ -13,7 +13,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Plugin metadata switch-routing normalization")
 struct PluginMetadataSwitchRoutingTests {
     private var oracleDefault: PluginMetadataSnapshot? {
         PluginMetadataRegistry.shared.snapshot(for: .oracle)

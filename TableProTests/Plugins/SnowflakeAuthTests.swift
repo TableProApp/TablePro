@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("Snowflake Account Parsing")
 struct SnowflakeAccountTests {
     @Test("Plain locator gets the Snowflake domain appended")
     func testHostFromLocator() {
@@ -51,7 +50,6 @@ struct SnowflakeAccountTests {
     }
 }
 
-@Suite("Snowflake Connections TOML")
 struct SnowflakeConnectionsTOMLTests {
     @Test("Parses sections with key-value pairs")
     func testBasicSection() {
@@ -99,7 +97,6 @@ struct SnowflakeConnectionsTOMLTests {
     }
 }
 
-@Suite("Snowflake SPKI Wrapping")
 struct SnowflakeSPKIWrappingTests {
     private static let rsaAlgorithmID: [UInt8] = [
         0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86,

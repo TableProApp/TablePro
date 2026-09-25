@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyPickerEntry")
 struct ForeignKeyPickerEntryTests {
     private let integerKey = ColumnType.integer(rawType: "INTEGER")
     private let textKey = ColumnType.text(rawType: "VARCHAR(8)")

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Source file disk change")
 struct SourceFileDiskChangeTests {
     private let baseline = FileStamp(modificationSeconds: 1_000_000, modificationNanoseconds: 0, size: 8, fileNumber: 42)
 

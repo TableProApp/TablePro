@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("NativeDumpService command construction")
 struct NativeDumpServiceCommandTests {
     private var postgresTool: NativeDumpDescriptor.CommandLineTool {
         guard let tool = NativeDumpRegistry.descriptor(for: .postgresql)?.commandLineTool else {

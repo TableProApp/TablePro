@@ -53,7 +53,6 @@ private final class MockPrincipalDriver: PluginPrincipalManagement, @unchecked S
     }
 }
 
-@Suite("Principal statement generation")
 struct PrincipalStatementGeneratorTests {
     private let alice = PluginPrincipalRef(name: "alice")
 

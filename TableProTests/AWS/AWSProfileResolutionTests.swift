@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS profile credential source")
 struct AWSProfileResolutionTests {
     @Test("A profile resolves by what it declares, in the AWS SDK's order")
     func credentialSourceOrder() {

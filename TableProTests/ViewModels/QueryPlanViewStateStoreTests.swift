@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query plan view state store")
 @MainActor
 struct QueryPlanViewStateStoreTests {
     @Test("The same plan in the same tab gets back the state it was left with")

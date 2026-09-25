@@ -18,7 +18,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB schema queries")
 struct DuckDBSchemaQueriesTests {
     private static let catalogScopedQueries: [(name: String, sql: String)] = [
         ("listSchemas", DuckDBSchemaQueries.listSchemas),

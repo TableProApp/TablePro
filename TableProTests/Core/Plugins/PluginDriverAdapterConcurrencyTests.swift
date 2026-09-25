@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginDriverAdapter shares one instance per connection across tabs and windows")
 struct PluginDriverAdapterConcurrencyTests {
     private static let columnTypeNames = [
         "VARCHAR(255)", "INT", "BIGINT", "DECIMAL(10,2)", "DATE", "TIMESTAMP",

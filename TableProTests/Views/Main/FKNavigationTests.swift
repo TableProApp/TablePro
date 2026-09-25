@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FKNavigation")
 struct FKNavigationTests {
     @Test("makeFKReferencePayload targets the referenced table and carries the FK filter")
     @MainActor

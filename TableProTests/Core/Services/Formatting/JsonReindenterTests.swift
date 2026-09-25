@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JsonReindenter")
 struct JsonReindenterTests {
     @Test("Reindent preserves original key order")
     func reindentPreservesKeyOrder() throws {

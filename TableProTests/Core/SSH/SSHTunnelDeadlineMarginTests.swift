@@ -13,7 +13,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SSH tunnel deadline margin")
 struct SSHTunnelDeadlineMarginTests {
     /// Every bundled driver hardcodes a 10 second connect timeout.
     private static let driverConnectTimeoutSeconds: TimeInterval = 10

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryClassifier with invisible characters")
 struct QueryClassifierInvisibleCharacterTests {
     @Test(
         "A read behind a leading invisible character is still a read",

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SQLFavoriteEditDraft")
 struct SQLFavoriteEditDraftTests {
     private static let seedScript = (1...10_000)
         .map { "INSERT INTO users (id, email) VALUES (\($0), 'user\($0)@example.com');" }

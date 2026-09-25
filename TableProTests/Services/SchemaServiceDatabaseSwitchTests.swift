@@ -101,7 +101,6 @@ private final class DatabaseCatalogDriver: DatabaseDriver, @unchecked Sendable {
 
 /// Snowflake and Trino change database on a live connection, and a schema name such as `PUBLIC`
 /// exists in every database they reach.
-@Suite("SchemaService database switch")
 @MainActor
 struct SchemaServiceDatabaseSwitchTests {
     private let connectionId = UUID()

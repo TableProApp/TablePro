@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryContextRenderer")
 struct QueryContextRendererTests {
     private let orders = QueryContextTable(
         name: "orders",
@@ -135,7 +134,6 @@ struct QueryContextRendererTests {
     }
 }
 
-@Suite("MarkdownFence")
 struct MarkdownFenceTests {
     @Test("Plain text gets a three-backtick fence")
     func plainFence() {

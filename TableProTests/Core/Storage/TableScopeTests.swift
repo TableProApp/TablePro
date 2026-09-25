@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TableScope")
 struct TableScopeTests {
     @Test("storageComponent distinguishes schemas")
     func schemaDistinguishesKey() {

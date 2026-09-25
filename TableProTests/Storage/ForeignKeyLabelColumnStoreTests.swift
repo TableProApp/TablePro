@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyLabelColumnStore")
 @MainActor
 struct ForeignKeyLabelColumnStoreTests {
     private func makeStore() throws -> ForeignKeyLabelColumnStore {

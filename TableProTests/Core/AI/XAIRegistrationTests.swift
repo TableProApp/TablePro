@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("xAI provider registration")
 struct XAIRegistrationTests {
     init() {
         AIProviderRegistration.registerAll()

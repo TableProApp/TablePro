@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableViewCoordinator display cache invalidation")
 @MainActor
 struct TableViewCoordinatorDisplayCacheTests {
     private func makeCoordinator(

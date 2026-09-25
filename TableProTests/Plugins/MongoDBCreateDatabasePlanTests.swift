@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDBCreateDatabasePlan")
 struct MongoDBCreateDatabasePlanTests {
     @Test("The typed collection name is used")
     func testUsesTypedName() {

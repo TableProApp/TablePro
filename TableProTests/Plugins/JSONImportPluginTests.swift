@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("JSON Import Plugin")
 struct JSONImportPluginTests {
     private func object(_ json: String) throws -> [String: Any] {
         let parsed = try JSONSerialization.jsonObject(with: Data(json.utf8))

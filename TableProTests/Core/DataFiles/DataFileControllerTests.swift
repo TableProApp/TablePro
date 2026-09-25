@@ -11,7 +11,6 @@ import TableProTabularIO
 import Testing
 
 @MainActor
-@Suite("Data file controller")
 struct DataFileControllerTests {
     private let undoManager = UndoManager()
 

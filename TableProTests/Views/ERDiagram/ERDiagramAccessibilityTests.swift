@@ -11,7 +11,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram accessibility")
 @MainActor
 struct ERDiagramAccessibilityTests {
     private func column(_ name: String, primaryKey: Bool = false, foreignKey: Bool = false) -> ERColumnDisplay {

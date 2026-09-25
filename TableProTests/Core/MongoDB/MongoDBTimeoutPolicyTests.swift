@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("MongoDB Timeout Policy")
 struct MongoDBTimeoutPolicyTests {
     @Suite("resolveMaxTimeMS")
     struct ResolveMaxTimeMSTests {

@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ClickHouse part statements")
 struct ClickHousePartStatementsTests {
     private let quote: (String) -> String = { "`\($0.replacingOccurrences(of: "`", with: "``"))`" }
     private let escape: (String) -> String = { $0.replacingOccurrences(of: "'", with: "\\'") }

@@ -15,7 +15,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MCP Auth Policy")
 struct MCPAuthPolicyTests {
     private let connectionA = UUID()
     private let connectionB = UUID()

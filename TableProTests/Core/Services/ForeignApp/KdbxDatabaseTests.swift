@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("KdbxDatabase")
 struct KdbxDatabaseTests {
     @Test("reads entry and decrypts ChaCha20-protected password")
     func roundTrip() throws {

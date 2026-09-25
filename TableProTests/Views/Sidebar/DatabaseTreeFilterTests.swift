@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseTreeFilter")
 struct DatabaseTreeFilterTests {
     private func table(_ name: String) -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: 0)

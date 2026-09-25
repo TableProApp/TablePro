@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Revealed text")
 struct RevealedTextTests {
     @Test("A message with nothing invisible is left as it is")
     func ordinaryMessage() {

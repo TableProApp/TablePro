@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Schema menu model")
 struct SchemaMenuModelTests {
     @Test("System schemas are separated from the ones a user works in")
     func splitsSystemSchemas() {

@@ -17,7 +17,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Execution claim settle guard")
 struct TabExecutionSettleGuardTests {
     @Test("Every settle call consumes the ownership answer it returns")
     func noSettleCallDiscardsItsAnswer() throws {

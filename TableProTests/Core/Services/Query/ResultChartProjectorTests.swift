@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ResultChartProjector")
 struct ResultChartProjectorTests {
     @Test("Projects one point per valid row without aggregating duplicate categories")
     func projectsRowsWithoutAggregation() async throws {

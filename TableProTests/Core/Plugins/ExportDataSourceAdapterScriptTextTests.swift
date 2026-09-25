@@ -27,7 +27,6 @@ private final class ScriptTextStubDriver: PluginDatabaseDriver, @unchecked Senda
     }
 }
 
-@Suite("Export data source script text")
 struct ExportDataSourceAdapterScriptTextTests {
     private func adapter(for type: DatabaseType) -> ExportDataSourceAdapter {
         let driver = PluginDriverAdapter(

@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AgentResultDecoder")
 struct AgentResultDecoderTests {
     private func payload(_ json: String) -> AgentResultPayload {
         AgentResultDecoder.payload(fromResultJSON: json)

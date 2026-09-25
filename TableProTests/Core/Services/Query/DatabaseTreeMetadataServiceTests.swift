@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseTreeMetadataService")
 @MainActor
 struct DatabaseTreeMetadataServiceTests {
     private typealias ObjectsKey = DatabaseTreeMetadataService.ObjectsKey
@@ -95,7 +94,6 @@ struct DatabaseTreeMetadataServiceTests {
 /// Uses PGlite because it is the one engine that cannot open a pooled connection, so a
 /// metadata read stays on the injected session driver instead of trying to dial a real
 /// server. Every other engine now reaches the tree through the pool.
-@Suite("DatabaseTreeMetadataService refreshLoadedTables")
 @MainActor
 struct DatabaseTreeMetadataServiceRefreshTests {
     @Test("reload drops previously loaded tables and refetches the current list")
@@ -176,7 +174,6 @@ struct DatabaseTreeMetadataServiceRefreshTests {
 
 /// A refresh must never empty the list it is refreshing: the tree renders `.loading`
 /// with no content as a spinner, so clearing first blanks the sidebar mid-refresh.
-@Suite("DatabaseTreeMetadataService refreshDatabases")
 @MainActor
 struct DatabaseTreeMetadataServiceRefreshDatabasesTests {
     @Test("A refresh commits the new list over the old one")
@@ -230,7 +227,6 @@ struct DatabaseTreeMetadataServiceRefreshDatabasesTests {
 /// The sidebar's own Refresh, reached from the database and schema contextual menus. It has to
 /// obey the same rule `refreshDatabases` does: the tree renders a container with no loaded
 /// content as a single spinner row, so clearing first empties the subtree mid-refresh.
-@Suite("DatabaseTreeMetadataService refreshObjects")
 @MainActor
 struct DatabaseTreeMetadataServiceRefreshObjectsTests {
     private func connectedDriver() -> (DatabaseConnection, MockDatabaseDriver) {

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("RoutineInfo Identity")
 struct RoutineInfoTests {
     @Test("Overloaded functions with different argument signatures get distinct ids")
     func overloadsAreDistinct() {
@@ -90,7 +89,6 @@ struct RoutineInfoTests {
     }
 }
 
-@Suite("TriggerInfo Identity")
 struct TriggerInfoTests {
     /// A trigger name is unique per table on PostgreSQL and Oracle, so a database-wide list keyed
     /// on the name alone loses one of any two tables that agree on it.
@@ -140,7 +138,6 @@ struct TriggerInfoTests {
     }
 }
 
-@Suite("RoutineDisplayLabel")
 struct RoutineDisplayLabelTests {
     @Test("A unique name shows without its signature")
     func uniqueNameIsBare() {

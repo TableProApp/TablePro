@@ -264,7 +264,6 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
 // MARK: - Tests
 
-@Suite("SQLSchemaProvider")
 @MainActor
 struct SQLSchemaProviderTests {
     @Test("loadSchema fetches tables without bulk column loading")

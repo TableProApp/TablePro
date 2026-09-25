@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Staged write scope")
 struct StagedWriteScopeTests {
     private let connectionId = UUID()
 

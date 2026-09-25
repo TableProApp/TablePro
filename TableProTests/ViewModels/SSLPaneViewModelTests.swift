@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SSLPaneViewModel")
 @MainActor
 struct SSLPaneViewModelTests {
     @Test("resetForType applies engine's native default for PostgreSQL")

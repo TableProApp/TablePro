@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("MongoScriptJson")
 struct MongoScriptJsonTests {
     @Test("Members come back in the order the document carries them, as text")
     func membersKeepOrder() {
@@ -60,7 +59,6 @@ struct MongoScriptJsonTests {
     }
 }
 
-@Suite("MongoScriptCursorOptions")
 struct MongoScriptCursorOptionsTests {
     @Test("A sort written in shell syntax reaches the find options instead of being dropped")
     func sortSurvives() throws {
@@ -165,7 +163,6 @@ struct MongoScriptCursorOptionsTests {
     }
 }
 
-@Suite("MongoScriptCommandBuilder")
 struct MongoScriptCommandBuilderTests {
     @Test("updateMany becomes an update command with multi set")
     func updateMany() {
@@ -287,7 +284,6 @@ struct MongoScriptCommandBuilderTests {
     }
 }
 
-@Suite("MongoScriptObjectId")
 struct MongoScriptObjectIdTests {
     @Test("A generated id is 24 lowercase hex characters")
     func shape() {
@@ -316,7 +312,6 @@ struct MongoScriptObjectIdTests {
     }
 }
 
-@Suite("MongoShellCommandLine")
 struct MongoShellCommandLineTests {
     @Test("use becomes a call")
     func useBecomesCall() {

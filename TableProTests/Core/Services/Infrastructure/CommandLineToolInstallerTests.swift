@@ -30,7 +30,6 @@ private final class CancellingShell: PrivilegedShellRunning {
 }
 
 @MainActor
-@Suite("CommandLineToolInstaller")
 struct CommandLineToolInstallerTests {
     private func makeDirectory(named name: String = UUID().uuidString) throws -> String {
         let path = NSTemporaryDirectory().appending("CommandLineToolInstallerTests.\(name)")

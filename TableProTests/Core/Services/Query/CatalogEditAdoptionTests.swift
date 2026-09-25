@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("LoadedBrowseCatalog")
 struct LoadedBrowseCatalogTests {
     private func ref(_ name: String, database: String? = nil, schema: String? = nil) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(database: database, schema: schema, table: TestFixtures.makeTableInfo(name: name))
@@ -55,7 +54,6 @@ struct LoadedBrowseCatalogTests {
     }
 }
 
-@Suite("Restoring staged table operations")
 struct RestoreStagedTableOperationsTests {
     private func ref(_ name: String) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(database: "shop", schema: nil, table: TestFixtures.makeTableInfo(name: name))

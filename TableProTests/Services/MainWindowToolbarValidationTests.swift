@@ -611,7 +611,6 @@ struct MainWindowToolbarRepointTests {
     }
 }
 
-@Suite("MainWindowToolbar back and forward validation")
 @MainActor
 struct MainWindowToolbarNavigationValidationTests {
     private func context(
@@ -670,7 +669,6 @@ struct MainWindowToolbarNavigationValidationTests {
     }
 }
 
-@Suite("MainWindowToolbar Add Row validation")
 @MainActor
 struct MainWindowToolbarAddRowValidationTests {
     private func context(

@@ -4,7 +4,6 @@ import TableProImport
 import TableProPluginKit
 import Testing
 
-@Suite("RDS connection building")
 struct RDSConnectionBuilderTests {
     private static let iamAuthentication = AWSDiscoveryAuthentication(
         mode: .iam,

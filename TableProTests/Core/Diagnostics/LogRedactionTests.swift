@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Log redaction")
 struct LogRedactionTests {
     private static let serverText =
         "ERROR: duplicate key value violates unique constraint \"users_email_key\" Key (email)=(a@b.com) already exists."

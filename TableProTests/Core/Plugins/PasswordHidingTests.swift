@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Password hiding from connection fields")
 struct PasswordHidingTests {
     private func dropdown(default defaultValue: String, _ values: [String]) -> ConnectionField {
         ConnectionField(
@@ -117,7 +116,6 @@ struct PasswordHidingTests {
     }
 }
 
-@Suite("Username hiding from connection fields")
 struct UsernameHidingTests {
     private func mssqlAuthFields() -> [ConnectionField] {
         [
@@ -172,7 +170,6 @@ struct UsernameHidingTests {
     }
 }
 
-@Suite("Password hiding resolved from plugin metadata")
 @MainActor
 struct PluginManagerPasswordHidingTests {
     private func connection(type: DatabaseType, fields: [String: String]) -> DatabaseConnection {

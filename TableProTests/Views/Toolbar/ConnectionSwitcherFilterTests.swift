@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection Switcher Filter")
 struct ConnectionSwitcherFilterTests {
     @Test("Empty or whitespace query matches every connection")
     func emptyQueryMatches() {
@@ -49,7 +48,6 @@ struct ConnectionSwitcherFilterTests {
     }
 }
 
-@Suite("Connection Switcher Selection")
 struct ConnectionSwitcherSelectionTests {
     @Test("Empty list yields no selection")
     func emptyList() {
@@ -82,7 +80,6 @@ struct ConnectionSwitcherSelectionTests {
     }
 }
 
-@Suite("Connection Switcher Sections")
 struct ConnectionSwitcherSectionsTests {
     private func connection(_ name: String, groupId: UUID? = nil, sortOrder: Int = 0) -> DatabaseConnection {
         DatabaseConnection(name: name, groupId: groupId, sortOrder: sortOrder)

@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection workspace containers")
 @MainActor
 struct ConnectionWorkspaceContainersTests {
     private func makeWorkspace() -> ConnectionWorkspace {

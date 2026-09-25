@@ -4,7 +4,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Row Operations Manager")
 struct RowOperationsManagerTests {
     private static let testColumns = ["id", "name", "email"]
     private static let testColumnTypes: [ColumnType] = Array(

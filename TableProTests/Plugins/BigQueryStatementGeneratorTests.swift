@@ -24,7 +24,6 @@ private func generate(
     )
 }
 
-@Suite("BigQueryStatementGenerator - INSERT")
 struct BigQueryStatementGeneratorInsertTests {
     @Test("Every value is a placeholder bound in column order")
     func insertBindsEveryValue() throws {
@@ -99,7 +98,6 @@ struct BigQueryStatementGeneratorInsertTests {
     }
 }
 
-@Suite("BigQueryStatementGenerator - UPDATE")
 struct BigQueryStatementGeneratorUpdateTests {
     @Test("SET values come before WHERE values in the parameter list")
     func basicUpdate() throws {
@@ -189,7 +187,6 @@ struct BigQueryStatementGeneratorUpdateTests {
     }
 }
 
-@Suite("BigQueryStatementGenerator - DELETE")
 struct BigQueryStatementGeneratorDeleteTests {
     @Test("Generates DELETE keyed on the original row")
     func basicDelete() throws {
@@ -218,7 +215,6 @@ struct BigQueryStatementGeneratorDeleteTests {
     }
 }
 
-@Suite("BigQueryStatementGenerator - Identifiers")
 struct BigQueryStatementGeneratorIdentifierTests {
     @Test("Backticks and backslashes in names are escaped")
     func escapesIdentifiers() throws {
@@ -234,7 +230,6 @@ struct BigQueryStatementGeneratorIdentifierTests {
     }
 }
 
-@Suite("BigQueryStatementGenerator - Row Key")
 struct BigQueryStatementGeneratorRowKeyTests {
     private func keyed(
         columns: [String],

@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("KeychainHelper")
 struct KeychainHelperTests {
     private let helper = KeychainHelper.shared
 

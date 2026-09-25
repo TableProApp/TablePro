@@ -17,7 +17,6 @@ private final class PolicyBox {
     }
 }
 
-@Suite("AI connection access gate")
 @MainActor
 internal struct AIConnectionAccessGateTests {
     private func makeGate(_ box: PolicyBox, approvals: AIAccessApprovals) -> AIConnectionAccessGate {
@@ -90,7 +89,6 @@ internal struct AIConnectionAccessGateTests {
     }
 }
 
-@Suite("AI connection access gate reading the saved connection")
 @MainActor
 internal struct AIConnectionAccessGateSavedPolicyTests {
     private let storage: ConnectionStorage
@@ -195,7 +193,6 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
     }
 }
 
-@Suite("AI access approvals across the chat and the session")
 @MainActor
 internal struct AIAccessApprovalsSessionTests {
     @Test("Ending a connection's session revokes its approval and leaves the others")

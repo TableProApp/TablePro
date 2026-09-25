@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("DynamoDB attribute paths")
 struct DynamoDBAttributePathTests {
     struct ParseCase: Sendable, CustomTestStringConvertible {
         let text: String
@@ -94,7 +93,6 @@ struct DynamoDBAttributePathTests {
     }
 }
 
-@Suite("DynamoDB expression placeholders")
 struct DynamoDBExpressionContextTests {
     static func isValidPlaceholder(_ placeholder: String, prefix: Character) -> Bool {
         guard placeholder.first == prefix else { return false }

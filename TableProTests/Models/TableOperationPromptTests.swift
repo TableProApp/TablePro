@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableOperationPrompt")
 struct TableOperationPromptTests {
     private func prompt(
         _ operationType: TableOperationType,

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Remote favorite keyword resolver")
 struct RemoteFavoriteKeywordResolverTests {
     private let connectionId = UUID()
     private let older = Date(timeIntervalSince1970: 1_000)

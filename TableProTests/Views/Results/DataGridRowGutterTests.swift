@@ -107,7 +107,6 @@ private struct GutterGrid {
     }
 }
 
-@Suite("Pinned row gutter")
 @MainActor
 struct DataGridRowGutterTests {
     @Test("the gutter holds the leading edge at every horizontal scroll offset")
@@ -268,7 +267,6 @@ struct DataGridRowGutterTests {
     }
 }
 
-@Suite("Scrolling a column clear of the pinned gutter")
 @MainActor
 struct GutterAwareColumnScrollTests {
     @Test("a column reached from off screen lands clear of the gutter")
@@ -321,7 +319,6 @@ struct GutterAwareColumnScrollTests {
     }
 }
 
-@Suite("Select rows intersecting the selection")
 @MainActor
 struct SelectIntersectingRowsTests {
     @Test("a cell rectangle widens to every column of every row it covers")

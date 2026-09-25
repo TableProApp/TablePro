@@ -81,7 +81,6 @@ private final class HierarchicalMockDriver: DatabaseDriver, @unchecked Sendable 
     func rollbackTransaction() async throws {}
 }
 
-@Suite("SchemaService hierarchical schema")
 @MainActor
 struct SchemaServiceHierarchicalTests {
     private func bigQueryTable(_ name: String, schema: String) -> TableInfo {

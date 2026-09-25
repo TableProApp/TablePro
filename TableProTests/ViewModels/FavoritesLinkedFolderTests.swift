@@ -10,7 +10,6 @@ import Testing
 
 /// Adding a folder that is already linked used to be refused outright, which pointed the user at a
 /// list the folder was invisible in whenever it had been disabled.
-@Suite("Linked SQL folder outcome")
 @MainActor
 struct FavoritesLinkedFolderTests {
     private func makeViewModel() -> FavoritesSidebarViewModel {

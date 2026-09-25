@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AnthropicProvider wire encoding")
 struct AnthropicProviderEncodingTests {
     @Test("Tool spec encodes with input_schema (snake_case)")
     func toolSpecKeyCasing() throws {

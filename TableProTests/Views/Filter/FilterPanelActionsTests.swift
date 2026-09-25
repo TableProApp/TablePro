@@ -19,7 +19,6 @@ private final class RecordingFilterPanelActions: FilterPanelActions {
     func focusGrid() { calls.append("focus") }
 }
 
-@Suite("Filter panel actions")
 @MainActor
 struct FilterPanelActionsTests {
     @Test("Removing a row reloads only when it was running, and clears when nothing is left running")

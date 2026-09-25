@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL table listing rows")
 struct PostgreSQLTableListingTests {
     @Test("each listed relation type keeps its kind, and any other type reads as a table")
     func relationTypes() {

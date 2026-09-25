@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection menu policy")
 struct ConnectionMenuPolicyTests {
     @Test("Disconnect is offered for a live session")
     func offeredWhenConnected() {

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ForeignAppImporterRegistry")
 struct ForeignAppImporterRegistryTests {
     @Test("Registry contains all importers")
     func testRegistryContainsAllImporters() {

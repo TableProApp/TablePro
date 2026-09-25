@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection sign-in providers")
 struct ConnectionSignInRegistryTests {
     private let ssoFields = ["awsAuth": "sso", "awsProfileName": "engineering"]
     private let entraFields = [

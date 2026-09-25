@@ -15,7 +15,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("PluginMetadataSnapshot branding preservation")
 struct PluginMetadataRegistryBrandingTests {
     private static let pluginField = ConnectionField(
         id: "newPluginField",

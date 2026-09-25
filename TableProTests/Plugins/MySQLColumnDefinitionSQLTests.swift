@@ -10,7 +10,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL Column Definition SQL")
 struct MySQLColumnDefinitionSQLTests {
     private func timestampColumn(
         dataType: String = "TIMESTAMP",

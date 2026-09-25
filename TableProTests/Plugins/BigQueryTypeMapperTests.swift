@@ -18,7 +18,6 @@ private func response(rows: [BQQueryResponse.BQRow]?, totalRows: String = "0") -
     BQQueryResponse(schema: nil, rows: rows, totalRows: totalRows, pageToken: nil, jobComplete: true, jobReference: nil, numDmlAffectedRows: nil)
 }
 
-@Suite("BigQueryTypeMapper - Column Type Names")
 struct BigQueryTypeMapperColumnTypeTests {
     @Test("Simple types return type string as-is")
     func simpleTypes() {
@@ -63,7 +62,6 @@ struct BigQueryTypeMapperColumnTypeTests {
     }
 }
 
-@Suite("BigQueryTypeMapper - Column Infos")
 struct BigQueryTypeMapperColumnInfoTests {
     @Test("Fields map to PluginColumnInfo correctly")
     func basicMapping() {
@@ -100,7 +98,6 @@ struct BigQueryTypeMapperColumnInfoTests {
     }
 }
 
-@Suite("BigQueryTypeMapper - Row Flattening")
 struct BigQueryTypeMapperRowTests {
     @Test("String values pass through")
     func stringValues() {
@@ -196,7 +193,6 @@ private func firstCell(_ json: String, schema: BQTableSchema) throws -> PluginCe
     return try #require(rows.first?.first)
 }
 
-@Suite("BigQueryTypeMapper - Raw JSON Decoding")
 struct BigQueryTypeMapperJSONDecodingTests {
     @Test("REPEATED STRING unwraps each wrapped array element")
     func repeatedStringFromRawJSON() throws {
@@ -330,7 +326,6 @@ struct BigQueryTypeMapperJSONDecodingTests {
     }
 }
 
-@Suite("BigQueryTypeMapper - Comparability")
 struct BigQueryTypeMapperComparabilityTests {
     @Test("ARRAY, JSON and GEOGRAPHY columns are not comparable")
     func nonComparableScalars() {
@@ -355,7 +350,6 @@ struct BigQueryTypeMapperComparabilityTests {
     }
 }
 
-@Suite("BigQueryTypeMapper - Column Kinds")
 struct BigQueryTypeMapperColumnKindTests {
     @Test("Scalar types map to the filter literal kind")
     func scalarKinds() {

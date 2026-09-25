@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PaginationCoordinator navigation")
 @MainActor
 struct PaginationCoordinatorTests {
     private func makeCoordinator(

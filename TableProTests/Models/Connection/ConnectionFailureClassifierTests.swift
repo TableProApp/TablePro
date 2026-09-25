@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection failure classifier")
 struct ConnectionFailureClassifierTests {
     @Test("A Swift cancellation is a cancel, not a failure")
     func swiftCancellationIsCancelled() {

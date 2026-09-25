@@ -9,7 +9,7 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@MainActor @Suite("Source file encoding on save")
+@MainActor
 struct SourceFileEncodingSaveTests {
     private final class ReportedErrors {
         var entries: [(title: String, message: String)] = []

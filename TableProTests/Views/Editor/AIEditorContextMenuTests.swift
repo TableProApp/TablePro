@@ -8,7 +8,6 @@ import AppKit
 import Testing
 
 @MainActor
-@Suite("Editor context menu AI group")
 struct AIEditorContextMenuTests {
     private func builtMenu(
         availability: AIQueryActionAvailability,

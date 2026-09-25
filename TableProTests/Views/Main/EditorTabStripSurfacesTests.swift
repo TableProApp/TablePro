@@ -14,7 +14,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Editor tab strip surfaces")
 @MainActor
 struct EditorTabStripSurfacesTests {
     /// The two appearances that can actually be instantiated, and no more.

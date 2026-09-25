@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPRequestMeta")
 struct MCPRequestMetaTests {
     @Test("A request without _meta at all is invalid params")
     func missingMetaObject() throws {
@@ -265,7 +264,6 @@ struct MCPRequestMetaTests {
     }
 }
 
-@Suite("MCPMetaKeys")
 struct MCPMetaKeysTests {
     @Test("The reserved protocol keys carry the io.modelcontextprotocol prefix")
     func reservedKeySpellings() {

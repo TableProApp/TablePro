@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL relation statements")
 struct PostgreSQLRelationSQLTests {
     // MARK: - Comments
 

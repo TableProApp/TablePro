@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Text prefix decoder")
 struct TextPrefixDecoderTests {
     private static let prefixLength = 64
 

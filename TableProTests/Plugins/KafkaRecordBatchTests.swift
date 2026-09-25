@@ -5,7 +5,6 @@ import Testing
 @testable import TablePro
 
 /// Record batch decoding, against batches built the way a broker builds them.
-@Suite("Kafka record batch")
 struct KafkaRecordBatchTests {
     /// Builds an uncompressed v2 batch the way `KafkaRecordBatchEncoder` does, but with an
     /// arbitrary record count, so the decoder is exercised against multi-record batches.

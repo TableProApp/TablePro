@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Structure collation spelling")
 struct StructureCollationSpellingTests {
     private func column(
         _ name: String,

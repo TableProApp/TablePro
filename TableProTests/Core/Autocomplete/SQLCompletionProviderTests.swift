@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Completion Provider")
 struct SQLCompletionProviderTests {
     private let schemaProvider: SQLSchemaProvider
     private let provider: SQLCompletionProvider

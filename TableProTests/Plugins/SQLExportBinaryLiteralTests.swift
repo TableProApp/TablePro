@@ -13,7 +13,6 @@ import Testing
 /// it is a bit string rather than binary. Measured on PostgreSQL 17.11:
 /// `INSERT INTO b (payload) VALUES (X'414243')` answers
 /// `column "payload" is of type bytea but expression is of type bit`.
-@Suite("SQL export binary literals")
 struct SQLExportBinaryLiteralTests {
     private let sample = Data([0x41, 0x42, 0x43])
 

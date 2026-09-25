@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query plan value formatting")
 struct QueryPlanValueFormatterTests {
     /// A metric rendered with `String(describing:)` reaches the user as `52000000.0`, unlocalized
     /// and ungrouped, directly under a summary that spells the same number `52,000,000`.
@@ -89,7 +88,6 @@ struct QueryPlanValueFormatterTests {
     }
 }
 
-@Suite("EXPLAIN preamble normalization")
 struct SQLPreambleNormalizerTests {
     @Test("Case and spacing do not change the preamble")
     func normalizesCaseAndSpacing() {
@@ -110,7 +108,6 @@ struct SQLPreambleNormalizerTests {
     }
 }
 
-@Suite("Plan variant keys")
 struct QueryPlanVariantKeyTests {
     @Test("A declared variant and a typed statement never collide")
     func declaredAndTypedNeverCollide() {

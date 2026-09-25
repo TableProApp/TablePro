@@ -4,7 +4,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("SyncRecordMapper connection wire schema")
 struct SyncRecordMapperConnectionTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 

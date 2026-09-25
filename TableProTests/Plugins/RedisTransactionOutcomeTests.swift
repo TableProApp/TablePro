@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis transaction outcome")
 struct RedisTransactionOutcomeTests {
     /// The shape measured on Redis 8.10.1 for `MULTI; GET s; LPUSH s x; SET t 1; DEL nokey; INCR s;
     /// EXEC`, which then left `GET t` answering 1.
@@ -89,7 +88,6 @@ struct RedisTransactionOutcomeTests {
     }
 }
 
-@Suite("Redis queued database")
 struct RedisQueuedDatabaseTests {
     @Test("A block that applied moves the session to the queued index")
     func execAdoptsThePendingIndex() {

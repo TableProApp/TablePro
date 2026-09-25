@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TabSession")
 @MainActor
 struct TabSessionTests {
     @Test("A new session starts empty")
@@ -49,7 +48,6 @@ struct TabSessionTests {
 /// The point of #2060: pointing a tab at another table is not an insert or a removal, so the
 /// registry never reconciled the session. Nothing per-table may live in the session for that to
 /// matter, and the tab itself has to be the one thing that describes the table.
-@Suite("Tab retarget leaves no stale per-tab state")
 @MainActor
 struct TabRetargetSessionStateTests {
     @Test("Retargeting a tab reuses its session rather than replacing it")

@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("CoordinatorQueryRouting")
 struct CoordinatorQueryRoutingTests {
     @MainActor
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

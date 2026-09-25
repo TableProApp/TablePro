@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Preview Tab")
 struct PreviewTabTests {
     @Test("QueryTab isPreview defaults to false")
     func queryTabIsPreviewDefaultsFalse() {

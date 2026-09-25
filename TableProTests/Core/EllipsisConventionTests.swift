@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("Ellipsis convention")
 struct EllipsisConventionTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

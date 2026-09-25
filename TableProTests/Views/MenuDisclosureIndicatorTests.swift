@@ -19,7 +19,6 @@
 import Foundation
 import Testing
 
-@Suite("Menu disclosure indicators")
 struct MenuDisclosureIndicatorTests {
     private static let labelMarker = "} label: {"
 

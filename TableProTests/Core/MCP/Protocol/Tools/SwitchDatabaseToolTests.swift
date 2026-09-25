@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SwitchDatabaseTool")
 struct SwitchDatabaseToolTests {
     private let tool = SwitchDatabaseTool()
 

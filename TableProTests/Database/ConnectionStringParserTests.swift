@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ConnectionStringParser scheme + edge case coverage")
 struct ConnectionStringParserTests {
     @Test("postgres:// resolves to PostgreSQL with port 5432 default")
     func parses_postgres_scheme() throws {

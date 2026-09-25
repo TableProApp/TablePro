@@ -21,7 +21,6 @@ private final class TestState {
     }
 }
 
-@Suite("CopilotIdleStopController")
 @MainActor
 struct CopilotIdleStopControllerTests {
     private static let timeout: Duration = .milliseconds(40)

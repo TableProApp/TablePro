@@ -8,7 +8,6 @@ import Foundation
 import Testing
 import TableProSyncTransport
 
-@Suite("CustomSlashCommandStorage sync")
 @MainActor
 struct CustomSlashCommandStorageSyncTests {
     private func makeStorage() throws -> (CustomSlashCommandStorage, SyncChangeTracker) {

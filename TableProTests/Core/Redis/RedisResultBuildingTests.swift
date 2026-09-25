@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis Result Building - displayText")
 struct RedisReplyDisplayTextTests {
     @Test("string returns the string")
     func stringCase() {
@@ -58,7 +57,6 @@ struct RedisReplyDisplayTextTests {
     }
 }
 
-@Suite("Redis Result Building - Hash")
 struct RedisHashResultTests {
     @Test("hash with all string values")
     func allStrings() {
@@ -142,7 +140,6 @@ struct RedisHashResultTests {
     }
 }
 
-@Suite("Redis Result Building - List")
 struct RedisListResultTests {
     @Test("list with all strings shows correct indices and values")
     func allStrings() {
@@ -185,7 +182,6 @@ struct RedisListResultTests {
     }
 }
 
-@Suite("Redis Result Building - Set")
 struct RedisSetResultTests {
     @Test("set with all strings shows correct members")
     func allStrings() {
@@ -214,7 +210,6 @@ struct RedisSetResultTests {
     }
 }
 
-@Suite("Redis Result Building - Sorted Set")
 struct RedisSortedSetResultTests {
     @Test("sorted set with scores shows correct member/score pairs")
     func withScores() {
@@ -265,7 +260,6 @@ struct RedisSortedSetResultTests {
     }
 }
 
-@Suite("Redis Result Building - Stream")
 struct RedisStreamGridTests {
     @Test("each XRANGE entry becomes its ID and its fields")
     func entriesBecomeRows() {
@@ -295,7 +289,6 @@ struct RedisStreamGridTests {
     }
 }
 
-@Suite("Redis Result Building - Config")
 struct RedisConfigResultTests {
     @Test("config with all strings shows correct parameter/value pairs")
     func allStrings() {
@@ -325,7 +318,6 @@ struct RedisConfigResultTests {
     }
 }
 
-@Suite("Redis Result Building - Generic")
 struct RedisGenericGridTests {
     @Test("an integer reply is typed Int64")
     func integerReply() {

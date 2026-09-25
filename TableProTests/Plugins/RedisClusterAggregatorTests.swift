@@ -13,7 +13,6 @@ private func intValue(_ reply: RedisReply) -> Int64? {
     return value
 }
 
-@Suite("Redis cluster aggregation - keyspace across primaries")
 struct RedisClusterAggregatorKeyspaceTests {
     @Test("Each database's key counts add up across the primaries")
     func sumsPerDatabase() {
@@ -31,7 +30,6 @@ struct RedisClusterAggregatorKeyspaceTests {
     }
 }
 
-@Suite("Redis cluster aggregation - numeric policies")
 struct RedisClusterAggregatorNumericTests {
     @Test("agg_sum adds every shard's count, which is what DBSIZE needs")
     func sums() {
@@ -68,7 +66,6 @@ struct RedisClusterAggregatorNumericTests {
     }
 }
 
-@Suite("Redis cluster aggregation - success policies")
 struct RedisClusterAggregatorSuccessTests {
     @Test("all_succeeded surfaces the first error, so a half-applied FLUSHDB is not reported as OK")
     func allSucceededSurfacesError() {
@@ -101,7 +98,6 @@ struct RedisClusterAggregatorSuccessTests {
     }
 }
 
-@Suite("Redis cluster aggregation - defaults")
 struct RedisClusterAggregatorDefaultTests {
     @Test("With no policy, arrays concatenate, which is what KEYS needs")
     func concatenatesArrays() {
@@ -136,7 +132,6 @@ struct RedisClusterAggregatorDefaultTests {
 /// deleted `app:1` on one shard and was refused on the other, and the driver reported one
 /// deletion; with `-dbsize` on one master, or that master busy running a script, the sidebar
 /// counted only the other master's keys.
-@Suite("Redis cluster aggregation - a shard that did not answer")
 struct RedisClusterAggregatorShardFailureTests {
     static let loading = "LOADING Redis is loading the dataset in memory"
 
@@ -202,7 +197,6 @@ struct RedisClusterAggregatorShardFailureTests {
     }
 }
 
-@Suite("Redis cluster aggregation - replies that are not one number")
 struct RedisClusterAggregatorShapeTests {
     private static func integers(_ reply: RedisReply) -> [Int64?]? {
         reply.arrayValue?.map(intValue)

@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SQLLimitDetector")
 struct SQLLimitDetectorTests {
     private func hasLimit(
         _ sql: String,
