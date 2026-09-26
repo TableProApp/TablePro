@@ -20,6 +20,9 @@ struct QueryFetchResult {
     /// What the statement printed on the server, read on its own session.
     var serverOutput: PluginServerOutput = .none
 
+    /// Per row, what the driver finds that row by again.
+    var rowLocators: [String?]?
+
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
     }
@@ -154,7 +157,8 @@ final class QueryExecutor {
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
-            timing: result.timing
+            timing: result.timing,
+            rowLocators: result.rowLocators
         )
     }
 
@@ -180,7 +184,8 @@ final class QueryExecutor {
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
-            timing: result.timing
+            timing: result.timing,
+            rowLocators: result.rowLocators
         )
     }
 
@@ -204,7 +209,8 @@ final class QueryExecutor {
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
-            timing: result.timing
+            timing: result.timing,
+            rowLocators: result.rowLocators
         )
     }
 

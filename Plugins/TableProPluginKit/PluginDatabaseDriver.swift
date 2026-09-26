@@ -273,8 +273,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// written as it stands. For an engine whose `DriverPlugin` sets `supportsDocumentEditing`.
     func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String?
 
-    /// Performs the write `documentWriteStatement` described.
+    /// Performs the write `documentWriteStatement` described. An edit throws when the stored
+    /// document changed after `fetchDocument` read it, and writes nothing.
     func executeDocumentWrite(_ write: PluginDocumentWrite) async throws
+
+    /// The stored document a row's locator names, as the text an edit starts from, or nil when no
+    /// document has that locator any more. `locator` is an entry of `PluginQueryResult.rowLocators`
+    /// this driver produced. Throws, with a message for the user, when the document cannot be
+    /// edited as text.
+    func fetchDocument(table: String, schema: String?, locator: String) async throws -> String?
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
@@ -878,6 +885,10 @@ public extension PluginDatabaseDriver {
     }
 
     func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {
+        throw PluginDriverUnsupportedOperation.writeDocument
+    }
+
+    func fetchDocument(table: String, schema: String?, locator: String) async throws -> String? {
         throw PluginDriverUnsupportedOperation.writeDocument
     }
 

@@ -118,6 +118,16 @@ A field exists only in the documents that hold it, so a collection with no docum
 
 The text is Extended JSON: quote every field name, and write an ObjectId as `{"$oid": "…"}`, a date as `{"$date": "2024-05-01T10:00:00Z"}` and a decimal as `{"$numberDecimal": "1.10"}`. A whole number is stored as a 32-bit integer, or as a 64-bit one when it does not fit; `{"$numberLong": "5"}` stores a small 64-bit integer. A number with a decimal point is a double. Fields are stored in the order written. Leave out `_id` and the server generates one.
 
+## Editing documents
+
+A cell edits one value. To add, rename or remove a field, select one row and choose **Edit > Edit Document…**, or choose **Edit Document…** on the row's context menu. It works on a collection tab with no unsaved grid edits, not on a query tab.
+
+The sheet reads the document from the server again, so it shows what is stored now rather than what the grid loaded. A value reads as plain JSON when that stores the same type, and keeps its wrapper when it would not: a 64-bit integer small enough for 32 bits stays `{"$numberLong": "5"}`, and a date before 1970 or after 9999 stays `{"$date": {"$numberLong": "…"}}`.
+
+**Save** replaces the whole document with the text, in the order written. A field left out of the text is removed. A dotted name, or a name starting with `$` inside a subdocument, is stored as that exact name rather than read as a path. `_id` cannot change, and leaving it out keeps it.
+
+If anyone changed or deleted the document after the sheet opened, nothing is saved and the sheet says so. Copy your text, close the sheet and open the document again.
+
 ## Writing queries
 
 Queries run through JavaScriptCore, so a statement is JavaScript and the whole language is
@@ -210,7 +220,12 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 ## Limitations
 
 - A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
-- `_id` is read-only in the grid, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
+- `_id` is read-only in the grid and in **Edit Document…**, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
+- **Edit Document…** opens a message instead of the text for a document it cannot write back exactly: a top-level field starting with `$`, a repeated field name, a subdocument shaped like `{"$numberInt": "5"}`, more than 28 levels of nesting, or a guarded save over 16 MB, which a document made mostly of numbers reaches at about 5 MB. Change such a document with `updateOne` in a query tab.
+- The server replaces a top-level `Timestamp(0, 0)` with the current time whenever a whole document is written, so **Insert Document…** stores the time there and **Edit Document…** refuses a document holding one. `$set` in a query tab keeps it.
+- **Edit Document…** also refuses a document holding a NaN, double or decimal, or JavaScript code with a scope. Change such a document with `updateOne` in a query tab.
+- **Edit Document…** needs MongoDB 4.0 or later, and refuses a view and a time-series collection. Edit the collection a view reads, and change time-series documents with `updateMany` in a query tab.
+- In a collection whose default collation is not simple, saving a document with a string `_id` reads the whole collection to find it. On a large collection, change the document with `updateOne` in a query tab instead.
 - Transactions are not exposed. Statements always run standalone, on any topology.
 - A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.
 - **New Table…** writes the validator with the server's own level and action. To log bad documents instead of refusing them, run `db.runCommand({collMod: "articles", validationAction: "warn"})` after creating the collection.

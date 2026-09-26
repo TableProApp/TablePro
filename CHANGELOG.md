@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Insert Document…** for MongoDB collections, written as Extended JSON. (#3132)
+- **Edit Document…** for MongoDB documents, written as Extended JSON. (#3132)
 - **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran.
 - Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
 - Table list and table browser side by side on iPad and on iPhone Duo's inner display.

@@ -65,6 +65,16 @@ struct MainMenuStructureTests {
         #expect(database ?? 0 < window ?? 0)
     }
 
+    @Test("Edit Document sits just above Insert Document in the Edit menu")
+    func documentCommandsOrder() throws {
+        let edit = try #require(buildMenu().items.first { $0.title == String(localized: "Edit") }?.submenu)
+        let titles = edit.items.map(\.title)
+        let editIndex = try #require(titles.firstIndex(of: String(localized: "Edit Document…")))
+        let insertIndex = try #require(titles.firstIndex(of: String(localized: "Insert Document…")))
+        #expect(editIndex + 1 == insertIndex)
+        #expect(edit.items[editIndex].action == #selector(MainSplitViewController.editDocument(_:)))
+    }
+
     @Test("No two menu items share a title")
     func titlesAreUnique() {
         let titles = flatten(buildMenu())
@@ -686,6 +696,7 @@ struct MainMenuValidationTests {
         context.hasMaintenanceOperations = true
         context.canCreateTable = true
         context.canInsertDocument = true
+        context.canEditDocument = true
         return context
     }
 
@@ -724,6 +735,7 @@ struct MainMenuValidationTests {
         [
             #selector(MainSplitViewController.addRow(_:)),
             #selector(MainSplitViewController.duplicateRow(_:)),
+            #selector(MainSplitViewController.editDocument(_:)),
             #selector(MainSplitViewController.insertDocument(_:)),
             #selector(MainSplitViewController.truncateTable(_:)),
             #selector(MainSplitViewController.delete(_:)),
@@ -762,6 +774,37 @@ struct MainMenuValidationTests {
         context.isConnected = true
         context.isReadOnly = true
         #expect(!enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
+    }
+
+    @Test("Edit Document needs one row whose document the driver can find, and stays dimmed on a read-only connection")
+    func editDocumentGate() {
+        var context = capableContext()
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.editDocument(_:)), context))
+        context.canEditDocument = false
+        #expect(!enabled(#selector(MainSplitViewController.editDocument(_:)), context))
+        context.canEditDocument = true
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.editDocument(_:)), context))
+    }
+
+    /// Agent mode keeps the coordinator, and with it the row and the tab the user last had, so
+    /// only the mode can dim these.
+    @Test("Agent mode dims Edit Document and Insert Document over the row the coordinator still holds")
+    func documentCommandsDimInAgentMode() {
+        var context = capableContext()
+        context.isConnected = true
+        let documentCommands = [
+            #selector(MainSplitViewController.editDocument(_:)),
+            #selector(MainSplitViewController.insertDocument(_:))
+        ]
+        for selector in documentCommands {
+            #expect(enabled(selector, context), "\(selector) is dim while browsing")
+        }
+        context.isAgentMode = true
+        for selector in documentCommands {
+            #expect(!enabled(selector, context), "\(selector) stayed lit in Agent mode")
+        }
     }
 
     @Test("A stale selection does not keep content commands enabled without a connection")

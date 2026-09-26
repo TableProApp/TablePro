@@ -72,9 +72,10 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsRenameDatabase: Bool { get }
     static var supportsRenameSchema: Bool { get }
 
-    /// Whether the engine stores whole documents and implements `documentWriteStatement` and
-    /// `executeDocumentWrite`, which is what offers Insert Document. Read from the loaded plugin, so
-    /// a binary built before these existed does not offer it.
+    /// Whether the engine stores whole documents and implements `documentWriteStatement`,
+    /// `executeDocumentWrite` and `fetchDocument`, which is what offers Insert Document and Edit
+    /// Document. Read from the loaded plugin, so a binary built before these existed does not offer
+    /// them. Edit Document is offered only on a row the driver gave a locator.
     static var supportsDocumentEditing: Bool { get }
 
     /// Whether a schema is something the engine makes from a statement. False on Oracle, where a

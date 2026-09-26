@@ -129,7 +129,8 @@ extension MainContentCoordinator {
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        rowLocators: [String?]? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -150,7 +151,8 @@ extension MainContentCoordinator {
             anchor: anchor,
             timing: timing,
             viewport: viewport,
-            serverOutput: serverOutput
+            serverOutput: serverOutput,
+            rowLocators: rowLocators
         )
     }
 

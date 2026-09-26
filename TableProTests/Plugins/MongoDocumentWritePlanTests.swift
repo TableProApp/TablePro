@@ -19,8 +19,8 @@ struct MongoDocumentWritePlanTests {
             operation: .insert(document: "{\n  \"name\": \"launch\"\n}"),
             canonicalize: canonical
         )
-        #expect(plan.document == #"{"name":"launch"}"#)
-        #expect(plan.statement == #"db.events.insertOne({"name":"launch"})"#)
+        #expect(plan?.write == .insert(document: #"{"name":"launch"}"#))
+        #expect(plan?.statement == #"db.events.insertOne({"name":"launch"})"#)
     }
 
     @Test("An empty document is a valid insert")
@@ -28,7 +28,7 @@ struct MongoDocumentWritePlanTests {
         let plan = try MongoDocumentWritePlan.make(
             collection: "events", operation: .insert(document: "{}"), canonicalize: canonical
         )
-        #expect(plan.document == "{}")
+        #expect(plan?.write == .insert(document: "{}"))
     }
 
     @Test("Field order is kept, integer-like names included, which a JavaScript object would move")
@@ -36,7 +36,7 @@ struct MongoDocumentWritePlanTests {
         let plan = try MongoDocumentWritePlan.make(
             collection: "events", operation: .insert(document: #"{"b":1,"2":2,"a":3}"#), canonicalize: canonical
         )
-        #expect(plan.document == #"{"b":1,"2":2,"a":3}"#)
+        #expect(plan?.write == .insert(document: #"{"b":1,"2":2,"a":3}"#))
     }
 
     @Test("Text libbson would misread is refused before it is asked")
@@ -73,6 +73,57 @@ struct MongoDocumentWritePlanTests {
             operation: .insert(document: "{}"),
             canonicalize: canonical
         )
-        #expect(plan.statement == #"db.getCollection("x\").drop(); db.getCollection(\"y").insertOne({})"#)
+        #expect(plan?.statement == #"db.getCollection("x\").drop(); db.getCollection(\"y").insertOne({})"#)
+    }
+
+    private let stored = #"{"_id":{"$numberInt":"1"},"n":{"$numberInt":"5"}}"#
+
+    @Test("An edit replaces the whole document under the guard, and says so with the collation it runs under")
+    func replaceStatement() throws {
+        let plan = try #require(try MongoDocumentWritePlan.make(
+            collection: "events",
+            operation: .replace(original: stored, edited: #"{"_id":{"$numberInt":"1"},"n":{"$numberInt":"6"}}"#),
+            canonicalize: canonical
+        ))
+        let filter = try MongoDocumentGuard.filter(for: MongoDocumentText(parsing: stored))
+        let replacement = #"{"_id":{"$numberInt":"1"},"n":{"$numberInt":"6"}}"#
+        #expect(plan.write == .replace(filter: filter, replacement: replacement))
+        #expect(plan.statement == #"db.events.replaceOne(\#(filter), \#(replacement), {"collation":{"locale":"simple"}})"#)
+    }
+
+    @Test("An edit that changes nothing writes nothing")
+    func unchangedEdit() throws {
+        let plan = try MongoDocumentWritePlan.make(
+            collection: "events",
+            operation: .replace(original: stored, edited: "{\n  \"n\": {\"$numberInt\": \"5\"}\n}"),
+            canonicalize: { try MongoDocumentText(parsing: $0).compactText }
+        )
+        #expect(plan == nil)
+    }
+
+    @Test("The guard is built from the document as it was opened, not as it was edited")
+    func guardFollowsTheOriginal() throws {
+        let plan = try #require(try MongoDocumentWritePlan.make(
+            collection: "events",
+            operation: .replace(original: stored, edited: #"{"n":{"$numberLong":"5"}}"#),
+            canonicalize: canonical
+        ))
+        guard case .replace(let filter, let replacement) = plan.write else {
+            Issue.record("Expected a replace")
+            return
+        }
+        #expect(filter.contains(#"{"$literal":\#(stored)}"#))
+        #expect(replacement == #"{"_id":{"$numberInt":"1"},"n":{"$numberLong":"5"}}"#)
+    }
+
+    @Test("Both texts are read strictly before libbson sees either")
+    func replaceReadsStrictly() {
+        #expect(throws: MongoDocumentText.Refusal.self) {
+            try MongoDocumentWritePlan.make(
+                collection: "events",
+                operation: .replace(original: stored, edited: #"{"n":1,"n":2}"#),
+                canonicalize: canonical
+            )
+        }
     }
 }

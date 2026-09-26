@@ -225,6 +225,15 @@ final class MainContentCommandActions: ObservableObject {
 
     private var dataGridOwnsSelection: Bool { selectionOwner == .dataGrid }
 
+    /// The display position of the one data-grid row a single-row command acts on, or nil when the
+    /// data grid does not own the selection or it holds other than one row.
+    var singleSelectedDataGridRow: Int? {
+        guard dataGridOwnsSelection else { return nil }
+        let indices = resolvedRowSelection()
+        guard indices.count == 1 else { return nil }
+        return indices.first
+    }
+
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 

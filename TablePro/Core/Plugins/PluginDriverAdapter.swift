@@ -565,6 +565,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.executeDocumentWrite(write)
     }
 
+    func fetchDocument(table: String, schema: String?, locator: String) async throws -> String? {
+        try await pluginDriver.fetchDocument(table: table, schema: schema, locator: locator)
+    }
+
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? {
         pluginDriver.createSchemaStatements(definition)
     }
@@ -955,6 +959,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         result.columnMeta = pluginResult.columnMeta?.map {
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
+        result.rowLocators = pluginResult.rowLocators
         return result
     }
 

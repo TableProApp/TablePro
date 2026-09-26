@@ -9,7 +9,8 @@ import Foundation
 /// matched nothing.
 ///
 /// A write-concern error arrives after the write itself was applied, so its message says so rather
-/// than reading like a refusal.
+/// than reading like a refusal. A raw command reply holds one as `writeConcernError`, and the reply
+/// libmongoc builds for a CRUD call holds them as a `writeConcernErrors` array.
 struct MongoWriteFailure: Equatable, Sendable {
     let code: UInt32
     let message: String
@@ -22,7 +23,8 @@ struct MongoWriteFailure: Equatable, Sendable {
         if let writeErrors = reply["writeErrors"] as? [[String: Any]], let first = writeErrors.first {
             return entry(first)
         }
-        if let concernError = reply["writeConcernError"] as? [String: Any] {
+        let concernErrors = reply["writeConcernErrors"] as? [[String: Any]]
+        if let concernError = reply["writeConcernError"] as? [String: Any] ?? concernErrors?.first {
             let failure = entry(concernError)
             return MongoWriteFailure(
                 code: failure.code,

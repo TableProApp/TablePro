@@ -55,6 +55,28 @@ extension DatabaseManager {
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
     }
 
+    /// The stored document a row's locator names, read on the connection the tab's data lives on.
+    ///
+    /// Cancellable, so closing the sheet stops a read the server is still answering: it runs under
+    /// its own lease owner, which a cancel reaches and nothing else does.
+    func fetchDocument(locator: String, table: String, scope: DatabaseScope) async throws -> String? {
+        let owner = DriverLeaseOwner()
+        let connectionId = scope.connectionId
+        return try await withTaskCancellationHandler {
+            try await withScopedDriver(
+                scope: scope,
+                route: executionRoute(for: scope),
+                cancellation: .cancellableRead(owner)
+            ) { driver in
+                try await driver.fetchDocument(table: table, schema: scope.schema, locator: locator)
+            }
+        } onCancel: {
+            Task { @MainActor in
+                try? DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connectionId, delivery: .background)
+            }
+        }
+    }
+
     private func recordDocumentWrite(
         _ statement: String,
         scope: DatabaseScope,

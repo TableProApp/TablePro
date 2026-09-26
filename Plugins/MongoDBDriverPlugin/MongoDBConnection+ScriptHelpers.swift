@@ -12,16 +12,28 @@ struct MongoScriptDocumentBatch: Sendable {
     var json: [String]
     var isTruncated: Bool
 
+    /// Whether these are whole documents as stored, which is what makes each one's `_id` a locator
+    /// the grid can hand back to edit it. A projection or a pipeline builds documents of its own.
+    var holdsStoredDocuments = false
+
     static let empty = MongoScriptDocumentBatch(json: [], isTruncated: false)
 
     var jsonArray: String { "[\(json.joined(separator: ","))]" }
 
     var dictionaries: [[String: Any]] {
+        readRows().map(\.fields)
+    }
+
+    /// Each document read once, with its locator taken from the same text, so a document that
+    /// cannot be read drops out of both and the two stay in step.
+    func readRows() -> [(fields: [String: Any], locator: String?)] {
         json.compactMap { document in
             guard let data = document.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data),
                   let dictionary = object as? [String: Any] else { return nil }
-            return MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary
+            let fields = MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary
+            let locator = holdsStoredDocuments ? MongoDocumentIdentity.locator(inDocument: document) : nil
+            return (fields, locator)
         }
     }
 }

@@ -84,6 +84,29 @@ struct MongoWriteFailureTests {
         #expect(MongoWriteFailure.read(fromReply: "") == nil)
         #expect(MongoWriteFailure.read(fromReply: "[1, 2]") == nil)
     }
+
+    @Test("A write concern error in a CRUD reply's array says the write was applied")
+    func crudWriteConcernErrors() {
+        let reply = """
+            {"insertedCount":{"$numberInt":"0"},"matchedCount":{"$numberInt":"1"},"modifiedCount":{"$numberInt":"1"},\
+            "upsertedCount":{"$numberInt":"0"},"writeConcernErrors":[{"code":{"$numberInt":"64"},\
+            "errmsg":"waiting for replication timed out"}]}
+            """
+        #expect(MongoWriteFailure.read(fromReply: reply) == MongoWriteFailure(
+            code: 64,
+            message: MongoScriptText.writeNotAcknowledged(reason: "waiting for replication timed out")
+        ))
+    }
+
+    @Test("A CRUD reply's writeErrors array gives the server's own message")
+    func crudWriteErrors() {
+        let reply = """
+            {"insertedCount":{"$numberInt":"0"},"matchedCount":{"$numberInt":"0"},"modifiedCount":{"$numberInt":"0"},\
+            "upsertedCount":{"$numberInt":"0"},"writeErrors":[{"index":{"$numberInt":"0"},"code":{"$numberInt":"121"},\
+            "errmsg":"Document failed validation"}]}
+            """
+        #expect(MongoWriteFailure.read(fromReply: reply) == MongoWriteFailure(code: 121, message: "Document failed validation"))
+    }
 }
 
 struct MongoScriptStatementFailureTests {

@@ -180,7 +180,9 @@ final class MongoScriptHost {
     /// straight to the grid without being marshalled twice.
     func drain(handle: Int) throws -> MongoScriptDocumentBatch {
         let cursor = try cursors.cursor(for: handle)
-        return try cursor.remaining { try load($0, ceiling: valueCeiling) }
+        var batch = try cursor.remaining { try load($0, ceiling: valueCeiling) }
+        batch.holdsStoredDocuments = cursor.returnsWholeDocuments
+        return batch
     }
 
     func cursorDescription(handle: Int) -> (collection: String, find: MongoScriptFindShape?)? {

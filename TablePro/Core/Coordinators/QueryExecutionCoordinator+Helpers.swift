@@ -188,7 +188,8 @@ extension QueryExecutionCoordinator {
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        rowLocators: [String?]? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -237,7 +238,8 @@ extension QueryExecutionCoordinator {
             generatedColumns: generatedColumns,
             rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
-            foreignKeysFetched: resolved.foreignKeysFetched
+            foreignKeysFetched: resolved.foreignKeysFetched,
+            rowLocators: rowLocators
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
