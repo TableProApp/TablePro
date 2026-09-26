@@ -16276,6 +16276,40 @@
         }
       }
     },
+    "Adds a Recent section with the connections you opened lately to the welcome window and the connection switcher." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근에 연 연결을 모은 최근 항목 섹션을 시작 윈도우와 연결 전환기에 추가합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son açtığınız bağlantıları içeren bir Son Kullanılanlar bölümünü hoş geldiniz penceresine ve bağlantı değiştiriciye ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm mục Gần đây gồm các kết nối bạn mở gần đây vào cửa sổ chào mừng và trình chuyển đổi kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在欢迎窗口和连接切换器中添加“最近”区域，列出你最近打开的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在歡迎視窗與連線切換器中加入「最近」區塊，列出你最近開啟的連線。"
+          }
+        }
+      }
+    },
     "Adjust Limit" : {
       "localizations" : {
         "ko" : {
@@ -31791,7 +31825,38 @@
       }
     },
     "Clear Recent" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 항목 지우기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son Kullanılanları Temizle"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa mục Gần đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除“最近”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除「最近」"
+          }
+        }
+      }
     },
     "Clear Recent Tables" : {
       "localizations" : {
@@ -71546,6 +71611,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全部忘記"
+          }
+        }
+      }
+    },
+    "Forgets which connections you opened and when. Sorting by Last Connected starts over." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 연결을 언제 열었는지 잊습니다. 마지막 연결 순 정렬도 처음부터 다시 시작합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hangi bağlantıları ne zaman açtığınızı unutur. Son bağlanılana göre sıralama baştan başlar."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quên các kết nối bạn đã mở và thời điểm mở. Sắp xếp theo lần kết nối cuối sẽ bắt đầu lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忘记你打开过哪些连接以及打开的时间。按“上次连接”排序将重新开始。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忘記你開啟過哪些連線以及開啟的時間。依「上次連線」排序將重新開始。"
           }
         }
       }
@@ -122665,6 +122764,40 @@
         }
       }
     },
+    "Recent connection history" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 연결 기록"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son bağlantı geçmişi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lịch sử kết nối gần đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近连接记录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近連線記錄"
+          }
+        }
+      }
+    },
     "RECENT" : {
       "localizations" : {
         "ko" : {
@@ -141890,6 +142023,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示查詢歷史"
+          }
+        }
+      }
+    },
+    "Show recent connections" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 연결 보기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son bağlantıları göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiện kết nối gần đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示最近的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示最近的連線"
           }
         }
       }
