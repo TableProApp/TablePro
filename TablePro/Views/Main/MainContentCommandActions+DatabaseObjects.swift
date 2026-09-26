@@ -105,6 +105,13 @@ extension MainContentCommandActions {
         isConnected && supportsContainerSwitching && !isReadOnly
     }
 
+    var canCreateTable: Bool {
+        guard isConnected, !isReadOnly, let coordinator else { return false }
+        return CreateTableEligibility.canCreateTable(
+            with: DatabaseManager.shared.driver(for: coordinator.connection.id)
+        )
+    }
+
     func createDatabase() {
         coordinator?.activeSheet = .createDatabase
     }

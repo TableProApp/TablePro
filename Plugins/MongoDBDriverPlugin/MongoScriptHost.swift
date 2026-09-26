@@ -183,9 +183,15 @@ final class MongoScriptHost {
         return try cursor.remaining { try load($0, ceiling: valueCeiling) }
     }
 
-    func cursorDescription(handle: Int) -> (collection: String, isFind: Bool)? {
+    func cursorDescription(handle: Int) -> (collection: String, find: MongoScriptFindShape?)? {
         guard let cursor = try? cursors.cursor(for: handle) else { return nil }
-        return (cursor.collection, cursor.isFind)
+        guard cursor.isFind else { return (cursor.collection, nil) }
+        let shape = MongoScriptFindShape(
+            database: cursor.database,
+            returnsWholeDocuments: cursor.options.projection == nil,
+            skip: cursor.options.skip ?? 0
+        )
+        return (cursor.collection, shape)
     }
 
     /// The query a cursor stands for, without running it.

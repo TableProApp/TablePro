@@ -863,6 +863,28 @@ struct MongoDBQueryBuilderTests {
         }
     }
 
+    /// U+0D4E is a Unicode Prepend letter: it joins the next scalar into one `Character`, so a
+    /// `(` after it answered `isLetter` and the name went into the statement bare, as code.
+    @Test("A collection name is spelled bare only when it is a plain ASCII identifier")
+    func accessorSpellsOnlyAsciiIdentifiersBare() {
+        #expect(MongoCollectionAccessor.expression(for: "orders") == "db.orders")
+        #expect(MongoCollectionAccessor.expression(for: "order_2") == "db.order_2")
+        for name in ["a\u{0D4E}(\u{0D4E})", "tên", "2025", "a b", "a;b"] {
+            #expect(MongoCollectionAccessor.expression(for: name).hasPrefix("db.getCollection(\""), "\(name)")
+        }
+    }
+
+    @Test("Escaping works scalar by scalar, so a quote joined to a Prepend letter is still escaped")
+    func escapingSeesQuotesInsideGraphemeClusters() throws {
+        let hostile = "x\u{0600}\"}); db.victim.drop(); ({\""
+        let escaped = MongoDBQueryBuilder.escapeJsonString(hostile)
+        let decoded = try JSONSerialization.jsonObject(
+            with: Data("\"\(escaped)\"".utf8), options: [.fragmentsAllowed]
+        ) as? String
+        #expect(decoded == hostile)
+        #expect(MongoDBQueryBuilder.escapeJsonString("a\r\nb") == "a\\r\\nb")
+    }
+
     // MARK: - Raw filter normalization
 
     private static let normalizer = MongoDBRawFilterNormalizer()

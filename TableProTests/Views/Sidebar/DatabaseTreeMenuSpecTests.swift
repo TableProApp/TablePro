@@ -50,6 +50,7 @@ struct DatabaseTreeMenuSpecTests {
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
         canCreateType: Bool = false,
+        canCreateTable: Bool = true,
         supportsCreateSchema: Bool = false,
         supportsSchemaOwner: Bool = false,
         supportsSchemaPrivileges: Bool = false,
@@ -116,6 +117,7 @@ struct DatabaseTreeMenuSpecTests {
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
             canCreateType: canCreateType,
+            canCreateTable: canCreateTable,
             objectToolSupport: objectToolSupport
         )
     }
@@ -181,6 +183,16 @@ struct DatabaseTreeMenuSpecTests {
         let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
 
         #expect(issued.contains(.createTable))
+        #expect(issued.contains(.createView))
+    }
+
+    /// MongoDB before its plugin could create a collection, and Redis, Kafka and every other engine
+    /// without a create hook, opened the grid and refused only once it was filled in.
+    @Test("An engine that cannot create a table is not offered New Table")
+    func emptyAreaHidesNewTableWithoutCreateSupport() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateTable: false)))
+
+        #expect(!issued.contains(.createTable))
         #expect(issued.contains(.createView))
     }
 

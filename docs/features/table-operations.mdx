@@ -7,7 +7,7 @@ Dropping a table cannot be undone, and **Cascade** in the confirmation dialog wi
 
 ## Create a table or view
 
-**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)); on [DynamoDB](/databases/dynamodb#creating-and-changing-tables) it opens a form for the keys, capacity and indexes instead. **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, where [safe mode](/features/safe-mode) removes them rather than dimming them.
+**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)); on [DynamoDB](/databases/dynamodb#creating-and-changing-tables) it opens a form for the keys, capacity and indexes instead. **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, where [safe mode](/features/safe-mode) removes them rather than dimming them. On an engine with no way to create a table, such as Redis or Kafka, **New Table…** is dimmed in the menu bar and absent from the sidebar.
 
 ## Drop and truncate
 

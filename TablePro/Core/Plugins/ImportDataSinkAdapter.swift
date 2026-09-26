@@ -26,6 +26,13 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDataSinkAdapter")
 
+    /// Rows go in as SQL `INSERT`s, so an engine with no SQL dialect can take none of them.
+    static func canWriteRows(into databaseType: DatabaseType) -> Bool {
+        (try? SQLStatementGenerator(
+            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: databaseType
+        )) != nil
+    }
+
     init(
         driver: DatabaseDriver,
         databaseType: DatabaseType,

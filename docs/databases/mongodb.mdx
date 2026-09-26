@@ -73,11 +73,13 @@ Over an SSH tunnel only the first host is used and the rest of the list is dropp
 
 ## Browsing collections
 
-Click a collection to page through its documents. Column layout is inferred by sampling documents, not read from a validator, so a field missing from the sample gets no column. ObjectIds render as strings, arrays and nested objects as formatted JSON.
+Click a collection to page through its documents. The columns are the fields in the documents on screen, then any field the collection's `$jsonSchema` validator declares that none of them hold, so an empty collection still shows the fields it was created with. ObjectIds render as strings, arrays and nested objects as formatted JSON.
+
+An edited cell keeps its field's type. A date stays a date, whether typed as `2024-01-02T03:04:05Z`, as `2024-01-02`, or picked in the date picker, which writes your local time. An ObjectId stays an ObjectId, an integer past 2^53 is sent as a 64-bit integer, and a field the validator declares as `string` is written as text even when it reads `123` or `true`. Where the grid has no type to go on, `123` is a number and `{"a": 1}` a document; text that only looks like JSON is written as a string.
 
 The filter bar's column picker lists paths inside nested objects and arrays of objects, so `customer.country` and `items.sku` filter directly; a row on an array field chooses **any element** or **same element**, which makes one array entry satisfy every row set to it. See [Filtering](/features/filtering#nested-fields). A field name containing a literal dot is left out of the picker, since MongoDB reads a dot as a path separator; reach it with `$getField` inside `$expr`.
 
-The Structure tab lists a collection's indexes; create and drop them from a query tab with `db.users.createIndex({"email": 1})` and `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
+The Structure tab lists a collection's indexes; drop one from a query tab with `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
 
 ### Binary UUIDs
 
@@ -85,9 +87,29 @@ A binary subtype 4 field renders as `UUID("8cd003eb-4a25-4324-9332-88fce2da0d1a"
 
 Once set, the value renders as `LegacyJavaUUID("…")` and reads that way everywhere, filters and MQL export included. Nothing stored is rewritten, `uuidRepresentation=javaLegacy` in a pasted URL sets the same option, and a change takes effect on the next connect.
 
+## Creating a collection
+
+Choose **Database > New Table…**. Each row of the grid is a field, and its type is one of the BSON types in the list: `objectId`, `string`, `int`, `long`, `double`, `decimal`, `date`, `bool`, `array`, `object` and the rest. **Create Table** turns the rows into a `$jsonSchema` validator and runs `db.createCollection("articles", {"validator": …})`, which **SQL Preview** shows first.
+
+<Frame caption="Nullable fields also accept null; NOT NULL ones go in required">
+  <img className="block dark:hidden" src="/images/mongodb-create-collection.png" alt="SQL Preview tab of Create Table showing db.createCollection for articles with a $jsonSchema listing _id, title, tags, date and schemaVersion" />
+  <img className="hidden dark:block" src="/images/mongodb-create-collection-dark.png" alt="SQL Preview tab of Create Table showing db.createCollection for articles with a $jsonSchema listing _id, title, tags, date and schemaVersion" />
+</Frame>
+
+| Row | Becomes |
+|-----|---------|
+| **Nullable** NO | The field is in `required`: a document without it, or with `null`, is refused |
+| **Nullable** YES | The field is optional and may hold `null` |
+| `_id` | Always the key, typed `objectId`. Leave it out and MongoDB still adds one |
+| No rows, only a name | A collection with no validator |
+
+MongoDB enforces the validator with its defaults, `strict` and `error`, so an insert or edit of the wrong type fails with `Document failed validation`. **Primary Key** on any field other than `_id` is refused, and so are field names that start with `$` or contain a dot.
+
+Each row on the **Indexes** tab runs as a `createIndex` after the collection is made, with its fields in the order listed. **BTREE** is an ascending key, **HASH** is `hashed`, **FULLTEXT** is `text`, and **SPATIAL** is `2dsphere`. A hashed index takes one field and cannot be unique, and a text index cannot be unique either.
+
 ## Inserting documents
 
-A field exists only in the documents that hold it, so a collection with no documents shows `_id` alone and has no column to type a field into. Choose **Edit > Insert Document…** to write a whole document instead. It is on a row's context menu too, and on the context menu of an empty grid.
+A field exists only in the documents that hold it, so a collection with no documents and no validator shows `_id` alone and has no column to type a field into. Choose **Edit > Insert Document…** to write a whole document instead. It is on a row's context menu too, and on the context menu of an empty grid.
 
 <Frame caption="The first document of an empty collection">
   <img className="block dark:hidden" src="/images/mongodb-insert-document.png" alt="Insert Document sheet over the empty events collection, holding a document with a name, a channel, a date, a count and a list of tags" />
@@ -190,6 +212,8 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
 - `_id` is read-only in the grid, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
 - Transactions are not exposed. Statements always run standalone, on any topology.
+- A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.
+- **New Table…** writes the validator with the server's own level and action. To log bad documents instead of refusing them, run `db.runCommand({collMod: "articles", validationAction: "warn"})` after creating the collection.
 - Nested paths filter but do not sort. Sorting works on the grid's own columns.
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
 - GridFS buckets are not browsable, and change streams are unsupported.

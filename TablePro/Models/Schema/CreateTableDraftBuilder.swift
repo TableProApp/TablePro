@@ -55,7 +55,8 @@ enum CreateTableDraftBuilder {
         indexes: [EditableIndexDefinition],
         foreignKeys: [EditableForeignKeyDefinition],
         dialect: ForeignKeyDialect,
-        includesEngineOptions: Bool
+        includesEngineOptions: Bool,
+        suppliesItsOwnKey: Bool = false
     ) -> CreateTablePlan {
         var issues: [SchemaDraftIssue] = []
 
@@ -72,14 +73,14 @@ enum CreateTableDraftBuilder {
                 tab: .columns, row: nil, message: String(localized: "The table needs a name.")
             ))
         }
-        if resolvedColumns.isEmpty {
+        if resolvedColumns.isEmpty, !suppliesItsOwnKey {
             issues.append(SchemaDraftIssue(
                 tab: .columns, row: nil,
                 message: String(localized: "The table needs at least one column with a name and a type.")
             ))
         }
 
-        guard !trimmedName.isEmpty, !resolvedColumns.isEmpty else {
+        guard !trimmedName.isEmpty, !resolvedColumns.isEmpty || suppliesItsOwnKey else {
             return CreateTablePlan(definition: nil, indexes: [], issues: issues)
         }
 

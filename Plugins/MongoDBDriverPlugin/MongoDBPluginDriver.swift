@@ -18,6 +18,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let rawFilterNormalizer = MongoDBRawFilterNormalizer()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
+    private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
+    private var identityKindsByCollection: [String: BsonValueKind] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -203,14 +205,19 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 valueCeiling: ceiling
             )
             if let switched = outcome.databaseSwitch { currentDb = switched }
+            let declared = try await declaredColumns(for: outcome)
             return capToRowCap(
                 MongoScriptResultBuilder.result(
                     for: outcome,
                     startTime: startTime,
+                    emptyColumns: MongoDBCollectionShape.emptyCollectionColumns(declaring: declared).map {
+                        (name: $0, typeName: declaredTypeName(of: $0, in: declared))
+                    },
                     documents: { documents, collection, isTruncated in
                         self.buildPluginResult(
                             from: documents, startTime: startTime,
-                            isTruncated: isTruncated, collection: collection
+                            isTruncated: isTruncated, collection: collection,
+                            declared: declared
                         )
                     }
                 ),
@@ -222,6 +229,35 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } catch {
             throw mapExecutionError(error)
         }
+    }
+
+    /// The fields the collection declares, for a find that returned whole documents; empty, and not
+    /// read at all, for a projection, a pipeline or anything else. Read on the session driver because that is the one
+    /// whose writer and filters use it: `fetchColumns` runs on a pooled driver whose caches this
+    /// one never sees. Read again on a first page, so a refresh picks up a changed validator, and
+    /// reused while paging.
+    private func declaredColumns(for outcome: MongoScriptStatementResult) async throws -> MongoDBCollectionSchema {
+        guard outcome.producedDocuments,
+              let find = outcome.find, find.returnsWholeDocuments, find.database == currentDb,
+              let collection = outcome.collection, !collection.isEmpty,
+              let conn = mongoConnection else {
+            return .empty
+        }
+        let key = columnKindKey(collection)
+        let cached = columnKindLock.withLock { declaredSchemasByCollection[key] }
+        let schema: MongoDBCollectionSchema
+        if find.skip > 0, let cached {
+            schema = cached
+        } else {
+            schema = try await declaredSchema(of: collection, conn: conn)
+            columnKindLock.withLock { declaredSchemasByCollection[key] = schema }
+        }
+        return schema
+    }
+
+    private func declaredTypeName(of column: String, in schema: MongoDBCollectionSchema) -> String {
+        schema.field(named: column)?.columnTypeName(representation: uuidRepresentation)
+            ?? BsonDocumentFlattener.typeName(for: .objectId, representation: uuidRepresentation)
     }
 
     private func capToRowCap(_ result: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
@@ -293,66 +329,61 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: MongoStreamProjection.sampleSize
         ).docs
 
-        let enumMap = (try? await fetchJsonSchemaEnums(conn: conn, table: table)) ?? [:]
+        let schema = try await declaredSchema(of: table, conn: conn)
 
         if docs.isEmpty {
-            return [
-                PluginColumnInfo(
-                    name: "_id", dataType: "ObjectId", isNullable: false, isPrimaryKey: true,
-                    defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
-                )
-            ]
+            return MongoDBCollectionShape.emptyCollectionColumns(declaring: schema)
+                .map { declaredColumnInfo($0, schema: schema) }
         }
 
-        let columns = BsonDocumentFlattener.unionColumns(from: docs)
+        let sampled = BsonDocumentFlattener.unionColumns(from: docs)
         let kinds = BsonDocumentFlattener.columnKinds(
-            for: columns, documents: docs, representation: uuidRepresentation
+            for: sampled, documents: docs, representation: uuidRepresentation
         )
-        rememberColumnKinds(kinds, for: columns, collection: table)
+        rememberColumnKinds(kinds, for: sampled, collection: table)
 
-        return columns.enumerated().map { index, name in
-            let typeName = BsonDocumentFlattener.typeName(
-                for: kinds[index], representation: uuidRepresentation
-            )
-            return PluginColumnInfo(
-                name: name, dataType: typeName, isNullable: name != "_id", isPrimaryKey: name == "_id",
+        let sampledColumns = sampled.enumerated().map { index, name in
+            PluginColumnInfo(
+                name: name,
+                dataType: BsonDocumentFlattener.typeName(for: kinds[index], representation: uuidRepresentation),
+                isNullable: name != MongoDBCollectionDDL.idField && schema.field(named: name)?.isRequired != true,
+                isPrimaryKey: name == MongoDBCollectionDDL.idField,
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
-                allowedValues: enumMap[name]
+                allowedValues: schema.allowedValues[name]
             )
         }
+        let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: schema)
+        return sampledColumns + unseen.map { declaredColumnInfo($0, schema: schema) }
     }
 
-    private func fetchJsonSchemaEnums(conn: MongoDBConnection, table: String) async throws -> [String: [String]] {
-        let escaped = escapeJsonString(table)
-        let result = try await conn.runCommand(
-            "{\"listCollections\": 1, \"filter\": {\"name\": \"\(escaped)\"}}",
-            database: currentDb
+    private func declaredColumnInfo(_ name: String, schema: MongoDBCollectionSchema) -> PluginColumnInfo {
+        let field = schema.field(named: name)
+        let isKey = name == MongoDBCollectionDDL.idField
+        return PluginColumnInfo(
+            name: name,
+            dataType: field?.columnTypeName(representation: uuidRepresentation)
+                ?? BsonDocumentFlattener.typeName(for: .objectId, representation: uuidRepresentation),
+            isNullable: !isKey && field?.isRequired != true,
+            isPrimaryKey: isKey,
+            defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
+            allowedValues: schema.allowedValues[name]
         )
-        guard let firstDoc = result.first,
-              let cursor = firstDoc["cursor"] as? [String: Any],
-              let firstBatch = cursor["firstBatch"] as? [[String: Any]],
-              let collInfo = firstBatch.first,
-              let options = collInfo["options"] as? [String: Any],
-              let validator = options["validator"] as? [String: Any],
-              let jsonSchema = validator["$jsonSchema"] as? [String: Any],
-              let properties = jsonSchema["properties"] as? [String: Any]
-        else { return [:] }
-
-        var map: [String: [String]] = [:]
-        for (colName, spec) in properties {
-            guard let specDict = spec as? [String: Any] else { continue }
-            if let enumValues = extractStringEnum(specDict["enum"]) {
-                map[colName] = enumValues
-            }
-        }
-        return map
     }
 
-    private func extractStringEnum(_ value: Any?) -> [String]? {
-        guard let array = value as? [Any], !array.isEmpty else { return nil }
-        guard array.allSatisfy({ $0 is String }) else { return nil }
-        let strings = array.compactMap { $0 as? String }
-        return strings.isEmpty ? nil : strings
+    /// A user whose role can `find` but not `listCollections` still browses, with no declared
+    /// fields, so a failed read is an empty schema rather than an error. A Stop is not a failure:
+    /// swallowing it returned the page as though nothing had been cancelled.
+    private func declaredSchema(of collection: String, conn: MongoDBConnection) async throws -> MongoDBCollectionSchema {
+        do {
+            let reply = try await conn.runCommandJson(
+                MongoDBCollectionSchema.listCollectionsCommand(for: collection), database: currentDb
+            )
+            return MongoDBCollectionSchema.parse(listCollectionsReply: reply)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return .empty
+        }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -672,6 +703,22 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ["db.getCollection(\"\(escapeJsonString(table))\").deleteMany({})"]
     }
 
+    // MARK: - Collection Creation
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        MongoDBCollectionDDL.createCollectionStatement(for: definition)
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        MongoDBCollectionDDL.createIndexStatement(collection: table, index: index)
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        MongoDBCollectionDDL.refusal(for: operation)
+    }
+
+    var unsupportedIndexTypes: Set<String> { MongoDBCollectionDDL.unsupportedIndexTypes }
+
     func dropDatabase(name: String) async throws {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
@@ -747,7 +794,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = MongoDBStatementGenerator(
-            collectionName: table, columns: columns, columnKinds: columnKinds(for: table)
+            collectionName: table, columns: columns, columnKinds: columnKinds(for: table),
+            declaredKinds: declaredKinds(for: table), identityKind: identityKind(for: table)
         )
         return generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
@@ -763,7 +811,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rows: [[PluginCellValue]]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = MongoDBStatementGenerator(
-            collectionName: table, columns: columns, columnKinds: columnKinds(for: table)
+            collectionName: table, columns: columns, columnKinds: columnKinds(for: table),
+            declaredKinds: declaredKinds(for: table), identityKind: identityKind(for: table)
         )
         return generator.generateRestore(rows: rows)
     }
@@ -857,7 +906,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         from documents: [[String: Any]],
         startTime: Date,
         isTruncated: Bool = false,
-        collection: String = ""
+        collection: String = "",
+        declared: MongoDBCollectionSchema = .empty
     ) -> PluginQueryResult {
         if documents.isEmpty {
             return PluginQueryResult(
@@ -867,13 +917,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        let columns = BsonDocumentFlattener.unionColumns(from: documents)
-        let kinds = BsonDocumentFlattener.columnKinds(
-            for: columns, documents: documents, representation: uuidRepresentation
+        let sampled = BsonDocumentFlattener.unionColumns(from: documents)
+        let sampledKinds = BsonDocumentFlattener.columnKinds(
+            for: sampled, documents: documents, representation: uuidRepresentation
         )
-        rememberColumnKinds(kinds, for: columns, collection: collection)
+        rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
+        rememberIdentityKind(of: documents, collection: collection)
         rememberFieldPathKinds(from: documents, collection: collection)
-        let typeNames = kinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
+        let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
+        let columns = sampled + unseen
+        let kinds = sampledKinds + unseen.map { declared.field(named: $0)?.valueKind ?? .null }
+        let typeNames = sampledKinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
+            + unseen.map { declaredTypeName(of: $0, in: declared) }
         let rows = BsonDocumentFlattener.flatten(
             documents: documents, columns: columns, kinds: kinds, representation: uuidRepresentation
         )
@@ -891,18 +946,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func escapeJsonString(_ value: String) -> String {
         var result = ""
         result.reserveCapacity((value as NSString).length)
-        for char in value {
-            switch char {
-            case "\"": result += "\\\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\\": result += "\\\\"
+            case "\"": result += "\\\""
             case "\n": result += "\\n"
             case "\r": result += "\\r"
             case "\t": result += "\\t"
             default:
-                if let ascii = char.asciiValue, ascii < 0x20 {
-                    result += String(format: "\\u%04x", ascii)
+                if scalar.value < 0x20 {
+                    result += String(format: "\\u%04x", scalar.value)
                 } else {
-                    result.append(char)
+                    result.unicodeScalars.append(scalar)
                 }
             }
         }
@@ -934,6 +989,25 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
     }
 
+    private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let kind = BsonDocumentFlattener.uniformKind(
+            of: MongoDBCollectionDDL.idField, in: documents, representation: uuidRepresentation
+        )
+        let key = columnKindKey(collection)
+        columnKindLock.withLock { identityKindsByCollection[key] = kind }
+    }
+
+    private func identityKind(for collection: String) -> BsonValueKind? {
+        let key = columnKindKey(collection)
+        return columnKindLock.withLock { identityKindsByCollection[key] }
+    }
+
+    private func declaredKinds(for collection: String) -> [String: BsonValueKind] {
+        let key = columnKindKey(collection)
+        return columnKindLock.withLock { declaredSchemasByCollection[key]?.valueKinds ?? [:] }
+    }
+
     /// Recorded from the documents a browse already fetched, on the session driver that will
     /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
     /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
@@ -953,7 +1027,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func filterKinds(for collection: String) -> [String: BsonValueKind] {
         let key = columnKindKey(collection)
         return columnKindLock.withLock {
-            (fieldPathKindsByCollection[key] ?? [:]).merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
+            (declaredSchemasByCollection[key]?.valueKinds ?? [:])
+                .merging(fieldPathKindsByCollection[key] ?? [:]) { _, sampled in sampled }
+                .merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
         }
     }
 

@@ -254,7 +254,9 @@ struct MongoDBStatementGeneratorTests {
         #expect(document?["leadingZero"] as? String == "01")
     }
 
-    @Test("Insert quotes integers that overflow Int64 but keeps in-range integers numeric")
+    /// The maximum Int64 is past 2^53, where a bare JavaScript literal rounds: JavaScriptCore reads
+    /// `9223372036854775807` as `9223372036854776000`. It has to cross as `$numberLong`.
+    @Test("Insert quotes integers that overflow Int64 and writes the largest ones as $numberLong")
     func insertQuotesInt64Overflow() {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
@@ -281,7 +283,7 @@ struct MongoDBStatementGeneratorTests {
 
         let document = firstArgumentObject(in: results[0].statement)
         #expect(document?["overflow"] as? String == "12345678901234567890")
-        #expect(document?["maxInt64"] as? Int64 == 9_223_372_036_854_775_807)
+        #expect((document?["maxInt64"] as? [String: Any])?["$numberLong"] as? String == "9223372036854775807")
     }
 
     @Test("Insert not in insertedRowIndices is skipped")

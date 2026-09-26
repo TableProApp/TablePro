@@ -89,7 +89,10 @@ extension MainContentCoordinator {
     // MARK: - Table Operations
 
     func createNewTable() {
-        guard !safeModeLevel.blocksAllWrites else { return }
+        guard !safeModeLevel.blocksAllWrites,
+              CreateTableEligibility.canCreateTable(with: DatabaseManager.shared.driver(for: connection.id)) else {
+            return
+        }
 
         if tabManager.tabs.isEmpty {
             tabManager.addCreateTableTab(databaseName: browseDatabaseName)
