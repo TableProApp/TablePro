@@ -566,13 +566,15 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             containsTableOperation: containsTableOperation
         )
 
-        if let attributed = try factory.attributedStatements(
+        let steps: [DataWriteStep]
+        switch try factory.rowWriteStatements(
             for: pending.changes,
             insertedRowData: pending.insertedRowData,
             deletedRowIDs: pending.deletedRowIDs,
             insertedRowIDs: pending.insertedRowIDs
         ) {
-            let steps = attributed.map {
+        case .counted(let attributed):
+            steps = attributed.map {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
@@ -581,16 +583,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                     matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert
                 )
             }
-            return RowWriteBuild(steps: steps, operations: operations)
-        }
-
-        let steps = try factory.statements(
-            for: pending.changes,
-            insertedRowData: pending.insertedRowData,
-            deletedRowIDs: pending.deletedRowIDs,
-            insertedRowIDs: pending.insertedRowIDs
-        ).map {
-            DataWriteStep(kind: .rowWrite, statement: $0, expectedRowCount: nil, tableName: tableName)
+        case .driverWritten(let statements):
+            steps = statements.map {
+                DataWriteStep(kind: .rowWrite, statement: $0, expectedRowCount: nil, tableName: tableName)
+            }
         }
         return RowWriteBuild(steps: steps, operations: operations)
     }

@@ -7,11 +7,20 @@
 //  This used to live inside DataChangeManager, which is @MainActor and @Observable and owns the
 //  undo stack, so nothing but a live edit session could ask for a statement. Data Rewind needs
 //  the same answer for a change set it read back from disk, so the generation moved here and the
-//  manager delegates. A plugin that overrides generateStatements therefore serves both paths.
+//  manager delegates. A plugin that implements generateRowWrites therefore serves both paths, and
+//  both are held to RowWriteCoverage: a pending change no statement writes refuses the save.
 //
 
 import Foundation
 import TableProPluginKit
+
+/// The statements for a set of row changes, by who wrote them.
+enum RowWriteStatements {
+    /// The host's, each carrying the rows it should touch.
+    case counted([AttributedStatement])
+    /// A driver's, which carry no count the host can hold the server to.
+    case driverWritten([ParameterizedStatement])
+}
 
 @MainActor
 struct RowChangeStatementFactory {
@@ -50,49 +59,48 @@ struct RowChangeStatementFactory {
         deletedRowIDs: Set<RowID> = [],
         insertedRowIDs: Set<RowID> = []
     ) throws -> [ParameterizedStatement] {
-        if let pluginStatements = pluginGeneratedStatements(
+        switch try rowWriteStatements(
             for: changes,
             insertedRowData: insertedRowData,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs
         ) {
-            return pluginStatements
+        case .counted(let statements):
+            return statements.map(\.statement)
+        case .driverWritten(let statements):
+            return statements
         }
-        return try attributedHostStatements(
-            for: changes,
-            insertedRowData: insertedRowData,
-            deletedRowIDs: deletedRowIDs,
-            insertedRowIDs: insertedRowIDs
-        ).map(\.statement)
     }
 
-    /// The host generator's statements, each with the number of rows it should touch.
+    /// Every statement the changes need, or a throw naming the changes that would be left out.
     ///
-    /// Returns nil when the driver writes its own statements, because nothing then tells the host
-    /// which rows went into which statement and a guessed count is worse than no count.
-    func attributedStatements(
+    /// The host's statements carry the rows they touch, so the executor can hold the server to that
+    /// count. A driver's do not, because nothing tells the host how many rows its statements reach.
+    func rowWriteStatements(
         for changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]] = [:],
         deletedRowIDs: Set<RowID> = [],
         insertedRowIDs: Set<RowID> = []
-    ) throws -> [AttributedStatement]? {
-        if pluginGeneratedStatements(
+    ) throws -> RowWriteStatements {
+        if let driverStatements = try pluginRowWrites(
             for: changes,
             insertedRowData: insertedRowData,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs
-        ) != nil {
-            return nil
+        ) {
+            return .driverWritten(driverStatements)
         }
-        return try attributedHostStatements(
-            for: changes,
-            insertedRowData: insertedRowData,
-            deletedRowIDs: deletedRowIDs,
-            insertedRowIDs: insertedRowIDs
+        return .counted(
+            try hostStatements(
+                for: changes,
+                insertedRowData: insertedRowData,
+                deletedRowIDs: deletedRowIDs,
+                insertedRowIDs: insertedRowIDs
+            )
         )
     }
 
-    private func attributedHostStatements(
+    private func hostStatements(
         for changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]],
         deletedRowIDs: Set<RowID>,
@@ -104,11 +112,14 @@ struct RowChangeStatementFactory {
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs
         )
-        try validate(statements.map(\.statement), against: changes, deletedRowIDs: deletedRowIDs)
-        let deletableCount = changes.count { $0.type == .delete && deletedRowIDs.contains($0.rowID) }
-        let identifiedDeletes = statements.filter { $0.kind == .delete }.reduce(0) { $0 + $1.rowCount }
-        if identifiedDeletes < deletableCount {
-            throw DataWriteError.rowsNotIdentifiable(tableName, .delete)
+        let unwritten = RowWriteCoverage.unwrittenChanges(
+            changes,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs,
+            writtenRowIDs: Set(statements.flatMap(\.rowIDs))
+        )
+        if let kind = UnwrittenRowCounts(unwritten).leadingKind {
+            throw DataWriteError.rowsNotIdentifiable(tableName, kind)
         }
         return statements
     }
@@ -158,21 +169,33 @@ struct RowChangeStatementFactory {
 
     /// True when the engine's statements come from the plugin rather than from
     /// `SQLStatementGenerator`, which is what decides whether the host may fall back.
+    ///
+    /// A driver that throws on the probe is refusing a change it owns, so it still owns the engine.
     var pluginOwnsStatementGeneration: Bool {
-        pluginGeneratedStatements(
-            for: [RowChange(rowID: .existing(0), type: .update, cellChanges: [], originalRow: nil)],
-            insertedRowData: [:],
-            deletedRowIDs: [],
-            insertedRowIDs: []
-        ) != nil
+        guard let pluginDriver else { return false }
+        let probe = PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil)
+        do {
+            return try pluginDriver.generateRowWrites(
+                table: tableName,
+                schema: schemaName,
+                columns: columns,
+                primaryKeyColumns: primaryKeyColumns,
+                changes: [probe],
+                insertedRowData: [:],
+                deletedRowIndices: [],
+                insertedRowIndices: []
+            ) != nil
+        } catch {
+            return true
+        }
     }
 
-    private func pluginGeneratedStatements(
+    private func pluginRowWrites(
         for changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]],
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
-    ) -> [ParameterizedStatement]? {
+    ) throws -> [ParameterizedStatement]? {
         guard let pluginDriver else { return nil }
         let keyed = PluginKeyedChanges(
             changes: changes,
@@ -180,17 +203,37 @@ struct RowChangeStatementFactory {
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs
         )
-        guard let statements = pluginDriver.generateStatements(
-            table: tableName,
-            schema: schemaName,
-            columns: columns,
-            primaryKeyColumns: primaryKeyColumns,
-            changes: keyed.changes,
-            insertedRowData: keyed.insertedRowData,
-            deletedRowIndices: keyed.deletedRowIndices,
-            insertedRowIndices: keyed.insertedRowIndices
-        ) else { return nil }
-        return statements.map {
+        let writes: [PluginRowWrite]
+        do {
+            guard let generated = try pluginDriver.generateRowWrites(
+                table: tableName,
+                schema: schemaName,
+                columns: columns,
+                primaryKeyColumns: primaryKeyColumns,
+                changes: keyed.changes,
+                insertedRowData: keyed.insertedRowData,
+                deletedRowIndices: keyed.deletedRowIndices,
+                insertedRowIndices: keyed.insertedRowIndices
+            ) else { return nil }
+            writes = generated
+        } catch let refusal as PluginRowWriteRefusal {
+            throw DataWriteError.changeRefused(
+                table: tableName, kind: keyed.writeKind(ofRowIndex: refusal.rowIndex), reason: refusal.reason
+            )
+        } catch {
+            throw DataWriteError.changeRefused(table: tableName, kind: nil, reason: error.localizedDescription)
+        }
+
+        let unwritten = RowWriteCoverage.unwrittenChanges(
+            changes,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs,
+            writtenRowIDs: Set(writes.flatMap(\.rowIndices).compactMap(keyed.rowID(forIndex:)))
+        )
+        guard unwritten.isEmpty else {
+            throw DataWriteError.changesNotWritable(table: tableName, unwritten: UnwrittenRowCounts(unwritten))
+        }
+        return writes.map {
             ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
         }
     }
@@ -210,23 +253,6 @@ struct RowChangeStatementFactory {
             quoteIdentifier: pluginDriver?.quoteIdentifier
         )
     }
-
-    private func validate(
-        _ statements: [ParameterizedStatement],
-        against changes: [RowChange],
-        deletedRowIDs: Set<RowID>
-    ) throws {
-        let expectedUpdates = changes.count(where: { $0.type == .update })
-        let actualUpdates = statements.count(where: { $0.sql.hasPrefix("UPDATE") })
-        if expectedUpdates > 0, actualUpdates < expectedUpdates {
-            throw DataWriteError.rowsNotIdentifiable(tableName, .update)
-        }
-
-        let deletable = changes.filter { $0.type == .delete && deletedRowIDs.contains($0.rowID) }
-        if !deletable.isEmpty, deletable.allSatisfy({ $0.originalRow == nil }) {
-            throw DataWriteError.rowsNotIdentifiable(tableName, .delete)
-        }
-    }
 }
 
 struct PluginKeyedChanges {
@@ -234,6 +260,8 @@ struct PluginKeyedChanges {
     let insertedRowData: [Int: [PluginCellValue]]
     let deletedRowIndices: Set<Int>
     let insertedRowIndices: Set<Int>
+    /// The row each key stands for, indexed by key.
+    let rowIDs: [RowID]
 
     init(
         changes: [RowChange],
@@ -242,9 +270,12 @@ struct PluginKeyedChanges {
         insertedRowIDs: Set<RowID>
     ) {
         var keys: [RowID: Int] = [:]
+        var rowIDs: [RowID] = []
         for change in changes where keys[change.rowID] == nil {
-            keys[change.rowID] = keys.count
+            keys[change.rowID] = rowIDs.count
+            rowIDs.append(change.rowID)
         }
+        self.rowIDs = rowIDs
         self.changes = changes.compactMap { change in
             keys[change.rowID].map { PluginRowChange(change, key: $0) }
         }
@@ -255,6 +286,20 @@ struct PluginKeyedChanges {
         )
         self.deletedRowIndices = Set(deletedRowIDs.compactMap { keys[$0] })
         self.insertedRowIndices = Set(insertedRowIDs.compactMap { keys[$0] })
+    }
+
+    /// The row a driver's `rowIndex` names, or nil when it names none of these changes.
+    func rowID(forIndex index: Int) -> RowID? {
+        rowIDs.indices.contains(index) ? rowIDs[index] : nil
+    }
+
+    func writeKind(ofRowIndex index: Int) -> RowWriteKind? {
+        guard let change = changes.first(where: { $0.rowIndex == index }) else { return nil }
+        switch change.type {
+        case .insert: return .insert
+        case .update: return .update
+        case .delete: return .delete
+        }
     }
 }
 

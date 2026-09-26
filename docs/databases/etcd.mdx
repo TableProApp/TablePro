@@ -49,9 +49,9 @@ Both schemes import. Neither switches TLS on by itself; set **TLS Mode** in the 
 
 ## Browsing keys
 
-The sidebar groups keys by their first path segment under the **Key Prefix Root**, with segment-less keys under **(root)**. The grid gives one row per key: **Key**, **Value**, **Version**, **ModRevision**, **CreateRevision** and **Lease**. Key is the primary key and the three revision columns are read-only.
+The sidebar groups keys by their first path segment under the **Key Prefix Root**, with segment-less keys under **(root)**. The grid gives one row per key: **Key**, **Value**, **Version**, **ModRevision**, **CreateRevision** and **Lease**. Key is the primary key. The three revision columns belong to etcd: an edit to one stops the save and names the column.
 
-Saving edits generates commands. Changing **Value** or **Lease** re-`put`s the key. Changing **Key** is a `put` at the new name and a `del` of the old one, so the old key is deleted rather than moved. A new row whose key does not start with `/` gets the **Key Prefix Root** prepended.
+Saving edits generates commands. Changing **Value** or **Lease** re-`put`s the key. Setting **Value** to NULL stores an empty value, and setting **Lease** to NULL removes the lease. Changing **Key** is a `put` at the new name and a `del` of the old one, so the old key is deleted rather than moved. A new row whose key does not start with `/` gets the **Key Prefix Root** prepended.
 
 ## Command editor
 

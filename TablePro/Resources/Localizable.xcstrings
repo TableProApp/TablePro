@@ -184363,6 +184363,90 @@
     },
     "This database does not store whole documents" : {
 
+    },
+    "Cannot save changes to '%@'." : {
+
+    },
+    "The driver cannot write an edited row." : {
+
+    },
+    "The driver cannot write %lld edited rows." : {
+
+    },
+    "The driver cannot write a new row." : {
+
+    },
+    "The driver cannot write %lld new rows." : {
+
+    },
+    "The driver cannot delete a row marked for deletion." : {
+
+    },
+    "The driver cannot delete %lld rows marked for deletion." : {
+
+    },
+    "Cannot save the new row in '%1$@'. %2$@" : {
+
+    },
+    "Cannot save the edited row in '%1$@'. %2$@" : {
+
+    },
+    "Cannot delete the row in '%1$@'. %2$@" : {
+
+    },
+    "Cannot save changes to '%1$@'. %2$@" : {
+
+    },
+    "This database has no statement for a new row that sets no column. Enter a value in at least one column, or insert the row with a query." : {
+
+    },
+    "Nothing was saved, and every change is still pending. Undo what cannot be written, or make it with a query, then save again." : {
+
+    },
+    "'%@' is a field of a nested array. Edit the array in '%@' instead." : {
+
+    },
+    "'%@' is document metadata and cannot be edited." : {
+
+    },
+    "The document's _id is unknown, so it cannot be addressed." : {
+
+    },
+    "The new values cannot be written as JSON." : {
+
+    },
+    "A new key needs a name." : {
+
+    },
+    "A key needs a name." : {
+
+    },
+    "This key's name is not text, so it cannot be addressed from the grid." : {
+
+    },
+    "'%@' is set by etcd and cannot be edited." : {
+
+    },
+    "A %@ key cannot be added from the grid. Add it with a command in the query editor." : {
+
+    },
+    "A key can only be renamed to text." : {
+
+    },
+    "'%@' cannot be changed from the grid." : {
+
+    },
+    "Redis cannot store NULL as a value. Enter an empty value instead." : {
+
+    },
+    "The key's type is unknown, so its value cannot be written safely." : {
+
+    },
+    "The value of a %@ key cannot be edited in the grid. Change it with a command in the query editor." : {
+
+    },
+    "TTL has to be a whole number of seconds above 0, or -1 or NULL for no expiry." : {
+
     }
   },
   "version" : "1.1"

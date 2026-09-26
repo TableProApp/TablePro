@@ -15,26 +15,27 @@ import TableProPluginKit
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisDatabaseTarget")
 
 enum RedisDatabaseTarget {
-    typealias Statement = (statement: String, parameters: [PluginCellValue])
-
     /// A grid's writes belong to the database its rows came from, which the session is not on
     /// when the user moved it elsewhere. Run inside the save's `MULTI`, the SELECTs are queued
     /// with the writes and applied together by `EXEC`, which leaves the session where it was.
     /// Without one, as on a cluster, a SELECT sent first stays in force when a write after it
     /// fails, so each write names its database and the session never leaves where it belongs.
+    /// A write keeps the changes it names; a SELECT names none.
     static func addressing(
-        _ statements: [Statement],
+        _ writes: [PluginRowWrite],
         toDatabase index: Int?,
         from home: Int,
         insideTransaction: Bool
-    ) -> [Statement] {
-        guard let index, index != home, !statements.isEmpty else { return statements }
+    ) -> [PluginRowWrite] {
+        guard let index, index != home, !writes.isEmpty else { return writes }
         guard insideTransaction else {
-            return statements.map { (statement: "DB \(index) \($0.statement)", parameters: $0.parameters) }
+            return writes.map {
+                PluginRowWrite(statement: "DB \(index) \($0.statement)", parameters: $0.parameters, rowIndices: $0.rowIndices)
+            }
         }
-        return [(statement: "SELECT \(index)", parameters: [])]
-            + statements
-            + [(statement: "SELECT \(home)", parameters: [])]
+        return [PluginRowWrite(statement: "SELECT \(index)", rowIndices: [])]
+            + writes
+            + [PluginRowWrite(statement: "SELECT \(home)", rowIndices: [])]
     }
 }
 

@@ -990,11 +990,11 @@ struct RedisCommandParserAppStatementTests {
         return false
     }
 
-    private func insertStatements(key: String, type: String, value: String) -> [String] {
+    private func insertStatements(key: String, type: String, value: String) throws -> [String] {
         let generator = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         let row: [PluginCellValue] = [.text(key), .text(type), "60", .null, .text(value)]
-        return generator.generateStatements(
+        return try generator.generateRowWrites(
             from: [change], insertedRowData: [0: row], deletedRowIndices: [], insertedRowIndices: [0]
         ).map(\.statement)
     }
@@ -1005,7 +1005,7 @@ struct RedisCommandParserAppStatementTests {
     )
     func insertsStayTyped(type: String) throws {
         let value = type == "hash" ? #"{"f":"v w"}"# : "a \"quoted\" value"
-        let statements = insertStatements(key: "user:1 x", type: type, value: value)
+        let statements = try insertStatements(key: "user:1 x", type: type, value: value)
         #expect(statements.count == 2)
         for statement in statements {
             #expect(try !isVerbatim(statement), "\(statement)")
@@ -1033,7 +1033,7 @@ struct RedisCommandParserAppStatementTests {
             originalRow: original
         )
         let delete = PluginRowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: original)
-        let statements = generator.generateStatements(
+        let statements = try generator.generateRowWrites(
             from: [update, persist, delete], insertedRowData: [:], deletedRowIndices: [2], insertedRowIndices: []
         ).map(\.statement)
 

@@ -16,11 +16,14 @@ struct ParameterizedStatement: @unchecked Sendable {
     let parameters: [Any?]
 }
 
-/// A statement plus the number of rows it is meant to touch, so a caller can hold the server to it.
+/// A statement plus the rows it is meant to touch, so a caller can hold the server to that count
+/// and tell a change that became a statement from one that did not.
 struct AttributedStatement: @unchecked Sendable {
     let statement: ParameterizedStatement
     let kind: RowWriteKind
-    let rowCount: Int
+    let rowIDs: [RowID]
+
+    var rowCount: Int { rowIDs.count }
 }
 
 /// Generates SQL statements from data changes
@@ -135,14 +138,14 @@ struct SQLStatementGenerator {
             case .update:
                 flushDeleteRun()
                 if let stmt = generateUpdateSQL(for: change) {
-                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowCount: 1))
+                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowIDs: [change.rowID]))
                 }
             case .insert:
                 // SAFETY: Verify the row is still marked as inserted
                 guard insertedRowIDs.contains(change.rowID) else { continue }
                 flushDeleteRun()
                 if let stmt = generateInsertSQL(for: change, insertedRowData: insertedRowData) {
-                    statements.append(AttributedStatement(statement: stmt, kind: .insert, rowCount: 1))
+                    statements.append(AttributedStatement(statement: stmt, kind: .insert, rowIDs: [change.rowID]))
                 }
             case .delete:
                 // SAFETY: Verify the row is still marked as deleted
@@ -414,29 +417,33 @@ struct SQLStatementGenerator {
     }
 
     private func generateDeleteStatements(for changes: [RowChange]) -> [AttributedStatement] {
-        let rowMatches = changes.compactMap { deleteRowMatches(for: $0) }
+        let rowMatches = changes.compactMap { change in
+            deleteRowMatches(for: change).map { (rowID: change.rowID, matches: $0) }
+        }
         guard !rowMatches.isEmpty else { return [] }
 
         var statements: [AttributedStatement] = []
-        var chunk: [[DeleteColumnMatch]] = []
+        var chunk: [(rowID: RowID, matches: [DeleteColumnMatch])] = []
         var chunkParameterCount = 0
 
         func flush() {
             statements.append(
-                AttributedStatement(statement: deleteStatement(for: chunk), kind: .delete, rowCount: chunk.count)
+                AttributedStatement(
+                    statement: deleteStatement(for: chunk.map(\.matches)), kind: .delete, rowIDs: chunk.map(\.rowID)
+                )
             )
         }
 
         let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchPolicy.excludedColumns.isEmpty
-        for matches in rowMatches {
-            let rowParameterCount = matches.count(where: { $0.boundValue != nil })
+        for row in rowMatches {
+            let rowParameterCount = row.matches.count(where: { $0.boundValue != nil })
             if !chunk.isEmpty,
                matchesOneRowPerStatement || chunkParameterCount + rowParameterCount > maxBindParameters {
                 flush()
                 chunk = []
                 chunkParameterCount = 0
             }
-            chunk.append(matches)
+            chunk.append(row)
             chunkParameterCount += rowParameterCount
         }
 

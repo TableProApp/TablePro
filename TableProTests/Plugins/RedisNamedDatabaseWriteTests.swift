@@ -48,15 +48,16 @@ struct RedisDatabasePrefixParsingTests {
 }
 
 struct RedisNamedDatabaseAddressingTests {
-    private static let writes: [RedisDatabaseTarget.Statement] = [
-        (statement: "SET \"k\" \"v\"", parameters: []),
-        (statement: "DEL old", parameters: []),
+    private static let writes = [
+        PluginRowWrite(statement: "SET \"k\" \"v\"", rowIndices: [0]),
+        PluginRowWrite(statement: "DEL old", rowIndices: [1, 2]),
     ]
 
     @Test("Without a transaction every write names the database and no SELECT is sent")
     func namesEachWrite() {
         let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 0, insideTransaction: false)
         #expect(addressed.map(\.statement) == ["DB 3 SET \"k\" \"v\"", "DB 3 DEL old"])
+        #expect(addressed.map(\.rowIndices) == [[0], [1, 2]])
     }
 
     @Test("Writes for the database the session belongs on are unchanged")
