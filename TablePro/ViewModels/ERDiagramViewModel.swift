@@ -55,7 +55,6 @@ final class ERDiagramViewModel: ObservableObject {
     }
 
     @Published var loadState: LoadState = .loading
-    @Published var needsInitialFit = true
     @Published var graph: ERDiagramGraph = .empty
     @Published var isCompactMode = false {
         didSet { rebuildVisibleGraph() }
@@ -110,6 +109,7 @@ final class ERDiagramViewModel: ObservableObject {
     private var nodeIdToName: [UUID: String] = [:]
 
     private let services: AppServices
+    private var loadTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
@@ -129,7 +129,21 @@ final class ERDiagramViewModel: ObservableObject {
     // MARK: - Loading
 
     func loadDiagram() async {
+        if let inFlight = loadTask {
+            Self.logger.debug("ER diagram load already in flight, awaiting it")
+            await inFlight.value
+            return
+        }
         guard loadState != .loaded else { return }
+        let task = Task {
+            await fetchAndLayOutDiagram()
+            loadTask = nil
+        }
+        loadTask = task
+        await task.value
+    }
+
+    private func fetchAndLayOutDiagram() async {
         loadState = .loading
 
         if services.databaseManager.driver(for: connectionId) == nil {
@@ -175,7 +189,7 @@ final class ERDiagramViewModel: ObservableObject {
             loadPersistedPositions()
             invalidateCachedRects()
             loadState = .loaded
-            needsInitialFit = true
+            viewport.fitToWindowOnceLaidOut()
 
             Self.logger.debug("ER diagram loaded: \(self.graph.nodes.count) tables, \(self.graph.edges.count) edges")
         } catch {

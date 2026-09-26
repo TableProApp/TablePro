@@ -49,6 +49,10 @@ final class DiagramKeyboardZoomUITests: UITestCase {
         XCTAssertTrue(canvas.waitToExist(timeout: 30), "The ER diagram must open on the sample database")
         let zoomLevel = window.buttons["Reset Zoom"].firstMatch
         XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "The diagram must show its zoom level")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { (zoomLevel.value as? String).map { $0 != "100%" } ?? false },
+            "The sample diagram must open fitted to the window"
+        )
         zoomLevel.click()
         XCTAssertTrue(waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "100%" })
 
@@ -63,6 +67,11 @@ final class DiagramKeyboardZoomUITests: UITestCase {
         XCTAssertTrue(editorTextView(in: app).waitToExist(timeout: 10), "A new query tab must open")
         app.typeKey("[", modifierFlags: [.command, .shift])
         XCTAssertTrue(canvas.waitToExist(timeout: 10), "Show Previous Tab must return to the diagram")
+        XCTAssertEqual(
+            zoomLevel.value as? String,
+            "75%",
+            "Returning to the diagram tab must keep the zoom it was left at"
+        )
         app.typeKey("=", modifierFlags: .command)
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "100%" },
