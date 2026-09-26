@@ -196,6 +196,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Trigger** offered on a materialized view.
 - Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type.
 - Structure tab refusing to save a renamed or dropped primary key column.
+- Structure tab refusing to save an index or check constraint named like one deleted in the same save.
+- Structure tab refusing every save on a SQLite table with two check constraints of one name.
+- Primary key lost on MySQL and MariaDB when a save replaced the `PRIMARY` index row and changed a column.
+- Structure tab save failing partway when index or check constraint renames swapped names or took a freed one.
+- Clustered index lost on SQL Server when a duplicate of it replaced the original.
+- Structure tab accepting a check constraint named like another in a different letter case.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.

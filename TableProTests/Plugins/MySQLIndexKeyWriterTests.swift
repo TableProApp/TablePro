@@ -108,4 +108,14 @@ struct MySQLIndexKeyWriterTests {
         )
         #expect(mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .databend) == nil)
     }
+
+    /// Measured on MariaDB 13.0.2: `ADD INDEX PRIMARY (b)`, `ADD INDEX primary (b)` and
+    /// `ADD INDEX Primary (b)` each fail with ERROR 1280, "Incorrect index name".
+    @Test("An added index named PRIMARY in any case is refused, and a name that only starts with it is not")
+    func primaryIsNotAnIndexName() {
+        for name in ["PRIMARY", "primary", "Primary"] {
+            #expect(mysqlReservedIndexNameRefusal(for: PluginIndexDefinition(name: name, columns: ["id"])) != nil)
+        }
+        #expect(mysqlReservedIndexNameRefusal(for: PluginIndexDefinition(name: "primary_email", columns: ["email"])) == nil)
+    }
 }

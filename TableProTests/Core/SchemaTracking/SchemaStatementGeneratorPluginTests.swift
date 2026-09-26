@@ -411,6 +411,174 @@ struct SchemaStatementGeneratorPluginTests {
         ])
     }
 
+    // MARK: - An index deleted and added back under its name
+
+    private func replacingDriver(canReplaceInOneStatement: Bool) -> MockPluginDriver {
+        let mock = MockPluginDriver()
+        mock.addColumnHandler = { table, col in "ALTER TABLE \(table) ADD COLUMN \(col.name)" }
+        mock.dropIndexHandler = { _, name in "DROP INDEX \(name)" }
+        mock.addIndexHandler = { table, idx in "CREATE INDEX \(idx.name) ON \(table) (\(idx.columns.joined(separator: ", ")))" }
+        if canReplaceInOneStatement {
+            mock.modifyIndexHandler = { table, oldName, idx in
+                "ALTER TABLE \(table) DROP INDEX \(oldName), ADD INDEX \(idx.name) (\(idx.columns.joined(separator: ", ")))"
+            }
+        }
+        return mock
+    }
+
+    /// Measured on MariaDB 13.0.2: `DROP INDEX idx_a, ADD UNIQUE INDEX idx_a (b)` over duplicate
+    /// values fails with ERROR 1062 and keeps `idx_a`, where the two statements on their own drop it
+    /// and then fail.
+    @Test("An index deleted and added back under its name is replaced in one statement where the driver has one")
+    func sameNameDropAndAddIsOneReplacement() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                .addIndex(makeIndex(name: "idx_a", columns: ["title"])),
+                .deleteIndex(makeIndex(name: "idx_a", columns: ["body"]))
+            ])
+
+        #expect(stmts.map(\.sql) == ["ALTER TABLE users DROP INDEX idx_a, ADD INDEX idx_a (title);"])
+    }
+
+    @Test("An index deleted and added back under its name is dropped before it is added where the driver cannot replace it")
+    func sameNameDropAndAddDropsFirst() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: false))
+            .generate(changes: [
+                .addIndex(makeIndex(name: "idx_a", columns: ["title"])),
+                .deleteIndex(makeIndex(name: "idx_a", columns: ["body"]))
+            ])
+
+        #expect(stmts.map(\.sql) == ["DROP INDEX idx_a;", "CREATE INDEX idx_a ON users (title);"])
+    }
+
+    @Test("An index deleted and added back under its name is split around a column the same save adds")
+    func sameNameDropAndAddSplitsAroundColumnWork() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                .addIndex(makeIndex(name: "idx_a", columns: ["title"])),
+                .addColumn(makeColumn(name: "title")),
+                .deleteIndex(makeIndex(name: "idx_a", columns: ["body"]))
+            ])
+
+        #expect(stmts.map(\.sql) == [
+            "DROP INDEX idx_a;",
+            "ALTER TABLE users ADD COLUMN title;",
+            "CREATE INDEX idx_a ON users (title);"
+        ])
+    }
+
+    @Test("A deleted index's name is free before another index is renamed onto it")
+    func deletedNameIsDroppedBeforeARenameTakesIt() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                .modifyIndex(old: makeIndex(name: "idx_b", columns: ["title"]), new: makeIndex(name: "idx_a", columns: ["title"])),
+                .deleteIndex(makeIndex(name: "idx_a", columns: ["body"]))
+            ])
+
+        #expect(stmts.map(\.sql) == [
+            "DROP INDEX idx_a;",
+            "ALTER TABLE users DROP INDEX idx_b, ADD INDEX idx_a (title);"
+        ])
+    }
+
+    @Test("Indexes deleted and added under different names stay a drop and an add")
+    func differentNamesAreNotPaired() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                .addIndex(makeIndex(name: "idx_b", columns: ["title"])),
+                .deleteIndex(makeIndex(name: "idx_a", columns: ["body"]))
+            ])
+
+        #expect(stmts.map(\.sql) == ["DROP INDEX idx_a;", "CREATE INDEX idx_b ON users (title);"])
+    }
+
+    @Test("Each add under a deleted index's name takes one delete, and a second pass pairs nothing more")
+    func pairingTakesOneDeletePerAdd() {
+        let dropped = makeIndex(name: "idx_a", columns: ["body"])
+        let replacement = makeIndex(name: "idx_a", columns: ["title"])
+        let extra = makeIndex(name: "idx_a", columns: ["email"])
+        let other = makeIndex(name: "idx_b", columns: ["body"])
+        let staged: [SchemaChange] = [.deleteIndex(dropped), .addIndex(replacement), .addIndex(extra), .deleteIndex(other)]
+
+        let paired = SchemaStatementGenerator.replacingIndexesInPlace(staged)
+        #expect(paired == [.modifyIndex(old: dropped, new: replacement), .addIndex(extra), .deleteIndex(other)])
+        #expect(SchemaStatementGenerator.replacingIndexesInPlace(paired) == paired)
+    }
+
+    // MARK: - Renames that pass names along
+
+    private func renamed(_ name: String, to newName: String, on column: String) -> SchemaChange {
+        .modifyIndex(old: makeIndex(name: name, columns: [column]), new: makeIndex(name: newName, columns: [column]))
+    }
+
+    /// Measured on MariaDB 13.0.2 with indexes `a`, `b` and `c`: in staging order, replacing `c` with
+    /// `b` fails with ERROR 1061 while `b` still exists, and the save stops with `a` already dropped.
+    @Test("A rename onto a name another rename frees runs after that rename")
+    func renameChainRunsInNameOrder() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                renamed("c", to: "b", on: "z"),
+                .deleteIndex(makeIndex(name: "a", columns: ["x"])),
+                renamed("b", to: "a", on: "y")
+            ])
+
+        #expect(stmts.map(\.sql) == [
+            "DROP INDEX a;",
+            "ALTER TABLE users DROP INDEX b, ADD INDEX a (y);",
+            "ALTER TABLE users DROP INDEX c, ADD INDEX b (z);"
+        ])
+    }
+
+    @Test("An index added under a name a rename frees is added after that rename")
+    func addWaitsForTheRenameThatFreesItsName() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                .addIndex(makeIndex(name: "a", columns: ["x"])),
+                renamed("a", to: "c", on: "y")
+            ])
+
+        #expect(stmts.map(\.sql) == [
+            "ALTER TABLE users DROP INDEX a, ADD INDEX c (y);",
+            "CREATE INDEX a ON users (x);"
+        ])
+    }
+
+    /// Measured on MariaDB 13.0.2: `DROP INDEX a, ADD INDEX b (x)` fails with ERROR 1061 while `b`
+    /// exists, whichever of the two goes first. Dropping both and then adding both works.
+    @Test("Two indexes trading names are dropped and added back")
+    func swappedNamesAreDroppedAndAddedBack() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [renamed("a", to: "b", on: "x"), renamed("b", to: "a", on: "y")])
+
+        #expect(stmts.map(\.sql) == [
+            "DROP INDEX a;",
+            "DROP INDEX b;",
+            "CREATE INDEX b ON users (x);",
+            "CREATE INDEX a ON users (y);"
+        ])
+    }
+
+    @Test("A three-way rotation of index names is dropped and added back, and a rename outside it keeps its place")
+    func rotationIsSplitAndTheRestStaysWhole() throws {
+        let stmts = try SchemaStatementGenerator(tableName: "users", pluginDriver: replacingDriver(canReplaceInOneStatement: true))
+            .generate(changes: [
+                renamed("a", to: "b", on: "x"),
+                renamed("d", to: "e", on: "w"),
+                renamed("b", to: "c", on: "y"),
+                renamed("c", to: "a", on: "z")
+            ])
+
+        #expect(stmts.map(\.sql) == [
+            "DROP INDEX a;",
+            "DROP INDEX b;",
+            "DROP INDEX c;",
+            "ALTER TABLE users DROP INDEX d, ADD INDEX e (w);",
+            "CREATE INDEX b ON users (x);",
+            "CREATE INDEX c ON users (y);",
+            "CREATE INDEX a ON users (z);"
+        ])
+    }
+
     @Test("Modify foreign key generates drop and create via plugin")
     func modifyForeignKeyViaPlugin() throws {
         let mock = MockPluginDriver()
@@ -539,7 +707,7 @@ struct SchemaStatementGeneratorPluginTests {
     @Test("Modify column with type change is destructive")
     func modifyColumnTypeChangeDestructive() throws {
         let mock = MockPluginDriver()
-        mock.modifyColumnHandler = { _, oldCol, newCol in
+        mock.modifyColumnHandler = { _, _, newCol in
             "ALTER TABLE users MODIFY COLUMN \(newCol.name) \(newCol.dataType)"
         }
 

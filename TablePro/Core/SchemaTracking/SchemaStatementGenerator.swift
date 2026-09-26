@@ -44,7 +44,9 @@ struct SchemaStatementGenerator {
     func generate(changes: [SchemaChange]) throws -> [SchemaStatement] {
         var statements: [SchemaStatement] = []
 
-        let refusals = changes.lazy.compactMap { SchemaOperationRefusal.reason(for: $0, driver: pluginDriver) }
+        let refusals = Self.replacingIndexesInPlace(changes).lazy.compactMap {
+            SchemaOperationRefusal.reason(for: $0, driver: pluginDriver)
+        }
         if let reason = refusals.first {
             throw SchemaOperationRefusedError(reason: reason)
         }
@@ -70,7 +72,7 @@ struct SchemaStatementGenerator {
 
     // MARK: - Dependency Ordering
 
-    private func sortByDependency(_ changes: [SchemaChange]) -> [SchemaChange] {
+    private func sortByDependency(_ staged: [SchemaChange]) -> [SchemaChange] {
         // Execution order for safety:
         // 1. Drop foreign keys first (includes modify FK, which requires drop+recreate)
         // 2. Drop indexes (a modified index drops here and is added at 6, unless the driver
@@ -80,6 +82,10 @@ struct SchemaStatementGenerator {
         // 5. Modify primary key
         // 6. Add indexes
         // 7. Add foreign keys
+        // Every drop of an index or a check constraint runs before any add or rename of one, and a
+        // rename or add runs after the rename that frees its name. The structure editor counts a
+        // deleted or renamed row's name as free on that basis.
+        let changes = Self.replacingIndexesInPlace(staged)
 
         var constraintDeletes: [SchemaChange] = []
         var constraintModifies: [SchemaChange] = []
@@ -144,8 +150,83 @@ struct SchemaStatementGenerator {
             }
         }
 
-        return constraintDeletes + constraintModifies + fkDeletes + indexDeletes + columnDeletes
-            + columnModifies + columnAdds + pkChanges + indexAdds + fkAdds + constraintAdds
+        let constraintHandoffs = Self.inNameOrder(constraintModifies)
+        let indexHandoffs = Self.inNameOrder(indexAdds)
+
+        return constraintDeletes + constraintHandoffs.drops + constraintHandoffs.ordered + fkDeletes
+            + indexDeletes + indexHandoffs.drops + columnDeletes + columnModifies + columnAdds + pkChanges
+            + indexHandoffs.ordered + fkAdds + constraintAdds
+    }
+
+    /// Orders changes that each give up one name and take another in a single step, a rename or a
+    /// one-statement index replacement, so that none takes a name before the change holding it has
+    /// let it go. Staging order is kept wherever nothing forces another.
+    ///
+    /// Changes that hold each other's names in a cycle, such as two indexes trading names, cannot run
+    /// whole in any order, so each is split into a drop, returned to run with the other drops, and an
+    /// add that then waits for nothing. Measured on MariaDB 13.0.2: renaming `c` to `b` before `b` to
+    /// `a` fails with ERROR 1061 or 1826 after the drops in the same save have run, and a swap fails
+    /// at its first `ALTER TABLE`.
+    private static func inNameOrder(_ changes: [SchemaChange]) -> (drops: [SchemaChange], ordered: [SchemaChange]) {
+        var pending = changes
+        var drops: [SchemaChange] = []
+        while true {
+            let handoff = orderedByNameHandoff(pending)
+            let halves = handoff.cyclic.compactMap(splitIntoDropAndAdd)
+            guard !halves.isEmpty else { return (drops, handoff.ordered + handoff.cyclic) }
+            drops += halves.map(\.drop)
+            pending = handoff.ordered + handoff.cyclic.filter { splitIntoDropAndAdd($0) == nil } + halves.map(\.add)
+        }
+    }
+
+    private static func orderedByNameHandoff(
+        _ changes: [SchemaChange]
+    ) -> (ordered: [SchemaChange], cyclic: [SchemaChange]) {
+        var pending = changes
+        var ordered: [SchemaChange] = []
+        while let next = pending.indices.first(where: { !takesAHeldName(at: $0, in: pending) }) {
+            ordered.append(pending.remove(at: next))
+        }
+        return (ordered, pending)
+    }
+
+    /// Names compare without regard to case, as MySQL, MariaDB and SQLite resolve index and check
+    /// constraint names. On PostgreSQL, which keeps `c` and `C` apart, that only adds an ordering
+    /// nothing needed.
+    private static func takesAHeldName(at position: Int, in pending: [SchemaChange]) -> Bool {
+        guard let taken = nameHandoff(of: pending[position]).taken?.lowercased() else { return false }
+        return pending.indices.contains { other in
+            other != position && nameHandoff(of: pending[other]).released?.lowercased() == taken
+        }
+    }
+
+    private static func nameHandoff(of change: SchemaChange) -> (released: String?, taken: String?) {
+        switch change {
+        case .modifyIndex(let old, let new):
+            return (old.name, new.name)
+        case .modifyCheckConstraint(let old, let new):
+            return (old.name, new.name)
+        case .addIndex(let index):
+            return (nil, index.name)
+        case .addCheckConstraint(let constraint):
+            return (nil, constraint.name)
+        case .addColumn, .modifyColumn, .deleteColumn, .deleteIndex, .addForeignKey, .modifyForeignKey,
+             .deleteForeignKey, .modifyPrimaryKey, .deleteCheckConstraint:
+            return (nil, nil)
+        }
+    }
+
+    private static func splitIntoDropAndAdd(_ change: SchemaChange) -> (drop: SchemaChange, add: SchemaChange)? {
+        switch change {
+        case .modifyIndex(let old, let new):
+            return (.deleteIndex(old), .addIndex(new))
+        case .modifyCheckConstraint(let old, let new):
+            return (.deleteCheckConstraint(old), .addCheckConstraint(new))
+        case .addColumn, .modifyColumn, .deleteColumn, .addIndex, .deleteIndex, .addForeignKey,
+             .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey, .addCheckConstraint,
+             .deleteCheckConstraint:
+            return nil
+        }
     }
 
     private static func changesColumns(_ change: SchemaChange) -> Bool {
@@ -155,6 +236,38 @@ struct SchemaStatementGenerator {
         case .addIndex, .modifyIndex, .deleteIndex, .addForeignKey, .modifyForeignKey, .deleteForeignKey,
              .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
             return false
+        }
+    }
+
+    /// An index deleted and another added under its name in the same save replace that index, which
+    /// is what `.modifyIndex` describes. Each add takes the first unpaired delete of its name, so a
+    /// second pass finds nothing left to pair.
+    ///
+    /// Paired, the save asks the driver about a replacement rather than a drop and an unrelated add,
+    /// and a driver that replaces an index in one statement does so: MySQL and MariaDB run
+    /// `DROP INDEX idx_a, ADD INDEX idx_a (…)` as one `ALTER TABLE`, and keep the old index when the
+    /// server refuses the new one. Everywhere else it splits back into the drop and the add.
+    static func replacingIndexesInPlace(_ changes: [SchemaChange]) -> [SchemaChange] {
+        var unpairedDrops: [EditableIndexDefinition] = changes.compactMap { change in
+            guard case .deleteIndex(let index) = change else { return nil }
+            return index
+        }
+        var replaced: [UUID: EditableIndexDefinition] = [:]
+        for case .addIndex(let added) in changes {
+            guard let position = unpairedDrops.firstIndex(where: { $0.name == added.name }) else { continue }
+            replaced[added.id] = unpairedDrops.remove(at: position)
+        }
+        let pairedDropIDs = Set(replaced.values.map(\.id))
+        return changes.compactMap { change in
+            switch change {
+            case .deleteIndex(let dropped) where pairedDropIDs.contains(dropped.id):
+                return nil
+            case .addIndex(let added):
+                guard let dropped = replaced[added.id] else { return change }
+                return .modifyIndex(old: dropped, new: added)
+            default:
+                return change
+            }
         }
     }
 

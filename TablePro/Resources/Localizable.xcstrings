@@ -184363,6 +184363,9 @@
     },
     "This database does not store whole documents" : {
 
+    },
+    "PRIMARY is the primary key's name, and no other index can take it. Rename the index, or change the key on the Columns tab." : {
+
     }
   },
   "version" : "1.1"
