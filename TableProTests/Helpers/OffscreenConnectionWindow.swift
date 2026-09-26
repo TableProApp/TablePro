@@ -14,6 +14,7 @@ internal struct OffscreenConnectionWindow {
     let window: NSWindow
     let split: MainSplitViewController
     let workspace: ConnectionWorkspace
+    let toolbarOwner: MainWindowToolbar
     private let hasInjectedSession: Bool
 
     init(size: CGSize, connectedTo connection: DatabaseConnection? = nil) throws {
@@ -38,20 +39,20 @@ internal struct OffscreenConnectionWindow {
         split = try #require(built.contentViewController as? MainSplitViewController)
         hasInjectedSession = connection != nil
 
+        let toolbar = ContextValidatedToolbar(
+            identifier: NSToolbar.Identifier("com.TablePro.tests.offscreen.\(UUID().uuidString)")
+        )
+        toolbarOwner = MainWindowToolbar(managedToolbar: toolbar)
+        toolbar.autosavesConfiguration = false
+        split.toolbarOwner = toolbarOwner
+        split.pointToolbar(at: nil)
+
         if hasInjectedSession {
             var session = ConnectionSession(connection: subject, driver: MockDatabaseDriver(connection: subject))
             session.status = .connected
             DatabaseManager.shared.injectSession(session, for: subject.id)
             split.refreshFromActiveSessions()
         }
-
-        let toolbar = ContextValidatedToolbar(
-            identifier: NSToolbar.Identifier("com.TablePro.tests.offscreen.\(UUID().uuidString)")
-        )
-        let owner = MainWindowToolbar(managedToolbar: toolbar)
-        toolbar.autosavesConfiguration = false
-        split.toolbarOwner = owner
-        split.pointToolbar(at: nil)
         resetPaneLayout()
     }
 

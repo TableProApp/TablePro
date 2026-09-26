@@ -17,6 +17,7 @@ struct ResultStatusModelTests {
         hasColumns: Bool? = nil,
         hasTableName: Bool = true,
         hasStructureActions: Bool = false,
+        isQueryPlan: Bool = false,
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil
     ) -> StatusBarSnapshot {
@@ -35,6 +36,7 @@ struct ResultStatusModelTests {
                 hasColumns: hasColumns ?? (rowCount > 0)
             ),
             hasStructureActions: hasStructureActions,
+            isQueryPlan: isQueryPlan,
             pagination: pagination,
             statusMessage: statusMessage
         )
@@ -65,40 +67,39 @@ struct ResultStatusModelTests {
         #expect(!result.controls.showsReadout)
     }
 
-    @Test("A query tab running before it has any result reports the execution alone")
+    @Test("A query tab running before it has any result reports the execution without a readout")
     func firstRunReportsTheExecution() {
-        var running = PaginationState()
-        running.isLoading = true
-        let snapshot = makeSnapshot(
-            tabType: .query,
-            rowCount: 0,
-            hasColumns: false,
-            hasTableName: false,
-            pagination: running
-        )
-        let result = model(snapshot)
+        let result = model(runningQueryTabWithoutResult())
         #expect(!result.controls.showsReadout)
-        #expect(result.controls.showsExecutionWithoutReadout)
+        #expect(result.controls.showsExecution)
     }
 
-    @Test("A query tab with no result and nothing running reports nothing")
-    func idleTabWithoutResultReportsNoExecution() {
-        let snapshot = makeSnapshot(tabType: .query, rowCount: 0, hasColumns: false, hasTableName: false)
-        #expect(!model(snapshot).controls.showsExecutionWithoutReadout)
-    }
-
-    @Test("A running query with a result on screen reports the execution inside the readout")
+    @Test("A running query with a result on screen reports the execution beside the readout")
     func runWithAResultKeepsTheReadout() {
         var running = PaginationState()
         running.isLoading = true
         let snapshot = makeSnapshot(tabType: .query, rowCount: 5, hasTableName: false, pagination: running)
         let result = model(snapshot)
         #expect(result.controls.showsReadout)
-        #expect(!result.controls.showsExecutionWithoutReadout)
+        #expect(result.controls.showsExecution)
     }
 
-    @Test("Structure mode never reports an execution on its own")
-    func structureModeReportsNoBareExecution() {
+    @Test("Output mode reports the execution of a query that has no result yet")
+    func outputModeReportsTheExecution() {
+        let result = model(runningQueryTabWithoutResult(), viewMode: .output)
+        #expect(!result.controls.showsReadout)
+        #expect(result.controls.showsExecution)
+    }
+
+    @Test("A query plan on screen gives up the readout and still reports the execution")
+    func queryPlanReportsTheExecution() {
+        let result = model(runningQueryTabWithoutResult(isQueryPlan: true))
+        #expect(!result.controls.showsReadout)
+        #expect(result.controls.showsExecution)
+    }
+
+    @Test("Structure mode never reports an execution")
+    func structureModeReportsNoExecution() {
         var running = PaginationState()
         running.isLoading = true
         let snapshot = makeSnapshot(
@@ -108,7 +109,34 @@ struct ResultStatusModelTests {
             hasTableName: false,
             pagination: running
         )
-        #expect(!model(snapshot, viewMode: .structure).controls.showsExecutionWithoutReadout)
+        #expect(!model(snapshot, viewMode: .structure).controls.showsExecution)
+    }
+
+    @Test("A query tab that never ran reads the fetch the registry reports as loading")
+    func neverRunQueryTabTakesTheFetchFromTheRegistry() {
+        let tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        #expect(!tab.pagination.isLoading)
+
+        let snapshot = StatusBarSnapshot(tab: tab, tableRows: TableRows(), isFetching: true)
+        let result = model(snapshot)
+
+        #expect(snapshot.pagination.isLoading)
+        #expect(result.readout == .loading)
+        #expect(!result.controls.showsReadout)
+        #expect(result.controls.showsExecution)
+    }
+
+    private func runningQueryTabWithoutResult(isQueryPlan: Bool = false) -> StatusBarSnapshot {
+        var running = PaginationState()
+        running.isLoading = true
+        return makeSnapshot(
+            tabType: .query,
+            rowCount: 0,
+            hasColumns: false,
+            hasTableName: false,
+            isQueryPlan: isQueryPlan,
+            pagination: running
+        )
     }
 
     @Test("A table with a known total reports the offset range")

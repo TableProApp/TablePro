@@ -52,7 +52,10 @@ struct InspectorToolbarPlacementTests {
     }
 
     private func toggleGapFromTrailingEdge(in fixture: OffscreenConnectionWindow) throws -> CGFloat {
-        let toggle = try #require(control(sending: "toggleInspector:", in: fixture), "No inspector toggle in the toolbar")
+        let toggle = try #require(
+            control(sending: "toggleInspector:", in: fixture),
+            "No inspector toggle in the toolbar"
+        )
         return fixture.window.frame.width - toggle.convert(toggle.bounds, to: nil).maxX
     }
 

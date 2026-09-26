@@ -6,11 +6,6 @@ struct ERDiagramView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.colorScheme) private var colorScheme
 
-    /// The scroll view reports no visible rect until AppKit has laid it out, which happens after
-    /// SwiftUI mounts it. The fit retries across a bounded number of main-actor hops rather than
-    /// waiting on a wall-clock delay.
-    private static let fitLayoutAttempts = 30
-
     private var viewport: DiagramViewportController { viewModel.viewport }
 
     var body: some View {
@@ -54,7 +49,6 @@ struct ERDiagramView: View {
             }
         }
         .task { await viewModel.loadDiagram() }
-        .task(id: viewModel.loadState) { await settleViewport() }
     }
 
     // MARK: - Diagram Canvas
@@ -102,27 +96,6 @@ struct ERDiagramView: View {
             selectedNodeId: viewModel.selectedNodeId,
             size: viewModel.cachedCanvasSize
         )
-    }
-
-    // MARK: - Initial Fit
-
-    /// The first pass fits the whole diagram. A later one, after an editor-tab switch rebuilt this view
-    /// against a model that already loaded, leaves the viewport to the scroll view, which puts back
-    /// the offset it was left on.
-    private func settleViewport() async {
-        guard viewModel.loadState == .loaded else { return }
-        for _ in 0..<Self.fitLayoutAttempts {
-            guard !Task.isCancelled else { return }
-            let visible = viewport.visibleDocumentRect
-            if visible.width > 0, visible.height > 0 {
-                if viewModel.needsInitialFit {
-                    viewport.fitToWindow()
-                    viewModel.needsInitialFit = false
-                }
-                return
-            }
-            await Task.yield()
-        }
     }
 
     // MARK: - Cluster Colors

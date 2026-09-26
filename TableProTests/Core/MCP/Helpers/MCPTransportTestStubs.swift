@@ -152,7 +152,7 @@ enum TransportTestTime {
 }
 
 enum RawHttpTestError: Error, Equatable {
-    case connectFailed
+    case connectFailed(String)
     case timedOut(String)
     case connectionClosed
     case malformedResponse
@@ -218,15 +218,22 @@ actor RawHttpTestClient {
     private var buffer: [UInt8] = []
     private var everything: [UInt8] = []
     private var ready = false
-    private var failed = false
+    private var failureReason: String?
     private var peerClosed = false
+    private var cancelled = false
 
     init(port: UInt16) {
         let endpoint = NWEndpoint.hostPort(
             host: .ipv4(.loopback),
             port: NWEndpoint.Port(rawValue: port) ?? .any
         )
-        connection = NWConnection(to: endpoint, using: .tcp)
+        connection = NWConnection(to: endpoint, using: Self.parameters())
+    }
+
+    private static func parameters() -> NWParameters {
+        let parameters = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+        return parameters
     }
 
     func connect(timeout: Duration = .seconds(3)) async throws {
@@ -235,10 +242,10 @@ actor RawHttpTestClient {
             switch state {
             case .ready:
                 Task { await self.markReady() }
-            case .failed:
-                Task { await self.markFailed() }
+            case .waiting(let error), .failed(let error):
+                Task { await self.markFailed(String(describing: error)) }
             case .cancelled:
-                Task { await self.markPeerClosed() }
+                Task { await self.markCancelled() }
             default:
                 break
             }
@@ -246,12 +253,20 @@ actor RawHttpTestClient {
         connection.start(queue: .global(qos: .userInitiated))
 
         let deadline = TransportTestTime.deadline(timeout)
-        while !ready, !failed {
+        while !ready, failureReason == nil {
             guard Date() < deadline else { throw RawHttpTestError.timedOut("connect") }
             try await Task.sleep(for: .milliseconds(5))
         }
-        guard ready else { throw RawHttpTestError.connectFailed }
+        if let failureReason {
+            connection.cancel()
+            throw RawHttpTestError.connectFailed(failureReason)
+        }
         receiveNext()
+    }
+
+    func localPort() -> UInt16? {
+        guard case .hostPort(_, let port) = connection.currentPath?.localEndpoint else { return nil }
+        return port.rawValue
     }
 
     func send(_ data: Data) async throws {
@@ -314,20 +329,25 @@ actor RawHttpTestClient {
         String(bytes: buffer, encoding: .utf8) ?? ""
     }
 
-    func close() {
+    func close(timeout: Duration = .seconds(3)) async {
         connection.cancel()
+        let deadline = TransportTestTime.deadline(timeout)
+        while !cancelled, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 
     private func markReady() {
         ready = true
     }
 
-    private func markFailed() {
-        failed = true
+    private func markFailed(_ reason: String) {
+        failureReason = reason
         peerClosed = true
     }
 
-    private func markPeerClosed() {
+    private func markCancelled() {
+        cancelled = true
         peerClosed = true
     }
 
@@ -395,13 +415,14 @@ actor RawHttpTestClient {
 
 enum MCPTransportTestHarness {
     static func start(
+        port requestedPort: UInt16 = 0,
         authenticator: any MCPAuthenticator = StubAlwaysAllowAuthenticator(),
         limits: MCPHttpServerLimits = .standard,
         clock: any MCPClock = MCPSystemClock(),
         timeout: Duration = .seconds(5)
     ) async throws -> (MCPHttpServerTransport, UInt16) {
         let transport = MCPHttpServerTransport(
-            configuration: MCPHttpServerConfiguration.loopback(port: 0, limits: limits),
+            configuration: MCPHttpServerConfiguration.loopback(port: requestedPort, limits: limits),
             authenticator: authenticator,
             clock: clock
         )
@@ -433,12 +454,13 @@ enum MCPTransportTestHarness {
     }
 
     static func withServer(
+        port requestedPort: UInt16 = 0,
         authenticator: any MCPAuthenticator = StubAlwaysAllowAuthenticator(),
         limits: MCPHttpServerLimits = .standard,
         handler: @escaping @Sendable (MCPInboundExchange) async -> Void = MCPTransportTestHandlers.echo,
         body: (UInt16) async throws -> Void
     ) async throws {
-        let (transport, port) = try await start(authenticator: authenticator, limits: limits)
+        let (transport, port) = try await start(port: requestedPort, authenticator: authenticator, limits: limits)
         let consumer = StubExchangeConsumer()
         await consumer.start(transport: transport, responder: handler)
         do {

@@ -532,7 +532,7 @@ enum BridgeStdin {
                 while !Task.isCancelled {
                     let chunk: Data
                     do {
-                        chunk = try DescriptorRead.availableBytes(from: descriptor)
+                        chunk = try DescriptorRead.nextBytes(from: descriptor)
                     } catch {
                         logger.log(.error, "Reading stdin failed: \(error.localizedDescription)")
                         break

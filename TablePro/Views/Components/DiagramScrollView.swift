@@ -35,7 +35,7 @@ final class DiagramScrollView: NSScrollView, ZoomCommandResponding {
         super.tile()
         guard !hasSettled, !contentView.bounds.isEmpty else { return }
         hasSettled = true
-        zoomController?.restoreScrollPositionIfLaidOut()
+        zoomController?.placeDocumentIfLaidOut()
         (documentView as? DiagramViewportSettling)?.viewportDidSettle()
     }
 
