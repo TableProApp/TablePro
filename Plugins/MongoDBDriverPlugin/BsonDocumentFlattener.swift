@@ -35,6 +35,14 @@ enum BsonValueKind: Hashable {
     }
 }
 
+/// Documents as Swift values beside the canonical Extended JSON each was read from. The
+/// dictionaries have lost the stored field order and which numeric type each number was; the text
+/// has not.
+struct MongoReadDocuments {
+    let dictionaries: [[String: Any]]
+    let texts: [String]
+}
+
 struct BsonDocumentFlattener {
     // MARK: - Public API
 
@@ -67,20 +75,45 @@ struct BsonDocumentFlattener {
     }
 
     /// Flatten documents into a grid. Missing fields become nil cells.
-    /// Nested objects/arrays are serialized as compact JSON strings.
+    /// Nested objects/arrays are serialized as compact JSON strings, taken from each document's
+    /// stored text when there is one, so they keep their field order and their BSON types.
     static func flatten(
         documents: [[String: Any]],
         columns: [String],
         kinds: [BsonValueKind],
-        representation: MongoDBUuidRepresentation
+        representation: MongoDBUuidRepresentation,
+        storedTexts: [String] = []
     ) -> [[PluginCellValue]] {
-        documents.map { doc in
-            columns.enumerated().map { index, column in
+        documents.enumerated().map { offset, doc in
+            var stored: [String: MongoDocumentText.Value]?
+            return columns.enumerated().map { index, column in
                 guard let value = doc[column] else { return PluginCellValue.null }
+                if isNestedValue(value), offset < storedTexts.count {
+                    if stored == nil { stored = storedMembers(of: storedTexts[offset]) }
+                    if let member = stored?[column] { return .text(nestedDisplayText(member)) }
+                }
                 let kind = index < kinds.count ? kinds[index] : .string
                 return cellValue(for: value, kind: kind, representation: representation)
             }
         }
+    }
+
+    /// A document or an array, and not the `$code` or DBRef shapes that render as their own text.
+    private static func isNestedValue(_ value: Any) -> Bool {
+        if value is [Any] { return true }
+        guard let dict = value as? [String: Any] else { return false }
+        let isCode = dict["$code"] is String
+        let isReference = dict["$ref"] is String && dict["$id"] != nil
+        return !isCode && !isReference
+    }
+
+    private static func storedMembers(of text: String) -> [String: MongoDocumentText.Value] {
+        guard case .object(let members) = try? MongoDocumentText.Value(parsing: text) else { return [:] }
+        return Dictionary(members.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    static func nestedDisplayText(_ canonical: MongoDocumentText.Value) -> String {
+        JSONTruncation.truncate(MongoExtendedJsonForm.display(canonical).compactText, maxLength: maxNestedJsonLength)
     }
 
     /// Infer the dominant value kind for each column by majority-vote over document values.

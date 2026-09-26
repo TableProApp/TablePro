@@ -73,9 +73,13 @@ Over an SSH tunnel only the first host is used and the rest of the list is dropp
 
 ## Browsing collections
 
-Click a collection to page through its documents. The columns are the fields in the documents on screen, then any field the collection's `$jsonSchema` validator declares that none of them hold, so an empty collection still shows the fields it was created with. ObjectIds render as strings, arrays and nested objects as formatted JSON.
+Click a collection to page through its documents. The columns are the fields in the documents on screen, then any field the collection's `$jsonSchema` validator declares that none of them hold, so an empty collection still shows the fields it was created with. A top-level ObjectId renders as its hex string. A nested object or array shows as Extended JSON in the order it is stored: `{"$oid": "…"}`, `{"$date": "2024-05-01T10:00:00.123Z"}`, `{"$numberLong": "5"}`, and `3.0` for a double that holds a whole number.
 
 An edited cell keeps its field's type. A date stays a date, whether typed as `2024-01-02T03:04:05Z`, as `2024-01-02`, or picked in the date picker, which writes your local time. An ObjectId stays an ObjectId, an integer past 2^53 is sent as a 64-bit integer, and a field the validator declares as `string` is written as text even when it reads `123` or `true`. Where the grid has no type to go on, `123` is a number and `{"a": 1}` a document; text that only looks like JSON is written as a string.
+
+Editing a nested object or array writes only the paths that changed, such as `address.city` or `tags.1`, so every other value in it keeps its type and its place. Adding two keys at once, reordering keys, or changing an array's length writes the whole value instead. A binary cell keeps its BSON subtype when its bytes are edited, and a duplicated or pasted row keeps its binary fields. **Set NULL** removes the field from the document, and a new row saved with every cell empty inserts a document holding only a generated `_id`.
+
+A field whose own name contains a dot, starts with `$` or is `__proto__` is written with `$setField`, which needs MongoDB 5.0 or later. On an older server the save is refused and nothing is sent.
 
 The filter bar's column picker lists paths inside nested objects and arrays of objects, so `customer.country` and `items.sku` filter directly; a row on an array field chooses **any element** or **same element**, which makes one array entry satisfy every row set to it. See [Filtering](/features/filtering#nested-fields). A field name containing a literal dot is left out of the picker, since MongoDB reads a dot as a path separator; reach it with `$getField` inside `$expr`.
 
@@ -209,7 +213,8 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 
 ## Limitations
 
-- A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
+- A row with no `_id` cannot be updated or deleted. The save is refused rather than matched on the remaining fields, and every change stays pending. Keep `_id` in the projection so every row carries one.
+- A binary value keeps the subtype it was read with. New bytes in a field whose validator does not declare `binData`, or the same bytes read with two different subtypes, refuse the save: write that value with a query.
 - `_id` is read-only in the grid, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
 - Transactions are not exposed. Statements always run standalone, on any topology.
 - A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.
@@ -218,7 +223,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
 - GridFS buckets are not browsable, and change streams are unsupported.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
-- Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+- Field names that are whole numbers up to 4294967294 (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them. A nested object with such a key after another key, or with a key named `__proto__`, refuses the save when it is duplicated or written whole. Use **Insert Document…** or a query for it.
 
 ## Troubleshooting
 

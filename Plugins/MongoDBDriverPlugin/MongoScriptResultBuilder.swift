@@ -11,7 +11,7 @@ enum MongoScriptResultBuilder {
         for outcome: MongoScriptStatementResult,
         startTime: Date,
         emptyColumns: [(name: String, typeName: String)] = [(name: "_id", typeName: "ObjectId")],
-        documents build: ([[String: Any]], String, Bool) -> PluginQueryResult
+        documents build: (MongoReadDocuments, String, Bool) -> PluginQueryResult
     ) -> PluginQueryResult {
         if outcome.producedDocuments, outcome.documents.json.isEmpty {
             // Zero columns reads as write-success in the result pane, so a query that matched
@@ -25,7 +25,7 @@ enum MongoScriptResultBuilder {
 
         if outcome.producedDocuments {
             let grid = build(
-                outcome.documents.dictionaries,
+                outcome.documents.readDocuments,
                 outcome.collection ?? "",
                 outcome.documents.isTruncated
             ).withRowsAffected(outcome.rowsAffected)

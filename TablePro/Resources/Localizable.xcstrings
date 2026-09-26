@@ -184447,6 +184447,39 @@
     },
     "TTL has to be a whole number of seconds above 0, or -1 or NULL for no expiry." : {
 
+    },
+    "%@ holds binary data. Edit it as bytes, or set it to NULL." : {
+
+    },
+    "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
+
+    },
+    "The shell cannot write a field named “%@” into a new document. Insert this document with a query." : {
+
+    },
+    "%@ holds a document or an array, and this text is not valid JSON." : {
+
+    },
+    "A number in %@ is larger than a 64-bit integer. Write it as a decimal, such as {\"$numberDecimal\": \"12345678901234567890\"}." : {
+
+    },
+    "MongoDB has no default values, so %@ cannot be set to DEFAULT." : {
+
+    },
+    "MongoDB does not let a document's _id change. Duplicate the row with the new _id, then delete this one." : {
+
+    },
+    "This row has no _id, so TablePro cannot tell which document to change." : {
+
+    },
+    "The binary subtype of %@ is not known, so saving could store a different kind of binary. Change this field with a query." : {
+
+    },
+    "A field named “%@” can only be changed on MongoDB 5.0 or later, which can address a dot or a leading $ in a name." : {
+
+    },
+    "The shell would reorder or drop a key inside %@: it lists number-like keys first and drops __proto__. Change this field with a query." : {
+
     }
   },
   "version" : "1.1"

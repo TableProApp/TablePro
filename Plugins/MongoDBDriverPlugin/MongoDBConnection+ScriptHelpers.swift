@@ -16,13 +16,17 @@ struct MongoScriptDocumentBatch: Sendable {
 
     var jsonArray: String { "[\(json.joined(separator: ","))]" }
 
-    var dictionaries: [[String: Any]] {
-        json.compactMap { document in
+    var readDocuments: MongoReadDocuments {
+        var dictionaries: [[String: Any]] = []
+        var texts: [String] = []
+        for document in json {
             guard let data = document.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data),
-                  let dictionary = object as? [String: Any] else { return nil }
-            return MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary
+                  let dictionary = object as? [String: Any] else { continue }
+            dictionaries.append(MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary)
+            texts.append(document)
         }
+        return MongoReadDocuments(dictionaries: dictionaries, texts: texts)
     }
 }
 
