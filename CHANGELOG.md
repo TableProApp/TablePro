@@ -142,6 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Slow definition diff in Compare & Sync for large tables.
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
 - Stale column and MongoDB field suggestions when a refresh ran while they were loading.
+- Autocomplete list that opened while typing ranked for an earlier prefix, such as `set` first for `sel`.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
 - Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
 - Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery.

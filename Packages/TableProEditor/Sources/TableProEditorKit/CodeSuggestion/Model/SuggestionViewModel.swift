@@ -152,11 +152,22 @@ final class SuggestionViewModel: ObservableObject {
                         return
                     }
 
-                    guard let cursorPosition = textView.resolveCursorPosition(completionItems.windowPosition),
+                    guard let windowPosition = textView.resolveCursorPosition(completionItems.windowPosition),
                           let cursorRect = textView.textView.layoutManager.rectForOffset(
-                            cursorPosition.range.location
+                            windowPosition.range.location
                           ) else {
                         Self.logger.warning("showCompletions: cursor rect resolution failed")
+                        self.endSession(generation: generation)
+                        return
+                    }
+
+                    guard let items = self.itemsForLiveCursor(
+                        requested: completionItems.items,
+                        answeredAt: windowPosition,
+                        textView: textView,
+                        delegate: delegate
+                    ) else {
+                        Self.logger.debug("showCompletions: nothing matches where the cursor moved while loading")
                         self.endSession(generation: generation)
                         return
                     }
@@ -165,7 +176,7 @@ final class SuggestionViewModel: ObservableObject {
                         textView.textView.convert(cursorRect, to: nil)
                     )
 
-                    self.items = completionItems.items
+                    self.items = items
                     self.selectedIndex = 0
                     self.syntaxHighlightedCache = [:]
                     self.notifySelection()
@@ -182,6 +193,23 @@ final class SuggestionViewModel: ObservableObject {
                 return
             }
         }
+    }
+
+    private func itemsForLiveCursor(
+        requested: [CodeSuggestionEntry],
+        answeredAt windowPosition: CursorPosition,
+        textView: TextViewController,
+        delegate: CodeSuggestionDelegate
+    ) -> [CodeSuggestionEntry]? {
+        guard let liveCursor = textView.cursorPositions.first,
+              liveCursor.range != windowPosition.range else {
+            return requested
+        }
+        guard let reranked = delegate.completionOnCursorMove(textView: textView, cursorPosition: liveCursor),
+              !reranked.isEmpty else {
+            return nil
+        }
+        return reranked
     }
 
     /// Ends the session this request owns, so nothing is left claiming a window that was never
