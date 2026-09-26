@@ -203,6 +203,25 @@ struct MongoDBWriteBackTypeTests {
         #expect(parsed["note"] as? String == hostile)
     }
 
+    /// Measured on macOS 27: `JSONSerialization` refuses each of these, so none reaches the statement
+    /// as source. This pins it, because a parser that stopped at the first complete value would let
+    /// the rest run.
+    @Test("JSON followed by more text is written as a string, never pasted as source")
+    func jsonPrefixWithTrailingCodeIsAString() throws {
+        let payloads = [
+            "{}, injected: db.dropDatabase(), tail: {}",
+            #"{"a":1}, db.dropDatabase(), {}"#,
+            "[1], db.dropDatabase(), [2]"
+        ]
+        for hostile in payloads {
+            let stmt = try #require(update(column: "note", to: .text(hostile), kinds: [:]))
+            #expect(stmt.contains("\"note\": \(MongoScriptJson.jsonString(hostile))"), "\(hostile)")
+            let gen = MongoDBStatementGenerator(collectionName: "notes", columns: ["_id", "note"])
+            let restored = try #require(gen.generateRestore(rows: [["507f1f77bcf86cd799439011", .text(hostile)]])?.first)
+            #expect(restored.statement.contains("\"note\": \(MongoScriptJson.jsonString(hostile))"), "\(hostile)")
+        }
+    }
+
     @Test("Restoring a deleted row writes a hostile stored string back as a string")
     func restoreDoesNotRunStoredText() throws {
         let gen = MongoDBStatementGenerator(collectionName: "notes", columns: ["_id", "body"])

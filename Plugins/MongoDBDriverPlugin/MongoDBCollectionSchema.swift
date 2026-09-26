@@ -110,8 +110,13 @@ struct MongoDBCollectionSchema: Equatable, Sendable {
         return values
     }
 
+    /// Bounded on the server, because the read runs after a find on the session driver and a
+    /// stalled catalog would hold every later statement on the connection behind it.
+    static let listCollectionsTimeoutMS = 5_000
+
     static func listCollectionsCommand(for collection: String) -> String {
-        "{\"listCollections\": 1, \"filter\": {\"name\": \(MongoScriptJson.jsonString(collection))}}"
+        "{\"listCollections\": 1, \"filter\": {\"name\": \(MongoScriptJson.jsonString(collection))}, "
+            + "\"maxTimeMS\": \(listCollectionsTimeoutMS)}"
     }
 
     /// Reads a `listCollections` reply's first collection. The reply is walked as text because the

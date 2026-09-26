@@ -251,8 +251,10 @@ struct MongoDBStatementGenerator {
         switch idKind {
         case .string:
             return "\"\(escapeJsonString(idValue))\""
-        case .objectId, .int32, .int64, .double, .decimal128:
+        case .objectId, .int32, .int64, .double, .decimal128, .date:
             if let typed = typedJson(idValue, kind: idKind) { return typed }
+        case .boolean:
+            if idValue == "true" || idValue == "false" { return idValue }
         default:
             break
         }

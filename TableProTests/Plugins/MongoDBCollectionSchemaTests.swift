@@ -117,6 +117,7 @@ struct MongoDBCollectionSchemaTests {
         let data = try #require(command.data(using: .utf8))
         let parsed = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect((parsed["filter"] as? [String: Any])?["name"] as? String == "a\"b")
+        #expect(parsed["maxTimeMS"] as? Int == MongoDBCollectionSchema.listCollectionsTimeoutMS)
     }
 
     // MARK: - Shape

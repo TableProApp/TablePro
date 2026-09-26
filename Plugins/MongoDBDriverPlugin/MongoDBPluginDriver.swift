@@ -231,14 +231,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// The fields the collection declares, for a find that returned whole documents; empty for a
-    /// projection, a pipeline or anything else. Read on the session driver because that is the one
+    /// The fields the collection declares, for a find that returned whole documents; empty, and not
+    /// read at all, for a projection, a pipeline or anything else. Read on the session driver because that is the one
     /// whose writer and filters use it: `fetchColumns` runs on a pooled driver whose caches this
     /// one never sees. Read again on a first page, so a refresh picks up a changed validator, and
     /// reused while paging.
     private func declaredColumns(for outcome: MongoScriptStatementResult) async throws -> MongoDBCollectionSchema {
         guard outcome.producedDocuments,
-              let find = outcome.find, find.database == currentDb,
+              let find = outcome.find, find.returnsWholeDocuments, find.database == currentDb,
               let collection = outcome.collection, !collection.isEmpty,
               let conn = mongoConnection else {
             return .empty
@@ -252,7 +252,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             schema = try await declaredSchema(of: collection, conn: conn)
             columnKindLock.withLock { declaredSchemasByCollection[key] = schema }
         }
-        return find.returnsWholeDocuments ? schema : .empty
+        return schema
     }
 
     private func declaredTypeName(of column: String, in schema: MongoDBCollectionSchema) -> String {
