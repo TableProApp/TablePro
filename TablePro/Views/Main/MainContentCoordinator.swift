@@ -197,12 +197,6 @@ final class MainContentCoordinator: ObservableObject {
     /// Direct reference to structure view actions — eliminates notification broadcasts
     weak var structureActions: StructureViewActionHandler?
 
-    /// Raised while a close is applying the staged structure edits of tabs it is about to close.
-    /// Each apply broadcasts a data refresh for its scope, and a mounted structure view on the same
-    /// database answers that by asking whether to discard its own staged edits, which mid-close is
-    /// a question the user cannot usefully answer. Scoped by the caller's `defer`, never latched.
-    @Published var isApplyingStagedStructureEdits = false
-
     /// Direct reference to create-table view actions so the Save Changes menu
     /// (Cmd+S) routes to table creation. Set by `CreateTableView` on appear.
     weak var createTableActions: CreateTableActionHandler?
@@ -378,6 +372,7 @@ final class MainContentCoordinator: ObservableObject {
     private var externalFileModCancellable: AnyCancellable?
     internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
+    private var clearedEditsCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?
 
@@ -762,6 +757,7 @@ final class MainContentCoordinator: ObservableObject {
         self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
         self.paginationCoordinator = PaginationCoordinator(parent: self)
         self.rowEditingCoordinator = RowEditingCoordinator(parent: self)
+        clearedEditsCancellable = resumeWhenEditsClear()
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
@@ -1290,6 +1286,7 @@ final class MainContentCoordinator: ObservableObject {
         let rowCap = statement.rowCap
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
+        let needsDefinition = tabSessionRegistry.needsDefinition(tabId)
         let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
         /// Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
@@ -1364,6 +1361,9 @@ final class MainContentCoordinator: ObservableObject {
                 let inlineMeta = needsMetadataFetch
                     ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
                     : nil
+                /// After a definition change the rows and the definition commit together, so the grid
+                /// never holds the new columns under the old keys, defaults or generated columns.
+                let definition = needsDefinition ? try? await schemaTask?.value : nil
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
@@ -1388,6 +1388,7 @@ final class MainContentCoordinator: ObservableObject {
 
                     traceApplyingResult(traceToken, tabId: tabId)
 
+                    let definitionMetadata = adoptLoadedDefinition(definition, of: tableName, in: scope, readBy: claim)
                     applyPhase1Result(
                         tabId: tabId,
                         columns: fetchResult.columns,
@@ -1398,8 +1399,9 @@ final class MainContentCoordinator: ObservableObject {
                         statusMessage: fetchResult.statusMessage,
                         tableName: tableName,
                         isEditable: isEditable,
-                        metadata: inlineMeta ?? cachedMetadata,
-                        hasSchema: false,
+                        metadata: definitionMetadata ?? inlineMeta ?? cachedMetadata,
+                        hasSchema: definitionMetadata != nil,
+                        read: TableFreshness.Read(startedAt: claim.startedAt, includesDefinition: definitionMetadata != nil),
                         sql: sql,
                         connection: conn,
                         isTruncated: fetchResult.isTruncated,

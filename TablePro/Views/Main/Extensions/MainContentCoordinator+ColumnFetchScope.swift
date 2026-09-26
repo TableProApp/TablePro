@@ -73,6 +73,27 @@ extension MainContentCoordinator {
         }
     }
 
+    /// The metadata a load commits with its rows after it fetched the table's definition itself, and
+    /// the same definition's columns in place of the set a definition change dropped. A load that
+    /// started before the latest definition change still commits what it read, and the tab stays
+    /// marked, but its columns never reach the cache the next query builds its select list from.
+    func adoptLoadedDefinition(
+        _ schema: FetchedTableSchema?,
+        of tableName: String?,
+        in scope: DatabaseScope,
+        readBy claim: TabExecutionClaim
+    ) -> ParsedSchemaMetadata? {
+        guard let schema else { return nil }
+        if let tableName, !schema.columns.isEmpty,
+           tabSessionRegistry.definitionIsCurrent(asOf: claim.startedAt, for: claim.tabId) {
+            schemaColumns.store(
+                SchemaColumnStore.Entry(fetchedColumns: schema.columns),
+                for: schemaColumnsKey(tableName, scope: scope)
+            )
+        }
+        return parseSchemaMetadata(schema)
+    }
+
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {
         guard tab.tabType == .table, let tableName = tab.tableContext.tableName else { return resultColumns }
         return ColumnFetchScope.visibilityPickerColumns(

@@ -19,13 +19,22 @@ private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
 }
 
 @MainActor
+private final class OverlayCloseRecorder: DataGridViewDelegate {
+    private(set) var closedCount = 0
+
+    func dataGridDidCloseCellOverlay() {
+        closedCount += 1
+    }
+}
+
+@MainActor
 struct KeyHandlingTableViewOverlayTests {
-    private func makeCoordinator() -> TableViewCoordinator {
+    private func makeCoordinator(delegate: (any DataGridViewDelegate)? = nil) -> TableViewCoordinator {
         TableViewCoordinator(
             changeManager: AnyChangeManager(DataChangeManager()),
             isEditable: true,
             selectedRowIndices: .constant([]),
-            delegate: nil,
+            delegate: delegate,
             layoutPersister: StubColumnLayoutPersister()
         )
     }
@@ -78,5 +87,34 @@ struct KeyHandlingTableViewOverlayTests {
 
         #expect(!editor.isActive)
         #expect(container.superview == nil)
+    }
+
+    /// A reload a change put off while the overlay was open waits on this, and an editor that closes
+    /// with a commit records its edit only after removing itself, so the owner hears on the next turn.
+    @Test("closing a cell overlay tells the grid's owner on the next turn, once")
+    func closingAnOverlayTellsTheOwnerOnTheNextTurn() async throws {
+        let recorder = OverlayCloseRecorder()
+        let tableView = KeyHandlingTableView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let coordinator = makeCoordinator(delegate: recorder)
+        tableView.coordinator = coordinator
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        scrollView.documentView = tableView
+
+        for overlay in [CellOverlayViewer(), CellOverlayEditor()] as [CellOverlayBase] {
+            let before = recorder.closedCount
+            coordinator.observeRemoval(of: overlay)
+            let container = CellOverlayContainerView(frame: NSRect(x: 0, y: 0, width: 80, height: 24))
+            overlay.install(in: tableView, row: 0, column: 0, columnIndex: 0, container: container)
+            #expect(overlay.isActive)
+
+            overlay.removeOverlay()
+            overlay.removeOverlay()
+            #expect(recorder.closedCount == before)
+
+            for _ in 0..<50 where recorder.closedCount == before {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(recorder.closedCount == before + 1)
+        }
     }
 }

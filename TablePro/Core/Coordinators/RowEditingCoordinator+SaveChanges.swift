@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
@@ -323,11 +324,20 @@ extension RowEditingCoordinator {
         /// The saving tab reloads only when this save changed its rows: rows it wrote, or a truncate of
         /// the table it shows. A save of table operations alone used to re-run whatever the selected
         /// tab held, which on a query tab executed its statement again. A tab on a dropped table closes.
-        guard savingTabIsSelected,
-              let savedTabIndex = parent.tabManager.selectedTabIndex,
-              !tab(at: savedTabIndex, shows: deletedTables),
-              plan.steps.contains(where: { $0.kind == .rowWrite }) || tab(at: savedTabIndex, shows: truncatedTables)
-        else { return }
+        /// A tab another change marked stale while it held these edits reloads now they are saved.
+        let reloadIndex = parent.tabManager.selectedTabIndex.flatMap { index -> Int? in
+            guard savingTabIsSelected, !tab(at: index, shows: deletedTables) else { return nil }
+            let changedItsRows = plan.steps.contains(where: { $0.kind == .rowWrite })
+                || tab(at: index, shows: truncatedTables)
+                || parent.tabSessionRegistry.isStale(parent.tabManager.tabs[index].id)
+            return changedItsRows ? index : nil
+        }
+        announceWrittenTables(
+            plan: plan,
+            truncatedTables: truncatedTables,
+            reloadingTabId: reloadIndex.map { parent.tabManager.tabs[$0].id }
+        )
+        guard let savedTabIndex = reloadIndex else { return }
 
         /// An insert or a delete changes the number this tab is reporting, so a count
         /// the user asked for before the save no longer describes the table. Without
@@ -335,6 +345,35 @@ extension RowEditingCoordinator {
         /// keeps the pre-save total with no `Count Exactly` offered to correct it.
         parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
         parent.runQuery(viewport: .keepPlace)
+    }
+
+    /// Every table this save wrote rows to or truncated, so a tab showing one in this window or
+    /// another stops showing the rows as they were. The saving tab reloads itself and is left out.
+    private func announceWrittenTables(
+        plan: DataWritePlan,
+        truncatedTables: Set<DatabaseTreeTableRef>,
+        reloadingTabId: UUID?
+    ) {
+        let connectionId = parent.connectionId
+        let adoption = catalogEditAdoption
+        var written = Set(plan.steps.filter { $0.kind == .rowWrite }.compactMap { step in
+            step.tableName.map { DataWriteTarget(database: plan.scope.database, schema: plan.scope.schema, table: $0) }
+        })
+        for ref in truncatedTables {
+            guard let scope = adoption.objectScope(for: ref, connectionId: connectionId) else { continue }
+            written.insert(DataWriteTarget(database: scope.database, schema: scope.schema, table: ref.table.name))
+        }
+        for target in written {
+            AppCommands.shared.objectChanged.send(
+                DatabaseObjectChange(
+                    connectionId: connectionId,
+                    scope: DatabaseScope(connectionId: connectionId, database: target.database, schema: target.schema),
+                    name: target.table,
+                    kind: .rows,
+                    originTabId: reloadingTabId
+                )
+            )
+        }
     }
 
     /// MySQL, MariaDB and Oracle commit each DROP as it runs, so a save that failed part way can

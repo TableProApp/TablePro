@@ -23,6 +23,7 @@ extension TableStructureView {
     /// A genuine refresh still refetches, through `onRefreshData`, which asks before discarding.
     @Sendable
     func loadInitialData() async {
+        session.settleOwedRefetch()
         guard !session.hasLoaded else {
             isInitialLoading = false
             isLoading = false
@@ -30,10 +31,8 @@ extension TableStructureView {
             return
         }
         await loadColumns()
-        await loadTabDataIfNeeded(.indexes)
-        await loadTabDataIfNeeded(.foreignKeys)
-        if session.availableTabs.contains(.checkConstraints) {
-            await loadTabDataIfNeeded(.checkConstraints)
+        for tab in session.tabsFetchedOnMount where tab != .columns {
+            await loadTabDataIfNeeded(tab)
         }
         loadSchemaForEditing()
         session.hasLoaded = true
@@ -176,7 +175,7 @@ extension TableStructureView {
     }
 
     private func reloadAllTabs() async {
-        tabData.markAllStale()
+        session.markEveryTabStale()
         session.gridDelegate.referenceMenus.invalidateTableLists()
         partsReloadToken += 1
         await reloadCoreTabs()

@@ -524,6 +524,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diagram Fit to Window stopping a scroll bar's width short when scroll bars are always shown.
 - No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
+- Every window's front tab reloading, and asking to discard its edits, after a row import, a new table or a structure change.
+- Tabs showing old rows, columns, DDL or triggers after a save, import, structure change or materialized view refresh.
+- Tables with hidden columns querying a dropped column, or leaving out a new one, after a SQL file import or a structure change.
+- First SQLite or libSQL query after a structure save showing the table's old columns, without the new column's values.
+- Edits after a structure change using the table's old primary key, defaults and generated columns.
 
 ### Security
 

@@ -72,8 +72,13 @@ extension QueryExecutionCoordinator {
         return tab.tabType == .table ? .tableBrowse : .editor
     }
 
+    /// Never after the table's definition changed: the keys, defaults, generated columns and row
+    /// match policy the tab holds describe the table before the change, and reusing them builds the
+    /// next edit against the old definition.
     func isMetadataCached(tabId: UUID, tableName: String) -> Bool {
-        guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+        guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              !parent.tabSessionRegistry.needsDefinition(tabId)
+        else {
             return false
         }
         let tab = parent.tabManager.tabs[idx]
@@ -168,6 +173,24 @@ extension QueryExecutionCoordinator {
         return resolved
     }
 
+    /// The keys a committed result is edited by. Keys the tab held for the same table carry over
+    /// while its definition is unchanged, until phase 2 reports them. After a definition change they
+    /// describe the table as it was, so they are never carried into the new result.
+    static func resolvedPrimaryKeys(
+        reported: [String]?,
+        engineDefault: String?,
+        previous: [String],
+        definitionChanged: Bool
+    ) -> [String] {
+        if let reported, !reported.isEmpty {
+            return reported
+        }
+        if let engineDefault {
+            return [engineDefault]
+        }
+        return definitionChanged ? [] : previous
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -180,6 +203,7 @@ extension QueryExecutionCoordinator {
         isEditable: Bool,
         metadata: ParsedSchemaMetadata?,
         hasSchema: Bool,
+        read: TableFreshness.Read,
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
@@ -240,8 +264,13 @@ extension QueryExecutionCoordinator {
             foreignKeysFetched: resolved.foreignKeysFetched
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
+        let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
         parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport)
+        /// A count that started before the change can land after it, while the tab is out of sight,
+        /// and put the old total back. Kept, a total above the automatic-count threshold stops the
+        /// count this read launches, so paging stays bounded by the table as it was.
+        let answeredRowsChange = parent.tabSessionRegistry.recordRead(read, for: existingTabId)
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.schemaVersion += 1
@@ -253,6 +282,9 @@ extension QueryExecutionCoordinator {
             tab.tableContext.isEditable = isEditable
             tab.pagination.isLoading = false
 
+            if answeredRowsChange {
+                tab.pagination.retireDerivedRowCount()
+            }
             if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0,
                !tab.filterState.hasAppliedFilters {
                 tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
@@ -289,16 +321,12 @@ extension QueryExecutionCoordinator {
         }
         parent.toolbarState.isResultsCollapsed = false
 
-        let resolvedPKs: [String]
-        if let pks = metadata?.primaryKeyColumns, !pks.isEmpty {
-            resolvedPKs = pks
-        } else if let defaultPK = PluginManager.shared.defaultPrimaryKeyColumn(for: conn.type) {
-            resolvedPKs = [defaultPK]
-        } else if tableName == previousTableName {
-            resolvedPKs = parent.tabManager.tabs[idx].tableContext.primaryKeyColumns
-        } else {
-            resolvedPKs = []
-        }
+        let resolvedPKs = Self.resolvedPrimaryKeys(
+            reported: metadata?.primaryKeyColumns,
+            engineDefault: PluginManager.shared.defaultPrimaryKeyColumn(for: conn.type),
+            previous: tableName == previousTableName ? parent.tabManager.tabs[idx].tableContext.primaryKeyColumns : [],
+            definitionChanged: definitionChanged
+        )
 
         parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
         captureOrigin(

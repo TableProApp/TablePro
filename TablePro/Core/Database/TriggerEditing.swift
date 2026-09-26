@@ -98,7 +98,9 @@ enum TriggerEditing {
         }
 
         await recordHistory(sql, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: connection.id, scope: scope, name: tableName, kind: .structure)
+        )
     }
 
     static func drop(
@@ -139,7 +141,9 @@ enum TriggerEditing {
             _ = try await driver.execute(query: dropSQL)
         }
         await recordHistory(dropSQL, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: connection.id, scope: scope, name: tableName, kind: .structure)
+        )
         CatalogChangeService.shared.record(
             .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
         )
