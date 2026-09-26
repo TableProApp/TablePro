@@ -106,17 +106,15 @@ struct DescriptorReadTests {
         #expect(fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK) != -1)
         BackgroundPipeWriter.write([Data("late".utf8)], to: pipe.fileHandleForWriting, pausingBeforeEach: 0.2)
 
-        let arrived = await BoundedCall.resultOnItsOwnThread {
+        let arrived = try #require(await BoundedCall.resultOnItsOwnThread {
             Result { try DescriptorRead.nextBytes(from: descriptor) }
-        }
-        let ended = await BoundedCall.resultOnItsOwnThread {
-            Result { try DescriptorRead.nextBytes(from: descriptor) }
-        }
+        })
+        #expect(try arrived.get() == Data("late".utf8))
 
-        let late = try #require(arrived)
-        let endOfFile = try #require(ended)
-        #expect(try late.get() == Data("late".utf8))
-        #expect(try endOfFile.get().isEmpty)
+        let ended = try #require(await BoundedCall.resultOnItsOwnThread {
+            Result { try DescriptorRead.nextBytes(from: descriptor) }
+        })
+        #expect(try ended.get().isEmpty)
     }
 
     @Test("Buffered bytes stop at the limit and never wait on a writer that is still open", .timeLimit(.minutes(1)))

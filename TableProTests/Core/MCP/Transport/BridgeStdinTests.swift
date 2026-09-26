@@ -10,6 +10,16 @@ import Testing
 @testable import TablePro
 
 struct BridgeStdinTests {
+    private static func everyLine(of stream: AsyncStream<Data>) async -> [Data]? {
+        await BoundedCall.result {
+            var lines: [Data] = []
+            for await line in stream {
+                lines.append(line)
+            }
+            return lines
+        }
+    }
+
     @Test("A non-blocking stdin keeps the session reading until the host closes it", .timeLimit(.minutes(1)))
     func nonBlockingStdinReadsUntilEndOfFile() async {
         let pipe = Pipe()
@@ -23,10 +33,7 @@ struct BridgeStdinTests {
         )
         let logger = RecordingBridgeLogger()
 
-        var lines: [Data] = []
-        for await line in BridgeStdin.lines(from: pipe.fileHandleForReading, logger: logger) {
-            lines.append(line)
-        }
+        let lines = await Self.everyLine(of: BridgeStdin.lines(from: pipe.fileHandleForReading, logger: logger))
 
         #expect(lines == [Data("{\"id\":1}".utf8), Data("{\"id\":2}".utf8)])
         #expect(logger.entries.isEmpty)
@@ -39,12 +46,9 @@ struct BridgeStdinTests {
         let directory = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         let logger = RecordingBridgeLogger()
 
-        var lines: [Data] = []
-        for await line in BridgeStdin.lines(from: directory, logger: logger) {
-            lines.append(line)
-        }
+        let lines = await Self.everyLine(of: BridgeStdin.lines(from: directory, logger: logger))
 
-        #expect(lines.isEmpty)
+        #expect(lines?.isEmpty == true)
         #expect(logger.entries.map(\.level) == [.error])
     }
 }

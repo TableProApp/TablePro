@@ -104,7 +104,7 @@ struct PipeReaderTests {
         let dispatched = try #require(handle.readabilityHandler)
 
         let returned: Void? = await BoundedCall.resultOnItsOwnThread { dispatched(handle) }
-        #expect(returned != nil)
+        try #require(returned != nil)
         #expect(received.data.isEmpty)
         #expect(handle.readabilityHandler != nil)
 
