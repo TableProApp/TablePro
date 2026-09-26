@@ -202,8 +202,10 @@ SQLite is the one engine where listing and editing part company. The tab appears
 
 [Change Tracking](/features/change-tracking) covers the queue, undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`). A save runs on the tab's own connection, database, and schema, the ones it was opened on, and never moves the sidebar or the toolbar.
 
-- **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue. Changes that can lose data, dropping a column, changing a type, adding NOT NULL, changing the primary key, first show a confirmation listing each one.
+- **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue.
 - **Preview SQL** (`Cmd+Shift+P`) shows the statements **Save Changes** would run, on the tab's own schema, and runs none of them. A save that recreates the table previews as its rebuild script, with what the rebuild cannot carry over.
+
+A save asks at most once, on a sheet showing the statements it will run. One that removes a column, an index, a key or a check constraint, changes a column's type, adds NOT NULL, changes the primary key, or adds or rewrites a check constraint asks even at the **Silent** [Safe Mode](/features/safe-mode) level. Any other save asks at **Alert** and above. A save that recreates the table asks on its rebuild script instead. At **Safe Mode** and **Safe Mode (Full)**, Touch ID follows the answer.
 
 The queue outlives everything short of an explicit discard: closing the tab, closing the window, quitting, and **Refresh** all ask first. A save that never reaches the server leaves the tab open with its queue intact.
 

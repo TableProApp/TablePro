@@ -61,7 +61,11 @@ struct SchemaStatementGenerator {
             }
             for stmt in stmts {
                 let sql = stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";"
-                statements.append(SchemaStatement(sql: sql, description: stmt.description, isDestructive: stmt.isDestructive))
+                statements.append(SchemaStatement(
+                    sql: sql,
+                    description: stmt.description,
+                    isDestructive: stmt.isDestructive || change.requiresDataMigration
+                ))
             }
         }
 

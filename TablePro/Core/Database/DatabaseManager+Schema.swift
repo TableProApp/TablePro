@@ -21,32 +21,22 @@ extension DatabaseManager {
     /// Authorization sits outside the scoped block: it awaits a confirmation sheet and Touch ID,
     /// and holding the connection's driver gate across a human prompt would freeze every other
     /// tab on that connection.
+    ///
+    /// The gate's sheet is the only confirmation a save gets. A refusal throws
+    /// `ExecutionGateError.denied` and a Cancel throws `.cancelledByUser`, so the caller can keep
+    /// the edits staged and stay quiet about a choice the user just made.
     func executeSchemaChanges(
         _ statements: [SchemaStatement],
         databaseType: DatabaseType,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let route = schemaChangeRoute(for: scope)
 
-        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
-        let schemaKind: OperationKind =
-            QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
-            ? .destructiveQuery : .schemaMutation
-        let authorization = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: scope.connectionId,
-                databaseType: databaseType,
-                sql: combinedSQL,
-                kind: schemaKind,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Apply Schema Changes")
-            )
-        )
-        guard case .authorized = authorization else {
-            throw DatabaseError.queryFailed(
-                authorization.deniedReason ?? String(localized: "Schema change was not authorized")
-            )
+        let request = Self.schemaChangeAuthorizationRequest(statements, databaseType: databaseType, scope: scope)
+        let schemaKind = request.kind
+        if let denial = await gate.authorize(request).denialError {
+            throw denial
         }
 
         let executionTimes: [TimeInterval]
@@ -108,6 +98,38 @@ extension DatabaseManager {
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
         )
+    }
+
+    /// What the gate is asked before a save runs, built apart from the run so a test can put it to
+    /// the real gate at every Safe Mode level.
+    nonisolated static func schemaChangeAuthorizationRequest(
+        _ statements: [SchemaStatement],
+        databaseType: DatabaseType,
+        scope: DatabaseScope
+    ) -> OperationRequest {
+        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
+        return OperationRequest(
+            connectionId: scope.connectionId,
+            databaseType: databaseType,
+            sql: combinedSQL,
+            kind: schemaOperationKind(for: statements, combinedSQL: combinedSQL, databaseType: databaseType),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: String(localized: "Apply Schema Changes")
+        )
+    }
+
+    /// Destructive when the text reads that way or when any statement was generated as one. The
+    /// text alone cannot see that `ALTER COLUMN .. TYPE`, `MODIFY COLUMN .. NOT NULL` or an added
+    /// `CHECK` can lose or refuse existing rows, and a destructive kind is confirmed at every
+    /// Safe Mode level, Silent included.
+    nonisolated static func schemaOperationKind(
+        for statements: [SchemaStatement],
+        combinedSQL: String,
+        databaseType: DatabaseType
+    ) -> OperationKind {
+        let destructiveText = QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
+        return destructiveText || statements.contains(where: \.isDestructive) ? .destructiveQuery : .schemaMutation
     }
 
     /// Run a Create Table draft's statements, on the same isolated route and in the same shape as

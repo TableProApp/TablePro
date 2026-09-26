@@ -1193,7 +1193,7 @@ final class MainContentCoordinator: ObservableObject {
                 switch decision {
                 case .authorized:
                     executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
-                case .denied(let reason):
+                case .denied(let reason, _):
                     traceNavigationAbandoned(tabId: tab.id, outcome: .safeModeDenied)
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
