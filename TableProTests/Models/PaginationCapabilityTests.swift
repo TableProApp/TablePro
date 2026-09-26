@@ -35,6 +35,23 @@ struct PaginationCapabilityTests {
         #expect(PaginationCapability.of(.postgresql) == .offset)
     }
 
+    @Test("Cassandra and ScyllaDB never seek, because CQL has no OFFSET")
+    func cassandraAndScyllaDBHaveNoSeeking() {
+        #expect(!PaginationCapability.of(.cassandra).allowsSeeking)
+        #expect(!PaginationCapability.of(.scylladb).allowsSeeking)
+    }
+
+    @Test("A Cassandra or ScyllaDB browse states a LIMIT and never an OFFSET")
+    func cassandraAndScyllaDBBrowseNeverOffsets() {
+        for databaseType in [DatabaseType.cassandra, .scylladb] {
+            let builder = TableQueryBuilder(databaseType: databaseType, pagination: .of(databaseType))
+            let query = builder.buildBaseQuery(tableName: "users", schemaName: "shop", limit: 1_000, offset: 0)
+
+            #expect(query == #"SELECT * FROM "shop"."users" LIMIT 1000"#)
+            #expect(!query.contains("OFFSET"))
+        }
+    }
+
     @Test("A leading-rows table query states a clamped LIMIT and never an OFFSET")
     func builderNeverOffsets() {
         let builder = TableQueryBuilder(databaseType: .cloudflareR2SQL, pagination: leadingRows)

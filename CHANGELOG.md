@@ -130,6 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Syntax error on opening a Cassandra or ScyllaDB table, from an `OFFSET` that CQL does not have.
 - Pre-connect script failures sometimes reported without the script's own error message.
 - Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
 - Save reporting success after leaving out an edit it could not write, such as a new MongoDB document left empty. (#3132)
