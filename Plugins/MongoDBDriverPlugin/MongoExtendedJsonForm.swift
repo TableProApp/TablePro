@@ -26,10 +26,23 @@ enum MongoExtendedJsonForm {
         "$undefined", "$uuid", "$regex"
     ]
 
-    /// An object that stands for one BSON value rather than an embedded document.
+    /// The keys a wrapper may hold beside the one that opens it, in the legacy forms libbson reads.
+    private static let companionKeys: [String: Set<String>] = [
+        "$binary": ["$type"], "$code": ["$scope"], "$regex": ["$options"]
+    ]
+
+    /// An object that stands for one BSON value rather than an embedded document: it opens with a
+    /// wrapper key and holds nothing that wrapper does not take. An object that opens with `$oid`
+    /// and goes on to other members is a document, so its other members are written and checked
+    /// like any document's rather than dropped with the wrapper.
     static func isWrapper(_ members: [Member]) -> Bool {
-        guard let first = members.first else { return false }
-        return wrapperKeys.contains(first.key)
+        guard let first = members.first, wrapperKeys.contains(first.key) else { return false }
+        let allowed = companionKeys[first.key] ?? []
+        var seen: Set<String> = [first.key]
+        for member in members.dropFirst() {
+            guard allowed.contains(member.key), seen.insert(member.key).inserted else { return false }
+        }
+        return true
     }
 
     // MARK: - Display

@@ -541,6 +541,8 @@ struct MongoDBStatementGenerator {
             return try shellJson(parsed, field: field)
         case .jsonOrString:
             return try parsed.map { try shellJson($0, field: field) }
+        case .text:
+            return nil
         case .ambiguous:
             throw MongoDBWriteRefusal.documentOrText(field: field)
         }
@@ -554,6 +556,8 @@ struct MongoDBStatementGenerator {
         case container
         /// JSON is a document or an array, and any other text a string.
         case jsonOrString
+        /// A string, whatever it reads like.
+        case text
         /// The field holds both, and nothing says which this value is meant to be.
         case ambiguous
     }
@@ -562,7 +566,9 @@ struct MongoDBStatementGenerator {
     /// JSON is a document or an array where the field held those and no strings, and could be either
     /// where it held both, which is refused. Text that is not JSON can only be a string when it was
     /// read from a cell, where a document always shows as JSON, or typed over a value that was not
-    /// one. An existing value whose field was never read says nothing either way.
+    /// one. An existing value whose field was never read says nothing either way. In a field that
+    /// held strings and never a document or an array, a value put back, copied, or typed over a
+    /// string is a string too, however it reads: `{"a":1}` stored as text stays text.
     private func containerReading(of field: String, isJSON: Bool, provenance: Provenance) -> ContainerReading {
         if let replaced = provenance.replaced, holdsContainer(replaced, field: field) {
             return .container
@@ -570,7 +576,9 @@ struct MongoDBStatementGenerator {
         guard let held = heldKinds(of: field) else {
             return isJSON && standsForUnreadValue(provenance) ? .ambiguous : .jsonOrString
         }
-        guard held.contains(.document) || held.contains(.array) else { return .jsonOrString }
+        guard held.contains(.document) || held.contains(.array) else {
+            return held.contains(.string) && continuesAString(provenance) ? .text : .jsonOrString
+        }
         guard held.contains(.string) else { return .container }
         return !isJSON && nonJSONCanOnlyBeText(provenance) ? .jsonOrString : .ambiguous
     }
@@ -581,6 +589,15 @@ struct MongoDBStatementGenerator {
         guard case .text(let text) = value, opensContainer(text), let held = heldKinds(of: field) else { return false }
         let shape: BsonValueKind = text.hasPrefix("[") ? .array : .document
         return held.contains(shape) && !held.contains(.string)
+    }
+
+    private func continuesAString(_ provenance: Provenance) -> Bool {
+        switch provenance {
+        case .restored, .copiedIntoNewDocument, .edit(replacing: .text):
+            return true
+        case .edit, .typedIntoNewDocument:
+            return false
+        }
     }
 
     private func nonJSONCanOnlyBeText(_ provenance: Provenance) -> Bool {

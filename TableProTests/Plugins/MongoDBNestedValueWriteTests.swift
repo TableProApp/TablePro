@@ -278,6 +278,22 @@ struct MongoDBNestedValueWriteTests {
         #expect(copied == #"db.people.insertOne({"f": "{abc"})"#)
     }
 
+    @Test("Text that reads as JSON in a field that only held strings stays a string when copied, restored or typed over")
+    func stringOnlyFieldKeepsJSONShapedText() throws {
+        let copied = try insert("f", #"{"a":1}"#, held: [.string])
+        let edited = try update("f", from: .text("plain"), to: "[1,2]", held: [.string], majority: .string)
+        let typed = try insert("f", #"{"a":1}"#, held: [.string], typed: true)
+        let strings = MongoDBStatementGenerator(
+            collectionName: "people", columns: ["_id", "f"], fieldKinds: MongoDBFieldKinds(["f": [.string]])
+        )
+        let restored = try #require(strings.generateRestore(rows: [["507f1f77bcf86cd799439011", #"{"a":1}"#]])?.first)
+
+        #expect(copied == #"db.people.insertOne({"f": "{\"a\":1}"})"#)
+        #expect(edited == #"db.people.updateOne({"_id": 1}, {"$set": {"f": "[1,2]"}})"#)
+        #expect(typed.contains(#""f": {"a":1}"#))
+        #expect(restored.statement.contains(#""f": "{\"a\":1}""#))
+    }
+
     @Test("A restore that reads as JSON in a field never read is refused, and one that does not is a string")
     func restoreIntoAnUnreadField() throws {
         let relaunched = MongoDBStatementGenerator(collectionName: "people", columns: ["_id", "f"])
@@ -356,6 +372,23 @@ struct MongoDBNestedValueWriteTests {
         }
         let ordered = try insert("meta", #"{"2":"two","10":"ten","zip":"1"}"#)
         #expect(ordered.contains(#""meta": {"2":"two","10":"ten","zip":"1"}"#))
+    }
+
+    @Test("An object that opens with a wrapper key and holds other members is a document, so its keys are checked")
+    func wrapperShapedDocumentIsCheckedAsADocument() throws {
+        typealias Member = MongoDocumentText.Member
+        let hex = MongoDocumentText.Value.string("507f1f77bcf86cd799439011")
+
+        #expect(throws: MongoDBWriteRefusal.reorderedByTheShell(field: "meta").refusal(ofRow: 0)) {
+            try insert("meta", #"{"$oid":"x","__proto__":1}"#)
+        }
+        #expect(MongoExtendedJsonForm.isWrapper([Member(key: "$oid", value: hex)]))
+        #expect(!MongoExtendedJsonForm.isWrapper([Member(key: "$oid", value: hex), Member(key: "note", value: hex)]))
+        #expect(MongoExtendedJsonForm.isWrapper([Member(key: "$binary", value: hex), Member(key: "$type", value: hex)]))
+        #expect(MongoExtendedJsonForm.isWrapper([Member(key: "$regex", value: hex), Member(key: "$options", value: hex)]))
+        #expect(!MongoExtendedJsonForm.isWrapper([
+            Member(key: "$regex", value: hex), Member(key: "$options", value: hex), Member(key: "$options", value: hex)
+        ]))
     }
 
     @Test("Only array-index keys up to 4294967294 are moved, so a larger number-like key is written where it is")

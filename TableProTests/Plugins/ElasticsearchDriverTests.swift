@@ -949,6 +949,32 @@ struct ElasticsearchStatementGeneratorTests {
         }
     }
 
+    @Test("A pasted row whose leaf says something other than its array is refused, not saved without it")
+    func insertRefusesPastedLeafThatDisagreesWithItsArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .text("[{\"type\":\"CPF\"}]"), .text("[\"CNPJ\"]"), .text("p1")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A pasted leaf that holds what its array holds, however spaced, is written through the array")
+    func insertAcceptsPastedLeafThatMatchesItsArray() throws {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let statements = try nestedGenerator().generateRowWrites(
+            from: [change],
+            insertedRowData: [0: [.null, .text("[{\"type\":\"CPF\"},{\"type\":\"RG\"}]"), .text("[ \"CPF\", \"RG\" ]"), .null]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        let body = ElasticsearchStatementGenerator.decode(statements[0].statement)?.body
+        #expect(body?.contains("\"identifiers\":[{\"type\":\"CPF\"},{\"type\":\"RG\"}]") == true)
+    }
+
     @Test("A pasted row carrying a leaf value with no array to write it through is refused")
     func insertRefusesPastedLeafWithoutItsArray() {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)

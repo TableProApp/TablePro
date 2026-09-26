@@ -122,8 +122,9 @@ struct ElasticsearchStatementGenerator {
         return .init(method: "POST", path: "/\(encodedIndex)/_doc\(Self.refreshQuery)", body: body)
     }
 
-    /// A new row's leaf value reaches the server only inside its array, so one the user typed, or
-    /// one whose array is empty, would be dropped. Metadata other than `_id` is the server's to set.
+    /// A new row's leaf value reaches the server only inside its array, so one the user typed, one
+    /// whose array is empty, or one that says something other than its array would be dropped.
+    /// Metadata other than `_id` is the server's to set.
     private func unwritableInsertValue(in change: PluginRowChange, values: [String: PluginCellValue]) -> String? {
         for cellChange in change.cellChanges where !cellChange.newValue.isNull {
             let column = cellChange.columnName
@@ -135,13 +136,34 @@ struct ElasticsearchStatementGenerator {
             }
         }
         for column in columns {
-            guard let parent = nestedParentByLeaf[column],
-                  values[column]?.isNull == false,
-                  values[parent]?.isNull ?? true
-            else { continue }
-            return Self.nestedLeafReason(leaf: column, parent: parent)
+            guard let parent = nestedParentByLeaf[column], let leaf = values[column], !leaf.isNull else { continue }
+            guard let array = values[parent]?.asText,
+                  Self.sameCell(leaf, projectedLeaf(column, of: parent, arrayText: array)) else {
+                return Self.nestedLeafReason(leaf: column, parent: parent)
+            }
         }
         return nil
+    }
+
+    /// What the grid shows for `leaf` once `arrayText` is saved into `parent`, read by the same
+    /// flattener that reads the document back.
+    private func projectedLeaf(_ leaf: String, of parent: String, arrayText: String) -> PluginCellValue {
+        let placed = parent.split(separator: ".").reversed().reduce(jsonValue(arrayText, for: parent)) { inner, key in
+            [String(key): inner]
+        }
+        guard let source = placed as? [String: Any] else { return .null }
+        return ElasticsearchMappingFlattener.flattenSource(source, nestedParents: [parent])[leaf] ?? .null
+    }
+
+    /// Two cells that hold the same JSON value compare equal however it is spaced.
+    private static func sameCell(_ lhs: PluginCellValue, _ rhs: PluginCellValue) -> Bool {
+        guard let left = lhs.asText, let right = rhs.asText else { return lhs.isNull && rhs.isNull }
+        guard let leftValue = parsedJSON(left), let rightValue = parsedJSON(right) else { return left == right }
+        return (leftValue as AnyObject).isEqual(rightValue)
+    }
+
+    private static func parsedJSON(_ text: String) -> Any? {
+        try? JSONSerialization.jsonObject(with: Data(text.utf8), options: .fragmentsAllowed)
     }
 
     // MARK: - UPDATE
