@@ -188,6 +188,16 @@ struct MongoDBCollectionDDLTests {
         #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column("f", alias))) == nil)
     }
 
+    @Test("Field names a JavaScript object reorders or drops are refused", arguments: ["10", "0", "__proto__"])
+    func shellReorderedNamesAreRefused(name: String) {
+        #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column(name, "string"))) != nil)
+    }
+
+    @Test("Names that only look numeric are kept", arguments: ["007", "10a", "a10"])
+    func nonCanonicalNumericNamesAreKept(name: String) {
+        #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column(name, "string"))) == nil)
+    }
+
     @Test("Field names MongoDB cannot address are refused", arguments: ["$price", "a.b"])
     func unaddressableNamesAreRefused(name: String) {
         #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column(name, "string"))) != nil)
@@ -245,10 +255,21 @@ struct MongoDBCollectionDDLTests {
         #expect(MongoDBCollectionDDL.refusal(for: .addIndex(index("h", ["f"], type: "HASH"))) == nil)
     }
 
-    @Test("An index on _id alone is refused, because MongoDB already has one")
+    @Test("An ascending index on _id alone is refused, because MongoDB already has one")
     func indexOnIdIsRefused() {
         #expect(MongoDBCollectionDDL.refusal(for: .addIndex(index("i", ["_id"]))) != nil)
         #expect(MongoDBCollectionDDL.refusal(for: .addIndex(index("i", ["_id", "lang"]))) == nil)
+    }
+
+    @Test("A hashed index on _id is its own index, the one a hashed shard key needs")
+    func hashedIdIndexIsAccepted() {
+        #expect(MongoDBCollectionDDL.refusal(for: .addIndex(index("h", ["_id"], type: "HASH"))) == nil)
+    }
+
+    @Test("A text index cannot be unique")
+    func uniqueTextIndexIsRefused() {
+        #expect(MongoDBCollectionDDL.refusal(for: .addIndex(index("t", ["body"], unique: true, type: "FULLTEXT"))) != nil)
+        #expect(MongoDBCollectionDDL.refusal(for: .addIndex(index("t", ["body"], type: "FULLTEXT"))) == nil)
     }
 
     @Test("A partial index written in SQL is refused")

@@ -83,12 +83,32 @@ struct MongoDBCollectionSchemaTests {
         #expect(MongoDBCollectionSchema.parse(listCollectionsReply: "not json").isEmpty)
     }
 
-    @Test("A field whose name carries an escaped quote is still read")
+    @Test("A field whose name carries an escaped quote keeps its own name and its place")
     func escapedFieldNamesSurvive() {
         let schema = MongoDBCollectionSchema.parse(jsonSchema: """
-        { "properties" : { "a\\"b" : { "bsonType" : "string" }, "plain" : { "bsonType" : "int" } } }
+        { "properties" : { "a\\"b" : { "bsonType" : "string" }, "ab" : { "bsonType" : "int" }, \
+        "plain" : { "bsonType" : "bool" } } }
         """)
-        #expect(Set(schema.fields.map { $0.name }) == ["a\"b", "plain"])
+        #expect(schema.fields.map { $0.name } == ["a\"b", "ab", "plain"])
+    }
+
+    @Test("An enum of strings with no type of its own types the field as a string")
+    func stringEnumTypesTheField() throws {
+        let schema = MongoDBCollectionSchema.parse(jsonSchema: """
+        { "properties" : { "level" : { "enum" : [ "1", "2" ] } } }
+        """)
+        let level = try #require(schema.field(named: "level"))
+        #expect(level.valueKind == .string)
+        #expect(level.allowedValues == ["1", "2"])
+    }
+
+    /// U+0600 joins the `\` after it into one `Character`, so a scan by `Character` missed the
+    /// escape and ended the string at the quote libbson had escaped.
+    @Test("A key holding a Prepend character before an escaped quote is read whole")
+    func membersReadKeysScalarByScalar() {
+        let json = "{\"x\u{0600}\\\"y\": 1, \"next\": 2}"
+        let keys = MongoScriptJson.members(of: json).map { $0.key }
+        #expect(keys == ["x\u{0600}\"y", "next"])
     }
 
     @Test("The command asks for one collection by name, escaped")

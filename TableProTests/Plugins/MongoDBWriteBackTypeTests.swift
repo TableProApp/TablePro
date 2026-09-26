@@ -213,11 +213,16 @@ struct MongoDBWriteBackTypeTests {
 
     // MARK: - _id
 
-    private func updateFilter(id: String, idKind: BsonValueKind?) -> String? {
+    private func updateFilter(
+        id: String,
+        idKind: BsonValueKind?,
+        sampledKinds: [String: BsonValueKind] = [:]
+    ) -> String? {
         let gen = MongoDBStatementGenerator(
             collectionName: "codes",
             columns: ["_id", "label"],
-            columnKinds: idKind.map { ["_id": $0] } ?? [:]
+            columnKinds: sampledKinds,
+            identityKind: idKind
         )
         let change = PluginRowChange(
             rowIndex: 0,
@@ -246,6 +251,23 @@ struct MongoDBWriteBackTypeTests {
     func longIdIsMatchedAsALong() throws {
         let stmt = try #require(updateFilter(id: "42", idKind: .int64))
         #expect(stmt.contains(#"{"_id": {"$numberLong": "42"}}"#))
+    }
+
+    @Test("A mostly-string _id column does not quote a row whose _id kinds differ")
+    func mixedIdKindsFallBackToTheSpelling() throws {
+        let stmt = try #require(updateFilter(
+            id: "65a1b2c3d4e5f60718293a4b", idKind: nil, sampledKinds: ["_id": .string]
+        ))
+        #expect(stmt.contains(#"{"_id": {"$oid": "65a1b2c3d4e5f60718293a4b"}}"#))
+    }
+
+    /// JavaScriptCore evaluates a bare `010` in a statement as the octal number 8.
+    @Test("An int written with a leading zero is sent as its decimal value")
+    func int32IsCanonicalised() throws {
+        let stmt = try #require(update(column: "n", to: .text("010"), kinds: [:], declared: ["n": .int32]))
+        #expect(stmt.contains(#""n": 10"#))
+        let negative = try #require(update(column: "n", to: .text("-010"), kinds: ["n": .int32]))
+        #expect(negative.contains(#""n": -10"#))
     }
 
     @Test("An _id of unknown kind is still read from its spelling")

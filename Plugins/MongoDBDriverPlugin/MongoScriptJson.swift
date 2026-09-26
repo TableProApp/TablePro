@@ -108,25 +108,29 @@ enum MongoScriptJson {
     }
 
     /// Every member of a JSON object, in the order the document carries them, each value as text.
+    ///
+    /// The text is walked scalar by scalar, never by `Character`: a Unicode Prepend character joins
+    /// the `"` or `\` after it into one grapheme cluster, and a scan by cluster then misses the end
+    /// of a string that libbson escaped correctly.
     static func members(of objectJson: String) -> [(key: String, value: String)] {
-        let characters = Array(objectJson)
-        guard let start = characters.firstIndex(of: "{") else { return [] }
+        let scalars = Array(objectJson.unicodeScalars)
+        guard let start = scalars.firstIndex(of: "{") else { return [] }
         var index = start + 1
         var pairs: [(key: String, value: String)] = []
 
-        while index < characters.count {
-            skipWhitespace(characters, &index)
-            guard index < characters.count, characters[index] == "\"" else { return pairs }
-            guard let name = readString(characters, &index) else { return pairs }
-            skipWhitespace(characters, &index)
-            guard index < characters.count, characters[index] == ":" else { return pairs }
+        while index < scalars.count {
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count, scalars[index] == "\"" else { return pairs }
+            guard let name = readString(scalars, &index) else { return pairs }
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count, scalars[index] == ":" else { return pairs }
             index += 1
-            skipWhitespace(characters, &index)
+            skipWhitespace(scalars, &index)
             let valueStart = index
-            skipValue(characters, &index)
-            pairs.append((name, String(characters[valueStart ..< index]).trimmingCharacters(in: .whitespaces)))
-            skipWhitespace(characters, &index)
-            guard index < characters.count, characters[index] == "," else { return pairs }
+            skipValue(scalars, &index)
+            pairs.append((name, text(scalars[valueStart ..< index])))
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count, scalars[index] == "," else { return pairs }
             index += 1
         }
         return pairs
@@ -134,19 +138,19 @@ enum MongoScriptJson {
 
     /// The elements of a JSON array, each as its own text.
     static func topLevelElements(_ arrayJson: String) -> [String] {
-        let characters = Array(arrayJson)
-        guard let start = characters.firstIndex(of: "[") else { return [] }
+        let scalars = Array(arrayJson.unicodeScalars)
+        guard let start = scalars.firstIndex(of: "[") else { return [] }
         var index = start + 1
         var elements: [String] = []
 
-        while index < characters.count {
-            skipWhitespace(characters, &index)
-            guard index < characters.count, characters[index] != "]" else { break }
+        while index < scalars.count {
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count, scalars[index] != "]" else { break }
             let elementStart = index
-            skipValue(characters, &index)
-            elements.append(String(characters[elementStart ..< index]).trimmingCharacters(in: .whitespaces))
-            skipWhitespace(characters, &index)
-            guard index < characters.count, characters[index] == "," else { break }
+            skipValue(scalars, &index)
+            elements.append(text(scalars[elementStart ..< index]))
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count, scalars[index] == "," else { break }
             index += 1
         }
         return elements
@@ -154,46 +158,93 @@ enum MongoScriptJson {
 
     // MARK: - Scanning
 
-    private static func skipWhitespace(_ characters: [Character], _ index: inout Int) {
-        while index < characters.count, characters[index].isWhitespace { index += 1 }
+    private static func text(_ slice: ArraySlice<Unicode.Scalar>) -> String {
+        var view = String.UnicodeScalarView()
+        view.append(contentsOf: slice)
+        return String(view).trimmingCharacters(in: .whitespaces)
     }
 
-    private static func readString(_ characters: [Character], _ index: inout Int) -> String? {
-        guard index < characters.count, characters[index] == "\"" else { return nil }
+    private static func isWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+        scalar == " " || scalar == "\t" || scalar == "\n" || scalar == "\r"
+    }
+
+    private static func skipWhitespace(_ scalars: [Unicode.Scalar], _ index: inout Int) {
+        while index < scalars.count, isWhitespace(scalars[index]) { index += 1 }
+    }
+
+    private static func readString(_ scalars: [Unicode.Scalar], _ index: inout Int) -> String? {
+        guard index < scalars.count, scalars[index] == "\"" else { return nil }
         index += 1
-        var value = ""
-        while index < characters.count {
-            let character = characters[index]
-            if character == "\\" {
-                index += 2
-                continue
-            }
+        var value = String.UnicodeScalarView()
+        while index < scalars.count {
+            let scalar = scalars[index]
             index += 1
-            if character == "\"" { return value }
-            value.append(character)
+            switch scalar {
+            case "\"":
+                return String(value)
+            case "\\":
+                guard let decoded = readEscape(scalars, &index) else { return nil }
+                value.append(decoded)
+            default:
+                value.append(scalar)
+            }
         }
         return nil
     }
 
-    private static func skipValue(_ characters: [Character], _ index: inout Int) {
+    private static func readEscape(_ scalars: [Unicode.Scalar], _ index: inout Int) -> Unicode.Scalar? {
+        guard index < scalars.count else { return nil }
+        let escape = scalars[index]
+        index += 1
+        switch escape {
+        case "\"", "\\", "/": return escape
+        case "b": return "\u{08}"
+        case "f": return "\u{0C}"
+        case "n": return "\n"
+        case "r": return "\r"
+        case "t": return "\t"
+        case "u": return readUnicodeEscape(scalars, &index)
+        default: return nil
+        }
+    }
+
+    private static func readUnicodeEscape(_ scalars: [Unicode.Scalar], _ index: inout Int) -> Unicode.Scalar? {
+        guard let unit = readHexUnit(scalars, &index) else { return nil }
+        guard (0xD800 ... 0xDBFF).contains(unit) else { return Unicode.Scalar(unit) }
+        guard index + 1 < scalars.count, scalars[index] == "\\", scalars[index + 1] == "u" else { return nil }
+        index += 2
+        guard let low = readHexUnit(scalars, &index), (0xDC00 ... 0xDFFF).contains(low) else { return nil }
+        return Unicode.Scalar(0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00))
+    }
+
+    private static func readHexUnit(_ scalars: [Unicode.Scalar], _ index: inout Int) -> UInt32? {
+        guard index + 4 <= scalars.count else { return nil }
+        var digits = String.UnicodeScalarView()
+        digits.append(contentsOf: scalars[index ..< index + 4])
+        guard let unit = UInt32(String(digits), radix: 16) else { return nil }
+        index += 4
+        return unit
+    }
+
+    private static func skipValue(_ scalars: [Unicode.Scalar], _ index: inout Int) {
         var depth = 0
         var inString = false
         var escaped = false
 
-        while index < characters.count {
-            let character = characters[index]
+        while index < scalars.count {
+            let scalar = scalars[index]
             if escaped {
                 escaped = false
                 index += 1
                 continue
             }
             if inString {
-                if character == "\\" { escaped = true }
-                if character == "\"" { inString = false }
+                if scalar == "\\" { escaped = true }
+                if scalar == "\"" { inString = false }
                 index += 1
                 continue
             }
-            switch character {
+            switch scalar {
             case "\"":
                 inString = true
             case "{", "[":
@@ -207,7 +258,7 @@ enum MongoScriptJson {
                 break
             }
             index += 1
-            if depth == 0, character == "}" || character == "]" { return }
+            if depth == 0, scalar == "}" || scalar == "]" { return }
         }
     }
 }

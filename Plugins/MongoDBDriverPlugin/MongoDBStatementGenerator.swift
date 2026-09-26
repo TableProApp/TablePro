@@ -20,6 +20,10 @@ struct MongoDBStatementGenerator {
     /// Kinds the collection's validator declares. The server rejects any other type for these
     /// fields, so they outrank what the sampled documents happen to hold.
     var declaredKinds: [String: BsonValueKind] = [:]
+    /// The kind every sampled `_id` shares, or nil when they differ. An `_id` filter has to carry the
+    /// row's own type, and a majority kind would quote an ObjectId in a mostly-string collection and
+    /// match nothing.
+    var identityKind: BsonValueKind?
 
     private var collectionAccessor: String {
         MongoCollectionAccessor.expression(for: collectionName)
@@ -243,11 +247,12 @@ struct MongoDBStatementGenerator {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
             return binary
         }
-        switch kind(of: "_id") {
+        let idKind = declaredKinds["_id"] ?? identityKind
+        switch idKind {
         case .string:
             return "\"\(escapeJsonString(idValue))\""
         case .objectId, .int32, .int64, .double, .decimal128:
-            if let typed = typedJson(idValue, kind: kind(of: "_id")) { return typed }
+            if let typed = typedJson(idValue, kind: idKind) { return typed }
         default:
             break
         }
@@ -331,8 +336,8 @@ struct MongoDBStatementGenerator {
             guard MongoDBJsonNumber.isValid(value), let parsed = Double(value), parsed.isFinite else { return nil }
             return "{\"$numberDouble\": \"\(escapeJsonString(value))\"}"
         case .int32:
-            guard Int32(value) != nil else { return nil }
-            return value
+            guard let parsed = Int32(value) else { return nil }
+            return String(parsed)
         default:
             return nil
         }

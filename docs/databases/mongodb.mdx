@@ -105,7 +105,7 @@ Choose **Database > New Table…**. Each row of the grid is a field, and its typ
 
 MongoDB enforces the validator with its defaults, `strict` and `error`, so an insert or edit of the wrong type fails with `Document failed validation`. **Primary Key** on any field other than `_id` is refused, and so are field names that start with `$` or contain a dot.
 
-Each row on the **Indexes** tab runs as a `createIndex` after the collection is made, with its fields in the order listed. **BTREE** is an ascending key, **HASH** is `hashed`, **FULLTEXT** is `text`, and **SPATIAL** is `2dsphere`. A hashed index takes one field and cannot be unique.
+Each row on the **Indexes** tab runs as a `createIndex` after the collection is made, with its fields in the order listed. **BTREE** is an ascending key, **HASH** is `hashed`, **FULLTEXT** is `text`, and **SPATIAL** is `2dsphere`. A hashed index takes one field and cannot be unique, and a text index cannot be unique either.
 
 ## Writing queries
 
@@ -201,6 +201,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
 - `_id` is read-only in the grid, and left out of an insert entirely so the server generates it. To choose your own, insert with `db.collection.insertOne({…})`.
 - Transactions are not exposed. Statements always run standalone, on any topology.
+- A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.
 - **New Table…** writes the validator with the server's own level and action. To log bad documents instead of refusing them, run `db.runCommand({collMod: "articles", validationAction: "warn"})` after creating the collection.
 - Nested paths filter but do not sort. Sorting works on the grid's own columns.
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.

@@ -87,6 +87,12 @@ enum MongoDBCollectionDDL {
                 column.name
             )
         }
+        if isReorderedByTheShell(column.name) {
+            return String(
+                format: String(localized: "The shell would reorder or drop a field named %@. Choose another name."),
+                column.name
+            )
+        }
         guard let alias = MongoDBBsonType.alias(forEditorType: column.dataType) else {
             return String(
                 format: String(localized: "%1$@ has type %2$@, which MongoDB does not have. Choose a type from the list."),
@@ -106,6 +112,17 @@ enum MongoDBCollectionDDL {
             )
         }
         return nil
+    }
+
+    /// The statement is a JavaScript object literal, and JavaScript lists integer-like keys first in
+    /// ascending order and reads `__proto__` as the prototype rather than as a key, so neither kind of
+    /// name reaches the server where it was written.
+    private static func isReorderedByTheShell(_ name: String) -> Bool {
+        if name == "__proto__" { return true }
+        guard !name.isEmpty, name.utf8.allSatisfy({ (UInt8(ascii: "0") ... UInt8(ascii: "9")).contains($0) }) else {
+            return false
+        }
+        return name == "0" || !name.hasPrefix("0")
     }
 
     // MARK: - Indexes
@@ -138,8 +155,11 @@ enum MongoDBCollectionDDL {
                 index.indexType ?? ""
             )
         }
-        if index.columns == [idField] {
+        if keyValue == "1", index.columns == [idField] {
             return String(localized: "MongoDB already indexes _id.")
+        }
+        if keyValue == "\"text\"", index.isUnique {
+            return String(localized: "A text index cannot be unique.")
         }
         guard keyValue == "\"hashed\"" else { return nil }
         if index.isUnique {

@@ -151,16 +151,21 @@ struct MongoDBCollectionSchema: Equatable, Sendable {
     }
 
     private static func orderedKeys(of objectText: String, in decoded: [String: Any]) -> [String] {
-        let textual = MongoScriptJson.members(of: objectText).map(\.key).filter { decoded[$0] != nil }
-        let seen = Set(textual)
+        var seen = Set<String>()
+        let textual = MongoScriptJson.members(of: objectText).map(\.key).filter {
+            decoded[$0] != nil && seen.insert($0).inserted
+        }
         return textual + decoded.keys.filter { !seen.contains($0) }.sorted()
     }
 
+    /// An `enum` of strings with no type of its own still only admits strings, and typing the field
+    /// as one is what keeps `"1"` from being written back as the number 1 and refused.
     private static func declaredTypes(in spec: [String: Any]) -> [String] {
         if let single = spec["bsonType"] as? String { return [single] }
         if let many = spec["bsonType"] as? [String] { return many }
         if let single = spec["type"] as? String { return [MongoDBBsonType.alias(forJsonSchemaType: single)].compactMap { $0 } }
         if let many = spec["type"] as? [String] { return many.compactMap(MongoDBBsonType.alias(forJsonSchemaType:)) }
+        if stringEnum(spec["enum"]) != nil { return ["string"] }
         return []
     }
 

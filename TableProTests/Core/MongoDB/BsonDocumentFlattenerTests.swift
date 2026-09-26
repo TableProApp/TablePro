@@ -8,6 +8,15 @@ import TableProPluginKit
 import Testing
 
 struct BsonDocumentFlattenerTests {
+    @Test("A field's kind is uniform only when every value that is there shares it")
+    func uniformKindNeedsEveryValueToAgree() {
+        let same: [[String: Any]] = [["_id": "a"], ["_id": "b"], ["other": 1]]
+        let mixed: [[String: Any]] = [["_id": "a"], ["_id": MongoDBObjectId(hex: "65a1b2c3d4e5f60718293a4b")]]
+        #expect(BsonDocumentFlattener.uniformKind(of: "_id", in: same, representation: .unspecified) == .string)
+        #expect(BsonDocumentFlattener.uniformKind(of: "_id", in: mixed, representation: .unspecified) == nil)
+        #expect(BsonDocumentFlattener.uniformKind(of: "_id", in: [], representation: .unspecified) == nil)
+    }
+
     // MARK: - unionColumns(from:)
 
     @Suite("unionColumns")

@@ -19,6 +19,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
+    private var identityKindsByCollection: [String: BsonValueKind] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -204,7 +205,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 valueCeiling: ceiling
             )
             if let switched = outcome.databaseSwitch { currentDb = switched }
-            let declared = await declaredColumns(for: outcome)
+            let declared = try await declaredColumns(for: outcome)
             return capToRowCap(
                 MongoScriptResultBuilder.result(
                     for: outcome,
@@ -235,7 +236,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// whose writer and filters use it: `fetchColumns` runs on a pooled driver whose caches this
     /// one never sees. Read again on a first page, so a refresh picks up a changed validator, and
     /// reused while paging.
-    private func declaredColumns(for outcome: MongoScriptStatementResult) async -> MongoDBCollectionSchema {
+    private func declaredColumns(for outcome: MongoScriptStatementResult) async throws -> MongoDBCollectionSchema {
         guard outcome.producedDocuments,
               let find = outcome.find, find.database == currentDb,
               let collection = outcome.collection, !collection.isEmpty,
@@ -248,7 +249,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if find.skip > 0, let cached {
             schema = cached
         } else {
-            schema = await declaredSchema(of: collection, conn: conn)
+            schema = try await declaredSchema(of: collection, conn: conn)
             columnKindLock.withLock { declaredSchemasByCollection[key] = schema }
         }
         return find.returnsWholeDocuments ? schema : .empty
@@ -328,7 +329,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: MongoStreamProjection.sampleSize
         ).docs
 
-        let schema = await declaredSchema(of: table, conn: conn)
+        let schema = try await declaredSchema(of: table, conn: conn)
 
         if docs.isEmpty {
             return MongoDBCollectionShape.emptyCollectionColumns(declaring: schema)
@@ -370,14 +371,19 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// A user whose role can `find` but not `listCollections` still browses, with no declared
-    /// fields, so a failed read is an empty schema rather than an error.
-    private func declaredSchema(of collection: String, conn: MongoDBConnection) async -> MongoDBCollectionSchema {
-        guard let reply = try? await conn.runCommandJson(
-            MongoDBCollectionSchema.listCollectionsCommand(for: collection), database: currentDb
-        ) else {
+    /// fields, so a failed read is an empty schema rather than an error. A Stop is not a failure:
+    /// swallowing it returned the page as though nothing had been cancelled.
+    private func declaredSchema(of collection: String, conn: MongoDBConnection) async throws -> MongoDBCollectionSchema {
+        do {
+            let reply = try await conn.runCommandJson(
+                MongoDBCollectionSchema.listCollectionsCommand(for: collection), database: currentDb
+            )
+            return MongoDBCollectionSchema.parse(listCollectionsReply: reply)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             return .empty
         }
-        return MongoDBCollectionSchema.parse(listCollectionsReply: reply)
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -789,7 +795,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = MongoDBStatementGenerator(
             collectionName: table, columns: columns, columnKinds: columnKinds(for: table),
-            declaredKinds: declaredKinds(for: table)
+            declaredKinds: declaredKinds(for: table), identityKind: identityKind(for: table)
         )
         return generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
@@ -806,7 +812,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let generator = MongoDBStatementGenerator(
             collectionName: table, columns: columns, columnKinds: columnKinds(for: table),
-            declaredKinds: declaredKinds(for: table)
+            declaredKinds: declaredKinds(for: table), identityKind: identityKind(for: table)
         )
         return generator.generateRestore(rows: rows)
     }
@@ -916,6 +922,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             for: sampled, documents: documents, representation: uuidRepresentation
         )
         rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
+        rememberIdentityKind(of: documents, collection: collection)
         rememberFieldPathKinds(from: documents, collection: collection)
         let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
         let columns = sampled + unseen
@@ -980,6 +987,20 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func columnKinds(for collection: String) -> [String: BsonValueKind] {
         let key = columnKindKey(collection)
         return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
+    }
+
+    private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let kind = BsonDocumentFlattener.uniformKind(
+            of: MongoDBCollectionDDL.idField, in: documents, representation: uuidRepresentation
+        )
+        let key = columnKindKey(collection)
+        columnKindLock.withLock { identityKindsByCollection[key] = kind }
+    }
+
+    private func identityKind(for collection: String) -> BsonValueKind? {
+        let key = columnKindKey(collection)
+        return columnKindLock.withLock { identityKindsByCollection[key] }
     }
 
     private func declaredKinds(for collection: String) -> [String: BsonValueKind] {
