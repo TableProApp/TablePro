@@ -121,6 +121,11 @@ internal final class StructureEditingSession: ObservableObject {
     /// what the save has just re-fetched.
     @Published internal var lastAppliedAt: Date?
 
+    /// What every save from this tab is authorized through. A test supplies one whose prompts
+    /// answer themselves, because the real gate raises an application-modal alert that nothing on
+    /// a CI runner can dismiss.
+    internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
+
     internal init(
         identity: String,
         connection: DatabaseConnection,

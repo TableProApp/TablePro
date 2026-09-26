@@ -133,7 +133,7 @@ extension RowEditingCoordinator {
                     pendingDeletes: &dels,
                     tableOperationOptions: &opts
                 )
-            case .denied(let reason):
+            case .denied(let reason, _):
                 if hasPendingTableOps {
                     restorePendingTableOperations(
                         connectionId: connId,

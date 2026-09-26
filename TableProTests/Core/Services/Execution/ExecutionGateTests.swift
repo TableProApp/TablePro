@@ -205,6 +205,45 @@ struct ExecutionGateTests {
         #expect(confirm.callCount == 1)
     }
 
+    @Test("A Cancel at the confirmation is told apart from a refusal")
+    func cancelCarriesItsCause() async {
+        let gate = makeGate(level: .silent, confirm: StubConfirming(answer: false), auth: StubAuthenticating(answer: true))
+
+        let decision = await gate.authorize(makeRequest(sql: "TRUNCATE t", kind: .destructiveQuery))
+
+        guard case .denied(_, let cause) = decision else {
+            Issue.record("A Cancel must deny")
+            return
+        }
+        #expect(cause == .cancelledByUser)
+        guard case .cancelledByUser = decision.denialError else {
+            Issue.record("A Cancel must throw as a Cancel, got \(String(describing: decision.denialError))")
+            return
+        }
+    }
+
+    @Test("Read-Only and a declined Touch ID are refusals, not a Cancel")
+    func refusalsCarryThePolicyCause() async {
+        let readOnly = await makeGate(
+            level: .readOnly, confirm: StubConfirming(answer: true), auth: StubAuthenticating(answer: true)
+        ).authorize(makeRequest(sql: "DELETE FROM t WHERE id = 1", kind: .writeQuery))
+        let declined = await makeGate(
+            level: .safeMode, confirm: StubConfirming(answer: true), auth: StubAuthenticating(answer: false)
+        ).authorize(makeRequest(sql: "DELETE FROM t WHERE id = 1", kind: .writeQuery))
+
+        for decision in [readOnly, declined] {
+            guard case .denied(_, let cause) = decision else {
+                Issue.record("Expected a denial")
+                continue
+            }
+            #expect(cause == .policy)
+            guard case .denied = decision.denialError else {
+                Issue.record("A refusal must throw as a refusal, got \(String(describing: decision.denialError))")
+                continue
+            }
+        }
+    }
+
     @Test("Unqualified DELETE is treated as destructive even when declared a write")
     func unqualifiedDeleteForcesConfirm() async {
         let confirm = StubConfirming(answer: true)

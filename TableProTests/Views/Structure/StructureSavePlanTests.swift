@@ -375,7 +375,8 @@ struct StructureSavePlanTests {
 
         let review = try #require(coordinator.tableRebuildRequest)
         #expect(review.scriptStatements == preview.scriptStatements)
-        #expect(review.warning == preview.warning)
+        let dataWarning = isRunnable ? [OperationConfirmationPrompt.destructiveDataWarning] : []
+        #expect(review.warning == (dataWarning + plan.caveats).joined(separator: " "))
         #expect((review.runnableAction != nil) == isRunnable)
     }
 

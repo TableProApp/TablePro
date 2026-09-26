@@ -52681,40 +52681,6 @@
         }
       }
     },
-    "Destructive Changes" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "파괴적 변경"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yıkıcı Değişiklikler"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thay đổi có thể mất dữ liệu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "破坏性更改"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "破壞性變更"
-          }
-        }
-      }
-    },
     "Destructive operations are not permitted for this client" : {
       "localizations" : {
         "ko" : {
@@ -134534,40 +134500,6 @@
         }
       }
     },
-    "Schema change was not authorized" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "스키마 변경 권한이 없습니다"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Şema değişikliğine izin verilmedi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thay đổi schema không được cho phép"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schema 更改未获授权"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "綱要變更未獲授權"
-          }
-        }
-      }
-    },
     "Schema for %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -159296,40 +159228,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下列 %1$lld 個查詢可能會永久修改或刪除資料。此動作無法復原。\n\n%2$@"
-          }
-        }
-      }
-    },
-    "The following changes may cause data loss:\n\n%@\n\nDo you want to proceed?" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음 변경 사항으로 인해 데이터가 손실될 수 있습니다.\n\n%@\n\n계속하시겠습니까?"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aşağıdaki değişiklikler veri kaybına neden olabilir:\n\n%@\n\nDevam etmek istiyor musunuz?"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các thay đổi sau có thể gây mất dữ liệu:\n\n%@\n\nBạn có muốn tiếp tục?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "以下更改可能导致数据丢失：\n\n%@\n\n是否继续？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下列變更可能導致資料遺失：\n\n%@\n\n是否要繼續？"
           }
         }
       }

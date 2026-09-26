@@ -193,6 +193,55 @@ struct StructureEditingSessionTests {
         #expect(!session.hasLoaded)
     }
 
+    /// The gate's sheet is the one confirmation a save gets, so Cancel there is how a user backs
+    /// out. It leaves the edits staged, runs nothing, and presents nothing: answering it with an
+    /// "Error Applying Changes" sheet was a second dialog for the choice just made, and with no
+    /// window here any sheet would be an application-modal alert this test host never leaves.
+    @Test("Cancelling at the gate keeps the edits staged and runs nothing")
+    func cancelAtTheGateKeepsTheEdits() async throws {
+        let connection = TestFixtures.makeConnection(database: "testdb")
+        let sessionDriver = StructureSessionDriver()
+        var connectionSession = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: sessionDriver)
+        )
+        connectionSession.browseDatabase = "testdb"
+        DatabaseManager.shared.injectSession(connectionSession, for: connection.id)
+
+        let session = Self.makeSession(connection: connection)
+        let pooledDriver = try await Self.seedPooledDriver(connection, scope: session.scope)
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
+        let confirm = StubConfirming(answer: false)
+        let auth = StubAuthenticating(answer: true)
+        session.executionGate = DefaultExecutionGate(
+            confirming: confirm,
+            authenticating: auth,
+            safeModeLevelResolver: { _ in .alert },
+            forcesWriteResolver: { _ in false },
+            auditLog: ExecutionAuditLog(
+                fileURL: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("structure-session-audit-\(UUID().uuidString).json")
+            )
+        )
+
+        Self.stageAColumn(on: session)
+        let outcome = await session.applyStagedChanges(coordinator: nil)
+
+        #expect(outcome == .refused)
+        #expect(!outcome.allowsClose)
+        #expect(confirm.callCount == 1)
+        #expect(auth.callCount == 0)
+        #expect(session.changeManager.hasChanges)
+        #expect(!pooledDriver.executedQueries.contains { $0.contains("ADD COLUMN") })
+        #expect(sessionDriver.executedQueries.isEmpty)
+        #expect(session.appliedVersion == 0)
+        #expect(!session.isApplying)
+    }
+
     /// Stands in for the connection the pool would open on the scope.
     private static func seedPooledDriver(
         _ connection: DatabaseConnection,

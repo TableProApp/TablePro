@@ -17,6 +17,8 @@ struct TableRebuildReviewRequest: Identifiable {
         /// What the confirming button says, which is the only thing that differs between a reorder
         /// and a constraint change: both recreate the table, and the user is reading the same script.
         let title: String
+        /// The operation the gate is told it is authorizing, which the sheet is titled with.
+        let operationDescription: String
         let perform: () async -> Void
     }
 
@@ -33,8 +35,12 @@ struct TableRebuildReviewRequest: Identifiable {
 
     let action: Action?
 
+    /// A rebuild drops the table it copied, so a sheet that can run it warns the way the gate's own
+    /// sheet does for a destructive statement, ahead of what the rebuild cannot carry over.
     var warning: String? {
-        plan.caveats.isEmpty ? nil : plan.caveats.joined(separator: " ")
+        let dataWarning = runnableAction.map { _ in OperationConfirmationPrompt.destructiveDataWarning }
+        let lines = [dataWarning].compactMap { $0 } + plan.caveats
+        return lines.isEmpty ? nil : lines.joined(separator: " ")
     }
 
     var isRunnable: Bool { plan.isRunnable }
@@ -44,4 +50,16 @@ struct TableRebuildReviewRequest: Identifiable {
     }
 
     var scriptStatements: [String] { plan.scriptStatements }
+
+    /// A sheet that can run the script is that script's only confirmation: the run it starts tells
+    /// the gate so. It therefore reads as the gate's own sheet does, titled with the operation,
+    /// naming the connection, and showing the script uncut. A preview keeps the preview heading.
+    var confirmationTitle: String? { runnableAction?.operationDescription }
+
+    var showsStatementsVerbatim: Bool { runnableAction != nil }
+
+    func confirmationSubtitle(connectionName: String?) -> String? {
+        guard runnableAction != nil else { return nil }
+        return OperationConfirmationPrompt.subtitle(connectionName: connectionName, caller: .userInterface)
+    }
 }
