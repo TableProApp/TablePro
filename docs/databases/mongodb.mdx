@@ -37,6 +37,8 @@ Naming a **Database** skips listing every database on the server, which is worth
 
 Also in Advanced: **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**. There is no minimum server version; the driver adapts what it asks for to what the server answers.
 
+**Write Concern** covers every insert, update and delete, from a query tab or from a save in the data grid, unless the statement passes its own `writeConcern`. Index, collection and database commands, and `db.runCommand`, go to the server as written. On a server that is not a replica set, pick **Default**, **Majority** or **1**: with **2** or **3** every write fails with `cannot use 'w' > 1 when a host is not replicated`. `journal` and `wtimeoutMS` in a pasted connection URL go out with every write too.
+
 <Frame caption="MongoDB connection form">
   <img className="block dark:hidden" src="/images/mongodb-connection-form.png" alt="MongoDB connection form with the multi-host Hosts editor" />
   <img className="hidden dark:block" src="/images/mongodb-connection-form-dark.png" alt="MongoDB connection form with the multi-host Hosts editor" />
@@ -176,13 +178,32 @@ or set the modifier before the first read.
 ### Write options
 
 `updateOne`, `updateMany`, `replaceOne`, `findOneAndUpdate` and the delete calls take an options
-document, and `upsert`, `arrayFilters`, `hint`, `collation` and `returnDocument` reach the server. A
-write returns the object mongosh returns: `matchedCount`, `modifiedCount`, `upsertedCount` and
+document, and `upsert`, `arrayFilters`, `hint`, `collation`, `returnDocument` and `writeConcern`
+reach the server. `insertOne`, `insertMany`, `insert` and `bulkWrite` take `writeConcern` too, and
+`insertMany` takes `ordered: false` to go on inserting past a document that fails.
+`remove(filter, true)` and `remove(filter, {justOne: true})` delete one matching document. A write
+returns the object mongosh returns: `matchedCount`, `modifiedCount`, `upsertedCount` and
 `upsertedId` for an update, `deletedCount` for a delete, `insertedId` for an insert.
 
 ```javascript
 db.users.updateOne({_id: 1}, {$set: {active: true}}, {upsert: true})
+db.events.insertMany(batch, {ordered: false, writeConcern: {w: "majority"}})
 ```
+
+`writeConcern` takes mongosh's `journal` and `wtimeoutMS` as well as `j` and `wtimeout`. Naming any
+of `w`, `j` or `wtimeout` replaces the connection's **Write Concern** for that write; an empty
+`writeConcern: {}` keeps it. With `w: 0` and no `j: true` the server does not report what a write
+did, so the result is `{acknowledged: false}` with no counts. `findOneAndUpdate` and the other
+find-and-modify calls still return the document.
+
+### When a write stops part-way
+
+MongoDB keeps whatever a write changed before it failed, timed out or was killed, and undoes
+nothing. An `updateMany` that fails on its third document has already changed the first two. The
+error names this under the server's message: `insertMany` and `bulkWrite` give the count, and
+`updateMany` and `deleteMany` say only that some documents may have changed, as does any write sent
+with `w: 0`. A statement that ran several writes counts them all, and so does an export whose query
+fails after the writes before it. Check the data before you run the statement again.
 
 ### Methods
 
@@ -219,6 +240,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - GridFS buckets are not browsable, and change streams are unsupported.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
 - Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+- `bulkWrite` runs its operations in order and stops at the first one that fails, even with `ordered: false`. To go on past a failed insert, use `insertMany` with `ordered: false`.
 
 ## Troubleshooting
 

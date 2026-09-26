@@ -33,4 +33,22 @@ enum MongoScriptContext {
         }
         return context
     }
+
+    /// The failed write an exception stands for, or nil when it is not a write's failure.
+    ///
+    /// Read from the exception that actually escaped rather than from the last write that failed:
+    /// a script can catch a write's timeout and then time out on a read, and both carry the same
+    /// code and message.
+    static func writeFailure(in exception: JSValue) -> MongoWriteFailure? {
+        guard exception.objectForKeyedSubscript("isMongoError")?.toBool() == true,
+              let stageName = exception.objectForKeyedSubscript("__writeStage"), stageName.isString,
+              let stage = MongoWriteFailure.Stage(rawValue: stageName.toString()) else {
+            return nil
+        }
+        return MongoWriteFailure(
+            code: UInt32(max(0, exception.objectForKeyedSubscript("code")?.toInt32() ?? 0)),
+            message: exception.objectForKeyedSubscript("message")?.toString() ?? "",
+            stage: stage
+        )
+    }
 }

@@ -168,7 +168,7 @@ struct MongoScriptCommandBuilderTests {
     func updateMany() {
         let command = MongoScriptCommandBuilder.update(
             collection: "orders", filter: "{\"a\":1}", update: "{\"$set\":{\"b\":2}}",
-            multi: true, options: [:]
+            multi: true, options: [:], writeConcern: nil
         )
         #expect(command.contains("\"update\": \"orders\""))
         #expect(command.contains("\"q\": {\"a\":1}"))
@@ -181,7 +181,7 @@ struct MongoScriptCommandBuilderTests {
     func updateOptions() {
         let command = MongoScriptCommandBuilder.update(
             collection: "orders", filter: "{}", update: "{}", multi: false,
-            options: ["upsert": true, "arrayFilters": [["x.y": 1]]]
+            options: ["upsert": true, "arrayFilters": [["x.y": 1]]], writeConcern: nil
         )
         #expect(command.contains("\"upsert\": true"))
         #expect(command.contains("\"arrayFilters\":"))
@@ -191,12 +191,12 @@ struct MongoScriptCommandBuilderTests {
     func deleteLimits() {
         #expect(
             MongoScriptCommandBuilder
-                .delete(collection: "orders", filter: "{}", multi: false, options: [:])
+                .delete(collection: "orders", filter: "{}", multi: false, options: [:], writeConcern: nil)
                 .contains("\"limit\": 1")
         )
         #expect(
             MongoScriptCommandBuilder
-                .delete(collection: "orders", filter: "{}", multi: true, options: [:])
+                .delete(collection: "orders", filter: "{}", multi: true, options: [:], writeConcern: nil)
                 .contains("\"limit\": 0")
         )
     }
@@ -204,7 +204,7 @@ struct MongoScriptCommandBuilderTests {
     @Test("findOneAndDelete asks the server to remove rather than update")
     func findAndModifyRemove() {
         let command = MongoScriptCommandBuilder.findAndModify(
-            collection: "orders", filter: "{\"a\":1}", update: nil, remove: true, options: [:]
+            collection: "orders", filter: "{\"a\":1}", update: nil, remove: true, options: [:], writeConcern: nil
         )
         #expect(command.contains("\"remove\": true"))
         #expect(!command.contains("\"update\""))
@@ -214,7 +214,7 @@ struct MongoScriptCommandBuilderTests {
     func findAndModifyReturnsNew() {
         let command = MongoScriptCommandBuilder.findAndModify(
             collection: "orders", filter: "{}", update: "{\"$set\":{}}", remove: false,
-            options: ["returnDocument": "after"]
+            options: ["returnDocument": "after"], writeConcern: nil
         )
         #expect(command.contains("\"new\": true"))
     }
@@ -257,30 +257,242 @@ struct MongoScriptCommandBuilderTests {
     @Test("bulkWrite maps each operation to its own command")
     func bulkOperations() throws {
         let insert = try MongoScriptCommandBuilder.bulkOperation(
-            "{\"insertOne\": {\"document\": {\"a\": 1}}}", collection: "orders"
+            "{\"insertOne\": {\"document\": {\"a\": 1}}}", collection: "orders", writeConcern: nil
         )
         #expect(insert.kind == .insert)
         #expect(insert.document.contains("\"documents\": [{\"a\": 1}]"))
 
         let update = try MongoScriptCommandBuilder.bulkOperation(
             "{\"updateMany\": {\"filter\": {\"a\": 1}, \"update\": {\"$set\": {\"b\": 2}}}}",
-            collection: "orders"
+            collection: "orders", writeConcern: nil
         )
         #expect(update.kind == .update)
+        #expect(update.touchesMany)
         #expect(update.document.contains("\"multi\": true"))
 
         let delete = try MongoScriptCommandBuilder.bulkOperation(
-            "{\"deleteOne\": {\"filter\": {\"a\": 1}}}", collection: "orders"
+            "{\"deleteOne\": {\"filter\": {\"a\": 1}}}", collection: "orders", writeConcern: nil
         )
         #expect(delete.kind == .delete)
+        #expect(!delete.touchesMany)
         #expect(delete.document.contains("\"limit\": 1"))
+    }
+
+    @Test("A bulk delete keeps its collation instead of dropping it")
+    func bulkDeleteOptions() throws {
+        let delete = try MongoScriptCommandBuilder.bulkOperation(
+            "{\"deleteMany\": {\"filter\": {\"a\": 1}, \"collation\": {\"locale\": \"fr\"}}}",
+            collection: "orders", writeConcern: nil
+        )
+        #expect(delete.touchesMany)
+        #expect(delete.document.contains("\"collation\": {\"locale\":\"fr\"}"))
     }
 
     @Test("An unknown bulk operation is refused rather than silently skipped")
     func unknownBulkOperation() {
         #expect(throws: MongoScriptError.self) {
-            try MongoScriptCommandBuilder.bulkOperation("{\"upsertAll\": {}}", collection: "orders")
+            try MongoScriptCommandBuilder.bulkOperation("{\"upsertAll\": {}}", collection: "orders", writeConcern: nil)
         }
+    }
+}
+
+struct MongoScriptWriteConcernTests {
+    private static let majority = "{\"w\": \"majority\"}"
+
+    private static func occurrences(of field: String, in command: String) -> Int {
+        command.components(separatedBy: field).count - 1
+    }
+
+    @Test("A statement that names no write concern takes the connection's")
+    func connectionDefault() {
+        #expect(MongoScriptCommandBuilder.writeConcern(statementOptions: nil, connectionDefault: Self.majority) == Self.majority)
+        #expect(
+            MongoScriptCommandBuilder.writeConcern(statementOptions: "{\"upsert\":true}", connectionDefault: Self.majority)
+                == Self.majority
+        )
+    }
+
+    @Test("The statement's own write concern wins over the connection's, as it does in mongosh")
+    func statementWins() {
+        let options = "{\"writeConcern\":{\"w\":{\"$numberInt\":\"1\"},\"wtimeout\":{\"$numberInt\":\"777\"}}}"
+        #expect(
+            MongoScriptCommandBuilder.writeConcern(statementOptions: options, connectionDefault: Self.majority)
+                == "{\"w\": {\"$numberInt\":\"1\"}, \"wtimeout\": {\"$numberInt\":\"777\"}}"
+        )
+    }
+
+    @Test("mongosh's journal and wtimeoutMS go out as the j and wtimeout the server reads")
+    func mongoshSpellings() {
+        let options = "{\"writeConcern\":{\"journal\":true,\"wtimeoutMS\":{\"$numberInt\":\"1000\"}}}"
+        let canonical = "{\"j\": true, \"wtimeout\": {\"$numberInt\":\"1000\"}}"
+        #expect(
+            MongoScriptCommandBuilder.writeConcern(statementOptions: options, connectionDefault: Self.majority)
+                == canonical
+        )
+        #expect(MongoScriptCommandBuilder.insertOptions(statementOptions: options) == "{\"writeConcern\": \(canonical)}")
+    }
+
+    @Test("Each name takes the first spelling set, in mongosh's order, and fsync stands for j")
+    func spellingPrecedence() {
+        let cases = [
+            ("{\"writeConcern\":{\"journal\":true,\"j\":false}}", "{\"j\": false}"),
+            ("{\"writeConcern\":{\"fsync\":true,\"w\":{\"$numberInt\":\"1\"}}}", "{\"w\": {\"$numberInt\":\"1\"}, \"j\": true}"),
+            ("{\"writeConcern\":{\"wtimeoutMS\":9,\"wtimeout\":5}}", "{\"wtimeout\": 5}"),
+            ("{\"writeConcern\":{\"j\":null,\"journal\":true}}", "{\"j\": true}")
+        ]
+        for (options, expected) in cases {
+            #expect(MongoScriptCommandBuilder.writeConcern(statementOptions: options, connectionDefault: nil) == expected)
+        }
+    }
+
+    @Test("A write concern naming none of w, j and wtimeout falls back to the connection's, as in mongosh")
+    func emptyFallsBack() {
+        for options in ["{\"writeConcern\":{}}", "{\"writeConcern\":{\"foo\":1}}", "{\"writeConcern\":{\"w\":null}}"] {
+            #expect(
+                MongoScriptCommandBuilder.writeConcern(statementOptions: options, connectionDefault: Self.majority)
+                    == Self.majority
+            )
+            #expect(MongoScriptCommandBuilder.insertOptions(statementOptions: options) == nil)
+        }
+    }
+
+    @Test("A write concern that names one field replaces the connection's whole, as in mongosh")
+    func partialReplacesWhole() {
+        #expect(
+            MongoScriptCommandBuilder.writeConcern(
+                statementOptions: "{\"writeConcern\":{\"wtimeoutMS\":{\"$numberInt\":\"555\"}}}",
+                connectionDefault: Self.majority
+            ) == "{\"wtimeout\": {\"$numberInt\":\"555\"}}"
+        )
+    }
+
+    @Test("Only w: 0, or libmongoc's legacy w: -1, without j: true goes unacknowledged, in any number wrapper")
+    func acknowledgement() {
+        let unacknowledged = [
+            "{\"w\": {\"$numberInt\":\"0\"}}",
+            "{\"w\": {\"$numberDouble\":\"0.0\"}}",
+            "{\"w\": {\"$numberInt\":\"0\"}, \"j\": false}",
+            "{\"w\":{\"$numberInt\":\"0\"}}",
+            "{\"w\": {\"$numberInt\":\"-1\"}}",
+            "{\"w\": -1}"
+        ]
+        for concern in unacknowledged {
+            #expect(!MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern), "\(concern)")
+        }
+        let acknowledged = [
+            nil,
+            Self.majority,
+            "{\"w\": {\"$numberInt\":\"1\"}}",
+            "{\"w\": {\"$numberInt\":\"0\"}, \"j\": true}",
+            "{\"w\": \"0\"}",
+            "{\"w\": false}",
+            "{\"j\": true}"
+        ]
+        for concern in acknowledged {
+            #expect(MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern), "\(String(describing: concern))")
+        }
+    }
+
+    @Test("A statement's w: 0 decides acknowledgement the same way the connection's does")
+    func statementWZero() {
+        let concern = MongoScriptCommandBuilder.writeConcern(
+            statementOptions: "{\"writeConcern\":{\"w\":{\"$numberInt\":\"0\"}}}", connectionDefault: Self.majority
+        )
+        #expect(!MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern))
+        #expect(!MongoScriptCommandBuilder.isAcknowledged(
+            writeConcern: MongoScriptCommandBuilder.writeConcern(
+                statementOptions: nil, connectionDefault: "{ \"w\" : { \"$numberInt\" : \"0\" } }"
+            )
+        ))
+    }
+
+    @Test("A null write concern counts as unset, the way mongosh reads it")
+    func nullIsUnset() {
+        let concern = MongoScriptCommandBuilder.writeConcern(
+            statementOptions: "{\"writeConcern\":null}", connectionDefault: Self.majority
+        )
+        #expect(concern == Self.majority)
+        let command = MongoScriptCommandBuilder.update(
+            collection: "orders", filter: "{}", update: "{\"$set\":{}}", multi: false,
+            options: [:], writeConcern: concern
+        )
+        #expect(Self.occurrences(of: "\"writeConcern\"", in: command) == 1)
+        #expect(command.contains("\"writeConcern\": \(Self.majority)"))
+    }
+
+    @Test("With neither set, no write concern is sent and the server's default applies")
+    func neitherSet() {
+        #expect(MongoScriptCommandBuilder.writeConcern(statementOptions: nil, connectionDefault: nil) == nil)
+        let command = MongoScriptCommandBuilder.delete(
+            collection: "orders", filter: "{}", multi: true, options: [:], writeConcern: nil
+        )
+        #expect(!command.contains("writeConcern"))
+    }
+
+    @Test("Every write command carries the write concern exactly once, at the top level")
+    func everyWriteCarriesIt() throws {
+        let commands = [
+            MongoScriptCommandBuilder.update(
+                collection: "orders", filter: "{}", update: "{\"$set\":{}}", multi: true,
+                options: [:], writeConcern: Self.majority
+            ),
+            MongoScriptCommandBuilder.delete(
+                collection: "orders", filter: "{}", multi: false, options: [:], writeConcern: Self.majority
+            ),
+            MongoScriptCommandBuilder.findAndModify(
+                collection: "orders", filter: "{}", update: "{\"$set\":{}}", remove: false,
+                options: [:], writeConcern: Self.majority
+            ),
+            try MongoScriptCommandBuilder.bulkOperation(
+                "{\"insertOne\": {\"document\": {\"a\": 1}}}", collection: "orders", writeConcern: Self.majority
+            ).document,
+            try MongoScriptCommandBuilder.bulkOperation(
+                "{\"updateMany\": {\"filter\": {}, \"update\": {\"$set\": {\"b\": 2}}}}",
+                collection: "orders", writeConcern: Self.majority
+            ).document,
+            try MongoScriptCommandBuilder.bulkOperation(
+                "{\"deleteOne\": {\"filter\": {}}}", collection: "orders", writeConcern: Self.majority
+            ).document
+        ]
+        for command in commands {
+            #expect(Self.occurrences(of: "\"writeConcern\"", in: command) == 1)
+            #expect(MongoScriptJson.member(of: command, key: "writeConcern") == Self.majority)
+        }
+    }
+
+    @Test("An insert sends w: 0 beside j: true as w: 1, which libmongoc accepts and the server treats the same")
+    func insertJournaledUnacknowledged() {
+        let cases = [
+            ("{\"writeConcern\":{\"w\":{\"$numberInt\":\"0\"},\"j\":true}}", "{\"w\": 1, \"j\": true}"),
+            ("{\"writeConcern\":{\"w\":0,\"journal\":true,\"wtimeoutMS\":5}}", "{\"w\": 1, \"j\": true, \"wtimeout\": 5}"),
+            ("{\"writeConcern\":{\"fsync\":true,\"w\":0}}", "{\"w\": 1, \"j\": true}"),
+            ("{\"writeConcern\":{\"w\":0,\"j\":false}}", "{\"w\": 0, \"j\": false}"),
+            ("{\"writeConcern\":{\"w\":-1,\"j\":true}}", "{\"w\": -1, \"j\": true}")
+        ]
+        for (options, concern) in cases {
+            #expect(MongoScriptCommandBuilder.insertOptions(statementOptions: options) == "{\"writeConcern\": \(concern)}")
+        }
+        let commandConcern = MongoScriptCommandBuilder.writeConcern(
+            statementOptions: "{\"writeConcern\":{\"w\":0,\"j\":true}}", connectionDefault: Self.majority
+        )
+        #expect(commandConcern == "{\"w\": 0, \"j\": true}")
+        #expect(MongoScriptCommandBuilder.isAcknowledged(writeConcern: commandConcern))
+    }
+
+    @Test("An insert takes only the statement's own write concern and ordered flag")
+    func insertOptions() {
+        #expect(MongoScriptCommandBuilder.insertOptions(statementOptions: nil) == nil)
+        #expect(MongoScriptCommandBuilder.insertOptions(statementOptions: "null") == nil)
+        #expect(MongoScriptCommandBuilder.insertOptions(statementOptions: "{\"comment\":\"x\"}") == nil)
+        #expect(
+            MongoScriptCommandBuilder.insertOptions(
+                statementOptions: "{\"ordered\":false,\"comment\":\"x\",\"writeConcern\":{\"w\":\"majority\"}}"
+            ) == "{\"writeConcern\": {\"w\": \"majority\"}, \"ordered\": false}"
+        )
+        #expect(
+            MongoScriptCommandBuilder.insertOptions(statementOptions: "{\"writeConcern\":null,\"ordered\":true}")
+                == "{\"ordered\": true}"
+        )
     }
 }
 
@@ -294,7 +506,9 @@ struct MongoScriptObjectIdTests {
 
     @Test("Two generated ids differ")
     func uniqueness() {
-        #expect(MongoScriptObjectId.generate() != MongoScriptObjectId.generate())
+        let first = MongoScriptObjectId.generate()
+        let second = MongoScriptObjectId.generate()
+        #expect(first != second)
     }
 
     @Test("The leading four bytes are the current time")

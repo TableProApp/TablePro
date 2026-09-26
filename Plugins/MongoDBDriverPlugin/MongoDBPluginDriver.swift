@@ -223,11 +223,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ),
                 rowCap: rowCap
             )
-        } catch let failure as MongoScriptStatementFailure {
-            currentDb = failure.databaseSwitch
-            throw mapExecutionError(failure.underlying)
         } catch {
-            throw mapExecutionError(error)
+            throw reportedError(error)
         }
     }
 
@@ -275,16 +272,32 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private func mapExecutionError(_ error: Error) -> Error {
-        guard let mongoError = error as? MongoDBError,
-              MongoDBTimeoutPolicy.isTimeoutCode(mongoError.code),
-              let maxTimeMS = mongoConnection?.effectiveMaxTimeMS(background: false) else {
-            return error
+    /// The error a failed statement surfaces, built in one place so the timeout wording and the
+    /// note about documents already written cannot overwrite each other.
+    ///
+    /// A cancel stays a cancel even when the statement had written: the app discards the result of
+    /// a query the user stopped, so there is nothing to show the note on. A write's failure leaves
+    /// as a `MongoDBError` like every other, so the app reads its code the same way.
+    private func reportedError(_ error: Error) -> Error {
+        var underlying = error
+        var writes = MongoWriteLedger()
+        if let failure = error as? MongoScriptStatementFailure {
+            if let switched = failure.databaseSwitch { currentDb = switched }
+            underlying = failure.underlying
+            writes = failure.writes
         }
-        return MongoDBError(
-            code: mongoError.code,
-            message: MongoDBTimeoutPolicy.timeoutMessage(maxTimeMS: maxTimeMS)
+        if underlying is CancellationError { return underlying }
+        let failedWrite = underlying as? MongoWriteFailure
+        let code = failedWrite?.code ?? (underlying as? MongoDBError)?.code ?? 0
+        let message = failedWrite?.message ?? (underlying as? MongoDBError)?.message ?? underlying.localizedDescription
+        let reported = writes.reportedMessage(
+            code: code,
+            message: message,
+            failedWrite: failedWrite?.stage,
+            maxTimeMS: mongoConnection?.effectiveMaxTimeMS(background: false)
         )
+        guard reported != message || failedWrite != nil else { return underlying }
+        return MongoDBError(code: code, message: reported)
     }
 
     // MARK: - Query Cancellation
@@ -838,7 +851,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let work = Task {
                 do {
                     switch try await runtime.exportPlan(for: trimmed, database: db) {
-                    case .cursor(let plan):
+                    case .cursor(let plan, let databaseSwitch, let writes):
+                        if let databaseSwitch { self.currentDb = databaseSwitch }
                         let inner = plan.isFind
                             ? conn.streamFind(
                                 database: plan.database, collection: plan.collection,
@@ -852,19 +866,23 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                                 pipeline: plan.pipeline,
                                 optionsJson: plan.options.aggregateOptionsJson(timeoutMS: timeout)
                             )
-                        for try await element in inner {
-                            try Task.checkCancellation()
-                            continuation.yield(element)
+                        do {
+                            for try await element in inner {
+                                try Task.checkCancellation()
+                                continuation.yield(element)
+                            }
+                        } catch {
+                            throw MongoScriptStatementFailure.carrying(
+                                error, databaseSwitch: databaseSwitch, writes: writes
+                            )
                         }
                     case .result(let outcome):
+                        if let switched = outcome.databaseSwitch { self.currentDb = switched }
                         self.yieldMaterialised(outcome, into: continuation)
                     }
                     continuation.finish()
-                } catch let failure as MongoScriptStatementFailure {
-                    self.currentDb = failure.databaseSwitch
-                    continuation.finish(throwing: failure.underlying)
                 } catch {
-                    continuation.finish(throwing: error)
+                    continuation.finish(throwing: self.reportedError(error))
                 }
             }
             // A consumer that stops reading has to stop the cursor too, or it keeps draining the

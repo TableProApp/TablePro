@@ -532,6 +532,7 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoScriptPrelude.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptText.swift
       - Plugins/MongoDBDriverPlugin/MongoWriteFailure.swift
+      - Plugins/MongoDBDriverPlugin/MongoWriteLedger.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift

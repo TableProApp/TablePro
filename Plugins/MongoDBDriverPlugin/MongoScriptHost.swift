@@ -19,6 +19,7 @@ final class MongoScriptHost {
     private let activityLock = NSLock()
     private var activity = Date()
     private var cancelled = false
+    private var ledger = MongoWriteLedger()
     private(set) var database: String
     private(set) var printedLines: [String] = []
     private(set) var databaseSwitch: String?
@@ -70,6 +71,20 @@ final class MongoScriptHost {
         return cancelled
     }
 
+    /// What the current statement has written so far. Read from the watchdog's thread as well as
+    /// the engine's, hence the lock.
+    var writes: MongoWriteLedger {
+        activityLock.lock()
+        defer { activityLock.unlock() }
+        return ledger
+    }
+
+    private func updateLedger(_ change: (inout MongoWriteLedger) -> Void) {
+        activityLock.lock()
+        change(&ledger)
+        activityLock.unlock()
+    }
+
     /// Clears what belonged to the previous statement.
     ///
     /// Cursors are pruned rather than dropped: a shell lets you keep one in a variable and read it
@@ -80,6 +95,7 @@ final class MongoScriptHost {
         databaseSwitch = nil
         activityLock.lock()
         cancelled = false
+        ledger = MongoWriteLedger()
         activityLock.unlock()
         touch()
     }
@@ -92,6 +108,7 @@ final class MongoScriptHost {
         cursors.removeAll()
         printedLines.removeAll()
         databaseSwitch = nil
+        updateLedger { $0 = MongoWriteLedger() }
         touch()
         self.database = database
         self.valueCeiling = valueCeiling
@@ -128,6 +145,8 @@ final class MongoScriptHost {
         } catch is CancellationError {
             markCancelled()
             return MongoScriptJson.failure(message: MongoScriptText.cancelled, code: 0)
+        } catch let failedWrite as MongoWriteFailure {
+            return MongoScriptJson.failure(failedWrite)
         } catch let error as MongoDBError {
             return MongoScriptJson.failure(message: error.message, code: error.code)
         } catch let error as MongoScriptError {
@@ -364,12 +383,57 @@ final class MongoScriptHost {
         }
     }
 
-    private func writeCommand(_ document: String, _ request: [String: Any]) throws -> String {
-        let reply = try command(document, request)
-        if let failure = MongoWriteFailure.read(fromReply: reply) {
-            throw MongoDBError(code: failure.code, message: failure.message)
+    /// The write concern a write goes out with: the statement's own, or else the connection's.
+    private func writeConcern(for request: [String: Any]) throws -> String? {
+        let connectionDefault = try withClient { connection.writeConcernJson(client: $0) }
+        return MongoScriptCommandBuilder.writeConcern(
+            statementOptions: MongoScriptJson.rawJson(request["options"]),
+            connectionDefault: connectionDefault
+        )
+    }
+
+    /// Sends one write command, and hands back the server's reply, or only the fact that the write
+    /// was not acknowledged when its reply cannot say what it did.
+    private func write(
+        _ operation: MongoWriteOperation,
+        touchesMany: Bool,
+        acknowledged: Bool,
+        command document: String,
+        request: [String: Any]
+    ) throws -> String {
+        let outcome = try recordingWrite(operation, touchesMany: touchesMany, acknowledged: acknowledged) {
+            try withClient {
+                try connection.scriptWriteCommand(client: $0, command: document, database: databaseName(request))
+            }
         }
-        return reply
+        return acknowledged ? outcome.replyJson : Self.unacknowledgedReply
+    }
+
+    private static let unacknowledgedReply = "{\"acknowledged\": false}"
+
+    /// Runs one write and enters it in the statement's ledger, then fails the call if the write
+    /// failed. The failure reaches the script with the server's own message and code, and with the
+    /// stage that marks it as a write's.
+    @discardableResult
+    private func recordingWrite(
+        _ operation: MongoWriteOperation,
+        touchesMany: Bool,
+        acknowledged: Bool,
+        send: () throws -> MongoWriteOutcome
+    ) throws -> MongoWriteOutcome {
+        updateLedger { $0.beginWrite() }
+        let outcome: MongoWriteOutcome
+        do {
+            outcome = try send()
+        } catch {
+            updateLedger { $0.abandonWrite() }
+            throw error
+        }
+        updateLedger {
+            $0.record(operation, touchesMany: touchesMany, acknowledged: acknowledged, outcome: outcome)
+        }
+        if let failure = outcome.failure { throw failure }
+        return outcome
     }
 
     private func countDocuments(_ request: [String: Any]) throws -> String {
@@ -412,49 +476,76 @@ final class MongoScriptHost {
         } else {
             documents = [MongoScriptJson.rawJson(request["document"]) ?? "{}"]
         }
-        let inserted = try withClient {
-            try connection.scriptInsert(
-                client: $0,
-                database: databaseName(request),
-                collection: collectionName(request),
-                documents: documents
-            )
+        let statementOptions = MongoScriptJson.rawJson(request["options"])
+        let options = MongoScriptCommandBuilder.insertOptions(statementOptions: statementOptions)
+        let acknowledged = try MongoScriptCommandBuilder.isAcknowledged(writeConcern: writeConcern(for: request))
+        var inserted: [String] = []
+        try recordingWrite(.insert, touchesMany: documents.count > 1, acknowledged: acknowledged) {
+            let result = try withClient {
+                try connection.scriptInsert(
+                    client: $0,
+                    database: databaseName(request),
+                    collection: collectionName(request),
+                    documents: documents,
+                    options: options
+                )
+            }
+            inserted = result.identifiers
+            return result.outcome
         }
-        let ids = inserted.map { $0 }.joined(separator: ",")
+        let ids = inserted.joined(separator: ",")
+        guard acknowledged else {
+            return "{\"acknowledged\": false, \"insertedIds\": [\(ids)]}"
+        }
         return "{\"insertedIds\": [\(ids)], \"insertedCount\": \(inserted.count)}"
     }
 
     private func update(_ request: [String: Any], isReplace: Bool) throws -> String {
-        let options = MongoScriptJson.options(request["options"])
+        let multi = !isReplace && (request["multi"] as? Bool ?? false)
+        let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.update(
             collection: collectionName(request),
             filter: MongoScriptJson.rawJson(request["filter"]) ?? "{}",
             update: MongoScriptJson.rawJson(request["update"]) ?? "{}",
-            multi: !isReplace && (request["multi"] as? Bool ?? false),
-            options: options
+            multi: multi,
+            options: MongoScriptJson.options(request["options"]),
+            writeConcern: concern
         )
-        return try writeCommand(statement, request)
+        return try write(
+            .update, touchesMany: multi, acknowledged: MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern),
+            command: statement, request: request
+        )
     }
 
     private func delete(_ request: [String: Any]) throws -> String {
+        let multi = request["multi"] as? Bool ?? false
+        let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.delete(
             collection: collectionName(request),
             filter: MongoScriptJson.rawJson(request["filter"]) ?? "{}",
-            multi: request["multi"] as? Bool ?? false,
-            options: MongoScriptJson.options(request["options"])
+            multi: multi,
+            options: MongoScriptJson.options(request["options"]),
+            writeConcern: concern
         )
-        return try writeCommand(statement, request)
+        return try write(
+            .delete, touchesMany: multi, acknowledged: MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern),
+            command: statement, request: request
+        )
     }
 
+    /// Unlike an insert, update or delete, a `findAndModify` sent with `w: 0` is answered in full,
+    /// its document and its count included, so its reply is read whatever the write concern.
     private func findAndModify(_ request: [String: Any]) throws -> String {
+        let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.findAndModify(
             collection: collectionName(request),
             filter: MongoScriptJson.rawJson(request["filter"]) ?? "{}",
             update: MongoScriptJson.rawJson(request["update"]),
             remove: request["remove"] as? Bool ?? false,
-            options: MongoScriptJson.options(request["options"])
+            options: MongoScriptJson.options(request["options"]),
+            writeConcern: concern
         )
-        return try writeCommand(statement, request)
+        return try write(.findAndModify, touchesMany: false, acknowledged: true, command: statement, request: request)
     }
 
     private func bulkWrite(_ request: [String: Any]) throws -> String {
@@ -465,12 +556,19 @@ final class MongoScriptHost {
         var deleted = 0
         var upserted = 0
 
+        let concern = try writeConcern(for: request)
+        let acknowledged = MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern)
         let statements = try operations.map { operation in
-            try MongoScriptCommandBuilder.bulkOperation(operation, collection: collectionName(request))
+            try MongoScriptCommandBuilder.bulkOperation(
+                operation, collection: collectionName(request), writeConcern: concern
+            )
         }
 
         for statement in statements {
-            let reply = try writeCommand(statement.document, request)
+            let reply = try write(
+                statement.kind, touchesMany: statement.touchesMany, acknowledged: acknowledged,
+                command: statement.document, request: request
+            )
             switch statement.kind {
             case .insert: inserted += Int(MongoScriptJson.number(in: reply, key: "n") ?? 0)
             case .update:
@@ -478,9 +576,11 @@ final class MongoScriptHost {
                 modified += Int(MongoScriptJson.number(in: reply, key: "nModified") ?? 0)
                 upserted += MongoScriptJson.member(of: reply, key: "upserted") == nil ? 0 : 1
             case .delete: deleted += Int(MongoScriptJson.number(in: reply, key: "n") ?? 0)
+            case .findAndModify: break
             }
         }
 
+        guard acknowledged else { return Self.unacknowledgedReply }
         return """
             {"insertedCount": \(inserted), "matchedCount": \(matched), "modifiedCount": \(modified), \
             "deletedCount": \(deleted), "upsertedCount": \(upserted)}
