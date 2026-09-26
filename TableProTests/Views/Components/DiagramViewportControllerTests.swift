@@ -130,6 +130,27 @@ struct DiagramViewportControllerTests {
         #expect(scrollView.documentVisibleRect.height >= content.height - 0.5)
     }
 
+    @Test("A fit with scroll bars always shown fills the viewport they leave once the diagram fits")
+    func fitWithAlwaysShownScrollBarsFillsTheViewport() throws {
+        let content = CGSize(width: 3_000, height: 1_800)
+        let scrollView = makeScrollView(content: content, visible: CGSize(width: 600, height: 400))
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .legacy
+        scrollView.tile()
+        let viewport = DiagramViewportController()
+        viewport.attach(to: scrollView)
+        #expect(scrollView.contentView.frame.width < 600)
+
+        viewport.fitToWindow()
+        scrollView.tile()
+
+        let fit = try #require(ERDiagramLoadFixture.exactFit(of: scrollView))
+        #expect(abs(scrollView.magnification - fit) < 0.001)
+        #expect(scrollView.contentView.frame.size == CGSize(width: 600, height: 400))
+    }
+
     @Test("A fit asked for once the scroll view has a size lands at once")
     func fitOnASizedViewportLandsAtOnce() {
         let (viewport, scrollView) = makeAttached(

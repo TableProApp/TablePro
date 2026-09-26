@@ -516,6 +516,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid's inline cell editor and cell viewer unreachable by VoiceOver.
 - No Executing indicator or Stop button in the results status bar while a query tab runs its first query.
 - ER diagram opening at 100% instead of fitted, then losing its zoom the first time you came back to its tab.
+- Diagram Fit to Window stopping a scroll bar's width short when scroll bars are always shown.
 
 ### Security
 

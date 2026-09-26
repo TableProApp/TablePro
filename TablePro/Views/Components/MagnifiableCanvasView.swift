@@ -104,9 +104,8 @@ final class DiagramViewportController: ObservableObject {
     }
 
     /// An offset applied while the clip view has no size is rescaled by AppKit when the frame arrives,
-    /// measured at 1.5x as the saved origin divided by the zoom, and a fit against no size has
-    /// nothing to fit to. So either waits for a size: at once when the scroll view already has one,
-    /// otherwise on the scroll view's first tile that gives it one.
+    /// measured at 1.5x as the saved origin divided by the zoom. So it waits for a size: at once when
+    /// the scroll view already has one, otherwise on the scroll view's first tile that gives it one.
     func placeDocumentIfLaidOut() {
         guard let scrollView, let placement = pendingPlacement, !scrollView.contentView.bounds.isEmpty else { return }
         switch placement {
@@ -119,8 +118,7 @@ final class DiagramViewportController: ObservableObject {
     }
 
     /// SwiftUI makes a replacement canvas before it dismantles the one it replaces, so the controller
-    /// can already belong to the new scroll view when the old one is torn down. A scroll view that
-    /// never had a size has no offset worth keeping over the placement still waiting to be applied.
+    /// can already belong to the new scroll view when the old one is torn down.
     func detach(from scrollView: DiagramScrollView) {
         guard self.scrollView === scrollView else { return }
         if !scrollView.contentView.bounds.isEmpty {
@@ -136,7 +134,14 @@ final class DiagramViewportController: ObservableObject {
     private func fitWholeDocument() -> Bool {
         guard let scrollView, let documentView = scrollView.documentView else { return false }
         let content = documentView.bounds.size
-        let visible = scrollView.contentSize
+        let visible = NSScrollView.contentSize(
+            forFrameSize: scrollView.frame.size,
+            horizontalScrollerClass: nil,
+            verticalScrollerClass: nil,
+            borderType: scrollView.borderType,
+            controlSize: .regular,
+            scrollerStyle: scrollView.scrollerStyle
+        )
         guard content.width > 0, content.height > 0, visible.width > 0, visible.height > 0 else { return false }
 
         apply(min(1.0, min(visible.width / content.width, visible.height / content.height)))

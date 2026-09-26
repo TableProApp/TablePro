@@ -67,7 +67,11 @@ final class DiagramKeyboardZoomUITests: UITestCase {
         XCTAssertTrue(editorTextView(in: app).waitToExist(timeout: 10), "A new query tab must open")
         app.typeKey("[", modifierFlags: [.command, .shift])
         XCTAssertTrue(canvas.waitToExist(timeout: 10), "Show Previous Tab must return to the diagram")
-        XCTAssertEqual(zoomLevel.value as? String, "75%", "Returning to the diagram tab must keep the zoom it was left at")
+        XCTAssertEqual(
+            zoomLevel.value as? String,
+            "75%",
+            "Returning to the diagram tab must keep the zoom it was left at"
+        )
         app.typeKey("=", modifierFlags: .command)
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "100%" },
