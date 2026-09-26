@@ -31,9 +31,12 @@ enum MongoScriptCommandBuilder {
             "\"upsert\": \(options["upsert"] as? Bool ?? false)"
         ]
         appendPassThrough(&fields, options: options, keys: ["arrayFilters", "hint", "collation"])
-        return """
-            {"update": \(MongoScriptJson.jsonString(collection)), "updates": [{\(fields.joined(separator: ", "))}]}
-            """
+        var command = [
+            "\"update\": \(MongoScriptJson.jsonString(collection))",
+            "\"updates\": [{\(fields.joined(separator: ", "))}]"
+        ]
+        appendPassThrough(&command, options: options, keys: ["writeConcern"])
+        return "{\(command.joined(separator: ", "))}"
     }
 
     static func delete(collection: String, filter: String, multi: Bool, options: [String: Any]) -> String {

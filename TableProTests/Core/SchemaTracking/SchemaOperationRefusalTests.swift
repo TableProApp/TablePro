@@ -160,6 +160,55 @@ struct SchemaOperationRefusalTests {
         #expect(refusal(of: .deleteIndex(index("ix_old", type: .btree)), driver: driver) == "drop ix_old")
     }
 
+    @Test("A changed and a removed column reach the driver as their own operations")
+    func modifyAndDropColumnReachTheDriver() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            switch operation {
+            case .modifyColumn(let old, let new): return "rename \(old.name) to \(new.name)"
+            case .dropColumn(let column): return "drop \(column.name)"
+            default: return nil
+            }
+        }
+        let rename = SchemaChange.modifyColumn(old: column("qty", generated: false), new: column("quantity", generated: false))
+
+        #expect(refusal(of: rename, driver: driver) == "rename qty to quantity")
+        #expect(refusal(of: .deleteColumn(column("total", generated: false)), driver: driver) == "drop total")
+    }
+
+    @Test("A save's operations reach the driver in the order its statements run")
+    func operationsFollowStatementOrder() {
+        let generator = SchemaStatementGenerator(tableName: "orders", pluginDriver: RefusingDDLDriver())
+        let operations = generator.orderedOperations(for: [
+            .addIndex(index("ix_new", type: .btree)),
+            .modifyColumn(old: column("a", generated: false), new: column("b", generated: false)),
+            .addColumn(column("c", generated: false)),
+            .deleteColumn(column("d", generated: false)),
+            .deleteIndex(index("ix_old", type: .btree))
+        ])
+        let names: [String] = operations.map { operation in
+            switch operation {
+            case .dropIndex(let index): return "dropIndex \(index.name)"
+            case .dropColumn(let column): return "dropColumn \(column.name)"
+            case .modifyColumn(let old, let new): return "modifyColumn \(old.name) \(new.name)"
+            case .addColumn(let column): return "addColumn \(column.name)"
+            case .addIndex(let index): return "addIndex \(index.name)"
+            default: return "other"
+            }
+        }
+        #expect(names == ["dropIndex ix_old", "dropColumn d", "modifyColumn a b", "addColumn c", "addIndex ix_new"])
+    }
+
+    @Test("Only a renamed check constraint is an operation, and key changes are none")
+    func constraintAndKeyChangesAreNotOperations() {
+        let renamed = SchemaChange.modifyCheckConstraint(old: constraint("ck_a", "qty > 0"), new: constraint("ck_b", "qty > 0"))
+        let rewritten = SchemaChange.modifyCheckConstraint(old: constraint("ck_a", "qty > 0"), new: constraint("ck_a", "qty > 1"))
+        #expect(SchemaOperationRefusal.operations(for: renamed).count == 1)
+        #expect(SchemaOperationRefusal.operations(for: rewritten).isEmpty)
+        #expect(SchemaOperationRefusal.operations(for: .addCheckConstraint(constraint("ck", "qty > 0"))).isEmpty)
+        #expect(SchemaOperationRefusal.operations(for: .modifyPrimaryKey(old: ["a"], new: ["b"])).isEmpty)
+    }
+
     @Test("A refusal is reported ahead of a change in the same save that the driver cannot generate")
     func refusalWinsOverUngeneratableChange() {
         let unsupportedDrop = SchemaChange.deleteIndex(index("ix_old", type: .btree))

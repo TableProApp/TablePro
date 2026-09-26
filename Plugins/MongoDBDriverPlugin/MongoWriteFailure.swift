@@ -22,14 +22,23 @@ struct MongoWriteFailure: Equatable, Sendable {
         if let writeErrors = reply["writeErrors"] as? [[String: Any]], let first = writeErrors.first {
             return entry(first)
         }
-        if let concernError = reply["writeConcernError"] as? [String: Any] {
-            let failure = entry(concernError)
-            return MongoWriteFailure(
-                code: failure.code,
-                message: MongoScriptText.writeNotAcknowledged(reason: failure.message)
-            )
+        return concernFailure(in: reply)
+    }
+
+    /// A reply that did what it was asked without the write concern it was given. mongosh's driver
+    /// throws on one from any command, `collMod` included, so the shell's `db.runCommand` does too.
+    static func concernFailure(fromReply replyJson: String) -> MongoWriteFailure? {
+        guard let data = replyJson.data(using: .utf8),
+              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
         }
-        return nil
+        return concernFailure(in: reply)
+    }
+
+    private static func concernFailure(in reply: [String: Any]) -> MongoWriteFailure? {
+        guard let concernError = reply["writeConcernError"] as? [String: Any] else { return nil }
+        let failure = entry(concernError)
+        return MongoWriteFailure(code: failure.code, message: MongoScriptText.writeNotAcknowledged(reason: failure.message))
     }
 
     private static func entry(_ entry: [String: Any]) -> MongoWriteFailure {

@@ -355,7 +355,11 @@ final class MongoScriptHost {
     }
 
     private func runCommand(_ request: [String: Any]) throws -> String {
-        try command(MongoScriptJson.rawJson(request["command"]) ?? "{}", request)
+        let reply = try command(MongoScriptJson.rawJson(request["command"]) ?? "{}", request)
+        if let failure = MongoWriteFailure.concernFailure(fromReply: reply) {
+            throw MongoDBError(code: failure.code, message: failure.message)
+        }
+        return reply
     }
 
     private func command(_ document: String, _ request: [String: Any]) throws -> String {

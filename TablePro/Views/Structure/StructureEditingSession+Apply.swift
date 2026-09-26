@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProPluginKit
 
 /// What happened when a tab was asked to apply its staged structure edits.
@@ -44,6 +45,11 @@ internal extension StructureEditingSession {
         let changes = changeManager.getChangesArray()
         guard !changes.isEmpty else { return .nothingToApply }
 
+        /// A save that is already running holds the tab until it ends. On MongoDB that includes the
+        /// check that reads the documents, which can take as long as the query timeout, and a second
+        /// press would otherwise start the same save again behind it.
+        guard !isApplying, !changeManager.isHeldForSave else { return .refused }
+
         /// Asked before Safe Mode and before the destructive prompt, because an incomplete row is
         /// not a change the user meant to make. Without this a foreign key added and never filled
         /// in reached DDL generation as `ADD CONSTRAINT "" FOREIGN KEY () REFERENCES "" ()`, which
@@ -75,6 +81,31 @@ internal extension StructureEditingSession {
             return .refused
         }
 
+        /// Taken before the first suspension and held until the save ends, so a second press is
+        /// refused before it can start the same save again, and no edit can land between the
+        /// statements being composed and the staged edits being cleared. The edits a save clears
+        /// are the ones it held, and only while they are still exactly those.
+        guard let hold = changeManager.holdForSave() else { return .refused }
+        isApplying = true
+        let outcome = await saveHeldChanges(hold.changes, coordinator: coordinator)
+        let cleared = changeManager.releaseHold(hold, written: outcome == .applied)
+        isApplying = false
+        guard outcome == .applied else { return outcome }
+        guard cleared else {
+            Self.logger.fault("A structure save landed over staged edits it did not write; they stay staged")
+            return .refused
+        }
+        tabData.markAllStale()
+        hasLoaded = false
+        lastAppliedAt = Date()
+        markApplied()
+        return outcome
+    }
+
+    private func saveHeldChanges(
+        _ changes: [SchemaChange],
+        coordinator: MainContentCoordinator?
+    ) async -> StructureSaveOutcome {
         let planStart = ContinuousClock.Instant.now
         let plan: StructureSavePlan
         do {
@@ -99,14 +130,14 @@ internal extension StructureEditingSession {
             /// that confirmation and shows the exact script rather than a list of descriptions, so
             /// asking first would be two dialogs for one decision. The HIG's rule is one alert at a
             /// time.
-            return presentRebuildReview(prepared, startedAt: planStart, coordinator: coordinator)
-        case .alter(let statements):
-            return await applyAlterStatements(statements, changes: changes, coordinator: coordinator)
+            return presentRebuildReview(prepared, preparedFrom: changes, startedAt: planStart, coordinator: coordinator)
+        case .alter(let script):
+            return await applyAlterStatements(script, changes: changes, coordinator: coordinator)
         }
     }
 
     private func applyAlterStatements(
-        _ statements: [SchemaStatement],
+        _ script: SchemaChangeScript,
         changes: [SchemaChange],
         coordinator: MainContentCoordinator?
     ) async -> StructureSaveOutcome {
@@ -130,24 +161,16 @@ internal extension StructureEditingSession {
         /// this and the user can take as long as they like over it, so a clock started earlier
         /// measures their reading time and reports an instant ALTER as having taken a minute.
         let operationStart = ContinuousClock.Instant.now
-        isApplying = true
 
         do {
             try await DatabaseManager.shared.executeSchemaChanges(
-                statements,
+                script,
                 databaseType: connection.type,
                 scope: scope
             )
-            changeManager.discardChanges()
-            tabData.markAllStale()
-            hasLoaded = false
-            lastAppliedAt = Date()
-            isApplying = false
-            markApplied()
             report(.succeeded(OperationSummary()), startedAt: operationStart, coordinator: coordinator)
             return .applied
         } catch {
-            isApplying = false
             report(.failed(reason: error.localizedDescription), startedAt: operationStart, coordinator: coordinator)
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
@@ -165,6 +188,7 @@ internal extension StructureEditingSession {
     /// action if the user confirms it there.
     private func presentRebuildReview(
         _ prepared: StructureRebuildPlanRunner.Prepared,
+        preparedFrom changes: [SchemaChange],
         startedAt operationStart: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
     ) -> StructureSaveOutcome {
@@ -176,7 +200,9 @@ internal extension StructureEditingSession {
             action: TableRebuildReviewRequest.Action(
                 title: String(localized: "Apply and Rebuild"),
                 perform: { [weak coordinator] in
-                    await self.runRebuild(prepared, startedAt: operationStart, coordinator: coordinator)
+                    await self.runRebuild(
+                        prepared, preparedFrom: changes, startedAt: operationStart, coordinator: coordinator
+                    )
                 }
             )
         )
@@ -189,11 +215,24 @@ internal extension StructureEditingSession {
     /// The table was dropped and recreated, so the grid's rows, the query history and the saved
     /// column layout all describe a table that no longer exists in that form. The ordinary save
     /// path does not record history or clear a layout because an `ALTER` leaves both valid.
+    ///
+    /// The script was built from the edits staged when Save was pressed, and the sheet can stay up
+    /// for as long as the user likes, so it runs only while those are still the staged edits, and
+    /// holds them the way a save does until it ends.
     private func runRebuild(
         _ prepared: StructureRebuildPlanRunner.Prepared,
+        preparedFrom changes: [SchemaChange],
         startedAt: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
     ) async {
+        guard !isApplying, changeManager.getChangesArray() == changes, let hold = changeManager.holdForSave() else {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Error Applying Changes"),
+                message: String(localized: "The staged changes were edited after this script was prepared. Save again to review the new script."),
+                window: coordinator?.contentWindow
+            )
+            return
+        }
         isApplying = true
         do {
             try await StructureRebuildPlanRunner.execute(
@@ -202,6 +241,7 @@ internal extension StructureEditingSession {
                 operationDescription: String(localized: "Apply Schema Changes")
             )
         } catch {
+            changeManager.releaseHold(hold, written: false)
             isApplying = false
             CatalogChangeService.post(
                 .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
@@ -230,16 +270,20 @@ internal extension StructureEditingSession {
             )
         )
 
-        changeManager.discardChanges()
-        tabData.markAllStale()
-        hasLoaded = false
-        lastAppliedAt = Date()
+        let cleared = changeManager.releaseHold(hold, written: true)
         isApplying = false
-        markApplied()
+        if cleared {
+            tabData.markAllStale()
+            hasLoaded = false
+            lastAppliedAt = Date()
+            markApplied()
+        } else {
+            Self.logger.fault("A table rebuild landed over staged edits it did not write; they stay staged")
+        }
         if let clearTarget = coordinator?.selectedColumnLayoutClearTarget() {
             coordinator?.clearColumnLayout(clearTarget)
         }
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        DatabaseManager.shared.reportTableDefinitionChange(table: prepared.tableName, in: prepared.scope)
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
         )

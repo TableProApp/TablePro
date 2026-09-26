@@ -383,6 +383,62 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var unsupportedIndexTypes: Set<String> { get }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String?
 
+    /// Answers for a Structure save as a whole once the driver has read what it depends on: a
+    /// refusal, or statements that have to run ahead of the save's own.
+    ///
+    /// Asked by the Structure tab when it composes a save, for SQL Preview and for Save alike, after
+    /// every operation has passed `schemaOperationRefusal(_:)` and on the connection the save is
+    /// composed on. A table rebuild and a Compare & Sync script do not ask it. `operations` holds
+    /// every change of the save that a `PluginSchemaOperation` can express, in the order their
+    /// statements run; foreign key, primary key and check constraint changes other than a rename
+    /// have no case and are left out. Throws when the driver cannot read what it has to check,
+    /// which stops the save.
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview
+
+    /// The last question before a Structure save writes anything: why it must not run, or nil.
+    ///
+    /// Asked on Save alone, never for SQL Preview, after every confirmation and on the connection
+    /// that then runs the statements, just before the first of them. `operations` is the list
+    /// `reviewSchemaChange(table:schema:operations:)` was given, and `review` is what it answered
+    /// then: its leading statements are about to run as the user confirmed them. A driver that
+    /// composed them from server state reads that state again and refuses when they would now
+    /// differ, because running them would undo whatever changed it. This is where a driver reads
+    /// the data itself, which can cost a scan of the table, so it bounds its own reads and stops
+    /// them when the task is cancelled. Throws when the driver cannot read what it has to check.
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String?
+
+    /// Why a Structure save whose statements all succeeded did not finish, worded for the user, or
+    /// nil when it did.
+    ///
+    /// Asked on Save once the last statement has run, on the same connection. A statement that
+    /// changes many rows can succeed and still miss one another client wrote while it ran, so a
+    /// driver whose statements can leave such a row reads for it here. `operations` and `review`
+    /// are what the save was composed with. The app reports the save as failed with its statements
+    /// already run, keeps the edits staged so Save can run them again, and reloads the table's rows.
+    /// Throws when the driver cannot read what it checks, which the app reports the same way.
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String?
+
+    /// Told on the session's own connection that the app changed a table's definition on another
+    /// one: a Structure save, a table rebuild or a column reorder, finished or stopped partway. A
+    /// driver that keeps what it learned about the table's columns and their types drops it here,
+    /// for the table in every database it holds it for, so the next read learns them again. Called
+    /// on the main actor while the driver may be running a query, so it only clears what it keeps.
+    func tableDefinitionDidChange(table: String, schema: String?)
+
     /// Why the connected server has no check constraints to list or edit, or nil when it has.
     ///
     /// The engine's capability flags describe its newest release; this describes the server in
@@ -986,6 +1042,35 @@ public extension PluginDatabaseDriver {
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
+
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview {
+        PluginSchemaChangeReview()
+    }
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        nil
+    }
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        nil
+    }
+
+    func tableDefinitionDidChange(table: String, schema: String?) {}
+
     var checkConstraintRefusal: String? { nil }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }

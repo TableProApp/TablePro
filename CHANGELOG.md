@@ -117,6 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
 - Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
 - `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
+- Column type changes from the Structure tab confirmed under Safe Mode, like a dropped column.
+- No structure sync script for MongoDB, whose fields are read from a sample of documents.
 
 ### Removed
 
@@ -531,6 +533,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
+- MongoDB fields that could not be renamed or removed from the Structure tab. (#3132)
+- Structure tab edits made during a save, cleared without being saved.
+- Rows not reloaded after a Structure save that failed partway through its statements.
+- Stale rows after a Structure save in the table's other tabs and in its Data view behind Structure.
+- A Structure save reloading, or asking to discard edits in, tabs on other tables of the same database.
+- `writeConcern` option of `updateOne` and `updateMany` ignored by the MongoDB shell.
 
 ### Security
 

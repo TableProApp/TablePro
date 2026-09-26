@@ -11,7 +11,11 @@
 import Foundation
 
 internal enum CompareSyncEngineFamily {
+    /// A sampled column list is not a schema. A field the source's sample missed reads as one the
+    /// target holds and the source does not, and a script would remove it from every document of
+    /// the target.
     internal static func canGenerateStructureScript(from source: DatabaseType, to target: DatabaseType) -> Bool {
+        guard !source.columnsAreSampled, !target.columnsAreSampled else { return false }
         guard source != target else { return true }
         return sameFamily(source, target)
     }
@@ -30,7 +34,13 @@ internal enum CompareSyncEngineFamily {
     }()
 
     internal static func structureScriptRefusal(from source: DatabaseType, to target: DatabaseType) -> String {
-        String(
+        if let sampled = [source, target].first(where: \.columnsAreSampled) {
+            return String(
+                format: String(localized: "%@ lists a collection's fields from a sample of its documents, so structures can be compared but no script is generated."),
+                sampled.rawValue
+            )
+        }
+        return String(
             format: String(localized: "Structure sync needs matching database types. %@ and %@ can be compared, but no script is generated."),
             source.rawValue, target.rawValue
         )

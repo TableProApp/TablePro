@@ -521,7 +521,15 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentText.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentWritePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBStructureEditing.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
+      - Plugins/MongoDBDriverPlugin/MongoCollectionCatalog.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldChange.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldChangeAssessment.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldDataProbe.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldDependent.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldReferences.swift
+      - Plugins/MongoDBDriverPlugin/MongoWriteConcern.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptCommandBuilder.swift
       - Plugins/MongoDBDriverPlugin/MongoShellCommandLine.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptContext.swift

@@ -38,6 +38,9 @@ struct DatabaseObjectChange: Sendable, Equatable {
     enum Kind: Sendable, Equatable {
         /// The object's rows were recomputed, as a materialized view refresh does.
         case rows
+        /// The object's columns, keys or indexes changed, and with them possibly its rows: a
+        /// Structure save, a table rebuild or a column reorder, finished or stopped partway.
+        case structure
         /// The object's comment changed.
         case comment
         /// The object no longer exists.

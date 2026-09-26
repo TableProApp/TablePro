@@ -184363,6 +184363,126 @@
     },
     "This database does not store whole documents" : {
 
+    },
+    "A MongoDB field has no type, default or nullability to change. Only its name can change." : {
+
+    },
+    "_id cannot be renamed, removed or used as a new name. MongoDB keys every document by it." : {
+
+    },
+    "A MongoDB field needs a name." : {
+
+    },
+    "A MongoDB field name cannot contain a NUL character." : {
+
+    },
+    "%@ is changed twice in this save. Save one change to it at a time." : {
+
+    },
+    "%@ is a system collection. Its fields cannot be renamed or removed." : {
+
+    },
+    "Collection %@ no longer exists." : {
+
+    },
+    "%@ is a view. Rename or remove the field in the collection it reads." : {
+
+    },
+    "%@ is a time series collection. MongoDB cannot rename or remove its fields." : {
+
+    },
+    "%1$@ is a collection of type %2$@. Its fields cannot be renamed or removed." : {
+
+    },
+    "Index %1$@ uses %2$@. Drop it first by running %3$@ in a query tab, then save again." : {
+
+    },
+    "%@ is an encrypted field. MongoDB cannot rename or remove it." : {
+
+    },
+    "View %1$@ reads %2$@. Change the view first, then save again." : {
+
+    },
+    "The validator has a key named %@ that the shell would reorder or drop. Change the validator from a query tab instead." : {
+
+    },
+    "The validator already declares %@. Remove that declaration first, then save again." : {
+
+    },
+    "The validator uses %@ in a way that cannot be updated with the field. Change the validator first, then save again." : {
+
+    },
+    "The validator could not be read, so the change was not checked against it." : {
+
+    },
+    "Some documents hold both %1$@ and %2$@. Remove one of the two from those documents first." : {
+
+    },
+    "The validator would reject the document with _id %1$@ once %2$@ is removed. Fix the document or the validator first." : {
+
+    },
+    "The validator would reject the document with _id %1$@ once %2$@ is renamed to %3$@. Fix the document or the validator first." : {
+
+    },
+    "Checking the documents of %1$@ took over %2$d seconds, so nothing was changed. Raise the query timeout in Settings and save again." : {
+
+    },
+    "Couldn't check %1$@ before changing its documents: %2$@" : {
+
+    },
+    "%@ lists a collection's fields from a sample of its documents, so structures can be compared but no script is generated." : {
+
+    },
+    "%1$@ is a capped collection, and a longer field name makes MongoDB delete its oldest documents. Choose a name no longer than %2$@." : {
+
+    },
+    "Search index %1$@ uses %2$@. Change or drop that search index first, then save again." : {
+
+    },
+    "Once this save updates the validator, it would reject the document with _id %@. Fix the document or the validator first." : {
+
+    },
+    "Saving Changes…" : {
+
+    },
+    "The staged changes are being saved." : {
+
+    },
+    "The staged changes were edited after this script was prepared. Save again to review the new script." : {
+
+    },
+    "%@ changed while its documents were being checked, so nothing was changed. Save again." : {
+
+    },
+    "The save ran, but checking %1$@ afterwards failed: %2$@. Save again to make sure every document was changed." : {
+
+    },
+    "The save did not finish: one document still holds %@, most likely written by another client while the save ran. Save again to finish." : {
+
+    },
+    "The save did not finish: %1$lld documents still hold %2$@, most likely written by another client while the save ran. Save again to finish." : {
+
+    },
+    "This server runs Atlas Search but cannot list its search indexes, so one that uses the field cannot be ruled out. Check the collection's search indexes in Atlas, then change the field from a query tab." : {
+
+    },
+    "%@ changed after this save was prepared, so nothing was changed. Review the save and save again." : {
+
+    },
+    "The save did not finish: the updated validator of %1$@ rejects the document with _id %2$@, most likely written by another client while the save ran. Fix that document, then save again." : {
+
+    },
+    "Renaming would take the document with _id %@ past MongoDB's 16 MB limit. Choose shorter names, or shrink that document first." : {
+
+    },
+    "The save ran, but index %1$@ on %2$@ was created while it did and uses %3$@. Check that it indexes the field you meant." : {
+
+    },
+    "The save ran, but search index %1$@ on %2$@ was created while it did and uses %3$@. Check that it maps the field you meant." : {
+
+    },
+    "The save ran, but view %1$@ was created while it did and reads %2$@. Change it to read the field where it is now." : {
+
     }
   },
   "version" : "1.1"

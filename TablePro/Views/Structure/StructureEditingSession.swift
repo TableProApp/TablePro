@@ -34,7 +34,7 @@ import TableProPluginKit
 /// fetch is the only version of this that keeps the edits.
 @MainActor
 internal final class StructureEditingSession: ObservableObject {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
+    static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
 
     /// The scope and table this session was opened against. A tab retargeted to another table gets
     /// a new session rather than inheriting edits staged against the old one.
@@ -151,6 +151,15 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal func markApplied() {
         appliedVersion += 1
+    }
+
+    /// The object changed outside this editor, so the next mount fetches it again. A session holding
+    /// staged edits is left alone: the fetch re-baselines the change manager, which would discard
+    /// them without asking.
+    internal func markStructureStale() {
+        guard !changeManager.hasChanges else { return }
+        tabData.markAllStale()
+        hasLoaded = false
     }
 
     internal func reloadConcurrentRefreshAvailability(

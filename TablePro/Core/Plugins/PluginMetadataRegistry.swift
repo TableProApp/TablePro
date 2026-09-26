@@ -93,6 +93,10 @@ struct PluginMetadataSnapshot: Sendable {
         /// has no `COUNT(*)`. DynamoDB is the case: a count is a `Scan` of every item. Such an engine is counted
         /// only when the user asks, and only by its driver.
         var exactRowCountIsBilledScan: Bool = false
+        /// Whether a table's columns are a sample of its rows rather than a declared schema. A
+        /// MongoDB collection lists the fields found in its first documents, so a field missing from
+        /// one side's list says nothing about whether that side holds it.
+        var columnsAreSampled: Bool = false
         var isEngineReadOnly: Bool = false
 
         /// Which connection field carries the path of the local database file this driver opens,
@@ -715,6 +719,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
                 exactRowCountIsBilledScan: existingSnapshot?.capabilities.exactRowCountIsBilledScan ?? false,
+                columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities

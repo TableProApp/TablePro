@@ -123,7 +123,7 @@ extension TableStructureView {
         if let clearTarget {
             coordinator?.clearColumnLayout(clearTarget)
         }
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        DatabaseManager.shared.reportTableDefinitionChange(table: tableName, in: prepared.scope)
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
         )

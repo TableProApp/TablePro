@@ -7,13 +7,13 @@ import Foundation
 import TableProPluginKit
 
 internal enum StructureSavePlan {
-    case alter([SchemaStatement])
+    case alter(SchemaChangeScript)
     case rebuild(StructureRebuildPlanRunner.Prepared)
 
     internal var displayStatements: [String] {
         switch self {
-        case .alter(let statements):
-            statements.map(\.sql)
+        case .alter(let script):
+            script.statements.map(\.sql)
         case .rebuild(let prepared):
             prepared.plan.scriptStatements
         }

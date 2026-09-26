@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 /// The "+" and "-" under a structure list used to take their label, their enabled state and their
 /// tooltip from three different switches, and only the Foreign Keys one asked about the object at
@@ -17,12 +17,14 @@ struct StructureFooterPolicyTests {
         kind: TableInfo.TableType,
         matrix: StructureObjectEditMatrix = .postgreSQL,
         canEditSchema: Bool = true,
-        hasSelection: Bool = true
+        hasSelection: Bool = true,
+        isSaving: Bool = false
     ) -> StructureFooterCapability {
         StructureFooterPolicy.resolve(
             tab: tab,
             canEditSchema: canEditSchema,
             hasSelection: hasSelection,
+            isSaving: isSaving,
             resolve: { operation in
                 StructureEditEligibility.resolve(
                     operation,
@@ -44,6 +46,20 @@ struct StructureFooterPolicyTests {
             #expect(capability.canRemove, "\(tab.rawValue)")
             #expect(capability.unavailableReason == nil, "\(tab.rawValue)")
         }
+    }
+
+    /// A save holds what is staged from the press until it ends, so the pair cannot stage more
+    /// meanwhile, and says why rather than going grey in silence.
+    @Test("A save in progress dims both buttons on every editable tab and says why")
+    func savingDimsThePair() {
+        for tab in [StructureTab.columns, .indexes, .foreignKeys, .checkConstraints] {
+            let capability = resolve(tab: tab, kind: .table, isSaving: true)
+            #expect(!capability.canAdd, "\(tab.rawValue)")
+            #expect(!capability.canRemove, "\(tab.rawValue)")
+            #expect(capability.isActive, "\(tab.rawValue)")
+            #expect(capability.unavailableReason == StructureFooterPolicy.savingReason, "\(tab.rawValue)")
+        }
+        #expect(!resolve(tab: .ddl, kind: .table, isSaving: true).isActive)
     }
 
     /// Shown and dimmed, not hidden. The pair disappearing would read as "this tab has no columns",

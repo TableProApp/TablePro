@@ -79,6 +79,18 @@ struct MongoWriteFailureTests {
         #expect(failure?.message == MongoScriptText.writeRefused(code: 2))
     }
 
+    @Test("A command reply carrying a write concern error is a failure, and its write errors are not")
+    func commandConcernFailure() {
+        let collMod = #"{"ok":1,"writeConcernError":{"code":64,"errmsg":"waiting for replication timed out"}}"#
+        let failure = MongoWriteFailure.concernFailure(fromReply: collMod)
+        #expect(failure?.code == 64)
+        #expect(failure?.message == MongoScriptText.writeNotAcknowledged(reason: "waiting for replication timed out"))
+        #expect(MongoWriteFailure.concernFailure(fromReply: #"{"ok":1}"#) == nil)
+        #expect(MongoWriteFailure.concernFailure(fromReply: """
+            {"writeErrors":[{"index":0,"code":121,"errmsg":"Document failed validation"}],"ok":1}
+            """) == nil)
+    }
+
     @Test("Text that is not a reply reads as no failure")
     func unreadableReply() {
         #expect(MongoWriteFailure.read(fromReply: "") == nil)

@@ -187,6 +187,28 @@ struct MongoScriptCommandBuilderTests {
         #expect(command.contains("\"arrayFilters\":"))
     }
 
+    /// mongosh sends `updateMany(filter, update, {writeConcern})` with that write concern. The
+    /// shell dropped the option, and `mongoc_client_command_simple` adds none of its own, so the
+    /// update went out with the server's default.
+    @Test("An update's writeConcern option goes on the command, not inside the update statement")
+    func updateWriteConcern() throws {
+        let command = MongoScriptCommandBuilder.update(
+            collection: "orders", filter: "{}", update: "{\"$set\":{\"b\":2}}", multi: true,
+            options: ["writeConcern": ["w": "majority", "wtimeout": 5_000]]
+        )
+        let parsed = try #require(
+            try JSONSerialization.jsonObject(with: Data(command.utf8)) as? [String: Any]
+        )
+        let concern = try #require(parsed["writeConcern"] as? [String: Any])
+        #expect(concern["w"] as? String == "majority")
+        #expect((concern["wtimeout"] as? NSNumber)?.intValue == 5_000)
+        let statement = try #require((parsed["updates"] as? [[String: Any]])?.first)
+        #expect(statement["writeConcern"] == nil)
+        #expect(!MongoScriptCommandBuilder.update(
+            collection: "orders", filter: "{}", update: "{}", multi: true, options: [:]
+        ).contains("writeConcern"))
+    }
+
     @Test("deleteOne limits to one document and deleteMany to none")
     func deleteLimits() {
         #expect(
@@ -294,7 +316,9 @@ struct MongoScriptObjectIdTests {
 
     @Test("Two generated ids differ")
     func uniqueness() {
-        #expect(MongoScriptObjectId.generate() != MongoScriptObjectId.generate())
+        let first = MongoScriptObjectId.generate()
+        let second = MongoScriptObjectId.generate()
+        #expect(first != second)
     }
 
     @Test("The leading four bytes are the current time")

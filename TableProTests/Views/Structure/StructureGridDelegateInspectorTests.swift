@@ -66,6 +66,21 @@ struct StructureGridDelegateInspectorTests {
         try #require(delegate.orderedFields.firstIndex(of: field))
     }
 
+    @Test("A row is read-only while a save holds the edits, and editable again once it lets go")
+    func heldSaveMakesTheRowReadOnly() throws {
+        let manager = loadedManager()
+        let delegate = makeDelegate(manager: manager)
+        var email = try #require(manager.workingColumns.first { $0.name == "email" })
+        email.comment = "Contact"
+        manager.updateColumn(id: email.id, with: email)
+
+        let snapshot = try #require(manager.holdForSave())
+        #expect(delegate.inspectorRow(atDisplayRow: 1)?.isEditable == false)
+
+        manager.releaseHold(snapshot, written: false)
+        #expect(delegate.inspectorRow(atDisplayRow: 1)?.isEditable == true)
+    }
+
     @Test("The published row describes the structure grid, not the data grid")
     func publishedRowDescribesStructure() throws {
         let delegate = makeDelegate(manager: loadedManager())

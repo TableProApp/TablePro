@@ -68,6 +68,12 @@ struct SchemaStatementGenerator {
         return statements
     }
 
+    /// Every operation the changes carry out, in the order `generate(changes:)` runs their
+    /// statements, which is the order a driver's save-level questions are asked in.
+    func orderedOperations(for changes: [SchemaChange]) -> [PluginSchemaOperation] {
+        sortByDependency(changes).flatMap(SchemaOperationRefusal.operations(for:))
+    }
+
     // MARK: - Dependency Ordering
 
     private func sortByDependency(_ changes: [SchemaChange]) -> [SchemaChange] {

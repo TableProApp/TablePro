@@ -32,7 +32,7 @@ PostgreSQL and PGlite answer this per operation, so the tab does too:
 
 A view and a materialized view differ in both directions: `ALTER TABLE … SET DEFAULT` runs on a view and is refused on a materialized view, and `CREATE INDEX` is the other way round.
 
-Every other engine edits a table and a partitioned table only. A view, a materialized view, a foreign table and a system table are read-only there.
+Every other engine edits a table and a partitioned table only. A view, a materialized view, a foreign table and a system table are read-only there. A MongoDB collection takes two edits, a field rename and a field removal; see [MongoDB collections](#mongodb-collections).
 
 ## Columns tab
 
@@ -205,6 +205,8 @@ SQLite is the one engine where listing and editing part company. The tab appears
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue. Changes that can lose data, dropping a column, changing a type, adding NOT NULL, changing the primary key, first show a confirmation listing each one.
 - **Preview SQL** (`Cmd+Shift+P`) shows the statements **Save Changes** would run, on the tab's own schema, and runs none of them. A save that recreates the table previews as its rebuild script, with what the rebuild cannot carry over.
 
+From **Save Changes** until the save ends, the tab shows **Saving Changes…**, takes no edits, and ignores a second **Save Changes**. A rebuild script runs only while the queue is still the one it was built from; edit the queue with the script on screen and the rebuild stops, so save again to review the new one.
+
 The queue outlives everything short of an explicit discard: closing the tab, closing the window, quitting, and **Refresh** all ask first. A save that never reaches the server leaves the tab open with its queue intact.
 
 <Frame caption="Generated DDL preview">
@@ -213,6 +215,8 @@ The queue outlives everything short of an explicit discard: closing the tab, clo
 </Frame>
 
 A save runs on a connection of its own, so it never joins a transaction you have left open in a query tab.
+
+Once a save has run, even partway, every tab on the table loads its rows again, in any window: the tab on screen at once, its Data view included while Structure is in front, and the rest when you next switch to them. A tab holding unsaved row edits keeps its rows, and asks first if it is the one on screen in Data. Tabs on other tables are left alone.
 
 ### When one statement fails
 
@@ -254,7 +258,9 @@ Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLit
 
 ## MongoDB collections
 
-MongoDB structure is read-only, and inferred from the collection's first 200 documents: top-level field names are unioned across the sample, and each field takes its most common BSON type. Fields the collection's `$jsonSchema` validator declares follow, including ones no sampled document holds, and a field in the validator's `required` list is not nullable. `_id` comes first, marked as the primary key. The DDL tab shows indexes as `createIndex()` commands for `mongosh`, plus the validator and capped-collection options where present.
+A collection's fields are inferred from its first 200 documents: top-level field names are unioned across the sample, and each field takes its most common BSON type. Fields the collection's `$jsonSchema` validator declares follow, including ones no sampled document holds, and a field in the validator's `required` list is not nullable. `_id` comes first, marked as the primary key. The DDL tab shows indexes as `createIndex()` commands for `mongosh`, plus the validator and capped-collection options where present.
+
+Edit a field's **Name** to rename it in every document, or remove its row to remove it from every document. **Type**, **Nullable**, adding a field and the **Indexes** tab stay read-only. [Renaming and removing fields](/databases/mongodb#renaming-and-removing-fields) shows the statements a save runs and what refuses one.
 
 ## Limitations
 

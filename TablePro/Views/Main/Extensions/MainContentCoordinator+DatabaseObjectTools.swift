@@ -119,6 +119,12 @@ extension MainContentCoordinator {
     /// the data reload: that one refuses to run while the Structure pane is in front and refreshes
     /// the structure instead, and a tab excluded from the eviction loop for being selected would
     /// otherwise keep its rows with nothing left to reload them.
+    ///
+    /// A structure change reaches both halves of every tab on the object. The selected tab's rows
+    /// reload even while its Structure pane is in front, because Data is one click away and shows no
+    /// sign of being stale, and a structure the user has staged edits against keeps them, whichever
+    /// tab it is on: the tab whose save made the change is one of them, and a save that stopped
+    /// partway keeps its edits for the retry.
     func applyObjectChange(
         _ change: DatabaseObjectChange,
         hasPendingTableOps: Bool,
@@ -141,6 +147,18 @@ extension MainContentCoordinator {
             }
             if selected != nil {
                 handleRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
+            }
+        case .structure:
+            forgetSchemaColumns(of: change, tabs: showing)
+            for tab in showing where tab.id != selected?.id {
+                evictReloadableTableRows(for: tab.id)
+            }
+            refreshStructure(ofTabs: showing)
+            guard let selected else { return }
+            if selected.display.resultsViewMode == .structure {
+                reloadRowsBehindStructure(hasPendingTableOps: hasPendingTableOps)
+            } else {
+                reloadActiveTableData(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
             }
         case .comment:
             for tab in showing {

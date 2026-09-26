@@ -168,6 +168,30 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Why the connected server has no check constraints to list or edit, or nil when it has.
     var checkConstraintRefusal: String? { get }
 
+    /// The save-level questions of a Structure save. See `PluginDatabaseDriver` for each. The
+    /// defaults approve every save, find every save finished and keep nothing to forget.
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String?
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String?
+
+    func tableDefinitionDidChange(table: String, schema: String?)
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
@@ -514,6 +538,34 @@ extension DatabaseDriver {
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
     var checkConstraintRefusal: String? { nil }
+
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview {
+        PluginSchemaChangeReview()
+    }
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        nil
+    }
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        nil
+    }
+
+    func tableDefinitionDidChange(table: String, schema: String?) {}
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")

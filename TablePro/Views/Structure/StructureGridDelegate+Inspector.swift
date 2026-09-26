@@ -15,7 +15,7 @@ extension StructureGridDelegate: InspectorRowSource {
             atDisplayRow: displayRow,
             tab: selectedTab,
             provider: provider,
-            canEditSchema: editGate.allowsAnyEdit,
+            canEditSchema: editGate.allowsAnyEdit && !structureChangeManager.isHeldForSave,
             lockedFieldIndices: lockedFieldIndices,
             rowOptions: { dataGridMenuOptions(forRow: displayRow, columnIndex: $0) }
         )

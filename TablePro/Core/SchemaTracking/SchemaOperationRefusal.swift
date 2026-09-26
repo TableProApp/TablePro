@@ -30,8 +30,38 @@ internal enum SchemaOperationRefusal {
             return driver.schemaOperationRefusal(.renameCheckConstraint(from: old.name, to: new.name))
         case .addCheckConstraint, .deleteCheckConstraint:
             return driver.checkConstraintRefusal
-        case .modifyColumn, .deleteColumn, .addForeignKey, .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey:
+        case .modifyColumn(let old, let new):
+            return driver.schemaOperationRefusal(.modifyColumn(old: old.toPlugin(), new: new.toPlugin()))
+        case .deleteColumn(let column):
+            return driver.schemaOperationRefusal(.dropColumn(column.toPlugin()))
+        case .addForeignKey, .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey:
             return nil
+        }
+    }
+
+    /// The operations a change carries out, as the driver's save-level questions receive them. A
+    /// check constraint is an operation only when it is renamed, and foreign key and primary key
+    /// changes have no case at all.
+    static func operations(for change: SchemaChange) -> [PluginSchemaOperation] {
+        switch change {
+        case .addColumn(let column):
+            return [.addColumn(column.toPlugin())]
+        case .modifyColumn(let old, let new):
+            return [.modifyColumn(old: old.toPlugin(), new: new.toPlugin())]
+        case .deleteColumn(let column):
+            return [.dropColumn(column.toPlugin())]
+        case .addIndex(let index):
+            return [.addIndex(index.toPlugin())]
+        case .modifyIndex(let old, let new):
+            return [.modifyIndex(old: old.toPlugin(), new: new.toPlugin())]
+        case .deleteIndex(let index):
+            return [.dropIndex(index.toPlugin())]
+        case .modifyCheckConstraint(let old, let new):
+            guard old.expression == new.expression, old.name != new.name else { return [] }
+            return [.renameCheckConstraint(from: old.name, to: new.name)]
+        case .addCheckConstraint, .deleteCheckConstraint, .addForeignKey, .modifyForeignKey, .deleteForeignKey,
+             .modifyPrimaryKey:
+            return []
         }
     }
 
