@@ -21,6 +21,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
     private var identityKindsByCollection: [String: BsonValueKind] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
+    private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -821,6 +822,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columnKinds: columnKindsByCollection[key] ?? [:],
                 declaredKinds: declared.valueKinds,
                 identityKind: identityKindsByCollection[key],
+                fieldKinds: fieldKindsByCollection[key] ?? .empty,
                 binarySubtypes: binarySubtypesByCollection[key] ?? .empty,
                 declaredBinaryFields: Self.binaryFields(declaredBy: declared),
                 capabilities: { MongoDBCapabilities.parse(self.serverVersion) }
@@ -942,6 +944,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rememberIdentityKind(of: documents, collection: collection)
         rememberFieldPathKinds(from: documents, collection: collection)
         rememberBinarySubtypes(of: documents, collection: collection)
+        rememberFieldKinds(of: documents, collection: collection)
         let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
         let columns = sampled + unseen
         let kinds = sampledKinds + unseen.map { declared.field(named: $0)?.valueKind ?? .null }
@@ -1018,6 +1021,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static let binarySubtypeLimit = 50_000
+
+    /// Added to rather than replaced, for the same reason as the binary subtypes: a string an earlier
+    /// page held still makes a text that opens with `{` ambiguous after a later page held none.
+    private func rememberFieldKinds(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let page = MongoDBFieldKinds.recording(documents, representation: uuidRepresentation)
+        guard !page.isEmpty else { return }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock {
+            fieldKindsByCollection[key] = (fieldKindsByCollection[key] ?? .empty).merging(page)
+        }
+    }
 
     private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
         guard !collection.isEmpty else { return }

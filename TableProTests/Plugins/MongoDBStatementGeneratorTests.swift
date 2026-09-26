@@ -1008,7 +1008,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: [.bytes(Data([0x01, 0x02])), .text("Alice")]
         )
 
-        #expect(throws: MongoDBWriteRefusal.binarySubtypeUnknown(field: "_id").refusal(ofRow: 0)) {
+        #expect(throws: MongoDBWriteRefusal.identitySubtypeUnknown.refusal(ofRow: 0)) {
             try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [])
         }
     }

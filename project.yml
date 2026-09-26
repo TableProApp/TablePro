@@ -512,6 +512,7 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionDDL.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionSchema.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFieldKinds.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterClause.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterValue.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift

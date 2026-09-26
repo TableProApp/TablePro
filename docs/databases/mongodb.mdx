@@ -214,7 +214,10 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 ## Limitations
 
 - A row with no `_id` cannot be updated or deleted. The save is refused rather than matched on the remaining fields, and every change stays pending. Keep `_id` in the projection so every row carries one.
-- A binary value keeps the subtype it was read with. New bytes in a field whose validator does not declare `binData`, or the same bytes read with two different subtypes, refuse the save: write that value with a query.
+- A binary value keeps the subtype it was read with. Bytes typed into a new row are saved as subtype 0 where the validator declares the field `binData`.
+- Other bytes refuse the save when their subtype was never read, or was read as two different ones: bytes typed into an existing document, pasted from another collection, or put back by Data Rewind after TablePro restarts. Write that value with a query.
+- A field holding text in some documents and objects or arrays in others takes no value that reads as JSON from the grid, since it could be either type: the save is refused. Write it with a query.
+- A new row, duplicate or paste cannot hold a field named `__proto__`, or an empty field name at any depth: the save is refused. Set that cell to NULL, save, then set it on the saved document.
 - `_id` is read-only in the grid, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
 - Transactions are not exposed. Statements always run standalone, on any topology.
 - A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.

@@ -15,14 +15,18 @@ enum MongoDBWriteRefusal: Error, Equatable {
     case binarySubtypeUnknown(field: String)
     case binaryNeedsBytes(field: String)
     case truncatedValue(field: String)
-    case unwritableFieldName(field: String)
+    case emptyFieldNameInNewDocument
+    case emptyKeyInNewDocument(field: String)
+    case prototypeFieldInNewDocument
     case fieldNeedsMongoDB5(field: String)
     case unreadableJSON(field: String)
+    case documentOrText(field: String)
     case integerTooLarge(field: String)
     case reorderedByTheShell(field: String)
     case noDefaultValue(field: String)
     case identityChanged
     case missingIdentity
+    case identitySubtypeUnknown
 
     var reason: String {
         switch self {
@@ -41,11 +45,15 @@ enum MongoDBWriteRefusal: Error, Equatable {
                 format: String(localized: "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query."),
                 field
             )
-        case .unwritableFieldName(let field):
+        case .emptyFieldNameInNewDocument:
+            return String(localized: "The MongoDB client library will not insert a field whose name is empty. Set it to NULL, then set it on the saved document.")
+        case .emptyKeyInNewDocument(let field):
             return String(
-                format: String(localized: "The shell cannot write a field named \u{201C}%@\u{201D} into a new document. Insert this document with a query."),
+                format: String(localized: "%@ holds an empty key, which the MongoDB client library will not insert. Set it to NULL, then set it on the saved document."),
                 field
             )
+        case .prototypeFieldInNewDocument:
+            return String(localized: "The shell drops a field named __proto__ from a new document. Set it to NULL, then set it on the saved document.")
         case .fieldNeedsMongoDB5(let field):
             return String(
                 format: String(localized: "A field named \u{201C}%@\u{201D} can only be changed on MongoDB 5.0 or later, which can address a dot or a leading $ in a name."),
@@ -54,6 +62,11 @@ enum MongoDBWriteRefusal: Error, Equatable {
         case .unreadableJSON(let field):
             return String(
                 format: String(localized: "%@ holds a document or an array, and this text is not valid JSON."),
+                field
+            )
+        case .documentOrText(let field):
+            return String(
+                format: String(localized: "%@ holds text in some rows and documents or arrays in others, so this value could be either. Change it with a query."),
                 field
             )
         case .integerTooLarge(let field):
@@ -75,6 +88,8 @@ enum MongoDBWriteRefusal: Error, Equatable {
             return String(localized: "MongoDB does not let a document's _id change. Duplicate the row with the new _id, then delete this one.")
         case .missingIdentity:
             return String(localized: "This row has no _id, so TablePro cannot tell which document to change.")
+        case .identitySubtypeUnknown:
+            return String(localized: "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names.")
         }
     }
 

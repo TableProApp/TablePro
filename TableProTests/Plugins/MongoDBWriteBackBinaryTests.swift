@@ -35,9 +35,18 @@ struct MongoDBWriteBackBinaryTests {
         return recorded
     }
 
-    private func insert(_ values: [PluginCellValue], with gen: MongoDBStatementGenerator) throws -> [PluginRowWrite] {
-        try gen.generateRowWrites(
-            from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
+    /// A new row whose `typed` columns the user filled in; every other value was copied into it.
+    private func insert(
+        _ values: [PluginCellValue],
+        typed: Set<Int> = [],
+        columns: [String] = ["_id", "name", "thumbnail"],
+        with gen: MongoDBStatementGenerator
+    ) throws -> [PluginRowWrite] {
+        let filledIn = typed.sorted().map { index in
+            (columnIndex: index, columnName: columns[index], oldValue: PluginCellValue.null, newValue: values[index])
+        }
+        return try gen.generateRowWrites(
+            from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: filledIn, originalRow: nil)],
             insertedRowData: [0: values],
             deletedRowIndices: [],
             insertedRowIndices: [0]
@@ -97,13 +106,31 @@ struct MongoDBWriteBackBinaryTests {
         }
     }
 
-    @Test("New bytes in a field the validator declares binary are generic binary")
+    @Test("Bytes typed into a new document, in a field the validator declares binary, are generic binary")
     func declaredBinaryFieldTakesSubtypeZero() throws {
         let gen = generator(declaredBinary: ["thumbnail"])
 
-        let writes = try insert(["__DEFAULT__", "a", .bytes(Self.png)], with: gen)
+        let writes = try insert(["__DEFAULT__", "a", .bytes(Self.png)], typed: [2], with: gen)
 
         #expect(writes[0].statement.contains(#""subType": "00""#))
+    }
+
+    @Test("Bytes copied into a new document, as a duplicate or a paste does, never take a default subtype")
+    func copiedBytesInADeclaredFieldAreRefused() {
+        let gen = generator(declaredBinary: ["thumbnail"])
+
+        #expect(throws: MongoDBWriteRefusal.binarySubtypeUnknown(field: "thumbnail").refusal(ofRow: 0)) {
+            try insert(["__DEFAULT__", "a", .bytes(Self.png)], typed: [1], with: gen)
+        }
+    }
+
+    @Test("Bytes typed into a new document keep a subtype that was read for them")
+    func typedBytesKeepARecordedSubtype() throws {
+        let gen = generator(subtypes: subtypes([(Self.png, 5, "thumbnail")]), declaredBinary: ["thumbnail"])
+
+        let writes = try insert(["__DEFAULT__", "a", .bytes(Self.png)], typed: [2], with: gen)
+
+        #expect(writes[0].statement.contains(#""subType": "05""#))
     }
 
     @Test("A row empty apart from a value that cannot be written is refused, not inserted as {}")
@@ -161,6 +188,47 @@ struct MongoDBWriteBackBinaryTests {
         }
     }
 
+    @Test("Bytes put back over a missing value keep the subtype they were read with")
+    func bytesOverNullKeepTheirRecordedSubtype() throws {
+        let gen = generator(subtypes: subtypes([(Self.signature, 5, "thumbnail")]), declaredBinary: ["thumbnail"])
+
+        let writes = try edit("thumbnail", from: .null, to: .bytes(Self.signature), with: gen)
+
+        #expect(writes[0].statement.contains(#""thumbnail": {"$binary": {"base64": "AAECAw==", "subType": "05"}}"#))
+    }
+
+    /// Data Rewind undoes Set NULL on a binary field with this very edit, holding bytes alone, so a
+    /// generator that has not read them since a relaunch cannot tell them from bytes the user typed.
+    @Test("Bytes set over a missing value with no recorded subtype are refused, even in a declared binary field")
+    func bytesOverNullWithoutASubtypeAreRefused() {
+        let relaunched = generator(declaredBinary: ["thumbnail"])
+
+        #expect(throws: MongoDBWriteRefusal.binarySubtypeUnknown(field: "thumbnail").refusal(ofRow: 0)) {
+            try edit("thumbnail", from: .null, to: .bytes(Self.signature), with: relaunched)
+        }
+    }
+
+    // MARK: - Restore
+
+    @Test("A restore keeps the subtype its bytes were read with")
+    func restoreKeepsTheRecordedSubtype() throws {
+        let gen = generator(subtypes: subtypes([(Self.signature, 5, "thumbnail")]), declaredBinary: ["thumbnail"])
+
+        let restored = try #require(gen.generateRestore(rows: [[.text(Self.objectId), "a", .bytes(Self.signature)]])?.first)
+
+        #expect(restored.statement.contains(#""thumbnail": {"$binary": {"base64": "AAECAw==", "subType": "05"}}"#))
+    }
+
+    /// After a relaunch the driver is new and its registry empty, and a Data Rewind record holds the
+    /// bytes without their subtype. Subtype 0 in a declared binary field used to fill the gap, which
+    /// stored a subtype-5 value as subtype 0 and reported the restore as done.
+    @Test("A restore by a new generator with an empty registry refuses bytes rather than assuming a subtype")
+    func restoreAfterARelaunchRefusesBytes() {
+        let relaunched = generator(declaredBinary: ["thumbnail"])
+
+        #expect(relaunched.generateRestore(rows: [[.text(Self.objectId), "a", .bytes(Self.signature)]]) == nil)
+    }
+
     @Test("DEFAULT is refused on an update, because MongoDB has no default values")
     func defaultMarkerIsRefused() {
         #expect(throws: MongoDBWriteRefusal.noDefaultValue(field: "thumbnail").refusal(ofRow: 0)) {
@@ -194,14 +262,16 @@ struct MongoDBWriteBackBinaryTests {
         #expect(writes.map { $0.rowIndices } == [[0], [1]])
     }
 
-    @Test("A binary _id with no recorded subtype uses the subtype every sampled _id shares")
-    func binaryIdFallsBackToTheSharedSubtype() throws {
+    /// The same bytes under another subtype are another `_id`, so a subtype borrowed from the other
+    /// rows could delete a different document.
+    @Test("A binary _id with no recorded subtype is refused, even when every sampled _id shares one")
+    func binaryIdWithoutARecordedSubtypeIsRefused() {
         let gen = generator(columns: ["_id", "name"], identityKind: .binary(subtype: 3))
         let delete = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.bytes(Data([1])), "k"])
 
-        let writes = try gen.generateRowWrites(from: [delete], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [])
-
-        #expect(writes.first?.statement.contains(#""subType": "03""#) == true)
+        #expect(throws: MongoDBWriteRefusal.identitySubtypeUnknown.refusal(ofRow: 0)) {
+            try gen.generateRowWrites(from: [delete], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [])
+        }
     }
 
     // MARK: - Recording

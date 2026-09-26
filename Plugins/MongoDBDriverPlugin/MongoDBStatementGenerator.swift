@@ -24,11 +24,14 @@ struct MongoDBStatementGenerator {
     /// row's own type, and a majority kind would quote an ObjectId in a mostly-string collection and
     /// match nothing.
     var identityKind: BsonValueKind?
+    /// Every kind each field held in the documents read, which says whether a cell showing `{` or
+    /// `[` holds a document or an array or a string that reads the same.
+    var fieldKinds: MongoDBFieldKinds = .empty
 
     /// The subtype of each binary value the grid shows, so bytes written back keep the subtype they
     /// were read with.
     var binarySubtypes: MongoDBBinarySubtypes = .empty
-    /// Fields the validator declares as binary. New bytes with no earlier value there are generic
+    /// Fields the validator declares as binary. Bytes typed into a new document there are generic
     /// binary, subtype 0, which is also what the column's `BLOB` type name says.
     var declaredBinaryFields: Set<String> = []
     /// Asked only for a row that needs `$setField`, since reading the version can wait on the
@@ -36,6 +39,25 @@ struct MongoDBStatementGenerator {
     var capabilities: () -> MongoDBCapabilities = { .unknown }
 
     private static let defaultMarker = "__DEFAULT__"
+
+    /// Where a value written whole comes from. A cell carries only text or bytes, so this is all the
+    /// generator knows about the type the value has to keep.
+    private enum Provenance {
+        /// A cell of an existing document, edited from the value it held. Data Rewind puts a value
+        /// back the same way, so an edit is never taken to be something the user typed.
+        case edit(replacing: PluginCellValue)
+        /// A cell of a new document that the user filled in.
+        case typedIntoNewDocument
+        /// A cell of a new document copied from another row, as a duplicate or a paste does.
+        case copiedIntoNewDocument
+        /// A value of a deleted document, put back as it was read.
+        case restored
+
+        var replaced: PluginCellValue? {
+            guard case .edit(let value) = self else { return nil }
+            return value
+        }
+    }
 
     private var collectionAccessor: String {
         MongoCollectionAccessor.expression(for: collectionName)
@@ -90,18 +112,24 @@ struct MongoDBStatementGenerator {
 
     /// NULL and DEFAULT leave a field out of a new document. A row with nothing else in it is the
     /// empty document, which the server stores with a generated `_id`.
+    ///
+    /// A new row's change lists the cells the user filled in; every other value came with the row,
+    /// copied from the row it duplicates or pastes.
     private func insertStatement(
         for change: PluginRowChange,
         insertedRowData: [Int: [PluginCellValue]]
     ) throws -> String {
+        let filledIn = change.cellChanges.map { (field: $0.columnName, value: $0.newValue) }
+        let typed = Dictionary(filledIn.map { ($0.field, $0.value) }, uniquingKeysWith: { _, last in last })
         let cells: [(field: String, value: PluginCellValue)]
         if let values = insertedRowData[change.rowIndex] {
             cells = zip(columns, values).map { (field: $0, value: $1) }
         } else {
-            cells = change.cellChanges.map { (field: $0.columnName, value: $0.newValue) }
+            cells = filledIn
         }
         let entries = try cells.filter { !isLeftOut($0.value) }.map { cell in
-            "\(quotedKey(cell.field)): \(try documentValueJson(cell.value, field: cell.field))"
+            let provenance: Provenance = typed[cell.field] == cell.value ? .typedIntoNewDocument : .copiedIntoNewDocument
+            return "\(quotedKey(cell.field)): \(try documentValueJson(cell.value, field: cell.field, provenance: provenance))"
         }
         return "\(collectionAccessor).insertOne({\(entries.joined(separator: ", "))})"
     }
@@ -113,14 +141,20 @@ struct MongoDBStatementGenerator {
     /// A value of a whole document the grid writes: a new row, a duplicate or a paste, or a
     /// deleted document put back. An `_id` the row holds is kept, typed the way the filters type it;
     /// the grid leaves a new row's `_id` as DEFAULT, so the server generates it.
-    private func documentValueJson(_ value: PluginCellValue, field: String) throws -> String {
-        if field == MongoDBCollectionDDL.idField {
-            return try idValueJson(value)
+    ///
+    /// The shell inserts through libmongoc, which refuses a document holding an empty key at any
+    /// depth, and a JavaScript object reads `__proto__` as its prototype and drops it. An update
+    /// carries both, so only a new document refuses them, before anything in the save is sent.
+    private func documentValueJson(_ value: PluginCellValue, field: String, provenance: Provenance) throws -> String {
+        guard !field.isEmpty else { throw MongoDBWriteRefusal.emptyFieldNameInNewDocument }
+        guard field != "__proto__" else { throw MongoDBWriteRefusal.prototypeFieldInNewDocument }
+        let json = field == MongoDBCollectionDDL.idField
+            ? try idValueJson(value)
+            : try valueJson(value, field: field, provenance: provenance)
+        if opensContainer(json), case .text(let text) = value, parsedContainer(text)?.holdsEmptyKey == true {
+            throw MongoDBWriteRefusal.emptyKeyInNewDocument(field: field)
         }
-        guard !field.isEmpty, field != "__proto__" else {
-            throw MongoDBWriteRefusal.unwritableFieldName(field: field)
-        }
-        return try valueJson(value, field: field, replacing: nil)
+        return json
     }
 
     // MARK: - Restore
@@ -136,11 +170,12 @@ struct MongoDBStatementGenerator {
         do {
             return try rows.map { row in
                 guard idIndex < row.count else { throw MongoDBWriteRefusal.missingIdentity }
-                var entries = ["\"_id\": \(try idValueJson(row[idIndex]))"]
+                let idField = MongoDBCollectionDDL.idField
+                var entries = ["\(quotedKey(idField)): \(try documentValueJson(row[idIndex], field: idField, provenance: .restored))"]
                 for (index, value) in row.enumerated() where index != idIndex && index < columns.count {
                     guard !isLeftOut(value) else { continue }
                     let field = columns[index]
-                    entries.append("\(quotedKey(field)): \(try documentValueJson(value, field: field))")
+                    entries.append("\(quotedKey(field)): \(try documentValueJson(value, field: field, provenance: .restored))")
                 }
                 let statement = "\(collectionAccessor).insertOne({\(entries.joined(separator: ", "))})"
                 return (statement: statement, parameters: [])
@@ -185,29 +220,30 @@ struct MongoDBStatementGenerator {
         case .null:
             return .remove(field: field)
         case .bytes(let data):
-            return .whole(field: field, json: try binaryJson(data, field: field, replacing: oldValue))
+            return .whole(field: field, json: try binaryJson(data, field: field, provenance: .edit(replacing: oldValue)))
         case .text(let text):
             guard text != Self.defaultMarker else { throw MongoDBWriteRefusal.noDefaultValue(field: field) }
             if let nested = try nestedEdit(of: field, from: oldValue, to: text) {
                 return nested
             }
-            return .whole(field: field, json: try valueJson(newValue, field: field, replacing: oldValue))
+            return .whole(field: field, json: try valueJson(newValue, field: field, provenance: .edit(replacing: oldValue)))
         }
     }
 
     /// An edit of a nested document or array, as the paths it changed.
     ///
-    /// Nil when the cell does not hold a complete one on both sides, and the edit is then written
-    /// whole. An old value shortened for display cannot be diffed, but a complete value typed over
-    /// it replaces the field without needing it; new text that is still shortened is refused when
-    /// it is written.
+    /// Nil when the cell is not known to hold a complete one, and the edit is then written whole. A
+    /// path into a string is refused by the server, so a field that also held strings is never
+    /// diffed, whatever most of its rows hold. An old value shortened for display cannot be diffed,
+    /// but a complete value typed over it replaces the field without needing it; new text that is
+    /// still shortened is refused when it is written.
     private func nestedEdit(of field: String, from oldValue: PluginCellValue, to text: String) throws -> CellWrite? {
-        guard isContainerKind(field), case .text(let oldText) = oldValue, opensContainer(text),
-              !JSONTruncation.isIncompleteStructure(text), !JSONTruncation.isIncompleteStructure(oldText),
-              let old = try? MongoDocumentText.Value(parsing: oldText), old.isContainer else {
+        guard opensContainer(text), !JSONTruncation.isIncompleteStructure(text),
+              holdsContainer(oldValue, field: field), case .text(let oldText) = oldValue,
+              !JSONTruncation.isIncompleteStructure(oldText), let old = parsedContainer(oldText) else {
             return nil
         }
-        guard let edited = try? MongoDocumentText.Value(parsing: text), edited.isContainer else {
+        guard let edited = parsedContainer(text) else {
             throw MongoDBWriteRefusal.unreadableJSON(field: field)
         }
         let changes = MongoNestedValueDiff.changes(from: old, to: edited, at: field)
@@ -290,37 +326,39 @@ struct MongoDBStatementGenerator {
     }
 
     /// A cell's value as the JSON the statement carries.
-    private func valueJson(_ value: PluginCellValue, field: String, replacing oldValue: PluginCellValue?) throws -> String {
+    private func valueJson(_ value: PluginCellValue, field: String, provenance: Provenance) throws -> String {
         switch value {
         case .null:
             return "null"
         case .bytes(let data):
-            return try binaryJson(data, field: field, replacing: oldValue)
+            return try binaryJson(data, field: field, provenance: provenance)
         case .text(let text):
-            if case .bytes(let oldData) = oldValue {
+            if case .edit(replacing: .bytes(let oldData)) = provenance {
                 return try textIntoBinaryJson(text, field: field, replacing: oldData)
             }
             guard !JSONTruncation.isIncompleteStructure(text) else {
                 throw MongoDBWriteRefusal.truncatedValue(field: field)
             }
-            return try jsonValue(for: text, field: field)
+            return try jsonValue(for: text, field: field, provenance: provenance)
         }
     }
 
-    private func binaryJson(_ data: Data, field: String, replacing oldValue: PluginCellValue?) throws -> String {
-        let subtype = try binarySubtype(of: data, field: field, replacing: oldValue)
+    private func binaryJson(_ data: Data, field: String, provenance: Provenance) throws -> String {
+        let subtype = try binarySubtype(of: data, field: field, provenance: provenance)
         return MongoDBUuidCodec.extendedJson(for: MongoDBBinaryValue(data: data, subtype: subtype))
     }
 
-    /// Edited bytes keep the subtype of the value they replace. Copied bytes keep the subtype they
-    /// were read with. Bytes with neither are generic binary only where the validator declares the
-    /// field binary; anywhere else the subtype is unknown and the write is refused.
-    private func binarySubtype(of data: Data, field: String, replacing oldValue: PluginCellValue?) throws -> UInt8 {
-        if case .bytes(let oldData) = oldValue {
+    /// Edited bytes keep the subtype of the value they replace, and any other bytes the subtype
+    /// they were read with. A subtype nothing recorded is never assumed: a restore after a relaunch
+    /// hands back bytes alone, and so does an edit over a value that was not binary, which is how
+    /// Data Rewind puts bytes back. Only bytes the user typed into a new document are new, and they
+    /// are generic binary where the validator declares the field binary.
+    private func binarySubtype(of data: Data, field: String, provenance: Provenance) throws -> UInt8 {
+        if case .edit(replacing: .bytes(let oldData)) = provenance {
             return try onlySubtype(binarySubtypes.subtypes(of: oldData, in: field), field: field)
         }
         let known = binarySubtypes.subtypes(of: data, in: field)
-        if known.isEmpty, declaredBinaryFields.contains(field) {
+        if known.isEmpty, case .typedIntoNewDocument = provenance, declaredBinaryFields.contains(field) {
             return 0
         }
         return try onlySubtype(known, field: field)
@@ -340,20 +378,20 @@ struct MongoDBStatementGenerator {
             return wrapped
         }
         guard text.isEmpty else { throw MongoDBWriteRefusal.binaryNeedsBytes(field: field) }
-        return try binaryJson(Data(), field: field, replacing: .bytes(oldData))
+        return try binaryJson(Data(), field: field, provenance: .edit(replacing: .bytes(oldData)))
     }
 
     private func shellJson(_ value: MongoDocumentText.Value, field: String) throws -> String {
         try MongoExtendedJsonForm.shellValue(value, field: field).compactText
     }
 
-    private func isContainerKind(_ field: String) -> Bool {
-        let kind = kind(of: field)
-        return kind == .document || kind == .array
-    }
-
     private func opensContainer(_ text: String) -> Bool {
         text.hasPrefix("{") || text.hasPrefix("[")
+    }
+
+    private func parsedContainer(_ text: String) -> MongoDocumentText.Value? {
+        guard let parsed = try? MongoDocumentText.Value(parsing: text), parsed.isContainer else { return nil }
+        return parsed
     }
 
     private func quotedKey(_ field: String) -> String {
@@ -362,19 +400,18 @@ struct MongoDBStatementGenerator {
 
     // MARK: - Identity
 
-    /// An `_id` held as bytes filters on binary with the subtype it was read with, or the one every
-    /// sampled `_id` shares.
+    /// An `_id` held as bytes filters on binary with the subtype it was read with. The same bytes
+    /// under another subtype are another `_id`, which may name another document, so a subtype that
+    /// was not read for these bytes is never borrowed from the other rows.
     private func idValueJson(_ value: PluginCellValue) throws -> String {
-        let idField = MongoDBCollectionDDL.idField
         switch value {
         case .null:
             throw MongoDBWriteRefusal.missingIdentity
         case .bytes(let data):
-            let known = binarySubtypes.subtypes(of: data, in: idField)
-            if known.isEmpty, case .binary(let subtype) = identityKind {
-                return MongoDBUuidCodec.extendedJson(for: MongoDBBinaryValue(data: data, subtype: subtype))
+            let subtypes = binarySubtypes.subtypes(of: data, in: MongoDBCollectionDDL.idField)
+            guard subtypes.count == 1, let subtype = subtypes.first else {
+                throw MongoDBWriteRefusal.identitySubtypeUnknown
             }
-            let subtype = try onlySubtype(known, field: idField)
             return MongoDBUuidCodec.extendedJson(for: MongoDBBinaryValue(data: data, subtype: subtype))
         case .text(let text):
             if let document = try documentIdJson(text) {
@@ -436,7 +473,7 @@ struct MongoDBStatementGenerator {
     /// The statement is JavaScript the shell evaluates, so text is only ever pasted in when it is
     /// strict JSON. A stored string that merely starts with `[` and ends with `]` would otherwise run
     /// as code the moment its row is duplicated or its delete is undone.
-    private func jsonValue(for value: String, field: String) throws -> String {
+    private func jsonValue(for value: String, field: String, provenance: Provenance) throws -> String {
         if declaredKinds[field] == .string {
             return "\"\(escapeJsonString(value))\""
         }
@@ -452,7 +489,7 @@ struct MongoDBStatementGenerator {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
             return binary
         }
-        if let container = try containerJson(value, field: field) {
+        if let container = try containerJson(value, field: field, provenance: provenance) {
             return container
         }
         return "\"\(escapeJsonString(value))\""
@@ -493,17 +530,102 @@ struct MongoDBStatementGenerator {
 
     private static let largestExactDouble: UInt64 = 1 << 53
 
-    /// A nested document or array, spelled so the shell stores the types its text shows. Text that
-    /// only looks like one is a string, except in a field that holds documents or arrays, where it
-    /// is refused rather than stored as a string.
-    private func containerJson(_ value: String, field: String) throws -> String? {
+    /// A nested document or array, spelled so the shell stores the types its text shows, or nil for
+    /// text that is written as a string.
+    private func containerJson(_ value: String, field: String, provenance: Provenance) throws -> String? {
         guard opensContainer(value) else { return nil }
-        guard value.hasSuffix("}") || value.hasSuffix("]"),
-              let parsed = try? MongoDocumentText.Value(parsing: value), parsed.isContainer else {
-            if isContainerKind(field) { throw MongoDBWriteRefusal.unreadableJSON(field: field) }
-            return nil
+        let parsed = value.hasSuffix("}") || value.hasSuffix("]") ? parsedContainer(value) : nil
+        switch containerReading(of: field, isJSON: parsed != nil, provenance: provenance) {
+        case .container:
+            guard let parsed else { throw MongoDBWriteRefusal.unreadableJSON(field: field) }
+            return try shellJson(parsed, field: field)
+        case .jsonOrString:
+            return try parsed.map { try shellJson($0, field: field) }
+        case .ambiguous:
+            throw MongoDBWriteRefusal.documentOrText(field: field)
         }
-        return try shellJson(parsed, field: field)
+    }
+
+    // MARK: - Documents and arrays
+
+    /// What text opening with `{` or `[` is written as.
+    private enum ContainerReading {
+        /// A document or an array, and text that is not JSON is refused rather than stored as a string.
+        case container
+        /// JSON is a document or an array, and any other text a string.
+        case jsonOrString
+        /// The field holds both, and nothing says which this value is meant to be.
+        case ambiguous
+    }
+
+    /// A cell that held a document or an array stays one. Otherwise the kinds the field held decide:
+    /// JSON is a document or an array where the field held those and no strings, and could be either
+    /// where it held both, which is refused. Text that is not JSON can only be a string when it was
+    /// read from a cell, where a document always shows as JSON, or typed over a value that was not
+    /// one. An existing value whose field was never read says nothing either way.
+    private func containerReading(of field: String, isJSON: Bool, provenance: Provenance) -> ContainerReading {
+        if let replaced = provenance.replaced, holdsContainer(replaced, field: field) {
+            return .container
+        }
+        guard let held = heldKinds(of: field) else {
+            return isJSON && standsForUnreadValue(provenance) ? .ambiguous : .jsonOrString
+        }
+        guard held.contains(.document) || held.contains(.array) else { return .jsonOrString }
+        guard held.contains(.string) else { return .container }
+        return !isJSON && nonJSONCanOnlyBeText(provenance) ? .jsonOrString : .ambiguous
+    }
+
+    /// Whether a cell holds a document or an array: text of that shape, in a field that held that
+    /// shape and no strings, since a string can read the same.
+    private func holdsContainer(_ value: PluginCellValue, field: String) -> Bool {
+        guard case .text(let text) = value, opensContainer(text), let held = heldKinds(of: field) else { return false }
+        let shape: BsonValueKind = text.hasPrefix("[") ? .array : .document
+        return held.contains(shape) && !held.contains(.string)
+    }
+
+    private func nonJSONCanOnlyBeText(_ provenance: Provenance) -> Bool {
+        switch provenance {
+        case .restored, .copiedIntoNewDocument:
+            return true
+        case .edit(let replaced):
+            return holdsOtherThanContainer(replaced)
+        case .typedIntoNewDocument:
+            return false
+        }
+    }
+
+    /// Whether a cell is known to hold something other than a document or an array: text that does
+    /// not open one, or opens one and is not JSON, which only a string can be.
+    private func holdsOtherThanContainer(_ value: PluginCellValue) -> Bool {
+        switch value {
+        case .null:
+            return false
+        case .bytes:
+            return true
+        case .text(let text):
+            guard opensContainer(text) else { return true }
+            return !JSONTruncation.isIncompleteStructure(text) && parsedContainer(text) == nil
+        }
+    }
+
+    /// A value a document already holds that reads like a document or an array: one put back, or
+    /// the one an edit replaces.
+    private func standsForUnreadValue(_ provenance: Provenance) -> Bool {
+        switch provenance {
+        case .restored:
+            return true
+        case .edit(replacing: .text(let text)):
+            return opensContainer(text)
+        case .edit, .typedIntoNewDocument, .copiedIntoNewDocument:
+            return false
+        }
+    }
+
+    /// The validator's kind where it declares one, which the server enforces, otherwise every kind
+    /// the documents read held.
+    private func heldKinds(of field: String) -> Set<BsonValueKind>? {
+        if let declared = declaredKinds[field] { return [declared] }
+        return fieldKinds.kinds(of: field)
     }
 
     /// Escape special characters for JSON strings (handles Unicode control chars U+0000-U+001F)

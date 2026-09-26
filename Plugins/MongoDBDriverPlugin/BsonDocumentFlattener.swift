@@ -420,6 +420,20 @@ struct BsonDocumentFlattener {
         return shared
     }
 
+    /// Every kind each top-level field holds in the documents, nulls aside.
+    static func heldKinds(
+        in documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation
+    ) -> [String: Set<BsonValueKind>] {
+        var held: [String: Set<BsonValueKind>] = [:]
+        for doc in documents {
+            for (field, value) in doc where !(value is NSNull) {
+                held[field, default: []].insert(valueKind(for: value, representation: representation))
+            }
+        }
+        return held
+    }
+
     private static func inferValueKind(
         for field: String,
         in documents: [[String: Any]],

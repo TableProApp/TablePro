@@ -19,21 +19,43 @@ struct MongoDBNestedValueWriteTests {
         to newText: String,
         kind: BsonValueKind = .document
     ) throws -> String {
-        let gen = MongoDBStatementGenerator(collectionName: "people", columns: ["_id", column], columnKinds: [column: kind])
+        try update(column, from: .text(oldText), to: newText, held: [kind], majority: kind)
+    }
+
+    /// An edit in a field whose documents held `held`, or were never read when it is nil, typed by
+    /// its `majority` kind.
+    private func update(
+        _ column: String,
+        from oldValue: PluginCellValue,
+        to newText: String,
+        held: Set<BsonValueKind>?,
+        majority: BsonValueKind = .document
+    ) throws -> String {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "people",
+            columns: ["_id", column],
+            columnKinds: [column: majority],
+            fieldKinds: MongoDBFieldKinds(held.map { [column: $0] } ?? [:])
+        )
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
-            cellChanges: [(columnIndex: 1, columnName: column, oldValue: .text(oldText), newValue: .text(newText))],
-            originalRow: [.text("1"), .text(oldText)]
+            cellChanges: [(columnIndex: 1, columnName: column, oldValue: oldValue, newValue: .text(newText))],
+            originalRow: [.text("1"), oldValue]
         )
         let writes = try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: [])
         return try #require(writes.first?.statement)
     }
 
-    private func insert(_ column: String, _ text: String) throws -> String {
-        let gen = MongoDBStatementGenerator(collectionName: "people", columns: ["_id", column])
+    private func insert(_ column: String, _ text: String, held: Set<BsonValueKind>? = nil, typed: Bool = false) throws -> String {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "people",
+            columns: ["_id", column],
+            fieldKinds: MongoDBFieldKinds(held.map { [column: $0] } ?? [:])
+        )
+        let filledIn = typed ? [(columnIndex: 1, columnName: column, oldValue: PluginCellValue.null, newValue: PluginCellValue.text(text))] : []
         let writes = try gen.generateRowWrites(
-            from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
+            from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: filledIn, originalRow: nil)],
             insertedRowData: [0: [nil, .text(text)]],
             deletedRowIndices: [],
             insertedRowIndices: [0]
@@ -182,6 +204,125 @@ struct MongoDBNestedValueWriteTests {
         #expect(throws: MongoDBWriteRefusal.truncatedValue(field: "meta").refusal(ofRow: 0)) {
             try update("meta", from: shown, to: shown.replacingOccurrences(of: #""keep":1"#, with: #""keep":2"#))
         }
+    }
+
+    // MARK: - A field that held documents and strings
+
+    /// Measured on 7.0.43: in a field where most rows hold documents, `{"$set": {"f.a": 2}}` on the
+    /// row holding the string `{"a":1}` fails with "[28] Cannot create field 'a' in element".
+    @Test("A string that reads as JSON, in a field of mostly documents, is never diffed into a path")
+    func jsonLookingStringInAMixedFieldIsRefused() {
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try update("f", from: .text(#"{"a":1}"#), to: #"{"a":2}"#, held: [.document, .string])
+        }
+    }
+
+    @Test("A document in a field that also held strings is written whole or not at all, never as a path")
+    func documentInAMixedFieldIsNeverAPath() throws {
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try update("f", from: .text(#"{"a":1,"b":2}"#), to: #"{"a":5,"b":2}"#, held: [.document, .string])
+        }
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try update("f", from: .text("[1,2]"), to: "[1,3]", held: [.array, .string], majority: .array)
+        }
+    }
+
+    @Test("Text that is not JSON typed over a string that is not JSON either stays a string")
+    func malformedStringInAMixedFieldStaysAString() throws {
+        let statement = try update("f", from: .text("{abc"), to: "{abcd", held: [.document, .string])
+
+        #expect(statement == #"db.people.updateOne({"_id": 1}, {"$set": {"f": "{abcd"}})"#)
+    }
+
+    @Test("JSON typed over a string in a field that also held documents is refused, since it could be either")
+    func jsonOverAStringInAMixedFieldIsRefused() {
+        for old: PluginCellValue in [.text("{abc"), .text("plain"), .null] {
+            #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0), "\(old)") {
+                try update("f", from: old, to: #"{"x":1}"#, held: [.document, .string])
+            }
+        }
+    }
+
+    @Test("Text that is not JSON typed over a document in a mixed field is refused, not stored as a string")
+    func malformedTextOverAPossibleDocumentIsRefused() {
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try update("f", from: .text(#"{"a":1}"#), to: #"{"a":"#, held: [.document, .string])
+        }
+    }
+
+    @Test("A document and an array in one field are told apart by their text, so each is still diffed")
+    func documentsAndArraysAreToldApart() throws {
+        let document = try update("f", from: .text(#"{"a":1,"b":2}"#), to: #"{"a":5,"b":2}"#, held: [.document, .array])
+        let array = try update("f", from: .text("[1,2]"), to: "[1,3]", held: [.document, .array])
+
+        #expect(document == #"db.people.updateOne({"_id": 1}, {"$set": {"f.a": 5}})"#)
+        #expect(array == #"db.people.updateOne({"_id": 1}, {"$set": {"f.1": 3}})"#)
+    }
+
+    @Test("A field whose documents were never read is never diffed")
+    func unreadFieldIsNeverAPath() {
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try update("f", from: .text(#"{"a":1}"#), to: #"{"a":2}"#, held: nil)
+        }
+    }
+
+    @Test("A copied value that reads as JSON in a mixed field is refused, and one that does not is a string")
+    func copiedValuesInAMixedField() throws {
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try insert("f", #"{"a":1}"#, held: [.document, .string])
+        }
+        #expect(throws: MongoDBWriteRefusal.documentOrText(field: "f").refusal(ofRow: 0)) {
+            try insert("f", "{abc", held: [.document, .string], typed: true)
+        }
+        let copied = try insert("f", "{abc", held: [.document, .string])
+        #expect(copied == #"db.people.insertOne({"f": "{abc"})"#)
+    }
+
+    @Test("A restore that reads as JSON in a field never read is refused, and one that does not is a string")
+    func restoreIntoAnUnreadField() throws {
+        let relaunched = MongoDBStatementGenerator(collectionName: "people", columns: ["_id", "f"])
+        let documents = MongoDBStatementGenerator(
+            collectionName: "people", columns: ["_id", "f"], fieldKinds: MongoDBFieldKinds(["f": [.document]])
+        )
+
+        #expect(relaunched.generateRestore(rows: [["507f1f77bcf86cd799439011", #"{"a":1}"#]]) == nil)
+        let text = try #require(relaunched.generateRestore(rows: [["507f1f77bcf86cd799439011", "{abc"]])?.first)
+        #expect(text.statement.contains(#""f": "{abc""#))
+        let document = try #require(documents.generateRestore(rows: [["507f1f77bcf86cd799439011", #"{"a":1}"#]])?.first)
+        #expect(document.statement.contains(#""f": {"a":1}"#))
+    }
+
+    // MARK: - Recording what each field held
+
+    @Test("Each field records every kind it held, nulls aside")
+    func fieldKindsRecordEveryKind() {
+        let recorded = MongoDBFieldKinds.recording(
+            [["f": ["a": 1], "g": "x", "n": NSNull()], ["f": "{\"a\":1}", "g": "y"], ["f": [1]]],
+            representation: .unspecified
+        )
+
+        #expect(recorded.kinds(of: "f") == [.document, .string, .array])
+        #expect(recorded.kinds(of: "g") == [.string])
+        #expect(recorded.kinds(of: "n") == nil)
+        #expect(recorded.kinds(of: "missing") == nil)
+    }
+
+    @Test("A later page adds to what a field held, so a string read earlier is not forgotten")
+    func fieldKindsMergeRatherThanReplace() {
+        let merged = MongoDBFieldKinds(["f": [.string]]).merging(MongoDBFieldKinds(["f": [.document], "g": [.int32]]))
+
+        #expect(merged.kinds(of: "f") == [.string, .document])
+        #expect(merged.kinds(of: "g") == [.int32])
+    }
+
+    @Test("Past the field limit no new field is recorded, and an unrecorded field reads as unknown")
+    func fieldKindsStopAtTheLimit() {
+        let full = MongoDBFieldKinds(Dictionary(uniqueKeysWithValues: (0 ..< MongoDBFieldKinds.fieldLimit).map { ("k\($0)", Set([BsonValueKind.string])) }))
+
+        let merged = full.merging(MongoDBFieldKinds(["k0": [.document], "new": [.document]]))
+
+        #expect(merged.kinds(of: "k0") == [.string, .document])
+        #expect(merged.kinds(of: "new") == nil)
     }
 
     // MARK: - Whole values

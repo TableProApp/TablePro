@@ -184454,9 +184454,6 @@
     "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
 
     },
-    "The shell cannot write a field named “%@” into a new document. Insert this document with a query." : {
-
-    },
     "%@ holds a document or an array, and this text is not valid JSON." : {
 
     },
@@ -184479,6 +184476,21 @@
 
     },
     "The shell would reorder or drop a key inside %@: it lists number-like keys first and drops __proto__. Change this field with a query." : {
+
+    },
+    "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names." : {
+
+    },
+    "The MongoDB client library will not insert a field whose name is empty. Set it to NULL, then set it on the saved document." : {
+
+    },
+    "%@ holds an empty key, which the MongoDB client library will not insert. Set it to NULL, then set it on the saved document." : {
+
+    },
+    "The shell drops a field named __proto__ from a new document. Set it to NULL, then set it on the saved document." : {
+
+    },
+    "%@ holds text in some rows and documents or arrays in others, so this value could be either. Change it with a query." : {
 
     }
   },

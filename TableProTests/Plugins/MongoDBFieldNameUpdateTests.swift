@@ -21,6 +21,7 @@ struct MongoDBFieldNameUpdateTests {
             collectionName: "items",
             columns: columns,
             columnKinds: kinds,
+            fieldKinds: MongoDBFieldKinds(kinds.mapValues { [$0] }),
             capabilities: { MongoDBCapabilities.parse(version) }
         )
         let change = PluginRowChange(
@@ -178,18 +179,55 @@ struct MongoDBFieldNameUpdateTests {
 
     // MARK: - Inserts
 
-    @Test("A new document cannot hold __proto__ or an empty name, which the shell cannot write")
-    func insertRefusesUnwritableNames() {
-        for name in ["__proto__", ""] {
-            let gen = MongoDBStatementGenerator(collectionName: "items", columns: ["_id", name])
-            #expect(throws: MongoDBWriteRefusal.unwritableFieldName(field: name).refusal(ofRow: 0), "\(name)") {
-                try gen.generateRowWrites(
-                    from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
-                    insertedRowData: [0: [nil, "x"]],
-                    deletedRowIndices: [],
-                    insertedRowIndices: [0]
-                )
+    private func insert(_ values: [PluginCellValue], columns: [String]) throws -> [PluginRowWrite] {
+        try MongoDBStatementGenerator(collectionName: "items", columns: columns).generateRowWrites(
+            from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
+            insertedRowData: [0: values],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+    }
+
+    /// Measured on 7.0.43 through the shell: insertOne and insertMany fail with "[22] invalid
+    /// document for insert: empty key" for an empty name at the top level or inside a value, while a
+    /// classic $set of a value holding one and $setField of an empty name both succeed.
+    @Test("A new document with an empty field name is refused, since libmongoc will not insert it")
+    func insertRefusesAnEmptyName() {
+        #expect(throws: MongoDBWriteRefusal.emptyFieldNameInNewDocument.refusal(ofRow: 0)) {
+            try insert([nil, "x"], columns: ["_id", ""])
+        }
+    }
+
+    @Test("A new document holding an empty key inside a value is refused at any depth")
+    func insertRefusesANestedEmptyKey() {
+        for nested in [#"{"":5}"#, #"{"a":[{"b":1,"":2}]}"#] {
+            #expect(throws: MongoDBWriteRefusal.emptyKeyInNewDocument(field: "m").refusal(ofRow: 0), "\(nested)") {
+                try insert([nil, .text(nested)], columns: ["_id", "m"])
             }
+        }
+    }
+
+    @Test("A restored document holding an empty key is refused rather than failing in the shell")
+    func restoreRefusesAnEmptyKey() {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "items", columns: ["_id", "", "m"], fieldKinds: MongoDBFieldKinds(["m": [.document]])
+        )
+
+        #expect(gen.generateRestore(rows: [["507f1f77bcf86cd799439011", "x", nil]]) == nil)
+        #expect(gen.generateRestore(rows: [["507f1f77bcf86cd799439011", nil, #"{"":5}"#]]) == nil)
+    }
+
+    @Test("An update carries a value holding an empty key, which the shell writes")
+    func updateCarriesANestedEmptyKey() throws {
+        let statement = try update([("m", nil, #"{"":6}"#)], columns: ["_id", "m"])
+
+        #expect(statement == #"db.items.updateOne({"_id": 1}, {"$set": {"m": {"":6}}})"#)
+    }
+
+    @Test("A new document cannot hold __proto__, which the shell reads as the prototype and drops")
+    func insertRefusesPrototype() {
+        #expect(throws: MongoDBWriteRefusal.prototypeFieldInNewDocument.refusal(ofRow: 0)) {
+            try insert([nil, "x"], columns: ["_id", "__proto__"])
         }
     }
 

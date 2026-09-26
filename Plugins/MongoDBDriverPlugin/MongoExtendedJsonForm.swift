@@ -203,4 +203,13 @@ extension MongoDocumentText.Value {
         case .string, .number, .literal: return false
         }
     }
+
+    /// Whether any object in the value, at any depth, has a key that is the empty string.
+    var holdsEmptyKey: Bool {
+        switch self {
+        case .object(let members): return members.contains { $0.key.isEmpty || $0.value.holdsEmptyKey }
+        case .array(let elements): return elements.contains { $0.holdsEmptyKey }
+        case .string, .number, .literal: return false
+        }
+    }
 }
