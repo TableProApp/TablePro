@@ -131,6 +131,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pre-connect script failures sometimes reported without the script's own error message.
 - Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
+- MongoDB **Write Concern** setting ignored by every write except inserts, data grid saves included.
+- `writeConcern` option ignored by MongoDB shell writes, and `ordered` by `insertMany`.
+- `remove(filter, {justOne: true})` in the MongoDB shell deleting every matching document.
+- MongoDB write that stopped part-way reported without saying documents had already changed.
+- Empty error message when a MongoDB `insertMany` stopped at an oversized document.
 - `tablepro-mcp` crashing when its standard input was non-blocking.
 - `tablepro-mcp` using a full CPU core, or crashing, when its standard output or error was non-blocking.
 - Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)

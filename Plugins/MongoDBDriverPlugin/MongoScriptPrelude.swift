@@ -24,6 +24,7 @@ enum MongoScriptPrelude {
                 var failure = new Error(response.e.m);
                 failure.code = response.e.c;
                 failure.isMongoError = true;
+                if (response.e.s) { failure.__writeStage = response.e.s; }
                 throw failure;
             }
             return response.v;
@@ -345,25 +346,33 @@ enum MongoScriptPrelude {
             filter: __ejson(filter === undefined ? {} : filter)
         });
     };
-    DBCollection.prototype.insertOne = function (document) {
+    DBCollection.prototype.insertOne = function (document, options) {
         if (document === undefined || document === null) { throw new Error("insertOne needs a document"); }
-        var reply = this.__reply("insertOne", { document: __ejson(document) });
-        return { acknowledged: true, insertedId: reply.insertedIds[0] };
+        var reply = this.__reply("insertOne", {
+            document: __ejson(document),
+            options: options === undefined ? null : __ejson(options)
+        });
+        return { acknowledged: reply.acknowledged !== false, insertedId: reply.insertedIds[0] };
     };
-    DBCollection.prototype.insertMany = function (documents) {
-        var reply = this.__reply("insertMany", { documents: __ejson(documents) });
+    DBCollection.prototype.insertMany = function (documents, options) {
+        var reply = this.__reply("insertMany", {
+            documents: __ejson(documents),
+            options: options === undefined ? null : __ejson(options)
+        });
+        if (reply.acknowledged === false) { return { acknowledged: false, insertedIds: reply.insertedIds }; }
         return {
             acknowledged: true,
             insertedIds: reply.insertedIds,
             insertedCount: reply.insertedCount
         };
     };
-    DBCollection.prototype.insert = function (documentOrArray) {
+    DBCollection.prototype.insert = function (documentOrArray, options) {
         return Array.isArray(documentOrArray)
-            ? this.insertMany(documentOrArray)
-            : this.insertOne(documentOrArray);
+            ? this.insertMany(documentOrArray, options)
+            : this.insertOne(documentOrArray, options);
     };
     function __updateResult(reply) {
+        if (reply.acknowledged === false) { return { acknowledged: false }; }
         // An upsert replies with n = 1 and an `upserted` entry even though nothing matched, so the
         // upserted rows come out of `n` to give mongosh's matchedCount.
         var upserted = reply.upserted || [];
@@ -412,6 +421,7 @@ enum MongoScriptPrelude {
             options: options === undefined ? null : __ejson(options),
             multi: multi
         });
+        if (reply.acknowledged === false) { return { acknowledged: false }; }
         return { acknowledged: true, deletedCount: reply.n || 0 };
     };
     DBCollection.prototype.deleteOne = function (filter, options) {
@@ -420,8 +430,12 @@ enum MongoScriptPrelude {
     DBCollection.prototype.deleteMany = function (filter, options) {
         return this.__delete(filter, options, true);
     };
-    DBCollection.prototype.remove = function (filter, justOne) {
-        return justOne === true ? this.deleteOne(filter) : this.deleteMany(filter);
+    DBCollection.prototype.remove = function (filter, justOneOrOptions) {
+        if (typeof justOneOrOptions === "boolean") {
+            return justOneOrOptions ? this.deleteOne(filter) : this.deleteMany(filter);
+        }
+        var options = justOneOrOptions === null ? undefined : justOneOrOptions;
+        return options && options.justOne ? this.deleteOne(filter, options) : this.deleteMany(filter, options);
     };
     DBCollection.prototype.__findAndModify = function (filter, change, options, remove) {
         if (!remove && (change === undefined || change === null)) {
@@ -444,8 +458,12 @@ enum MongoScriptPrelude {
     DBCollection.prototype.findOneAndDelete = function (filter, options) {
         return this.__findAndModify(filter, undefined, options, true);
     };
-    DBCollection.prototype.bulkWrite = function (operations) {
-        var reply = this.__reply("bulkWrite", { operations: __ejson(operations) });
+    DBCollection.prototype.bulkWrite = function (operations, options) {
+        var reply = this.__reply("bulkWrite", {
+            operations: __ejson(operations),
+            options: options === undefined ? null : __ejson(options)
+        });
+        if (reply.acknowledged === false) { return { acknowledged: false }; }
         reply.acknowledged = true;
         return reply;
     };

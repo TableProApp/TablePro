@@ -184363,6 +184363,21 @@
     },
     "This database does not store whole documents" : {
 
+    },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise the query timeout in Settings if it needs longer." : {
+
+    },
+    "%d document(s) had already been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "Some documents may already have been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "%d document(s), and possibly more that MongoDB does not report, had already been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "The insert stopped at a document larger than MongoDB accepts." : {
+
     }
   },
   "version" : "1.1"
