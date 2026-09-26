@@ -129,6 +129,16 @@ brew install --cask tablepro
 
 **[getapps.cafe](https://getapps.cafe/?ref=SJO7-TgA)** · **[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
 
+## 贡献者
+
+感谢每一位为 TablePro 做出贡献的人:
+
+<a href="https://github.com/TableProApp/TablePro/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=TableProApp/TablePro" alt="TablePro 贡献者" />
+</a>
+
+想加入他们?请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=TableProApp%2FTablePro&type=date&legend=top-left">
