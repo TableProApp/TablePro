@@ -807,7 +807,10 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
-                    supportsClientKeyPassphrase: true
+                    supportsClientKeyPassphrase: true,
+                    pagination: .leadingRowsOnly(
+                        maximumRows: SettingsValidationRules.defaultPageSizeRange.upperBound
+                    )
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -870,7 +873,10 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
-                    supportsClientKeyPassphrase: true
+                    supportsClientKeyPassphrase: true,
+                    pagination: .leadingRowsOnly(
+                        maximumRows: SettingsValidationRules.defaultPageSizeRange.upperBound
+                    )
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
