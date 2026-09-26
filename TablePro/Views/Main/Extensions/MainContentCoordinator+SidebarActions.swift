@@ -160,7 +160,9 @@ extension MainContentCoordinator {
                 query = Self.viewDefinitionFallback(
                     viewName: viewName,
                     error: error,
-                    driver: DatabaseManager.shared.driver(for: self.connection.id)
+                    template: DatabaseManager.shared.driver(for: self.connection.id)?
+                        .editViewFallbackTemplate(viewName: viewName),
+                    lineComment: self.services.pluginManager.editorLanguage(for: self.connection.type).lineCommentMarker
                 )
             }
             WindowManager.shared.openTab(payload: EditorTabPayload(
@@ -173,17 +175,17 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Every line of the error is commented out. A driver error can span several lines, and only the
-    /// first used to be, so the rest landed in the query tab as SQL.
-    static func viewDefinitionFallback(viewName: String, error: Error, driver: DatabaseDriver?) -> String {
-        let template = driver?.editViewFallbackTemplate(viewName: viewName)
-            ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
-        let reason = error.localizedDescription
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { "-- \($0)" }
-            .joined(separator: "\n")
-        let heading = "-- " + String(localized: "Could not fetch the view definition:")
-        return "\(heading)\n\(reason)\n\(template)"
+    /// Every line of the error is commented out in the tab's own language, and a line ends wherever
+    /// the engine or the editor's scanner ends one. A MongoDB tab runs JavaScript, where `--` is the
+    /// decrement operator, and an error naming a view with a carriage return in it ended the comment
+    /// partway through the name. A language with no line comment gets the template alone.
+    static func viewDefinitionFallback(viewName: String, error: Error, template: String?, lineComment: String) -> String {
+        let template = template ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
+        guard !lineComment.isEmpty else { return template }
+        let reason = error.localizedDescription.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        let comments = ([String(localized: "Could not fetch the view definition:")] + reason.map(String.init))
+            .map { "\(lineComment) \($0)" }
+        return (comments + [template]).joined(separator: "\n")
     }
 
     // MARK: - Export/Import

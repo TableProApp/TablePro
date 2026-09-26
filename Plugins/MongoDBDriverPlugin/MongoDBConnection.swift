@@ -282,8 +282,8 @@ final class MongoDBConnection: @unchecked Sendable {
             "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
             "tlsCAFile", "tlsCertificateKeyFile"
         ]
-        if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
-        if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
+        if let readPreference, !readPreference.isEmpty { explicitKeys.insert("readPreference") }
+        if let writeConcern, !writeConcern.isEmpty { explicitKeys.insert("w") }
         for (key, value) in extraUriParams where !explicitKeys.contains(key) {
             let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
             params.append("\(key)=\(encodedValue)")
@@ -735,7 +735,8 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func listCollections(database: String) async throws -> [String] {
+    /// Every `listCollections` entry in the database, or the one named, as canonical Extended JSON.
+    func listNamespaces(database: String, named name: String?) async throws -> [String] {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -743,14 +744,15 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try listCollectionsSync(client: client, database: database)
+            return try listNamespacesSync(client: client, database: database, named: name)
         }
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
     }
 
-    func listIndexes(database: String, collection: String) async throws -> [[String: Any]] {
+    /// Every `listIndexes` document for the collection, as canonical Extended JSON in server order.
+    func listIndexes(database: String, collection: String) async throws -> [String] {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -758,10 +760,8 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try QueueTransfer(value: listIndexesSync(
-                client: client, database: database, collection: collection
-            ))
-        }.value
+            return try listIndexesJsonSync(client: client, database: database, collection: collection)
+        }
         #else
         throw MongoDBError.libmongocUnavailable
         #endif

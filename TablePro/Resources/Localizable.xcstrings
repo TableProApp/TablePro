@@ -181585,6 +181585,9 @@
     "No view definition found for %@." : {
 
     },
+    "No view named %@ in this database" : {
+
+    },
     "This table requires a partition filter. Add a WHERE clause on the partition column." : {
 
     },

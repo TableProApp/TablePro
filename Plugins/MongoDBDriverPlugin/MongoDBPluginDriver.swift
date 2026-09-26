@@ -6,7 +6,6 @@
 import Foundation
 import os
 import TableProLogRedaction
-import TableProNumberFormatting
 import TableProPluginKit
 
 final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -300,9 +299,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let collections = try await conn.listCollections(database: currentDb)
-        return collections.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
-            .map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
+        let entries = try await conn.listNamespaces(database: currentDb, named: nil)
+            .compactMap(MongoDBNamespaceEntry.init(json:))
+        return entries.sorted(by: { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+            .map { PluginTableInfo(name: $0.name, type: $0.pluginTableType, rowCount: nil) }
     }
 
 
@@ -431,19 +431,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let indexes = try await conn.listIndexes(database: currentDb, collection: table)
+        return try await indexEntries(of: table, conn: conn).map(\.pluginIndexInfo)
+    }
 
-        return indexes.compactMap { indexDoc -> PluginIndexInfo? in
-            guard let name = indexDoc["name"] as? String,
-                  let key = indexDoc["key"] as? [String: Any] else { return nil }
-
-            let columns = Array(key.keys)
-            let isUnique = (indexDoc["unique"] as? Bool) ?? (name == "_id_")
-            let isPrimary = name == "_id_"
-
-            return PluginIndexInfo(
-                name: name, columns: columns, isUnique: isUnique, isPrimary: isPrimary, type: "BTREE"
-            )
+    /// A view has no indexes, and the server says so by refusing `listIndexes` with
+    /// CommandNotSupportedOnView. libmongoc answers a missing collection the same way, with an
+    /// empty list, which is what the Enumerate Indexes spec asks for.
+    private func indexEntries(of collection: String, conn: MongoDBConnection) async throws -> [MongoDBIndexEntry] {
+        do {
+            return try await conn.listIndexes(database: currentDb, collection: collection)
+                .compactMap(MongoDBIndexEntry.init(json:))
+        } catch let error as MongoDBError where error.code == MongoDBServerErrorCode.commandNotSupportedOnView {
+            return []
         }
     }
 
@@ -502,68 +501,44 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let db = currentDb
-        var sections: [String] = ["// Collection: \(table)"]
-
+        let entry: MongoDBNamespaceEntry?
         do {
-            let result = try await conn.runCommand(
-                "{\"listCollections\": 1, \"filter\": {\"name\": \"\(escapeJsonString(table))\"}}",
-                database: db
-            )
-            if let firstDoc = result.first,
-               let cursor = firstDoc["cursor"] as? [String: Any],
-               let firstBatch = cursor["firstBatch"] as? [[String: Any]],
-               let collInfo = firstBatch.first,
-               let options = collInfo["options"] as? [String: Any] {
-                if let capped = options["capped"] as? Bool, capped {
-                    let size = options["size"] as? Int ?? 0
-                    let max = options["max"] as? Int
-                    var cappedInfo = "// Capped: true, size: \(size)"
-                    if let max { cappedInfo += ", max: \(max)" }
-                    sections.append(cappedInfo)
-                }
-                if let validator = options["validator"] {
-                    let json = prettyJson(validator)
-                    sections.append(
-                        "\n// Validator\ndb.runCommand({\n  \"collMod\": \"\(table)\",\n  \"validator\": \(json)\n})"
-                    )
-                }
-            }
+            entry = try await namespaceEntry(named: table, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch collection info for \(table): \(error.localizedDescription)")
+            entry = nil
+        }
+        if let entry, entry.isView {
+            return MongoDBNamespaceDDL.text(name: table, entry: entry, indexes: [])
         }
 
+        let indexes: [MongoDBIndexEntry]
         do {
-            let indexes = try await conn.listIndexes(database: db, collection: table)
-            let customIndexes = indexes.filter { ($0["name"] as? String) != "_id_" }
-
-            if !customIndexes.isEmpty {
-                sections.append("\n// Indexes")
-                for indexDoc in customIndexes {
-                    guard let name = indexDoc["name"] as? String,
-                          let key = indexDoc["key"] as? [String: Any] else { continue }
-
-                    let keyJson = prettyJson(key)
-                    var opts: [String] = []
-                    if (indexDoc["unique"] as? Bool) == true { opts.append("\"unique\": true") }
-                    if let ttl = indexDoc["expireAfterSeconds"] as? Int { opts.append("\"expireAfterSeconds\": \(ttl)") }
-                    if (indexDoc["sparse"] as? Bool) == true { opts.append("\"sparse\": true") }
-                    opts.append("\"name\": \"\(name)\"")
-
-                    let optsJson = "{\(opts.joined(separator: ", "))}"
-                    let accessor = MongoCollectionAccessor.expression(for: table)
-                    sections.append("\(accessor).createIndex(\(keyJson), \(optsJson))")
-                }
-            }
+            indexes = try await indexEntries(of: table, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch indexes for \(table): \(error.localizedDescription)")
+            indexes = []
         }
-
-        return sections.joined(separator: "\n")
+        return MongoDBNamespaceDDL.text(name: table, entry: entry, indexes: indexes)
     }
 
+    /// The `collMod` that redefines the view in place, which is what Edit View Definition runs. The
+    /// statement that creates it is in `fetchTableDDL`, where Show DDL and Copy DDL read it.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        throw MongoDBPluginError.unsupportedOperation
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+        guard let statement = try await namespaceEntry(named: view, conn: conn)?.collModStatement() else {
+            throw MongoDBPluginError.viewNotFound(view)
+        }
+        return statement
+    }
+
+    private func namespaceEntry(named name: String, conn: MongoDBConnection) async throws -> MongoDBNamespaceEntry? {
+        try await conn.listNamespaces(database: currentDb, named: name)
+            .lazy
+            .compactMap(MongoDBNamespaceEntry.init(json:))
+            .first { $0.name == name }
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -694,13 +669,11 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The app-level fallback would emit `DROP TABLE <name>`, which the Mongo shell parser rejects.
     /// Mongo has no schemas or cascade, so both are ignored.
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        "db.getCollection(\"\(escapeJsonString(name))\").drop()"
+        MongoDBObjectStatements.drop(name)
     }
 
-    /// `deleteMany({})` empties the collection and leaves it, its indexes and its options in place,
-    /// which is what Truncate means. `drop()` would take all three.
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        ["db.getCollection(\"\(escapeJsonString(table))\").deleteMany({})"]
+        [MongoDBObjectStatements.truncate(table)]
     }
 
     // MARK: - Collection Creation
@@ -746,8 +719,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func editViewFallbackTemplate(viewName: String) -> String? {
-        let escaped = viewName.replacingOccurrences(of: "\"", with: "\\\"")
-        return "db.runCommand({\"collMod\": \"\(escaped)\", \"viewOn\": \"source_collection\", \"pipeline\": [{\"$match\": {}}]})"
+        MongoDBObjectStatements.redefineViewTemplate(viewName)
     }
 
     // MARK: - Query Building
@@ -964,16 +936,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result
     }
 
-    private func prettyJson(_ value: Any) -> String {
-        let sanitized = BsonDocumentFlattener.sanitizeForJson(value, representation: uuidRepresentation)
-        guard let json = NumberText.json(
-            from: sanitized, prettyPrinted: true, preservesFloatingPointForm: true
-        ) else {
-            return String(describing: value)
-        }
-        return json
-    }
-
     private func rememberColumnKinds(_ kinds: [BsonValueKind], for columns: [String], collection: String) {
         guard !collection.isEmpty else { return }
         var byName: [String: BsonValueKind] = [:]
@@ -1051,14 +1013,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 enum MongoDBPluginError: Error {
     case notConnected
-    case unsupportedOperation
+    case viewNotFound(String)
 }
 
 extension MongoDBPluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .notConnected: return String(localized: "Not connected to MongoDB")
-        case .unsupportedOperation: return String(localized: "Operation not supported for MongoDB")
+        case .viewNotFound(let name): return String(format: String(localized: "No view named %@ in this database"), name)
         }
     }
 }

@@ -32,6 +32,16 @@ enum MongoScriptPrelude {
     })();
 
     function __ejson(value) { return JSON.stringify(EJSON.serialize(value)); }
+
+    // Assigning a member named `__proto__` sets the object's prototype instead of adding the
+    // member, so the field was never sent and never read. That one name is defined instead.
+    function __setMember(target, key, value) {
+        if (key === "__proto__") {
+            Object.defineProperty(target, key, { value: value, enumerable: true, writable: true, configurable: true });
+        } else {
+            target[key] = value;
+        }
+    }
     """
 
     private static let values = """
@@ -81,13 +91,29 @@ enum MongoScriptPrelude {
     function NumberDecimal(value) {
         if (!(this instanceof NumberDecimal)) { return new NumberDecimal(value); }
         var text = value === undefined ? "0" : String(value);
-        if (!/^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?$/.test(text)) {
+        if (!/^([+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?|NaN|-?Infinity)$/.test(text)) {
             throw new Error("NumberDecimal takes a number");
         }
         this.__value = text;
     }
     NumberDecimal.prototype.toString = function () { return this.__value; };
     NumberDecimal.prototype.toEJSON = function () { return { "$numberDecimal": this.__value }; };
+
+    // A whole JavaScript number is sent as an integer, so a Double that happens to be whole, 1.0 or
+    // -0.0, needs its own constructor to stay a Double. Show DDL writes one for every such value.
+    function __doubleText(value) {
+        return value === 0 && 1 / value < 0 ? "-0.0" : String(value);
+    }
+
+    function Double(value) {
+        if (!(this instanceof Double)) { return new Double(value); }
+        var number = value === undefined ? 0 : Number(value);
+        if (isNaN(number) && String(value) !== "NaN") { throw new Error("Double takes a number"); }
+        this.__value = number;
+    }
+    Double.prototype.toString = function () { return __doubleText(this.__value); };
+    Double.prototype.valueOf = function () { return this.__value; };
+    Double.prototype.toEJSON = function () { return { "$numberDouble": __doubleText(this.__value) }; };
 
     function Timestamp(t, i) {
         if (!(this instanceof Timestamp)) { return new Timestamp(t, i); }
@@ -96,6 +122,32 @@ enum MongoScriptPrelude {
     }
     Timestamp.prototype.toString = function () { return "Timestamp(" + this.t + ", " + this.i + ")"; };
     Timestamp.prototype.toEJSON = function () { return { "$timestamp": { t: this.t, i: this.i } }; };
+
+    function BSONRegExp(pattern, options) {
+        if (!(this instanceof BSONRegExp)) { return new BSONRegExp(pattern, options); }
+        if (typeof pattern !== "string") { throw new Error("BSONRegExp takes its pattern as a string"); }
+        if (pattern.indexOf("\\u0000") !== -1) { throw new Error("A BSONRegExp pattern cannot hold a null character"); }
+        var flags = options === undefined || options === null ? "" : options;
+        if (typeof flags !== "string" || !/^[ilmsux]*$/.test(flags)) {
+            throw new Error("BSONRegExp takes options from i, l, m, s, u and x");
+        }
+        this.pattern = pattern;
+        this.options = flags.split("").sort().join("");
+    }
+    BSONRegExp.prototype.toString = function () {
+        return "BSONRegExp(" + JSON.stringify(this.pattern) + ", " + JSON.stringify(this.options) + ")";
+    };
+    BSONRegExp.prototype.toEJSON = function () {
+        return { "$regularExpression": { pattern: this.pattern, options: this.options } };
+    };
+
+    function BSONSymbol(value) {
+        if (!(this instanceof BSONSymbol)) { return new BSONSymbol(value); }
+        this.value = String(value);
+    }
+    BSONSymbol.prototype.toString = function () { return "BSONSymbol(" + JSON.stringify(this.value) + ")"; };
+    BSONSymbol.prototype.valueOf = function () { return this.value; };
+    BSONSymbol.prototype.toEJSON = function () { return { "$symbol": this.value }; };
 
     function __subTypeHex(subtype) {
         var hex = subtype.toString(16);
@@ -552,7 +604,16 @@ enum MongoScriptPrelude {
         var command = { create: String(name) };
         if (options) {
             for (var key in options) {
-                if (Object.prototype.hasOwnProperty.call(options, key)) { command[key] = options[key]; }
+                if (Object.prototype.hasOwnProperty.call(options, key)) { __setMember(command, key, options[key]); }
+            }
+        }
+        return this.runCommand(command);
+    };
+    DB.prototype.createView = function (name, source, pipeline, options) {
+        var command = { create: String(name), viewOn: String(source), pipeline: pipeline || [] };
+        if (options) {
+            for (var key in options) {
+                if (Object.prototype.hasOwnProperty.call(options, key)) { __setMember(command, key, options[key]); }
             }
         }
         return this.runCommand(command);
@@ -603,7 +664,7 @@ enum MongoScriptPrelude {
             }
             var document = {};
             for (var key in value) {
-                if (Object.prototype.hasOwnProperty.call(value, key)) { document[key] = serialize(value[key]); }
+                if (Object.prototype.hasOwnProperty.call(value, key)) { __setMember(document, key, serialize(value[key])); }
             }
             return document;
         }
@@ -630,7 +691,7 @@ enum MongoScriptPrelude {
             }
             var document = {};
             for (var key in value) {
-                if (Object.prototype.hasOwnProperty.call(value, key)) { document[key] = deserialize(value[key]); }
+                if (Object.prototype.hasOwnProperty.call(value, key)) { __setMember(document, key, deserialize(value[key])); }
             }
             return document;
         }

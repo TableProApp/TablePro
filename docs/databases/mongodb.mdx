@@ -81,6 +81,27 @@ The filter bar's column picker lists paths inside nested objects and arrays of o
 
 The Structure tab lists a collection's indexes; drop one from a query tab with `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
 
+### Views
+
+Views sit in their own **Views** group in the sidebar and open read-only, with no cell edits, **Add Row** or **Delete**, and no **Rename** or **Truncate** on the context menu. **Show DDL** writes the `db.createView(…)` that makes the view again, pipeline and collation included. **Edit View Definition** opens a `collMod` holding the view's source and pipeline: run it to change the view in place, collation kept. Both write each value in its own BSON type, so the text runs the same in a query tab and in mongosh: `NumberLong("…")` for an Int64, `Double(1.0)` for a whole Double, `ISODate("…")` for a date, `BSONRegExp("…", "…")` for a regular expression. A date before year 1 or after 9999 is written as `new Date(…)`. Export writes a view's documents; import and table transfer skip views.
+
+A time-series collection is listed with the other collections, and its DDL starts with a `// Time series:` line naming its time and meta fields. `system.views`, `system.profile` and the `system.buckets.*` collections behind time series are marked as system collections, with no **Rename** or **Truncate**.
+
+### Indexes
+
+The Structure tab's **Indexes** list shows each index's fields in key order, and its type from the key:
+
+| Key | Type |
+|-----|------|
+| `{a: 1}` or `{a: -1}` | **BTREE** |
+| `{a: "hashed"}` | **HASH** |
+| `{a: "text"}` | **FULLTEXT**, listing the fields in its weights |
+| `{loc: "2dsphere"}` | **SPATIAL** |
+| `{loc: "2d"}` | **2D** |
+| `{"$**": 1}` or `{"tags.$**": 1}` | **WILDCARD** |
+
+**Show DDL** writes one `createIndex` per index with every option the server reports: TTL, partial filter, collation, text weights, wildcard projection and 2d bounds. Values are written the way a view's are, so run that text in a query tab and the indexes it builds match the originals, value types included. The collation leaves out the server's ICU `version`, so the statement also runs on a server built with a different ICU.
+
 ### Binary UUIDs
 
 A binary subtype 4 field renders as `UUID("8cd003eb-4a25-4324-9332-88fce2da0d1a")`. Subtype 3 is the legacy format, and its bytes do not say which driver wrote them, so it stays `BinData(3, "…")` until **Legacy UUID Encoding** on the connection is set to Java, C#, or Python. Match it to the driver that wrote the data: the wrong choice shows a valid-looking but wrong UUID.
@@ -194,8 +215,8 @@ Collection: `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `estimated
 `totalIndexSize`, `totalSize`, `isCapped`, `validate`, `explain`.
 
 Database: `getCollection`, `getSiblingDB`, `getCollectionNames`, `getCollectionInfos`,
-`createCollection`, `dropDatabase`, `stats`, `version`, `serverStatus`, `hostInfo`, `currentOp`,
-`killOp`, `runCommand`, `adminCommand`. `use <name>`, `show dbs` and `show collections` work as
+`createCollection`, `createView`, `dropDatabase`, `stats`, `version`, `serverStatus`, `hostInfo`,
+`currentOp`, `killOp`, `runCommand`, `adminCommand`. `use <name>`, `show dbs` and `show collections` work as
 typed. Anything with no method of its own goes through `db.runCommand({…})`.
 
 `Cmd+Shift+F` reformats by nesting depth. Autocomplete offers collections, collection methods,
@@ -219,6 +240,10 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - GridFS buckets are not browsable, and change streams are unsupported.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
 - Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+- An MQL export of a view holds the view's documents, not the view, so restoring the file creates a collection of that name. Drop that collection and run the view's **Show DDL** text to get the view back.
+- A time-series collection takes inserts and deletes from the grid, but refuses an edited cell and a rename, and the server's error is shown. Change its documents from a query tab with `updateMany` filtered on the meta field.
+- A filter or validator with a regular expression under `$regex`, such as `{email: {$regex: /@/i}}`, is refused as a document MongoDB cannot read. Write `{email: /@/i}` or `{email: {$regex: "@", $options: "i"}}` instead. **Show DDL** writes such a validator the way the server holds it, which runs in mongosh but not in a query tab.
+- A DBPointer, an `undefined`, or a date more than 100 million days from 1 January 1970 has no mongosh spelling, so **Show DDL** keeps its Extended JSON wrapper. A query tab runs that text; mongosh does not.
 
 ## Troubleshooting
 

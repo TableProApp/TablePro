@@ -16,6 +16,12 @@ extension EditorLanguage {
         }
     }
 
+    /// What starts a line comment in a query tab of this language, or an empty string when the
+    /// language has none.
+    var lineCommentMarker: String {
+        treeSitterLanguage.lineCommentString
+    }
+
     var codeBlockTag: String {
         switch self {
         case .sql: return "sql"

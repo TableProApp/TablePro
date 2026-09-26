@@ -51,6 +51,13 @@ extension MongoDBConnection {
         return col
     }
 
+    func getDatabase(_ client: OpaquePointer, database: String) throws -> OpaquePointer {
+        guard let handle = database.withCString({ mongoc_client_get_database(client, $0) }) else {
+            throw MongoDBError(code: 0, message: "Failed to get database \(database)")
+        }
+        return handle
+    }
+
     func runCommandSync(
         client: OpaquePointer, command: String, database: String?
     ) throws -> [[String: Any]] {
@@ -359,9 +366,7 @@ extension MongoDBConnection {
     func listCollectionsSync(client: OpaquePointer, database: String) throws -> [String] {
         try checkCancelled()
 
-        guard let mongocDb = database.withCString({ mongoc_client_get_database(client, $0) }) else {
-            throw MongoDBError(code: 0, message: "Failed to get database \(database)")
-        }
+        let mongocDb = try getDatabase(client, database: database)
         defer { mongoc_database_destroy(mongocDb) }
 
         var error = bson_error_t()
@@ -379,22 +384,6 @@ extension MongoDBConnection {
             index += 1
         }
         return collections
-    }
-
-    func listIndexesSync(
-        client: OpaquePointer, database: String, collection: String
-    ) throws -> [[String: Any]] {
-        try checkCancelled()
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        guard let cursor = mongoc_collection_find_indexes_with_opts(col, nil) else {
-            throw MongoDBError(code: 0, message: "Failed to list indexes for \(collection)")
-        }
-        defer { mongoc_cursor_destroy(cursor) }
-
-        return try iterateCursor(cursor).docs
     }
 
     func iterateCursor(_ cursor: OpaquePointer) throws -> (docs: [[String: Any]], isTruncated: Bool) {
@@ -519,6 +508,5 @@ extension MongoDBConnection {
         if let cur { mongoc_cursor_destroy(cur) }
         if let col { mongoc_collection_destroy(col) }
     }
-
 }
 #endif
