@@ -205,6 +205,30 @@ extension MongoDBConnection {
         return try iterateCursorJson(cursor, cap: 0).json
     }
 
+    /// The whole `listCollections` entry for each namespace, `type` included, which libmongoc's
+    /// name listing drops. A named read takes the entry's options too; the full listing asks for
+    /// names and types only.
+    func listNamespacesSync(client: OpaquePointer, database: String, named name: String?) throws -> [String] {
+        try checkCancelled()
+
+        let optionsJson = name.map { "{\"filter\": {\"name\": \(MongoScriptJson.jsonString($0))}}" }
+            ?? "{\"nameOnly\": true}"
+        guard let options = jsonToBson(optionsJson) else {
+            throw MongoDBError(code: 0, message: MongoScriptText.invalidDocument(optionsJson))
+        }
+        defer { bson_destroy(options) }
+
+        let handle = try getDatabase(client, database: database)
+        defer { mongoc_database_destroy(handle) }
+
+        guard let cursor = mongoc_database_find_collections_with_opts(handle, options) else {
+            throw MongoDBError(code: 0, message: MongoScriptText.cursorFailed)
+        }
+        defer { mongoc_cursor_destroy(cursor) }
+
+        return try iterateCursorJson(cursor, cap: 0).json
+    }
+
     private func identifierJson(in document: OpaquePointer) -> String {
         guard let json = bsonToJson(document),
               let identifier = MongoScriptJson.member(of: json, key: "_id") else { return "null" }

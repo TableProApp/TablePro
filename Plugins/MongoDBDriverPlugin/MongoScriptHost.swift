@@ -491,7 +491,7 @@ final class MongoScriptHost {
         let statement = MongoScriptCommandBuilder.createIndex(
             collection: collectionName(request),
             keys: MongoScriptJson.rawJson(request["keys"]) ?? "{}",
-            options: MongoScriptJson.options(request["options"])
+            optionsJson: MongoScriptJson.rawJson(request["options"])
         )
         return try command(statement, request)
     }

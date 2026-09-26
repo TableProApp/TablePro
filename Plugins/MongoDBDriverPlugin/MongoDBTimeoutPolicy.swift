@@ -9,6 +9,7 @@ enum MongoDBServerErrorCode {
     static let badValue: UInt32 = 2
     static let indexNotFound: UInt32 = 27
     static let maxTimeMSExpired: UInt32 = 50
+    static let commandNotSupportedOnView: UInt32 = 166
     static let cursorKilled: UInt32 = 237
 }
 

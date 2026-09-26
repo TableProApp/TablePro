@@ -69,20 +69,32 @@ enum MongoScriptCommandBuilder {
         return "{\(fields.joined(separator: ", "))}"
     }
 
-    static func createIndex(collection: String, keys: String, options: [String: Any]) -> String {
-        var fields = ["\"key\": \(keys)", "\"name\": \(MongoScriptJson.jsonString(indexName(keys: keys, options: options)))"]
-        appendPassThrough(
-            &fields,
-            options: options,
-            keys: [
-                "unique", "sparse", "expireAfterSeconds", "partialFilterExpression",
-                "collation", "background", "hidden", "weights", "default_language"
-            ]
-        )
-        return """
-            {"createIndexes": \(MongoScriptJson.jsonString(collection)), \
-            "indexes": [{\(fields.joined(separator: ", "))}]}
-            """
+    /// Options that belong to the `createIndexes` command rather than to the index it builds.
+    static let createIndexesCommandOptions: Set<String> = ["commitQuorum", "comment", "maxTimeMS", "writeConcern"]
+
+    /// Every option the script wrote goes into the index spec as the text it arrived in, in the
+    /// order it was written. A fixed list of names dropped `wildcardProjection`, a 2d index's
+    /// `bits`, `min` and `max`, and a text index's `language_override`, which builds a different
+    /// index than the one asked for, and rebuilding the values through a dictionary reordered a
+    /// partial filter's members.
+    static func createIndex(collection: String, keys: String, optionsJson: String?) -> String {
+        let name = indexName(keys: keys, optionsJson: optionsJson)
+        var spec = ["\"key\": \(keys)", "\"name\": \(MongoScriptJson.jsonString(name))"]
+        var commandFields: [String] = []
+        let options = optionsJson.map { MongoScriptJson.members(of: $0) } ?? []
+        for option in options where option.key != "key" && option.key != "name" && option.value != "null" {
+            let field = "\(MongoScriptJson.jsonString(option.key)): \(option.value)"
+            if createIndexesCommandOptions.contains(option.key) {
+                commandFields.append(field)
+            } else {
+                spec.append(field)
+            }
+        }
+        let command = [
+            "\"createIndexes\": \(MongoScriptJson.jsonString(collection))",
+            "\"indexes\": [{\(spec.joined(separator: ", "))}]"
+        ] + commandFields
+        return "{\(command.joined(separator: ", "))}"
     }
 
     static func find(
@@ -164,8 +176,11 @@ enum MongoScriptCommandBuilder {
 
     /// The name MongoDB gives an index the script did not name, which is the key names and their
     /// directions joined with underscores, in the order the key document declares them.
-    static func indexName(keys: String, options: [String: Any]) -> String {
-        if let named = options["name"] as? String, !named.isEmpty { return named }
+    static func indexName(keys: String, optionsJson: String?) -> String {
+        let named = optionsJson
+            .flatMap { MongoScriptJson.member(of: $0, key: "name") }
+            .flatMap(MongoScriptJson.decodedString)
+        if let named, !named.isEmpty { return named }
         let parts = MongoScriptJson.members(of: keys).map { member -> String in
             "\(member.key)_\(direction(of: member.value))"
         }
