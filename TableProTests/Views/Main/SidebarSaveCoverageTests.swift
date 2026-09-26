@@ -53,7 +53,7 @@ struct SidebarSaveCoverageTests {
 
         #expect(throws: DataWriteError.changesNotWritable(table: "items", unwritten: UnwrittenRowCounts(updates: 1))) {
             _ = try coordinator.sidebarEditStatements(
-                editedFields: [(columnIndex: 1, columnName: "name", newValue: "z")]
+                editedFields: [InspectorFieldEdit(columnIndex: 1, columnName: "name", newValue: "z")]
             )
         }
     }
@@ -67,7 +67,7 @@ struct SidebarSaveCoverageTests {
         coordinator.selectionState.indices = [0, 1]
 
         let statements = try coordinator.sidebarEditStatements(
-            editedFields: [(columnIndex: 1, columnName: "name", newValue: "z")]
+            editedFields: [InspectorFieldEdit(columnIndex: 1, columnName: "name", newValue: "z")]
         )
 
         #expect(statements.map(\.sql) == ["updateOne(0)", "updateOne(1)"])

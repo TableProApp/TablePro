@@ -35,18 +35,22 @@ struct MongoDBWriteBackBinaryTests {
         return recorded
     }
 
-    /// A new row whose `typed` columns the user filled in; every other value was copied into it.
+    /// A new row whose `typed` columns the user filled in and whose `missing` columns it lacks;
+    /// every other value was copied into it.
     private func insert(
         _ values: [PluginCellValue],
         typed: Set<Int> = [],
+        missing absentColumns: Set<Int> = [],
         columns: [String] = ["_id", "name", "thumbnail"],
         with gen: MongoDBStatementGenerator
     ) throws -> [PluginRowWrite] {
         let filledIn = typed.sorted().map { index in
             (columnIndex: index, columnName: columns[index], oldValue: PluginCellValue.null, newValue: values[index])
         }
+        var change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: filledIn, originalRow: nil)
+        change.absentColumns = absentColumns
         return try gen.generateRowWrites(
-            from: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: filledIn, originalRow: nil)],
+            from: [change],
             insertedRowData: [0: values],
             deletedRowIndices: [],
             insertedRowIndices: [0]
@@ -136,13 +140,13 @@ struct MongoDBWriteBackBinaryTests {
     @Test("A row empty apart from a value that cannot be written is refused, not inserted as {}")
     func refusedValueNeverBecomesEmptyDocument() {
         #expect(throws: MongoDBWriteRefusal.binarySubtypeUnknown(field: "thumbnail").refusal(ofRow: 0)) {
-            try insert([nil, nil, .bytes(Self.png)], with: generator())
+            try insert([nil, nil, .bytes(Self.png)], missing: [0, 1], with: generator())
         }
     }
 
     @Test("An _id typed into a new row is kept, typed the way the filters type it")
     func typedIdIsKept() throws {
-        let writes = try insert(["1001", "a", nil], with: generator(identityKind: .int32))
+        let writes = try insert(["1001", "a", nil], missing: [2], with: generator(identityKind: .int32))
 
         #expect(writes[0].statement == #"db.items.insertOne({"_id": 1001, "name": "a"})"#)
     }

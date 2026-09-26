@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @MainActor
 struct RewindPlannerTests {
@@ -61,7 +61,7 @@ struct RewindPlannerTests {
     func unchangedRowRestores() throws {
         let plan = try planner(operations: [
             operation(kind: .update, preImage: ["7", "Ada"], postImage: ["7", "Grace"], writtenColumns: ["name"]),
-        ]).plan(currentRows: [["7", "Grace"]])
+        ]).plan(currentRows: [RewindCurrentRow(values: ["7", "Grace"])])
 
         #expect(plan.rows.first?.outcome == .willRestore)
         #expect(plan.restorableCount == 1)
@@ -72,7 +72,7 @@ struct RewindPlannerTests {
     func changedRowIsSkipped() throws {
         let plan = try planner(operations: [
             operation(kind: .update, preImage: ["7", "Ada"], postImage: ["7", "Grace"], writtenColumns: ["name"]),
-        ]).plan(currentRows: [["7", "Hopper"]])
+        ]).plan(currentRows: [RewindCurrentRow(values: ["7", "Hopper"])])
 
         #expect(plan.rows.first?.outcome == .changedSinceSave)
         #expect(plan.restorableCount == 0)
@@ -84,7 +84,7 @@ struct RewindPlannerTests {
     func alreadyRestoredRowIsIdempotent() throws {
         let plan = try planner(operations: [
             operation(kind: .update, preImage: ["7", "Ada"], postImage: ["7", "Grace"], writtenColumns: ["name"]),
-        ]).plan(currentRows: [["7", "Ada"]])
+        ]).plan(currentRows: [RewindCurrentRow(values: ["7", "Ada"])])
 
         #expect(plan.rows.first?.outcome == .alreadyRestored)
         #expect(plan.statements.isEmpty)
@@ -116,7 +116,7 @@ struct RewindPlannerTests {
             queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
         )
 
-        let plan = try planner.plan(currentRows: [["7", "Grace", "2026-06-30"]])
+        let plan = try planner.plan(currentRows: [RewindCurrentRow(values: ["7", "Grace", "2026-06-30"])])
         #expect(plan.rows.first?.outcome == .willRestore)
     }
 
@@ -138,7 +138,8 @@ struct RewindPlannerTests {
         #expect(restored.rows.first?.outcome == .willRestore)
         #expect(restored.statements.first?.sql.hasPrefix("INSERT") == true)
 
-        let occupied = try planner(operations: [deleted]).plan(currentRows: [["7", "Someone else"]])
+        let occupied = try planner(operations: [deleted])
+            .plan(currentRows: [RewindCurrentRow(values: ["7", "Someone else"])])
         #expect(occupied.rows.first?.outcome == .rowAlreadyPresent)
         #expect(occupied.statements.isEmpty)
     }
@@ -147,7 +148,7 @@ struct RewindPlannerTests {
     func insertInverse() throws {
         let plan = try planner(operations: [
             operation(kind: .insert, preImage: nil, postImage: ["7", "Ada"], writtenColumns: columns),
-        ]).plan(currentRows: [["7", "Ada"]])
+        ]).plan(currentRows: [RewindCurrentRow(values: ["7", "Ada"])])
 
         #expect(plan.rows.first?.outcome == .willRestore)
         #expect(plan.statements.first?.sql.hasPrefix("DELETE") == true)
@@ -160,7 +161,7 @@ struct RewindPlannerTests {
                 kind: .update, preImage: ["7", "Ada"], postImage: ["7", "Grace"],
                 writtenColumns: ["name"], refusal: .noPrimaryKey
             ),
-        ]).plan(currentRows: [["7", "Grace"]])
+        ]).plan(currentRows: [RewindCurrentRow(values: ["7", "Grace"])])
 
         #expect(plan.rows.first?.outcome == .notReversible(.noPrimaryKey))
         #expect(plan.statements.isEmpty)
@@ -215,7 +216,8 @@ struct RewindPlannerTests {
         let first = operation(kind: .delete, preImage: ["7", "Ada"], postImage: nil, writtenColumns: columns)
         let second = operation(kind: .insert, preImage: nil, postImage: ["8", "Grace"], writtenColumns: columns)
 
-        let plan = try planner(operations: [first, second]).plan(currentRows: [["8", "Grace"]])
+        let plan = try planner(operations: [first, second])
+            .plan(currentRows: [RewindCurrentRow(values: ["8", "Grace"])])
 
         #expect(plan.statements.count == 2)
         #expect(plan.statements.first?.sql.hasPrefix("DELETE") == true)

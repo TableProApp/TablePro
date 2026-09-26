@@ -58,6 +58,11 @@ public struct PluginRowChange: Sendable {
     public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)]
     public let originalRow: [PluginCellValue]?
 
+    /// The columns the row has no field for once the change is applied: a field an update removes,
+    /// or a field a new row leaves out. Only an engine that declares `supportsFieldRemoval` is
+    /// shown rows with such cells, so every other driver can ignore it.
+    public var absentColumns: Set<Int>?
+
     public init(
         rowIndex: Int,
         type: ChangeType,
@@ -322,6 +327,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// say this driver cannot restore a row's identity, and the host will refuse rather than write
     /// something close.
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]?
+
+    /// The same restore for an engine that tells a missing field from NULL. `absentCells` names, by
+    /// row index, the columns that row had no field for, which must stay missing rather than come
+    /// back as null. The default ignores them and asks the requirement above.
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -993,6 +1003,11 @@ public extension PluginDatabaseDriver {
         }
     }
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateIdentityPreservingInsert(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, rows: rows
+        )
+    }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }

@@ -57,8 +57,18 @@ extension MainContentCoordinator {
         rowEditingCoordinator.endInspectorEditRun()
     }
 
-    func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
-        rowEditingCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+    func revertInspectorFieldEdit(
+        columnIndex: Int,
+        valuesByRow: [RowID: PluginCellValue],
+        absentRowIDs: Set<RowID> = []
+    ) {
+        rowEditingCoordinator.revertInspectorFieldEdit(
+            columnIndex: columnIndex, valuesByRow: valuesByRow, absentRowIDs: absentRowIDs
+        )
+    }
+
+    func stageInspectorFieldRemoval(columnIndex: Int, rowIDs: [RowID]) {
+        rowEditingCoordinator.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {

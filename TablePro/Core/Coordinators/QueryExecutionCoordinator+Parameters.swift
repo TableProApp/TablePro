@@ -640,7 +640,8 @@ extension QueryExecutionCoordinator {
                 historySQL: originalSQL,
                 anchor: anchor,
                 timing: fetchResult.resolvedTiming,
-                serverOutput: fetchResult.serverOutput
+                serverOutput: fetchResult.serverOutput,
+                absentCells: fetchResult.absentCells
             )
 
             let parameterValues = nativeParameters.map { $0 as? String }

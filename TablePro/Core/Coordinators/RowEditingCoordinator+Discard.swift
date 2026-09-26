@@ -82,15 +82,19 @@ extension RowEditingCoordinator {
             let tabId = tab.id
             let insertedIDs = parent.changeManager.insertedRowIDs
             var restoredCells: [(rowID: RowID, columnIndex: Int)] = []
+            var absentCells: Set<CellPosition> = []
             let edits = parent.changeManager.getOriginalValues().compactMap { original in
                 tableRows.index(of: original.rowID).map { storageRow -> (row: Int, column: Int, value: PluginCellValue) in
                     restoredCells.append((rowID: original.rowID, columnIndex: original.columnIndex))
+                    if original.isAbsent {
+                        absentCells.insert(CellPosition(row: storageRow, column: original.columnIndex))
+                    }
                     return (row: storageRow, column: original.columnIndex, value: original.value)
                 }
             }
             if !edits.isEmpty {
                 let editDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                    rows.editMany(edits)
+                    rows.editMany(edits, absentCells: absentCells)
                 }
                 /// `editMany` names the rows it changed by their position in storage, and the grid
                 /// reads a delta's rows as display positions.

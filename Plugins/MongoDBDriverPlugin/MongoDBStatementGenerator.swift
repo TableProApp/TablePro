@@ -110,8 +110,9 @@ struct MongoDBStatementGenerator {
 
     // MARK: - INSERT
 
-    /// NULL and DEFAULT leave a field out of a new document. A row with nothing else in it is the
-    /// empty document, which the server stores with a generated `_id`.
+    /// A field the new row has none of, and DEFAULT, leave the field out of the document; NULL is
+    /// written as null, except in `_id`, which the grid never lets anyone set. A row with nothing
+    /// else in it is the empty document, which the server stores with a generated `_id`.
     ///
     /// A new row's change lists the cells the user filled in; every other value came with the row,
     /// copied from the row it duplicates or pastes.
@@ -119,23 +120,28 @@ struct MongoDBStatementGenerator {
         for change: PluginRowChange,
         insertedRowData: [Int: [PluginCellValue]]
     ) throws -> String {
-        let filledIn = change.cellChanges.map { (field: $0.columnName, value: $0.newValue) }
+        let filledIn = change.cellChanges.map { (column: $0.columnIndex, field: $0.columnName, value: $0.newValue) }
         let typed = Dictionary(filledIn.map { ($0.field, $0.value) }, uniquingKeysWith: { _, last in last })
-        let cells: [(field: String, value: PluginCellValue)]
+        let cells: [(column: Int, field: String, value: PluginCellValue)]
         if let values = insertedRowData[change.rowIndex] {
-            cells = zip(columns, values).map { (field: $0, value: $1) }
+            cells = zip(columns, values).enumerated().map { (column: $0, field: $1.0, value: $1.1) }
         } else {
             cells = filledIn
         }
-        let entries = try cells.filter { !isLeftOut($0.value) }.map { cell in
+        let absent = change.absentColumns ?? []
+        let written = cells.filter { cell in
+            let serverAssignsIdentity = cell.field == MongoDBCollectionDDL.idField && cell.value.isNull
+            return !serverAssignsIdentity && !isLeftOut(cell.value, isAbsent: absent.contains(cell.column))
+        }
+        let entries = try written.map { cell in
             let provenance: Provenance = typed[cell.field] == cell.value ? .typedIntoNewDocument : .copiedIntoNewDocument
             return "\(quotedKey(cell.field)): \(try documentValueJson(cell.value, field: cell.field, provenance: provenance))"
         }
         return "\(collectionAccessor).insertOne({\(entries.joined(separator: ", "))})"
     }
 
-    private func isLeftOut(_ value: PluginCellValue) -> Bool {
-        value.isNull || value.asText == Self.defaultMarker
+    private func isLeftOut(_ value: PluginCellValue, isAbsent: Bool) -> Bool {
+        isAbsent || value.asText == Self.defaultMarker
     }
 
     /// A value of a whole document the grid writes: a new row, a duplicate or a paste, or a
@@ -164,16 +170,21 @@ struct MongoDBStatementGenerator {
     /// A new row leaves `_id` to the server. Undoing a delete is the opposite requirement: a new
     /// `_id` is a different document, and anything that referenced the old one still points at
     /// nothing. A value that cannot be written refuses the restore rather than dropping the field.
-    func generateRestore(rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]? {
+    /// A field the document did not have stays missing, and one that held null holds it again.
+    func generateRestore(
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>] = [:]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
         guard let idIndex = idColumnIndex else { return nil }
 
         do {
-            return try rows.map { row in
+            return try rows.enumerated().map { rowIndex, row in
                 guard idIndex < row.count else { throw MongoDBWriteRefusal.missingIdentity }
+                let absent = absentCells[rowIndex] ?? []
                 let idField = MongoDBCollectionDDL.idField
                 var entries = ["\(quotedKey(idField)): \(try documentValueJson(row[idIndex], field: idField, provenance: .restored))"]
                 for (index, value) in row.enumerated() where index != idIndex && index < columns.count {
-                    guard !isLeftOut(value) else { continue }
+                    guard !isLeftOut(value, isAbsent: absent.contains(index)) else { continue }
                     let field = columns[index]
                     entries.append("\(quotedKey(field)): \(try documentValueJson(value, field: field, provenance: .restored))")
                 }
@@ -204,21 +215,32 @@ struct MongoDBStatementGenerator {
         }
     }
 
+    /// A field the change names in `absentColumns` is removed with `$unset`; NULL is stored as null.
     private func updateStatement(for change: PluginRowChange) throws -> String? {
         guard !change.cellChanges.isEmpty else { return nil }
         let identity = try identityJson(of: change)
+        let removed = change.absentColumns ?? []
         let cellWrites = try change.cellChanges.map {
-            try cellWrite(field: $0.columnName, from: $0.oldValue, to: $0.newValue)
+            try cellWrite(
+                field: $0.columnName, from: $0.oldValue, to: $0.newValue,
+                removesField: removed.contains($0.columnIndex)
+            )
         }
         let update = try updateDocument(for: cellWrites)
         return "\(collectionAccessor).updateOne({\"_id\": \(identity)}, \(update))"
     }
 
-    private func cellWrite(field: String, from oldValue: PluginCellValue, to newValue: PluginCellValue) throws -> CellWrite {
+    private func cellWrite(
+        field: String,
+        from oldValue: PluginCellValue,
+        to newValue: PluginCellValue,
+        removesField: Bool
+    ) throws -> CellWrite {
         guard field != MongoDBCollectionDDL.idField else { throw MongoDBWriteRefusal.identityChanged }
+        guard !removesField else { return .remove(field: field) }
         switch newValue {
         case .null:
-            return .remove(field: field)
+            return .whole(field: field, json: "null")
         case .bytes(let data):
             return .whole(field: field, json: try binaryJson(data, field: field, provenance: .edit(replacing: oldValue)))
         case .text(let text):

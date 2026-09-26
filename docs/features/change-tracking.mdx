@@ -38,6 +38,8 @@ Double-click a cell, or press `Enter` on it. `Enter` commits the edit to the que
 
 Right-click an editable cell and open **Set Value** for the common ones without typing: **Empty**, **NULL** on a nullable column, **Default** on a column the server fills in, and date functions such as `NOW()` or `CURRENT_DATE` on date columns.
 
+On MongoDB a document can lack a field altogether, which the grid shows as **No Field**. **Remove Field** on the same right-click menu deletes the field rather than storing NULL. See [missing fields and null](/databases/mongodb#missing-fields-and-null).
+
 ## Adding and deleting rows
 
 - **Add Row** (`Cmd+Shift+N`), the **+** button, or **Edit > Add Row**. The row appears at the bottom with the cursor in its first writable cell. Later edits fold into the INSERT rather than queueing as updates.

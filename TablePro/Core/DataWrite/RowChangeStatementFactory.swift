@@ -130,14 +130,20 @@ struct RowChangeStatementFactory {
     /// the server pick the key: MongoDB's drops `_id` on purpose. Replaying that to undo a delete
     /// produces a different document rather than the one that went missing, so a driver with its
     /// own statement generation has to answer this separately or say it cannot.
-    func restoreStatements(rows: [[PluginCellValue]]) throws -> [ParameterizedStatement] {
+    ///
+    /// `absentCells` names, by row index, the fields a row did not have, which stay missing.
+    func restoreStatements(
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>] = [:]
+    ) throws -> [ParameterizedStatement] {
         if let pluginDriver {
             if let restored = pluginDriver.generateIdentityPreservingInsert(
                 table: tableName,
                 schema: schemaName,
                 columns: columns,
                 primaryKeyColumns: primaryKeyColumns,
-                rows: rows
+                rows: rows,
+                absentCells: absentCells
             ) {
                 return restored.map {
                     ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
@@ -319,5 +325,22 @@ private extension PluginRowChange {
             },
             originalRow: change.originalRow
         )
+        absentColumns = Self.absentColumns(after: change)
+    }
+
+    /// The fields the row has none of once the change is written: the ones an update removes, or
+    /// the ones a new row leaves out. Nil when there are none, which is every engine but a
+    /// document store.
+    static func absentColumns(after change: RowChange) -> Set<Int>? {
+        let absent: Set<Int>
+        switch change.type {
+        case .update:
+            absent = Set(change.cellChanges.filter(\.newIsAbsent).map(\.columnIndex))
+        case .insert:
+            absent = change.absentColumns
+        case .delete:
+            return nil
+        }
+        return absent.isEmpty ? nil : absent
     }
 }

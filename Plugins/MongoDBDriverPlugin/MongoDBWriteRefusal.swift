@@ -46,14 +46,14 @@ enum MongoDBWriteRefusal: Error, Equatable {
                 field
             )
         case .emptyFieldNameInNewDocument:
-            return String(localized: "The MongoDB client library will not insert a field whose name is empty. Set it to NULL, then set it on the saved document.")
+            return String(localized: "The MongoDB client library will not insert a field whose name is empty. Remove the field, then set it on the saved document.")
         case .emptyKeyInNewDocument(let field):
             return String(
                 format: String(localized: "%@ holds an empty key, which the MongoDB client library will not insert. Set it to NULL, then set it on the saved document."),
                 field
             )
         case .prototypeFieldInNewDocument:
-            return String(localized: "The shell drops a field named __proto__ from a new document. Set it to NULL, then set it on the saved document.")
+            return String(localized: "The shell drops a field named __proto__ from a new document. Remove the field, then set it on the saved document.")
         case .fieldNeedsMongoDB5(let field):
             return String(
                 format: String(localized: "A field named \u{201C}%@\u{201D} can only be changed on MongoDB 5.0 or later, which can address a dot or a leading $ in a name."),

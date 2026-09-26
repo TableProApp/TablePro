@@ -53,6 +53,12 @@ extension TableViewCoordinator {
         return !immutable.contains(columnName)
     }
 
+    /// Whether a row here can lack a field, apart from holding NULL, which is what offers Remove
+    /// Field. Only a data grid's rows can; a structure grid edits definitions.
+    var supportsFieldRemoval: Bool {
+        changeManager.supportsFieldRemoval
+    }
+
     func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
         if case .editable = editEligibility(row: row, columnIndex: columnIndex) {
             return true

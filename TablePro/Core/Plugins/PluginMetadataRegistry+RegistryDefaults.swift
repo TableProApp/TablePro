@@ -40,6 +40,7 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
                     supportsDocumentEditing: true,
+                    supportsFieldRemoval: true,
                     supportsOpportunisticTLS: false,
                     authenticationIsDatabaseScoped: true
                 ),

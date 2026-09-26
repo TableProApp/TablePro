@@ -379,7 +379,7 @@ final class PaginationCoordinator: ObservableObject {
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
                     let replaceDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                        rows.replace(rows: result.rows)
+                        rows.replace(rows: result.rows, absentCells: result.absentCells)
                     }
                     parent.tabManager.mutate(at: idx) { tab in
                         tab.execution.executionTime = result.executionTime

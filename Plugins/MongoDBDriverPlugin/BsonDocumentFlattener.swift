@@ -98,6 +98,17 @@ struct BsonDocumentFlattener {
         }
     }
 
+    /// The columns each document has no field for, by row. A field holding null is there, and only
+    /// rows missing something appear.
+    static func absentCells(of documents: [[String: Any]], columns: [String]) -> [Int: Set<Int>] {
+        var absent: [Int: Set<Int>] = [:]
+        for (row, document) in documents.enumerated() {
+            let missing = Set(columns.indices.filter { document[columns[$0]] == nil })
+            if !missing.isEmpty { absent[row] = missing }
+        }
+        return absent
+    }
+
     /// A document or an array, and not the `$code` or DBRef shapes that render as their own text.
     private static func isNestedValue(_ value: Any) -> Bool {
         if value is [Any] { return true }

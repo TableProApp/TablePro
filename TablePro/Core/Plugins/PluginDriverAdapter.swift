@@ -934,6 +934,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         result.columnMeta = pluginResult.columnMeta?.map {
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
+        result.absentCells = pluginResult.absentCells ?? [:]
         return result
     }
 

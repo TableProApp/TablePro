@@ -17,10 +17,14 @@ internal struct FieldMenuContent: View {
     let canMutate: Bool
     let isPendingNull: Bool
     let isPendingDefault: Bool
+    var isPendingRemoval = false
     let onSetNull: () -> Void
     let onSetDefault: () -> Void
     let onSetEmpty: () -> Void
     let onSetFunction: (String) -> Void
+    /// Offered only on an engine that tells a missing field from NULL, and only while the field is
+    /// there to remove.
+    var onRemoveField: (() -> Void)?
     let onClear: () -> Void
 
     var body: some View {
@@ -28,6 +32,9 @@ internal struct FieldMenuContent: View {
             Button("Set NULL") { onSetNull() }
             Button("Set DEFAULT") { onSetDefault() }
             Button("Set EMPTY") { onSetEmpty() }
+            if let onRemoveField {
+                Button("Remove Field") { onRemoveField() }
+            }
 
             Divider()
         }
@@ -61,7 +68,7 @@ internal struct FieldMenuContent: View {
                 }
             }
 
-            if isPendingNull || isPendingDefault {
+            if isPendingNull || isPendingDefault || isPendingRemoval {
                 Divider()
                 Button("Clear") { onClear() }
             }

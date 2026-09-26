@@ -48,6 +48,10 @@ struct MongoDBDeclaredField: Equatable, Sendable {
     let bsonTypes: [String]
     let isRequired: Bool
     let allowedValues: [String]?
+    /// Whether the validator lets the field hold null. Separate from `isRequired`, which is about
+    /// the field being there at all: a required field typed `["date", "null"]` takes null, and an
+    /// optional field typed `string` refuses it.
+    var admitsNull = true
 
     var valueKind: BsonValueKind? {
         let valueTypes = bsonTypes.filter { $0 != "null" }
@@ -83,6 +87,16 @@ enum MongoDBCollectionShape {
 
 struct MongoDBCollectionSchema: Equatable, Sendable {
     let fields: [MongoDBDeclaredField]
+    /// Whether a field the validator's `properties` do not name may hold null: an
+    /// `additionalProperties` schema decides it for every such field.
+    var undeclaredFieldsAdmitNull = true
+    /// A rule this reader does not model reaches every field: a combinator, `patternProperties`,
+    /// `dependencies` or an `enum` over the whole document, or a query operator beside
+    /// `$jsonSchema`. Each can refuse null in any field, so none is taken to admit it.
+    var hasUnmodeledRule = false
+    /// False for `validationAction: "warn"` and `validationLevel: "off"`, where the server stores
+    /// what the validator would refuse.
+    var isEnforced = true
 
     static let empty = MongoDBCollectionSchema(fields: [])
 
@@ -90,6 +104,13 @@ struct MongoDBCollectionSchema: Equatable, Sendable {
 
     func field(named name: String) -> MongoDBDeclaredField? {
         fields.first { $0.name == name }
+    }
+
+    /// Whether the server takes null in this field, which is what offers **Set Value > NULL**.
+    func admitsNull(fieldNamed name: String) -> Bool {
+        guard isEnforced else { return true }
+        guard !hasUnmodeledRule else { return false }
+        return field(named: name)?.admitsNull ?? undeclaredFieldsAdmitNull
     }
 
     var valueKinds: [String: BsonValueKind] {
@@ -127,32 +148,44 @@ struct MongoDBCollectionSchema: Equatable, Sendable {
               let batch = MongoScriptJson.member(of: cursor, key: "firstBatch"),
               let collection = MongoScriptJson.topLevelElements(batch).first,
               let options = MongoScriptJson.member(of: collection, key: "options"),
-              let validator = MongoScriptJson.member(of: options, key: "validator"),
-              let jsonSchema = MongoScriptJson.member(of: validator, key: "$jsonSchema") else {
+              let validator = MongoScriptJson.member(of: options, key: "validator") else {
             return .empty
         }
-        return parse(jsonSchema: jsonSchema)
+        var schema = MongoScriptJson.member(of: validator, key: "$jsonSchema").map { parse(jsonSchema: $0) } ?? .empty
+        if MongoScriptJson.members(of: validator).contains(where: { $0.key != "$jsonSchema" }) {
+            schema.hasUnmodeledRule = true
+        }
+        let settings = decodeObject(options) ?? [:]
+        schema.isEnforced = settings["validationAction"] as? String != "warn"
+            && settings["validationLevel"] as? String != "off"
+        return schema
     }
 
     static func parse(jsonSchema: String) -> MongoDBCollectionSchema {
-        guard let schema = decodeObject(jsonSchema),
-              let properties = schema["properties"] as? [String: Any],
-              let propertiesText = MongoScriptJson.member(of: jsonSchema, key: "properties") else {
-            return .empty
+        guard let schema = decodeObject(jsonSchema) else { return .empty }
+        return MongoDBCollectionSchema(
+            fields: declaredFields(in: schema, text: jsonSchema),
+            undeclaredFieldsAdmitNull: undeclaredFieldsAdmitNull(schema["additionalProperties"]),
+            hasUnmodeledRule: documentWideRules.contains { schema[$0] != nil }
+        )
+    }
+
+    private static func declaredFields(in schema: [String: Any], text: String) -> [MongoDBDeclaredField] {
+        guard let properties = schema["properties"] as? [String: Any],
+              let propertiesText = MongoScriptJson.member(of: text, key: "properties") else {
+            return []
         }
         let required = Set(schema["required"] as? [String] ?? [])
-        let orderedNames = orderedKeys(of: propertiesText, in: properties)
-
-        let fields = orderedNames.compactMap { name -> MongoDBDeclaredField? in
+        return orderedKeys(of: propertiesText, in: properties).compactMap { name -> MongoDBDeclaredField? in
             guard let spec = properties[name] as? [String: Any] else { return nil }
             return MongoDBDeclaredField(
                 name: name,
                 bsonTypes: declaredTypes(in: spec),
                 isRequired: required.contains(name),
-                allowedValues: stringEnum(spec["enum"])
+                allowedValues: stringEnum(spec["enum"]),
+                admitsNull: admitsNull(spec)
             )
         }
-        return MongoDBCollectionSchema(fields: fields)
     }
 
     private static func orderedKeys(of objectText: String, in decoded: [String: Any]) -> [String] {
@@ -172,6 +205,25 @@ struct MongoDBCollectionSchema: Equatable, Sendable {
         if let many = spec["type"] as? [String] { return many.compactMap(MongoDBBsonType.alias(forJsonSchemaType:)) }
         if stringEnum(spec["enum"]) != nil { return ["string"] }
         return []
+    }
+
+    /// The server applies every keyword of a field's rule, so null passes only when each one that
+    /// can refuse it lets it through: a declared type has to list null, and an `enum` has to hold
+    /// it. A combinator is not modeled and is taken to refuse null. The keywords for strings,
+    /// numbers, arrays and documents never see null, measured on 7.0 for `minLength` and `pattern`.
+    private static func admitsNull(_ spec: [String: Any]) -> Bool {
+        let typeAdmitsNull = (spec["bsonType"] == nil && spec["type"] == nil) || declaredTypes(in: spec).contains("null")
+        let enumAdmitsNull = (spec["enum"] as? [Any])?.contains { $0 is NSNull } ?? true
+        return typeAdmitsNull && enumAdmitsNull && !unmodeledConstraints.contains { spec[$0] != nil }
+    }
+
+    private static let unmodeledConstraints = ["anyOf", "oneOf", "allOf", "not"]
+
+    private static let documentWideRules = unmodeledConstraints + ["dependencies", "patternProperties", "enum"]
+
+    private static func undeclaredFieldsAdmitNull(_ additionalProperties: Any?) -> Bool {
+        if let spec = additionalProperties as? [String: Any] { return admitsNull(spec) }
+        return additionalProperties as? Bool ?? true
     }
 
     private static func stringEnum(_ value: Any?) -> [String]? {

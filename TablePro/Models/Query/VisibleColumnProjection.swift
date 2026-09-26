@@ -29,4 +29,10 @@ struct VisibleColumnProjection {
         guard let indices else { return all }
         return indices.map { all.indices.contains($0) ? all[$0] : .null }
     }
+
+    /// The positions, in the projected order, of the columns a row has no field for.
+    func absentColumns(_ all: Set<Int>) -> Set<Int> {
+        guard let indices else { return all }
+        return Set(indices.indices.filter { all.contains(indices[$0]) })
+    }
 }

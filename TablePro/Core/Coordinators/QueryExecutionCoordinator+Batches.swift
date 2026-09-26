@@ -538,7 +538,8 @@ extension QueryExecutionCoordinator {
             tableRows: TableRows.from(
                 queryRows: result.rows,
                 columns: result.columns.map { String($0) },
-                columnTypes: result.columnTypes
+                columnTypes: result.columnTypes,
+                absentCells: result.absentCells
             )
         )
         resultSet.statementAnchor = anchor
