@@ -685,6 +685,7 @@ struct MainMenuValidationTests {
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true
         context.canCreateTable = true
+        context.canInsertDocument = true
         return context
     }
 
@@ -723,6 +724,7 @@ struct MainMenuValidationTests {
         [
             #selector(MainSplitViewController.addRow(_:)),
             #selector(MainSplitViewController.duplicateRow(_:)),
+            #selector(MainSplitViewController.insertDocument(_:)),
             #selector(MainSplitViewController.truncateTable(_:)),
             #selector(MainSplitViewController.delete(_:)),
             #selector(MainSplitViewController.showTableStructure(_:)),
@@ -743,6 +745,23 @@ struct MainMenuValidationTests {
         context.isCurrentTabSchemaResolved = true
         #expect(enabled(#selector(MainSplitViewController.addRow(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.duplicateRow(_:)), context))
+    }
+
+    @Test("Insert Document stays dimmed on an engine without whole-document writes")
+    func insertDocumentNeedsADocumentEngine() {
+        var context = capableContext()
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
+        context.canInsertDocument = false
+        #expect(!enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
+    }
+
+    @Test("A read-only connection dims Insert Document")
+    func insertDocumentRespectsReadOnly() {
+        var context = capableContext()
+        context.isConnected = true
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
     }
 
     @Test("A stale selection does not keep content commands enabled without a connection")

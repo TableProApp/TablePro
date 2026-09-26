@@ -111,11 +111,6 @@ final class VimNormalModeChordUITests: UITestCase {
         return editor
     }
 
-    private func isOn(_ toggle: XCUIElement) -> Bool {
-        if let number = toggle.value as? Int { return number == 1 }
-        return (toggle.value as? String) == "1"
-    }
-
     private func waitForValue(_ expected: String, in element: XCUIElement) -> Bool {
         waitForPredicate(timeout: 10) { (element.value as? String) == expected }
     }

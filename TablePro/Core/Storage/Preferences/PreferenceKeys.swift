@@ -20,11 +20,13 @@ enum PreferenceKeys {
     static let lastSeenAppVersion = DefaultsKey<String>("com.TablePro.welcome.lastSeenAppVersion")
     static let connectionListSortMode = DefaultsKey<String>("com.TablePro.connectionList.sortMode")
     static let connectionListFavoritesOrder = DefaultsKey<[String]>("com.TablePro.connectionList.favoritesOrder")
+    static let connectionListShowsRecent = DefaultsKey<Bool>("com.TablePro.connectionList.showsRecent")
     static let recentConnections = DefaultsKey<Data>("com.TablePro.connectionList.recentConnections")
 
     static let registeredKeyNames: [String] = [
         connectionListSortMode.name,
         connectionListFavoritesOrder.name,
+        connectionListShowsRecent.name,
         recentConnections.name,
         linkedFolders.name,
         linkedSQLFolders.name,

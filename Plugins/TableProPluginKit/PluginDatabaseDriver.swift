@@ -267,6 +267,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws
     func renameDatabase(name: String, to newName: String) async throws
     func renameSchema(name: String, to newName: String) async throws
+
+    /// The statement the execution gate shows and query history keeps for a document write, or nil
+    /// when there is nothing to write. Throws, with a message for the user, when the text cannot be
+    /// written as it stands. For an engine whose `DriverPlugin` sets `supportsDocumentEditing`.
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String?
+
+    /// Performs the write `documentWriteStatement` described.
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
@@ -863,6 +871,14 @@ public extension PluginDatabaseDriver {
 
     func renameSchema(name: String, to newName: String) async throws {
         throw PluginDriverUnsupportedOperation.renameSchema
+    }
+
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String? {
+        throw PluginDriverUnsupportedOperation.writeDocument
+    }
+
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {
+        throw PluginDriverUnsupportedOperation.writeDocument
     }
 
     func dropDatabase(name: String) async throws {

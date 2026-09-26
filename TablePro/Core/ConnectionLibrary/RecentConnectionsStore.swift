@@ -9,14 +9,14 @@ import os
 import TableProConnectionLibrary
 
 @MainActor
-internal final class RecentConnectionsStore {
+internal final class RecentConnectionsStore: ObservableObject {
     internal static let shared = RecentConnectionsStore()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RecentConnectionsStore")
 
     private let defaults: UserDefaults
     private let appEvents: AppEvents
-    internal private(set) var ledger: RecentConnectionsLedger
+    @Published internal private(set) var ledger: RecentConnectionsLedger
 
     internal init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,

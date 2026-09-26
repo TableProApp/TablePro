@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Insert Document…** for MongoDB collections, written as Extended JSON. (#3132)
 - **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran.
 - Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
 - Table list and table browser side by side on iPad and on iPhone Duo's inner display.
 - **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
 - Agent mode holds its connection at Safe Mode **Alert** while it is on, and hands back the level you set on the way out.
 - **Open in Agent Mode** on a connection in the welcome window.
+- **Show recent connections** and **Clear Recent** in **Settings > General > Connections**.
 - **Outside MCP Servers** in Settings > Integrations, letting a session call tools on an MCP server you run.
 - Per-connection allowlist for an outside MCP server, with its token in the Keychain and neither synced.
 - Welcome sheet on iPhone and iPad, asking once about iCloud sync and usage data.

@@ -15,9 +15,10 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "MongoDB"
 
     static let supportsRenameTable = true
+    static let supportsDocumentEditing = true
     static let databaseDisplayName = "MongoDB"
     static let iconName = "mongodb-icon"
-    static let defaultPort = 27017
+    static let defaultPort = 27_017
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "mongoHosts",

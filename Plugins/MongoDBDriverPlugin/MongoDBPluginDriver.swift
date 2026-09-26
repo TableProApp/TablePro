@@ -11,9 +11,9 @@ import TableProPluginKit
 
 final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private var mongoConnection: MongoDBConnection?
+    private(set) var mongoConnection: MongoDBConnection?
     private var scriptRuntime: MongoScriptRuntime?
-    private var currentDb: String
+    private(set) var currentDb: String
     private let columnKindLock = NSLock()
     private let rawFilterNormalizer = MongoDBRawFilterNormalizer()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]

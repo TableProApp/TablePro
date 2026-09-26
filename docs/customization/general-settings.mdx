@@ -1,6 +1,6 @@
 ---
 title: General Settings
-description: Language, startup behavior, sidebar layout, query timeout, the command line tool, updates, and reset
+description: Language, startup behavior, tabs, sidebar layout, connections, query timeout, the command line tool, updates, and reset
 ---
 
 Most of this tab takes effect the moment you click. Language waits for a restart, and the query timeout reaches a connection only when that connection opens.
@@ -33,6 +33,12 @@ System (the default), English, Tiếng Việt, 简体中文, 繁體中文, 한�
 | **Default layout for new connections** | List | List or Tree, on servers with a database tree. Switch the connection you are in from the **View** menu |
 
 Icons, comments, system databases and schemas, partitions, and row size are also under **View Options**, the button beside the sidebar's filter field. Right-clicking the empty space below the object list reaches the same options.
+
+## Connections
+
+**Show recent connections** is on out of the box and puts a [Recent section](/connections#organize-connections) in the welcome window and **Switch Connection**. Turning it off hides the section and keeps the history. **Clear Recent**, on the **Recent connection history** row, forgets it, which also starts sorting by **Last Connected** over. The switch and the history both stay on this Mac.
+
+**Check connections** sets how often each open connection is checked for a dropped session. The choices, and what a failed check starts, are under [Connection health](/connections/connection-form#connection-health).
 
 ## Query timeout
 

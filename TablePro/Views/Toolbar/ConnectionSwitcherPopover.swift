@@ -39,6 +39,7 @@ struct ConnectionSwitcherEntry: Identifiable {
 
 struct ConnectionSwitcherPopover: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
+    @ObservedObject private var listPreferences = ConnectionListPreferences.shared
     /// An explicit closure rather than `@Environment(\.dismiss)`, because the presenter owns the
     /// surface: `dismiss` reaches a SwiftUI presentation, and this content is hosted in an AppKit
     /// popover or panel that SwiftUI knows nothing about. `PopoverPresenter` hands every caller the
@@ -183,27 +184,18 @@ struct ConnectionSwitcherPopover: View {
     }
 
     private var sections: [FieldDrivenListSection<ConnectionSwitcherEntry>] {
-        let recents = RecentConnectionsStore.shared.lastConnected
-        let sortMode = ConnectionListPreferences.shared.sortMode
-        let saved = LibrarySorting.sorted(filteredSaved, mode: sortMode, lastConnected: recents)
-        let favoriteIds = Set(saved.filter(\.isFavorite).map(\.id))
-        let favoritesOrder = ConnectionListPreferences.shared.favoritesOrder
-        let favorites = saved.filter(\.isFavorite).sorted { lhs, rhs in
-            let left = favoritesOrder.firstIndex(of: lhs.id) ?? Int.max
-            let right = favoritesOrder.firstIndex(of: rhs.id) ?? Int.max
-            return left < right
-        }
-        let recent = saved
-            .filter { !favoriteIds.contains($0.id) && recents[$0.id] != nil }
-            .sorted { (recents[$0.id] ?? .distantPast) > (recents[$1.id] ?? .distantPast) }
-            .prefix(LibraryOutlineBuilder.defaultRecentLimit)
-        return ConnectionSwitcherSections.build(
+        ConnectionSwitcherSections.build(
             active: filteredOpen,
-            saved: saved,
-            groups: groups,
-            isFiltering: isFiltering,
-            favorites: sortMode == .manual ? favorites : saved.filter(\.isFavorite),
-            recent: Array(recent)
+            library: LibraryOutlineRequest(
+                connections: filteredSaved,
+                groups: groups,
+                tags: tags,
+                sortMode: listPreferences.sortMode,
+                favoritesOrder: listPreferences.favoritesOrder,
+                lastConnected: RecentConnectionsStore.shared.lastConnected,
+                includesRecent: listPreferences.showsRecent
+            ),
+            isFiltering: isFiltering
         )
     }
 
@@ -378,6 +370,22 @@ struct ConnectionSwitcherPopover: View {
 // MARK: - Sections
 
 internal enum ConnectionSwitcherSections {
+    internal static func build(
+        active: [ConnectionSwitcherEntry],
+        library request: LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag>,
+        isFiltering: Bool
+    ) -> [FieldDrivenListSection<ConnectionSwitcherEntry>] {
+        let byId = Dictionary(request.connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return build(
+            active: active,
+            saved: LibrarySorting.sorted(request.connections, mode: request.sortMode, lastConnected: request.lastConnected),
+            groups: request.groups,
+            isFiltering: isFiltering,
+            favorites: LibraryOutlineBuilder.favoriteIds(request).compactMap { byId[$0] },
+            recent: LibraryOutlineBuilder.recentIds(request).compactMap { byId[$0] }
+        )
+    }
+
     /// Open connections keep their own section at the top: they are the working set. Favorites and
     /// recent connections come next, then the library by group. Each connection is listed once, so
     /// a favorite is not repeated under its group here: the arrow keys walk every row, and a quick

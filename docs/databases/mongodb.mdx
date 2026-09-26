@@ -107,6 +107,17 @@ MongoDB enforces the validator with its defaults, `strict` and `error`, so an in
 
 Each row on the **Indexes** tab runs as a `createIndex` after the collection is made, with its fields in the order listed. **BTREE** is an ascending key, **HASH** is `hashed`, **FULLTEXT** is `text`, and **SPATIAL** is `2dsphere`. A hashed index takes one field and cannot be unique, and a text index cannot be unique either.
 
+## Inserting documents
+
+A field exists only in the documents that hold it, so a collection with no documents and no validator shows `_id` alone and has no column to type a field into. Choose **Edit > Insert Document…** to write a whole document instead. It is on a row's context menu too, and on the context menu of an empty grid.
+
+<Frame caption="The first document of an empty collection">
+  <img className="block dark:hidden" src="/images/mongodb-insert-document.png" alt="Insert Document sheet over the empty events collection, holding a document with a name, a channel, a date, a count and a list of tags" />
+  <img className="hidden dark:block" src="/images/mongodb-insert-document-dark.png" alt="Insert Document sheet over the empty events collection, holding a document with a name, a channel, a date, a count and a list of tags" />
+</Frame>
+
+The text is Extended JSON: quote every field name, and write an ObjectId as `{"$oid": "…"}`, a date as `{"$date": "2024-05-01T10:00:00Z"}` and a decimal as `{"$numberDecimal": "1.10"}`. A whole number is stored as a 32-bit integer, or as a 64-bit one when it does not fit; `{"$numberLong": "5"}` stores a small 64-bit integer. A number with a decimal point is a double. Fields are stored in the order written. Leave out `_id` and the server generates one.
+
 ## Writing queries
 
 Queries run through JavaScriptCore, so a statement is JavaScript and the whole language is
@@ -199,7 +210,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 ## Limitations
 
 - A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
-- `_id` is read-only in the grid, and left out of an insert entirely so the server generates it. To choose your own, insert with `db.collection.insertOne({…})`.
+- `_id` is read-only in the grid, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
 - Transactions are not exposed. Statements always run standalone, on any topology.
 - A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.
 - **New Table…** writes the validator with the server's own level and action. To log bad documents instead of refusing them, run `db.runCommand({collMod: "articles", validationAction: "warn"})` after creating the collection.

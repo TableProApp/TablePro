@@ -53,6 +53,9 @@ struct MenuValidationContext: Equatable {
     /// and an identity column would be staged as NULL that the server refuses.
     var isCurrentTabSchemaResolved = false
     var canRestorePreviousValues = false
+    /// Insert Document writes a whole document, which only an engine that stores documents offers,
+    /// on a collection tab with no staged grid edits.
+    var canInsertDocument = false
     var isQueryExecuting = false
     /// Whether Stop still has something to act on. A batch whose `COMMIT` is on the wire is
     /// executing and unstoppable at the same time, and `Cmd+.` must dim rather than fire into it.
@@ -259,6 +262,8 @@ extension MainSplitViewController: NSMenuItemValidation {
                 && context.isCurrentTabSchemaResolved
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
+        case #selector(insertDocument(_:)):
+            return context.isConnected && context.canInsertDocument && !context.isReadOnly
         case #selector(truncateTable(_:)):
             return context.isConnected && context.canTruncateSelectedTables && !context.isReadOnly
         case #selector(jumpToColumn(_:)):
@@ -592,6 +597,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isCurrentTabEditable: actions.isCurrentTabEditable,
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
+            canInsertDocument: actions.canInsertDocument,
             isQueryExecuting: actions.isQueryExecuting,
             isQueryStoppable: actions.isQueryStoppable,
             hasQueryText: actions.hasQueryText,
