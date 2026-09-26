@@ -77,19 +77,20 @@ struct MongoDBStatementGeneratorTests {
         #expect(!stmt.contains("\"age\""))
     }
 
-    @Test("Insert with nil values are excluded from document")
-    func insertNilValuesExcluded() throws {
+    @Test("An insert leaves out a field the new row does not have")
+    func insertLeavesOutAbsentFields() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "email"]
         )
 
-        let change = PluginRowChange(
+        var change = PluginRowChange(
             rowIndex: 0,
             type: .insert,
             cellChanges: [],
             originalRow: nil
         )
+        change.absentColumns = [2]
 
         let insertedData: [Int: [PluginCellValue]] = [
             0: [nil, "Carol", nil]
@@ -102,10 +103,27 @@ struct MongoDBStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(results.count == 1)
-        let stmt = results[0].statement
-        #expect(stmt.contains("\"name\": \"Carol\""))
-        #expect(!stmt.contains("\"email\""))
+        #expect(results.map(\.statement) == [#"db.users.insertOne({"name": "Carol"})"#])
+    }
+
+    @Test("An insert writes NULL as null, so a duplicated null field keeps its null")
+    func insertWritesNullAsNull() throws {
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "name", "deletedAt"]
+        )
+
+        var change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        change.absentColumns = []
+
+        let results = try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [0: ["__DEFAULT__", "Carol", nil]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.map(\.statement) == [#"db.users.insertOne({"name": "Carol", "deletedAt": null})"#])
     }
 
     @Test("A new row with every cell empty inserts the empty document")
@@ -412,7 +430,7 @@ struct MongoDBStatementGeneratorTests {
             columns: ["_id", "name", "bio"]
         )
 
-        let change = PluginRowChange(
+        var change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: [
@@ -421,6 +439,7 @@ struct MongoDBStatementGeneratorTests {
             ],
             originalRow: ["507f1f77bcf86cd799439011", "Alice", "Some bio"]
         )
+        change.absentColumns = [2]
 
         let results = try gen.generateRowWrites(
             from: [change],

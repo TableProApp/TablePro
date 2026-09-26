@@ -212,7 +212,8 @@ extension QueryExecutionCoordinator {
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        absentCells: [Int: Set<Int>] = [:]
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -261,7 +262,8 @@ extension QueryExecutionCoordinator {
             generatedColumns: generatedColumns,
             rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
-            foreignKeysFetched: resolved.foreignKeysFetched
+            foreignKeysFetched: resolved.foreignKeysFetched,
+            absentCells: absentCells
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)

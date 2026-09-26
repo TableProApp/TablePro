@@ -52,6 +52,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsRenameDatabase: Bool = false
         var supportsRenameSchema: Bool = false
         var supportsDocumentEditing: Bool = false
+        var supportsFieldRemoval: Bool = false
         // `var` with defaults so existing call sites compile without passing these fields
         var supportsDropSchema: Bool = false
         var supportsCreateSchema: Bool = false
@@ -683,6 +684,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRenameDatabase: driverType.supportsRenameDatabase,
                 supportsRenameSchema: driverType.supportsRenameSchema,
                 supportsDocumentEditing: driverType.supportsDocumentEditing,
+                supportsFieldRemoval: driverType.supportsFieldRemoval,
                 supportsDropSchema: driverType.supportsDropSchema,
                 supportsCreateSchema: driverType.supportsCreateSchema,
                 supportsSchemaOwner: driverType.supportsSchemaOwner,

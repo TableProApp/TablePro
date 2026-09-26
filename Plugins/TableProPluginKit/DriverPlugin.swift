@@ -77,6 +77,12 @@ public protocol DriverPlugin: TableProPlugin {
     /// a binary built before these existed does not offer it.
     static var supportsDocumentEditing: Bool { get }
 
+    /// Whether a row can lack a field altogether, apart from holding NULL, and the driver removes
+    /// one when a change's `absentColumns` names it. Offers Remove Field and a No Field placeholder,
+    /// and starts a new row with its fields missing. Read from the loaded plugin, so a binary built
+    /// before this existed offers none of it.
+    static var supportsFieldRemoval: Bool { get }
+
     /// Whether a schema is something the engine makes from a statement. False on Oracle, where a
     /// schema is a user, and on the engines whose namespace is the database.
     static var supportsCreateSchema: Bool { get }
@@ -183,6 +189,7 @@ public extension DriverPlugin {
     static var supportsRenameDatabase: Bool { false }
     static var supportsRenameSchema: Bool { false }
     static var supportsDocumentEditing: Bool { false }
+    static var supportsFieldRemoval: Bool { false }
     static var supportsCreateSchema: Bool { false }
     static var supportsSchemaOwner: Bool { false }
     static var supportsSchemaPrivileges: Bool { false }

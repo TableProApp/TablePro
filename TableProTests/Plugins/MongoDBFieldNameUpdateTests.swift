@@ -14,6 +14,7 @@ struct MongoDBFieldNameUpdateTests {
     private func update(
         _ cells: [(column: String, old: PluginCellValue, new: PluginCellValue)],
         columns: [String],
+        removing removed: Set<String> = [],
         kinds: [String: BsonValueKind] = [:],
         version: String? = "7.0.43"
     ) throws -> String {
@@ -24,7 +25,7 @@ struct MongoDBFieldNameUpdateTests {
             fieldKinds: MongoDBFieldKinds(kinds.mapValues { [$0] }),
             capabilities: { MongoDBCapabilities.parse(version) }
         )
-        let change = PluginRowChange(
+        var change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: cells.map { cell in
@@ -32,6 +33,7 @@ struct MongoDBFieldNameUpdateTests {
             },
             originalRow: [.text("1")] + columns.dropFirst().map { _ in PluginCellValue.null }
         )
+        change.absentColumns = Set(removed.compactMap { columns.firstIndex(of: $0) })
         let writes = try gen.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
@@ -70,7 +72,7 @@ struct MongoDBFieldNameUpdateTests {
 
     @Test("Removing a field with a dotted name uses $unsetField")
     func dottedNameRemovalUsesUnsetField() throws {
-        let statement = try update([("price.usd", "10", nil)], columns: ["_id", "price.usd"])
+        let statement = try update([("price.usd", "10", nil)], columns: ["_id", "price.usd"], removing: ["price.usd"])
 
         #expect(statement.contains(#"{"$replaceWith": {"$unsetField": {"field": {"$literal": "price.usd"}, "input": "$$ROOT"}}}"#))
         #expect(!statement.contains(#""$unset": {"#))
@@ -80,7 +82,8 @@ struct MongoDBFieldNameUpdateTests {
     func mixedRowIsOnePipeline() throws {
         let statement = try update(
             [("name", "a", "b"), ("price.usd", "10", "12"), ("note", "x", nil)],
-            columns: ["_id", "name", "price.usd", "note"]
+            columns: ["_id", "name", "price.usd", "note"],
+            removing: ["note"]
         )
 
         let stages = try stages(of: statement)
@@ -92,7 +95,9 @@ struct MongoDBFieldNameUpdateTests {
 
     @Test("A row of ordinary fields keeps the classic $set document, which every server version reads")
     func ordinaryRowStaysClassic() throws {
-        let statement = try update([("name", "a", "b"), ("note", "x", nil)], columns: ["_id", "name", "note"], version: "4.4.0")
+        let statement = try update(
+            [("name", "a", "b"), ("note", "x", nil)], columns: ["_id", "name", "note"], removing: ["note"], version: "4.4.0"
+        )
 
         #expect(statement == #"db.items.updateOne({"_id": 1}, {"$set": {"name": "b"}, "$unset": {"note": ""}})"#)
     }

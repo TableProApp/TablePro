@@ -254,7 +254,7 @@ Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLit
 
 ## MongoDB collections
 
-MongoDB structure is read-only, and inferred from the collection's first 200 documents: top-level field names are unioned across the sample, and each field takes its most common BSON type. Fields the collection's `$jsonSchema` validator declares follow, including ones no sampled document holds, and a field in the validator's `required` list is not nullable. `_id` comes first, marked as the primary key. The DDL tab shows indexes as `createIndex()` commands for `mongosh`, plus the validator and capped-collection options where present.
+MongoDB structure is read-only, and inferred from the collection's first 200 documents: top-level field names are unioned across the sample, and each field takes its most common BSON type. Fields the collection's `$jsonSchema` validator declares follow, including ones no sampled document holds. A field is nullable when the validator takes null in it, as [missing fields and null](/databases/mongodb#missing-fields-and-null) describes; `required` decides only whether a document must have the field. `_id` comes first, marked as the primary key. The DDL tab shows indexes as `createIndex()` commands for `mongosh`, plus the validator and capped-collection options where present.
 
 ## Limitations
 

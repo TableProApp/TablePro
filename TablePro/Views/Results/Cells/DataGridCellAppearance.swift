@@ -48,7 +48,7 @@ struct DataGridCellAppearance: Equatable {
         case .none:
             font = palette.regularFont
             baseColor = deletedTextColor ?? valueTextColor(kind: kind, rawValue: content.rawValue, palette: palette)
-        case .null, .empty:
+        case .null, .empty, .absent:
             font = palette.italicFont
             baseColor = deletedTextColor ?? palette.placeholderText
         case .defaultMarker:

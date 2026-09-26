@@ -75,7 +75,7 @@ enum MongoScriptResultBuilder {
 private extension PluginQueryResult {
     func withRowsAffected(_ count: Int) -> PluginQueryResult {
         guard count != rowsAffected else { return self }
-        return PluginQueryResult(
+        var copy = PluginQueryResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
             rows: rows,
@@ -84,10 +84,12 @@ private extension PluginQueryResult {
             isTruncated: isTruncated,
             statusMessage: statusMessage
         )
+        copy.absentCells = absentCells
+        return copy
     }
 
     func withStatus(_ message: String) -> PluginQueryResult {
-        PluginQueryResult(
+        var copy = PluginQueryResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
             rows: rows,
@@ -96,5 +98,7 @@ private extension PluginQueryResult {
             isTruncated: isTruncated,
             statusMessage: message
         )
+        copy.absentCells = absentCells
+        return copy
     }
 }

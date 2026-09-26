@@ -266,7 +266,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let rowCap, MongoDBFindLimitPolicy.isTruncated(rowCount: result.rows.count, rowCap: rowCap) else {
             return result
         }
-        return PluginQueryResult(
+        var capped = PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
             rows: Array(result.rows.prefix(rowCap)),
@@ -275,6 +275,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             isTruncated: true,
             statusMessage: result.statusMessage
         )
+        capped.absentCells = result.absentCells?.filter { $0.key < rowCap }
+        return capped
     }
 
     private func mapExecutionError(_ error: Error) -> Error {
@@ -348,7 +350,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             PluginColumnInfo(
                 name: name,
                 dataType: BsonDocumentFlattener.typeName(for: kinds[index], representation: uuidRepresentation),
-                isNullable: name != MongoDBCollectionDDL.idField && schema.field(named: name)?.isRequired != true,
+                isNullable: name != MongoDBCollectionDDL.idField && schema.admitsNull(fieldNamed: name),
                 isPrimaryKey: name == MongoDBCollectionDDL.idField,
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
                 allowedValues: schema.allowedValues[name]
@@ -365,7 +367,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             name: name,
             dataType: field?.columnTypeName(representation: uuidRepresentation)
                 ?? BsonDocumentFlattener.typeName(for: .objectId, representation: uuidRepresentation),
-            isNullable: !isKey && field?.isRequired != true,
+            isNullable: !isKey && schema.admitsNull(fieldNamed: name),
             isPrimaryKey: isKey,
             defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
             allowedValues: schema.allowedValues[name]
@@ -807,9 +809,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
-        rows: [[PluginCellValue]]
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        writeGenerator(for: table, columns: columns).generateRestore(rows: rows)
+        writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
     }
 
     private func writeGenerator(for table: String, columns: [String]) -> MongoDBStatementGenerator {
@@ -955,12 +958,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             representation: uuidRepresentation, storedTexts: read.texts
         )
 
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: columns, columnTypeNames: typeNames,
             rows: rows, rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime),
             isTruncated: isTruncated
         )
+        result.absentCells = BsonDocumentFlattener.absentCells(of: documents, columns: columns)
+        return result
     }
 
     // MARK: - Helpers

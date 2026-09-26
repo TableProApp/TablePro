@@ -58,8 +58,30 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
     let writtenColumns: [String]
     /// Why this row cannot be rewound, or nil when it can.
     let refusal: RewindRefusal?
+    /// The columns the row had no field for before the write, on an engine that tells a missing
+    /// field from NULL. Nil in a record saved before that was captured.
+    var preImageAbsentColumns: Set<Int>?
+    /// The same for the row as the write left it.
+    var postImageAbsentColumns: Set<Int>?
 
     var isReversible: Bool { refusal == nil }
+
+    /// The fields to leave missing when the row is put back as it was before the write.
+    ///
+    /// A record saved before absence was captured holds NULL for both, and the app of that time
+    /// put every NULL back as a missing field, so that is what it still means.
+    var absentColumnsBeforeWrite: Set<Int> {
+        preImageAbsentColumns ?? Self.nullColumns(of: preImage)
+    }
+
+    var absentColumnsAfterWrite: Set<Int> {
+        postImageAbsentColumns ?? Self.nullColumns(of: postImage)
+    }
+
+    private static func nullColumns(of image: [PluginCellValue]?) -> Set<Int> {
+        guard let image else { return [] }
+        return Set(image.indices.filter { image[$0].isNull })
+    }
 }
 
 /// One statement, and how many rows it is allowed to touch.

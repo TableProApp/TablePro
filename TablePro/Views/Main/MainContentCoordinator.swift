@@ -1408,7 +1408,8 @@ final class MainContentCoordinator: ObservableObject {
                         anchor: anchor,
                         timing: fetchResult.resolvedTiming,
                         viewport: viewport,
-                        serverOutput: fetchResult.serverOutput
+                        serverOutput: fetchResult.serverOutput,
+                        absentCells: fetchResult.absentCells
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Insert Document…** for MongoDB collections, written as Extended JSON. (#3132)
+- **Remove Field** for MongoDB cells, and **No Field** for a field a document does not have. (#3132)
 - **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran.
 - Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
 - Table list and table browser side by side on iPad and on iPhone Duo's inner display.
@@ -139,6 +140,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Set DEFAULT** on a MongoDB field storing the text `__DEFAULT__`. (#3132)
 - Edits to MongoDB fields named with a dot, a leading `$` or `__proto__` changing another field or nothing. (#3132)
 - Nested MongoDB values shown with sorted keys, and saved with ObjectIds, dates and numbers retyped. (#3132)
+- **Set NULL** on a MongoDB field deleting the field. (#3132)
+- Null fields dropped from duplicated, pasted or restored MongoDB documents. (#3132)
+- **Restore Previous Values** comparing the wrong MongoDB fields when a document lacks one. (#3132)
+- Row inspector accepting edits to a MongoDB `_id` or another read-only field that were never saved. (#3132)
 - `tablepro-mcp` crashing when its standard input was non-blocking.
 - `tablepro-mcp` using a full CPU core, or crashing, when its standard output or error was non-blocking.
 - Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)

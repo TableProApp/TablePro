@@ -83,6 +83,11 @@ struct TableRows: Sendable {
         return rows[row][column]
     }
 
+    func isAbsent(row: Int, column: Int) -> Bool {
+        guard row >= 0, row < rows.count else { return false }
+        return rows[row].isAbsent(column)
+    }
+
     func index(of id: RowID) -> Int? {
         indexByID[id]
     }
@@ -98,36 +103,60 @@ struct TableRows: Sendable {
         indexByID = [:]
     }
 
+    /// Writes a value into a cell, or with `isAbsent` takes the field out of the row. A value
+    /// written into a missing field puts the field back.
     @discardableResult
-    mutating func edit(row: Int, column: Int, value: PluginCellValue) -> Delta {
+    mutating func edit(row: Int, column: Int, value: PluginCellValue, isAbsent: Bool = false) -> Delta {
         guard row >= 0, row < rows.count else { return .none }
         guard column >= 0, column < columns.count else { return .none }
         guard column < rows[row].values.count else { return .none }
-        if rows[row].values[column] == value { return .none }
-        rows[row].values[column] = value
+        guard write(isAbsent ? .null : value, isAbsent: isAbsent, row: row, column: column) else { return .none }
         return .cellChanged(row: row, column: column)
     }
 
+    /// Writes each value, and takes the field out of the row for every position in `absentCells`.
     @discardableResult
-    mutating func editMany(_ edits: [(row: Int, column: Int, value: PluginCellValue)]) -> Delta {
+    mutating func editMany(
+        _ edits: [(row: Int, column: Int, value: PluginCellValue)],
+        absentCells: Set<CellPosition> = []
+    ) -> Delta {
         var changed: Set<CellPosition> = []
         for edit in edits {
             guard edit.row >= 0, edit.row < rows.count else { continue }
             guard edit.column >= 0, edit.column < columns.count else { continue }
             guard edit.column < rows[edit.row].values.count else { continue }
-            if rows[edit.row].values[edit.column] == edit.value { continue }
-            rows[edit.row].values[edit.column] = edit.value
-            changed.insert(CellPosition(row: edit.row, column: edit.column))
+            let position = CellPosition(row: edit.row, column: edit.column)
+            let isAbsent = absentCells.contains(position)
+            guard write(isAbsent ? .null : edit.value, isAbsent: isAbsent, row: edit.row, column: edit.column) else {
+                continue
+            }
+            changed.insert(position)
         }
         if changed.isEmpty { return .none }
         return .cellsChanged(changed)
     }
 
+    private mutating func write(_ value: PluginCellValue, isAbsent: Bool, row: Int, column: Int) -> Bool {
+        let wasAbsent = rows[row].isAbsent(column)
+        guard rows[row].values[column] != value || wasAbsent != isAbsent else { return false }
+        rows[row].values[column] = value
+        if isAbsent {
+            rows[row].absentColumns.insert(column)
+        } else if wasAbsent {
+            rows[row].absentColumns.remove(column)
+        }
+        return true
+    }
+
     @discardableResult
-    mutating func appendInsertedRow(id: RowID = .inserted(UUID()), values: [PluginCellValue]) -> Delta {
+    mutating func appendInsertedRow(
+        id: RowID = .inserted(UUID()),
+        values: [PluginCellValue],
+        absentColumns: Set<Int> = []
+    ) -> Delta {
         guard indexByID[id] == nil else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
-        let row = Row(id: id, values: normalized)
+        let row = Row(id: id, values: normalized, absentColumns: Self.clamp(absentColumns, toCount: columns.count))
         let newIndex = rows.count
         rows.append(row)
         indexByID[row.id] = newIndex
@@ -138,11 +167,12 @@ struct TableRows: Sendable {
     mutating func insertInsertedRow(
         at index: Int,
         id: RowID = .inserted(UUID()),
-        values: [PluginCellValue]
+        values: [PluginCellValue],
+        absentColumns: Set<Int> = []
     ) -> Delta {
         guard index >= 0, index <= rows.count, indexByID[id] == nil else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
-        let row = Row(id: id, values: normalized)
+        let row = Row(id: id, values: normalized, absentColumns: Self.clamp(absentColumns, toCount: columns.count))
         rows.insert(row, at: index)
         for offset in index..<rows.count {
             indexByID[rows[offset].id] = offset
@@ -195,14 +225,22 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func replace(rows replacementRows: [[PluginCellValue]], offset: Int = 0) -> Delta {
+    mutating func replace(
+        rows replacementRows: [[PluginCellValue]],
+        offset: Int = 0,
+        absentCells: [Int: Set<Int>] = [:]
+    ) -> Delta {
         var rebuilt = ContiguousArray<Row>()
         rebuilt.reserveCapacity(replacementRows.count)
         var rebuiltIndex = [RowID: Int]()
         rebuiltIndex.reserveCapacity(replacementRows.count)
         for (idx, values) in replacementRows.enumerated() {
             let normalized = Self.normalize(values: values, toCount: columns.count)
-            let row = Row(id: .existing(offset + idx), values: normalized)
+            let row = Row(
+                id: .existing(offset + idx),
+                values: normalized,
+                absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count)
+            )
             rebuilt.append(row)
             rebuiltIndex[row.id] = idx
         }
@@ -284,13 +322,18 @@ struct TableRows: Sendable {
         generatedColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
         hasAuthoritativeSchema: Bool = false,
-        foreignKeysFetched: Bool = false
+        foreignKeysFetched: Bool = false,
+        absentCells: [Int: Set<Int>] = [:]
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(queryRows.count)
         for (index, values) in queryRows.enumerated() {
             let normalized = normalize(values: values, toCount: columns.count)
-            rows.append(Row(id: .existing(index), values: normalized))
+            rows.append(Row(
+                id: .existing(index),
+                values: normalized,
+                absentColumns: clamp(absentCells[index] ?? [], toCount: columns.count)
+            ))
         }
         return TableRows(
             rows: rows,
@@ -337,6 +380,11 @@ struct TableRows: Sendable {
             result.append(contentsOf: ContiguousArray(repeating: .null, count: targetCount - values.count))
         }
         return result
+    }
+
+    private static func clamp(_ absentColumns: Set<Int>, toCount targetCount: Int) -> Set<Int> {
+        guard absentColumns.contains(where: { $0 < 0 || $0 >= targetCount }) else { return absentColumns }
+        return absentColumns.filter { $0 >= 0 && $0 < targetCount }
     }
 
     private static func buildIndex(for rows: ContiguousArray<Row>) -> [RowID: Int] {
