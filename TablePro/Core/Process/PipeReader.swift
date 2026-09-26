@@ -6,14 +6,7 @@
 import Foundation
 import os
 
-/// Hands a pipe's output to a consumer as it arrives, one chunk at a time and in order.
-///
-/// Clearing `readabilityHandler` does not recall a callback Foundation has already dispatched, so
-/// that callback can run its read after the owner has drained the pipe or closed it. Every read
-/// here happens under one lock and only while a consumer is installed, and both ways of stopping
-/// remove the consumer under that lock, so once either returns nothing is reading the descriptor
-/// and nothing will. The handle can be closed straight after.
-final class PipeReader: @unchecked Sendable {
+internal final class PipeReader: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PipeReader")
 
     private let handle: FileHandle
@@ -33,24 +26,14 @@ final class PipeReader: @unchecked Sendable {
         }
     }
 
-    /// Stops reading, first handing the consumer what the pipe already holds, up to `limit` bytes.
-    /// It never waits on a writer, because a helper that inherited the write end can hold it open
-    /// for as long as it lives.
     func stop(drainingUpTo limit: Int = 0) {
         stopReading { consumer in
-            var taken = 0
-            while taken < limit, DescriptorRead.hasInputWithoutWaiting(descriptor) {
-                let wanted = min(DescriptorRead.pipeCapacity, limit - taken)
-                guard let chunk = try? DescriptorRead.availableBytes(from: descriptor, upTo: wanted),
-                      !chunk.isEmpty else { return }
-                taken += chunk.count
-                consumer(chunk)
-            }
+            let buffered = DescriptorRead.bufferedBytes(from: descriptor, upTo: limit)
+            guard !buffered.isEmpty else { return }
+            consumer(buffered)
         }
     }
 
-    /// Stops reading once every writer has closed the pipe, handing the consumer everything written
-    /// before that. A helper that inherited the write end keeps this waiting for as long as it lives.
     func stopAtEndOfFile() {
         stopReading { consumer in
             while let chunk = try? DescriptorRead.availableBytes(from: descriptor), !chunk.isEmpty {

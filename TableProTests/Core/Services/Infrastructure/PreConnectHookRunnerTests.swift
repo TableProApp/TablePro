@@ -22,10 +22,6 @@ struct PreConnectHookRunnerTests {
         }
     }
 
-    /// A script that writes its reason and exits at once can still have it in the pipe when the
-    /// runner reads what it collected. Measured with sixteen scripts at a time: 352 of 16,000
-    /// failures came back without their message before the pipe was drained on the way out, and 0
-    /// of 16,000 after.
     @Test("A failing script's message reaches the error every time", .timeLimit(.minutes(1)))
     func failureCarriesTheScriptsMessage() async {
         for _ in 0 ..< 4 {
