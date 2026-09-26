@@ -11,8 +11,8 @@ import TableProConnectionLibrary
 internal final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     internal static let contentSize = NSSize(width: 900, height: 600)
 
-    internal static var frameAutosaveName: NSWindow.FrameAutosaveName {
-        NSWindow.FrameAutosaveName(SplitViewAutosaveName.current(WindowIdentifier.welcome))
+    internal static var frameAutosaveName: NSWindow.FrameAutosaveName? {
+        SplitViewAutosaveName.current(WindowIdentifier.welcome)
     }
 
     private static var shared: WelcomeWindowController?
@@ -59,7 +59,7 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         super.init(window: window)
         window.delegate = self
 
-        if !window.setFrameUsingName(Self.frameAutosaveName) {
+        if !window.setFrame(usingAutosaveName: Self.frameAutosaveName) {
             window.center()
         }
         window.setContentSize(Self.contentSize)
@@ -73,11 +73,11 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
     // MARK: - NSWindowDelegate
 
     internal func windowDidMove(_ notification: Notification) {
-        window?.saveFrame(usingName: Self.frameAutosaveName)
+        window?.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     internal func windowWillClose(_ notification: Notification) {
-        window?.saveFrame(usingName: Self.frameAutosaveName)
+        window?.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     // MARK: - Commands

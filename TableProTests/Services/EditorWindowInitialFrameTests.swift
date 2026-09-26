@@ -70,8 +70,8 @@ struct EditorWindowInitialFrameTests {
     // MARK: - Helpers
 
     /// No session and a workspace handed in whole, so nothing reaches the connection store. The
-    /// window is never shown or closed: closing runs the controller's own teardown, which saves the
-    /// frame into the real defaults and cancels connects.
+    /// window is never shown or closed: closing runs the controller's own teardown, which cancels
+    /// connects.
     private func withConnectionWindow(_ body: (NSWindow) throws -> Void) throws {
         let connection = TestFixtures.makeConnection(name: "Pinned frame")
         let workspace = ConnectionWorkspace(

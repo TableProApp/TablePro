@@ -83,8 +83,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     /// so a case that resized the window used to hand that size to every case after it in its
     /// shard. See `SplitViewAutosaveName`.
     @MainActor
-    internal static var frameAutosaveName: NSWindow.FrameAutosaveName {
-        NSWindow.FrameAutosaveName(SplitViewAutosaveName.current("MainEditorWindow"))
+    internal static var frameAutosaveName: NSWindow.FrameAutosaveName? {
+        SplitViewAutosaveName.current("MainEditorWindow")
     }
 
     internal let payload: EditorTabPayload
@@ -150,9 +150,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     /// menu. Activating the window afterwards did not repair it.
     ///
     /// Placed before the controller becomes the window's delegate, so the starting frame is not
-    /// filed under `frameAutosaveName` as if the user had chosen it. A pinned size is not theirs, and
-    /// a unit test building this window would otherwise write over the real saved frame, which is
-    /// not namespaced outside the UI test sandbox. The frame is still saved on close.
+    /// filed under `frameAutosaveName` as if the user had chosen it. A pinned size is not theirs.
+    /// The frame is still saved on close.
     private static func placeInitialFrame(of window: NSWindow, pinnedSize: CGSize?) {
         let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame
         if let pinnedSize {
@@ -161,7 +160,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             window.setFrame(pinned, display: false)
             return
         }
-        guard !window.setFrameUsingName(frameAutosaveName) else { return }
+        guard !window.setFrame(usingAutosaveName: frameAutosaveName) else { return }
         let visibleSize = visibleFrame?.size ?? NSSize(width: 1_440, height: 900)
         window.setContentSize(NSSize(
             width: min(1_200, visibleSize.width),
@@ -226,17 +225,17 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         guard !window.inLiveResize else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     internal func windowDidEndLiveResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     internal func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     /// Both hooks name the state they are moving to, because neither runs at the moment the style
@@ -321,7 +320,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         cancelPendingConnectionIfNeeded()
 
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()

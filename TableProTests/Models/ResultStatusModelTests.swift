@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -17,7 +18,6 @@ struct ResultStatusModelTests {
         hasColumns: Bool? = nil,
         hasTableName: Bool = true,
         hasStructureActions: Bool = false,
-        isQueryPlan: Bool = false,
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil
     ) -> StatusBarSnapshot {
@@ -36,7 +36,6 @@ struct ResultStatusModelTests {
                 hasColumns: hasColumns ?? (rowCount > 0)
             ),
             hasStructureActions: hasStructureActions,
-            isQueryPlan: isQueryPlan,
             pagination: pagination,
             statusMessage: statusMessage
         )
@@ -67,49 +66,59 @@ struct ResultStatusModelTests {
         #expect(!result.controls.showsReadout)
     }
 
-    @Test("A query tab running before it has any result reports the execution without a readout")
-    func firstRunReportsTheExecution() {
-        let result = model(runningQueryTabWithoutResult())
+    @Test("A query tab's first run offers the execution slot and no readout")
+    func firstRunOffersTheExecutionSlotWithoutAReadout() {
+        let result = model(queryTabSnapshot(hasResult: false, isFetching: true))
         #expect(!result.controls.showsReadout)
         #expect(result.controls.showsExecution)
     }
 
-    @Test("A running query with a result on screen reports the execution beside the readout")
+    @Test(
+        "The execution slot is offered by the mode alone, with or without a result, running or idle",
+        arguments: ResultsViewMode.allCases
+    )
+    func executionSlotFollowsTheModeAlone(mode: ResultsViewMode) {
+        let offered = [false, true].flatMap { hasResult in
+            [false, true].map { isFetching in
+                model(queryTabSnapshot(hasResult: hasResult, isFetching: isFetching), viewMode: mode)
+                    .controls.showsExecution
+            }
+        }
+        #expect(offered == Array(repeating: mode != .structure, count: 4))
+    }
+
+    @Test("A running query with a result on screen keeps its readout beside the execution slot")
     func runWithAResultKeepsTheReadout() {
-        var running = PaginationState()
-        running.isLoading = true
-        let snapshot = makeSnapshot(tabType: .query, rowCount: 5, hasTableName: false, pagination: running)
-        let result = model(snapshot)
+        let result = model(queryTabSnapshot(hasResult: true, isFetching: true))
         #expect(result.controls.showsReadout)
         #expect(result.controls.showsExecution)
     }
 
-    @Test("Output mode reports the execution of a query that has no result yet")
-    func outputModeReportsTheExecution() {
-        let result = model(runningQueryTabWithoutResult(), viewMode: .output)
-        #expect(!result.controls.showsReadout)
-        #expect(result.controls.showsExecution)
+    @Test("Output mode offers the execution slot and no readout, running or idle")
+    func outputModeOffersTheExecutionSlot() {
+        for isFetching in [false, true] {
+            let result = model(queryTabSnapshot(hasResult: true, isFetching: isFetching), viewMode: .output)
+            #expect(!result.controls.showsReadout)
+            #expect(result.controls.showsExecution)
+        }
     }
 
-    @Test("A query plan on screen gives up the readout and still reports the execution")
-    func queryPlanReportsTheExecution() {
-        let result = model(runningQueryTabWithoutResult(isQueryPlan: true))
-        #expect(!result.controls.showsReadout)
-        #expect(result.controls.showsExecution)
+    @Test("A query plan gives up the readout and still offers the execution slot, running or idle")
+    func queryPlanOffersTheExecutionSlot() {
+        for isFetching in [false, true] {
+            let result = model(queryTabSnapshot(hasResult: true, isFetching: isFetching, isQueryPlan: true))
+            #expect(!result.controls.showsReadout)
+            #expect(result.controls.showsExecution)
+        }
     }
 
-    @Test("Structure mode never reports an execution")
-    func structureModeReportsNoExecution() {
-        var running = PaginationState()
-        running.isLoading = true
-        let snapshot = makeSnapshot(
-            tabType: .table,
-            rowCount: 0,
-            hasColumns: false,
-            hasTableName: false,
-            pagination: running
-        )
-        #expect(!model(snapshot, viewMode: .structure).controls.showsExecution)
+    @Test("Structure mode never offers the execution slot, running or idle")
+    func structureModeNeverOffersTheExecutionSlot() {
+        let tab = QueryTab(title: "users", query: "", tabType: .table, tableName: "users")
+        for isFetching in [false, true] {
+            let snapshot = StatusBarSnapshot(tab: tab, tableRows: Self.resultRows, isFetching: isFetching)
+            #expect(!model(snapshot, viewMode: .structure).controls.showsExecution)
+        }
     }
 
     @Test("A query tab that never ran reads the fetch the registry reports as loading")
@@ -122,20 +131,20 @@ struct ResultStatusModelTests {
 
         #expect(snapshot.pagination.isLoading)
         #expect(result.readout == .loading)
-        #expect(!result.controls.showsReadout)
-        #expect(result.controls.showsExecution)
     }
 
-    private func runningQueryTabWithoutResult(isQueryPlan: Bool = false) -> StatusBarSnapshot {
-        var running = PaginationState()
-        running.isLoading = true
-        return makeSnapshot(
-            tabType: .query,
-            rowCount: 0,
-            hasColumns: false,
-            hasTableName: false,
-            isQueryPlan: isQueryPlan,
-            pagination: running
+    private static let resultRows = TableRows.from(
+        queryRows: [[.text("1")]],
+        columns: ["id"],
+        columnTypes: [.text(rawType: "INTEGER")]
+    )
+
+    private func queryTabSnapshot(hasResult: Bool, isFetching: Bool, isQueryPlan: Bool = false) -> StatusBarSnapshot {
+        StatusBarSnapshot(
+            tab: QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query),
+            tableRows: hasResult ? Self.resultRows : TableRows(),
+            isFetching: isFetching,
+            isQueryPlan: isQueryPlan
         )
     }
 

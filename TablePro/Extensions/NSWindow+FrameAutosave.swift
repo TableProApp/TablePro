@@ -18,10 +18,23 @@ extension NSWindow {
     /// position and size. See `SplitViewAutosaveName`.
     @MainActor
     func applyAutosaveName(_ name: NSWindow.FrameAutosaveName) {
-        let scoped = NSWindow.FrameAutosaveName(SplitViewAutosaveName.current(name))
+        guard let scoped = SplitViewAutosaveName.current(name) else {
+            center()
+            return
+        }
         setFrameAutosaveName(scoped)
         if !setFrameUsingName(scoped) {
             center()
         }
+    }
+
+    func setFrame(usingAutosaveName name: NSWindow.FrameAutosaveName?) -> Bool {
+        guard let name else { return false }
+        return setFrameUsingName(name)
+    }
+
+    func saveFrame(usingAutosaveName name: NSWindow.FrameAutosaveName?) {
+        guard let name else { return }
+        saveFrame(usingName: name)
     }
 }
