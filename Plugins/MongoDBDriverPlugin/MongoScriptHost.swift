@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
 import os
+import TableProPluginKit
 
 /// The one entry point JavaScript has into the driver.
 ///
@@ -358,6 +358,14 @@ final class MongoScriptHost {
         }
     }
 
+    private func writeCommand(_ document: String, _ request: [String: Any]) throws -> String {
+        let reply = try command(document, request)
+        if let failure = MongoWriteFailure.read(fromReply: reply) {
+            throw MongoDBError(code: failure.code, message: failure.message)
+        }
+        return reply
+    }
+
     private func countDocuments(_ request: [String: Any]) throws -> String {
         let count = try withClient {
             try connection.countDocumentsSync(
@@ -419,7 +427,7 @@ final class MongoScriptHost {
             multi: !isReplace && (request["multi"] as? Bool ?? false),
             options: options
         )
-        return try command(statement, request)
+        return try writeCommand(statement, request)
     }
 
     private func delete(_ request: [String: Any]) throws -> String {
@@ -429,7 +437,7 @@ final class MongoScriptHost {
             multi: request["multi"] as? Bool ?? false,
             options: MongoScriptJson.options(request["options"])
         )
-        return try command(statement, request)
+        return try writeCommand(statement, request)
     }
 
     private func findAndModify(_ request: [String: Any]) throws -> String {
@@ -440,7 +448,7 @@ final class MongoScriptHost {
             remove: request["remove"] as? Bool ?? false,
             options: MongoScriptJson.options(request["options"])
         )
-        return try command(statement, request)
+        return try writeCommand(statement, request)
     }
 
     private func bulkWrite(_ request: [String: Any]) throws -> String {
@@ -451,11 +459,12 @@ final class MongoScriptHost {
         var deleted = 0
         var upserted = 0
 
-        for operation in operations {
-            let statement = try MongoScriptCommandBuilder.bulkOperation(
-                operation, collection: collectionName(request)
-            )
-            let reply = try command(statement.document, request)
+        let statements = try operations.map { operation in
+            try MongoScriptCommandBuilder.bulkOperation(operation, collection: collectionName(request))
+        }
+
+        for statement in statements {
+            let reply = try writeCommand(statement.document, request)
             switch statement.kind {
             case .insert: inserted += Int(MongoScriptJson.number(in: reply, key: "n") ?? 0)
             case .update:

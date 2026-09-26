@@ -17,6 +17,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     private struct Session {
         var candidates: [SQLCompletionItem]
         var replacementRange: NSRange
+        var tokenStart: Int
     }
 
     private struct Configuration: Equatable {
@@ -114,7 +115,11 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
-        session = Session(candidates: result.candidates, replacementRange: result.replacementRange)
+        session = Session(
+            candidates: result.candidates,
+            replacementRange: result.replacementRange,
+            tokenStart: service.tokenStart(in: text, endingAt: offset)
+        )
 
         return (windowPosition: liveCursorPosition, items: result.items.map { SQLSuggestionEntry(item: $0) })
     }
@@ -130,7 +135,11 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               offset >= 0, offset <= text.length else { return }
 
         let start = service.tokenStart(in: text, endingAt: offset)
-        session = Session(candidates: items, replacementRange: NSRange(location: start, length: offset - start))
+        session = Session(
+            candidates: items,
+            replacementRange: NSRange(location: start, length: offset - start),
+            tokenStart: start
+        )
     }
 
     /// Filters and ranks the open session's candidates for the token the cursor sits at the end of.
@@ -154,6 +163,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               offset >= 0, offset <= text.length else { return nil }
 
         let start = service.tokenStart(in: text, endingAt: offset)
+        guard start == session.tokenStart else { return nil }
         let length = offset - start
         guard length > 0, length <= maximumPrefixLength else { return nil }
 

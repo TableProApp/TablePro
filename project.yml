@@ -519,12 +519,14 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptCommandBuilder.swift
       - Plugins/MongoDBDriverPlugin/MongoShellCommandLine.swift
+      - Plugins/MongoDBDriverPlugin/MongoScriptContext.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptCursorOptions.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptError.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptJson.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptObjectId.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptPrelude.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptText.swift
+      - Plugins/MongoDBDriverPlugin/MongoWriteFailure.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift

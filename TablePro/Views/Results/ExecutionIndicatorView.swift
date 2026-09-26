@@ -19,6 +19,7 @@ struct ExecutionIndicatorView: View {
     /// whose commit is on the wire passes false: the spinner stays and the button dims, rather than
     /// offering a cancel that cannot reach the server.
     var canStop = true
+    var leadsWithSeparator = false
     var onCancel: (() -> Void)?
 
     /// Held back rather than the spinner inside it, so a query too fast to report leaves the
@@ -50,6 +51,19 @@ struct ExecutionIndicatorView: View {
     }
 
     var body: some View {
+        HStack(spacing: 6) {
+            if leadsWithSeparator, showsExecution || lastTiming != nil {
+                StatusBarSeparator()
+            }
+            report
+        }
+        .onChange(of: isExecuting) { nowExecuting in
+            if nowExecuting { showsBreakdown = false }
+        }
+        .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)
+    }
+
+    private var report: some View {
         HStack(spacing: 4) {
             if showsExecution {
                 ProgressView()
@@ -75,10 +89,6 @@ struct ExecutionIndicatorView: View {
                 durationReadout(timing)
             }
         }
-        .onChange(of: isExecuting) { nowExecuting in
-            if nowExecuting { showsBreakdown = false }
-        }
-        .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)
     }
 
     // MARK: - Readout

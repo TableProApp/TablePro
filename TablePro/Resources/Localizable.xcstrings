@@ -184121,6 +184121,12 @@
     },
     "Verify CA and Verify Identity check the server certificate against the system trust store. A custom CA and client certificates are not available for SQL Server." : {
 
+    },
+    "MongoDB refused the write (error %u)." : {
+
+    },
+    "The write was applied, but the servers did not confirm it as the write concern asks: %@" : {
+
     }
   },
   "version" : "1.1"

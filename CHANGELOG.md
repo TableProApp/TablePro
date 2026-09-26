@@ -128,6 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pre-connect script failures sometimes reported without the script's own error message.
+- Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
+- `tablepro-mcp` crashing when its standard input was non-blocking.
 - Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
 - Variables declared in a SQL Server script lost after its first statement. (#3078)
 - Later SQL Server result sets shown under the first one's columns, or crashing the app.
@@ -142,6 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Slow definition diff in Compare & Sync for large tables.
 - Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
 - Stale column and MongoDB field suggestions when a refresh ran while they were loading.
+- Autocomplete list that opened while typing ranked for an earlier prefix, such as `set` first for `sel`.
 - Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
 - Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
 - Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery.
@@ -517,6 +520,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No Executing indicator or Stop button in the results status bar while a query tab runs its first query.
 - ER diagram opening at 100% instead of fitted, then losing its zoom the first time you came back to its tab.
 - Diagram Fit to Window stopping a scroll bar's width short when scroll bars are always shown.
+- No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan.
 
 ### Security
 

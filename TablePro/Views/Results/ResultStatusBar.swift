@@ -109,13 +109,7 @@ struct ResultStatusBar: View {
                     onCloseOthers: onCloseOtherResultSets
                 )
             }
-            if model.controls.showsReadout {
-                readoutZone(readoutCluster)
-            } else if model.controls.showsExecutionWithoutReadout {
-                readoutZone(executionIndicator)
-            } else {
-                Spacer(minLength: 0)
-            }
+            readoutZone(readoutCluster)
             controlCluster(presentation)
         }
     }
@@ -151,70 +145,67 @@ struct ResultStatusBar: View {
     /// clusters on either side keep their intrinsic widths.
     private var readoutCluster: some View {
         HStack(spacing: 6) {
-            if model.controls.showsLoadingMore {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityHidden(true)
-                Text("Loading…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ResultStatusReadoutView(readout: model.readout)
+            if model.controls.showsReadout {
+                resultReadout
             }
-
-            if model.controls.showsCountInProgress {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Counting rows"))
+            if model.controls.showsExecution {
+                executionIndicator
             }
-
-            if model.controls.showsExactCountAction {
-                Button(
-                    String(localized: "Count Exactly"),
-                    action: paginationCallbacks.onRequestExactCount
-                )
-                .accessoryBarActionStyle()
-                .help(String(localized: "Replace the estimate with an exact row count."))
-                .accessibilityIdentifier("result-status-count-exactly")
+            if model.controls.showsReadout, isRefreshingSchema {
+                DelayedProgressIndicator(isActive: true)
+                    .accessibilityLabel(String(localized: "Refreshing"))
             }
-
-            if model.controls.showsFetchAll, let onFetchAll {
-                Button(String(localized: "Fetch All"), action: onFetchAll)
-                    .accessoryBarActionStyle()
-                    .help(String(localized: "Load the rows the row cap left behind."))
-                    .accessibilityIdentifier("result-status-fetch-all")
-            }
-
-            if let statusMessage = model.statusMessage {
-                separator
-                /// Yields its width before the sentence beside it does, so a wordy driver message
-                /// truncates instead of squeezing out the row count. Which tier the bar draws is not
-                /// its business: the enclosing frame reports a constant ideal width so no message
-                /// length can change that choice.
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .layoutPriority(-1)
-            }
-
-            executionReadout
         }
     }
 
-    /// Whether a query is running and how long the last one took, beside the rows it produced. It
-    /// used to be a hosted SwiftUI view in the centre of the toolbar, where AppKit dropped it whole
-    /// before any command as soon as the window narrowed.
     @ViewBuilder
-    private var executionReadout: some View {
-        if execution.isActive {
-            separator
-            executionIndicator
+    private var resultReadout: some View {
+        if model.controls.showsLoadingMore {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityHidden(true)
+            Text("Loading…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            ResultStatusReadoutView(readout: model.readout)
         }
-        if isRefreshingSchema {
-            DelayedProgressIndicator(isActive: true)
-                .accessibilityLabel(String(localized: "Refreshing"))
+
+        if model.controls.showsCountInProgress {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(String(localized: "Counting rows"))
+        }
+
+        if model.controls.showsExactCountAction {
+            Button(
+                String(localized: "Count Exactly"),
+                action: paginationCallbacks.onRequestExactCount
+            )
+            .accessoryBarActionStyle()
+            .help(String(localized: "Replace the estimate with an exact row count."))
+            .accessibilityIdentifier("result-status-count-exactly")
+        }
+
+        if model.controls.showsFetchAll, let onFetchAll {
+            Button(String(localized: "Fetch All"), action: onFetchAll)
+                .accessoryBarActionStyle()
+                .help(String(localized: "Load the rows the row cap left behind."))
+                .accessibilityIdentifier("result-status-fetch-all")
+        }
+
+        if let statusMessage = model.statusMessage {
+            StatusBarSeparator()
+            /// Yields its width before the sentence beside it does, so a wordy driver message
+            /// truncates instead of squeezing out the row count. Which tier the bar draws is not
+            /// its business: the enclosing frame reports a constant ideal width so no message
+            /// length can change that choice.
+            Text(statusMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
         }
     }
 
@@ -223,6 +214,7 @@ struct ResultStatusBar: View {
             isExecuting: execution.isExecuting,
             lastTiming: execution.lastTiming,
             canStop: execution.canStop,
+            leadsWithSeparator: model.controls.showsReadout,
             onCancel: execution.onCancel
         )
     }
@@ -234,14 +226,6 @@ struct ResultStatusBar: View {
             maxWidth: .infinity,
             alignment: .leading
         )
-    }
-
-    /// Punctuation, so VoiceOver must not read it as an element of its own.
-    private var separator: some View {
-        Text(verbatim: "·")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
     }
 
     // MARK: - Controls

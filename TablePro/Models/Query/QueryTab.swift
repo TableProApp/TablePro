@@ -24,6 +24,10 @@ enum ResultsViewMode: String, CaseIterable, Equatable {
         self != .structure && self != .output
     }
 
+    var reportsExecution: Bool {
+        self != .structure
+    }
+
     var showsColumnControls: Bool {
         self == .data || self == .json
     }
