@@ -128,6 +128,16 @@ internal func mysqlModifyIndexSQL(
         + "ADD \(mysqlIndexDefinitionSQL(newIndex))"
 }
 
+/// `PRIMARY`, in any case, names the primary key and nothing else: MariaDB 13 refuses
+/// `ADD INDEX primary (b)` with ERROR 1280. Refused before the save, because a save that splits a
+/// replacement of the key's row drops the key first and then cannot add anything back.
+internal func mysqlReservedIndexNameRefusal(for index: PluginIndexDefinition) -> String? {
+    guard index.name.caseInsensitiveCompare("PRIMARY") == .orderedSame else { return nil }
+    return String(
+        localized: "PRIMARY is the primary key's name, and no other index can take it. Rename the index, or change the key on the Columns tab."
+    )
+}
+
 /// `CONSTRAINT name` is optional in MySQL's grammar and the server invents one when it is left out,
 /// so a blank name writes no clause rather than `CONSTRAINT `` `` ``, which is a syntax error.
 internal func mysqlForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinition) -> String {

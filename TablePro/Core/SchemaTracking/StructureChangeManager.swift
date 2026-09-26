@@ -35,6 +35,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     @Published var tableName: String?
 
+    /// Indexes added as `CLUSTERED`, whose type `settleClusteredAdditions` keeps deciding until the
+    /// user picks one for the row.
+    private var indexesAddedClustered: Set<UUID> = []
+
     // MARK: - Undo/Redo Support
 
     /// Private `NSUndoManager` owned by this change manager. Each
@@ -114,6 +118,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
+        indexesAddedClustered.removeAll()
         undoManager.removeAllActions()
 
         // Increment reloadVersion to trigger DataGridView column width recalculation
@@ -163,11 +168,11 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         stageAddition(column, using: Self.columnOperations)
     }
 
-    /// A deleted index is left out of what the copy is added beside, because the save drops every
-    /// index before it adds one.
     func addIndex(_ index: EditableIndexDefinition) {
-        let remaining = workingIndexes.filter { pendingChanges[.index($0.id)]?.isDelete != true }
-        stageAddition(index.addedBeside(remaining), using: Self.indexOperations)
+        if index.type == .clustered {
+            indexesAddedClustered.insert(index.id)
+        }
+        stageAddition(index, using: Self.indexOperations)
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition) {
@@ -191,6 +196,9 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     // MARK: - Index Operations
 
     func updateIndex(id: UUID, with newIndex: EditableIndexDefinition) {
+        if workingIndexes.first(where: { $0.id == id })?.type != newIndex.type {
+            indexesAddedClustered.remove(id)
+        }
         stageEdit(id: id, with: newIndex, using: Self.indexOperations)
     }
 
@@ -239,7 +247,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         registerUndo(operations.addActionName) { target in
             target.applySchemaUndo(operations.additionUndo(entity))
         }
-        validate()
+        workingCopyDidChange()
     }
 
     private func stageEdit<Entity>(
@@ -275,7 +283,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             self[keyPath: operations.working][workingIndex] = newEntity
         }
 
-        validate()
+        workingCopyDidChange()
     }
 
     private func stageDeletion<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
@@ -298,7 +306,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             untrackChangeKey(key)
         }
 
-        validate()
+        workingCopyDidChange()
     }
 
     private static let columnOperations = SchemaEntityOperations<EditableColumnDefinition>(
@@ -393,10 +401,46 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         guard pendingChanges[key]?.isDelete == true else { return }
         pendingChanges.removeValue(forKey: key)
         untrackChangeKey(key)
-        validate()
+        workingCopyDidChange()
     }
 
     // MARK: - Validation
+
+    /// Runs after every change to the working copy, undo and redo included: first what the change
+    /// decides for rows it did not touch, then validation.
+    private func workingCopyDidChange() {
+        settleClusteredAdditions()
+        validate()
+    }
+
+    /// A SQL Server table keeps its rows in the order of one clustered index, and its primary key is
+    /// that index unless it says otherwise. An index added as `CLUSTERED`, which is what Duplicate
+    /// and a paste stage for a copy of that index, takes the place only when no other index the
+    /// table keeps after the save holds it, and is written `NONCLUSTERED` beside one that does, the
+    /// type the server reports for every other index. Two `CLUSTERED` indexes are refused with
+    /// "Cannot create more than one clustered index on table".
+    ///
+    /// Decided again after every change, because the place frees when its holder is deleted, and
+    /// Duplicate, edit the copy, then delete the original is how an index is replaced. Decided once,
+    /// the copy stayed `NONCLUSTERED` and the save left the table with no clustered index. A row
+    /// whose type was changed to anything else is the user's own choice and is left alone.
+    private func settleClusteredAdditions() {
+        var placeIsTaken = workingIndexes.contains { index in
+            !hasTypeSettledByTheEditor(index) && !isPendingDeletion(.index(index.id)) && index.type.ordersTableRows
+        }
+        for position in workingIndexes.indices where hasTypeSettledByTheEditor(workingIndexes[position]) {
+            var index = workingIndexes[position]
+            index.type = placeIsTaken ? .nonclustered : .clustered
+            placeIsTaken = true
+            guard index != workingIndexes[position] else { continue }
+            workingIndexes[position] = index
+            pendingChanges[.index(index.id)] = .addIndex(index)
+        }
+    }
+
+    private func hasTypeSettledByTheEditor(_ index: EditableIndexDefinition) -> Bool {
+        indexesAddedClustered.contains(index.id) && (index.type == .clustered || index.type == .nonclustered)
+    }
 
     private func validate() {
         validationErrors.removeAll()
@@ -415,17 +459,8 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             )
         }
 
-        let indexNames = workingIndexes.filter { $0.isValid }.map { $0.name }
-        let duplicateIndexes = Dictionary(grouping: indexNames, by: { $0 })
-            .filter { $0.value.count > 1 }
-            .map { $0.key }
-
-        for duplicate in duplicateIndexes {
-            for index in workingIndexes.filter({ $0.name == duplicate }) {
-                validationErrors[.index(index.id)] = String(
-                    format: String(localized: "Duplicate index name: %@"), duplicate
-                )
-            }
+        flagDuplicateNames(using: Self.indexOperations, name: \.name, isNamed: \.isValid, comparedAs: { $0 }) {
+            String(format: String(localized: "Duplicate index name: %@"), $0)
         }
 
         /// Only a row this save actually edits is checked against the columns.
@@ -468,18 +503,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             )
         }
 
-        let constraintNames = workingCheckConstraints.filter { $0.isValid }.map { $0.name }
-        let duplicateConstraints = Dictionary(grouping: constraintNames, by: { $0 })
-            .filter { $0.value.count > 1 }
-            .map { $0.key }
-
-        for duplicate in duplicateConstraints {
-            for constraint in workingCheckConstraints.filter({ $0.name == duplicate }) {
-                validationErrors[.checkConstraint(constraint.id)] = String(
-                    format: String(localized: "Duplicate constraint name: %@"), duplicate
-                )
-            }
+        flagDuplicateNames(
+            using: Self.checkConstraintOperations, name: \.name, isNamed: \.isValid, comparedAs: Self.constraintNameKey
+        ) {
+            String(format: String(localized: "Duplicate constraint name: %@"), $0)
         }
+        flagChangesToASharedConstraintName()
 
         /// Checked only when this save changes the key, as the index and foreign key rows are. A
         /// rename leaves the loaded key naming the old spelling, and every engine's `RENAME COLUMN`
@@ -493,7 +522,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     /// Every column the table keeps after this save, whatever state its name and type are in.
     private var columnsAfterSave: [EditableColumnDefinition] {
-        workingColumns.filter { !isColumnPendingDeletion($0.id) }
+        workingColumns.filter { !isPendingDeletion(.column($0.id)) }
     }
 
     /// Only a column this save adds or changes is held to being complete.
@@ -527,6 +556,59 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         }
     }
 
+    /// A name counts once for each row the table keeps, and blocks the save only when the save put
+    /// one of those rows there, the rule columns follow.
+    ///
+    /// A row being deleted keeps nothing: the save drops every index and check constraint before it
+    /// adds or renames one, so its name is free again by then. Deleting an index and adding one
+    /// under its name used to be refused as a duplicate of the very row being dropped.
+    ///
+    /// `comparedAs` gives the key two names must share to be one name to the database.
+    private func flagDuplicateNames<Entity>(
+        using operations: SchemaEntityOperations<Entity>,
+        name: KeyPath<Entity, String>,
+        isNamed: KeyPath<Entity, Bool>,
+        comparedAs key: (String) -> String,
+        message: (String) -> String
+    ) {
+        let kept = self[keyPath: operations.working].filter {
+            $0[keyPath: isNamed] && !isPendingDeletion(operations.identifier($0.id))
+        }
+        for rows in Dictionary(grouping: kept, by: { key($0[keyPath: name]) }).values where rows.count > 1 {
+            guard rows.contains(where: { isStaged(operations.identifier($0.id)) }) else { continue }
+            for row in rows {
+                validationErrors[operations.identifier(row.id)] = message(row[keyPath: name])
+            }
+        }
+    }
+
+    /// SQLite and MariaDB treat `c` and `C` as one check constraint name: measured on SQLite 3.54,
+    /// `ADD CONSTRAINT "C"` beside `c` fails with "constraint C already exists", and MariaDB 13.0.2
+    /// refuses it with ERROR 1826. PostgreSQL keeps the two apart, and refusing such a pair there
+    /// runs nothing.
+    private static func constraintNameKey(_ name: String) -> String {
+        name.lowercased()
+    }
+
+    /// SQLite accepts two table-level check constraints under one name, compares constraint names
+    /// without regard to case, and drops the first one it finds by that name. So a change to one
+    /// while another keeps the name can land on the other one. Changing every one of them is safe,
+    /// because each is dropped by name and added back from its own new definition. PostgreSQL keeps
+    /// `c` and `C` apart, and refusing a change to one of those runs nothing.
+    private func flagChangesToASharedConstraintName() {
+        let loaded = currentCheckConstraints.filter(\.isValid)
+        for rows in Dictionary(grouping: loaded, by: { Self.constraintNameKey($0.name) }).values where rows.count > 1 {
+            let changed = rows.filter { pendingChanges[.checkConstraint($0.id)] != nil }
+            guard !changed.isEmpty, changed.count < rows.count else { continue }
+            for row in changed {
+                validationErrors[.checkConstraint(row.id)] = String(
+                    format: String(localized: "More than one check constraint is named %@. Change or delete all of them in the same save."),
+                    row.name
+                )
+            }
+        }
+    }
+
     /// Whether this save changes the row, and is not simply removing it.
     ///
     /// A row on its way out is not held to being complete: the user struck through a foreign key
@@ -535,6 +617,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     private func isStaged(_ key: SchemaChangeIdentifier) -> Bool {
         guard let change = pendingChanges[key] else { return false }
         return !change.isDelete
+    }
+
+    private func isPendingDeletion(_ key: SchemaChangeIdentifier) -> Bool {
+        pendingChanges[key]?.isDelete == true
     }
 
     /// Identifiers compare case insensitively, the way every engine TablePro edits resolves them.
@@ -551,13 +637,6 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         guard !column.isNullable, column.hasNullDefault else { return false }
         guard let loaded = currentColumns.first(where: { $0.id == column.id }) else { return true }
         return loaded.isNullable || !loaded.hasNullDefault
-    }
-
-    private func isColumnPendingDeletion(_ id: UUID) -> Bool {
-        if case .deleteColumn = pendingChanges[.column(id)] {
-            return true
-        }
-        return false
     }
 
     // MARK: - State Management
@@ -578,6 +657,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
+        indexesAddedClustered.removeAll()
         resetWorkingState()
         reloadVersion += 1
         undoManager.removeAllActions()
@@ -629,7 +709,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             applyPrimaryKeyChangeUndo(old: old)
         }
 
-        validate()
+        workingCopyDidChange()
     }
 
     private func applyEditUndo<Entity>(
