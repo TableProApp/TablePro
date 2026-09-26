@@ -252,7 +252,12 @@ public final class SuggestionController: NSWindowController {
             close()
         }
 
-        model.cursorsUpdated(textView: textView, delegate: delegate, position: position) {
+        model.cursorsUpdated(
+            textView: textView,
+            delegate: delegate,
+            position: position,
+            presentIfNot: presentIfNot
+        ) {
             close()
 
             if presentIfNot {

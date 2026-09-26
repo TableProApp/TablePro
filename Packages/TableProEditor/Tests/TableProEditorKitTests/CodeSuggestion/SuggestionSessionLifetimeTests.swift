@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 @testable import TableProEditorKit
 import XCTest
 
@@ -36,7 +35,7 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(textView))
 
         let model = SuggestionViewModel()
-        let delegate = LifetimeStubDelegate(items: [LifetimeStubEntry(label: "SELECT")], sleepMilliseconds: 20)
+        let delegate = LifetimeStubDelegate(items: [StubSuggestionEntry(label: "SELECT")], sleepMilliseconds: 20)
 
         var presentationCount = 0
         model.showCompletions(
@@ -63,7 +62,7 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
     func test_cursorsUpdated_presentsRatherThanFilingItemsIntoAWindowThatIsNotShown() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
-        let delegate = LifetimeStubDelegate(items: nil, cursorMoveItems: [LifetimeStubEntry(label: "SELECT")])
+        let delegate = LifetimeStubDelegate(items: nil, cursorMoveItems: [StubSuggestionEntry(label: "SELECT")])
 
         model.activeTextView = textViewController
         model.delegate = delegate
@@ -120,22 +119,12 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
     /// longer exists.
     @MainActor
     func test_showCompletions_doesNotPresentWhenTheSelectionCallbackDismissedTheSession() async throws {
-        let textViewController = Mock.textViewController(theme: Mock.theme())
-        let window = AlwaysKeyWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.contentViewController = textViewController
+        let (window, textViewController) = Mock.keyWindowedTextViewController()
         defer { window.close() }
-        window.orderFrontRegardless()
-        let textView = try XCTUnwrap(textViewController.textView)
-        XCTAssertTrue(window.makeFirstResponder(textView))
+        XCTAssertIdentical(window.firstResponder, textViewController.textView)
 
         let model = SuggestionViewModel()
-        let delegate = LifetimeStubDelegate(items: [LifetimeStubEntry(label: "SELECT")])
+        let delegate = LifetimeStubDelegate(items: [StubSuggestionEntry(label: "SELECT")])
         delegate.onSelect = { model.willClose() }
 
         var presentationCount = 0
@@ -200,12 +189,6 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
     }
 }
 
-/// The SwiftPM test runner is not a foreground app, so no window it makes can become key and the
-/// presentation guard in `showCompletions` is otherwise unreachable from a test.
-private final class AlwaysKeyWindow: NSWindow {
-    override var isKeyWindow: Bool { true }
-}
-
 @MainActor
 private final class LifetimeStubDelegate: CodeSuggestionDelegate {
     private let items: [CodeSuggestionEntry]?
@@ -228,7 +211,7 @@ private final class LifetimeStubDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
-    ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
+    ) async -> CodeSuggestionResponse? {
         if sleepMilliseconds > 0 {
             do {
                 try await Task.sleep(for: .milliseconds(sleepMilliseconds))
@@ -237,7 +220,7 @@ private final class LifetimeStubDelegate: CodeSuggestionDelegate {
             }
         }
         guard let items else { return nil }
-        return (windowPosition: cursorPosition, items: items)
+        return .answeringAnEmptyPrefix(items, at: cursorPosition)
     }
 
     func completionOnCursorMove(
@@ -260,16 +243,4 @@ private final class LifetimeStubDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {}
-}
-
-private struct LifetimeStubEntry: CodeSuggestionEntry {
-    var label: String
-    var detail: String? { nil }
-    var documentation: String? { nil }
-    var pathComponents: [String]? { nil }
-    var targetPosition: CursorPosition? { nil }
-    var sourcePreview: String? { nil }
-    var image: Image { Image(systemName: "circle") }
-    var imageColor: Color { .gray }
-    var deprecated: Bool { false }
 }

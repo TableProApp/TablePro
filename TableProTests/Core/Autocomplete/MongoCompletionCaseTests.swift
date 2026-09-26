@@ -65,7 +65,9 @@ struct MongoCompletionCaseTests {
     }
 
     @Test("Every item the Mongo service builds declares a fixed spelling")
-    func everyMongoItemIsFixed() {
-        #expect(service().seedItems().allSatisfy { $0.caseFolding == .fixed })
+    func everyMongoItemIsFixed() async {
+        let items = await completions("")
+        #expect(!items.isEmpty)
+        #expect(items.allSatisfy { $0.caseFolding == .fixed })
     }
 }

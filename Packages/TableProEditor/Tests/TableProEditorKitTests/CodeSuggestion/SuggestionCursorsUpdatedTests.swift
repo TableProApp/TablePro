@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 @testable import TableProEditorKit
 import XCTest
 
@@ -13,7 +12,7 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
         model.activeTextView = textViewController
         model.delegate = delegate
         model.isPresented = true
-        model.items = [FilterStubEntry(label: "SELECT")]
+        model.items = [StubSuggestionEntry(label: "SELECT")]
         model.itemsRequestTask = Task { try? await Task.sleep(for: .seconds(10)) }
         defer { model.itemsRequestTask?.cancel() }
 
@@ -32,13 +31,13 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
     func test_cursorsUpdated_filtersItemsInPlaceWhenDelegateProvidesThem() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
-        let filtered: [CodeSuggestionEntry] = [FilterStubEntry(label: "SELECT"), FilterStubEntry(label: "SET")]
+        let filtered: [CodeSuggestionEntry] = [StubSuggestionEntry(label: "SELECT"), StubSuggestionEntry(label: "SET")]
         let delegate = FilteringStubDelegate(itemsOnCursorMove: filtered)
 
         model.activeTextView = textViewController
         model.delegate = delegate
         model.isPresented = true
-        model.items = [FilterStubEntry(label: "stale")]
+        model.items = [StubSuggestionEntry(label: "stale")]
         model.selectedIndex = 0
 
         var closeCount = 0
@@ -61,7 +60,7 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
 
         model.activeTextView = textViewController
         model.delegate = delegate
-        model.items = [FilterStubEntry(label: "SELECT")]
+        model.items = [StubSuggestionEntry(label: "SELECT")]
         model.itemsRequestTask = nil
 
         var closeCount = 0
@@ -79,7 +78,7 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
         let model = SuggestionViewModel()
         let activeController = Mock.textViewController(theme: Mock.theme())
         let otherController = Mock.textViewController(theme: Mock.theme())
-        let delegate = FilteringStubDelegate(itemsOnCursorMove: [FilterStubEntry(label: "SELECT")])
+        let delegate = FilteringStubDelegate(itemsOnCursorMove: [StubSuggestionEntry(label: "SELECT")])
 
         model.activeTextView = activeController
         model.delegate = delegate
@@ -108,7 +107,7 @@ private final class FilteringStubDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
-    ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
+    ) async -> CodeSuggestionResponse? {
         nil
     }
 
@@ -124,16 +123,4 @@ private final class FilteringStubDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {}
-}
-
-private struct FilterStubEntry: CodeSuggestionEntry {
-    var label: String
-    var detail: String? { nil }
-    var documentation: String? { nil }
-    var pathComponents: [String]? { nil }
-    var targetPosition: CursorPosition? { nil }
-    var sourcePreview: String? { nil }
-    var image: Image { Image(systemName: "circle") }
-    var imageColor: Color { .gray }
-    var deprecated: Bool { false }
 }

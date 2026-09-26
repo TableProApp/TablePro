@@ -5,7 +5,6 @@
 
 import AppKit
 import Carbon.HIToolbox
-import SwiftUI
 @testable import TableProEditorKit
 import TableProTextEngine
 import Testing
@@ -82,18 +81,6 @@ private final class RecordingCompletionDelegate: CodeSuggestionDelegate {
     ) {
         appliedLabels.append(item.label)
     }
-}
-
-private struct StubSuggestionEntry: CodeSuggestionEntry {
-    let label: String
-    let detail: String? = nil
-    let documentation: String? = nil
-    let pathComponents: [String]? = nil
-    let targetPosition: CursorPosition? = nil
-    let sourcePreview: String? = nil
-    let image = Image(systemName: "tablecells")
-    let imageColor = Color.accentColor
-    let deprecated = false
 }
 
 @Suite("Editor key monitors during an input method composition")
