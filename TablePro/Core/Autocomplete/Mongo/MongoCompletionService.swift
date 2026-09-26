@@ -21,12 +21,6 @@ final class MongoCompletionService: QueryCompletionService {
 
     var triggerCharacters: Set<String> { [".", "$", "{", "[", "\"", "'", ":", " "] }
 
-    func seedItems() -> [SQLCompletionItem] {
-        MongoVocabulary.shellCommands.map {
-            SQLCompletionItem.keyword($0.name, documentation: $0.detail, caseFolding: .fixed)
-        }
-    }
-
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         favoriteKeywords = keywords
     }
@@ -94,7 +88,7 @@ final class MongoCompletionService: QueryCompletionService {
         case .suppressed:
             return []
         case .statementStart:
-            return seedItems() + favoriteItems() + [
+            return shellCommandItems() + favoriteItems() + [
                 SQLCompletionItem.keyword("db", documentation: "Current database", caseFolding: .fixed)
             ]
         case .databaseMember:
@@ -120,6 +114,12 @@ final class MongoCompletionService: QueryCompletionService {
                 + operatorItems(MongoVocabulary.accumulators)
                 + variableItems()
                 + (await fieldPathItems(for: collection))
+        }
+    }
+
+    private func shellCommandItems() -> [SQLCompletionItem] {
+        MongoVocabulary.shellCommands.map {
+            SQLCompletionItem.keyword($0.name, documentation: $0.detail, caseFolding: .fixed)
         }
     }
 

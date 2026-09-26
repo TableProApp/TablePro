@@ -32,15 +32,6 @@ final class SQLCompletionService: QueryCompletionService {
     /// keystroke instead of the next connection.
     private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
 
-    /// Seeding starts a session the analyzer has not seen, so the context a previous session
-    /// left behind stops describing anything. Ranking a seeded session against it would score
-    /// the new prefix under the old clause.
-    func seedItems() -> [SQLCompletionItem] {
-        lastContext = .unanalyzed
-        let items = engine.keywordCompletions() + engine.allFavoriteItems()
-        return Array(items.prefix(engine.provider.seedPoolLimit))
-    }
-
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         engine.updateFavoriteKeywords(keywords)
     }

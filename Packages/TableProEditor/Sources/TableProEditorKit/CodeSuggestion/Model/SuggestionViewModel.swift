@@ -35,6 +35,8 @@ final class SuggestionViewModel: ObservableObject {
     /// there clears the live request instead of its own.
     private var requestGeneration = 0
 
+    private var lastDroppedMovePresents = false
+
     weak var delegate: CodeSuggestionDelegate?
 
     /// Invoked after a successful apply so the owning controller can dismiss the
@@ -108,6 +110,7 @@ final class SuggestionViewModel: ObservableObject {
         self.activeTextView = nil
         self.delegate = nil
         self.isPresented = false
+        self.lastDroppedMovePresents = false
         itemsRequestTask?.cancel()
 
         guard textView.view.window != nil else {
@@ -127,17 +130,22 @@ final class SuggestionViewModel: ObservableObject {
             }
 
             do {
-                guard let completionItems = await delegate.completionSuggestionsRequested(
+                guard let response = await delegate.completionSuggestionsRequested(
                     textView: textView,
                     cursorPosition: cursorPosition,
                     isManualTrigger: isManualTrigger
                 ) else {
                     Self.logger.debug("showCompletions: delegate returned nil items")
-                    self.endSession(generation: generation)
+                    self.endSessionOrAskAgain(
+                        textView: textView,
+                        delegate: delegate,
+                        generation: generation,
+                        showWindowOnParent: showWindowOnParent
+                    )
                     return
                 }
 
-                Self.logger.debug("showCompletions: got \(completionItems.items.count) items")
+                Self.logger.debug("showCompletions: got \(response.items.count) items")
 
                 try Task.checkCancellation()
                 try await MainActor.run {
@@ -152,7 +160,7 @@ final class SuggestionViewModel: ObservableObject {
                         return
                     }
 
-                    guard let windowPosition = textView.resolveCursorPosition(completionItems.windowPosition),
+                    guard let windowPosition = textView.resolveCursorPosition(response.windowPosition),
                           let cursorRect = textView.textView.layoutManager.rectForOffset(
                             windowPosition.range.location
                           ) else {
@@ -161,14 +169,14 @@ final class SuggestionViewModel: ObservableObject {
                         return
                     }
 
-                    guard let items = self.itemsForLiveCursor(
-                        requested: completionItems.items,
-                        answeredAt: windowPosition,
-                        textView: textView,
-                        delegate: delegate
-                    ) else {
-                        Self.logger.debug("showCompletions: nothing matches where the cursor moved while loading")
-                        self.endSession(generation: generation)
+                    guard let items = self.itemsForLiveEditor(response, textView: textView, delegate: delegate) else {
+                        Self.logger.debug("showCompletions: the answer no longer matches the text at the cursor")
+                        self.endSessionOrAskAgain(
+                            textView: textView,
+                            delegate: delegate,
+                            generation: generation,
+                            showWindowOnParent: showWindowOnParent
+                        )
                         return
                     }
 
@@ -195,21 +203,38 @@ final class SuggestionViewModel: ObservableObject {
         }
     }
 
-    private func itemsForLiveCursor(
-        requested: [CodeSuggestionEntry],
-        answeredAt windowPosition: CursorPosition,
+    private func itemsForLiveEditor(
+        _ response: CodeSuggestionResponse,
         textView: TextViewController,
         delegate: CodeSuggestionDelegate
     ) -> [CodeSuggestionEntry]? {
         guard let liveCursor = textView.cursorPositions.first,
-              liveCursor.range != windowPosition.range else {
-            return requested
+              !response.prefix.isCurrent(at: liveCursor, in: textView) else {
+            return response.items
         }
         guard let reranked = delegate.completionOnCursorMove(textView: textView, cursorPosition: liveCursor),
               !reranked.isEmpty else {
             return nil
         }
         return reranked
+    }
+
+    private func endSessionOrAskAgain(
+        textView: TextViewController,
+        delegate: CodeSuggestionDelegate,
+        generation: Int,
+        showWindowOnParent: @escaping @MainActor (NSWindow, NSRect) -> Void
+    ) {
+        guard requestGeneration == generation else { return }
+        let asksAgain = lastDroppedMovePresents && !Task.isCancelled
+        endSession()
+        guard asksAgain, let liveCursor = textView.cursorPositions.first else { return }
+        showCompletions(
+            textView: textView,
+            delegate: delegate,
+            cursorPosition: liveCursor,
+            showWindowOnParent: showWindowOnParent
+        )
     }
 
     /// Ends the session this request owns, so nothing is left claiming a window that was never
@@ -223,6 +248,7 @@ final class SuggestionViewModel: ObservableObject {
     /// nothing and again from the window's own close.
     private func endSession() {
         isPresented = false
+        lastDroppedMovePresents = false
         items.removeAll()
         selectedIndex = 0
         syntaxHighlightedCache = [:]
@@ -237,6 +263,7 @@ final class SuggestionViewModel: ObservableObject {
         textView: TextViewController,
         delegate: CodeSuggestionDelegate,
         position: CursorPosition,
+        presentIfNot: Bool = false,
         close: () -> Void
     ) {
         guard !isApplyingCompletion else { return }
@@ -259,7 +286,10 @@ final class SuggestionViewModel: ObservableObject {
             return
         }
 
-        guard itemsRequestTask == nil else { return }
+        guard itemsRequestTask == nil else {
+            lastDroppedMovePresents = presentIfNot
+            return
+        }
 
         close()
     }
