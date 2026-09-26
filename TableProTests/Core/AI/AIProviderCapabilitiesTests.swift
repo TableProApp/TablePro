@@ -39,7 +39,7 @@ struct AIProviderCapabilitiesTests {
 
     @Test("HTTP API-key providers accept max output tokens, a configurable endpoint, and model fetch")
     func standardHTTPProviders() {
-        for type in [AIProviderType.openAI, .claude, .gemini, .xai, .openRouter, .ollama] {
+        for type in [AIProviderType.openAI, .claude, .gemini, .xai, .openRouter, .requesty, .ollama] {
             let provider = descriptor(type)
             #expect(provider?.allowsMaxOutputTokens == true, "\(type.rawValue) should accept max output tokens")
             #expect(provider?.allowsEndpointConfiguration == true, "\(type.rawValue) should allow endpoint config")

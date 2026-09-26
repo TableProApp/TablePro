@@ -22,6 +22,7 @@ struct AIEndpointTests {
         #expect(chatURL("https://api.openai.com", .chatCompletions) == "https://api.openai.com/v1/chat/completions")
         #expect(modelsURL("https://api.openai.com", .chatCompletions) == "https://api.openai.com/v1/models")
         #expect(chatURL("https://openrouter.ai/api", .chatCompletions) == "https://openrouter.ai/api/v1/chat/completions")
+        #expect(chatURL("https://router.requesty.ai", .chatCompletions) == "https://router.requesty.ai/v1/chat/completions")
         #expect(chatURL("https://opencode.ai/zen", .chatCompletions) == "https://opencode.ai/zen/v1/chat/completions")
         #expect(chatURL("http://localhost:8080", .chatCompletions) == "http://localhost:8080/v1/chat/completions")
     }
