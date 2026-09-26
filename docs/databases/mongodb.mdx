@@ -128,6 +128,13 @@ available: object literals with unquoted keys, single-quoted strings, regex lite
 return, so a filter written that way keeps matching. `new Date` and `instanceof Date` are the
 native ones.
 
+`$type`, `$regex` and `$options` objects reach the server as the operator documents they are
+written as, the same as in mongosh: `{tags: {$type: ["array", "null"]}}` and
+`{name: {$regex: "^a", $options: "i"}}` filter in a query tab and in the filter bar's
+**Raw Filter** row. Such an object is a document everywhere, so `insertOne` stores
+`{$regex: "a", $options: "i"}` as an embedded document and MongoDB refuses it inside `$in`. Write
+a regular expression value as a literal, `/^a/i`.
+
 ```javascript
 db.orders.find({status: "completed"}, {customerId: 1, total: 1})
   .sort({date: -1})
@@ -217,6 +224,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - Nested paths filter but do not sort. Sorting works on the grid's own columns.
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
 - GridFS buckets are not browsable, and change streams are unsupported.
+- A `Code` scope holding an object that opens with `$type`, `$regex` or `$options`, such as `Code("f", {a: {$type: "binData"}})`, fails with `This is not a document MongoDB can read`. List another key of that object first.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
 - Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
 

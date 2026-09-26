@@ -505,6 +505,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
+      - Plugins/MongoDBDriverPlugin/MongoBsonAssembly.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionDDL.swift

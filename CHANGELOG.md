@@ -117,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
 - Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
 - `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
+- `$regex` and `$options` objects in MongoDB scripts and **Raw Filter** sent as operator documents, as in mongosh.
 
 ### Removed
 
@@ -529,6 +530,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB collections could not be created from **New Table…**. (#3131)
 - A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
+- MongoDB filters, validators and pipelines with a `$type` or `$regex` object refused as "not a document MongoDB can read".
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
 
