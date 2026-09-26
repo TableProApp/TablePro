@@ -401,30 +401,9 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     private func validate() {
         validationErrors.removeAll()
 
-        for column in workingColumns {
-            if !column.isValid {
-                validationErrors[.column(column.id)] = String(localized: "Column must have a name and a data type")
-            } else if isStaged(.column(column.id)), introducesNullDefaultOnNotNull(column) {
-                validationErrors[.column(column.id)] = String(
-                    format: String(localized: "%@ does not allow NULL, so its default cannot be NULL"), column.name
-                )
-            }
-        }
-
-        let columnNames = workingColumns.filter { column in
-            column.isValid && !isColumnPendingDeletion(column.id)
-        }.map { $0.name }
-        let duplicateColumns = Dictionary(grouping: columnNames, by: { $0 })
-            .filter { $0.value.count > 1 }
-            .map { $0.key }
-
-        for duplicate in duplicateColumns {
-            for column in workingColumns.filter({ $0.name == duplicate && !isColumnPendingDeletion($0.id) }) {
-                validationErrors[.column(column.id)] = String(
-                    format: String(localized: "Duplicate column name: %@"), duplicate
-                )
-            }
-        }
+        let keptColumns = columnsAfterSave
+        validateColumns(keptColumns)
+        let columnNames = keptColumns.map(\.name)
 
         for index in workingIndexes where isStaged(.index(index.id)) && !index.isValid {
             validationErrors[.index(index.id)] = String(localized: "Index must have a name and at least one column")
@@ -502,10 +481,47 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             }
         }
 
-        for columnName in workingPrimaryKey {
-            if !columnNames.contains(columnName) {
-                validationErrors[.primaryKey] = String(
-                    format: String(localized: "Primary key references a column that does not exist: %@"), columnName
+        /// Checked only when this save changes the key, as the index and foreign key rows are. A
+        /// rename leaves the loaded key naming the old spelling, and every engine's `RENAME COLUMN`
+        /// carries the key over itself; dropping a key column is the database's to allow or refuse.
+        for columnName in workingPrimaryKey where isStaged(.primaryKey) && !namesAColumn(columnName, in: columnNames) {
+            validationErrors[.primaryKey] = String(
+                format: String(localized: "Primary key references a column that does not exist: %@"), columnName
+            )
+        }
+    }
+
+    /// Every column the table keeps after this save, whatever state its name and type are in.
+    private var columnsAfterSave: [EditableColumnDefinition] {
+        workingColumns.filter { !isColumnPendingDeletion($0.id) }
+    }
+
+    /// Only a column this save adds or changes is held to being complete.
+    ///
+    /// An untouched column is the database's own, and a typeless SQLite column or an empty MongoDB
+    /// field name is no reason to refuse an edit made somewhere else. A duplicate name blocks only
+    /// when the save put one of its columns there; an untouched pair stays the database's to judge.
+    /// Every name the table will hold is compared, a blank one it was read with included, while a
+    /// blank row still to be named is incomplete rather than a duplicate.
+    private func validateColumns(_ keptColumns: [EditableColumnDefinition]) {
+        let loadedColumns = Dictionary(currentColumns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for column in keptColumns where isStaged(.column(column.id)) {
+            if column.isIncomplete(over: loadedColumns[column.id]) {
+                validationErrors[.column(column.id)] = String(localized: "Column must have a name and a data type")
+            } else if introducesNullDefaultOnNotNull(column) {
+                validationErrors[.column(column.id)] = String(
+                    format: String(localized: "%@ does not allow NULL, so its default cannot be NULL"), column.name
+                )
+            }
+        }
+
+        let savablyNamed = keptColumns.filter { $0.hasSavableName(over: loadedColumns[$0.id]) }
+        let sameNamed = Dictionary(grouping: savablyNamed, by: \.name)
+        for (name, columns) in sameNamed where columns.count > 1 {
+            guard columns.contains(where: { isStaged(.column($0.id)) }) else { continue }
+            for column in columns {
+                validationErrors[.column(column.id)] = String(
+                    format: String(localized: "Duplicate column name: %@"), name
                 )
             }
         }
