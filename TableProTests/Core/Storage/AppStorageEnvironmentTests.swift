@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 struct AppStorageEnvironmentTests {
     private let sandbox = AppStorageEnvironment.sandboxVariable
@@ -30,6 +30,15 @@ struct AppStorageEnvironmentTests {
     @Test("A sandbox wins even without the opt-in flag, so nothing silently escapes it")
     func sandboxAloneIsEnough() {
         #expect(AppStorageEnvironment.decision(for: [sandbox: "/tmp/x"]) == .isolated(path: "/tmp/x"))
+    }
+
+    @Test("The unit test host is told apart by the configuration XCTest hands it, and a UI test is not")
+    func unitTestHostIsDetected() {
+        let unitTestHost = AppStorageEnvironment.unitTestHostVariable
+        #expect(!AppStorageEnvironment.isUnitTestHost([:]))
+        #expect(!AppStorageEnvironment.isUnitTestHost([uiTesting: "1", sandbox: "/tmp/x"]))
+        #expect(AppStorageEnvironment.isUnitTestHost([unitTestHost: "/tmp/run.xctestconfiguration"]))
+        #expect(AppStorageEnvironment.shared.isUnitTestHost)
     }
 
     @Test("Whitespace around the path is not a path")

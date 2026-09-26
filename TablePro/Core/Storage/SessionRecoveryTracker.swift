@@ -7,7 +7,7 @@ import Foundation
 
 @MainActor
 enum SessionRecoveryTracker {
-    private static let storage: LastOpenConnectionsStorage? = NSClassFromString("XCTestCase") == nil ? .shared : nil
+    private static let storage: LastOpenConnectionsStorage? = AppStorageEnvironment.shared.isUnitTestHost ? nil : .shared
 
     /// Connections eligible for "Reopen Last Session": one the user actually worked in,
     /// or one whose window is still holding the intent to reach it. A cancelled attempt

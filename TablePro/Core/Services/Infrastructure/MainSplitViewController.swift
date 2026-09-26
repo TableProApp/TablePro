@@ -155,7 +155,7 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// Namespaced per sandbox under UI test, because AppKit files this record in the standard
     /// defaults domain, which the sandbox does not redirect. See `SplitViewAutosaveName` for the
     /// failure that came of one case inheriting another's pane geometry.
-    private var splitAutosaveName: NSSplitView.AutosaveName {
+    private var splitAutosaveName: NSSplitView.AutosaveName? {
         SplitViewAutosaveName.current(SplitViewAutosaveName.base)
     }
 

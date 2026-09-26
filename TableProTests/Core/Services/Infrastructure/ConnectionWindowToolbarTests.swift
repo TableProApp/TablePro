@@ -10,7 +10,7 @@ import Testing
 
 @Suite("Connection window toolbar", .serialized)
 @MainActor
-struct ConnectionWindowToolbarTests {
+internal struct ConnectionWindowToolbarTests {
     private static let pinnedWindowSize = CGSize(width: 1_512, height: 861)
 
     private static let buttonActions: [(NSToolbarItem.Identifier, String)] = [
@@ -60,16 +60,12 @@ struct ConnectionWindowToolbarTests {
         let refresh = try #require(item(MainWindowToolbar.refresh, in: toolbar))
         let commit = try #require(item(MainWindowToolbar.saveChanges, in: toolbar))
 
-        fixture.workspace.open(EditorTabPayload(
-            connectionId: fixture.workspace.connectionId,
-            tabType: .table,
-            tableName: "users"
-        ))
+        fixture.workspace.open(EditorTabPayload(connectionId: fixture.workspace.connectionId, intent: .newEmptyTab))
         #expect(
-            await settle(fixture) { fixture.toolbarOwner.currentVisibilityKey().tabKind == .table },
-            "The toolbar never followed the table tab"
+            await settle(fixture) { fixture.toolbarOwner.currentVisibilityKey().tabKind == .query },
+            "The toolbar never followed the query tab"
         )
-        #expect(!refresh.isHidden, "A table tab shows Refresh, or its absence below would prove nothing")
+        #expect(!refresh.isHidden, "A query tab shows Refresh, or its absence below would prove nothing")
         #expect(commit.label == String(localized: "Save Changes"))
 
         #expect(drawnControl(sending: "performRefresh:", in: fixture) != nil)
