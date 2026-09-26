@@ -76,4 +76,15 @@ enum MongoScriptText {
     static func switchedDatabase(_ name: String) -> String {
         String(format: String(localized: "Switched to %@"), name)
     }
+
+    static func writeRefused(code: UInt32) -> String {
+        String(format: String(localized: "MongoDB refused the write (error %u)."), code)
+    }
+
+    static func writeNotAcknowledged(reason: String) -> String {
+        String(
+            format: String(localized: "The write was applied, but the servers did not confirm it as the write concern asks: %@"),
+            reason
+        )
+    }
 }

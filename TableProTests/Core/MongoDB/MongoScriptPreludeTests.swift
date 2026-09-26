@@ -18,6 +18,7 @@ struct MongoScriptPreludeTests {
         private(set) var requests: [[String: Any]] = []
         private(set) var printed: [String] = []
         var replies: [String] = []
+        var refusal: (message: String, code: Int)?
         var database = "shop"
 
         func handle(_ requestJson: String) -> String {
@@ -37,13 +38,17 @@ struct MongoScriptPreludeTests {
             case "cursorConfigure", "cursorClose", "useDatabase", "sleep":
                 return "{\"ok\":true,\"v\":null}"
             default:
+                if let refusal {
+                    return "{\"ok\":false,\"e\":{\"m\":\"\(refusal.message)\",\"c\":\(refusal.code)}}"
+                }
                 let reply = replies.isEmpty ? "null" : replies.removeFirst()
                 return "{\"ok\":true,\"v\":\(reply)}"
             }
         }
 
-        func record(printed line: String) {
+        func record(printed line: String) -> Bool {
             printed.append(line)
+            return true
         }
 
         func requests(op: String) -> [[String: Any]] {
@@ -52,15 +57,10 @@ struct MongoScriptPreludeTests {
     }
 
     private func makeContext(_ host: RecordingHost) throws -> JSContext {
-        let context = try #require(JSContext())
-        let execute: @convention(block) (String) -> String = { host.handle($0) }
-        let emit: @convention(block) (String) -> Void = { host.record(printed: $0) }
-        context.setObject(execute, forKeyedSubscript: "__tp_exec" as NSString)
-        context.setObject(emit, forKeyedSubscript: "__tp_print" as NSString)
-        context.evaluateScript(MongoScriptPrelude.source)
-        let failure = context.exception?.toString()
-        #expect(failure == nil)
-        return context
+        try MongoScriptContext.make(
+            execute: { host.handle($0) },
+            emit: { host.record(printed: $0) }
+        )
     }
 
     @Test("The prelude loads without a syntax error")
@@ -68,6 +68,34 @@ struct MongoScriptPreludeTests {
         let host = RecordingHost()
         let context = try makeContext(host)
         #expect(context.objectForKeyedSubscript("db")?.isUndefined == false)
+    }
+
+    @Test("A statement that throws leaves its exception on the context")
+    func thrownStatementSurfaces() throws {
+        let context = try makeContext(RecordingHost())
+
+        context.evaluateScript("throw new Error('boom')")
+        #expect(context.exception?.toString() == "Error: boom")
+    }
+
+    @Test("A statement that does not parse leaves an exception on the context")
+    func syntaxErrorSurfaces() throws {
+        let context = try makeContext(RecordingHost())
+
+        context.evaluateScript("this is not javascript (")
+        #expect(context.exception != nil)
+    }
+
+    @Test("A write the server refuses reaches the script as an exception carrying its code")
+    func refusedWriteSurfaces() throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+        host.refusal = (message: "Document failed validation", code: 121)
+
+        context.evaluateScript("db.orders.updateOne({a: 1}, {$set: {b: 2}})")
+        let exception = try #require(context.exception)
+        #expect(exception.objectForKeyedSubscript("message")?.toString() == "Document failed validation")
+        #expect(exception.objectForKeyedSubscript("code")?.toInt32() == 121)
     }
 
     @Test("A find with an unquoted condition reaches the driver as valid Extended JSON")

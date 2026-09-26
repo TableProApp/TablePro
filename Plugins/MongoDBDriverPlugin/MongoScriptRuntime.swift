@@ -1,7 +1,7 @@
 import Foundation
 import JavaScriptCore
-import TableProPluginKit
 import os
+import TableProPluginKit
 
 /// What one statement of a script evaluated to.
 struct MongoScriptStatementResult: Sendable {
@@ -70,7 +70,13 @@ final class MongoScriptRuntime: @unchecked Sendable {
             // Captured strongly: a gate that is never finished leaves the caller waiting, and the
             // work is one statement long.
             engine.queue.async {
-                gate.finish(with: Result { try self.run(statement, on: engine) })
+                gate.finish(with: Result {
+                    do {
+                        return try self.run(statement, on: engine)
+                    } catch {
+                        throw MongoScriptStatementFailure.carrying(error, databaseSwitch: engine.host.databaseSwitch)
+                    }
+                })
             }
             watchForSilence(engine: engine, gate: gate)
         }
@@ -84,8 +90,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
     /// script through the public JavaScriptCore API, so its queue is abandoned and the next
     /// statement gets a new one.
     private func watchForSilence(engine: Engine, gate: MongoScriptResumeGate) {
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.silenceCheckInterval) {
-            [weak self] in
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.silenceCheckInterval) { [weak self] in
             guard let self, !gate.isFinished else { return }
             guard Date().timeIntervalSince(engine.host.lastActivity) >= Self.silenceLimit else {
                 watchForSilence(engine: engine, gate: gate)
@@ -130,7 +135,13 @@ final class MongoScriptRuntime: @unchecked Sendable {
         connection.beginScriptRun()
         return try await withCheckedThrowingContinuation { continuation in
             engine.queue.async {
-                continuation.resume(with: Result { try self.runForExport(statement, on: engine) })
+                continuation.resume(with: Result {
+                    do {
+                        return try self.runForExport(statement, on: engine)
+                    } catch {
+                        throw MongoScriptStatementFailure.carrying(error, databaseSwitch: engine.host.databaseSwitch)
+                    }
+                })
             }
         }
     }
@@ -147,7 +158,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
         }
         if engine.host.isCancelled { throw CancellationError() }
 
-        if let value,
+        if let value, value.isObject,
            let handle = value.objectForKeyedSubscript("__handle"), handle.isNumber,
            let plan = engine.host.cursorPlan(handle: Int(handle.toInt32())) {
             return .cursor(plan)
@@ -215,28 +226,16 @@ final class MongoScriptRuntime: @unchecked Sendable {
     }
 
     private func makeEngine(database: String, valueCeiling: Int, generation: Int) throws -> Engine {
-        guard let context = JSContext(virtualMachine: JSVirtualMachine()) else {
-            throw MongoDBError(code: 0, message: MongoScriptText.scriptEngineUnavailable)
-        }
         let host = MongoScriptHost(
             connection: connection, database: database, valueCeiling: valueCeiling
         )
         let queue = DispatchQueue(
             label: "com.TablePro.mongodb.script.\(generation)", qos: .userInitiated
         )
-
-        let execute: @convention(block) (String) -> String = { request in host.handle(request) }
-        let emit: @convention(block) (String) -> Bool = { line in host.record(printed: line) }
-        context.setObject(execute, forKeyedSubscript: "__tp_exec" as NSString)
-        context.setObject(emit, forKeyedSubscript: "__tp_print" as NSString)
-        context.exceptionHandler = { _, exception in
-            Self.logger.debug("Script exception: \(exception?.toString() ?? "unknown", privacy: .private)")
-        }
-
-        context.evaluateScript(MongoScriptPrelude.source)
-        if let failure = context.exception {
-            throw MongoDBError(code: 0, message: failure.toString() ?? MongoScriptText.scriptEngineUnavailable)
-        }
+        let context = try MongoScriptContext.make(
+            execute: { request in host.handle(request) },
+            emit: { line in host.record(printed: line) }
+        )
         return Engine(queue: queue, context: context, host: host)
     }
 
@@ -282,17 +281,17 @@ final class MongoScriptRuntime: @unchecked Sendable {
         on engine: Engine,
         into result: inout MongoScriptStatementResult
     ) throws {
-        guard let classifier = engine.context.objectForKeyedSubscript("__tp_classify"),
-              let described = classifier.call(withArguments: [value])?.toString(),
+        guard let classifier = engine.context.objectForKeyedSubscript("__tp_classify") else { return }
+        let classification = classifier.call(withArguments: [value])
+        if let failure = engine.context.exception {
+            engine.context.exception = nil
+            throw scriptError(failure, host: engine.host)
+        }
+        guard let described = classification?.toString(),
               let data = described.data(using: .utf8),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let kind = payload["kind"] as? String else {
             return
-        }
-
-        if let failure = engine.context.exception {
-            engine.context.exception = nil
-            throw scriptError(failure, host: engine.host)
         }
 
         switch kind {

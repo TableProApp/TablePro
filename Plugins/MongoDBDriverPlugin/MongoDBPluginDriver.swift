@@ -216,6 +216,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ),
                 rowCap: rowCap
             )
+        } catch let failure as MongoScriptStatementFailure {
+            currentDb = failure.databaseSwitch
+            throw mapExecutionError(failure.underlying)
         } catch {
             throw mapExecutionError(error)
         }
@@ -808,6 +811,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         self.yieldMaterialised(outcome, into: continuation)
                     }
                     continuation.finish()
+                } catch let failure as MongoScriptStatementFailure {
+                    self.currentDb = failure.databaseSwitch
+                    continuation.finish(throwing: failure.underlying)
                 } catch {
                     continuation.finish(throwing: error)
                 }
