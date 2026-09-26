@@ -3,10 +3,20 @@ import JavaScriptCore
 import os
 import TableProPluginKit
 
+/// The find a statement's documents came from. A find with no projection returns whole
+/// documents, so its columns can include what the collection declares; a projection or a pipeline
+/// chose its own shape.
+struct MongoScriptFindShape: Equatable, Sendable {
+    let database: String
+    let returnsWholeDocuments: Bool
+    let skip: Int
+}
+
 /// What one statement of a script evaluated to.
 struct MongoScriptStatementResult: Sendable {
     var documents = MongoScriptDocumentBatch.empty
     var collection: String?
+    var find: MongoScriptFindShape?
     var scalarRows: [String]?
     var printedLines: [String] = []
     var databaseSwitch: String?
@@ -298,7 +308,9 @@ final class MongoScriptRuntime: @unchecked Sendable {
         case "cursor":
             guard let handle = payload["handle"] as? Int else { return }
             result.documents = try engine.host.drain(handle: handle)
-            result.collection = engine.host.cursorDescription(handle: handle)?.collection
+            let description = engine.host.cursorDescription(handle: handle)
+            result.collection = description?.collection
+            result.find = description?.find
             result.producedDocuments = true
         case "array":
             guard let json = payload["json"] as? String else { return }

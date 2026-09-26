@@ -402,7 +402,7 @@ struct CreateTableView: View {
             if composed.statements.isEmpty {
                 sqlPreviewPlaceholder(composed.issues.first?.qualifiedMessage)
             } else {
-                DDLTextView(ddl: composed.preview, fontSize: .constant(13))
+                DDLTextView(ddl: composed.preview, fontSize: .constant(13), databaseType: connection.type)
             }
         } else if let failure = draft.compositionFailure {
             sqlPreviewPlaceholder(failure)

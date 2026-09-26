@@ -117,6 +117,7 @@ struct MenuValidationContext: Equatable {
     var canRefreshMaterializedView = false
     var canEditObjectComment = false
     var canCreateDatabase = false
+    var canCreateTable = false
     var canCopyObjects = false
     var canDuplicateDatabase = false
     var hasMaintenanceOperations = false
@@ -278,7 +279,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(delete(_:)):
             return context.isConnected && (context.canDeleteSelectedRows || context.canDropSelectedTables)
 
-        case #selector(createNewTable(_:)), #selector(createNewView(_:)):
+        case #selector(createNewTable(_:)):
+            return context.isConnected && !context.isReadOnly && context.canCreateTable
+        case #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly
         case #selector(createNewDatabase(_:)):
             return context.canCreateDatabase
@@ -623,6 +626,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canRefreshMaterializedView: actions.canRefreshMaterializedView,
             canEditObjectComment: actions.canEditObjectComment,
             canCreateDatabase: actions.canCreateDatabase,
+            canCreateTable: actions.canCreateTable,
             canCopyObjects: actions.canCopyObjects,
             canDuplicateDatabase: actions.canDuplicateDatabase,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,

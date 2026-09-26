@@ -507,6 +507,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBCollectionDDL.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBCollectionSchema.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterClause.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterValue.swift

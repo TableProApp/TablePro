@@ -17,6 +17,9 @@ struct MongoDBStatementGenerator {
     let collectionName: String
     let columns: [String]
     var columnKinds: [String: BsonValueKind] = [:]
+    /// Kinds the collection's validator declares. The server rejects any other type for these
+    /// fields, so they outrank what the sampled documents happen to hold.
+    var declaredKinds: [String: BsonValueKind] = [:]
 
     private var collectionAccessor: String {
         MongoCollectionAccessor.expression(for: collectionName)
@@ -233,17 +236,32 @@ struct MongoDBStatementGenerator {
         "{\"_id\": \(idValueJson(idValue))}"
     }
 
+    /// An `_id` is matched by value and type together, so a string `_id` of `1001` written as a
+    /// number matches no document. The column's own kind decides when it is known; the text's
+    /// shape is only the fallback.
     private func idValueJson(_ idValue: String) -> String {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
             return binary
+        }
+        switch kind(of: "_id") {
+        case .string:
+            return "\"\(escapeJsonString(idValue))\""
+        case .objectId, .int32, .int64, .double, .decimal128:
+            if let typed = typedJson(idValue, kind: kind(of: "_id")) { return typed }
+        default:
+            break
         }
         if isObjectIdString(idValue) {
             return "{\"$oid\": \"\(idValue)\"}"
         }
         if Int64(idValue) != nil {
-            return idValue
+            return integerJson(idValue)
         }
         return "\"\(escapeJsonString(idValue))\""
+    }
+
+    private func kind(of field: String) -> BsonValueKind? {
+        declaredKinds[field] ?? columnKinds[field]
     }
 
     /// Check if a string looks like a MongoDB ObjectId (24 hex characters)
@@ -262,69 +280,96 @@ struct MongoDBStatementGenerator {
                 )
                 return nil
             }
-            entries.append("\"\(escapeJsonString(key))\": \(jsonValue(for: value, kind: columnKinds[key]))")
+            entries.append("\"\(escapeJsonString(key))\": \(jsonValue(for: value, field: key))")
         }
         return "{\(entries.joined(separator: ", "))}"
     }
 
-    /// Convert a string value to its JSON representation (auto-detect type)
-    private func jsonValue(for value: String, kind: BsonValueKind? = nil) -> String {
-        if value == "true" || value == "false" {
+    /// A cell's text as the value it stands for, in the field's type when that type is known.
+    ///
+    /// The statement is JavaScript the shell evaluates, so text is only ever pasted in when it is
+    /// strict JSON. A stored string that merely starts with `[` and ends with `]` would otherwise run
+    /// as code the moment its row is duplicated or its delete is undone.
+    private func jsonValue(for value: String, field: String) -> String {
+        if declaredKinds[field] == .string {
+            return "\"\(escapeJsonString(value))\""
+        }
+        if value == "true" || value == "false" || value == "null" {
             return value
         }
-        if value == "null" {
-            return "null"
-        }
-        if kind == .decimal128, NumberText.isJSONNumberLiteral(value) {
-            return "{\"$numberDecimal\": \"\(escapeJsonString(value))\"}"
+        if let typed = typedJson(value, kind: kind(of: field)) {
+            return typed
         }
         if MongoDBJsonNumber.isValid(value) {
-            return typedNumberJson(value, kind: kind)
+            return Int64(value) != nil ? integerJson(value) : value
         }
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
             return binary
         }
-        // JSON object or array
-        if (value.hasPrefix("{") && value.hasSuffix("}")) ||
-            (value.hasPrefix("[") && value.hasSuffix("]")) {
+        if isStrictJsonContainer(value) {
             return value
         }
         return "\"\(escapeJsonString(value))\""
     }
 
     /// A bare JSON number is stored as int32 or double, which silently retypes a column that
-    /// holds int64 or decimal128. Extended JSON is the only way to keep the original type.
-    private func typedNumberJson(_ value: String, kind: BsonValueKind?) -> String {
+    /// holds int64 or decimal128, and a date or an ObjectId written as its text is a string.
+    /// Extended JSON is the only way to keep the original type.
+    private func typedJson(_ value: String, kind: BsonValueKind?) -> String? {
         switch kind {
+        case .date:
+            return MongoDBFilterValue.writableDateJson(value)
+        case .objectId:
+            return MongoDBFilterValue.objectIdJson(value)
         case .decimal128:
+            guard NumberText.isJSONNumberLiteral(value) else { return nil }
             return "{\"$numberDecimal\": \"\(escapeJsonString(value))\"}"
         case .int64:
-            guard Int64(value) != nil else { return value }
+            guard Int64(value) != nil else { return nil }
             return "{\"$numberLong\": \"\(escapeJsonString(value))\"}"
         case .double:
-            guard let parsed = Double(value), parsed.isFinite else { return value }
+            guard MongoDBJsonNumber.isValid(value), let parsed = Double(value), parsed.isFinite else { return nil }
             return "{\"$numberDouble\": \"\(escapeJsonString(value))\"}"
-        default:
+        case .int32:
+            guard Int32(value) != nil else { return nil }
             return value
+        default:
+            return nil
         }
+    }
+
+    /// JavaScript numbers are doubles, so an integer past 2^53 written bare reaches the server
+    /// already rounded.
+    private func integerJson(_ value: String) -> String {
+        guard let parsed = Int64(value), parsed.magnitude > Self.largestExactDouble else { return value }
+        return "{\"$numberLong\": \"\(value)\"}"
+    }
+
+    private static let largestExactDouble: UInt64 = 1 << 53
+
+    private func isStrictJsonContainer(_ value: String) -> Bool {
+        guard (value.hasPrefix("{") && value.hasSuffix("}")) || (value.hasPrefix("[") && value.hasSuffix("]")),
+              let data = value.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) else { return false }
+        return parsed is [String: Any] || parsed is [Any]
     }
 
     /// Escape special characters for JSON strings (handles Unicode control chars U+0000-U+001F)
     private func escapeJsonString(_ value: String) -> String {
         var result = ""
         result.reserveCapacity((value as NSString).length)
-        for char in value {
-            switch char {
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\\": result += "\\\\"
             case "\"": result += "\\\""
             case "\n": result += "\\n"
             case "\r": result += "\\r"
             case "\t": result += "\\t"
             default:
-                if let ascii = char.asciiValue, ascii < 0x20 {
-                    result += String(format: "\\u%04X", ascii)
+                if scalar.value < 0x20 {
+                    result += String(format: "\\u%04X", scalar.value)
                 } else {
-                    result.append(char)
+                    result.unicodeScalars.append(scalar)
                 }
             }
         }

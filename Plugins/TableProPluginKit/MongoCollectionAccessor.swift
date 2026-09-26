@@ -28,9 +28,20 @@ public enum MongoCollectionAccessor {
         name.hasPrefix("__") || databaseMemberNames.contains(name)
     }
 
+    /// Checked byte by byte, because a `Character` is a whole grapheme cluster: a Unicode Prepend
+    /// letter such as U+0D4E joined to a `(` or `;` answers `isLetter` for the pair, and the name
+    /// then reached the statement bare, as code. Everything else goes through `getCollection`.
     private static func isPlainIdentifier(_ name: String) -> Bool {
-        guard let first = name.first, !first.isNumber else { return false }
-        return name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+        guard let first = name.utf8.first, !isASCIIDigit(first) else { return false }
+        return name.utf8.allSatisfy { isASCIILetter($0) || isASCIIDigit($0) || $0 == UInt8(ascii: "_") }
+    }
+
+    private static func isASCIILetter(_ byte: UInt8) -> Bool {
+        (UInt8(ascii: "a") ... UInt8(ascii: "z")).contains(byte) || (UInt8(ascii: "A") ... UInt8(ascii: "Z")).contains(byte)
+    }
+
+    private static func isASCIIDigit(_ byte: UInt8) -> Bool {
+        (UInt8(ascii: "0") ... UInt8(ascii: "9")).contains(byte)
     }
 
     /// Every method mongosh puts on `db`, plus what `Object.prototype` gives any JavaScript value.

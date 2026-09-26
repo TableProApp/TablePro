@@ -920,6 +920,12 @@ struct RowImportSheet: View {
 
     @MainActor
     private func prepareTable(_ definition: PluginCreateTableDefinition, scope: DatabaseScope) async throws {
+        guard ImportDataSinkAdapter.canWriteRows(into: connection.type) else {
+            throw PluginImportError.importFailed(String(
+                format: String(localized: "%@ cannot take rows from this file, so no table was created."),
+                connection.type.rawValue
+            ))
+        }
         let tableName = definition.tableName
         let statements = try await DatabaseManager.shared.createTableStatements(
             definition: definition,

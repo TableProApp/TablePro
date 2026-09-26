@@ -63,7 +63,17 @@ enum MongoDBFilterValue {
         return "{\"$date\": {\"$numberLong\": \"\(millis)\"}}"
     }
 
-    static func epochMilliseconds(_ value: String) -> Int64? {
+    /// A date the grid writes. The date picker fills an empty cell with the user's own wall clock
+    /// and no zone, so zone-less text is read in the local zone here, where a filter reads it as
+    /// UTC. A bare number is a year or a count far more often than epoch milliseconds, so it is
+    /// not read as a date.
+    static func writableDateJson(_ value: String) -> String? {
+        guard Int64(value.trimmingCharacters(in: .whitespaces)) == nil,
+              let millis = epochMilliseconds(value, plainTimeZone: .current) else { return nil }
+        return "{\"$date\": {\"$numberLong\": \"\(millis)\"}}"
+    }
+
+    static func epochMilliseconds(_ value: String, plainTimeZone: TimeZone = .gmt) -> Int64? {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
 
@@ -77,7 +87,7 @@ enum MongoDBFilterValue {
             }
         }
         for format in plainFormats {
-            if let date = plainFormatter(format).date(from: trimmed) {
+            if let date = plainFormatter(format, timeZone: plainTimeZone).date(from: trimmed) {
                 return Int64((date.timeIntervalSince1970 * 1000).rounded())
             }
         }
@@ -98,10 +108,10 @@ enum MongoDBFilterValue {
         "yyyy-MM-dd",
     ]
 
-    private static func plainFormatter(_ format: String) -> DateFormatter {
+    private static func plainFormatter(_ format: String, timeZone: TimeZone) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.timeZone = timeZone
         formatter.dateFormat = format
         return formatter
     }

@@ -552,6 +552,21 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
+    /// The reply as canonical Extended JSON text, members in the order the server sent them.
+    func runCommandJson(_ command: String, database: String? = nil) async throws -> String {
+        #if canImport(CLibMongoc)
+        resetCancellation()
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let client = self.client else {
+                throw MongoDBError.notConnected
+            }
+            return QueueTransfer(value: try scriptRunCommand(client: client, command: command, database: database))
+        }.value
+        #else
+        throw MongoDBError.libmongocUnavailable
+        #endif
+    }
+
     // MARK: - Collection Operations
 
     func find(

@@ -65,6 +65,37 @@ struct CreateTableDraftBuilderTests {
         )
     }
 
+    // MARK: - Engines that key every row themselves
+
+    private func namedOnlyPlan(suppliesItsOwnKey: Bool) -> CreateTablePlan {
+        CreateTableDraftBuilder.plan(
+            tableName: "events",
+            options: CreateTableOptions(),
+            columns: [column("", "")],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.sqlite),
+            includesEngineOptions: false,
+            suppliesItsOwnKey: suppliesItsOwnKey
+        )
+    }
+
+    @Test("A table with only a name is planned on an engine that supplies its own key")
+    func nameOnlyTableOnAnEngineWithItsOwnKey() throws {
+        let result = namedOnlyPlan(suppliesItsOwnKey: true)
+        #expect(result.issues.isEmpty)
+        let definition = try #require(result.definition)
+        #expect(definition.tableName == "events")
+        #expect(definition.columns.isEmpty)
+    }
+
+    @Test("A table with only a name still needs a column everywhere else")
+    func nameOnlyTableNeedsAColumnOtherwise() {
+        let result = namedOnlyPlan(suppliesItsOwnKey: false)
+        #expect(result.definition == nil)
+        #expect(!result.issues.isEmpty)
+    }
+
     // MARK: - The reported bug
 
     @Test("a foreign key with no constraint name is emitted")

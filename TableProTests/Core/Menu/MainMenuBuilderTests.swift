@@ -564,10 +564,22 @@ struct MainMenuValidationTests {
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.canTruncateSelectedTables = true
+        context.canCreateTable = true
         context.isReadOnly = true
         #expect(!enabled(#selector(MainSplitViewController.addRow(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.truncateTable(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+    }
+
+    @Test("New Table is disabled for an engine that cannot create a table")
+    func newTableFollowsTheDriver() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+
+        context.canCreateTable = true
+        #expect(enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
     }
 
     /// A view is a valid selection and a hopeless truncate. The menu bar used to ask only whether
@@ -672,6 +684,7 @@ struct MainMenuValidationTests {
         context.canShowTableStructure = true
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true
+        context.canCreateTable = true
         return context
     }
 

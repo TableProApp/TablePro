@@ -5,6 +5,7 @@
 
 import Foundation
 import JavaScriptCore
+import TableProPluginKit
 import Testing
 
 /// Drives the real prelude in a real `JSContext` against a recording host.
@@ -61,6 +62,66 @@ struct MongoScriptPreludeTests {
             execute: { host.handle($0) },
             emit: { host.record(printed: $0) }
         )
+    }
+
+    @Test("A Create Table statement reaches the driver as one create command carrying its validator")
+    func createCollectionCarriesTheValidator() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"ok\": 1}"]
+        let context = try makeContext(host)
+        let columns = [
+            PluginColumnDefinition(
+                name: "title", dataType: "string", isNullable: false, defaultValue: nil, isPrimaryKey: false,
+                autoIncrement: false, comment: nil, unsigned: false, onUpdate: nil, charset: nil, collation: nil
+            ),
+            PluginColumnDefinition(
+                name: "tags", dataType: "array", isNullable: true, defaultValue: nil, isPrimaryKey: false,
+                autoIncrement: false, comment: nil, unsigned: false, onUpdate: nil, charset: nil, collation: nil
+            )
+        ]
+        let statement = MongoDBCollectionDDL.createCollectionStatement(
+            for: PluginCreateTableDefinition(tableName: "articles", columns: columns)
+        )
+
+        context.evaluateScript(statement)
+        #expect(context.exception == nil)
+
+        let request = try #require(host.requests(op: "command").first)
+        let commandText = try #require(request["command"] as? String)
+        let commandData = try #require(commandText.data(using: .utf8))
+        let command = try #require(try JSONSerialization.jsonObject(with: commandData) as? [String: Any])
+        #expect(command["create"] as? String == "articles")
+        let validator = try #require(command["validator"] as? [String: Any])
+        let schema = try #require(validator["$jsonSchema"] as? [String: Any])
+        #expect(schema["required"] as? [String] == ["title"])
+        let properties = try #require(schema["properties"] as? [String: Any])
+        #expect((properties["tags"] as? [String: Any])?["bsonType"] as? [String] == ["array", "null"])
+        let propertiesAt = try #require(commandText.range(of: "\"properties\""))
+        let tail = commandText[propertiesAt.upperBound...]
+        let titleAt = try #require(tail.range(of: "\"title\""))
+        let tagsAt = try #require(tail.range(of: "\"tags\""))
+        #expect(titleAt.lowerBound < tagsAt.lowerBound)
+    }
+
+    @Test("A Create Table index reaches the driver with its keys in order and its options")
+    func createIndexKeepsKeysAndOptions() throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+        let statement = try #require(MongoDBCollectionDDL.createIndexStatement(
+            collection: "articles",
+            index: PluginIndexDefinition(name: "lang_date", columns: ["lang", "date"], isUnique: true)
+        ))
+
+        context.evaluateScript(statement)
+        #expect(context.exception == nil)
+
+        let request = try #require(host.requests(op: "createIndex").first)
+        #expect(request["keys"] as? String == "{\"lang\":{\"$numberInt\":\"1\"},\"date\":{\"$numberInt\":\"1\"}}")
+        let optionsText = try #require(request["options"] as? String)
+        let optionsData = try #require(optionsText.data(using: .utf8))
+        let options = try #require(try JSONSerialization.jsonObject(with: optionsData) as? [String: Any])
+        #expect(options["name"] as? String == "lang_date")
+        #expect(options["unique"] as? Bool == true)
     }
 
     @Test("The prelude loads without a syntax error")

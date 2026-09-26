@@ -522,6 +522,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ER diagram opening at 100% instead of fitted, then losing its zoom the first time you came back to its tab.
 - Diagram Fit to Window stopping a scroll bar's width short when scroll bars are always shown.
 - No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan.
+- MongoDB collections could not be created from **New Table…**. (#3131)
+- A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
+- MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
+- **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 
 ### Security
 
@@ -549,6 +553,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server statements written after another without a semicolon skipped Safe Mode, on Mac, iPhone and iPad.
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
 - Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
+- Stored MongoDB values and collection names that ran as shell code when a row was edited, duplicated or restored.
 
 ## [0.75.0] - 2026-09-18
 

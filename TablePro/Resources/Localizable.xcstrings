@@ -184127,6 +184127,36 @@
     },
     "The write was applied, but the servers did not confirm it as the write concern asks: %@" : {
 
+    },
+    "MongoDB cannot address a field named %@. A field name cannot start with $ or contain a dot." : {
+
+    },
+    "%1$@ has type %2$@, which MongoDB does not have. Choose a type from the list." : {
+
+    },
+    "_id must be an objectId. MongoDB generates it for every new document." : {
+
+    },
+    "%@ cannot be the primary key. MongoDB keys every document by _id." : {
+
+    },
+    "Index %@ has a WHERE clause, an expression, included columns or a prefix length. MongoDB indexes take none of these." : {
+
+    },
+    "MongoDB has no %@ index." : {
+
+    },
+    "MongoDB already indexes _id." : {
+
+    },
+    "A hashed index cannot be unique." : {
+
+    },
+    "A hashed index takes one field." : {
+
+    },
+    "%@ cannot take rows from this file, so no table was created." : {
+
     }
   },
   "version" : "1.1"

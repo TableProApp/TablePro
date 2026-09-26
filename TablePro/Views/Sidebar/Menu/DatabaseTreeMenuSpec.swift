@@ -601,7 +601,9 @@ internal enum DatabaseTreeMenuSpec {
     private static func backgroundSections(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuSection] {
         var creation: [DatabaseTreeMenuItem] = []
         if !context.isReadOnly {
-            creation.append(.command(String(localized: "New Table…"), .createTable))
+            if context.canCreateTable {
+                creation.append(.command(String(localized: "New Table…"), .createTable))
+            }
             creation.append(.command(String(localized: "New View…"), .createView))
         }
         creation += newSchemaItems(database: context.activeDatabase, context: context)

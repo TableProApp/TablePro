@@ -10,13 +10,15 @@ enum MongoScriptResultBuilder {
     static func result(
         for outcome: MongoScriptStatementResult,
         startTime: Date,
+        emptyColumns: [(name: String, typeName: String)] = [(name: "_id", typeName: "ObjectId")],
         documents build: ([[String: Any]], String, Bool) -> PluginQueryResult
     ) -> PluginQueryResult {
         if outcome.producedDocuments, outcome.documents.json.isEmpty {
             // Zero columns reads as write-success in the result pane, so a query that matched
             // nothing has to keep its row-producing shape.
             return PluginQueryResult(
-                columns: ["_id"], columnTypeNames: ["ObjectId"], rows: [], rowsAffected: 0,
+                columns: emptyColumns.map(\.name), columnTypeNames: emptyColumns.map(\.typeName),
+                rows: [], rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
         }

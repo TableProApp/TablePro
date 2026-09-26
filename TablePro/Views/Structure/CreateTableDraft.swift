@@ -83,7 +83,8 @@ internal final class CreateTableDraft: ObservableObject {
             indexes: changeManager.workingIndexes,
             foreignKeys: changeManager.workingForeignKeys,
             dialect: ForeignKeyDialect.forType(databaseType),
-            includesEngineOptions: Self.offersEngineOptions(for: databaseType)
+            includesEngineOptions: Self.offersEngineOptions(for: databaseType),
+            suppliesItsOwnKey: PluginManager.shared.defaultPrimaryKeyColumn(for: databaseType) != nil
         )
     }
 

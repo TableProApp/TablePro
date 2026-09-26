@@ -380,18 +380,18 @@ struct MongoDBQueryBuilder {
     static func escapeJsonString(_ value: String) -> String {
         var result = ""
         result.reserveCapacity((value as NSString).length)
-        for char in value {
-            switch char {
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\\": result += "\\\\"
             case "\"": result += "\\\""
             case "\n": result += "\\n"
             case "\r": result += "\\r"
             case "\t": result += "\\t"
             default:
-                if let ascii = char.asciiValue, ascii < 0x20 {
-                    result += String(format: "\\u%04X", ascii)
+                if scalar.value < 0x20 {
+                    result += String(format: "\\u%04X", scalar.value)
                 } else {
-                    result.append(char)
+                    result.unicodeScalars.append(scalar)
                 }
             }
         }
