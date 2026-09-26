@@ -521,6 +521,7 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentText.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentWritePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoInsertOptions.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptCommandBuilder.swift
       - Plugins/MongoDBDriverPlugin/MongoShellCommandLine.swift

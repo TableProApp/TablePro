@@ -57,13 +57,22 @@ struct MongoDocumentTextTests {
         }
     }
 
-    @Test("A top-level field starting with $ is refused, a nested one is a wrapper")
-    func operatorFields() throws {
-        #expect(throws: MongoDocumentText.Refusal.operatorField("$set")) {
-            try MongoDocumentText(parsing: #"{"$set": {"a": 1}}"#)
+    @Test("An empty, blank, dotted or $-prefixed name reads as written, since an insert stores each one")
+    func namesAreReadAsWritten() throws {
+        let text = #"{"":1,"   ":2,"a.b":3,"$set":{"x":4},"$oid":"507f1f77bcf86cd799439011","n":{"":5}}"#
+        let document = try MongoDocumentText(parsing: text)
+        #expect(document.members.map(\.key) == ["", "   ", "a.b", "$set", "$oid", "n"])
+        #expect(document.compactText == text)
+
+        let wrapped = try MongoDocumentText(parsing: #"{"_id": {"$oid": "507f1f77bcf86cd799439011"}}"#)
+        #expect(wrapped.members.count == 1)
+    }
+
+    @Test("A field named \"\" is held to the rule against repeated fields")
+    func duplicateEmptyName() {
+        #expect(throws: MongoDocumentText.Refusal.duplicateField("")) {
+            try MongoDocumentText(parsing: #"{"": 1, "": 2}"#)
         }
-        let document = try MongoDocumentText(parsing: #"{"_id": {"$oid": "507f1f77bcf86cd799439011"}}"#)
-        #expect(document.members.count == 1)
     }
 
     @Test("Nesting deeper than MongoDB allows is refused without exhausting the stack")
