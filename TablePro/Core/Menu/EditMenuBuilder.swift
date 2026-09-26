@@ -77,6 +77,10 @@ enum EditMenuBuilder {
                 shortcut: .duplicateRow,
                 keyboard: keyboard
             ),
+            MenuItemFactory.item(
+                String(localized: "Insert Document…"),
+                action: #selector(MainSplitViewController.insertDocument(_:))
+            ),
             MenuItemFactory.separator,
             /// Not Undo, and deliberately not next to it. Undo takes back an edit the user has not
             /// saved yet and costs nothing; this one writes to the database, needs review and can

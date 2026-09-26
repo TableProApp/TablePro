@@ -90,6 +90,10 @@ enum ActiveSheet: Identifiable {
     case copyObjects(ObjectCopyLaunchRequest)
     case rewind
     case tableRebuildReview
+    /// The collection and its database travel with the request, for the reason `.maintenance`
+    /// carries its scope: the document is written where it was read, not wherever the object
+    /// browser points by the time Save is pressed.
+    case documentEditor(DocumentEditorRequest)
 
     var id: String {
         switch self {
@@ -113,6 +117,7 @@ enum ActiveSheet: Identifiable {
         case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
         case .tableRebuildReview: "tableRebuildReview"
+        case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
         }
     }
 }

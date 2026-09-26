@@ -564,6 +564,14 @@ class DataGridRowView: NSTableRowView {
                 }
             }
 
+            let documentItems = coordinator.delegate?.dataGridDocumentMenuItems(forRow: rowIndex) ?? []
+            if !documentItems.isEmpty {
+                menu.addItem(NSMenuItem.separator())
+                for item in documentItems {
+                    menu.addItem(item)
+                }
+            }
+
             /// The copy resets the columns the server owns, which only the schema names, so the item
             /// stays away until it has arrived rather than appearing and doing nothing.
             if tableRows.hasAuthoritativeSchema {

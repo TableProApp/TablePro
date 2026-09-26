@@ -46,6 +46,9 @@ internal struct JSONCodeEditor: View {
         .onChange(of: colorScheme) { _ in
             rebuildConfiguration()
         }
+        .onChange(of: isEditable) { _ in
+            rebuildConfiguration()
+        }
         .onChange(of: settingsManager.editor) { _ in
             rebuildConfiguration()
         }

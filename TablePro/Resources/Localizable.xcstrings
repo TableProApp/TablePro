@@ -184127,6 +184127,39 @@
     },
     "The write was applied, but the servers did not confirm it as the write concern asks: %@" : {
 
+    },
+    "Enter a document." : {
+
+    },
+    "A document is one JSON object, written between { and }." : {
+
+    },
+    "Enter one document. There is more text after its closing }." : {
+
+    },
+    "This is not valid JSON at line %1$d, column %2$d." : {
+
+    },
+    "The field “%@” appears more than once." : {
+
+    },
+    "The top-level field “%@” starts with $, which MongoDB reads as an operator." : {
+
+    },
+    "The document is nested more than %d levels deep." : {
+
+    },
+    "MongoDB cannot read this document." : {
+
+    },
+    "MongoDB cannot read this document: %@" : {
+
+    },
+    "MongoDB cannot make this change to a document." : {
+
+    },
+    "This database does not store whole documents" : {
+
     }
   },
   "version" : "1.1"

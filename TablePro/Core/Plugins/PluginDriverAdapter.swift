@@ -557,6 +557,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.renameSchema(name: name, to: newName)
     }
 
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String? {
+        try pluginDriver.documentWriteStatement(write)
+    }
+
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {
+        try await pluginDriver.executeDocumentWrite(write)
+    }
+
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? {
         pluginDriver.createSchemaStatements(definition)
     }

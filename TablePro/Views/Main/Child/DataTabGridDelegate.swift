@@ -115,18 +115,34 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridEmptySpaceMenu() -> NSMenu? {
-        guard let onAddRow, coordinator?.canAddRow == true else { return nil }
+        var items: [NSMenuItem] = []
+        if let onAddRow, coordinator?.canAddRow == true {
+            items.append(Self.menuItem(String(localized: "Add Row"), action: onAddRow))
+        }
+        if let coordinator, coordinator.canInsertDocument {
+            items.append(Self.menuItem(String(localized: "Insert Document…")) { [weak coordinator] in
+                coordinator?.presentInsertDocument()
+            })
+        }
+        guard !items.isEmpty else { return nil }
         let menu = NSMenu()
-        let target = StructureMenuTarget { onAddRow() }
-        let item = NSMenuItem(
-            title: String(localized: "Add Row"),
-            action: #selector(StructureMenuTarget.runAction),
-            keyEquivalent: ""
-        )
+        items.forEach(menu.addItem)
+        return menu
+    }
+
+    func dataGridDocumentMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
+        guard let coordinator, coordinator.canInsertDocument else { return [] }
+        return [Self.menuItem(String(localized: "Insert Document…")) { [weak coordinator] in
+            coordinator?.presentInsertDocument()
+        }]
+    }
+
+    private static func menuItem(_ title: String, action: @escaping () -> Void) -> NSMenuItem {
+        let target = StructureMenuTarget(action: action)
+        let item = NSMenuItem(title: title, action: #selector(StructureMenuTarget.runAction), keyEquivalent: "")
         item.target = target
         item.representedObject = target
-        menu.addItem(item)
-        return menu
+        return item
     }
 
     func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
