@@ -318,6 +318,46 @@ struct MongoScriptPreludeTests {
         #expect(value?.toString() == "507f1f77bcf86cd799439011")
     }
 
+    @Test("A document whose only field is named like a wrapper reads back as that document")
+    func wrapperNamedDocumentStaysADocument() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "1",
+            "{\"docs\": [{\"$oid\": \"not an id\"}, {\"$date\": \"2024\"}], \"done\": true}"
+        ]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("""
+        db.orders.find({}, {_id: 0}).toArray().map(function (d) { return Object.keys(d)[0] + "=" + d[Object.keys(d)[0]]; }).join(",")
+        """)
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "$oid=not an id,$date=2024")
+    }
+
+    @Test("A findOneAndUpdate document named like a wrapper comes back as that document")
+    func findAndModifyDocumentStaysADocument() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"value\": {\"$oid\": \"507f1f77bcf86cd799439011\"}}"]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("""
+        var found = db.orders.findOneAndUpdate({}, {$set: {a: 1}}, {projection: {_id: 0}}); typeof found.$oid
+        """)
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "string")
+    }
+
+    @Test("A findOneAndUpdate that matches nothing returns null")
+    func findAndModifyWithNoMatchIsNull() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"value\": null}"]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("db.orders.findOneAndUpdate({}, {$set: {a: 1}}) === null")
+        #expect(context.exception == nil)
+        #expect(value?.toBool() == true)
+    }
+
     @Test("Variables and functions survive from one evaluated statement to the next")
     func shellStateSurvives() throws {
         let host = RecordingHost()

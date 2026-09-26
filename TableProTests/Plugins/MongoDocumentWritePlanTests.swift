@@ -54,6 +54,22 @@ struct MongoDocumentWritePlanTests {
         #expect(!asked)
     }
 
+    @Test("Every name the server stores on insert reaches libbson and is sent as written")
+    func namesTheServerStores() throws {
+        let text = #"{"":1,"a":{"":2},"$set":{"x":1},"a.b":3,"$ref":"c","$id":1}"#
+        var asked = false
+        let spy: (String) throws -> String = { text in
+            asked = true
+            return text
+        }
+        let plan = try MongoDocumentWritePlan.make(
+            collection: "events", operation: .insert(document: text), canonicalize: spy
+        )
+        #expect(asked)
+        #expect(plan.document == text)
+        #expect(plan.statement == "db.events.insertOne(\(text))")
+    }
+
     @Test("A wrapper libbson cannot read is refused with libbson's reason")
     func libbsonRefusal() {
         struct Unreadable: Error {}

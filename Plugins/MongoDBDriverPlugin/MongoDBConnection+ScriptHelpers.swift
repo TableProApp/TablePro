@@ -174,6 +174,11 @@ extension MongoDBConnection {
             identifiers.append("{\"$oid\": \"\(hex)\"}")
         }
 
+        guard let optsBson = jsonToBson(MongoInsertOptions.json) else {
+            throw MongoDBError(code: 0, message: MongoScriptText.invalidDocument(MongoInsertOptions.json))
+        }
+        defer { bson_destroy(optsBson) }
+
         try checkCancelled()
 
         var pointers: [OpaquePointer?] = prepared.map { Optional($0) }
@@ -183,7 +188,7 @@ extension MongoDBConnection {
 
         let ok = pointers.withUnsafeMutableBufferPointer { buffer -> Bool in
             guard let base = buffer.baseAddress else { return false }
-            return mongoc_collection_insert_many(handle, base, buffer.count, nil, reply, &error)
+            return mongoc_collection_insert_many(handle, base, buffer.count, optsBson, reply, &error)
         }
         guard ok else { throw makeError(error) }
         return identifiers

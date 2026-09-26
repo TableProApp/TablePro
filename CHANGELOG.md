@@ -529,6 +529,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB collections could not be created from **New Table…**. (#3131)
 - A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
+- MongoDB inserts from the query editor and the data grid failing on a field named `""`. (#3132)
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
 

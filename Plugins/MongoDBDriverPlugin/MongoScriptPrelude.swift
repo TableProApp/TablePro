@@ -32,6 +32,13 @@ enum MongoScriptPrelude {
     })();
 
     function __ejson(value) { return JSON.stringify(EJSON.serialize(value)); }
+    function __document(value) {
+        var document = {};
+        for (var key in value) {
+            if (Object.prototype.hasOwnProperty.call(value, key)) { document[key] = EJSON.deserialize(value[key]); }
+        }
+        return document;
+    }
     """
 
     private static let values = """
@@ -236,7 +243,7 @@ enum MongoScriptPrelude {
         if (this.__exhausted) { return false; }
         this.__started = true;
         var page = __tp.call({ op: "cursorFetch", handle: this.__handle });
-        this.__batch = EJSON.deserialize(page.docs);
+        this.__batch = page.docs.map(__document);
         this.__index = 0;
         this.__exhausted = page.done;
         return this.__batch.length > 0;
@@ -427,13 +434,13 @@ enum MongoScriptPrelude {
         if (!remove && (change === undefined || change === null)) {
             throw new Error("findOneAndUpdate needs an update document or pipeline");
         }
-        var reply = this.__reply("findAndModify", {
+        var reply = this.__call("findAndModify", {
             filter: __ejson(filter === undefined ? {} : filter),
             update: change === undefined ? null : __ejson(change),
             options: options === undefined ? null : __ejson(options),
             remove: remove
         });
-        return reply.value === undefined ? null : reply.value;
+        return reply.value === undefined || reply.value === null ? null : __document(reply.value);
     };
     DBCollection.prototype.findOneAndUpdate = function (filter, update, options) {
         return this.__findAndModify(filter, update, options, false);

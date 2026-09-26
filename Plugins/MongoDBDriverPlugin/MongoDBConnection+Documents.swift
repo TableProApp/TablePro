@@ -38,12 +38,14 @@ extension MongoDBConnection {
         try await onClient { [self] client in
             let documentBson = try parsedBson(document)
             defer { bson_destroy(documentBson) }
+            let optionsBson = try parsedBson(MongoInsertOptions.json)
+            defer { bson_destroy(optionsBson) }
             let handle = try getCollection(client, database: database, collection: collection)
             defer { mongoc_collection_destroy(handle) }
             guard let reply = bson_new() else { throw MongoDBError.connectionFailed }
             defer { bson_destroy(reply) }
             var error = bson_error_t()
-            guard mongoc_collection_insert_one(handle, documentBson, nil, reply, &error) else {
+            guard mongoc_collection_insert_one(handle, documentBson, optionsBson, reply, &error) else {
                 if let failure = (try? canonicalText(of: reply)).flatMap(MongoWriteFailure.read(fromReply:)) {
                     throw MongoDBError(code: failure.code, message: failure.message)
                 }

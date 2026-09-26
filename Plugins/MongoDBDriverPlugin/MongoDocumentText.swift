@@ -28,7 +28,6 @@ struct MongoDocumentText: Equatable, Sendable {
         case trailingContent
         case malformed(line: Int, column: Int)
         case duplicateField(String)
-        case operatorField(String)
         case tooDeep
 
         var errorDescription: String? {
@@ -47,11 +46,6 @@ struct MongoDocumentText: Equatable, Sendable {
                 )
             case .duplicateField(let name):
                 return String(format: String(localized: "The field \u{201C}%@\u{201D} appears more than once."), name)
-            case .operatorField(let name):
-                return String(
-                    format: String(localized: "The top-level field \u{201C}%@\u{201D} starts with $, which MongoDB reads as an operator."),
-                    name
-                )
             case .tooDeep:
                 return String(
                     format: String(localized: "The document is nested more than %d levels deep."),
@@ -78,9 +72,6 @@ struct MongoDocumentText: Equatable, Sendable {
         guard case .object(let members) = try reader.readValue(depth: 1) else { throw Refusal.notAnObject }
         reader.skipWhitespace()
         guard reader.isAtEnd else { throw Refusal.trailingContent }
-        if let operatorField = members.first(where: { $0.key.hasPrefix("$") }) {
-            throw Refusal.operatorField(operatorField.key)
-        }
         self.members = members
     }
 
