@@ -49,6 +49,7 @@ internal extension UITestCase {
             XCTFail("Could not open \(databaseURL.path)")
             return []
         }
+        sqlite3_busy_timeout(handle, 5_000)
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {

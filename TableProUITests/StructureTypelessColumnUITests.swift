@@ -62,14 +62,24 @@ final class StructureTypelessColumnUITests: UITestCase {
         XCTAssertTrue(apply.waitToExist(timeout: 5), "The drop must be offered for confirmation, got: \(text)")
         apply.click()
 
+        let execute = window.sheets.buttons["sql-review-execute"].firstMatch
+        XCTAssertTrue(
+            execute.waitToExist(timeout: 20),
+            "Apply Changes hands the drop to the execution gate, which shows the statement before it runs"
+        )
+        let statement = (window.sheets.textViews.firstMatch.value as? String) ?? ""
+        XCTAssertTrue(statement.contains("DROP COLUMN"), "The gate must be showing the drop, got: \(statement)")
+        execute.click()
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) {
+                sqliteStrings("SELECT name FROM pragma_table_xinfo('notes')", in: database).count == 1
+            },
+            "The drop must reach the file"
+        )
         XCTAssertTrue(
             waitForPredicate(timeout: 30) { grid.tableRows.count == 1 },
             "The grid must list the one column the save kept"
-        )
-        XCTAssertEqual(
-            sqliteStrings("SELECT name FROM pragma_table_xinfo('notes')", in: database).count,
-            1,
-            "The column must be gone from the file, not only from the grid"
         )
     }
 }
