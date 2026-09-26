@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct SQLiteTableRespecifierTests {
@@ -244,6 +244,19 @@ struct SQLiteTableRespecifierTests {
     func readsSingleQuotedColumnNames() throws {
         let parsed = try #require(SQLiteTableDDL.parse(createTableSQL: "CREATE TABLE t('a' TEXT, b INT)"))
         #expect(parsed.columnNames == ["a", "b"])
+    }
+
+    /// `PRAGMA table_info` reports a column declared without a type as having the empty string for
+    /// one. Measured on 3.54, the declaration this writes reads back with that same empty type and
+    /// `notnull` 1, so the edit neither invents a type nor loses the column's affinity.
+    @Test("A nullability edit on a column with no type leaves it typeless")
+    func altersAnUntypedColumn() throws {
+        let respecified = try respecify(
+            PluginTableRespecification(alteredColumns: [PluginColumnAlteration(column: "body", isNullable: false)]),
+            sql: "CREATE TABLE notes(id INTEGER PRIMARY KEY, body, tag TEXT)"
+        )
+        #expect(respecified.createTableSQL == "CREATE TABLE \"x_new\" (\n  id INTEGER PRIMARY KEY,\n  body NOT NULL,\n  tag TEXT\n)")
+        #expect(respecified.carriedColumns.map { $0.name } == ["id", "body", "tag"])
     }
 
     // MARK: - Order

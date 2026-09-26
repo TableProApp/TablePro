@@ -194,6 +194,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
 - **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
 - **New Trigger** offered on a materialized view.
+- Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type.
+- Structure tab refusing to save a renamed or dropped primary key column.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.

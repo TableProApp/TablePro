@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 /// The gate that stops an incomplete row reaching DDL generation.
 ///
@@ -160,5 +160,282 @@ struct StructureChangeValidationTests {
         let summary = manager.validationSummary
         #expect(summary.contains("Foreign key"))
         #expect(summary.contains("Index"))
+    }
+
+    // MARK: - Columns the save does not touch
+
+    private func column(_ name: String, type: String, isPrimaryKey: Bool = false) -> ColumnInfo {
+        ColumnInfo(
+            name: name, dataType: type, isNullable: !isPrimaryKey, isPrimaryKey: isPrimaryKey,
+            defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
+        )
+    }
+
+    private func schemaManager(
+        loading columns: [ColumnInfo],
+        primaryKey: [String],
+        table: String = "notes"
+    ) -> StructureChangeManager {
+        let manager = StructureChangeManager()
+        manager.loadSchema(tableName: table, columns: columns, indexes: [], foreignKeys: [], primaryKey: primaryKey)
+        return manager
+    }
+
+    /// `CREATE TABLE notes (id INTEGER PRIMARY KEY, body, tag TEXT)`. Measured on SQLite 3.53.4,
+    /// `PRAGMA table_xinfo` reports `body`'s type as the empty string, and the driver passes it on.
+    private func notesWithATypelessColumn() -> StructureChangeManager {
+        schemaManager(
+            loading: [
+                column("id", type: "INTEGER", isPrimaryKey: true),
+                column("body", type: ""),
+                column("tag", type: "TEXT")
+            ],
+            primaryKey: ["id"]
+        )
+    }
+
+    private func edit(
+        _ name: String,
+        in manager: StructureChangeManager,
+        _ change: (inout EditableColumnDefinition) -> Void
+    ) throws {
+        var column = try #require(manager.workingColumns.first(where: { $0.name == name }))
+        change(&column)
+        manager.updateColumn(id: column.id, with: column)
+    }
+
+    private func delete(_ name: String, in manager: StructureChangeManager) throws {
+        let column = try #require(manager.workingColumns.first(where: { $0.name == name }))
+        manager.deleteColumn(id: column.id)
+    }
+
+    @Test("A column declared without a type does not block a save that leaves it alone")
+    func untouchedTypelessColumnDoesNotBlockTheSave() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("tag", in: manager) { $0.name = "label" }
+        #expect(manager.canCommit)
+        #expect(manager.validationSummary.isEmpty)
+    }
+
+    /// MongoDB 7 stores fields named `""` and `"   "`, and the flattener lists both as columns.
+    @Test("A field with an empty name does not block a save that leaves it alone")
+    func untouchedEmptyNamedFieldDoesNotBlockTheSave() throws {
+        let manager = schemaManager(
+            loading: [
+                column("_id", type: "ObjectId", isPrimaryKey: true),
+                column("", type: "VARCHAR"),
+                column("   ", type: "VARCHAR"),
+                column("a", type: "INTEGER")
+            ],
+            primaryKey: ["_id"],
+            table: "c"
+        )
+        try edit("a", in: manager) { $0.name = "alpha" }
+        #expect(manager.canCommit)
+        #expect(manager.validationSummary.isEmpty)
+    }
+
+    @Test("Renaming a column that has no type does not ask for one")
+    func renamingATypelessColumnDoesNotAskForAType() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("body", in: manager) { $0.name = "content" }
+        #expect(manager.canCommit)
+    }
+
+    @Test("Making a column that has no type NOT NULL does not ask for a type")
+    func nullabilityEditOnATypelessColumnDoesNotAskForAType() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("body", in: manager) { $0.setNullable(false) }
+        #expect(manager.canCommit)
+    }
+
+    @Test("Naming a field that had no name is not refused")
+    func namingAnEmptyNamedFieldIsAllowed() throws {
+        let manager = schemaManager(
+            loading: [column("_id", type: "ObjectId", isPrimaryKey: true), column("   ", type: "VARCHAR")],
+            primaryKey: ["_id"],
+            table: "c"
+        )
+        try edit("   ", in: manager) { $0.name = "spaces" }
+        #expect(manager.canCommit)
+    }
+
+    @Test("Deleting a column that has no type does not block the save")
+    func deletingATypelessColumnDoesNotBlockTheSave() throws {
+        let manager = notesWithATypelessColumn()
+        try delete("body", in: manager)
+        #expect(manager.canCommit)
+    }
+
+    @Test("A primary key on a column with no type is found")
+    func primaryKeyOnATypelessColumnIsFound() throws {
+        let manager = schemaManager(
+            loading: [column("k", type: "", isPrimaryKey: true), column("v", type: "INTEGER")],
+            primaryKey: ["k"],
+            table: "keyed"
+        )
+        try edit("v", in: manager) { $0.name = "value" }
+        #expect(manager.canCommit)
+        #expect(manager.validationSummary.isEmpty)
+    }
+
+    /// Measured on SQLite 3.54: `RENAME COLUMN id TO note_id` keeps the key, and `pk` reads 1 on
+    /// the renamed column.
+    @Test("Renaming the primary key column does not block the save")
+    func renamingThePrimaryKeyColumnDoesNotBlockTheSave() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("id", in: manager) { $0.name = "note_id" }
+        #expect(manager.canCommit)
+        #expect(manager.validationSummary.isEmpty)
+    }
+
+    /// MySQL and PostgreSQL drop the key with the column, and SQLite refuses with "cannot drop
+    /// PRIMARY KEY column". Either way it is the database's answer, not a missing column.
+    @Test("Deleting a primary key column is left to the database")
+    func deletingAPrimaryKeyColumnIsLeftToTheDatabase() throws {
+        let manager = notesWithATypelessColumn()
+        try delete("id", in: manager)
+        #expect(manager.canCommit)
+    }
+
+    @Test("An index on a column with no type is not refused as naming a missing column")
+    func indexOnATypelessColumnIsFound() {
+        let manager = notesWithATypelessColumn()
+        manager.addIndex(
+            EditableIndexDefinition(
+                id: UUID(), name: "notes_body", columns: ["body"], type: .btree, isUnique: false,
+                isPrimary: false, comment: nil
+            )
+        )
+        #expect(manager.canCommit)
+        #expect(manager.validationSummary.isEmpty)
+    }
+
+    /// Measured on SQLite 3.53.4: `ADD COLUMN body INTEGER` beside a typeless `body` fails with
+    /// "duplicate column name: body". A column with no type still holds its name.
+    @Test("Adding a column named like one that has no type is a duplicate")
+    func addingAColumnNamedLikeATypelessOneIsADuplicate() {
+        let manager = notesWithATypelessColumn()
+        var added = EditableColumnDefinition.placeholder()
+        added.name = "body"
+        added.dataType = "INTEGER"
+        manager.addColumn(added)
+        #expect(!manager.canCommit)
+        #expect(manager.validationSummary.contains("Duplicate column name: body"))
+        #expect(!manager.validationSummary.contains("must have a name"))
+    }
+
+    @Test("Two loaded columns with one name do not block an unrelated save")
+    func untouchedDuplicateNamesDoNotBlockAnUnrelatedSave() throws {
+        let manager = schemaManager(
+            loading: [column("x", type: "INTEGER"), column("x", type: "INTEGER"), column("y", type: "TEXT")],
+            primaryKey: []
+        )
+        try edit("y", in: manager) { $0.name = "z" }
+        #expect(manager.canCommit)
+    }
+
+    // MARK: - Edits that still block the save
+
+    @Test("Clearing a column's type blocks the save")
+    func clearingAColumnsTypeBlocksTheSave() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("tag", in: manager) { $0.dataType = "" }
+        #expect(!manager.canCommit)
+        #expect(manager.validationSummary.contains("Column must have a name and a data type"))
+    }
+
+    @Test("Clearing a column's name blocks the save")
+    func clearingAColumnsNameBlocksTheSave() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("tag", in: manager) { $0.name = "   " }
+        #expect(!manager.canCommit)
+        #expect(manager.validationSummary.contains("Column must have a name and a data type"))
+    }
+
+    @Test("Clearing the name of a column that has no type blocks the save")
+    func clearingATypelessColumnsNameBlocksTheSave() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("body", in: manager) { $0.name = "" }
+        #expect(!manager.canCommit)
+    }
+
+    @Test("The blank column the add button stages blocks the save")
+    func blankAddedColumnBlocksTheSave() {
+        let manager = notesWithATypelessColumn()
+        manager.addNewColumn()
+        #expect(!manager.canCommit)
+        #expect(manager.validationSummary.contains("Column must have a name and a data type"))
+    }
+
+    @Test("Two blank added columns are incomplete, not duplicates")
+    func twoBlankRowsAreIncompleteNotDuplicates() {
+        let manager = notesWithATypelessColumn()
+        manager.addNewColumn()
+        manager.addNewColumn()
+        #expect(!manager.canCommit)
+        #expect(!manager.validationSummary.contains("Duplicate"))
+        #expect(manager.validationSummary.contains("Column must have a name and a data type"))
+    }
+
+    @Test("Renaming a column onto another column's name is a duplicate")
+    func renamingOntoAnExistingNameIsADuplicate() throws {
+        let manager = notesWithATypelessColumn()
+        try edit("tag", in: manager) { $0.name = "id" }
+        #expect(!manager.canCommit)
+        #expect(manager.validationSummary.contains("Duplicate column name: id"))
+    }
+
+    // MARK: - Blank names the table already holds
+
+    /// `CREATE TABLE blanks (id INTEGER PRIMARY KEY, "" TEXT, "   " TEXT, tag TEXT)`. SQLite holds
+    /// `""` and `"   "` as two columns, and measured on 3.54.0 `RENAME COLUMN "   " TO ""` fails with
+    /// "duplicate column name: ".
+    private func tableWithBlankNames() -> StructureChangeManager {
+        schemaManager(
+            loading: [
+                column("id", type: "INTEGER", isPrimaryKey: true),
+                column("", type: "TEXT"),
+                column("   ", type: "TEXT"),
+                column("tag", type: "TEXT")
+            ],
+            primaryKey: ["id"],
+            table: "blanks"
+        )
+    }
+
+    @Test("Renaming a column onto a blank name the table holds is a duplicate")
+    func renamingOntoALoadedBlankNameIsADuplicate() throws {
+        let manager = tableWithBlankNames()
+        try edit("   ", in: manager) { $0.name = "" }
+        #expect(!manager.canCommit)
+        #expect(manager.validationSummary.contains("Duplicate column name"))
+    }
+
+    /// Measured on SQLite 3.54.0: `RENAME COLUMN "" TO "  "` beside `"   "` succeeds.
+    @Test("Blank names of different lengths are different names")
+    func blankNamesOfDifferentLengthsDoNotCollide() throws {
+        let manager = tableWithBlankNames()
+        try edit("", in: manager) { $0.name = "  " }
+        #expect(manager.canCommit)
+        #expect(manager.validationSummary.isEmpty)
+    }
+
+    @Test("A blank added column beside a blank name the table holds is incomplete, not a duplicate")
+    func blankAddedColumnBesideALoadedBlankNameIsIncomplete() {
+        let manager = tableWithBlankNames()
+        manager.addNewColumn()
+        #expect(!manager.canCommit)
+        #expect(!manager.validationSummary.contains("Duplicate"))
+        #expect(manager.validationSummary.contains("Column must have a name and a data type"))
+    }
+
+    @Test("Clearing a name beside a blank name the table holds is incomplete, not a duplicate")
+    func clearedNameBesideALoadedBlankNameIsIncomplete() throws {
+        let manager = tableWithBlankNames()
+        try edit("tag", in: manager) { $0.name = "" }
+        #expect(!manager.canCommit)
+        #expect(!manager.validationSummary.contains("Duplicate"))
+        #expect(manager.validationSummary.contains("Column must have a name and a data type"))
     }
 }
