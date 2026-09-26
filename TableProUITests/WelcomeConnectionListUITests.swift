@@ -13,11 +13,12 @@ final class WelcomeConnectionListUITests: UITestCase {
 
     func testShowRecentConnectionsSettingHidesAndRestoresTheSection() throws {
         let app = try launchWithSampleDatabase()
-        let fileMenu = app.menuBars.menuBarItems["File"]
+        let menuBar = app.menuBars.firstMatch
+        let fileMenu = menuBar.menuBarItems["File"]
         fileMenu.click()
         fileMenu.menus.menuItems["Manage Connections"].click()
 
-        let welcome = app.windows["welcome"]
+        let welcome = app.children(matching: .window).matching(identifier: "welcome").firstMatch
         XCTAssertTrue(welcome.waitToExist(timeout: 10))
         let list = welcome.outlines["welcome-connection-list"]
         XCTAssertTrue(list.waitToExist(timeout: 10))
@@ -26,13 +27,16 @@ final class WelcomeConnectionListUITests: UITestCase {
             "The opened sample must appear in Recent and Connections"
         )
 
-        app.menuBars.menuItems["Settings…"].click()
-        let generalPaneButton = app.toolbars.buttons["General"]
+        menuBar.menuItems["Settings…"].click()
+        let settings = app.children(matching: .window).matching(identifier: "settings").firstMatch
+        XCTAssertTrue(settings.waitToExist(timeout: 10), "Settings must open")
+        let generalPaneButton = settings.toolbars.buttons["General"]
         XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
         generalPaneButton.click()
 
-        let toggle = app.switches["show-recent-connections-toggle"].firstMatch
-        XCTAssertTrue(toggle.waitToExist(timeout: 10))
+        let toggle = settings.descendants(matching: .any)
+            .matching(identifier: "show-recent-connections-toggle").firstMatch
+        XCTAssertTrue(toggle.waitToExist(timeout: 10), "The General pane must offer the setting")
         XCTAssertTrue(isOn(toggle), "Recent connections must be shown by default")
 
         toggle.click()
@@ -47,8 +51,9 @@ final class WelcomeConnectionListUITests: UITestCase {
             "Turning the setting back on must restore the retained Recent entry"
         )
 
-        let clear = app.buttons["clear-recent-connections-button"].firstMatch
-        XCTAssertTrue(clear.waitToExist(timeout: 10))
+        let clear = settings.descendants(matching: .any)
+            .matching(identifier: "clear-recent-connections-button").firstMatch
+        XCTAssertTrue(clear.waitToExist(timeout: 10), "The General pane must offer Clear Recent")
         clear.click()
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { self.rows(named: "Chinook (Sample)", in: list).count == 1 },
