@@ -5,38 +5,47 @@
 
 import SwiftUI
 
-/// Drives one Bool from `LoadingRevealPolicy`: false until the work behind it outlasts the grace,
-/// then true for at least the minimum dwell.
+/// Drives which subject's progress UI is revealed from `LoadingRevealPolicy`: none until the work
+/// behind it outlasts the grace, then that subject for at least the minimum dwell.
 ///
 /// A modifier rather than a wrapper view, because the answer often decides which branch a view
-/// renders rather than whether one spinner sits inside it. `ExecutionIndicatorView` is the case
-/// that needs it: holding its content back would leave an empty toolbar item, where holding the
-/// state back leaves the previous readout standing and the row never changes width.
-private struct LoadingRevealGate: ViewModifier {
+/// renders rather than whether one spinner sits inside it. The results status bar's execution
+/// indicator is the case that needs it: holding its content back would leave an empty slot, where
+/// holding the state back leaves the previous readout standing and the row never changes width.
+private struct LoadingRevealGate<Subject: Hashable & Sendable>: ViewModifier {
+    let subject: Subject
     let isActive: Bool
-    @Binding var isRevealed: Bool
+    let activeSince: ContinuousClock.Instant?
+    @Binding var revealedSubject: Subject?
 
     @State private var revealedAt: ContinuousClock.Instant?
 
     func body(content: Content) -> some View {
-        content.task(id: isActive) { await track() }
+        content.task(id: LoadingRevealActivity(subject: subject, isActive: isActive)) { await track() }
     }
 
     private func track() async {
+        if let revealedSubject, revealedSubject != subject {
+            self.revealedSubject = nil
+            revealedAt = nil
+        }
         guard isActive else {
             await hideAfterDwell()
             return
         }
         guard revealedAt == nil else { return }
-        try? await Task.sleep(for: LoadingRevealPolicy.grace)
-        guard !Task.isCancelled else { return }
+        let grace = LoadingRevealPolicy.remainingGrace(activeSince: activeSince, now: .now)
+        if grace > .zero {
+            try? await Task.sleep(for: grace)
+            guard !Task.isCancelled else { return }
+        }
         revealedAt = .now
-        isRevealed = true
+        revealedSubject = subject
     }
 
     private func hideAfterDwell() async {
         guard let revealedAt else {
-            isRevealed = false
+            revealedSubject = nil
             return
         }
         let remaining = LoadingRevealPolicy.remainingDwell(revealedAt: revealedAt, now: .now)
@@ -45,14 +54,45 @@ private struct LoadingRevealGate: ViewModifier {
             guard !Task.isCancelled else { return }
         }
         self.revealedAt = nil
-        isRevealed = false
+        revealedSubject = nil
     }
+}
+
+private struct LoadingRevealActivity<Subject: Hashable & Sendable>: Hashable {
+    let subject: Subject
+    let isActive: Bool
+}
+
+private enum UnscopedReveal: Hashable, Sendable {
+    case subject
 }
 
 internal extension View {
     /// Reports through `isRevealed` whether progress UI for `isActive` has earned its place yet.
     func loadingRevealGate(isActive: Bool, isRevealed: Binding<Bool>) -> some View {
-        modifier(LoadingRevealGate(isActive: isActive, isRevealed: isRevealed))
+        modifier(LoadingRevealGate(
+            subject: UnscopedReveal.subject,
+            isActive: isActive,
+            activeSince: nil,
+            revealedSubject: Binding(
+                get: { isRevealed.wrappedValue ? .subject : nil },
+                set: { isRevealed.wrappedValue = $0 != nil }
+            )
+        ))
+    }
+
+    func loadingRevealGate<Subject: Hashable & Sendable>(
+        for subject: Subject,
+        isActive: Bool,
+        activeSince: ContinuousClock.Instant?,
+        revealedSubject: Binding<Subject?>
+    ) -> some View {
+        modifier(LoadingRevealGate(
+            subject: subject,
+            isActive: isActive,
+            activeSince: activeSince,
+            revealedSubject: revealedSubject
+        ))
     }
 }
 

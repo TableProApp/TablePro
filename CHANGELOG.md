@@ -518,6 +518,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server Windows Authentication to another realm failing when the service principal name is over 128 bytes.
 - Data grid's inline cell editor and cell viewer unreachable by VoiceOver.
 - No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan.
+- Executing indicator and Stop button carried over for a moment onto the query tab switched to.
 
 ### Security
 
