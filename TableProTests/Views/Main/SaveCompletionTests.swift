@@ -8,8 +8,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 /// Enough of a driver for `assemblePendingStatements` to produce SQL. Without one the builder has
@@ -50,7 +50,8 @@ struct SaveCompletionTests {
 
     private func makeCoordinator(
         safeModeLevel: SafeModeLevel = .silent,
-        type: DatabaseType = .mysql
+        type: DatabaseType = .mysql,
+        pluginDriver: any PluginDatabaseDriver = StubSaveDriver()
     ) -> (MainContentCoordinator, QueryTabManager, DataChangeManager) {
         var conn = TestFixtures.makeConnection(type: type)
         conn.safeModeLevel = safeModeLevel
@@ -59,7 +60,7 @@ struct SaveCompletionTests {
         DatabaseManager.shared.injectSession(
             ConnectionSession(
                 connection: conn,
-                driver: PluginDriverAdapter(connection: conn, pluginDriver: StubSaveDriver())
+                driver: PluginDriverAdapter(connection: conn, pluginDriver: pluginDriver)
             ),
             for: conn.id
         )
@@ -128,6 +129,48 @@ struct SaveCompletionTests {
 
         let errorMessage = tabManager.tabs.first?.execution.errorMessage
         #expect(errorMessage != nil)
+    }
+
+    // MARK: - Changes the Driver Cannot Write
+
+    @Test("A save the driver cannot fully write sends nothing and keeps every change")
+    func saveTheDriverCannotFullyWriteKeepsEveryChange() {
+        let driver = RowWriteStubDriver { changes, _, _, _ in
+            changes.filter { $0.type == .update }.map {
+                PluginRowWrite(statement: "UPDATE items SET name = 'z' WHERE id = \($0.rowIndex)", rowIndices: [$0.rowIndex])
+            }
+        }
+        let (coordinator, tabManager, changeManager) = makeCoordinator(pluginDriver: driver)
+        tabManager.addTab(databaseName: "testdb")
+        changeManager.configureForTable(
+            tableName: "items",
+            columns: ["_id", "name"],
+            primaryKeyColumns: ["_id"],
+            databaseType: DatabaseType(rawValue: "MongoDB"),
+            generatedColumns: []
+        )
+        changeManager.pluginDriver = driver
+        changeManager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "a", newValue: "z", originalRow: ["1", "a"]
+        )
+        changeManager.recordRowInsertion(rowID: .inserted(UUID()), values: [.null, .null])
+
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
+        coordinator.saveChanges(
+            pendingTruncates: &truncates,
+            pendingDeletes: &deletes,
+            tableOperationOptions: &options
+        )
+
+        let errorMessage = tabManager.tabs.first?.execution.errorMessage ?? ""
+        #expect(errorMessage.hasPrefix("Cannot save changes to 'items'. The driver cannot write a new row."))
+        #expect(errorMessage.contains("Nothing was saved"))
+        #expect(changeManager.hasChanges)
+        #expect(changeManager.changes.count == 2)
+        #expect(driver.executedQueries.isEmpty)
     }
 
     // MARK: - Pending Table Operations

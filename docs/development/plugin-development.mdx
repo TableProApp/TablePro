@@ -59,13 +59,14 @@ Twelve requirements have no default. Everything else on the protocol does.
 | Schema | `fetchTables(schema:)`, `fetchColumns(table:schema:)`, `fetchIndexes(table:schema:)`, `fetchForeignKeys(table:schema:)`, `fetchTableDDL(table:schema:)`, `fetchViewDefinition(view:schema:)`, `fetchTableMetadata(table:schema:)` |
 | Databases | `fetchDatabases()`, `fetchDatabaseMetadata(_:)` |
 
-Five defaults are worth a second look before you accept them:
+These defaults are worth a second look before you accept them:
 
 - `ping()` runs `SELECT 1`, and the transaction methods run `BEGIN` / `COMMIT` / `ROLLBACK` through `execute(query:)`. An engine without those keywords overrides all four.
 - `sessionTransactionState()` answers `.unknown`, and a driver that cannot read its session leaves it there. The app treats `.idle` as permission to open a transaction of its own, so a guess hands a multi-statement batch or a grid save the power to commit work the user has not finished. Answer `.inTransaction`, `.abortedTransaction` or `.holdsSessionLocks` only from something the server said.
 - `fetchAllColumns(schema:)` and `fetchAllForeignKeys(schema:)` loop one round-trip per table. Any SQL driver should replace them with a single catalog query.
 - `quoteIdentifier`, `escapeStringLiteral`, `executeParameterized`, and `streamRows` assume generic SQL.
-- A non-SQL database implements `buildBrowseQuery`, `buildFilteredQuery`, and `generateStatements` instead, which is what makes browsing and editing work without SQL. Implement the `schema:`-aware overloads if your database has schemas; the schema-less defaults throw the schema away.
+- A non-SQL database implements `buildBrowseQuery`, `buildFilteredQuery`, and `generateRowWrites` instead, which is what makes browsing and editing work without SQL. Implement the `schema:`-aware overloads if your database has schemas; the schema-less defaults throw the schema away.
+- Name the `rowIndex` of every change a `PluginRowWrite` writes, and throw `PluginRowWriteRefusal` with a reason for a change, or a value in one, that the driver cannot write. The app refuses a save in which a pending change has no statement, but it cannot see a value left out of one, so only the driver can refuse that.
 - A database whose tables are not a list of typed columns returns a `PluginCreateTableFormSpec` from `createTableFormSpec(schema:)` and turns the filled-in form into statements in `createTableStatements(for:schema:)`. **New Table…** then shows that form in place of the column grid. The default returns `nil`, which keeps the grid.
 
 [Testing a Custom Plugin](/development/testing-plugins) covers getting the built bundle into a running app and reading the failure if it does not load.

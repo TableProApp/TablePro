@@ -308,9 +308,9 @@ struct RedisAbandonedVisitTests {
 }
 
 struct RedisWriteAddressingTests {
-    private static let writes: [RedisDatabaseTarget.Statement] = [
-        (statement: "SET \"k\" \"v\"", parameters: []),
-        (statement: "DEL \"old\"", parameters: []),
+    private static let writes = [
+        PluginRowWrite(statement: "SET \"k\" \"v\"", rowIndices: [0]),
+        PluginRowWrite(statement: "DEL \"old\"", rowIndices: [1, 2]),
     ]
 
     @Test("Writes for the database the session belongs on are unchanged")
@@ -323,6 +323,7 @@ struct RedisWriteAddressingTests {
     func otherDatabase() {
         let addressed = RedisDatabaseTarget.addressing(Self.writes, toDatabase: 3, from: 5, insideTransaction: true)
         #expect(addressed.map(\.statement) == ["SELECT 3", "SET \"k\" \"v\"", "DEL \"old\"", "SELECT 5"])
+        #expect(addressed.map(\.rowIndices) == [[], [0], [1, 2], []])
     }
 
     @Test("A table that names no database, or no writes, is left alone")

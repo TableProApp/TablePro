@@ -59,7 +59,11 @@ extension RowEditingCoordinator {
                 tableOperationOptions: tableOperationOptions
             )
         } catch {
-            failSave(message: error.localizedDescription)
+            failSave(
+                message: [error.localizedDescription, (error as? DataWriteError)?.recoverySuggestion]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            )
             return
         }
 

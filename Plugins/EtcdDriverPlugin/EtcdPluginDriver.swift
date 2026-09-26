@@ -447,20 +447,21 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let generator = EtcdStatementGenerator(
             prefix: resolvedPrefix(for: table),
             columns: columns
         )
-        return generator.generateStatements(
+        return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,

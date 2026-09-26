@@ -238,18 +238,19 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let typeNames = columnTypeNames(for: columns, index: table)
         let generator = ElasticsearchStatementGenerator(index: table, columns: columns, columnTypeNames: typeNames)
-        return generator.generateStatements(
+        return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,

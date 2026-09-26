@@ -605,7 +605,7 @@ struct ElasticsearchMappingFlattenerTests {
     func doublesRoundTrip() {
         let source: [String: Any] = [
             "score": -3.9192320754595876e-07,
-            "total": 1847.27,
+            "total": 1_847.27,
             "counts": ["rate": 0.1, "qty": 3.0],
         ]
         let flat = ElasticsearchMappingFlattener.flattenSource(source)
@@ -617,7 +617,7 @@ struct ElasticsearchMappingFlattenerTests {
 
     @Test("An array of doubles serializes without binary floating point noise")
     func arrayOfDoublesHasNoExcessDigits() {
-        let source: [String: Any] = ["samples": [0.1, 1847.27]]
+        let source: [String: Any] = ["samples": [0.1, 1_847.27]]
         let flat = ElasticsearchMappingFlattener.flattenSource(source)
         #expect(flat["samples"] == .text("[0.1,1847.27]"))
     }
@@ -815,14 +815,14 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Update encodes a POST _update keyed by _id")
-    func updateRequest() {
+    func updateRequest() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Alice"))],
             originalRow: [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
         #expect(statements.count == 1)
@@ -833,14 +833,14 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Delete encodes a DELETE _doc by _id")
-    func deleteRequest() {
+    func deleteRequest() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .delete,
             cellChanges: [],
             originalRow: [.text("doc9"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
@@ -849,9 +849,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Insert coerces numeric fields and omits meta columns")
-    func insertRequest() {
+    func insertRequest() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.null, .null, .null, .text("Eve"), .text("25")]],
             deletedRowIndices: [],
@@ -873,9 +873,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Insert writes the nested array once, through its parent column")
-    func insertOmitsNestedLeaves() {
+    func insertOmitsNestedLeaves() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = nestedGenerator().generateStatements(
+        let statements = try nestedGenerator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [
                 .null,
@@ -891,8 +891,19 @@ struct ElasticsearchStatementGeneratorTests {
         #expect(body?.contains("identifiers.type") == false)
     }
 
-    @Test("Update skips a nested leaf edit and keeps the rest of the row")
-    func updateSkipsNestedLeaf() {
+    private func nestedLeafRefusal(rowIndex: Int = 0) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: rowIndex,
+            reason: "'identifiers.type' is a field of a nested array. Edit the array in 'identifiers' instead."
+        )
+    }
+
+    private func leafTyped(_ value: String) -> [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)] {
+        [(columnIndex: 2, columnName: "identifiers.type", oldValue: .null, newValue: .text(value))]
+    }
+
+    @Test("Update refuses a nested leaf edit rather than write the rest of the row without it")
+    func updateRefusesNestedLeaf() {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
@@ -905,18 +916,167 @@ struct ElasticsearchStatementGeneratorTests {
             ],
             originalRow: [.text("doc1"), .text("[]"), .text("[\"CPF\"]"), .text("p1")]
         )
-        let statements = nestedGenerator().generateStatements(
-            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("A new row with only a nested leaf typed is refused rather than saved empty")
+    func insertRefusesTypedLeafWithEmptyArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: leafTyped("[\"X\"]"), originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text("[\"X\"]"), .null]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A leaf typed into a new row is refused even when its array has a value")
+    func insertRefusesTypedLeafBesideItsArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: leafTyped("[\"X\"]"), originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .text("[{\"type\":\"CPF\"}]"), .text("[\"X\"]"), .null]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A pasted row carrying a leaf value with no array to write it through is refused")
+    func insertRefusesPastedLeafWithoutItsArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text("[\"CPF\"]"), .text("p1")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("An edit to document metadata is refused")
+    func updateRefusesMetadata() {
+        let change = PluginRowChange(
+            rowIndex: 3,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Alice")),
+                (columnIndex: 1, columnName: "_index", oldValue: .text("users"), newValue: .text("people")),
+            ],
+            originalRow: [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let body = ElasticsearchStatementGenerator.decode(statements[0].statement)?.body
-        #expect(body?.contains("identifiers.type") == false)
-        #expect(body?.contains("p2") == true)
+        let refusal = PluginRowWriteRefusal(rowIndex: 3, reason: "'_index' is document metadata and cannot be edited.")
+        #expect(throws: refusal) {
+            try generator().generateRowWrites(
+                from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("A score typed into a new row is refused, and an _id typed into one is written")
+    func insertRefusesTypedScoreAndKeepsTypedId() throws {
+        let score = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 2, columnName: "_score", oldValue: .null, newValue: .text("9"))],
+            originalRow: nil
+        )
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "'_score' is document metadata and cannot be edited.")) {
+            try generator().generateRowWrites(
+                from: [score],
+                insertedRowData: [0: [.null, .null, .text("9"), .text("Eve"), .null]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+
+        let id = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 0, columnName: "_id", oldValue: .null, newValue: .text("e1"))],
+            originalRow: nil
+        )
+        let writes = try generator().generateRowWrites(
+            from: [id],
+            insertedRowData: [0: [.text("e1"), .null, .null, .text("Eve"), .null]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        #expect(writes.map(\.rowIndices) == [[0]])
+        #expect(ElasticsearchStatementGenerator.decode(writes[0].statement)?.path.contains("/users/_doc/e1") == true)
+    }
+
+    @Test("A value that is not valid JSON refuses the change")
+    func updateRefusesAValueJSONCannotHold() {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 4, columnName: "age", oldValue: .text("30"), newValue: .text("nan"))],
+            originalRow: [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
+        )
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "The new values cannot be written as JSON.")) {
+            try generator().generateRowWrites(
+                from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("A change with no _id to address it by is refused")
+    func refusesAChangeWithoutAnId() {
+        let update = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Alice"))],
+            originalRow: [.null, .text("users"), .text("1"), .text("Bob"), .text("30")]
+        )
+        let delete = PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: nil)
+        let reason = "The document's _id is unknown, so it cannot be addressed."
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: reason)) {
+            try generator().generateRowWrites(
+                from: [update], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 1, reason: reason)) {
+            try generator().generateRowWrites(
+                from: [delete], insertedRowData: [:], deletedRowIndices: [1], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("Each request names the change it writes, and an update with nothing to set writes nothing")
+    func writesNameTheirChange() throws {
+        let original: [PluginCellValue] = [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
+        let writes = try generator().generateRowWrites(
+            from: [
+                PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil),
+                PluginRowChange(
+                    rowIndex: 1,
+                    type: .update,
+                    cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .null)],
+                    originalRow: original
+                ),
+                PluginRowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: original),
+            ],
+            insertedRowData: [:],
+            deletedRowIndices: [2],
+            insertedRowIndices: []
+        )
+        #expect(writes.map(\.rowIndices) == [[1], [2]])
+        #expect(ElasticsearchStatementGenerator.decode(writes[0].statement)?.body == "{\"doc\":{\"name\":null}}")
     }
 
     @Test("Insert with explicit _id uses PUT")
-    func insertWithId() {
+    func insertWithId() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.text("custom"), .null, .null, .text("Eve"), .text("25")]],
             deletedRowIndices: [],
@@ -928,14 +1088,14 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Document id with a slash is percent-encoded into one path segment")
-    func slashInDocumentId() {
+    func slashInDocumentId() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .delete,
             cellChanges: [],
             originalRow: [.text("tenant/123"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
@@ -943,9 +1103,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Insert preserves an intentional empty string")
-    func insertKeepsEmptyString() {
+    func insertKeepsEmptyString() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.null, .null, .null, .text(""), .text("25")]],
             deletedRowIndices: [],
@@ -956,9 +1116,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("JSON object text is kept as a string on a scalar field")
-    func jsonObjectKeptAsStringOnScalarField() {
+    func jsonObjectKeptAsStringOnScalarField() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.null, .null, .null, .text("{\"a\":1}"), .text("25")]],
             deletedRowIndices: [],

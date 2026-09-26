@@ -14,7 +14,7 @@ private func updateStatements(
     key: String = "mykey",
     type: String = "STRING",
     newValue: PluginCellValue
-) -> [(statement: String, parameters: [PluginCellValue])] {
+) throws -> [PluginRowWrite] {
     let generator = RedisStatementGenerator(namespaceName: "", columns: browseColumns)
     let change = PluginRowChange(
         rowIndex: 0,
@@ -22,7 +22,7 @@ private func updateStatements(
         cellChanges: [(columnIndex: 4, columnName: "Value", oldValue: .text("old"), newValue: newValue)],
         originalRow: [.text(key), .text(type), "-1", "3", .text("old")]
     )
-    return generator.generateStatements(
+    return try generator.generateRowWrites(
         from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
     )
 }
@@ -34,49 +34,49 @@ private func parsedValue(of statement: String) -> Data? {
 
 struct RedisWriteRoundTripTests {
     @Test("a plain value produces a readable command")
-    func plainValueStaysReadable() {
-        let statements = updateStatements(newValue: .text("hello"))
+    func plainValueStaysReadable() throws {
+        let statements = try updateStatements(newValue: .text("hello"))
         #expect(statements.count == 1)
         #expect(statements.first?.statement == "SET mykey hello")
     }
 
     @Test("a value with spaces is quoted and parses back whole")
-    func spacedValueRoundTrips() {
-        let statements = updateStatements(newValue: .text("hello world"))
+    func spacedValueRoundTrips() throws {
+        let statements = try updateStatements(newValue: .text("hello world"))
         #expect(statements.first?.statement == "SET mykey \"hello world\"")
         #expect(parsedValue(of: statements[0].statement) == Data("hello world".utf8))
     }
 
     @Test("quotes, backslashes, and newlines round-trip")
-    func specialCharactersRoundTrip() {
+    func specialCharactersRoundTrip() throws {
         let value = "a\"b\\c\nd"
-        let statements = updateStatements(newValue: .text(value))
+        let statements = try updateStatements(newValue: .text(value))
         #expect(parsedValue(of: statements[0].statement) == Data(value.utf8))
     }
 
     @Test("non-ASCII text round-trips")
-    func unicodeRoundTrips() {
+    func unicodeRoundTrips() throws {
         let value = "café ☕"
-        let statements = updateStatements(newValue: .text(value))
+        let statements = try updateStatements(newValue: .text(value))
         #expect(parsedValue(of: statements[0].statement) == Data(value.utf8))
     }
 
     @Test("a long value round-trips whole")
-    func longValueRoundTrips() {
+    func longValueRoundTrips() throws {
         let value = String(repeating: "x", count: 20_000)
-        let statements = updateStatements(newValue: .text(value))
+        let statements = try updateStatements(newValue: .text(value))
         #expect(parsedValue(of: statements[0].statement) == Data(value.utf8))
     }
 
     @Test("a binary value round-trips byte for byte")
-    func binaryValueRoundTrips() {
-        let statements = updateStatements(newValue: .bytes(gzipPayload))
+    func binaryValueRoundTrips() throws {
+        let statements = try updateStatements(newValue: .bytes(gzipPayload))
         #expect(statements.count == 1)
         #expect(parsedValue(of: statements[0].statement) == gzipPayload)
     }
 
     @Test("binary blobs of many shapes round-trip")
-    func binaryBlobsRoundTrip() {
+    func binaryBlobsRoundTrip() throws {
         var seed: UInt64 = 0x2545_F491_4F6C_DD1D
         func nextByte() -> UInt8 {
             seed ^= seed << 13
@@ -86,14 +86,14 @@ struct RedisWriteRoundTripTests {
         }
         for length in 1 ... 120 {
             let blob = Data((0 ..< length).map { _ in nextByte() })
-            let statements = updateStatements(newValue: .bytes(blob))
+            let statements = try updateStatements(newValue: .bytes(blob))
             #expect(parsedValue(of: statements[0].statement) == blob)
         }
     }
 
     @Test("a key containing a space round-trips")
-    func keyWithSpaceRoundTrips() {
-        let statements = updateStatements(key: "my key", newValue: .text("v"))
+    func keyWithSpaceRoundTrips() throws {
+        let statements = try updateStatements(key: "my key", newValue: .text("v"))
         guard case .set(let key, _, _)? = try? RedisCommandParser.parse(statements[0].statement) else {
             Issue.record("Expected a SET operation")
             return
@@ -102,9 +102,9 @@ struct RedisWriteRoundTripTests {
     }
 
     @Test("a value cannot inject a second command")
-    func valueCannotInjectCommand() {
+    func valueCannotInjectCommand() throws {
         let hostile = "x\" \nDEL victim \"y"
-        let statements = updateStatements(newValue: .text(hostile))
+        let statements = try updateStatements(newValue: .text(hostile))
         #expect(statements.count == 1)
         #expect(RedisArgumentCodec.split(statements[0].statement)?.count == 3)
         #expect(parsedValue(of: statements[0].statement) == Data(hostile.utf8))
@@ -112,17 +112,19 @@ struct RedisWriteRoundTripTests {
 
     @Test("a collection value is still refused so the structure survives")
     func collectionValueRefused() {
-        #expect(updateStatements(type: "LIST", newValue: .text("[\"a\"]")).isEmpty)
+        #expect(throws: PluginRowWriteRefusal.self) {
+            _ = try updateStatements(type: "LIST", newValue: .text("[\"a\"]"))
+        }
     }
 
     @Test("a binary insert round-trips")
-    func binaryInsertRoundTrips() {
+    func binaryInsertRoundTrips() throws {
         let generator = RedisStatementGenerator(namespaceName: "", columns: browseColumns)
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         let inserted: [Int: [PluginCellValue]] = [
             0: [.text("bin"), .text("STRING"), .null, .null, .bytes(gzipPayload)]
         ]
-        let statements = generator.generateStatements(
+        let statements = try generator.generateRowWrites(
             from: [change], insertedRowData: inserted, deletedRowIndices: [], insertedRowIndices: [0]
         )
         #expect(statements.count == 1)

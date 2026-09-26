@@ -32,14 +32,14 @@ enum RedisKeySlot {
         return keys.allSatisfy { slot(for: $0) == reference }
     }
 
-    /// Keys that share a slot, in the order each slot first appears, with duplicates kept.
-    static func groupedBySlot(_ keys: [String]) -> [[String]] {
+    /// Elements whose keys share a slot, in the order each slot first appears, with duplicates kept.
+    static func groupedBySlot<Element>(_ elements: [Element], key: (Element) -> String) -> [[Element]] {
         var order: [Int] = []
-        var groups: [Int: [String]] = [:]
-        for key in keys {
-            let keySlot = slot(for: key)
+        var groups: [Int: [Element]] = [:]
+        for element in elements {
+            let keySlot = slot(for: key(element))
             if groups[keySlot] == nil { order.append(keySlot) }
-            groups[keySlot, default: []].append(key)
+            groups[keySlot, default: []].append(element)
         }
         return order.compactMap { groups[$0] }
     }
