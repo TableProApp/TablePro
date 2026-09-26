@@ -142,7 +142,7 @@ actor BridgeProxy {
         self.upstream = upstream
         self.discovery = discovery
         self.logger = logger
-        self.stdout = BridgeStdout(handle: stdout)
+        self.stdout = BridgeStdout(handle: stdout, logger: logger)
         self.hostLines = BridgeStdin.lines(from: stdin, logger: logger)
     }
 
@@ -564,18 +564,20 @@ enum BridgeStdin {
 
 actor BridgeStdout {
     private let handle: FileHandle
+    private let logger: any MCPBridgeLogger
 
-    init(handle: FileHandle) {
+    init(handle: FileHandle, logger: any MCPBridgeLogger) {
         self.handle = handle
+        self.logger = logger
     }
 
     func write(_ payload: Data) {
         var line = payload
         line.append(0x0A)
         do {
-            try handle.write(contentsOf: line)
+            try DescriptorWrite.allBytes(line, to: handle.fileDescriptor)
         } catch {
-            FileHandle.standardError.write(Data("[error] stdout write failed: \(error)\n".utf8))
+            logger.log(.error, "Writing stdout failed: \(error.localizedDescription)")
         }
     }
 }

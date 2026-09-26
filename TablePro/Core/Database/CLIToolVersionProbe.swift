@@ -6,22 +6,13 @@
 import Foundation
 import os
 
-/// Asks a command line tool what it is, by running it with `--version`.
-///
-/// Synchronous on purpose: `NativeDumpDescriptor.CommandLineTool`'s resolution hooks are
-/// synchronous closures that `NativeDumpService` already runs inside a detached task, so an async
-/// probe would have to change every one of them.
 enum CLIToolVersionProbe {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CLIToolVersionProbe")
 
     static let defaultTimeout: TimeInterval = 3
 
-    /// A version banner is one line. Reading past this is a tool doing something other than
-    /// answering the question, and the answer is taken from what arrived rather than waited for.
     static let outputCap = 64 * 1_024
 
-    /// Standard output of `<path> --version`, or nil when the tool cannot run, does not answer in
-    /// time, or exits non-zero.
     static func versionOutput(of path: String, timeout: TimeInterval = defaultTimeout) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
