@@ -74,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Import into Table** from a data file window, into an open connection's import sheet.
 - **Text Encoding** in a data file's Save As panel.
 - `BSONSymbol()` in the MongoDB shell.
+- `MinKey`, `MaxKey`, `Code`, `DBRef` and the legacy UUID helpers in MongoDB shell autocomplete.
 
 ### Changed
 
@@ -118,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
 - Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
 - `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
+- Whole numbers past 2^53 and `-0` stored as doubles by the MongoDB shell, as mongosh stores them.
 
 ### Removed
 
@@ -208,6 +210,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NumberDecimal("NaN")` and `NumberDecimal("Infinity")` refused by the MongoDB shell.
 - Fields named `__proto__` dropped from documents a MongoDB script writes or reads.
 - Error text after a carriage return or line separator left uncommented in Edit View Definition's fallback.
+- Whole numbers from 2^63 up, such as `1e20`, refused by the MongoDB shell as a document MongoDB cannot read.
+- `NumberLong` given a number past 2^53 storing a different integer in the MongoDB shell.
+- Wrong values stored by `NumberInt` and `Timestamp` in the MongoDB shell, such as 12 for `NumberInt("12abc")`.
+- `Int32`, `Long`, `Decimal128` and `Timestamp({ t, i })` missing from the MongoDB shell although autocomplete offers them.
+- MongoDB scripts stopping on a stored decimal `NaN` or a regular expression JavaScript cannot compile.
+- Regular expressions changed when a MongoDB script writes back a document it read.
 - Capped MongoDB collection size shown as 0 in DDL.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
 - Model list not reloading when the API key changes, leaving the picker empty with no way to retry.

@@ -177,6 +177,48 @@ print("stale orders: " + stale.length);
 returns no documents. A statement that returns documents shows those instead, with the printed
 lines on the status line under the grid.
 
+### Values
+
+A number written without a constructor is stored by what it holds:
+
+| Number | Stored as |
+|---|---|
+| Whole, from -2147483648 to 2147483647 | int32 |
+| Whole, outside int32 up to 9007199254740991 (2^53 - 1) | int64 |
+| Whole past 2^53, a fraction, `-0`, `NaN`, `Infinity` | double |
+
+mongosh stores every whole number outside int32 as a double; write `Double(3000000000)` for the
+same result here. Past 2^53 a JavaScript number cannot hold every integer, so `9007199254740993`
+is already `9007199254740992` when the statement runs. Pass an exact 64-bit integer as a string:
+`Long("9007199254740993")`. Because `-0` is a double, `{$inc: {n: Math.round(-0.2)}}` turns an
+int32 field into a double, the same as in mongosh.
+
+| Constructor | Stores | Takes |
+|---|---|---|
+| `Int32`, `NumberInt` | int32 | A number or numeric string, cut toward zero |
+| `Long`, `NumberLong` | int64 | A string of digits, a number cut toward zero, or `Long(low, high)` from two 32-bit halves |
+| `Double` | double | A number |
+| `Decimal128`, `NumberDecimal` | decimal128 | A numeric string, `NaN`, `Infinity` or `-Infinity` |
+| `Timestamp` | timestamp | `(t, i)`, `{t, i}` or a `Long`, each part from 0 to 4294967295 |
+| `BSONRegExp` | regular expression | A pattern string, and options from `i`, `l`, `m`, `s`, `u` and `x` |
+
+A value out of range throws when the constructor runs. `Int32(2147483648)` and
+`NumberLong("9223372036854775808")` throw where mongosh wraps them round to a negative number.
+
+A document read into a script holds these:
+
+| Stored | Reads as | Compares |
+|---|---|---|
+| double | a number | A stored `5.0` makes `doc.qty === 5` true |
+| int32 | a number | A stored `5` makes `doc.qty === 5` true |
+| int64 | a `Long` | `doc.views == 5` is true and `doc.views === 5` is false; `.toNumber()` gives a number |
+| decimal128 | a `Decimal128` | `String(doc.price)` gives the stored digits |
+| regular expression | a `RegExp`, or a `BSONRegExp` for the `l` and `x` options and PCRE-only syntax such as `(?i)` | `.test()` works on a `RegExp` |
+
+Written back, a whole double is stored by the rules for a bare number: `5.0` becomes int32, as in
+mongosh, and `3000000000.0` becomes int64 where mongosh keeps a double. Wrap it in `Double()` to
+keep it a double. A regular expression goes back exactly as the server sent it, options included.
+
 ### Collection references
 
 `db.users`, `db["users"]`, or `db.getCollection("users")`. Use `getCollection` for names with dots
@@ -240,6 +282,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - GridFS buckets are not browsable, and change streams are unsupported.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
 - Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+- `Decimal128("…")` with more than 34 significant digits, or an exponent outside the decimal128 range, fails when the statement runs with "This is not a document MongoDB can read". Round a long value to 34 digits. For an exponent out of range, store the value scaled to a unit that fits, or as a double or a string.
 - An MQL export of a view holds the view's documents, not the view, so restoring the file creates a collection of that name. Drop that collection and run the view's **Show DDL** text to get the view back.
 - A time-series collection takes inserts and deletes from the grid, but refuses an edited cell and a rename, and the server's error is shown. Change its documents from a query tab with `updateMany` filtered on the meta field.
 - A filter or validator with a regular expression under `$regex`, such as `{email: {$regex: /@/i}}`, is refused as a document MongoDB cannot read. Write `{email: /@/i}` or `{email: {$regex: "@", $options: "i"}}` instead. **Show DDL** writes such a validator the way the server holds it, which runs in mongosh but not in a query tab.
