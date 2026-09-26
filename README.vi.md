@@ -128,7 +128,7 @@ App miễn phí theo AGPLv3. Nếu bạn dùng TablePro cho công việc, hãy m
 
 Cảm ơn những người tuyệt vời đã ủng hộ TablePro:
 
-**[getapps.cafe](https://getapps.cafe/?ref=SJO7-TgA)** · **[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
+**[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)**
 
 ## Người đóng góp
 
