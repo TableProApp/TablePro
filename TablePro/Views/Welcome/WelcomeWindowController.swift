@@ -18,6 +18,8 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
     private static var shared: WelcomeWindowController?
 
     private let viewModel: WelcomeViewModel
+    private let toolbarPresentation = WelcomeToolbarPresentation()
+    private var toolbarDisplayModeObservation: NSKeyValueObservation?
 
     internal static func present() {
         let controller = shared ?? WelcomeWindowController(viewModel: WelcomeViewModel())
@@ -48,21 +50,54 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         window.collectionBehavior.insert([.fullScreenNone, .fullScreenDisallowsTiling])
 
         let toolbar = NSToolbar(identifier: "com.TablePro.welcome.toolbar")
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
+        Self.configureToolbar(toolbar)
         window.toolbar = toolbar
         window.toolbarStyle = .unified
 
-        window.contentViewController = WelcomeSplitViewController(viewModel: viewModel)
         window.contentMinSize = Self.contentSize
         window.contentMaxSize = Self.contentSize
         super.init(window: window)
         window.delegate = self
+        window.contentViewController = WelcomeSplitViewController(
+            viewModel: viewModel,
+            toolbarPresentation: toolbarPresentation
+        )
+        Self.configureLiveToolbar(in: window)
+        observeDisplayMode(of: window.toolbar)
 
         if !window.setFrame(usingAutosaveName: Self.frameAutosaveName) {
             window.center()
         }
         window.setContentSize(Self.contentSize)
+    }
+
+    internal static func configureToolbar(_ toolbar: NSToolbar) {
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        toolbar.autosavesConfiguration = false
+        if #available(macOS 15.0, *) {
+            toolbar.allowsDisplayModeCustomization = false
+        }
+    }
+
+    internal static func configureLiveToolbar(in window: NSWindow) {
+        window.toolbarStyle = .unified
+        guard let toolbar = window.toolbar else { return }
+        configureToolbar(toolbar)
+    }
+
+    private func observeDisplayMode(of toolbar: NSToolbar?) {
+        guard let toolbar else { return }
+        toolbarDisplayModeObservation = Self.keepIconOnlyDisplayMode(of: toolbar)
+    }
+
+    internal static func keepIconOnlyDisplayMode(of toolbar: NSToolbar) -> NSKeyValueObservation {
+        toolbar.observe(\.displayMode, options: [.new]) { [weak toolbar] _, _ in
+            MainActor.assumeIsolated {
+                guard let toolbar, toolbar.displayMode != .iconOnly else { return }
+                toolbar.displayMode = .iconOnly
+            }
+        }
     }
 
     @available(*, unavailable)

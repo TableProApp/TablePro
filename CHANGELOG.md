@@ -129,6 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Welcome window toolbar growing into two rows and repeating **Search** below its field in Icon & Text mode.
 - Pre-connect script failures sometimes reported without the script's own error message.
 - Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
 - `tablepro-mcp` crashing when its standard input was non-blocking.

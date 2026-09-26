@@ -12,9 +12,11 @@ internal final class WelcomeSplitViewController: NSSplitViewController {
     internal static let listMinimumWidth: CGFloat = 460
 
     private let viewModel: WelcomeViewModel
+    private let toolbarPresentation: WelcomeToolbarPresentation
 
-    internal init(viewModel: WelcomeViewModel) {
+    internal init(viewModel: WelcomeViewModel, toolbarPresentation: WelcomeToolbarPresentation) {
         self.viewModel = viewModel
+        self.toolbarPresentation = toolbarPresentation
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -35,10 +37,12 @@ internal final class WelcomeSplitViewController: NSSplitViewController {
         sidebarItem.holdingPriority = .splitPaneHolding
         addSplitViewItem(sidebarItem)
 
-        let list = NSHostingController(
-            rootView: WelcomeLibraryPane(viewModel: viewModel)
-                .environment(\.appServices, .live)
+        let libraryPane = WelcomeLibraryPane(
+            viewModel: viewModel,
+            toolbarPresentation: toolbarPresentation
         )
+            .environment(\.appServices, .live)
+        let list = NSHostingController(rootView: libraryPane)
         list.sizingOptions = []
         /// `sceneBridgingOptions` is macOS 14. It lets the hosted SwiftUI tree contribute toolbar
         /// items to the window; on 13 the pane simply contributes none, and the window keeps the
