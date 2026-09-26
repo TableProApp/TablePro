@@ -62,6 +62,7 @@ struct ResultStatusBar: View {
     /// "the selected tab" pruned the wrong one and left an unfinished rule saved on the tab the
     /// user actually opened it from.
     @State private var highlightPopoverTabId: UUID?
+    @State private var revealedExecutionTabId: UUID?
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -69,6 +70,12 @@ struct ResultStatusBar: View {
             row(.compact)
             row(.narrow)
         }
+        .loadingRevealGate(
+            for: execution.tabId,
+            isActive: execution.isExecuting,
+            activeSince: execution.startedAt,
+            revealedSubject: $revealedExecutionTabId
+        )
         .statusBarChrome()
         .onChange(of: snapshot.tabId) { _ in
             showColumnPopover = false
@@ -109,7 +116,11 @@ struct ResultStatusBar: View {
                     onCloseOthers: onCloseOtherResultSets
                 )
             }
-            readoutZone(readoutCluster)
+            if model.controls.showsReadout || model.controls.showsExecution {
+                readoutZone(readoutCluster)
+            } else {
+                Spacer(minLength: 0)
+            }
             controlCluster(presentation)
         }
     }
@@ -148,9 +159,7 @@ struct ResultStatusBar: View {
             if model.controls.showsReadout {
                 resultReadout
             }
-            if model.controls.showsExecution {
-                executionIndicator
-            }
+            executionReport
             if model.controls.showsReadout, isRefreshingSchema {
                 DelayedProgressIndicator(isActive: true)
                     .accessibilityLabel(String(localized: "Refreshing"))
@@ -209,14 +218,25 @@ struct ResultStatusBar: View {
         }
     }
 
-    private var executionIndicator: some View {
-        ExecutionIndicatorView(
-            isExecuting: execution.isExecuting,
-            lastTiming: execution.lastTiming,
-            canStop: execution.canStop,
-            leadsWithSeparator: model.controls.showsReadout,
-            onCancel: execution.onCancel
+    @ViewBuilder
+    private var executionReport: some View {
+        let slot = ExecutionSlot(
+            isOffered: model.controls.showsExecution,
+            followsReadout: model.controls.showsReadout,
+            isRevealed: revealedExecutionTabId == execution.tabId,
+            lastTiming: execution.lastTiming
         )
+        if slot.leadsWithSeparator {
+            StatusBarSeparator()
+        }
+        if let report = slot.report {
+            ExecutionIndicatorView(
+                report: report,
+                isExecuting: execution.isExecuting,
+                canStop: execution.canStop,
+                onCancel: execution.onCancel
+            )
+        }
     }
 
     private func readoutZone(_ content: some View) -> some View {

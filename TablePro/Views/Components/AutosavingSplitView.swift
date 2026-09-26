@@ -70,7 +70,7 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 
         controller.addSplitViewItem(primaryItem)
         controller.addSplitViewItem(secondaryItem)
-        controller.splitView.autosaveName = NSSplitView.AutosaveName(SplitViewAutosaveName.current(autosaveName))
+        controller.splitView.autosaveName = SplitViewAutosaveName.current(autosaveName)
         return controller
     }
 

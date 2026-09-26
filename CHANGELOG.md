@@ -526,6 +526,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
+- Executing indicator and Stop button carried over for a moment onto the query tab switched to.
 
 ### Security
 

@@ -12,7 +12,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         let splitViewController = ResizeCursorSplitViewController()
         splitViewController.splitView.isVertical = false
         splitViewController.splitView.dividerStyle = .thin
-        splitViewController.splitView.autosaveName = NSSplitView.AutosaveName(SplitViewAutosaveName.current("ServerDashboardSplit"))
+        splitViewController.splitView.autosaveName = SplitViewAutosaveName.current("ServerDashboardSplit")
 
         for panel in orderedPanels() {
             let item = makeItem(for: panel, coordinator: context.coordinator)

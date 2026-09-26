@@ -399,4 +399,21 @@ struct TabExecutionRegistryTests {
         registry.endUnclaimedWork(token, for: tabId)
         #expect(registry.isStoppable(tabId) == false)
     }
+
+    @Test("A run's start is the claim's own, and work with no claim reports none")
+    func startedAtIsTheClaimsOwn() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let started = ContinuousClock.now.advanced(by: .seconds(-3))
+        #expect(registry.startedAt(tabId) == nil)
+
+        let claim = registry.claim(tabId, startedAt: started)
+        #expect(registry.startedAt(tabId) == started)
+
+        let settled = registry.settle(claim)
+        #expect(settled)
+        _ = registry.beginUnclaimedWork(for: tabId)
+        #expect(registry.isBusy(tabId))
+        #expect(registry.startedAt(tabId) == nil)
+    }
 }

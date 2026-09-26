@@ -19,8 +19,8 @@ enum StatusBarChrome {
     static let clusterSpacing: CGFloat = 8
 }
 
-internal struct StatusBarSeparator: View {
-    internal var body: some View {
+struct StatusBarSeparator: View {
+    var body: some View {
         Text(verbatim: "·")
             .font(.caption)
             .foregroundStyle(.tertiary)

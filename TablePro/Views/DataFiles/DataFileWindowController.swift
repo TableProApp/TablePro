@@ -54,8 +54,8 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
                     ?? NSRect(origin: window.frame.origin, size: pinnedSize),
                 display: false
             )
-        } else {
-            windowFrameAutosaveName = SplitViewAutosaveName.current(Self.frameAutosaveName)
+        } else if let autosaveName = SplitViewAutosaveName.current(Self.frameAutosaveName) {
+            windowFrameAutosaveName = autosaveName
         }
 
         let toolbar = NSToolbar(identifier: "com.TablePro.DataFileToolbar")

@@ -235,6 +235,10 @@ internal struct TabExecutionRegistry {
         entries[tabId] != nil
     }
 
+    internal func startedAt(_ tabId: UUID) -> ContinuousClock.Instant? {
+        entries[tabId]?.startedAt
+    }
+
     /// One tab's whole answer to "is anything running here", the per-tab counterpart of
     /// `isAnyExecuting`. Work that cannot claim the tab still runs on it: Fetch All extends the
     /// result already on screen, so it registers unclaimed work rather than minting a content epoch

@@ -132,11 +132,6 @@ final class SQLCompletionProvider {
     /// 4ms at 5,000, which is why the pool is bounded rather than kept whole.
     private func sessionPool(for limit: Int) -> Int { limit * 10 }
 
-    /// The ceiling for a session built without going through `completionSession`. The seeded
-    /// window is statement keywords plus every saved favorite, which has no natural bound, and it
-    /// is replaced by an analyzed session as soon as the request lands.
-    var seedPoolLimit: Int { sessionPool(for: maxSuggestions(for: .unknown)) }
-
     /// Generic SQL functions plus the active dialect's own functions (deduplicated).
     /// Cached per dialect; invalidated in `setDatabaseType`.
     private func functionItems() -> [SQLCompletionItem] {
@@ -486,12 +481,6 @@ final class SQLCompletionProvider {
         items += favoriteCompletions(matching: context.prefix)
 
         return items
-    }
-
-    func allFavoriteItems() -> [SQLCompletionItem] {
-        favoriteKeywords
-            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
-            .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
     }
 
     private func favoriteCompletions(matching prefix: String) -> [SQLCompletionItem] {

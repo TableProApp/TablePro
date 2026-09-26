@@ -1120,17 +1120,6 @@ struct SQLCompletionProviderTests {
         #expect(items.contains { $0.kind == .keyword }, "SQL keywords must also complete without a connection")
     }
 
-    @Test("allFavoriteItems returns every favorite for session seeding")
-    func testAllFavoriteItems() {
-        provider.updateFavoriteKeywords([
-            "report": (name: "Daily Report", query: "SELECT 1"),
-            "usr": (name: "Users", query: "SELECT 2")
-        ])
-        let items = provider.allFavoriteItems()
-        #expect(items.count == 2)
-        #expect(items.allSatisfy { $0.kind == .favorite })
-    }
-
     @Test("Favorite items keep the raw cursor marker in insertText")
     func testFavoriteKeepsRawCursorMarker() async {
         provider.updateFavoriteKeywords([
