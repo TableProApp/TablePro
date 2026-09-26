@@ -36,7 +36,15 @@ public struct MCPOSBridgeLogger: MCPBridgeLogger {
 public struct MCPStderrBridgeLogger: MCPBridgeLogger {
     private static let lock = NSLock()
 
-    public init() {}
+    private let descriptor: Int32
+
+    public init() {
+        self.init(descriptor: FileHandle.standardError.fileDescriptor)
+    }
+
+    internal init(descriptor: Int32) {
+        self.descriptor = descriptor
+    }
 
     public func log(_ level: MCPBridgeLogLevel, _ message: String) {
         let prefix: String
@@ -50,7 +58,7 @@ public struct MCPStderrBridgeLogger: MCPBridgeLogger {
         guard let data = payload.data(using: .utf8) else { return }
         Self.lock.lock()
         defer { Self.lock.unlock() }
-        FileHandle.standardError.write(data)
+        try? DescriptorWrite.allBytes(data, to: descriptor)
     }
 }
 

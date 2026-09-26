@@ -73,15 +73,17 @@ struct PipeReaderTests {
         let dispatched = try #require(handle.readabilityHandler)
 
         try pipe.fileHandleForWriting.write(contentsOf: Data("early".utf8))
-        let drained: Void? = await HeldOpenWriter(pipe.fileHandleForWriting).finishedOnItsOwnThread {
+        let writer = HeldOpenWriter(pipe.fileHandleForWriting)
+        let drained: Void? = await writer.finishedOnItsOwnThread {
             reader.stop(drainingUpTo: DescriptorRead.pipeCapacity)
         }
         try #require(drained != nil)
         #expect(received.data == Data("early".utf8))
 
         try pipe.fileHandleForWriting.write(contentsOf: Data("late".utf8))
-        dispatched(handle)
+        let returned: Void? = await writer.finishedOnItsOwnThread { dispatched(handle) }
 
+        try #require(returned != nil)
         #expect(received.data == Data("early".utf8))
         let descriptor = handle.fileDescriptor
         #expect(fcntl(descriptor, F_GETFL) & O_NONBLOCK == 0)
@@ -101,7 +103,8 @@ struct PipeReaderTests {
         reader.start { received.append($0) }
         let dispatched = try #require(handle.readabilityHandler)
 
-        dispatched(handle)
+        let returned: Void? = await BoundedCall.resultOnItsOwnThread { dispatched(handle) }
+        try #require(returned != nil)
         #expect(received.data.isEmpty)
         #expect(handle.readabilityHandler != nil)
 
@@ -138,7 +141,7 @@ struct PipeReaderTests {
     }
 
     @Test("Stopping at end of file takes everything written until the last writer closes", .timeLimit(.minutes(1)))
-    func stopAtEndOfFileWaitsForTheWriter() throws {
+    func stopAtEndOfFileWaitsForTheWriter() async throws {
         let pipe = Pipe()
         defer { withExtendedLifetime(pipe) {} }
         let handle = pipe.fileHandleForReading
@@ -149,8 +152,9 @@ struct PipeReaderTests {
 
         try pipe.fileHandleForWriting.write(contentsOf: Data("before".utf8))
         BackgroundPipeWriter.write([Data(" after".utf8)], to: pipe.fileHandleForWriting, pausingBeforeEach: 0.2)
-        reader.stopAtEndOfFile()
+        let stopped: Void? = await BoundedCall.resultOnItsOwnThread { reader.stopAtEndOfFile() }
 
+        #expect(stopped != nil)
         #expect(received.data == Data("before after".utf8))
     }
 

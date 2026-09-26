@@ -29,6 +29,7 @@ struct DescriptorReadTests {
         let pipe = Pipe()
         defer { withExtendedLifetime(pipe) {} }
         try pipe.fileHandleForWriting.write(contentsOf: Data("abcdef".utf8))
+        try pipe.fileHandleForWriting.close()
         let descriptor = pipe.fileHandleForReading.fileDescriptor
 
         #expect(try DescriptorRead.availableBytes(from: descriptor, upTo: 4) == Data("abcd".utf8))
@@ -46,15 +47,22 @@ struct DescriptorReadTests {
         #expect(bytes.isEmpty)
     }
 
-    @Test("An empty non-blocking pipe is a thrown EAGAIN, the read that raised in a dump's stderr callback")
-    func emptyNonBlockingPipeThrows() throws {
+    @Test(
+        "An empty non-blocking pipe is a thrown EAGAIN, the read that raised in a dump's stderr callback",
+        .timeLimit(.minutes(1))
+    )
+    func emptyNonBlockingPipeThrows() async throws {
         let pipe = Pipe()
         defer { withExtendedLifetime(pipe) {} }
         let descriptor = pipe.fileHandleForReading.fileDescriptor
         #expect(fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK) != -1)
 
+        let outcome = await HeldOpenWriter(pipe.fileHandleForWriting).finishedOnItsOwnThread {
+            Result { try DescriptorRead.availableBytes(from: descriptor) }
+        }
+        let read = try #require(outcome)
         let error = #expect(throws: POSIXError.self) {
-            try DescriptorRead.availableBytes(from: descriptor)
+            try read.get()
         }
 
         #expect(error?.code == .EAGAIN)
@@ -79,7 +87,7 @@ struct DescriptorReadTests {
         try pipe.fileHandleForWriting.write(contentsOf: Data("x".utf8))
         #expect(DescriptorRead.hasInputWithoutWaiting(descriptor))
 
-        _ = try DescriptorRead.availableBytes(from: descriptor)
+        #expect(try DescriptorRead.availableBytes(from: descriptor, upTo: 1) == Data("x".utf8))
         #expect(!DescriptorRead.hasInputWithoutWaiting(descriptor))
 
         try pipe.fileHandleForWriting.close()
@@ -91,15 +99,22 @@ struct DescriptorReadTests {
     }
 
     @Test("On a non-blocking pipe the next read waits for bytes instead of failing with EAGAIN", .timeLimit(.minutes(1)))
-    func nextBytesWaitsOnANonBlockingPipe() throws {
+    func nextBytesWaitsOnANonBlockingPipe() async throws {
         let pipe = Pipe()
         defer { withExtendedLifetime(pipe) {} }
         let descriptor = pipe.fileHandleForReading.fileDescriptor
         #expect(fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK) != -1)
         BackgroundPipeWriter.write([Data("late".utf8)], to: pipe.fileHandleForWriting, pausingBeforeEach: 0.2)
 
-        #expect(try DescriptorRead.nextBytes(from: descriptor) == Data("late".utf8))
-        #expect(try DescriptorRead.nextBytes(from: descriptor).isEmpty)
+        let arrived = try #require(await BoundedCall.resultOnItsOwnThread {
+            Result { try DescriptorRead.nextBytes(from: descriptor) }
+        })
+        #expect(try arrived.get() == Data("late".utf8))
+
+        let ended = try #require(await BoundedCall.resultOnItsOwnThread {
+            Result { try DescriptorRead.nextBytes(from: descriptor) }
+        })
+        #expect(try ended.get().isEmpty)
     }
 
     @Test("Buffered bytes stop at the limit and never wait on a writer that is still open", .timeLimit(.minutes(1)))

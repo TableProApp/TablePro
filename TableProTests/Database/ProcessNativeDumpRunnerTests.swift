@@ -19,10 +19,6 @@ struct ProcessNativeDumpRunnerTests {
         )
     }
 
-    /// A tool that rejects one of its arguments writes its whole complaint and exits at once, and
-    /// the pipe still held those bytes when the buffer was read. Measured with a harness mirroring
-    /// this class: 2 of 300 such runs captured nothing, so the sheet said "Process exited with
-    /// code 7" and named no cause (#3046).
     @Test("A tool that exits at once still has everything it said")
     func stderrSurvivesAnImmediateExit() async throws {
         let message = "/opt/homebrew/bin/mysqldump: unknown variable 'ssl-mode=PREFERRED'"
@@ -43,9 +39,6 @@ struct ProcessNativeDumpRunnerTests {
         #expect(result.stderr.isEmpty)
     }
 
-    /// A tool that leaves a child holding its standard error keeps the pipe open and writable after
-    /// it has gone. Nothing downstream runs until the drain returns, the temporary credentials file
-    /// included, so the drain stops at the cap instead of following whatever arrives next.
     @Test("Output from a surviving child cannot grow the buffer past its cap", .timeLimit(.minutes(1)))
     func outputAfterExitIsBounded() async throws {
         let cap = 4_096
@@ -84,22 +77,29 @@ struct ProcessNativeDumpRunnerTests {
         let survivingWriter = FileHandle(fileDescriptor: survivingDescriptor, closeOnDealloc: true)
         defer { try? survivingWriter.close() }
 
-        let runner = ProcessNativeDumpRunner(
-            command: command("while [ ! -e '\(gate.path)' ]; do sleep 0.01; done; printf '%s' 'refused' >&2; exit 5"),
-            stderrPipe: pipe
-        )
+        let script = """
+            i=0
+            while [ ! -e '\(gate.path)' ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done
+            [ -e '\(gate.path)' ] || exit 9
+            printf '%s' 'refused' >&2
+            exit 5
+            """
+        let runner = ProcessNativeDumpRunner(command: command(script), stderrPipe: pipe)
         try runner.start()
+        defer { runner.cancel() }
         let handle = pipe.fileHandleForReading
         let dispatched = try #require(handle.readabilityHandler)
         #expect(FileManager.default.createFile(atPath: gate.path, contents: nil))
 
-        let result = try #require(await HeldOpenWriter(survivingWriter).finished { await runner.result })
+        let writer = HeldOpenWriter(survivingWriter)
+        let result = try #require(await writer.finished { await runner.result })
         #expect(result.exitCode == 5)
         #expect(result.stderr == "refused")
 
         try survivingWriter.write(contentsOf: Data("late".utf8))
-        dispatched(handle)
+        let returned: Void? = await writer.finishedOnItsOwnThread { dispatched(handle) }
 
+        try #require(returned != nil)
         let descriptor = handle.fileDescriptor
         #expect(handle.readabilityHandler == nil)
         #expect(fcntl(descriptor, F_GETFL) & O_NONBLOCK == 0)

@@ -6,13 +6,6 @@
 import Foundation
 
 internal struct HeldOpenWriter: Sendable {
-    private enum Arrival<Value: Sendable>: Sendable {
-        case finished(Value)
-        case deadlinePassed
-    }
-
-    private static let deadline = Duration.seconds(10)
-
     private let handle: FileHandle
 
     init(_ handle: FileHandle) {
@@ -20,27 +13,15 @@ internal struct HeldOpenWriter: Sendable {
     }
 
     func finished<Value: Sendable>(_ work: @escaping @Sendable () async -> Value) async -> Value? {
-        let handle = handle
-        return await withTaskGroup(of: Arrival<Value>.self) { group in
-            group.addTask { .finished(await work()) }
-            group.addTask {
-                try? await Task.sleep(for: Self.deadline)
-                return .deadlinePassed
-            }
-            guard case .finished(let value)? = await group.next() else {
-                try? handle.close()
-                return nil
-            }
-            group.cancelAll()
-            return value
-        }
+        await BoundedCall.result(onDeadline: closeWriter, of: work)
     }
 
     func finishedOnItsOwnThread<Value: Sendable>(_ work: @escaping @Sendable () -> Value) async -> Value? {
-        await finished {
-            await withCheckedContinuation { continuation in
-                Thread.detachNewThread { continuation.resume(returning: work()) }
-            }
-        }
+        await BoundedCall.resultOnItsOwnThread(onDeadline: closeWriter, of: work)
+    }
+
+    private var closeWriter: @Sendable () -> Void {
+        let handle = handle
+        return { try? handle.close() }
     }
 }
