@@ -70,7 +70,8 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
 
         let dbName = tables.first?.databaseName ?? ""
         if !dbName.isEmpty {
-            try fileHandle.write(contentsOf: "// Database: \(PluginExportUtilities.sanitizeForSQLComment(dbName))\n".toUTF8Data())
+            let databaseHeader = MQLExportHelpers.headerComment(label: "Database", name: dbName)
+            try fileHandle.write(contentsOf: "\(databaseHeader)\n".toUTF8Data())
         }
         try fileHandle.write(contentsOf: "\n".toUTF8Data())
 
@@ -86,8 +87,9 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             let includeData = optionValue(table, at: 2)
 
             let collectionAccessor = MQLExportHelpers.collectionAccessor(for: table.name)
+            let collectionHeader = MQLExportHelpers.headerComment(label: "Collection", name: table.name)
 
-            try fileHandle.write(contentsOf: "// Collection: \(PluginExportUtilities.sanitizeForSQLComment(table.name))\n".toUTF8Data())
+            try fileHandle.write(contentsOf: "\(collectionHeader)\n".toUTF8Data())
 
             if includeDrop {
                 try fileHandle.write(contentsOf: "\(collectionAccessor).drop();\n".toUTF8Data())
@@ -108,7 +110,7 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                         columnTypeNames = header.columnTypeNames
                     case .rows(let rows):
                         for row in rows {
-                            var fields: [String] = []
+                            var fields: [(name: String, value: String)] = []
                             for (colIndex, column) in columns.enumerated() {
                                 guard colIndex < row.count else { continue }
                                 let cell = row[colIndex]
@@ -127,9 +129,9 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                                         for: value, columnTypeName: typeName
                                     )
                                 }
-                                fields.append("\"\(PluginExportUtilities.escapeJSONString(column))\": \(jsonValue)")
+                                fields.append((name: column, value: jsonValue))
                             }
-                            documentBatch.append("  {\(fields.joined(separator: ", "))}")
+                            documentBatch.append(MQLExportHelpers.documentLiteral(fields))
 
                             if documentBatch.count >= batchSize {
                                 try writeMQLInsertMany(
@@ -158,7 +160,6 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 try await writeMQLIndexes(
                     collection: table.name,
                     databaseName: table.databaseName,
-                    collectionAccessor: collectionAccessor,
                     dataSource: dataSource,
                     to: fileHandle
                 )
@@ -199,7 +200,6 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     private func writeMQLIndexes(
         collection: String,
         databaseName: String,
-        collectionAccessor: String,
         dataSource: any PluginExportDataSource,
         to fileHandle: FileHandle
     ) async throws {
@@ -207,30 +207,8 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             table: collection,
             databaseName: databaseName
         )
-
-        let lines = ddl.components(separatedBy: "\n")
-        var indexLines: [String] = []
-        var foundHeader = false
-
-        for line in lines {
-            if line.hasPrefix("// Collection:") {
-                foundHeader = true
-                continue
-            }
-            if foundHeader {
-                var processedLine = line
-                let escapedForDDL = collection.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-                let ddlAccessor = "db[\"\(escapedForDDL)\"]"
-                if processedLine.hasPrefix(ddlAccessor) {
-                    processedLine = collectionAccessor + String(processedLine.dropFirst(ddlAccessor.count))
-                }
-                indexLines.append(processedLine)
-            }
-        }
-
-        let indexContent = indexLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !indexContent.isEmpty {
-            try fileHandle.write(contentsOf: "\(indexContent)\n".toUTF8Data())
-        }
+        let script = MQLCollectionDefinition.script(fromDDL: ddl, collection: collection)
+        guard !script.isEmpty else { return }
+        try fileHandle.write(contentsOf: "\(script)\n".toUTF8Data())
     }
 }

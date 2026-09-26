@@ -559,6 +559,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
 - Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
 - Stored MongoDB values and collection names that ran as shell code when a row was edited, duplicated or restored.
+- Server-provided collection, database and index names that could break out of comments and strings in an MQL export. (#3132)
 
 ## [0.75.0] - 2026-09-18
 

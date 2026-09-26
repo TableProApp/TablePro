@@ -503,7 +503,10 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
+      - Plugins/MQLExportPlugin/MQLCollectionDefinition.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
+      - Plugins/MQLExportPlugin/MQLScriptLexer.swift
+      - Plugins/MQLExportPlugin/MQLScriptValue.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
@@ -753,7 +756,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1028,10 +1031,16 @@ targets:
       principalClass: MQLExportPlugin
     dependencies:
       - package: TableProCore
+        product: TableProJavaScriptText
+      - package: TableProCore
         product: TableProNumberFormatting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MQLExportPlugin
+        # Above plugin-mql-v1.0.7, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so at the template's 1.0 a retained user copy would keep
+        # writing server-provided names into exports unescaped.
+        MARKETING_VERSION: "1.0.8"
 
   SQLImport:
     templates: [DriverPlugin]

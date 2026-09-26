@@ -329,8 +329,7 @@ struct QueryTab: Identifiable, Equatable {
 
         switch PluginManager.shared.editorLanguage(for: databaseType) {
         case .javascript:
-            let escaped = tableName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return "db[\"\(escaped)\"].find({}).limit(\(pageSize))"
+            return "\(MongoCollectionAccessor.expression(for: tableName)).find({}).limit(\(pageSize))"
         case .bash:
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
