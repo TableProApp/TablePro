@@ -514,7 +514,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App hanging for a minute when an import stopped on a failing statement several megabytes long.
 - SQL Server Windows Authentication to another realm failing when the service principal name is over 128 bytes.
 - Data grid's inline cell editor and cell viewer unreachable by VoiceOver.
-- No Executing indicator or Stop button in the results status bar while a query tab runs its first query.
+- No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan.
 
 ### Security
 
