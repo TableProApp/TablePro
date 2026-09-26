@@ -507,9 +507,12 @@ targets:
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBBinarySubtypes.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBCapabilities.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionDDL.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionSchema.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFieldKinds.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterClause.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterValue.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift
@@ -519,7 +522,11 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBRawFilterNormalizer.swift
       - Plugins/MongoDBDriverPlugin/MongoDBSSLMapping.swift
       - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBUpdateDocument.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBWriteRefusal.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentText.swift
+      - Plugins/MongoDBDriverPlugin/MongoExtendedJsonForm.swift
+      - Plugins/MongoDBDriverPlugin/MongoNestedValueDiff.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentWritePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptCommandBuilder.swift

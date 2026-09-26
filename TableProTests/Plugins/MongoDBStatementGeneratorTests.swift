@@ -13,7 +13,7 @@ struct MongoDBStatementGeneratorTests {
     // MARK: - INSERT
 
     @Test("Simple insert generates insertOne, skipping _id")
-    func simpleInsert() {
+    func simpleInsert() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "email"]
@@ -30,7 +30,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "Alice", "alice@example.com"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -46,7 +46,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Insert skips __DEFAULT__ sentinel values")
-    func insertSkipsDefaultSentinel() {
+    func insertSkipsDefaultSentinel() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "age"]
@@ -63,7 +63,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "Bob", "__DEFAULT__"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -78,7 +78,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Insert with nil values are excluded from document")
-    func insertNilValuesExcluded() {
+    func insertNilValuesExcluded() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "email"]
@@ -95,7 +95,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "Carol", nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -108,8 +108,8 @@ struct MongoDBStatementGeneratorTests {
         #expect(!stmt.contains("\"email\""))
     }
 
-    @Test("Insert with all nil/default values produces no statement")
-    func insertAllNilProducesNothing() {
+    @Test("A new row with every cell empty inserts the empty document")
+    func insertAllNilWritesEmptyDocument() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -123,21 +123,22 @@ struct MongoDBStatementGeneratorTests {
         )
 
         let insertedData: [Int: [PluginCellValue]] = [
-            0: [nil, nil]
+            0: [nil, "__DEFAULT__"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
             insertedRowIndices: [0]
         )
 
-        #expect(results.isEmpty)
+        #expect(results.map { $0.statement } == ["db.users.insertOne({})"])
+        #expect(results.map { $0.rowIndices } == [[0]])
     }
 
     @Test("Insert uses cellChanges as fallback when insertedRowData missing")
-    func insertFallbackToCellChanges() {
+    func insertFallbackToCellChanges() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -152,7 +153,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -164,7 +165,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Insert with numeric value auto-detects type")
-    func insertNumericValue() {
+    func insertNumericValue() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "data",
             columns: ["_id", "count"]
@@ -181,7 +182,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "42"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -193,7 +194,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Insert emits JSON-valid decimal and exponent numbers")
-    func insertEmitsJsonValidNumbers() {
+    func insertEmitsJsonValidNumbers() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "decimal", "exponent"]
@@ -210,7 +211,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "0.5", "1e3"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -223,7 +224,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Insert quotes non-JSON numeric spellings")
-    func insertQuotesNonJsonNumericSpellings() {
+    func insertQuotesNonJsonNumericSpellings() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "leadingDecimal", "trailingDecimal", "leadingPlus", "leadingZero"]
@@ -240,7 +241,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, ".5", "1.", "+7", "01"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -257,7 +258,7 @@ struct MongoDBStatementGeneratorTests {
     /// The maximum Int64 is past 2^53, where a bare JavaScript literal rounds: JavaScriptCore reads
     /// `9223372036854775807` as `9223372036854776000`. It has to cross as `$numberLong`.
     @Test("Insert quotes integers that overflow Int64 and writes the largest ones as $numberLong")
-    func insertQuotesInt64Overflow() {
+    func insertQuotesInt64Overflow() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "overflow", "maxInt64"]
@@ -274,7 +275,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "12345678901234567890", "9223372036854775807"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -287,7 +288,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Insert not in insertedRowIndices is skipped")
-    func insertNotInIndicesSkipped() {
+    func insertNotInIndicesSkipped() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -304,7 +305,7 @@ struct MongoDBStatementGeneratorTests {
             5: [nil, "Eve"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -317,7 +318,7 @@ struct MongoDBStatementGeneratorTests {
     // MARK: - UPDATE
 
     @Test("Update with ObjectId _id")
-    func updateWithObjectId() {
+    func updateWithObjectId() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "email"]
@@ -333,7 +334,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: [.text(objectId), "Alice", "alice@example.com"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -349,7 +350,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Update with numeric _id")
-    func updateWithNumericId() {
+    func updateWithNumericId() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -364,7 +365,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["42", "Bob"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -377,7 +378,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Update with string _id")
-    func updateWithStringId() {
+    func updateWithStringId() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -392,7 +393,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["my-custom-id", "X"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -405,7 +406,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Update with $set and $unset")
-    func updateSetAndUnset() {
+    func updateSetAndUnset() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "bio"]
@@ -421,7 +422,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["507f1f77bcf86cd799439011", "Alice", "Some bio"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -436,8 +437,8 @@ struct MongoDBStatementGeneratorTests {
         #expect(stmt.contains("\"bio\": \"\""))
     }
 
-    @Test("Update skips _id column changes")
-    func updateSkipsIdChange() {
+    @Test("An edit of _id is refused, because MongoDB never changes a document's _id")
+    func updateRefusesIdChange() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -452,18 +453,13 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["old", "Alice"]
         )
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: MongoDBWriteRefusal.identityChanged.refusal(ofRow: 0)) {
+            try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: [])
+        }
     }
 
-    @Test("Update without _id in original row is skipped")
-    func updateNoIdSkipped() {
+    @Test("An update of a row with no _id is refused rather than left out")
+    func updateWithoutIdIsRefused() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["name", "email"]
@@ -478,18 +474,13 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["A", "a@b.com"]
         )
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: MongoDBWriteRefusal.missingIdentity.refusal(ofRow: 0)) {
+            try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: [])
+        }
     }
 
     @Test("Update with empty cellChanges is skipped")
-    func updateEmptyCellChanges() {
+    func updateEmptyCellChanges() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -502,7 +493,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["507f1f77bcf86cd799439011", "Alice"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -515,7 +506,7 @@ struct MongoDBStatementGeneratorTests {
     // MARK: - DELETE
 
     @Test("Delete with ObjectId uses $oid filter")
-    func deleteWithObjectId() {
+    func deleteWithObjectId() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -529,7 +520,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: [.text(objectId), "Alice"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [0],
@@ -543,7 +534,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Bulk delete uses deleteMany with $in")
-    func bulkDeleteMany() {
+    func bulkDeleteMany() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -557,7 +548,7 @@ struct MongoDBStatementGeneratorTests {
             PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: [.text(id2), "Bob"])
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: changes,
             insertedRowData: [:],
             deletedRowIndices: [0, 1],
@@ -573,7 +564,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Bulk delete with numeric ids")
-    func bulkDeleteNumericIds() {
+    func bulkDeleteNumericIds() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -584,7 +575,7 @@ struct MongoDBStatementGeneratorTests {
             PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: ["2", "Bob"])
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: changes,
             insertedRowData: [:],
             deletedRowIndices: [0, 1],
@@ -598,7 +589,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Delete quotes an _id that overflows Int64 to preserve precision")
-    func deleteQuotesInt64OverflowId() {
+    func deleteQuotesInt64OverflowId() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -611,7 +602,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["12345678901234567890", "Alice"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [0],
@@ -622,7 +613,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Delete keeps a decimal or exponent _id quoted so a string _id still matches")
-    func deleteQuotesNonIntegerId() {
+    func deleteQuotesNonIntegerId() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -636,7 +627,7 @@ struct MongoDBStatementGeneratorTests {
                 originalRow: [PluginCellValue.text(id), "Alice"]
             )
 
-            let results = gen.generateStatements(
+            let results = try gen.generateRowWrites(
                 from: [change],
                 insertedRowData: [:],
                 deletedRowIndices: [0],
@@ -649,8 +640,8 @@ struct MongoDBStatementGeneratorTests {
 
     /// An all-field filter cannot express a binary value and drops every column it cannot
     /// stringify, so it deletes the first partial match rather than the intended document.
-    @Test("A collection with no _id column produces no delete instead of an all-field match")
-    func singleDeleteWithoutIdColumnIsSkipped() {
+    @Test("A collection with no _id column refuses the delete instead of matching on every field")
+    func singleDeleteWithoutIdColumnIsRefused() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["name", "email"]
@@ -663,18 +654,13 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["Alice", "alice@example.com"]
         )
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: MongoDBWriteRefusal.missingIdentity.refusal(ofRow: 0)) {
+            try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [])
+        }
     }
 
     @Test("Delete not in deletedRowIndices is skipped")
-    func deleteNotInIndicesSkipped() {
+    func deleteNotInIndicesSkipped() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -687,7 +673,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["507f1f77bcf86cd799439011", "Alice"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [0], // does not contain 5
@@ -697,8 +683,8 @@ struct MongoDBStatementGeneratorTests {
         #expect(results.isEmpty)
     }
 
-    @Test("Delete without originalRow is skipped")
-    func deleteNoOriginalRowSkipped() {
+    @Test("A delete without its original row is refused")
+    func deleteNoOriginalRowIsRefused() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name"]
@@ -711,20 +697,15 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: MongoDBWriteRefusal.missingIdentity.refusal(ofRow: 0)) {
+            try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [])
+        }
     }
 
     // MARK: - Mixed Operations
 
     @Test("Mixed insert, update, and delete in one batch")
-    func mixedOperations() {
+    func mixedOperations() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["_id", "name", "email"]
@@ -758,7 +739,7 @@ struct MongoDBStatementGeneratorTests {
             0: [nil, "Alice", "alice@test.com"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: changes,
             insertedRowData: insertedData,
             deletedRowIndices: [2],
@@ -774,7 +755,7 @@ struct MongoDBStatementGeneratorTests {
     // MARK: - Collection Accessor
 
     @Test("Collection with dots goes through getCollection")
-    func collectionBracketNotation() {
+    func collectionBracketNotation() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "my.collection",
             columns: ["_id", "name"]
@@ -787,7 +768,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [0: [nil, "Test"]],
             deletedRowIndices: [],
@@ -801,7 +782,7 @@ struct MongoDBStatementGeneratorTests {
     // MARK: - Value Type Detection
 
     @Test("Boolean values are serialized as booleans")
-    func booleanSerialization() {
+    func booleanSerialization() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "data",
             columns: ["_id", "active"]
@@ -814,7 +795,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [0: [nil, "true"]],
             deletedRowIndices: [],
@@ -826,7 +807,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Float values are serialized as numbers")
-    func floatSerialization() {
+    func floatSerialization() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "data",
             columns: ["_id", "price"]
@@ -839,7 +820,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [0: [nil, "19.99"]],
             deletedRowIndices: [],
@@ -850,8 +831,8 @@ struct MongoDBStatementGeneratorTests {
         #expect(results[0].statement.contains("\"price\": 19.99"))
     }
 
-    @Test("JSON object values are passed through as-is")
-    func jsonObjectPassthrough() {
+    @Test("A JSON object value is written as the object it spells")
+    func jsonObjectPassthrough() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "data",
             columns: ["_id", "metadata"]
@@ -864,7 +845,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [0: [nil, "{\"nested\": true}"]],
             deletedRowIndices: [],
@@ -872,11 +853,11 @@ struct MongoDBStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement.contains("\"metadata\": {\"nested\": true}"))
+        #expect(results[0].statement.contains("\"metadata\": {\"nested\":true}"))
     }
 
-    @Test("JSON array values are passed through as-is")
-    func jsonArrayPassthrough() {
+    @Test("A JSON array value is written as the array it spells")
+    func jsonArrayPassthrough() throws {
         let gen = MongoDBStatementGenerator(
             collectionName: "data",
             columns: ["_id", "tags"]
@@ -889,7 +870,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [0: [nil, "[1, 2, 3]"]],
             deletedRowIndices: [],
@@ -897,7 +878,7 @@ struct MongoDBStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement.contains("\"tags\": [1, 2, 3]"))
+        #expect(results[0].statement.contains("\"tags\": [1,2,3]"))
     }
     // MARK: - Binary UUID round trip
 
@@ -906,7 +887,7 @@ struct MongoDBStatementGeneratorTests {
     private static let standardBase64 = "jNAD60olQySTMoj84toNGg=="
 
     @Test("Editing a legacy UUID field writes BSON binary, not a string")
-    func updateWritesLegacyUuidBinary() {
+    func updateWritesLegacyUuidBinary() throws {
         let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "ref"])
         let change = PluginRowChange(
             rowIndex: 0,
@@ -922,7 +903,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: ["507f1f77bcf86cd799439011", .null]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
 
@@ -934,11 +915,11 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Inserting a standard UUID writes BSON binary subtype 4")
-    func insertWritesStandardUuidBinary() {
+    func insertWritesStandardUuidBinary() throws {
         let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "ref"])
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [0: [nil, .text("UUID(\"\(Self.uuid)\")")]],
             deletedRowIndices: [],
@@ -951,7 +932,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("An _id that is a legacy UUID filters on binary, not on the wrapper text")
-    func updateFiltersOnBinaryId() {
+    func updateFiltersOnBinaryId() throws {
         let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "name"])
         let change = PluginRowChange(
             rowIndex: 0,
@@ -962,7 +943,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: [.text("LegacyJavaUUID(\"\(Self.uuid)\")"), .text("a")]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
 
@@ -973,7 +954,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("Deleting a document with a legacy UUID _id filters on binary")
-    func deleteFiltersOnBinaryId() {
+    func deleteFiltersOnBinaryId() throws {
         let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "name"])
         let change = PluginRowChange(
             rowIndex: 0,
@@ -982,7 +963,7 @@ struct MongoDBStatementGeneratorTests {
             originalRow: [.text("LegacyJavaUUID(\"\(Self.uuid)\")"), .text("a")]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
 
@@ -991,7 +972,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("A bulk delete of UUID _ids uses binary values inside $in")
-    func bulkDeleteUsesBinaryIds() {
+    func bulkDeleteUsesBinaryIds() throws {
         let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id"])
         let changes = [
             PluginRowChange(
@@ -1004,7 +985,7 @@ struct MongoDBStatementGeneratorTests {
             )
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: changes, insertedRowData: [:], deletedRowIndices: [0, 1], insertedRowIndices: []
         )
 
@@ -1017,8 +998,8 @@ struct MongoDBStatementGeneratorTests {
 
     /// Matching on the remaining fields cannot express a binary value, so it would
     /// delete the first partial match instead of the intended document.
-    @Test("A delete without a usable _id is skipped rather than matching on other fields")
-    func deleteWithoutIdIsSkipped() {
+    @Test("A delete whose binary _id has no known subtype is refused rather than matched on other fields")
+    func deleteWithoutUsableIdIsRefused() throws {
         let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "name"])
         let change = PluginRowChange(
             rowIndex: 0,
@@ -1027,11 +1008,9 @@ struct MongoDBStatementGeneratorTests {
             originalRow: [.bytes(Data([0x01, 0x02])), .text("Alice")]
         )
 
-        let results = gen.generateStatements(
-            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: MongoDBWriteRefusal.identitySubtypeUnknown.refusal(ofRow: 0)) {
+            try gen.generateRowWrites(from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [])
+        }
     }
 
     // MARK: - Restore
@@ -1040,7 +1019,7 @@ struct MongoDBStatementGeneratorTests {
     /// requirement: a new `_id` is a different document, and whatever referenced the old one is
     /// still pointing at nothing.
     @Test("Restoring a deleted document keeps its original _id")
-    func restoreKeepsObjectId() {
+    func restoreKeepsObjectId() throws {
         let gen = MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "name"])
 
         let statements = gen.generateRestore(rows: [["507f1f77bcf86cd799439011", "Alice"]])
@@ -1054,7 +1033,7 @@ struct MongoDBStatementGeneratorTests {
     }
 
     @Test("A numeric key is restored as a number, not a string")
-    func restoreKeepsNumericId() {
+    func restoreKeepsNumericId() throws {
         let gen = MongoDBStatementGenerator(collectionName: "counters", columns: ["_id", "value"])
 
         let statement = gen.generateRestore(rows: [["42", "7"]])?.first?.statement ?? ""
@@ -1063,21 +1042,33 @@ struct MongoDBStatementGeneratorTests {
         #expect(document?["_id"] as? Int == 42)
     }
 
+    @Test("A restored document keeps its binary field with the subtype it was read with")
+    func restoreKeepsBinaryField() throws {
+        var subtypes = MongoDBBinarySubtypes.empty
+        subtypes.record(Data([0x01]), subtype: 5, field: "avatar")
+        let gen = MongoDBStatementGenerator(
+            collectionName: "users", columns: ["_id", "avatar"], binarySubtypes: subtypes
+        )
+
+        let statement = try #require(gen.generateRestore(rows: [["507f1f77bcf86cd799439011", .bytes(Data([0x01]))]])?.first)
+
+        #expect(statement.statement.contains(#""avatar": {"$binary": {"base64": "AQ==", "subType": "05"}}"#))
+    }
+
     /// Dropping the field would restore a document that is missing it, and report success.
-    @Test("A document with a binary field is refused rather than restored without it")
-    func restoreRefusesBinaryField() {
+    @Test("A binary field whose subtype is unknown refuses the restore rather than dropping the field")
+    func restoreRefusesUnknownBinarySubtype() throws {
         let gen = MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "avatar"])
 
         #expect(gen.generateRestore(rows: [["507f1f77bcf86cd799439011", .bytes(Data([0x01]))]]) == nil)
     }
 
     @Test("A collection with no _id column cannot be restored")
-    func restoreRefusesWithoutIdColumn() {
+    func restoreRefusesWithoutIdColumn() throws {
         let gen = MongoDBStatementGenerator(collectionName: "users", columns: ["name", "email"])
 
         #expect(gen.generateRestore(rows: [["Alice", "alice@example.com"]]) == nil)
     }
-
 }
 
 private func firstArgumentObject(in statement: String) -> [String: Any]? {
