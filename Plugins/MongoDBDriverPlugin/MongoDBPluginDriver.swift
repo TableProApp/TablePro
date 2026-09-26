@@ -264,15 +264,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let rowCap, MongoDBFindLimitPolicy.isTruncated(rowCount: result.rows.count, rowCap: rowCap) else {
             return result
         }
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: Array(result.rows.prefix(rowCap)),
-            rowsAffected: result.rowsAffected,
-            executionTime: result.executionTime,
-            isTruncated: true,
-            statusMessage: result.statusMessage
-        )
+        return result.capped(to: rowCap)
     }
 
     private func mapExecutionError(_ error: Error) -> Error {

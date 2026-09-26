@@ -5,41 +5,50 @@
 
 import SwiftUI
 
-/// Inserts a document written as Extended JSON.
+/// Inserts a document written as Extended JSON, or edits a stored one as that text.
 ///
 /// A grid can only write into the fields its sampled documents already have, so a collection with
-/// no documents has nowhere to type the first field. The whole document is the unit a document
-/// store writes, so a new document's fields are typed into the document itself.
+/// no documents has nowhere to type the first field, and a field cannot be added, renamed or removed
+/// from a cell. The whole document is the unit a document store writes, so it is edited whole.
 struct DocumentEditorSheet: View {
-    private enum Phase: Equatable {
-        case editing
-        case saving
-    }
-
     @Environment(\.dismiss) private var dismiss
 
     let request: DocumentEditorRequest
     let databaseType: DatabaseType
 
-    @State private var text = "{\n  \n}"
-    @State private var phase = Phase.editing
+    @State private var text: String
+    @State private var original: String?
+    @State private var phase: DocumentEditorPresentation.Phase
     @State private var saveError: String?
+
+    init(request: DocumentEditorRequest, databaseType: DatabaseType) {
+        self.request = request
+        self.databaseType = databaseType
+        _text = State(initialValue: request.kind == .insert ? "{\n  \n}" : "")
+        _phase = State(initialValue: DocumentEditorPresentation.initialPhase(for: request.kind))
+    }
+
+    private var presentation: DocumentEditorPresentation {
+        DocumentEditorPresentation(kind: request.kind, phase: phase)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            editor
+            content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             Divider()
             buttonBar
         }
         .frame(minWidth: 560, idealWidth: 640, minHeight: 420, idealHeight: 560)
+        .interactiveDismissDisabled(presentation.dismissDisabled)
+        .task { await load() }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Insert Document")
+            Text(presentation.title)
                 .font(.headline)
             Text(request.table)
                 .font(.subheadline)
@@ -52,9 +61,28 @@ struct DocumentEditorSheet: View {
         .padding(.vertical, 14)
     }
 
+    @ViewBuilder
+    private var content: some View {
+        if presentation.showsEditor {
+            editor
+        } else if let message = presentation.message {
+            Text(message)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .padding(20)
+                .accessibilityIdentifier("document-editor-message")
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityIdentifier("document-editor-loading")
+        }
+    }
+
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            JSONCodeEditor(text: $text, isEditable: phase == .editing, accessibilityIdentifier: "document-editor")
+            JSONCodeEditor(text: $text, isEditable: presentation.isEditable, accessibilityIdentifier: "document-editor")
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(Color(nsColor: .separatorColor))
@@ -67,7 +95,7 @@ struct DocumentEditorSheet: View {
                     .textSelection(.enabled)
                     .accessibilityIdentifier("document-editor-error")
             } else {
-                Text("Quote every field name. An ObjectId is {\"$oid\": \"…\"} and a date is {\"$date\": \"…\"}.")
+                Text(presentation.hint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -83,26 +111,45 @@ struct DocumentEditorSheet: View {
                     .controlSize(.small)
             }
             Spacer()
-            Button(String(localized: "Cancel")) {
+            Button(presentation.cancelTitle) {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
-            Button(String(localized: "Insert")) {
-                Task { await save() }
+            .disabled(!presentation.canCancel)
+            if presentation.showsSave {
+                Button(presentation.saveTitle) {
+                    Task { await save() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!presentation.canSave)
+                .accessibilityIdentifier("document-editor-submit")
             }
-            .keyboardShortcut(.defaultAction)
-            .disabled(phase != .editing)
-            .accessibilityIdentifier("document-editor-submit")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    private func load() async {
+        guard phase == .loading else { return }
+        do {
+            guard let stored = try await DocumentEditing.load(request) else {
+                phase = .missing
+                return
+            }
+            original = stored
+            text = stored
+            phase = .editing
+        } catch {
+            guard !Task.isCancelled else { return }
+            phase = .loadFailed(error.localizedDescription)
+        }
     }
 
     private func save() async {
         phase = .saving
         saveError = nil
         do {
-            try await DocumentEditing.insert(text, for: request, databaseType: databaseType)
+            try await DocumentEditing.save(text, original: original, for: request, databaseType: databaseType)
             dismiss()
         } catch {
             saveError = error.localizedDescription

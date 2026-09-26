@@ -109,6 +109,10 @@ extension MainSplitViewController {
         commandActions?.duplicateRow()
     }
 
+    @objc func editDocument(_ sender: Any?) {
+        commandActions?.editDocument()
+    }
+
     @objc func insertDocument(_ sender: Any?) {
         commandActions?.insertDocument()
     }

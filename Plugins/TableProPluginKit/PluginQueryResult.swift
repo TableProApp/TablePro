@@ -11,6 +11,13 @@ public struct PluginQueryResult: Codable, Sendable {
     public let columnMeta: [PluginColumnInfo]?
     public let timing: PluginQueryTiming
 
+    /// For each row, text the driver that produced the result can find that row by again, or nil
+    /// for a row it cannot. The host never reads it and only hands a row's locator back to the
+    /// same driver, which is how a document store edits a document the grid shows only as display
+    /// text. Nil when the driver keeps none. Set after construction, so every published initializer
+    /// keeps its signature.
+    public var rowLocators: [String?]?
+
     public init(
         columns: [String],
         columnTypeNames: [String],
@@ -94,6 +101,7 @@ public struct PluginQueryResult: Codable, Sendable {
         columnMeta = try container.decodeIfPresent([PluginColumnInfo].self, forKey: .columnMeta)
         timing = try container.decodeIfPresent(PluginQueryTiming.self, forKey: .timing)
             ?? PluginQueryTiming(total: executionTime)
+        rowLocators = try container.decodeIfPresent([String?].self, forKey: .rowLocators)
     }
 
     public static let empty = PluginQueryResult(

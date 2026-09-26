@@ -19,6 +19,12 @@ struct MongoDBCapabilities: Sendable, Equatable {
         major >= 4
     }
 
+    /// The guard an edit is saved under uses `$convert`, which MongoDB 4.0 added. A server whose
+    /// version is not known is let through, so its own error reaches the user.
+    var supportsDocumentReplaceGuard: Bool {
+        self == .unknown || major >= 4
+    }
+
     static func parse(_ version: String?) -> MongoDBCapabilities {
         guard let version else { return .unknown }
         let parts = version.split(separator: ".")

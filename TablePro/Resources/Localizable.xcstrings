@@ -184363,6 +184363,54 @@
     },
     "This database does not store whole documents" : {
 
+    },
+    "This row does not name a stored document." : {
+
+    },
+    "The document changed on the server after it was opened, so nothing was saved. Copy your text, then open it again." : {
+
+    },
+    "More than one document has this _id, so it cannot be edited here." : {
+
+    },
+    "The _id cannot change. Put the original _id back, or insert a new document instead." : {
+
+    },
+    "This document has no _id, so it cannot be edited here." : {
+
+    },
+    "This document holds a value text cannot write back exactly, such as a subdocument like {\"$numberInt\": \"5\"}." : {
+
+    },
+    "The top-level field “%@” holds Timestamp(0, 0), which MongoDB replaces with the current time on every save." : {
+
+    },
+    "This document is too large to edit here. Saving it would send more than 16 MB to the server." : {
+
+    },
+    "Editing a document needs MongoDB 4.0 or later." : {
+
+    },
+    "This is a view, so its documents cannot be edited. Edit them in the collection the view reads." : {
+
+    },
+    "This document is nested more than %d levels deep, which is too deep to edit here." : {
+
+    },
+    "This document holds a value that cannot be edited as text." : {
+
+    },
+    "This is a time-series collection, which cannot replace a single document, so its documents cannot be edited here." : {
+
+    },
+    "MongoDB lists this as a “%@” rather than a collection, so its documents cannot be edited here." : {
+
+    },
+    "This document holds a NaN. MongoDB treats every NaN as the same value, so a save could not tell whether someone else changed it." : {
+
+    },
+    "This document holds JavaScript code with a scope. MongoDB compares a scope by value, so a save could not tell whether someone else changed it." : {
+
     }
   },
   "version" : "1.1"

@@ -1406,7 +1406,8 @@ final class MainContentCoordinator: ObservableObject {
                         anchor: anchor,
                         timing: fetchResult.resolvedTiming,
                         viewport: viewport,
-                        serverOutput: fetchResult.serverOutput
+                        serverOutput: fetchResult.serverOutput,
+                        rowLocators: isTableTab ? fetchResult.rowLocators : nil
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
