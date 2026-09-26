@@ -9,8 +9,20 @@ public enum PluginExportUtilities {
     public static func escapeJSONString(_ string: String) -> String {
         var utf8Result = [UInt8]()
         utf8Result.reserveCapacity(string.utf8.count)
+        let wasContiguous = string.utf8.withContiguousStorageIfAvailable {
+            appendJSONEscaped($0, to: &utf8Result)
+        } != nil
+        if !wasContiguous {
+            Array(string.utf8).withUnsafeBufferPointer { appendJSONEscaped($0, to: &utf8Result) }
+        }
+        return String(bytes: utf8Result, encoding: .utf8) ?? string
+    }
 
-        for byte in string.utf8 {
+    private static func appendJSONEscaped(_ bytes: UnsafeBufferPointer<UInt8>, to utf8Result: inout [UInt8]) {
+        var index = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            index += 1
             switch byte {
             case 0x22: // "
                 utf8Result.append(0x5C)
@@ -36,12 +48,17 @@ public enum PluginExportUtilities {
             case 0x00...0x1F:
                 let hex = String(format: "\\u%04X", byte)
                 utf8Result.append(contentsOf: hex.utf8)
+            case 0xC2 where index < bytes.count && bytes[index] == 0x85:
+                utf8Result.append(contentsOf: "\\u0085".utf8)
+                index += 1
+            case 0xE2 where index + 1 < bytes.count && bytes[index] == 0x80
+                && (bytes[index + 1] == 0xA8 || bytes[index + 1] == 0xA9):
+                utf8Result.append(contentsOf: (bytes[index + 1] == 0xA8 ? "\\u2028" : "\\u2029").utf8)
+                index += 2
             default:
                 utf8Result.append(byte)
             }
         }
-
-        return String(bytes: utf8Result, encoding: .utf8) ?? string
     }
 
     @available(*, deprecated, message: "Use beginAtomicWrite(for:) for crash-safe writes")

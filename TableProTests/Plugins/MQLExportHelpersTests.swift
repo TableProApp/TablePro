@@ -4,11 +4,15 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
 
 struct MQLExportHelpersTests {
     private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"
+    private static let lineTerminators: [Unicode.Scalar] = [
+        "\n", "\r", "\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}"
+    ]
 
     /// The dump is a mongosh script, so a value has to be a constructor call. mongosh reads
     /// `{"$binary": ...}` as a plain object literal and would insert a subdocument.
@@ -128,5 +132,55 @@ struct MQLExportHelpersTests {
         #expect(MQLExportHelpers.collectionAccessor(for: "stats") == "db.getCollection(\"stats\")")
         #expect(MQLExportHelpers.collectionAccessor(for: "my.data") == "db.getCollection(\"my.data\")")
         #expect(MQLExportHelpers.collectionAccessor(for: "2024") == "db.getCollection(\"2024\")")
+    }
+
+    @Test("The export spells a collection the way the shared accessor does")
+    func accessorAgreesWithSharedAccessor() {
+        let names = ["users", "order_2", "stats", "__proto", "my.data", "2024", "tên", "a\u{0D4E}(\u{0D4E})", "a\"b", "a\u{2028}b", ""]
+        for name in names {
+            #expect(MQLExportHelpers.collectionAccessor(for: name) == MongoCollectionAccessor.expression(for: name), "\(name)")
+        }
+        #expect(MQLExportHelpers.collectionAccessor(for: "a\u{2028}b") == "db.getCollection(\"a\\u2028b\")")
+    }
+
+    @Test("A header comment stays on one line whatever line terminator the name holds")
+    func headerCommentStaysOnOneLine() {
+        for terminator in Self.lineTerminators {
+            let header = MQLExportHelpers.headerComment(label: "Collection", name: "a\(String(terminator))b")
+            #expect(!header.unicodeScalars.contains { Self.lineTerminators.contains($0) }, "U+\(terminator.value)")
+            #expect(header.hasPrefix("// Collection: a\\"))
+            let statements = JavaScriptStatementScanner.executableStatements(in: "x = 1;" + header)
+            #expect(statements.map(\.trimmed) == ["x = 1;"], "U+\(terminator.value)")
+        }
+        #expect(MQLExportHelpers.headerComment(label: "Database", name: "shop */ 'x'") == "// Database: shop */ 'x'")
+    }
+
+    @Test("A document's field names and string values read back as they were")
+    func documentLiteralRoundTrips() throws {
+        let names = ["a\u{2028}b", "c\u{85}d", "e\u{2029}f", "g\"h", "i\nj", "k\u{0B}l"]
+        let fields = names.map { (name: $0, value: MQLExportHelpers.mqlJsonValue(for: $0)) }
+        let literal = MQLExportHelpers.documentLiteral(fields)
+        #expect(!literal.unicodeScalars.contains { Self.lineTerminators.contains($0) })
+        let document = try #require(try JSONSerialization.jsonObject(with: Data(literal.utf8)) as? [String: String])
+        for name in names {
+            #expect(document[name] == name)
+        }
+    }
+
+    @Test("A typed value's string argument escapes line separators too")
+    func typedValueEscapesSeparators() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "a\u{2028}b", columnTypeName: "VARCHAR") == "\"a\\u2028b\"")
+        #expect(MQLExportHelpers.mqlJsonValue(for: "x\u{85}") == "\"x\\u0085\"")
+    }
+
+    @Test("A nested document keeps its text, with separators inside its strings escaped")
+    func nestedDocumentEscapesSeparators() throws {
+        let nested = "{\"k\": \"a\u{2028}b\", \"n\": [1, \"c\u{85}d\u{7F}\"]}"
+        let value = MQLExportHelpers.mqlJsonValue(for: nested)
+        #expect(value == "{\"k\": \"a\\u2028b\", \"n\": [1, \"c\\u0085d\\u007f\"]}")
+        let original = try #require(try JSONSerialization.jsonObject(with: Data(nested.utf8)) as? NSDictionary)
+        let written = try #require(try JSONSerialization.jsonObject(with: Data(value.utf8)) as? NSDictionary)
+        #expect(original == written)
+        #expect(MQLExportHelpers.mqlJsonValue(for: "{\n  \"k\": 1\n}") == "{\n  \"k\": 1\n}")
     }
 }

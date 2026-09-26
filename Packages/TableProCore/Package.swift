@@ -27,6 +27,7 @@ let package = Package(
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
+        .library(name: "TableProJavaScriptText", targets: ["TableProJavaScriptText"]),
         .library(name: "TableProLogRedaction", targets: ["TableProLogRedaction"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
@@ -47,6 +48,11 @@ let package = Package(
             name: "TableProDocumentPath",
             dependencies: [],
             path: "Sources/TableProDocumentPath"
+        ),
+        .target(
+            name: "TableProJavaScriptText",
+            dependencies: [],
+            path: "Sources/TableProJavaScriptText"
         ),
         .target(
             name: "TableProLogRedaction",
@@ -212,6 +218,11 @@ let package = Package(
             name: "TableProDocumentPathTests",
             dependencies: ["TableProDocumentPath"],
             path: "Tests/TableProDocumentPathTests"
+        ),
+        .testTarget(
+            name: "TableProJavaScriptTextTests",
+            dependencies: ["TableProJavaScriptText"],
+            path: "Tests/TableProJavaScriptTextTests"
         ),
         .testTarget(
             name: "TableProLogRedactionTests",
