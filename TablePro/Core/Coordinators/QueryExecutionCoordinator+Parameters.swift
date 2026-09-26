@@ -632,6 +632,7 @@ extension QueryExecutionCoordinator {
                 isEditable: isEditable,
                 metadata: inlineMetadata,
                 hasSchema: false,
+                read: TableFreshness.Read(startedAt: claim.startedAt, includesDefinition: false),
                 sql: sql,
                 connection: connection,
                 isTruncated: fetchResult.isTruncated,

@@ -64,6 +64,7 @@ extension RowEditingCoordinator {
         if let (_, index) = parent.tabManager.selectedTabAndIndex {
             parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
         }
+        parent.resumeDeferredTableRefresh()
 
         Task { [parent] in await parent.refreshTables() }
     }

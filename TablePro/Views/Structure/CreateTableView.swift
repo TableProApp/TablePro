@@ -576,7 +576,8 @@ struct CreateTableView: View {
             databaseType: connection.type,
             scope: scope
         )
+        let created = DatabaseObjectChange(connectionId: connection.id, scope: scope, name: createdName, kind: .rows)
         coordinator?.openTableTab(createdName, schema: scope.schema, database: scope.database.nilIfEmpty)
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        AppCommands.shared.objectChanged.send(created)
     }
 }

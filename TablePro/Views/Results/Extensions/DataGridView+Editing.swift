@@ -114,9 +114,7 @@ extension TableViewCoordinator {
         }
         guard let editor = overlayEditor else { return }
 
-        editor.onRemove = { [weak self] in
-            self?.flushPendingCellPresentationRefresh()
-        }
+        observeRemoval(of: editor)
         editor.onCommit = { [weak self] row, columnIndex, newValue in
             self?.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
@@ -132,11 +130,20 @@ extension TableViewCoordinator {
             overlayViewer = CellOverlayViewer()
         }
         guard let viewer = overlayViewer else { return }
-        viewer.onRemove = { [weak self] in
-            self?.flushPendingCellPresentationRefresh()
-        }
+        observeRemoval(of: viewer)
         overlayEditor?.dismiss(commit: false)
         viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
+    }
+
+    /// Cell presentation work and a reload put off while the overlay was open both wait for it to
+    /// close.
+    func observeRemoval(of overlay: CellOverlayBase) {
+        overlay.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+            Task { @MainActor [weak self] in
+                self?.delegate?.dataGridDidCloseCellOverlay()
+            }
+        }
     }
 
     /// The cell cursor moves with the editor, through the same `focusCell` the grid's own Tab uses.

@@ -111,19 +111,14 @@ extension MainContentCoordinator {
 
     // MARK: - Object Changes
 
-    /// Brings every tab showing the changed object up to date, and no other tab. The selected one
-    /// reloads now, asking first if it holds edits; a background one drops its rows so it reloads
-    /// when it is next shown.
+    /// Brings every tab showing the changed object up to date, and no other tab.
     ///
-    /// The selected tab goes through `handleRefresh`, the entry Cmd+R uses, rather than straight to
-    /// the data reload: that one refuses to run while the Structure pane is in front and refreshes
-    /// the structure instead, and a tab excluded from the eviction loop for being selected would
-    /// otherwise keep its rows with nothing left to reload them.
-    func applyObjectChange(
-        _ change: DatabaseObjectChange,
-        hasPendingTableOps: Bool,
-        onDiscard: @escaping () -> Void
-    ) {
+    /// A rows or structure change goes through `refreshTableTabs`, which reloads the selected tab only
+    /// when nothing of the user's is in the way, leaves every other tab marked to reload when it is
+    /// next shown, and fetches the structure of each again. A rows change needs that too: a MongoDB
+    /// collection's columns are sampled from its documents, and a materialized view's refresh changes
+    /// what its **Indexes** tab reports.
+    func applyObjectChange(_ change: DatabaseObjectChange) {
         guard change.connectionId == connectionId else { return }
         let showing = tabManager.tabs.filter { tab in
             tab.tabType == .table && change.matches(
@@ -132,16 +127,17 @@ extension MainContentCoordinator {
                 schemaName: tab.tableContext.schemaName
             )
         }
-        let selected = tabManager.selectedTab.flatMap { tab in showing.contains { $0.id == tab.id } ? tab : nil }
+        let showingIds = Set(showing.map(\.id))
+        let selected = tabManager.selectedTab.flatMap { showingIds.contains($0.id) ? $0 : nil }
 
         switch change.kind {
         case .rows:
-            for tab in showing where tab.id != selected?.id {
-                evictReloadableTableRows(for: tab.id)
-            }
-            if selected != nil {
-                handleRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
-            }
+            let rows = TableFreshness.Change(extent: .rows, at: change.changedAt)
+            refreshTableTabs(for: rows, excluding: change.originTabId) { showingIds.contains($0.id) }
+        case .structure:
+            forgetSchemaColumns(of: change)
+            let definition = TableFreshness.Change(extent: .definition, at: change.changedAt)
+            refreshTableTabs(for: definition, excluding: change.originTabId) { showingIds.contains($0.id) }
         case .comment:
             for tab in showing {
                 tableMetadataCache.removeValue(forKey: tab.id)

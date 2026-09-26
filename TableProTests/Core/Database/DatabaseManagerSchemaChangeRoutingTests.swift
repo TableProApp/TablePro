@@ -71,6 +71,8 @@ private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabase
         self.schema = schema
     }
 
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {}
+
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         "ALTER TABLE \(qualified(table)) ADD COLUMN `\(column.name)` \(column.dataType)"
     }
@@ -166,7 +168,12 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             changes: changes,
             scope: scope
         )
-        try await DatabaseManager.shared.executeSchemaChanges(statements, databaseType: databaseType, scope: scope)
+        try await DatabaseManager.shared.executeSchemaChanges(
+            statements,
+            databaseType: databaseType,
+            scope: scope,
+            table: "orders"
+        )
     }
 
     private static func tearDown(_ connections: DatabaseConnection...) {
@@ -334,19 +341,17 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         #expect(driver.executedQueries.isEmpty)
     }
 
-    @Test("A save broadcasts a refresh scoped to the edited tab, not to the browse cursor")
-    func schemaChangeBroadcastsTheEditedScope() async throws {
+    @Test("A save announces a structure change to the edited table in the edited tab's scope, not the browse cursor's")
+    func schemaChangeAnnouncesTheEditedTable() async throws {
         let (connection, _) = Self.makeSession(
             savedDatabase: "analytics",
             browseDatabase: "inventory"
         )
         defer { Self.tearDown(connection) }
 
-        let recorder = RefreshRequestRecorder()
-        let cancellable = AppCommands.shared.refreshData.sink { request in
-            recorder.record(request)
-        }
-        defer { cancellable.cancel() }
+        let recorder = BroadcastRecorder()
+        let cancellables = recorder.observe(connectionId: connection.id)
+        defer { cancellables.forEach { $0.cancel() } }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         _ = try await Self.seedPooledDriver(connection, scope: scope)
@@ -356,10 +361,35 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             scope: scope
         )
 
-        let broadcast = recorder.requests.filter { $0.connectionId == connection.id }
-        #expect(broadcast.count == 1)
-        #expect(broadcast.first?.scope == scope)
-        #expect(broadcast.first?.scope?.database == "orders")
+        #expect(recorder.objectChanges.map(\.announced) == [
+            .init(scope: scope, name: "orders", kind: .structure, originTabId: nil)
+        ])
+        #expect(recorder.refreshRequests.isEmpty)
+    }
+
+    @Test("An inserted document announces its collection as a rows change and nothing broader")
+    func documentWriteAnnouncesItsCollection() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "probe")
+        defer { Self.tearDown(connection) }
+
+        let recorder = BroadcastRecorder()
+        let cancellables = recorder.observe(connectionId: connection.id)
+        defer { cancellables.forEach { $0.cancel() } }
+
+        let scope = try #require(Self.makeScope(connection, database: "probe"))
+        try await DatabaseManager.shared.executeDocumentWrite(
+            PluginDocumentWrite(table: "people", schema: nil, operation: .insert(document: "{}")),
+            statement: "db.people.insertOne({})",
+            databaseType: .mysql,
+            scope: scope,
+            operationDescription: "Insert Document",
+            gate: AlwaysAllowGate()
+        )
+
+        #expect(recorder.objectChanges.map(\.announced) == [
+            .init(scope: scope, name: "people", kind: .rows, originTabId: nil)
+        ])
+        #expect(recorder.refreshRequests.isEmpty)
     }
 
     private static func invoicesDefinition() -> PluginCreateTableDefinition {
@@ -445,11 +475,35 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     }
 }
 
-@MainActor
-private final class RefreshRequestRecorder {
-    private(set) var requests: [DataRefreshRequest] = []
+/// A change without the moment it was made, which no two sends share.
+private struct AnnouncedChange: Equatable {
+    let scope: DatabaseScope
+    let name: String
+    let kind: DatabaseObjectChange.Kind
+    let originTabId: UUID?
+}
 
-    func record(_ request: DataRefreshRequest) {
-        requests.append(request)
+private extension DatabaseObjectChange {
+    var announced: AnnouncedChange {
+        AnnouncedChange(scope: scope, name: name, kind: kind, originTabId: originTabId)
+    }
+}
+
+/// Filtered by connection, because the subjects are process-wide and other suites send on them
+/// while these run.
+@MainActor
+private final class BroadcastRecorder {
+    private(set) var objectChanges: [DatabaseObjectChange] = []
+    private(set) var refreshRequests: [DataRefreshRequest] = []
+
+    func observe(connectionId: UUID) -> [AnyCancellable] {
+        [
+            AppCommands.shared.objectChanged
+                .filter { $0.connectionId == connectionId }
+                .sink { [weak self] in self?.objectChanges.append($0) },
+            AppCommands.shared.refreshData
+                .filter { $0.connectionId == connectionId }
+                .sink { [weak self] in self?.refreshRequests.append($0) }
+        ]
     }
 }

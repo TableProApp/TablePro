@@ -24,7 +24,8 @@ extension DatabaseManager {
     func executeSchemaChanges(
         _ statements: [SchemaStatement],
         databaseType: DatabaseType,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        table: String
     ) async throws {
         let route = schemaChangeRoute(for: scope)
 
@@ -104,7 +105,9 @@ extension DatabaseManager {
             )
         }
 
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: scope.connectionId, scope: scope, name: table, kind: .structure)
+        )
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
         )

@@ -531,6 +531,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
+- Every window's front tab reloading, and asking to discard its edits, after a row import, a new table or a structure change.
+- Tabs showing old rows, columns, DDL or triggers after a save, import, structure change or materialized view refresh.
+- Tables with hidden columns querying a dropped column, or leaving out a new one, after a SQL file import or a structure change.
+- First SQLite or libSQL query after a structure save showing the table's old columns, without the new column's values.
+- Edits after a structure change using the table's old primary key, defaults and generated columns.
 
 ### Security
 

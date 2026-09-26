@@ -96,20 +96,23 @@ actor SQLiteLocalBackend {
 
         try bind(parameters, to: statement, db: db)
 
-        let columnCount = sqlite3_column_count(statement)
-        let columns = columnNames(of: statement, count: columnCount)
-        let columnTypeNames = columnDeclaredTypes(of: statement, count: columnCount)
+        let firstStep = SQLiteResultColumns.stepFirst(statement)
+        let columnCount = firstStep.count
+        let columns = firstStep.names
+        let columnTypeNames = firstStep.typeNames
 
         var rows: [[PluginCellValue]] = []
         var rowsAffected = 0
         var truncated = false
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = firstStep.result
+        while stepResult == SQLITE_ROW {
             if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
             }
             rows.append(rowValues(of: statement, count: columnCount))
+            stepResult = sqlite3_step(statement)
         }
 
         if columns.isEmpty {
@@ -142,10 +145,11 @@ actor SQLiteLocalBackend {
             throw LibSQLError(message: errorMessage)
         }
 
-        let columnCount = sqlite3_column_count(statement)
+        let firstStep = SQLiteResultColumns.stepFirst(statement)
+        let columnCount = firstStep.count
         continuation.yield(.header(PluginStreamHeader(
-            columns: columnNames(of: statement, count: columnCount),
-            columnTypeNames: columnDeclaredTypes(of: statement, count: columnCount),
+            columns: firstStep.names,
+            columnTypeNames: firstStep.typeNames,
             estimatedRowCount: nil
         )))
 
@@ -153,7 +157,8 @@ actor SQLiteLocalBackend {
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = firstStep.result
+        while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
                     continuation.yield(.rows(batch))
@@ -168,6 +173,7 @@ actor SQLiteLocalBackend {
                 continuation.yield(.rows(batch))
                 batch.removeAll(keepingCapacity: true)
             }
+            stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
@@ -207,18 +213,6 @@ actor SQLiteLocalBackend {
                 let errorMessage = String(cString: sqlite3_errmsg(db))
                 throw LibSQLError(message: "Failed to bind parameter \(index): \(errorMessage)")
             }
-        }
-    }
-
-    private func columnNames(of statement: OpaquePointer?, count: Int32) -> [String] {
-        (0..<count).map { index in
-            sqlite3_column_name(statement, index).map { String(cString: $0) } ?? "column_\(index)"
-        }
-    }
-
-    private func columnDeclaredTypes(of statement: OpaquePointer?, count: Int32) -> [String] {
-        (0..<count).map { index in
-            sqlite3_column_decltype(statement, index).map { String(cString: $0) } ?? ""
         }
     }
 

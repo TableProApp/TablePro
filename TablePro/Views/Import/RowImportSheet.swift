@@ -91,6 +91,7 @@ struct RowImportSheet: View {
 
     @State private var importService: ImportService?
     @State private var importResult: PluginImportResult?
+    @State private var importedRows: DatabaseObjectChange?
     @State private var importError: (any Error)?
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
@@ -202,7 +203,9 @@ struct RowImportSheet: View {
             ) {
                 showSuccessDialog = false
                 isPresented = false
-                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+                if let importedRows {
+                    AppCommands.shared.objectChanged.send(importedRows)
+                }
             }
         }
         .onChange(of: showErrorDialog) { isShowing in
@@ -898,6 +901,12 @@ struct RowImportSheet: View {
                     showProgressDialog = false
                     importSucceeded = true
                     importResult = result
+                    importedRows = DatabaseObjectChange(
+                        connectionId: connection.id,
+                        scope: scope,
+                        name: targetTable,
+                        kind: .rows
+                    )
                     showSuccessDialog = true
                 }
             } catch is PluginImportCancellationError {

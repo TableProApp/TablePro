@@ -267,4 +267,4 @@ MongoDB structure is read-only, and inferred from the collection's first 200 doc
 
 ## Refreshing
 
-**Database > Refresh** (`Cmd+R`) or the toolbar refresh button reloads structure from the server; changes made through TablePro refresh on their own. A refresh reads the tab's own database and schema, not the sidebar's current selection.
+**Database > Refresh** (`Cmd+R`) or the toolbar refresh button reloads structure from the server; changes made through TablePro refresh on their own. A refresh reads the tab's own database and schema, not the sidebar's current selection. A tab with queued changes keeps them when another tab or window changes the table, and refreshes once they are saved, undone or discarded.

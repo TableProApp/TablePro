@@ -248,9 +248,9 @@ extension MainContentCoordinator {
         guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
         let rows = tabSessionRegistry.tableRows(for: tab.id)
-        let isEvicted = tabSessionRegistry.isEvicted(tab.id)
-        let hasFreshRows = !rows.rows.isEmpty && !isEvicted
-        let hasExecuted = tab.execution.lastExecutedAt != nil && !isEvicted
+        let needsReload = tabSessionRegistry.isEvicted(tab.id) || tabSessionRegistry.isStale(tab.id)
+        let hasFreshRows = !rows.rows.isEmpty && !needsReload
+        let hasExecuted = tab.execution.lastExecutedAt != nil && !needsReload
         guard !hasFreshRows, !hasExecuted else { return false }
 
         let hasPendingEdits = changeManager.hasChanges || tab.pendingChanges.hasChanges
