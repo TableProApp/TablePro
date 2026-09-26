@@ -161,7 +161,17 @@ The app is free under AGPLv3. If you use TablePro at work, please buy a [license
 
 Thanks to these amazing people for supporting TablePro:
 
-**[getapps.cafe](https://getapps.cafe/?ref=SJO7-TgA)** · **[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
+**[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)**
+
+## Contributors
+
+Thanks to everyone who has contributed to TablePro:
+
+<a href="https://github.com/TableProApp/TablePro/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=TableProApp/TablePro" alt="TablePro contributors" />
+</a>
+
+Want to join them? Read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Star History
 

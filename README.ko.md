@@ -158,7 +158,17 @@ TablePro는 AGPLv3에 따라 무료로 제공됩니다. 업무에 사용한다�
 
 TablePro를 후원해 주신 모든 분께 감사드립니다.
 
-**[getapps.cafe](https://getapps.cafe/?ref=SJO7-TgA)** · **[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
+**[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)**
+
+## 기여자
+
+TablePro에 기여해 주신 모든 분께 감사드립니다.
+
+<a href="https://github.com/TableProApp/TablePro/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=TableProApp/TablePro" alt="TablePro 기여자" />
+</a>
+
+함께하고 싶다면 [CONTRIBUTING.md](CONTRIBUTING.md)를 읽어 주세요.
 
 ## 스타 히스토리
 
