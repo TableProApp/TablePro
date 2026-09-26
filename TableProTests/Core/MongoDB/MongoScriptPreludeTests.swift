@@ -421,6 +421,62 @@ struct MongoScriptPreludeTests {
         #expect(value?.toString() == "507f1f77bcf86cd799439011")
     }
 
+    @Test(
+        "EJSON.parse refuses a wrapper its constructor would refuse",
+        arguments: [
+            #"{"n": {"$numberLong": "abc"}}"#,
+            #"{"n": {"$numberLong": "9223372036854775808"}}"#,
+            #"{"n": {"$numberDecimal": "abc"}}"#,
+            #"{"n": {"$numberInt": "12abc"}}"#,
+            #"{"n": {"$numberInt": "2147483648"}}"#,
+            #"{"n": {"$numberDouble": "abc"}}"#,
+            #"{"r": {"$regularExpression": {"pattern": "a", "options": "z"}}}"#
+        ]
+    )
+    func ejsonParseChecksWrappers(json: String) throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+
+        context.evaluateScript("EJSON.parse(\(Self.javaScriptString(json)))")
+        #expect(context.exception != nil)
+    }
+
+    @Test("EJSON.parse still reads every well-formed wrapper, NaN and Infinity included")
+    func ejsonParseReadsWellFormedWrappers() throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+        let json = #"{"l": {"$numberLong": "9007199254740993"}, "d": {"$numberDecimal": "NaN"}, "#
+            + #""i": {"$numberInt": "-7"}, "f": {"$numberDouble": "-Infinity"}, "#
+            + #""r": {"$regularExpression": {"pattern": "^a", "options": "xi"}}}"#
+
+        let value = context.evaluateScript("""
+        var parsed = EJSON.parse(\(Self.javaScriptString(json)));
+        [String(parsed.l), String(parsed.d), parsed.i, parsed.f, parsed.r.options].join("|")
+        """)
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "9007199254740993|NaN|-7|-Infinity|ix")
+    }
+
+    @Test("A value the server sends is read back as stored, without the parse-time checks")
+    func serverRepliesAreNotRechecked() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "1",
+            #"{"docs": [{"_id": 1, "r": {"$regularExpression": {"pattern": "a", "options": "g"}}}], "done": true}"#
+        ]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("db.orders.findOne({}).r.options")
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "g")
+    }
+
+    private static func javaScriptString(_ text: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [text])) ?? Data()
+        let array = String(data: data, encoding: .utf8) ?? "[]"
+        return String(array.dropFirst().dropLast())
+    }
+
     @Test("A write with no document is refused rather than sent as null")
     func writesNeedADocument() throws {
         let host = RecordingHost()
