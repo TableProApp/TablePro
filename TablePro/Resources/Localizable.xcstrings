@@ -184157,6 +184157,12 @@
     },
     "%@ cannot take rows from this file, so no table was created." : {
 
+    },
+    "The shell would reorder or drop a field named %@. Choose another name." : {
+
+    },
+    "A text index cannot be unique." : {
+
     }
   },
   "version" : "1.1"

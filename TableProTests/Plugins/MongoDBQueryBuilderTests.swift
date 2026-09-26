@@ -878,8 +878,9 @@ struct MongoDBQueryBuilderTests {
     func escapingSeesQuotesInsideGraphemeClusters() throws {
         let hostile = "x\u{0600}\"}); db.victim.drop(); ({\""
         let escaped = MongoDBQueryBuilder.escapeJsonString(hostile)
-        let data = try #require("\"\(escaped)\"".data(using: .utf8))
-        let decoded = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? String
+        let decoded = try JSONSerialization.jsonObject(
+            with: Data("\"\(escaped)\"".utf8), options: [.fragmentsAllowed]
+        ) as? String
         #expect(decoded == hostile)
         #expect(MongoDBQueryBuilder.escapeJsonString("a\r\nb") == "a\\r\\nb")
     }

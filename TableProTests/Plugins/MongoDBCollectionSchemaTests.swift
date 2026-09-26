@@ -41,14 +41,14 @@ struct MongoDBCollectionSchemaTests {
         #expect(try #require(schema.field(named: "tags")).isRequired == false)
     }
 
-    @Test("A nullable union still types the value, and an open or binary type does not")
+    @Test("A nullable union and a string enum type the value, and an open or binary type does not")
     func valueKinds() {
         let schema = MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: articlesOptions))
         #expect(schema.valueKinds["title"] == .string)
         #expect(schema.valueKinds["tags"] == .array)
         #expect(schema.valueKinds["date"] == .date)
         #expect(schema.valueKinds["views"] == .int64)
-        #expect(schema.valueKinds["status"] == nil)
+        #expect(schema.valueKinds["status"] == .string)
         #expect(schema.valueKinds["attachment"] == nil)
         #expect(schema.valueKinds["score"] == nil)
     }
