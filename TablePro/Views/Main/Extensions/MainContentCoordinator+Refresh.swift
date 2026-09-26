@@ -79,6 +79,46 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Reloads the selected tab's rows while its Structure pane is in front, so Data shows the table
+    /// as it now is. Rows holding the user's edits are kept, and a tab that never loaded its rows has
+    /// none to reload.
+    func reloadRowsBehindStructure(hasPendingTableOps: Bool) {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
+              tab.display.resultsViewMode == .structure,
+              tab.execution.lastExecutedAt != nil,
+              !changeManager.hasChanges,
+              !tab.pendingChanges.hasChanges,
+              !hasPendingTableOps
+        else { return }
+        reloadTableTab(at: tabIndex)
+    }
+
+    /// Fetches the structure again where no one is editing it: now for the one on screen, on its next
+    /// mount for the rest. A structure holding staged edits keeps them and the baseline they were
+    /// staged against, because a fetch adopts a new baseline and clears them without asking.
+    func refreshStructure(ofTabs tabs: [QueryTab]) {
+        let selectedId = tabManager.selectedTabId
+        for tab in tabs {
+            guard let session = structureSessions[tab.id], !session.changeManager.hasChanges else { continue }
+            if tab.id == selectedId, tab.display.resultsViewMode == .structure, let refresh = structureActions?.refresh {
+                refresh()
+            } else {
+                session.markStructureStale()
+            }
+        }
+    }
+
+    /// The columns a column-scoped query is built from describe the table before the change, and a
+    /// reload builds its select list from them before it fetches anything, so a dropped column would
+    /// stay in it. The reload's own fetch stores the new set.
+    func forgetSchemaColumns(of change: DatabaseObjectChange, tabs: [QueryTab]) {
+        schemaColumns.remove(schemaColumnsKey(change.name, scope: change.scope))
+        for tab in tabs {
+            schemaColumns.remove(schemaColumnsKey(change.name, scope: scope(for: tab)))
+        }
+    }
+
     private func reloadTableTab(at tabIndex: Int) {
         stopExecution(for: tabManager.tabs[tabIndex].id)
         /// A refresh asks for the table as it is now, so the exact count the user requested earlier

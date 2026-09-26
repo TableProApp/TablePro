@@ -82,6 +82,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
+    private var _writeConcern = MongoWriteConcern.serverDefault
     private var _isCancelled: Bool = false
     private var _queryTimeoutMS: Int32 = 0
     #if canImport(CLibMongoc)
@@ -111,6 +112,13 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _queryTimeoutMS
+    }
+
+    /// The write concern the connection's URI sets, read from the client once it connects.
+    var configuredWriteConcern: MongoWriteConcern {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _writeConcern
     }
 
     func setQueryTimeout(_ seconds: Int) {
@@ -181,6 +189,14 @@ final class MongoDBConnection: @unchecked Sendable {
             return try body(client)
         }
         return try queue.sync {
+            guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
+            return try body(client)
+        }
+    }
+
+    /// Runs a libmongoc call on the connection's own queue without blocking the caller.
+    func withClient<T: Sendable>(_ body: @escaping @Sendable (OpaquePointer) throws -> T) async throws -> T {
+        try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
             return try body(client)
         }
@@ -282,8 +298,8 @@ final class MongoDBConnection: @unchecked Sendable {
             "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
             "tlsCAFile", "tlsCertificateKeyFile"
         ]
-        if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
-        if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
+        if let readPreference, !readPreference.isEmpty { explicitKeys.insert("readPreference") }
+        if let writeConcern, !writeConcern.isEmpty { explicitKeys.insert("w") }
         for (key, value) in extraUriParams where !explicitKeys.contains(key) {
             let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
             params.append("\(key)=\(encodedValue)")
@@ -364,9 +380,11 @@ final class MongoDBConnection: @unchecked Sendable {
             }
 
             self.client = newClient
+            let configuredWriteConcern = MongoWriteConcern(client: newClient)
 
             self.stateLock.lock()
             self._isConnected = true
+            self._writeConcern = configuredWriteConcern
             self.stateLock.unlock()
 
             logger.info("Connected to MongoDB at \(self.host):\(self.port)")

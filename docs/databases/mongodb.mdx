@@ -35,14 +35,14 @@ Naming a **Database** skips listing every database on the server, which is worth
 
 **Auth Database** is a separate question: it says where your account is defined, not what you browse. Left empty, it follows the **Database** field. An account defined in `admin` needs **Auth Database** set to `admin` whenever **Database** names something else, or authentication fails. SRV connections authenticate against `admin` regardless, unless told otherwise. Switching databases in the app never changes it, so browsing a database your user has no account in is fine.
 
-Also in Advanced: **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**. There is no minimum server version; the driver adapts what it asks for to what the server answers.
+Also in Advanced: **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**. The server has to be MongoDB 4.0 or later; the driver refuses to connect to anything older.
 
 <Frame caption="MongoDB connection form">
   <img className="block dark:hidden" src="/images/mongodb-connection-form.png" alt="MongoDB connection form with the multi-host Hosts editor" />
   <img className="hidden dark:block" src="/images/mongodb-connection-form-dark.png" alt="MongoDB connection form with the multi-host Hosts editor" />
 </Frame>
 
-On MongoDB 4.0 and later the database list is requested as authorized databases only, so an account without the `listDatabases` privilege still sees what it can read. On an older server that list comes back empty: name a **Database** on the connection instead.
+The database list is requested as authorized databases only, so an account without the `listDatabases` privilege still sees what it can read.
 
 ## Connection URL
 
@@ -79,7 +79,7 @@ An edited cell keeps its field's type. A date stays a date, whether typed as `20
 
 The filter bar's column picker lists paths inside nested objects and arrays of objects, so `customer.country` and `items.sku` filter directly; a row on an array field chooses **any element** or **same element**, which makes one array entry satisfy every row set to it. See [Filtering](/features/filtering#nested-fields). A field name containing a literal dot is left out of the picker, since MongoDB reads a dot as a path separator; reach it with `$getField` inside `$expr`.
 
-The Structure tab lists a collection's indexes; drop one from a query tab with `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
+The Structure tab lists a collection's indexes, and [renames or removes a field](#renaming-and-removing-fields) across the whole collection. Drop an index from a query tab with `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
 
 ### Binary UUIDs
 
@@ -117,6 +117,45 @@ A field exists only in the documents that hold it, so a collection with no docum
 </Frame>
 
 The text is Extended JSON: quote every field name, and write an ObjectId as `{"$oid": "…"}`, a date as `{"$date": "2024-05-01T10:00:00Z"}` and a decimal as `{"$numberDecimal": "1.10"}`. A whole number is stored as a 32-bit integer, or as a 64-bit one when it does not fit; `{"$numberLong": "5"}` stores a small 64-bit integer. A number with a decimal point is a double. Fields are stored in the order written. Leave out `_id` and the server generates one.
+
+## Renaming and removing fields
+
+In the Structure tab, edit a field's **Name** to rename it, or remove its row to remove the field, then choose **Save Changes**. Each change is one `updateMany` over the collection, and **Preview SQL** shows it:
+
+```javascript
+db.people.updateMany({"status": {"$exists": true}, "state": {"$exists": false}}, {"$rename": {"status": "state"}})
+db.people.updateMany({"tmp": {"$exists": true}}, {"$unset": {"tmp": ""}})
+```
+
+A document that already holds the new name keeps its value, and the rename skips it. When the collection's `$jsonSchema` validator declares the field in `properties`, `required` or `dependencies`, the save starts with a `db.runCommand({"collMod": …})` that renames or removes the field there as well, so a collection made with **New Table…** keeps validating. A field only the validator declares, with no document holding it, is removed from the validator.
+
+With **Write Concern** set on the connection, or `w`, `journal` and `wtimeoutMS` in its connection string, every statement carries it as `{"writeConcern": {"w": "majority"}}`, and **Preview SQL** shows it. `w=0` without `journal=true` goes out as `w: 1`.
+
+The save is refused before anything is written when:
+
+| Refused when | What to do |
+|---|---|
+| An index uses the old or the new name | Drop the index from a query tab. The message gives the `dropIndex` command |
+| An Atlas Search or Vector Search index mentions the old or the new name anywhere in its definition, or the server runs `$search` but is too old to list search indexes | Change or drop the search index in Atlas first, then rename the field from a query tab |
+| A view's pipeline holds the old name anywhere, even as a plain value such as `{$match: {status: "active"}}` when renaming `active` | Change the view's pipeline first |
+| A view or the validator hands the whole document, `$$ROOT` or `$$CURRENT`, to anything but `$replaceWith`, `$replaceRoot` or a `$getField` of one named field, as `{$objectToArray: "$$ROOT"}` or `{$push: "$$ROOT"}` do | Change the view's pipeline, or the validator with `collMod`, first |
+| The validator uses the field outside `properties`, `required` and `dependencies`, as in `$expr`, or lists whole documents naming it in `enum` | Change the validator with `collMod` first |
+| A `patternProperties` pattern matches the old or the new name, or `additionalProperties` applies to one because `properties` does not declare it | Change the validator with `collMod` first. A field `properties` declares renames as usual |
+| A document holds both the old and the new name | Remove one of the two from those documents |
+| The validator would reject a document once it changes, or once the save moves a rule onto a name the document already holds | Fix that document or the validator. The message gives its `_id` |
+| One save changes the same name twice, as a swap does | Save one change at a time |
+| The field is `_id` | Leave it: MongoDB keys every document by `_id` |
+| The name starts with `$`, contains a dot, or is `__proto__` | Rewrite those documents from a query tab |
+| The collection is a view, a time series collection or a `system.` collection | Change the fields in the collection underneath, if there is one |
+| The collection is capped and the new name takes more bytes than the old one | Choose a name no longer than the old one. A longer one makes MongoDB delete the oldest documents to stay within the cap |
+| A longer name would take a document past MongoDB's 16 MB limit | Choose a shorter name, or shrink that document. The message gives its `_id` |
+| The collection's validator or options changed after the save was prepared, or while its documents were checked | Check the new `collMod` in **Preview SQL**, then choose **Save Changes** again |
+
+The checks for a document holding both names and for a document the validator would reject run on **Save Changes** only, never in **Preview SQL**. Under a `moderate` validator, a document the validator already rejected before the save is left alone. Each reads every document that holds a changed field and stops at the query timeout in **Settings > General**, or after 10 minutes when the timeout is **No limit**. A check that times out changes nothing. Every check reads the primary, whatever the connection's **Read Preference**. Once they pass, the save reads the collection's options, indexes and views again, and stops if the options changed or an index, search index or view now uses the field.
+
+An `updateMany` that stops partway, at the query timeout or on a duplicate key, keeps the documents it already changed. Another client can also write the old name while the save runs, so after the last statement the save counts the documents that still hold it, and reports how many when any do. It also reads the indexes, search indexes and views again, and reports one another client made on either name while the save ran. A `collMod` whose write concern was not met stops the save with the server's reason, after the validator was already changed. Either way the change stays queued in the Structure tab: choose **Save Changes** again and it finishes the rest, because each statement skips the documents already done. A document left holding both names stops that second save instead, with the message for that case. Removing a field asks for confirmation, as a dropped column does.
+
+When the save rewrote the validator, it then looks for a document holding a changed name that the new validator rejects. One another client wrote with only the new name, after the checks and before the `collMod`, passed the old validator and fails the new one, and its next update fails with `Document failed validation`. The save reports its `_id`: fix that document, then choose **Save Changes** again.
 
 ## Writing queries
 
@@ -219,6 +258,10 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - GridFS buckets are not browsable, and change streams are unsupported.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
 - Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+- A field rename checks indexes, search indexes, validators and views in the same database only. Other databases and application code keep the old name: update them after the rename.
+- A field rename does not lock the collection. A validator another client sets in the milliseconds between the last check and the save's `collMod` is replaced by it.
+- MongoDB before 4.4 cannot measure a document, so a rename to a longer name is not checked against the 16 MB limit there. Rename to a name no longer than the old one on those servers when documents are close to the limit.
+- **Compare & Sync** compares MongoDB structures but writes no script for them, because a collection's fields come from a sample of its documents.
 
 ## Troubleshooting
 

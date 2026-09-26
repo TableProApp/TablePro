@@ -130,6 +130,147 @@ struct CatalogChangeWindowTests {
         #expect(tabManager.tabs[1].tableContext.schemaName == "public")
     }
 
+    private static func loadRows(_ tab: QueryTab, into coordinator: MainContentCoordinator, _ tabManager: QueryTabManager) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        let tableRows = TestFixtures.makeTableRows(rowCount: 3)
+        coordinator.setActiveTableRows(tableRows, for: tab.id)
+        let resultSet = ResultSet(label: tab.title, tableRows: tableRows)
+        tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [resultSet]
+            tab.display.activeResultSetId = resultSet.id
+            tab.execution.lastExecutedAt = Date()
+        }
+    }
+
+    private static func structureSession(
+        for tab: QueryTab,
+        connection: DatabaseConnection,
+        into coordinator: MainContentCoordinator
+    ) -> StructureEditingSession {
+        let session = StructureEditingSession(
+            identity: tab.id.uuidString,
+            connection: connection,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: nil,
+            tableName: tab.tableContext.tableName ?? ""
+        )
+        session.hasLoaded = true
+        coordinator.structureSessions[tab.id] = session
+        return session
+    }
+
+    /// A Structure save reloaded the selected tab of each window on the database whatever table it
+    /// showed, skipped the saving tab's Data view because Structure was in front, and left every
+    /// background tab on the table with the rows from before the save.
+    @Test("a structure change reloads the table's rows behind Structure and in the background, and no other table's")
+    func structureChangeReachesEveryTabOnTheTable() {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        defer { coordinator.cancelAllQueryTasks() }
+        var saving = Self.tableTab("orders", database: "shop", schema: nil)
+        saving.display.resultsViewMode = .structure
+        let background = Self.tableTab("orders", database: "shop", schema: nil)
+        let unrelated = Self.tableTab("users", database: "shop", schema: nil)
+        tabManager.tabs = [background, unrelated, saving]
+        for tab in tabManager.tabs {
+            Self.loadRows(tab, into: coordinator, tabManager)
+        }
+        tabManager.selectedTabId = saving.id
+
+        coordinator.applyObjectChange(
+            Self.change(connection, name: "orders", database: "shop", schema: nil, kind: .structure),
+            hasPendingTableOps: false,
+            onDiscard: {}
+        )
+
+        #expect(coordinator.queryTasks.hasTask(for: saving.id))
+        #expect(coordinator.tabSessionRegistry.isEvicted(background.id))
+        #expect(!coordinator.tabSessionRegistry.isEvicted(unrelated.id))
+        #expect(!coordinator.queryTasks.hasTask(for: unrelated.id))
+        #expect(coordinator.tabSessionRegistry.tableRows(for: unrelated.id).rows.count == 3)
+    }
+
+    @Test("a structure change leaves the rows of a tab holding data edits, and never prompts")
+    func structureChangeKeepsEditedRows() {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        defer { coordinator.cancelAllQueryTasks() }
+        var saving = Self.tableTab("orders", database: "shop", schema: nil)
+        saving.display.resultsViewMode = .structure
+        saving.pendingChanges.deletedRowIDs = [.existing(0)]
+        tabManager.tabs = [saving]
+        Self.loadRows(saving, into: coordinator, tabManager)
+        tabManager.selectedTabId = saving.id
+
+        coordinator.applyObjectChange(
+            Self.change(connection, name: "orders", database: "shop", schema: nil, kind: .structure),
+            hasPendingTableOps: false,
+            onDiscard: {}
+        )
+
+        #expect(!coordinator.queryTasks.hasTask(for: saving.id))
+        #expect(coordinator.tabSessionRegistry.tableRows(for: saving.id).rows.count == 3)
+    }
+
+    /// The saving tab still holds its edits while its save runs, and keeps them when the save
+    /// stops partway, so a refetch, which adopts a new baseline, would throw away what the retry
+    /// needs.
+    @Test("a structure change marks unedited structure stale and leaves staged edits and their baseline alone")
+    func structureChangeSparesStagedEdits() {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        defer { coordinator.cancelAllQueryTasks() }
+        let clean = Self.tableTab("orders", database: "shop", schema: nil)
+        let edited = Self.tableTab("orders", database: "shop", schema: nil)
+        let other = Self.tableTab("users", database: "shop", schema: nil)
+        tabManager.tabs = [clean, edited, other]
+        let cleanSession = Self.structureSession(for: clean, connection: connection, into: coordinator)
+        let editedSession = Self.structureSession(for: edited, connection: connection, into: coordinator)
+        editedSession.changeManager.addNewColumn()
+        let otherSession = Self.structureSession(for: other, connection: connection, into: coordinator)
+        tabManager.selectedTabId = other.id
+
+        coordinator.applyObjectChange(
+            Self.change(connection, name: "orders", database: "shop", schema: nil, kind: .structure),
+            hasPendingTableOps: false,
+            onDiscard: {}
+        )
+
+        #expect(cleanSession.hasLoaded == false)
+        #expect(editedSession.hasLoaded)
+        #expect(editedSession.changeManager.hasChanges)
+        #expect(otherSession.hasLoaded)
+    }
+
+    /// A reload of a tab with hidden columns builds its select list from these before it fetches
+    /// anything, so a column the save dropped would still be named in it.
+    @Test("a structure change forgets the table's cached columns and keeps every other table's")
+    func structureChangeForgetsCachedColumns() {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let orders = Self.tableTab("orders", database: "shop", schema: nil)
+        tabManager.tabs = [orders]
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
+        let entry = SchemaColumnStore.Entry(columns: ["id", "old"], primaryKeys: ["id"], columnTypes: [:])
+        let ordersKey = coordinator.schemaColumnsKey("orders", scope: scope)
+        let usersKey = coordinator.schemaColumnsKey("users", scope: scope)
+        coordinator.schemaColumns.store(entry, for: ordersKey)
+        coordinator.schemaColumns.store(entry, for: usersKey)
+
+        coordinator.applyObjectChange(
+            Self.change(connection, name: "orders", database: "shop", schema: nil, kind: .structure),
+            hasPendingTableOps: false,
+            onDiscard: {}
+        )
+
+        #expect(coordinator.schemaColumns.cached(ordersKey) == nil)
+        #expect(coordinator.schemaColumns.cached(usersKey) == entry)
+    }
+
     @Test("a change for another connection is ignored")
     func otherConnectionIsIgnored() {
         let connection = TestFixtures.makeConnection(database: "shop")

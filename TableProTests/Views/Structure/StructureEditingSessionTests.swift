@@ -37,8 +37,59 @@ private class StructureSessionBaseDriver {
     }
 }
 
+/// Holds a save inside its composition, the first place it suspends, until the test lets it go.
+private final class SaveGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasArrived = false
+    private var isOpen = false
+    private var arrival: CheckedContinuation<Void, Never>?
+    private var departures: [CheckedContinuation<Void, Never>] = []
+
+    func pass() async {
+        await withCheckedContinuation { continuation in
+            let (waiting, proceed) = lock.withLock { () -> (CheckedContinuation<Void, Never>?, Bool) in
+                hasArrived = true
+                defer { arrival = nil }
+                if !isOpen { departures.append(continuation) }
+                return (arrival, isOpen)
+            }
+            waiting?.resume()
+            if proceed { continuation.resume() }
+        }
+    }
+
+    func arrived() async {
+        await withCheckedContinuation { continuation in
+            let already = lock.withLock { () -> Bool in
+                if !hasArrived { arrival = continuation }
+                return hasArrived
+            }
+            if already { continuation.resume() }
+        }
+    }
+
+    func open() {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            isOpen = true
+            defer { departures = [] }
+            return departures
+        }
+        waiting.forEach { $0.resume() }
+    }
+}
+
 private final class StructureSessionDriver: StructureSessionBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
+    var compositionGate: SaveGate?
+
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview {
+        await compositionGate?.pass()
+        return PluginSchemaChangeReview()
+    }
 
     func execute(query: String) async throws -> PluginQueryResult {
         executedQueries.append(query)
@@ -191,6 +242,93 @@ struct StructureEditingSessionTests {
         #expect(!session.changeManager.hasChanges)
         #expect(session.appliedVersion == 1)
         #expect(!session.hasLoaded)
+    }
+
+    @Test("A save pressed while one is writing does nothing and keeps the edits staged")
+    func saveWhileApplyingIsRefused() async throws {
+        let connection = TestFixtures.makeConnection(database: "testdb")
+        let sessionDriver = StructureSessionDriver()
+        var connectionSession = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: sessionDriver)
+        )
+        connectionSession.browseDatabase = "testdb"
+        DatabaseManager.shared.injectSession(connectionSession, for: connection.id)
+
+        let session = Self.makeSession(connection: connection)
+        let pooledDriver = try await Self.seedPooledDriver(connection, scope: session.scope)
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
+        Self.stageAColumn(on: session)
+        session.isApplying = true
+
+        #expect(await session.applyStagedChanges(coordinator: nil) == .refused)
+        #expect(pooledDriver.executedQueries.isEmpty)
+        #expect(session.changeManager.hasChanges)
+    }
+
+    /// The save composes its statements before it writes, and on MongoDB composing reads the catalog,
+    /// so the gate holds it there. Before the hold, `isApplying` was raised only after composition,
+    /// so a second press passed the guard, and an edit staged meanwhile missed the script and was
+    /// then cleared with the edits that ran.
+    @Test("A save holds its edits from the press: a second Save and a mid-save edit are refused, and it clears only what it wrote")
+    func saveHoldsItsSnapshot() async throws {
+        let connection = TestFixtures.makeConnection(database: "testdb")
+        let sessionDriver = StructureSessionDriver()
+        var connectionSession = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: sessionDriver)
+        )
+        connectionSession.browseDatabase = "testdb"
+        DatabaseManager.shared.injectSession(connectionSession, for: connection.id)
+
+        let session = Self.makeSession(connection: connection)
+        let pooledDriver = try await Self.seedPooledDriver(connection, scope: session.scope)
+        let gate = SaveGate()
+        pooledDriver.compositionGate = gate
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
+        Self.stageAColumn(on: session)
+        let manager = session.changeManager
+        let pressed = manager.getChangesArray()
+
+        /// A failed `#require` leaves this save parked at the gate for good. Opening the gate after
+        /// the pool is gone would send it to an error alert with no window to hang on, which is a
+        /// modal run loop the test host never leaves.
+        let first = Task { await session.applyStagedChanges(coordinator: nil) }
+        await gate.arrived()
+
+        try #require(session.isApplying)
+        try #require(manager.isHeldForSave)
+        #expect(await session.applyStagedChanges(coordinator: nil) == .refused)
+
+        manager.addNewColumn()
+        if var column = manager.workingColumns.last {
+            column.name = "later"
+            manager.updateColumn(id: column.id, with: column)
+        }
+        manager.undo()
+        manager.discardChanges()
+        #expect(manager.getChangesArray() == pressed)
+
+        gate.open()
+        #expect(await first.value == .applied)
+
+        #expect(pooledDriver.executedQueries.filter { $0.contains("ADD COLUMN") }.count == 1)
+        #expect(pooledDriver.executedQueries.allSatisfy { !$0.contains("later") })
+        #expect(!manager.hasChanges)
+        #expect(!manager.isHeldForSave)
+        #expect(!session.isApplying)
+        #expect(session.appliedVersion == 1)
+
+        manager.addNewColumn()
+        #expect(manager.hasChanges)
     }
 
     /// Stands in for the connection the pool would open on the scope.

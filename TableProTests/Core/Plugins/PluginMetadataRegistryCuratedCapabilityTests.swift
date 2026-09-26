@@ -144,6 +144,20 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.authenticationIsDatabaseScoped == true)
     }
 
+    @Test("MongoDB keeps its sampled columns and its structure matrix when its plugin registers")
+    func mongoDBKeepsSampledColumnsAndStructureMatrix() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockMongoDBPlugin.self)
+
+        #expect(
+            built.capabilities.columnsAreSampled == true,
+            "A structure sync would read a field missing from one sample as a field to remove"
+        )
+        #expect(StructureEditEligibility.allows(.renameColumn, on: .table, matrix: built.structureEditing.structureEdits))
+        #expect(StructureEditEligibility.allows(.dropColumn, on: .table, matrix: built.structureEditing.structureEdits))
+    }
+
     @Test("DynamoDB keeps its billed-scan count when its plugin registers")
     func dynamoDBKeepsItsBilledScanCount() {
         let registry = PluginMetadataRegistry.shared
@@ -216,6 +230,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.authenticationIsDatabaseScoped == false)
         #expect(built.capabilities.browsingRequiresSelectedDatabase == false)
         #expect(built.capabilities.exactRowCountIsBilledScan == false)
+        #expect(built.capabilities.columnsAreSampled == false)
         #expect(built.schema.implicitSchemaName == nil)
     }
 }

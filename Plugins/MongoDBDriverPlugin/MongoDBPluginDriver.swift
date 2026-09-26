@@ -714,7 +714,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
-        MongoDBCollectionDDL.refusal(for: operation)
+        MongoFieldChange.refusal(for: operation) ?? MongoDBCollectionDDL.refusal(for: operation)
     }
 
     var unsupportedIndexTypes: Set<String> { MongoDBCollectionDDL.unsupportedIndexTypes }
@@ -1043,7 +1043,21 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// Two databases can hold a collection of the same name with different field types.
     private func columnKindKey(_ collection: String) -> String {
-        "\(currentDb)\u{0}\(collection)"
+        MongoCollectionCacheKey.key(database: currentDb, collection: collection)
+    }
+
+    /// A Structure save renamed or removed fields on another connection, so the fields and types
+    /// this driver learned from the collection's documents and its validator no longer hold: a
+    /// later page would reuse the declared schema, and a write would type a renamed field by its old
+    /// name. Dropped in every database, since the save's database need not be this driver's.
+    func tableDefinitionDidChange(table: String, schema: String?) {
+        let isStale = { (key: String) in MongoCollectionCacheKey.names(key, collection: table) }
+        columnKindLock.withLock {
+            columnKindsByCollection = columnKindsByCollection.filter { !isStale($0.key) }
+            fieldPathKindsByCollection = fieldPathKindsByCollection.filter { !isStale($0.key) }
+            declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
+            identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
+        }
     }
 }
 
