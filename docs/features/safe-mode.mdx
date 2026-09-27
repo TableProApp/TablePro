@@ -24,7 +24,7 @@ Four things the table cannot carry. The confirmation dialog shows the whole stat
   <img className="block dark:hidden" src="/images/safe-mode-confirmation.png" alt="Confirmation dialog over a query tab, showing a fourteen line UPDATE with Cancel and Execute" />
   <img className="hidden dark:block" src="/images/safe-mode-confirmation-dark.png" alt="Confirmation dialog over a query tab, showing a fourteen line UPDATE with Cancel and Execute" />
 </Frame>
- **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
+ **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. So does a [Structure](/features/table-structure#saving-changes) save that drops a column, changes a column's type, adds NOT NULL, changes the primary key, or adds or rewrites a check constraint. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
 
 ## Connections that are always read-only
 

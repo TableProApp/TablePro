@@ -110,11 +110,19 @@ enum StructureColumnReorderHandler {
         return PreparedReorder(plan: prepared.0, fingerprint: prepared.1, scope: scope)
     }
 
+    static var operationDescription: String {
+        String(localized: "Reorder Columns")
+    }
+
     /// Runs a prepared reorder through the shared plan runner.
+    ///
+    /// `isConfirmationPreCleared` is true only from the rebuild review's own button, which showed
+    /// this script; a reorder that runs on the drop leaves the confirmation to the gate.
     static func execute(
         _ prepared: PreparedReorder,
         tableName: String,
-        databaseType: DatabaseType
+        databaseType: DatabaseType,
+        isConfirmationPreCleared: Bool
     ) async throws {
         try await StructureRebuildPlanRunner.execute(
             StructureRebuildPlanRunner.Prepared(
@@ -124,7 +132,8 @@ enum StructureColumnReorderHandler {
                 tableName: tableName
             ),
             databaseType: databaseType,
-            operationDescription: String(localized: "Reorder Columns")
+            operationDescription: operationDescription,
+            isConfirmationPreCleared: isConfirmationPreCleared
         )
     }
 }

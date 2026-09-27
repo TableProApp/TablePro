@@ -47,6 +47,9 @@ private final class RefusingDDLDriver: PluginDatabaseDriver, @unchecked Sendable
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         "CREATE INDEX \(index.name) ON \(table)"
     }
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? {
+        "ALTER TABLE \(table) REPLACE INDEX \(oldIndexName) ON (\(newIndex.columns.joined(separator: ", ")))"
+    }
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
         "ALTER TABLE \(table) ADD CONSTRAINT \(constraint.name) CHECK (\(constraint.expression))"
     }
@@ -150,7 +153,7 @@ struct SchemaOperationRefusalTests {
         driver.refuse = { operation in
             switch operation {
             case .modifyIndex(let old, let new): return "modify \(old.name) to \(new.name)"
-            case .dropIndex(let index): return "drop \(index.name)"
+            case .dropIndex(let index) where index.name == "ix_old": return "drop \(index.name)"
             default: return nil
             }
         }
@@ -158,6 +161,95 @@ struct SchemaOperationRefusalTests {
 
         #expect(refusal(of: modify, driver: driver) == "modify ix to ix")
         #expect(refusal(of: .deleteIndex(index("ix_old", type: .btree)), driver: driver) == "drop ix_old")
+    }
+
+    /// A replacement is a drop and an add, so an index the driver will not drop is refused for that,
+    /// ahead of the advice about replacing it. DynamoDB answered a local index's replacement with
+    /// "delete it and save", and the delete was then refused for a different reason.
+    @Test("Replacing an index asks first whether the old one can be dropped")
+    func replacementAsksTheDropFirst() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            switch operation {
+            case .dropIndex(let index): return "drop \(index.name)"
+            case .modifyIndex: return "replace"
+            default: return nil
+            }
+        }
+        let modify = SchemaChange.modifyIndex(old: index("ix", type: .btree), new: index("ix", type: .hash))
+
+        #expect(refusal(of: modify, driver: driver) == "drop ix")
+    }
+
+    @Test("An index deleted and added back under its name asks the driver about one replacement")
+    func sameNameDropAndAddAskForAReplacement() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            guard case .modifyIndex(let old, _) = operation else { return nil }
+            return "replace \(old.name)"
+        }
+        var replacement = index("ix", type: .btree)
+        replacement.columns = ["total"]
+
+        #expect(refusalOfBatch([.deleteIndex(index("ix", type: .btree)), .addIndex(replacement)], driver: driver) == "replace ix")
+    }
+
+    @Test("What the driver is asked about and the statements it writes describe the same replacement")
+    func refusalAndStatementsAgreeOnTheReplacement() throws {
+        let driver = RefusingDDLDriver()
+        var asked: [String] = []
+        driver.refuse = { operation in
+            switch operation {
+            case .modifyIndex(let old, let new): asked.append("modify \(old.name) \(old.columns) to \(new.columns)")
+            case .addIndex(let index): asked.append("add \(index.name)")
+            case .dropIndex(let index): asked.append("drop \(index.name)")
+            default: break
+            }
+            return nil
+        }
+        var replacement = index("ix", type: .btree)
+        replacement.columns = ["total"]
+
+        let statements = try SchemaStatementGenerator(tableName: "orders", pluginDriver: driver)
+            .generate(changes: [.addIndex(replacement), .deleteIndex(index("ix", type: .btree))])
+
+        #expect(asked == ["drop ix", "modify ix [\"qty\"] to [\"total\"]", "add ix"])
+        #expect(statements.map(\.sql) == ["ALTER TABLE orders REPLACE INDEX ix ON (total);"])
+    }
+
+    @Test("Indexes deleted and added under different names are not asked about as a replacement")
+    func differentNamesAreNotAReplacement() {
+        let driver = RefusingDDLDriver()
+        var askedAboutReplacement = false
+        driver.refuse = { operation in
+            if case .modifyIndex = operation { askedAboutReplacement = true }
+            return nil
+        }
+
+        _ = refusalOfBatch([.deleteIndex(index("ix_a", type: .btree)), .addIndex(index("ix_b", type: .btree))], driver: driver)
+        #expect(!askedAboutReplacement)
+    }
+
+    /// Measured on MariaDB 13.0.2: with a column change in the same save the replacement splits,
+    /// `DROP INDEX PRIMARY` commits, `ADD UNIQUE INDEX PRIMARY` fails with ERROR 1280, and the table
+    /// is left with no key. The one-statement form fails the same way and keeps the key.
+    @Test("A copy of MySQL's PRIMARY row put in place of the original is refused before anything runs")
+    func mysqlPrimaryReplacementIsRefused() throws {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            guard case .addIndex(let index) = operation else { return nil }
+            return mysqlReservedIndexNameRefusal(for: index)
+        }
+        var primary = index("PRIMARY", type: .btree)
+        primary.isPrimary = true
+        var copy = primary.withNewIdentity()
+        copy.isPrimary = false
+        let reason = try #require(mysqlReservedIndexNameRefusal(for: copy.toPlugin()))
+
+        #expect(refusalOfBatch([.addIndex(copy), .deleteIndex(primary)], driver: driver) == reason)
+        #expect(refusalOfBatch(
+            [.addIndex(copy), .deleteIndex(primary), .addColumn(column("qty", generated: false))], driver: driver
+        ) == reason)
     }
 
     @Test("A refusal is reported ahead of a change in the same save that the driver cannot generate")

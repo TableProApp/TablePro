@@ -92,6 +92,91 @@ struct StructureChangeManagerClusteredIndexTests {
         #expect(manager.workingIndexes.last?.type == .clustered)
     }
 
+    private static let clusteredIndex = IndexInfo(
+        name: "cx_orders_placed", columns: ["placed_at"], isUnique: false, isPrimary: false, type: "CLUSTERED"
+    )
+
+    /// Duplicate, edit the copy, then delete the original is how the Structure tab replaces an index.
+    /// Left `NONCLUSTERED`, the copy is created after the original is dropped, and the table ends the
+    /// save with no clustered index.
+    @Test("A duplicated clustered index takes the clustered place once the original is deleted")
+    func duplicateTakesThePlaceOfTheDeletedOriginal() throws {
+        let manager = Self.manager(indexes: [Self.clusteredIndex])
+        let original = try #require(manager.workingIndexes.first)
+        manager.addIndex(original.withNewIdentity())
+        var copy = try #require(manager.workingIndexes.last)
+        #expect(copy.type == .nonclustered)
+        copy.columns = ["placed_at", "id"]
+        manager.updateIndex(id: copy.id, with: copy)
+
+        manager.deleteIndex(id: original.id)
+
+        let replacement = try #require(manager.workingIndexes.last)
+        #expect(replacement.type == .clustered)
+        #expect(manager.canCommit)
+        #expect(manager.getChangesArray() == [.addIndex(replacement), .deleteIndex(original)])
+        #expect(
+            MSSQLTableDefinitionSQL.indexDefinition(replacement.toPlugin(), qualifiedTable: "[dbo].[orders]")
+                == "CREATE CLUSTERED INDEX [cx_orders_placed] ON [dbo].[orders] ([placed_at], [id])"
+        )
+    }
+
+    @Test("Bringing the original back gives it the clustered place again")
+    func undoingTheDeletionGivesThePlaceBack() throws {
+        let manager = Self.manager(indexes: [Self.clusteredIndex])
+        let original = try #require(manager.workingIndexes.first)
+        manager.addIndex(original.withNewIdentity())
+        manager.deleteIndex(id: original.id)
+        #expect(manager.workingIndexes.last?.type == .clustered)
+
+        manager.undo()
+
+        let copy = try #require(manager.workingIndexes.last)
+        #expect(copy.type == .nonclustered)
+        #expect(manager.getChangesArray() == [.addIndex(copy)])
+    }
+
+    @Test("When the first of two clustered copies is removed, the second takes the place")
+    func removingTheFirstCopyHandsThePlaceOn() throws {
+        let manager = Self.manager(indexes: [])
+        let first = Self.copied("ix_first", type: .clustered)
+        manager.addIndex(first)
+        manager.addIndex(Self.copied("ix_second", type: .clustered))
+
+        manager.deleteIndex(id: first.id)
+
+        #expect(manager.workingIndexes.map(\.name) == ["ix_second"])
+        #expect(manager.workingIndexes.map(\.type) == [.clustered])
+    }
+
+    @Test("A copy whose type was changed keeps the type it was given")
+    func aTypeChosenForTheCopyIsKept() throws {
+        let manager = Self.manager(indexes: [Self.clusteredIndex])
+        let original = try #require(manager.workingIndexes.first)
+        manager.addIndex(original.withNewIdentity())
+        var copy = try #require(manager.workingIndexes.last)
+        copy.type = .hash
+        manager.updateIndex(id: copy.id, with: copy)
+
+        manager.deleteIndex(id: original.id)
+
+        #expect(manager.workingIndexes.last?.type == .hash)
+    }
+
+    @Test("A clustered copy set to NONCLUSTERED stays that way while the clustered place is free")
+    func nonclusteredChosenForTheCopyIsKept() throws {
+        let manager = Self.manager(indexes: [])
+        manager.addIndex(Self.copied("ix_copy", type: .clustered))
+        var copy = try #require(manager.workingIndexes.last)
+        #expect(copy.type == .clustered)
+        copy.type = .nonclustered
+        manager.updateIndex(id: copy.id, with: copy)
+
+        manager.addIndex(Self.copied("ix_other", type: .hash))
+
+        #expect(manager.workingIndexes.first?.type == .nonclustered)
+    }
+
     @Test("Every other type is added as it was copied")
     func otherTypesAreUntouched() throws {
         let manager = Self.manager(indexes: [Self.clusteredPrimaryKey])
