@@ -188,12 +188,12 @@ struct MongoDBCollectionDDLTests {
         #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column("f", alias))) == nil)
     }
 
-    @Test("Field names a JavaScript object reorders or drops are refused", arguments: ["10", "0", "__proto__"])
+    @Test("Field names a JavaScript object reorders or drops are refused", arguments: ["10", "0", "4294967294", "__proto__"])
     func shellReorderedNamesAreRefused(name: String) {
         #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column(name, "string"))) != nil)
     }
 
-    @Test("Names that only look numeric are kept", arguments: ["007", "10a", "a10"])
+    @Test("Names that only look numeric, or are past the array-index range, are kept", arguments: ["007", "10a", "a10", "4294967295", "99999999999"])
     func nonCanonicalNumericNamesAreKept(name: String) {
         #expect(MongoDBCollectionDDL.refusal(for: .addColumn(column(name, "string"))) == nil)
     }

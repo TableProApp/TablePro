@@ -26,6 +26,7 @@ internal struct InspectorFieldRow: View {
     internal let onSetDefault: () -> Void
     internal let onSetEmpty: () -> Void
     internal let onSetFunction: (String) -> Void
+    internal var onRemoveField: (() -> Void)?
     internal var onToggleExpand: (() -> Void)?
     internal var onPopOut: ((String) -> Void)?
 
@@ -187,10 +188,13 @@ internal struct InspectorFieldRow: View {
             canMutate: context.canMutate,
             isPendingNull: context.valueState == .pendingNull,
             isPendingDefault: context.valueState == .pendingDefault,
+            isPendingRemoval: context.valueState == .pendingRemoval,
             onSetNull: onSetNull,
             onSetDefault: onSetDefault,
             onSetEmpty: onSetEmpty,
             onSetFunction: onSetFunction,
+            onRemoveField: context.valueState == .absent || context.valueState == .pendingRemoval
+                ? nil : onRemoveField,
             onClear: { context.value.wrappedValue = context.originalValue ?? "" }
         )
     }

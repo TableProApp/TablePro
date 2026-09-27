@@ -91,6 +91,18 @@ struct MongoDocumentText: Equatable, Sendable {
 }
 
 extension MongoDocumentText.Value {
+    /// One value read with the same strictness and depth limit as a document, and with no rule
+    /// about its field names: a stored document may hold a top-level name that starts with `$`.
+    init(parsing text: String) throws {
+        var reader = MongoDocumentText.Reader(text)
+        reader.skipWhitespace()
+        guard !reader.isAtEnd else { throw MongoDocumentText.Refusal.empty }
+        let value = try reader.readValue(depth: 1)
+        reader.skipWhitespace()
+        guard reader.isAtEnd else { throw MongoDocumentText.Refusal.trailingContent }
+        self = value
+    }
+
     var compactText: String {
         switch self {
         case .object(let members):

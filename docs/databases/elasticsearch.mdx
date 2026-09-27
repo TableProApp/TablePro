@@ -39,11 +39,11 @@ The form shows no Database field: a connection reaches one cluster, and its indi
 
 The sidebar lists indices as tables, hiding names that begin with `.`. Browsing an alias, or any name that resolves to several indices, shows the union of their mappings.
 
-Columns come from the index mapping. `object` fields flatten to dotted paths such as `address.city`. A `nested` field gets one JSON column for the whole array of objects, plus a dotted column per leaf (`identifiers.type`) whose cell is a JSON array with one entry per object, `null` where an object omits the field. Array and object values render as JSON in the cell. Every document also carries `_id`, `_index` and `_score`; `_id` is the primary key and all three are read-only.
+Columns come from the index mapping. `object` fields flatten to dotted paths such as `address.city`. A `nested` field gets one JSON column for the whole array of objects, plus a dotted column per leaf (`identifiers.type`) whose cell is a JSON array with one entry per object, `null` where an object omits the field. Array and object values render as JSON in the cell. Every document also carries `_id`, `_index` and `_score`, and `_id` is the primary key. Type an `_id` into a new row to name the document; any other edit to the three stops the save.
 
 Column filters translate to `term`, `range`, `wildcard`, `terms` and `exists`. Two filter rows on leaves of the same array match two different objects unless you set both rows to the same element. The **Raw SQL** filter column is the exception: its text goes over as a `query_string`, so write Lucene there, `name:Widget` or `price:>10`, matched across all fields. Sorting a `text` field targets its `.keyword` subfield when the mapping has one. A nested leaf sorts and filters; its JSON parent column does neither.
 
-Grid edits become REST calls keyed by `_id`: `POST /index/_update/{id}`, `PUT /index/_doc/{id}` and `DELETE /index/_doc/{id}`. Edit a nested array through its JSON parent column; an edit typed into one of its leaf columns is not sent.
+Grid edits become REST calls keyed by `_id`: `POST /index/_update/{id}`, `PUT /index/_doc/{id}` and `DELETE /index/_doc/{id}`. Edit a nested array through its JSON parent column. A value typed into one of its leaf columns, in an existing document or a new one, cannot be written, so Save stops, names that column, and sends nothing until you undo the edit.
 
 Deleting an index from the sidebar sends `DELETE /<index>`, the request the confirmation shows.
 
