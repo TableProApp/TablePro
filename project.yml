@@ -508,6 +508,7 @@ targets:
       - Plugins/MQLExportPlugin/MQLScriptLexer.swift
       - Plugins/MQLExportPlugin/MQLScriptValue.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
+      - Plugins/MongoDBDriverPlugin/MongoBsonAssembly.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
       - Plugins/MongoDBDriverPlugin/MongoDBBinarySubtypes.swift

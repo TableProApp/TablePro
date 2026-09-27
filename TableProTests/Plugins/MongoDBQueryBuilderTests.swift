@@ -225,8 +225,40 @@ struct MongoDBQueryBuilderTests {
             collection: "users",
             queryFilters: [PluginQueryFilter(column: "name", op: "NOT CONTAINS", value: "test")]
         )
-        #expect(query.contains("\"$not\""))
-        #expect(query.contains("\"$regex\": \"test\""))
+        #expect(query.contains(
+            "{\"name\": {\"$not\": {\"$regularExpression\": {\"pattern\": \"test\", \"options\": \"\"}}}}"
+        ))
+    }
+
+    @Test("A negated match sends a regular expression value, which $not takes on every server")
+    func negatedMatchesSendARegularExpressionValue() {
+        let notContains = parseFilter(builder.buildFilterDocument(from: [
+            PluginQueryFilter(column: "name", op: "NOT CONTAINS", value: "a.b", isCaseSensitive: false)
+        ]))
+        let notEqual = parseFilter(builder.buildFilterDocument(from: [
+            PluginQueryFilter(column: "name", op: "!=", value: "Alice", isCaseSensitive: false)
+        ]))
+
+        let containsRegex = negatedRegex(in: notContains, field: "name")
+        #expect(containsRegex?["pattern"] as? String == "a\\.b")
+        #expect(containsRegex?["options"] as? String == "i")
+        let equalRegex = negatedRegex(in: notEqual, field: "name")
+        #expect(equalRegex?["pattern"] as? String == "^Alice$")
+        #expect(equalRegex?["options"] as? String == "i")
+    }
+
+    @Test("A positive match keeps the operator form mongosh reads")
+    func positiveMatchesKeepTheOperatorForm() {
+        let doc = builder.buildFilterDocument(from: [
+            PluginQueryFilter(column: "name", op: "CONTAINS", value: "ali", isCaseSensitive: false)
+        ])
+        #expect(doc == "{\"name\": {\"$regex\": \"ali\", \"$options\": \"i\"}}")
+    }
+
+    private func negatedRegex(in filter: [String: Any]?, field: String) -> [String: Any]? {
+        let condition = filter?[field] as? [String: Any]
+        let negated = condition?["$not"] as? [String: Any]
+        return negated?["$regularExpression"] as? [String: Any]
     }
 
     @Test("Filtered query with STARTS WITH operator")
@@ -694,8 +726,7 @@ struct MongoDBQueryBuilderTests {
         )
         #expect(doc != nil)
         #expect(doc.map { Array($0.keys) } == ["name"])
-        let not = (doc?["name"] as? [String: Any])?["$not"] as? [String: Any]
-        #expect((not?["$regex"] as? String)?.contains("$where") == true)
+        #expect((negatedRegex(in: doc, field: "name")?["pattern"] as? String)?.contains("$where") == true)
     }
 
     @Test("STARTS WITH escapes embedded double quotes as data")
