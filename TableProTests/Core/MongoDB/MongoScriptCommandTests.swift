@@ -192,9 +192,12 @@ struct MongoScriptCommandBuilderTests {
     /// update went out with the server's default.
     @Test("An update's writeConcern option goes on the command, not inside the update statement")
     func updateWriteConcern() throws {
+        let statementConcern = MongoScriptCommandBuilder.writeConcern(
+            statementOptions: #"{"writeConcern": {"w": "majority", "wtimeout": 5000}}"#, connectionDefault: nil
+        )
         let command = MongoScriptCommandBuilder.update(
             collection: "orders", filter: "{}", update: "{\"$set\":{\"b\":2}}", multi: true,
-            options: ["writeConcern": ["w": "majority", "wtimeout": 5_000]]
+            options: [:], writeConcern: statementConcern
         )
         let parsed = try #require(
             try JSONSerialization.jsonObject(with: Data(command.utf8)) as? [String: Any]
@@ -205,7 +208,7 @@ struct MongoScriptCommandBuilderTests {
         let statement = try #require((parsed["updates"] as? [[String: Any]])?.first)
         #expect(statement["writeConcern"] == nil)
         #expect(!MongoScriptCommandBuilder.update(
-            collection: "orders", filter: "{}", update: "{}", multi: true, options: [:]
+            collection: "orders", filter: "{}", update: "{}", multi: true, options: [:], writeConcern: nil
         ).contains("writeConcern"))
     }
 
