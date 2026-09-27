@@ -45,8 +45,8 @@ struct MongoFieldChangeTests {
     @Test("Quotes, backslashes, newlines and line separators in a name stay inside their string")
     func namesAreEscaped() {
         let statement = MongoFieldChange.rename(from: "q\"uote", to: "back\\slash\nline\u{2028}").statement(collection: "c", writeConcern: .serverDefault)
-        #expect(statement == #"db.c.updateMany({"q\"uote": {"$exists": true}, "back\\slash\nline"# + "\u{2028}"
-            + #"": {"$exists": false}}, {"$rename": {"q\"uote": "back\\slash\nline"# + "\u{2028}" + #""}})"#)
+        #expect(statement == #"db.c.updateMany({"q\"uote": {"$exists": true}, "back\\slash\nline\u2028": {"$exists": false}}, "#
+            + #"{"$rename": {"q\"uote": "back\\slash\nline\u2028"}})"#)
     }
 
     /// `mongoc_client_command_simple` sends a command with no write concern of its own, so a
