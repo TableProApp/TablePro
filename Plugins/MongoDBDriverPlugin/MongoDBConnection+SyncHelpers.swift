@@ -14,9 +14,7 @@ import TableProPluginKit
 #if canImport(CLibMongoc)
 extension MongoDBConnection {
     func bsonErrorMessage(_ error: inout bson_error_t) -> String {
-        withUnsafePointer(to: &error.message) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: 504) { String(cString: $0) }
-        }
+        MongoBsonBuilder.errorMessage(&error)
     }
 
     func makeError(_ error: bson_error_t) -> MongoDBError {
