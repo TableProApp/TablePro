@@ -58,6 +58,11 @@ public struct PluginRowChange: Sendable {
     public let cellChanges: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)]
     public let originalRow: [PluginCellValue]?
 
+    /// The columns the row has no field for once the change is applied: a field an update removes,
+    /// or a field a new row leaves out. Only an engine that declares `supportsFieldRemoval` is
+    /// shown rows with such cells, so every other driver can ignore it.
+    public var absentColumns: Set<Int>?
+
     public init(
         rowIndex: Int,
         type: ChangeType,
@@ -298,6 +303,22 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
 
+    /// The statements that write a save's changes, each naming the changes it writes.
+    ///
+    /// This is what the host calls; `generateStatements` stays for drivers built before it. Return
+    /// nil to have the host generate SQL itself. Throw `PluginRowWriteRefusal` for a change, or a
+    /// value in one, that this driver cannot write, and never leave it out: the host refuses a save
+    /// in which a pending change is named by no statement. An update with no cell changes has
+    /// nothing to write and is not a refusal.
+    ///
+    /// The default runs `generateStatements` on the whole set and returns those statements
+    /// unchanged. It then runs it once per change to learn which changes it writes, and the first
+    /// statement names all of them, since the default cannot tell which statement writes which.
+    /// It holds a driver to every change, not to every value in one: a change that produces any
+    /// statement counts as written. A driver that can leave out one value of a change it still
+    /// writes implements this requirement and refuses that change instead.
+    func generateRowWrites(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) throws -> [PluginRowWrite]?
+
     /// Writes a row back exactly as it was, key included, to undo a delete.
     ///
     /// `generateStatements` writes an insert for a row the user just added, so it is free to let
@@ -306,6 +327,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// say this driver cannot restore a row's identity, and the host will refuse rather than write
     /// something close.
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]?
+
+    /// The same restore for an engine that tells a missing field from NULL. `absentCells` names, by
+    /// row index, the columns that row had no field for, which must stay missing rather than come
+    /// back as null. The default ignores them and asks the requirement above.
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -952,7 +978,36 @@ public extension PluginDatabaseDriver {
             insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
         )
     }
+    func generateRowWrites(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) throws -> [PluginRowWrite]? {
+        guard let statements = generateStatements(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        ) else { return nil }
+        let writtenRows = changes.compactMap { change -> Int? in
+            let rowIndex = change.rowIndex
+            let solo = generateStatements(
+                table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns,
+                changes: [change],
+                insertedRowData: insertedRowData[rowIndex].map { [rowIndex: $0] } ?? [:],
+                deletedRowIndices: deletedRowIndices.contains(rowIndex) ? [rowIndex] : [],
+                insertedRowIndices: insertedRowIndices.contains(rowIndex) ? [rowIndex] : []
+            )
+            return solo?.isEmpty == false ? rowIndex : nil
+        }
+        return statements.enumerated().map { offset, statement in
+            PluginRowWrite(
+                statement: statement.statement,
+                parameters: statement.parameters,
+                rowIndices: offset == 0 ? writtenRows : []
+            )
+        }
+    }
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateIdentityPreservingInsert(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, rows: rows
+        )
+    }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }

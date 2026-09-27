@@ -35,6 +35,9 @@ struct QueryResult {
     /// What the statement printed on the server, read on its own session.
     var serverOutput: PluginServerOutput = .none
 
+    /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
+    var absentCells: [Int: Set<Int>] = [:]
+
     var isEmpty: Bool {
         rows.isEmpty
     }
