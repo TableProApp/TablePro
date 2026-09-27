@@ -599,6 +599,11 @@ extension PluginManager {
             .capabilities.supportsDocumentEditing ?? false
     }
 
+    func supportsFieldRemoval(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsFieldRemoval ?? false
+    }
+
     func supportsRenameTable(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsRenameTable ?? false

@@ -181,6 +181,8 @@ struct StructureEditingSessionTests {
 
         Self.stageAColumn(on: session)
         #expect(session.changeManager.hasChanges)
+        session.markStructureStale()
+        #expect(session.owesRefetch)
 
         let outcome = await session.applyStagedChanges(coordinator: nil)
 
@@ -191,6 +193,7 @@ struct StructureEditingSessionTests {
         #expect(!session.changeManager.hasChanges)
         #expect(session.appliedVersion == 1)
         #expect(!session.hasLoaded)
+        #expect(!session.owesRefetch, "The apply fetches everything again, which answers the change it owed")
     }
 
     /// Stands in for the connection the pool would open on the scope.
@@ -256,5 +259,55 @@ struct StructureEditingSessionTests {
         )
         #expect(!session.availableTabs.contains(.checkConstraints))
         #expect(session.selectedTab == .columns)
+    }
+
+    /// A session left on DDL or Triggers is marked stale by a change made elsewhere, and its next
+    /// mount does not change the selection, so the selection handler never fetches that sub-tab.
+    @Test("A mount fetches the sub-tab the user left selected, once, after the ones it baselines from")
+    func mountFetchesTheSelectedSubTab() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        #expect(session.tabsFetchedOnMount.first == .columns)
+        #expect(!session.tabsFetchedOnMount.contains(.ddl))
+
+        session.selectedTab = .ddl
+        session.tabData.markFetched(.ddl)
+        session.hasLoaded = true
+        session.markStructureStale()
+
+        #expect(!session.hasLoaded)
+        #expect(session.tabData.needsFetch(.ddl))
+        #expect(session.tabsFetchedOnMount.last == .ddl)
+
+        session.selectedTab = .indexes
+        #expect(session.tabsFetchedOnMount.filter { $0 == .indexes }.count == 1)
+        #expect(!session.tabsFetchedOnMount.contains(.ddl))
+    }
+
+    /// A change made elsewhere while edits are staged cannot be fetched without re-baselining the
+    /// change manager, which throws the edits away. Dropping it instead left a session undone back to
+    /// clean still marked loaded, so it showed the old columns and staged its next edit against them.
+    @Test("A change made while edits are staged is fetched once they are undone, and once only")
+    func aChangeOwedWhileEditingIsFetchedOnceTheEditsAreGone() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        Self.stageAColumn(on: session)
+        session.tabData.markFetched(.columns)
+        session.hasLoaded = true
+
+        session.markStructureStale()
+
+        #expect(session.changeManager.hasChanges, "The staged edit survives the change")
+        #expect(session.hasLoaded)
+        #expect(!session.tabData.needsFetch(.columns))
+        #expect(!session.settleOwedRefetch(), "Nothing is fetched while the edit is still staged")
+
+        while session.changeManager.canUndo {
+            session.changeManager.undo()
+        }
+        #expect(!session.changeManager.hasChanges)
+
+        #expect(session.settleOwedRefetch())
+        #expect(!session.hasLoaded)
+        #expect(session.tabData.needsFetch(.columns))
+        #expect(!session.settleOwedRefetch())
     }
 }

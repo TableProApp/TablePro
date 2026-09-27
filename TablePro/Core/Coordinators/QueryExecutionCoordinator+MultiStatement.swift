@@ -48,7 +48,8 @@ extension QueryExecutionCoordinator {
         let rows = TableRows.from(
             queryRows: result.rows,
             columns: result.columns.map { String($0) },
-            columnTypes: result.columnTypes
+            columnTypes: result.columnTypes,
+            absentCells: result.absentCells
         )
         let resultSet = ResultSet(
             label: ResultSet.label(tableName: tableName, anchor: anchor, index: index),

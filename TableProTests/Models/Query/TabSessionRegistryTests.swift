@@ -237,4 +237,91 @@ struct TabSessionRegistryTests {
         #expect(session.dataRevision == afterEvict)
         #expect(session.tableRows.index(of: .existing(0)) == nil)
     }
+
+    // MARK: - Stale mark
+
+    private static func rowsChange(at instant: ContinuousClock.Instant = .now) -> TableFreshness.Change {
+        TableFreshness.Change(extent: .rows, at: instant)
+    }
+
+    @Test("Marking a tab stale keeps its rows, where evicting drops them")
+    func markingStaleKeepsTheRows() {
+        let registry = TabSessionRegistry()
+        let stale = UUID()
+        let evicted = UUID()
+        registry.setTableRows(makeRows(["a", "b", "c"]), for: stale)
+        registry.setTableRows(makeRows(["a", "b", "c"]), for: evicted)
+
+        registry.recordChange(Self.rowsChange(), for: stale)
+        registry.evict(for: evicted)
+
+        #expect(registry.isStale(stale))
+        #expect(registry.tableRows(for: stale).rows.count == 3)
+        #expect(!registry.isEvicted(stale))
+        #expect(registry.tableRows(for: evicted).rows.isEmpty)
+    }
+
+    @Test("A tab whose last result was empty can be marked stale, which eviction refuses")
+    func emptyResultCanBeMarkedStale() {
+        let registry = TabSessionRegistry()
+        let tabId = UUID()
+        registry.setTableRows(makeRows([]), for: tabId)
+
+        registry.evict(for: tabId)
+        registry.recordChange(Self.rowsChange(), for: tabId)
+
+        #expect(!registry.isEvicted(tabId))
+        #expect(registry.isStale(tabId))
+    }
+
+    @Test("Only a fetched result clears the stale mark, not rows the tab already held nor late metadata")
+    func onlyAFetchedResultClearsTheStaleMark() {
+        let registry = TabSessionRegistry()
+        let tabId = UUID()
+        registry.setTableRows(makeRows(["a"]), for: tabId)
+        let changedAt = ContinuousClock.now
+        registry.recordChange(Self.rowsChange(at: changedAt), for: tabId)
+
+        registry.setTableRows(makeRows(["a"]), for: tabId)
+        registry.updateTableRows(for: tabId) { _ in .none }
+        #expect(registry.isStale(tabId))
+
+        registry.recordRead(
+            TableFreshness.Read(startedAt: changedAt.advanced(by: .milliseconds(1)), includesDefinition: false),
+            for: tabId
+        )
+        #expect(!registry.isStale(tabId))
+    }
+
+    @Test("A result whose query claimed the tab before the change keeps the tab stale when it commits")
+    func aReadThatStartedBeforeTheChangeKeepsTheMark() {
+        let registry = TabSessionRegistry()
+        let tabId = UUID()
+        let claimedAt = ContinuousClock.now
+        registry.setTableRows(makeRows(["a"]), for: tabId)
+        registry.recordChange(Self.rowsChange(at: claimedAt.advanced(by: .milliseconds(5))), for: tabId)
+
+        registry.recordRead(TableFreshness.Read(startedAt: claimedAt, includesDefinition: false), for: tabId)
+
+        #expect(registry.isStale(tabId))
+    }
+
+    @Test("A definition change asks the next load to fetch the definition until one that did commits")
+    func aDefinitionChangeNeedsARead() {
+        let registry = TabSessionRegistry()
+        let tabId = UUID()
+        let changedAt = ContinuousClock.now
+        registry.setTableRows(makeRows(["a"]), for: tabId)
+        registry.recordChange(TableFreshness.Change(extent: .definition, at: changedAt), for: tabId)
+        #expect(registry.needsDefinition(tabId))
+
+        let later = changedAt.advanced(by: .milliseconds(1))
+        registry.recordRead(TableFreshness.Read(startedAt: later, includesDefinition: false), for: tabId)
+        #expect(registry.needsDefinition(tabId))
+        #expect(registry.isStale(tabId))
+
+        registry.recordRead(TableFreshness.Read(startedAt: later, includesDefinition: true), for: tabId)
+        #expect(!registry.needsDefinition(tabId))
+        #expect(!registry.isStale(tabId))
+    }
 }

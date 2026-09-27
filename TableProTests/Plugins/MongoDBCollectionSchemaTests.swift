@@ -53,6 +53,110 @@ struct MongoDBCollectionSchemaTests {
         #expect(schema.valueKinds["score"] == nil)
     }
 
+    @Test("A field takes null only when its declared type lists null, whether or not it is required")
+    func nullIsDecidedByTheTypeNotTheRequiredList() throws {
+        let schema = MongoDBCollectionSchema.parse(jsonSchema: """
+        {"bsonType": "object", "required": ["deletedAt", "title"], "properties": {
+          "deletedAt": {"bsonType": ["date", "null"]}, "title": {"bsonType": "string"},
+          "nick": {"bsonType": "string"}, "note": {"type": ["string", "null"]}, "free": {"description": "any"},
+          "level": {"enum": [1, 2]}, "mode": {"enum": ["a", null]}, "code": {"anyOf": [{"bsonType": "string"}]}
+        }}
+        """)
+
+        #expect(try #require(schema.field(named: "deletedAt")).admitsNull)
+        #expect(try #require(schema.field(named: "title")).admitsNull == false)
+        #expect(try #require(schema.field(named: "nick")).admitsNull == false)
+        #expect(try #require(schema.field(named: "note")).admitsNull)
+        #expect(try #require(schema.field(named: "free")).admitsNull)
+        #expect(try #require(schema.field(named: "level")).admitsNull == false)
+        #expect(try #require(schema.field(named: "mode")).admitsNull)
+        #expect(try #require(schema.field(named: "code")).admitsNull == false)
+    }
+
+    /// Measured on 7.0.43: `{s: null}` is refused with 121 under `bsonType: ["string", "null"]` plus
+    /// `enum: ["draft"]` and plus `not: {bsonType: "null"}`, and stored under `enum: ["draft", null]`
+    /// and under `minLength: 3` with `pattern: "^x"`.
+    @Test("Every keyword of a field's rule decides null together, not the type alone")
+    func siblingKeywordsDecideNullTogether() throws {
+        let schema = MongoDBCollectionSchema.parse(jsonSchema: """
+        {"properties": {
+          "status": {"bsonType": ["string", "null"], "enum": ["draft"]},
+          "stage": {"bsonType": ["string", "null"], "enum": ["draft", null]},
+          "code": {"bsonType": ["string", "null"], "minLength": 3, "pattern": "^x"},
+          "mode": {"enum": ["a", null], "not": {"bsonType": "null"}},
+          "kind": {"type": ["string", "null"], "enum": ["a"]}
+        }}
+        """)
+
+        #expect(try #require(schema.field(named: "status")).admitsNull == false)
+        #expect(try #require(schema.field(named: "stage")).admitsNull)
+        #expect(try #require(schema.field(named: "code")).admitsNull)
+        #expect(try #require(schema.field(named: "mode")).admitsNull == false)
+        #expect(try #require(schema.field(named: "kind")).admitsNull == false)
+    }
+
+    /// Measured on 7.0.43: a top-level `anyOf` or `patternProperties` refuses null in a field whose
+    /// own rule takes it, and an `additionalProperties` schema refuses it in every undeclared field.
+    @Test("A rule over the whole document can refuse null in any field, so none is taken to admit it")
+    func documentWideRulesDecideNullForEveryField() {
+        for rule in [#""anyOf": [{"properties": {"s": {"bsonType": "string"}}}]"#,
+                     #""patternProperties": {"^s": {"bsonType": "string"}}"#,
+                     #""dependencies": {"a": {"properties": {"s": {"bsonType": "string"}}}}"#] {
+            let schema = MongoDBCollectionSchema.parse(jsonSchema: #"{"properties": {"s": {"bsonType": ["string", "null"]}}, "# + rule + "}")
+            #expect(schema.admitsNull(fieldNamed: "s") == false, "\(rule)")
+            #expect(schema.admitsNull(fieldNamed: "other") == false, "\(rule)")
+        }
+
+        let plain = MongoDBCollectionSchema.parse(jsonSchema: #"{"properties": {"s": {"bsonType": ["string", "null"]}, "t": {"bsonType": "string"}}}"#)
+        #expect(plain.admitsNull(fieldNamed: "s"))
+        #expect(plain.admitsNull(fieldNamed: "t") == false)
+        #expect(plain.admitsNull(fieldNamed: "other"))
+    }
+
+    @Test("additionalProperties decides null for the fields the validator does not declare")
+    func additionalPropertiesDecidesUndeclaredFields() {
+        let typed = MongoDBCollectionSchema.parse(jsonSchema: """
+        {"additionalProperties": {"bsonType": "string"}, "properties": {"_id": {}, "t": {"bsonType": ["string", "null"]}}}
+        """)
+        #expect(typed.admitsNull(fieldNamed: "t"))
+        #expect(typed.admitsNull(fieldNamed: "u") == false)
+
+        let nullable = MongoDBCollectionSchema.parse(jsonSchema: #"{"additionalProperties": {"bsonType": ["string", "null"]}}"#)
+        #expect(nullable.admitsNull(fieldNamed: "u"))
+
+        let closed = MongoDBCollectionSchema.parse(jsonSchema: #"{"additionalProperties": false, "properties": {"_id": {}}}"#)
+        #expect(closed.admitsNull(fieldNamed: "u") == false)
+    }
+
+    /// Measured on 7.0.43: `{$jsonSchema: {…s: ["string", "null"]…}, s: {$type: "string"}}` refuses
+    /// `{s: null}` with 121, and `validationAction: "warn"` stores it.
+    @Test("A query operator beside $jsonSchema refuses null everywhere, and a validator that only warns refuses nothing")
+    func validatorSettingsDecideNull() {
+        let besideSchema = MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: """
+        { "validator" : { "$jsonSchema" : { "properties" : { "s" : { "bsonType" : [ "string", "null" ] } } },         "s" : { "$type" : "string" } } }
+        """))
+        #expect(besideSchema.field(named: "s") != nil)
+        #expect(besideSchema.admitsNull(fieldNamed: "s") == false)
+
+        let queryOnly = MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: """
+        { "validator" : { "age" : { "$gte" : { "$numberInt" : "0" } } } }
+        """))
+        #expect(queryOnly.isEmpty)
+        #expect(queryOnly.admitsNull(fieldNamed: "age") == false)
+
+        for setting in [#""validationAction" : "warn""#, #""validationLevel" : "off""#] {
+            let unenforced = MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: """
+            { "validator" : { "$jsonSchema" : { "properties" : { "t" : { "bsonType" : "string" } } } }, \(setting) }
+            """))
+            #expect(unenforced.admitsNull(fieldNamed: "t"), "\(setting)")
+        }
+
+        let enforced = MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: articlesOptions))
+        #expect(enforced.admitsNull(fieldNamed: "title") == false)
+        #expect(enforced.admitsNull(fieldNamed: "date"))
+        #expect(MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: "{ }")).admitsNull(fieldNamed: "any"))
+    }
+
     @Test("A string enum is kept as the field's allowed values")
     func enumsAreKept() {
         let schema = MongoDBCollectionSchema.parse(listCollectionsReply: reply(options: articlesOptions))
