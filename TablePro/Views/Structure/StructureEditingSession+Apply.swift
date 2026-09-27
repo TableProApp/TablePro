@@ -169,10 +169,11 @@ internal extension StructureEditingSession {
                 statements,
                 databaseType: connection.type,
                 scope: scope,
+                table: tableName,
                 gate: executionGate
             )
             changeManager.discardChanges()
-            tabData.markAllStale()
+            markEveryTabStale()
             hasLoaded = false
             lastAppliedAt = Date()
             isApplying = false
@@ -284,7 +285,7 @@ internal extension StructureEditingSession {
         )
 
         changeManager.discardChanges()
-        tabData.markAllStale()
+        markEveryTabStale()
         hasLoaded = false
         lastAppliedAt = Date()
         isApplying = false
@@ -292,7 +293,14 @@ internal extension StructureEditingSession {
         if let clearTarget = coordinator?.selectedColumnLayoutClearTarget() {
             coordinator?.clearColumnLayout(clearTarget)
         }
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(
+                connectionId: connection.id,
+                scope: prepared.scope,
+                name: prepared.tableName,
+                kind: .structure
+            )
+        )
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
         )

@@ -10,6 +10,8 @@ enum DataWriteError: LocalizedError, Equatable {
     case statementGenerationFailed(String)
     case objectOperationUnsupported(String)
     case rowsNotIdentifiable(String, RowWriteKind)
+    case changeRefused(table: String, kind: RowWriteKind?, reason: String)
+    case changesNotWritable(table: String, unwritten: UnwrittenRowCounts)
     case identityNotPreservable(String)
     case tooManyRowsAffected(table: String, expected: Int, actual: Int)
     case tooManyRowsAffectedUnrecoverable(table: String, expected: Int, actual: Int)
@@ -51,6 +53,11 @@ enum DataWriteError: LocalizedError, Equatable {
                     table
                 )
             }
+        case .changeRefused(let table, let kind, let reason):
+            return String(format: Self.refusalFormat(for: kind), table, reason)
+        case .changesNotWritable(let table, let unwritten):
+            let lead = String(format: String(localized: "Cannot save changes to '%@'."), table)
+            return ([lead] + unwritten.sentences).joined(separator: " ")
         case .identityNotPreservable(let engine):
             return String(
                 format: String(localized: "%@ cannot restore a deleted row with its original key."),
@@ -121,8 +128,29 @@ enum DataWriteError: LocalizedError, Equatable {
             )
         case .identityNotPreservable:
             return String(localized: "Restore the row by inserting it again, then check anything that referenced its key.")
+        case .rowsNotIdentifiable(_, .insert):
+            return String(
+                localized: "This database has no statement for a new row that sets no column. Enter a value in at least one column, or insert the row with a query."
+            )
+        case .changeRefused, .changesNotWritable:
+            return String(
+                localized: "Nothing was saved, and every change is still pending. Undo what cannot be written, or make it with a query, then save again."
+            )
         default:
             return nil
+        }
+    }
+
+    private static func refusalFormat(for kind: RowWriteKind?) -> String {
+        switch kind {
+        case .insert:
+            return String(localized: "Cannot save the new row in '%1$@'. %2$@")
+        case .update:
+            return String(localized: "Cannot save the edited row in '%1$@'. %2$@")
+        case .delete:
+            return String(localized: "Cannot delete the row in '%1$@'. %2$@")
+        case nil:
+            return String(localized: "Cannot save changes to '%1$@'. %2$@")
         }
     }
 }

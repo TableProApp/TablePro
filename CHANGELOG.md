@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Insert Document…** for MongoDB collections, written as Extended JSON. (#3132)
+- **Remove Field** for MongoDB cells, and **No Field** for a field a document does not have. (#3132)
 - **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran.
 - Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
 - Table list and table browser side by side on iPad and on iPhone Duo's inner display.
@@ -131,6 +132,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pre-connect script failures sometimes reported without the script's own error message.
 - Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
+- Save reporting success after leaving out an edit it could not write, such as a new MongoDB document left empty. (#3132)
+- Binary fields missing from duplicated or pasted MongoDB rows. (#3132)
+- Undo of a MongoDB delete refused when the document held binary data. (#3132)
+- Binary field deleted when editing a MongoDB binary cell. (#3132)
+- Error saving a new MongoDB row with every cell empty. (#3132)
+- **Set DEFAULT** on a MongoDB field storing the text `__DEFAULT__`. (#3132)
+- Edits to MongoDB fields named with a dot, a leading `$` or `__proto__` changing another field or nothing. (#3132)
+- Nested MongoDB values shown with sorted keys, and saved with ObjectIds, dates and numbers retyped. (#3132)
+- **Set NULL** on a MongoDB field deleting the field. (#3132)
+- Null fields dropped from duplicated, pasted or restored MongoDB documents. (#3132)
+- **Restore Previous Values** comparing the wrong MongoDB fields when a document lacks one. (#3132)
+- Row inspector accepting edits to a MongoDB `_id` or another read-only field that were never saved. (#3132)
 - `tablepro-mcp` crashing when its standard input was non-blocking.
 - `tablepro-mcp` using a full CPU core, or crashing, when its standard output or error was non-blocking.
 - Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
@@ -532,6 +545,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
+- Every window's front tab reloading, and asking to discard its edits, after a row import, a new table or a structure change.
+- Tabs showing old rows, columns, DDL or triggers after a save, import, structure change or materialized view refresh.
+- Tables with hidden columns querying a dropped column, or leaving out a new one, after a SQL file import or a structure change.
+- First SQLite or libSQL query after a structure save showing the table's old columns, without the new column's values.
+- Edits after a structure change using the table's old primary key, defaults and generated columns.
 
 ### Security
 
