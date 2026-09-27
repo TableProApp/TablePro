@@ -282,8 +282,8 @@ final class MongoDBConnection: @unchecked Sendable {
             "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
             "tlsCAFile", "tlsCertificateKeyFile"
         ]
-        if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
-        if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
+        if let readPreference, !readPreference.isEmpty { explicitKeys.insert("readPreference") }
+        if let writeConcern, !writeConcern.isEmpty { explicitKeys.insert("w") }
         for (key, value) in extraUriParams where !explicitKeys.contains(key) {
             let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
             params.append("\(key)=\(encodedValue)")
@@ -925,18 +925,14 @@ final class MongoStreamState: @unchecked Sendable {
 
 extension MongoDBConnection {
     /// Convert a JSON string to a bson_t pointer. Caller must call bson_destroy on the result.
+    ///
+    /// An object opening with `$type`, `$regex` or `$options` becomes the document it is written as,
+    /// the way mongosh sends it, rather than libbson's legacy binary or regular expression value.
     func jsonToBson(_ json: String) -> OpaquePointer? {
         #if canImport(CLibMongoc)
-        var error = bson_error_t()
-
-        // Pass -1 to let bson_new_from_json use strlen on the C string
-        let bson = json.withCString { bson_new_from_json($0, -1, &error) }
-        if bson == nil {
-            var err = error
-            let msg = bsonErrorMessage(&err)
-            logger.debug("Failed to parse JSON to BSON: \(msg)")
+        return MongoBsonBuilder.document(from: json) { message in
+            logger.debug("Failed to parse JSON to BSON: \(message)")
         }
-        return bson
         #else
         return nil
         #endif

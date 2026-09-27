@@ -215,4 +215,8 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     func dataGridDidReplaceAllRows() {
         tableViewCoordinator?.applyFullReplace()
     }
+
+    func dataGridDidCloseCellOverlay() {
+        coordinator?.resumeDeferredTableRefresh()
+    }
 }

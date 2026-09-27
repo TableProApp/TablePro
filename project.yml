@@ -505,11 +505,15 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
+      - Plugins/MongoDBDriverPlugin/MongoBsonAssembly.swift
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBBinarySubtypes.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBCapabilities.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionDDL.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCollectionSchema.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFieldKinds.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterClause.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFilterValue.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift
@@ -519,7 +523,11 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBRawFilterNormalizer.swift
       - Plugins/MongoDBDriverPlugin/MongoDBSSLMapping.swift
       - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBUpdateDocument.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBWriteRefusal.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentText.swift
+      - Plugins/MongoDBDriverPlugin/MongoExtendedJsonForm.swift
+      - Plugins/MongoDBDriverPlugin/MongoNestedValueDiff.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentWritePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoInsertOptions.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
@@ -585,6 +593,9 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteForeignKeyParents.swift
       - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
       - Plugins/SQLiteDriverPlugin/SQLiteAgentProtocol.swift
+      # The rest of TableProSQLiteCore needs `sqlite3_load_extension`, which macOS's SQLite, the one
+      # this bundle links, does not export.
+      - Packages/TableProCore/Sources/TableProSQLiteCore/SQLiteResultColumns.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
@@ -754,7 +765,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
+        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd

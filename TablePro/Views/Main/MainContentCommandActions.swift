@@ -902,14 +902,6 @@ final class MainContentCommandActions: ObservableObject {
         }
         guard !victims.isEmpty else { return true }
 
-        /// Every apply broadcasts a data refresh for its scope, and a mounted structure view on the
-        /// same database answers that by asking whether to discard its own staged edits. Mid-close
-        /// that question is both unanswerable and destructive, so the views stand down while this
-        /// runs. Scoped by `defer` rather than latched, because a flag with no exit is how this
-        /// area has gone deaf before.
-        coordinator.isApplyingStagedStructureEdits = true
-        defer { coordinator.isApplyingStagedStructureEdits = false }
-
         for tab in victims {
             guard let session = coordinator.structureSessions[tab.id] else { continue }
             guard await session.applyStagedChanges(coordinator: coordinator).allowsClose else {
@@ -1444,27 +1436,16 @@ final class MainContentCommandActions: ObservableObject {
         AppCommands.shared.refreshData
             .receive(on: RunLoop.main)
             .sink { [weak self] request in
-                guard let self, request.connectionId == self.connection.id,
-                      let coordinator = self.coordinator else { return }
-                if request.reaches(tabScope: coordinator.selectedTabScope) {
-                    coordinator.reloadActiveTableData(
-                        hasPendingTableOps: self.hasPendingTableOps,
-                        onDiscard: { [weak self] in self?.clearPendingTableOps() }
-                    )
-                }
+                guard let self, request.connectionId == self.connection.id else { return }
+                self.coordinator?.applyDataRefresh(request)
             }
             .store(in: &eventCancellables)
 
         AppCommands.shared.objectChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] change in
-                guard let self, change.connectionId == self.connection.id,
-                      let coordinator = self.coordinator else { return }
-                coordinator.applyObjectChange(
-                    change,
-                    hasPendingTableOps: self.hasPendingTableOps,
-                    onDiscard: { [weak self] in self?.clearPendingTableOps() }
-                )
+                guard let self, change.connectionId == self.connection.id else { return }
+                self.coordinator?.applyObjectChange(change)
             }
             .store(in: &eventCancellables)
 

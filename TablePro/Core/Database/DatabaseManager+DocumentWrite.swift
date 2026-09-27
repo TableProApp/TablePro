@@ -52,7 +52,9 @@ extension DatabaseManager {
         }
 
         await recordDocumentWrite(statement, scope: scope, databaseType: databaseType, startedAt: startedAt, error: nil)
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: scope.connectionId, scope: scope, name: write.table, kind: .rows)
+        )
     }
 
     private func recordDocumentWrite(

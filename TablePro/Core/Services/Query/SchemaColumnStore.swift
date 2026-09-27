@@ -68,6 +68,11 @@ final class SchemaColumnStore {
         entries.removeAll()
     }
 
+    func remove(_ key: String) {
+        loads.removeValue(forKey: key)?.task.cancel()
+        entries.removeValue(forKey: key)
+    }
+
     /// A cancelled load is never joined. Between the last waiter leaving and its `load` clearing
     /// the entry there is a window where the task is already cancelled, and a caller that adopted
     /// it would wait for a fetch that is never going to produce anything. Clicking back to a table

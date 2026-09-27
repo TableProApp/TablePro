@@ -44,6 +44,9 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator)
     func dataGridDisplayOrderChanged()
     func dataGridDisplayFormatChanged()
+    /// A cell editor or viewer closed. Told on the turn after, so an editor that closed with a
+    /// commit has recorded its edit, which it does after it removes itself.
+    func dataGridDidCloseCellOverlay()
     /// The menu this particular cell should offer, when the list depends on the row rather than
     /// only on the column.
     ///
@@ -59,6 +62,7 @@ protocol DataGridViewDelegate: AnyObject {
 extension DataGridViewDelegate {
     func dataGridDisplayOrderChanged() {}
     func dataGridDisplayFormatChanged() {}
+    func dataGridDidCloseCellOverlay() {}
     func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? { nil }
     func dataGridCheckboxState(row: Int, column: Int) -> Bool? { nil }
     func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int) {}
