@@ -103,6 +103,7 @@ struct RowOperationsFieldAbsenceTests {
         let (manager, _) = makeManager()
         let clipboard = AbsenceClipboard()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = rows([["1", "Ada", .null], ["2", "Bo", .null]], absentCells: [1: [2]])
 
         manager.copySelectedRowsToClipboard(selectedIndices: [0, 1], tableRows: tableRows, visibleColumnIndices: [2, 1])

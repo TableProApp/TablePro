@@ -4,6 +4,7 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
 
@@ -245,6 +246,46 @@ struct DynamoDBTableManagementTests {
         #expect(Self.driver.schemaOperationRefusal(.dropIndex(global)) == nil)
         #expect(Self.driver.schemaOperationRefusal(.dropIndex(local)) != nil)
         #expect(Self.driver.schemaOperationRefusal(.dropIndex(primary)) != nil)
+    }
+
+    private static func structureIndex(_ name: String, columns: [String], type: String) -> EditableIndexDefinition {
+        EditableIndexDefinition(
+            id: UUID(), name: name, columns: columns, type: .init(rawValue: type), isUnique: false, isPrimary: false,
+            comment: nil
+        )
+    }
+
+    private static func refusalOfSave(_ changes: [SchemaChange]) -> String? {
+        do {
+            _ = try SchemaStatementGenerator(tableName: "Orders", pluginDriver: driver).generate(changes: changes)
+            return nil
+        } catch let error as SchemaOperationRefusedError {
+            return error.reason
+        } catch {
+            return "unexpected: \(error.localizedDescription)"
+        }
+    }
+
+    /// DynamoDB takes one index change per `UpdateTable` and none while the table is `UPDATING`, and
+    /// the driver sends one request per change. So the delete would run and the add then fail,
+    /// leaving no index under the name. The save is refused before either request is sent.
+    @Test("Deleting a global index and adding one under its name in one save is refused before anything runs")
+    func sameNameGlobalIndexReplacementIsRefused() {
+        let dropped = Self.structureIndex("byStatus", columns: ["status"], type: "GLOBAL All attributes")
+        let added = Self.structureIndex("byStatus", columns: ["status", "total"], type: "GLOBAL All attributes")
+
+        #expect(Self.refusalOfSave([.deleteIndex(dropped), .addIndex(added)])
+            == Self.driver.schemaOperationRefusal(.modifyIndex(old: dropped.toPlugin(), new: added.toPlugin())))
+        #expect(Self.refusalOfSave([.deleteIndex(dropped), .addIndex(added)])?.hasPrefix("A DynamoDB index can't be changed") == true)
+    }
+
+    @Test("A local index put back under its own name is refused for being part of the table")
+    func sameNameLocalIndexReplacementIsRefusedAsADrop() {
+        let dropped = Self.structureIndex("byTotal", columns: ["pk", "total"], type: "LOCAL Keys only")
+        let added = Self.structureIndex("byTotal", columns: ["pk", "created"], type: "LOCAL Keys only")
+
+        #expect(Self.refusalOfSave([.addIndex(added), .deleteIndex(dropped)])
+            == "A local secondary index is part of its table and is removed only with the table.")
     }
 
     @Test("A global index from the Structure tab takes its keys from the columns and its projection from the included ones")

@@ -32,6 +32,24 @@ enum MongoScriptPrelude {
     })();
 
     function __ejson(value) { return JSON.stringify(EJSON.serialize(value)); }
+
+    // Assigning a member named `__proto__` sets the object's prototype instead of adding the
+    // member, so the field was never sent and never read. That one name is defined instead.
+    function __setMember(target, key, value) {
+        if (key === "__proto__") {
+            Object.defineProperty(target, key, { value: value, enumerable: true, writable: true, configurable: true });
+        } else {
+            target[key] = value;
+        }
+    }
+
+    function __document(value) {
+        var document = {};
+        for (var key in value) {
+            if (Object.prototype.hasOwnProperty.call(value, key)) { __setMember(document, key, EJSON.__fromServer(value[key])); }
+        }
+        return document;
+    }
     """
 
     private static let values = """
@@ -55,47 +73,219 @@ enum MongoScriptPrelude {
     };
     ObjectId.prototype.toEJSON = function () { return { "$oid": this.__id }; };
 
-    function __wholeText(value, name) {
-        var text = value === undefined ? "0" : String(value);
-        if (!/^[+-]?[0-9]+$/.test(text)) { throw new Error(name + " takes a whole number"); }
+    var __numeral = /^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?$/;
+
+    function __wholeNumber(value, name) {
+        var number = value;
+        if (typeof value === "string" && __numeral.test(value.trim())) {
+            number = Number(value);
+        } else if (value instanceof Int32 || value instanceof Long || value instanceof Double) {
+            number = value.valueOf();
+        }
+        if (typeof number !== "number" || !isFinite(number)) { throw new Error(name + " takes a number"); }
+        var whole = Math.trunc(number);
+        return whole === 0 ? 0 : whole;
+    }
+
+    // Each legacy name shares its type's prototype, so `NumberInt(5) instanceof Int32` holds both
+    // ways round.
+    function __int32(text) {
+        var made = Object.create(Int32.prototype);
+        made.__value = text;
+        return made;
+    }
+
+    function __checkedInt32(value, name) {
+        var whole = value === undefined ? 0 : __wholeNumber(value, name);
+        if (whole < -2147483648 || whole > 2147483647) {
+            throw new Error(name + " takes a whole number from -2147483648 to 2147483647");
+        }
+        return __int32(String(whole));
+    }
+
+    function Int32(value) { return __checkedInt32(value, "Int32"); }
+    function NumberInt(value) { return __checkedInt32(value, "NumberInt"); }
+    NumberInt.prototype = Int32.prototype;
+    Int32.prototype.toString = function () { return this.__value; };
+    Int32.prototype.valueOf = function () { return Number(this.__value); };
+    Int32.prototype.toEJSON = function () { return { "$numberInt": this.__value }; };
+
+    var __int64Min = BigInt("-9223372036854775808");
+    var __int64Max = BigInt("9223372036854775807");
+    var __twoTo32 = BigInt(4294967296);
+
+    function __long(text) {
+        var made = Object.create(Long.prototype);
+        made.__value = text;
+        return made;
+    }
+
+    // A number is read as the integer it holds, which past 2^53 need not be the one that was
+    // typed: `9007199254740993` is already `9007199254740992`. Only a string or a Long carries
+    // every int64 exactly.
+    function __int64(value, name) {
+        if (value === undefined) { return BigInt(0); }
+        if (typeof value === "bigint") { return value; }
+        if (value instanceof Long) { return BigInt(value.__value); }
+        if (typeof value !== "string") { return BigInt(__wholeNumber(value, name)); }
+        var digits = value.trim();
+        if (!/^[+-]?[0-9]+$/.test(digits)) { throw new Error(name + " takes a whole number"); }
+        return BigInt(digits);
+    }
+
+    function __checkedLong(value, name) {
+        var whole = __int64(value, name);
+        if (whole < __int64Min || whole > __int64Max) {
+            throw new Error(name + " takes a whole number from -9223372036854775808 to 9223372036854775807");
+        }
+        return __long(whole.toString());
+    }
+
+    function __isHalfOfLong(value) {
+        return typeof value === "number" && Math.trunc(value) === value
+            && value >= -2147483648 && value <= 4294967295;
+    }
+
+    function __longFromHalves(low, high) {
+        if (!__isHalfOfLong(low) || !__isHalfOfLong(high)) {
+            throw new Error("Long takes its low and high halves as whole numbers from -2147483648 to 4294967295");
+        }
+        return __long(BigInt.asIntN(64, BigInt(high >>> 0) * __twoTo32 + BigInt(low >>> 0)).toString());
+    }
+
+    function Long(value, high) {
+        return high === undefined ? __checkedLong(value, "Long") : __longFromHalves(value, high);
+    }
+    function NumberLong(value) { return __checkedLong(value, "NumberLong"); }
+    NumberLong.prototype = Long.prototype;
+    Long.prototype.toString = function () { return this.__value; };
+    Long.prototype.valueOf = function () { return Number(this.__value); };
+    Long.prototype.toNumber = function () { return Number(this.__value); };
+    Long.prototype.toEJSON = function () { return { "$numberLong": this.__value }; };
+
+    var __decimalSpecial = /^([+-]?)(inf|infinity|nan)$/i;
+
+    function __decimal(text) {
+        var made = Object.create(Decimal128.prototype);
+        made.__value = text;
+        return made;
+    }
+
+    function __decimalText(value, name) {
+        if (value === undefined) { return "0"; }
+        if (value === 0 && 1 / value < 0) { return "-0"; }
+        var text = String(value);
+        var special = __decimalSpecial.exec(text);
+        if (special) {
+            if (special[2].toLowerCase() === "nan") { return "NaN"; }
+            return special[1] === "-" ? "-Infinity" : "Infinity";
+        }
+        if (!__numeral.test(text)) { throw new Error(name + " takes a number"); }
         return text;
     }
 
-    function NumberLong(value) {
-        if (!(this instanceof NumberLong)) { return new NumberLong(value); }
-        this.__value = __wholeText(value, "NumberLong");
-    }
-    NumberLong.prototype.toString = function () { return this.__value; };
-    NumberLong.prototype.valueOf = function () { return Number(this.__value); };
-    NumberLong.prototype.toNumber = function () { return Number(this.__value); };
-    NumberLong.prototype.toEJSON = function () { return { "$numberLong": this.__value }; };
+    function Decimal128(value) { return __decimal(__decimalText(value, "Decimal128")); }
+    function NumberDecimal(value) { return __decimal(__decimalText(value, "NumberDecimal")); }
+    NumberDecimal.prototype = Decimal128.prototype;
+    Decimal128.prototype.toString = function () { return this.__value; };
+    Decimal128.prototype.toEJSON = function () { return { "$numberDecimal": this.__value }; };
 
-    function NumberInt(value) {
-        if (!(this instanceof NumberInt)) { return new NumberInt(value); }
-        this.__value = __wholeText(value === undefined ? 0 : parseInt(value, 10), "NumberInt");
+    // A whole JavaScript number up to 2^53 is sent as an integer, so a Double that happens to be
+    // whole, such as 1.0, needs its own constructor to stay a Double. Show DDL writes one for
+    // every such value.
+    function __doubleText(value) {
+        return value === 0 && 1 / value < 0 ? "-0.0" : String(value);
     }
-    NumberInt.prototype.toString = function () { return this.__value; };
-    NumberInt.prototype.valueOf = function () { return Number(this.__value); };
-    NumberInt.prototype.toEJSON = function () { return { "$numberInt": this.__value }; };
 
-    function NumberDecimal(value) {
-        if (!(this instanceof NumberDecimal)) { return new NumberDecimal(value); }
-        var text = value === undefined ? "0" : String(value);
-        if (!/^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?$/.test(text)) {
-            throw new Error("NumberDecimal takes a number");
+    function Double(value) {
+        if (!(this instanceof Double)) { return new Double(value); }
+        var number = value === undefined ? 0 : Number(value);
+        if (isNaN(number) && String(value) !== "NaN") { throw new Error("Double takes a number"); }
+        this.__value = number;
+    }
+    Double.prototype.toString = function () { return __doubleText(this.__value); };
+    Double.prototype.valueOf = function () { return this.__value; };
+    Double.prototype.toEJSON = function () { return { "$numberDouble": __doubleText(this.__value) }; };
+
+    function __timestampHalf(value, name) {
+        if (typeof value !== "number" || isNaN(value)) { throw new Error("Timestamp takes " + name + " as a number"); }
+        if (value < 0 || value >= 4294967296) { throw new Error("Timestamp takes " + name + " from 0 to 4294967295"); }
+        return Math.trunc(value);
+    }
+
+    function __timestampFromBits(bits) {
+        return [Number(bits / __twoTo32), Number(bits % __twoTo32)];
+    }
+
+    function __timestampParts(t, i) {
+        if (i !== undefined) { return [__timestampHalf(t, "t"), __timestampHalf(i, "i")]; }
+        if (t === undefined) { return [0, 0]; }
+        if (typeof t === "number") { return [__timestampHalf(t, "t"), 0]; }
+        if (t instanceof Long) { return __timestampFromBits(BigInt.asUintN(64, BigInt(t.__value))); }
+        if (typeof t === "bigint") {
+            if (t < BigInt(0) || t >= __twoTo32 * __twoTo32) {
+                throw new Error("Timestamp takes a bigint from 0 to 18446744073709551615");
+            }
+            return __timestampFromBits(t);
         }
-        this.__value = text;
+        if (t !== null && typeof t === "object" && Object.getPrototypeOf(t) === Object.prototype) {
+            return [__timestampHalf(t.t, "t"), __timestampHalf(t.i, "i")];
+        }
+        throw new Error("Timestamp takes (t, i), { t, i }, a Long or a bigint");
     }
-    NumberDecimal.prototype.toString = function () { return this.__value; };
-    NumberDecimal.prototype.toEJSON = function () { return { "$numberDecimal": this.__value }; };
 
     function Timestamp(t, i) {
         if (!(this instanceof Timestamp)) { return new Timestamp(t, i); }
-        this.t = t === undefined ? 0 : t;
-        this.i = i === undefined ? 0 : i;
+        var parts = __timestampParts(t, i);
+        this.t = parts[0];
+        this.i = parts[1];
     }
     Timestamp.prototype.toString = function () { return "Timestamp(" + this.t + ", " + this.i + ")"; };
     Timestamp.prototype.toEJSON = function () { return { "$timestamp": { t: this.t, i: this.i } }; };
+
+    function BSONRegExp(pattern, options) {
+        if (!(this instanceof BSONRegExp)) { return new BSONRegExp(pattern, options); }
+        if (typeof pattern !== "string") { throw new Error("BSONRegExp takes its pattern as a string"); }
+        if (pattern.indexOf("\\u0000") !== -1) { throw new Error("A BSONRegExp pattern cannot hold a null character"); }
+        var flags = options === undefined || options === null ? "" : options;
+        if (typeof flags !== "string" || !/^[ilmsux]*$/.test(flags)) {
+            throw new Error("BSONRegExp takes options from i, l, m, s, u and x");
+        }
+        this.pattern = pattern;
+        this.options = flags.split("").sort().join("");
+    }
+    BSONRegExp.prototype.toString = function () {
+        return "BSONRegExp(" + JSON.stringify(this.pattern) + ", " + JSON.stringify(this.options) + ")";
+    };
+    BSONRegExp.prototype.toEJSON = function () {
+        return { "$regularExpression": { pattern: this.pattern, options: this.options } };
+    };
+
+    // A stored expression JavaScript can compile reads as a RegExp, as in mongosh, and keeps the
+    // text the server holds: `source` escapes a slash and spells an empty pattern `(?:)`, so
+    // writing the document back would change it. The `l` and `x` options and PCRE-only syntax
+    // read as a BSONRegExp instead of throwing partway through a loop.
+    function __storedRegExp(pattern, options) {
+        if (/^[imsu]*$/.test(options)) {
+            try {
+                var compiled = new RegExp(pattern, options);
+                Object.defineProperty(compiled, "__stored", { value: { pattern: pattern, options: options } });
+                return compiled;
+            } catch (unreadable) {}
+        }
+        var kept = Object.create(BSONRegExp.prototype);
+        kept.pattern = pattern;
+        kept.options = options;
+        return kept;
+    }
+
+    function BSONSymbol(value) {
+        if (!(this instanceof BSONSymbol)) { return new BSONSymbol(value); }
+        this.value = String(value);
+    }
+    BSONSymbol.prototype.toString = function () { return "BSONSymbol(" + JSON.stringify(this.value) + ")"; };
+    BSONSymbol.prototype.valueOf = function () { return this.value; };
+    BSONSymbol.prototype.toEJSON = function () { return { "$symbol": this.value }; };
 
     function __subTypeHex(subtype) {
         var hex = subtype.toString(16);
@@ -236,7 +426,7 @@ enum MongoScriptPrelude {
         if (this.__exhausted) { return false; }
         this.__started = true;
         var page = __tp.call({ op: "cursorFetch", handle: this.__handle });
-        this.__batch = EJSON.deserialize(page.docs);
+        this.__batch = page.docs.map(__document);
         this.__index = 0;
         this.__exhausted = page.done;
         return this.__batch.length > 0;
@@ -270,7 +460,7 @@ enum MongoScriptPrelude {
     Cursor.prototype.size = function () { return this.itcount(); };
     Cursor.prototype.count = function () { return __tp.call({ op: "cursorCount", handle: this.__handle }); };
     Cursor.prototype.explain = function (verbosity) {
-        return EJSON.deserialize(__tp.call({
+        return EJSON.__fromServer(__tp.call({
             op: "cursorExplain",
             handle: this.__handle,
             verbosity: verbosity === undefined ? "queryPlanner" : String(verbosity)
@@ -305,7 +495,7 @@ enum MongoScriptPrelude {
         return __tp.call(payload);
     };
     DBCollection.prototype.__reply = function (op, payload) {
-        return EJSON.deserialize(this.__call(op, payload));
+        return EJSON.__fromServer(this.__call(op, payload));
     };
     DBCollection.prototype.find = function (filter, projection) {
         var handle = this.__call("openCursor", {
@@ -427,13 +617,13 @@ enum MongoScriptPrelude {
         if (!remove && (change === undefined || change === null)) {
             throw new Error("findOneAndUpdate needs an update document or pipeline");
         }
-        var reply = this.__reply("findAndModify", {
+        var reply = this.__call("findAndModify", {
             filter: __ejson(filter === undefined ? {} : filter),
             update: change === undefined ? null : __ejson(change),
             options: options === undefined ? null : __ejson(options),
             remove: remove
         });
-        return reply.value === undefined ? null : reply.value;
+        return reply.value === undefined || reply.value === null ? null : __document(reply.value);
     };
     DBCollection.prototype.findOneAndUpdate = function (filter, update, options) {
         return this.__findAndModify(filter, update, options, false);
@@ -537,10 +727,10 @@ enum MongoScriptPrelude {
         return { getDB: function (name) { return new DB(String(name)); } };
     };
     DB.prototype.runCommand = function (command) {
-        return EJSON.deserialize(__tp.call({ op: "command", db: this.__name, command: __ejson(command) }));
+        return EJSON.__fromServer(__tp.call({ op: "command", db: this.__name, command: __ejson(command) }));
     };
     DB.prototype.adminCommand = function (command) {
-        return EJSON.deserialize(__tp.call({ op: "command", db: "admin", command: __ejson(command) }));
+        return EJSON.__fromServer(__tp.call({ op: "command", db: "admin", command: __ejson(command) }));
     };
     DB.prototype.getCollectionNames = function () {
         return __tp.call({ op: "listCollections", db: this.__name });
@@ -552,7 +742,16 @@ enum MongoScriptPrelude {
         var command = { create: String(name) };
         if (options) {
             for (var key in options) {
-                if (Object.prototype.hasOwnProperty.call(options, key)) { command[key] = options[key]; }
+                if (Object.prototype.hasOwnProperty.call(options, key)) { __setMember(command, key, options[key]); }
+            }
+        }
+        return this.runCommand(command);
+    };
+    DB.prototype.createView = function (name, source, pipeline, options) {
+        var command = { create: String(name), viewOn: String(source), pipeline: pipeline || [] };
+        if (options) {
+            for (var key in options) {
+                if (Object.prototype.hasOwnProperty.call(options, key)) { __setMember(command, key, options[key]); }
             }
         }
         return this.runCommand(command);
@@ -599,53 +798,104 @@ enum MongoScriptPrelude {
             }
             if (value instanceof Date) { return { "$date": { "$numberLong": String(value.getTime()) } }; }
             if (value instanceof RegExp) {
-                return { "$regularExpression": { pattern: value.source, options: value.flags } };
+                var stored = value.__stored;
+                return {
+                    "$regularExpression": stored
+                        ? { pattern: stored.pattern, options: stored.options }
+                        : { pattern: value.source, options: value.flags }
+                };
             }
             var document = {};
             for (var key in value) {
-                if (Object.prototype.hasOwnProperty.call(value, key)) { document[key] = serialize(value[key]); }
+                if (Object.prototype.hasOwnProperty.call(value, key)) { __setMember(document, key, serialize(value[key])); }
             }
             return document;
         }
 
+        // mongosh sends every whole number outside int32 as a double. Up to 2^53 it is sent as
+        // int64 here, the type TablePro always gave it; past 2^53 a number is not an exact integer,
+        // so it stays the double it is rather than becoming a different int64.
         function serializeNumber(value) {
-            if (!isFinite(value)) { return { "$numberDouble": String(value) }; }
-            if (Math.floor(value) !== value) { return { "$numberDouble": String(value) }; }
-            return value >= -2147483648 && value <= 2147483647
-                ? { "$numberInt": String(value) }
-                : { "$numberLong": String(value) };
+            var whole = Math.trunc(value) === value && !(value === 0 && 1 / value < 0);
+            if (whole && value >= -2147483648 && value <= 2147483647) { return { "$numberInt": String(value) }; }
+            if (whole && Number.isSafeInteger(value)) { return { "$numberLong": String(value) }; }
+            return { "$numberDouble": __doubleText(value) };
         }
 
-        function deserialize(value) {
-            if (value === null || typeof value !== "object") { return value; }
-            if (Array.isArray(value)) {
-                var list = [];
-                for (var i = 0; i < value.length; i++) { list.push(deserialize(value[i])); }
-                return list;
+        function deserializer(reviveWrapper) {
+            function deserialize(value) {
+                if (value === null || typeof value !== "object") { return value; }
+                if (Array.isArray(value)) {
+                    var list = [];
+                    for (var i = 0; i < value.length; i++) { list.push(deserialize(value[i])); }
+                    return list;
+                }
+                var keys = Object.keys(value);
+                if (keys.length === 1 || (keys.length === 2 && keys[0] === "$code")) {
+                    var revived = reviveWrapper(value, keys[0]);
+                    if (revived !== undefined) { return revived; }
+                }
+                var document = {};
+                for (var key in value) {
+                    if (Object.prototype.hasOwnProperty.call(value, key)) {
+                        __setMember(document, key, deserialize(value[key]));
+                    }
+                }
+                return document;
             }
-            var keys = Object.keys(value);
-            if (keys.length === 1 || (keys.length === 2 && keys[0] === "$code")) {
-                var revived = revive(value, keys[0]);
-                if (revived !== undefined) { return revived; }
-            }
-            var document = {};
-            for (var key in value) {
-                if (Object.prototype.hasOwnProperty.call(value, key)) { document[key] = deserialize(value[key]); }
-            }
-            return document;
+            return deserialize;
         }
+
+        // What a script hands EJSON.parse is checked the way the constructors check it. What the
+        // server sends is not: it is already a value MongoDB holds, and reading a decimal NaN or a
+        // PCRE-only pattern back unchanged is what lets a script write the document back as it was.
+        function reviveChecked(value, key) {
+            switch (key) {
+            case "$numberInt": return checkedInt32(value.$numberInt);
+            case "$numberDouble": return checkedDouble(value.$numberDouble);
+            case "$numberLong": return __checkedLong(value.$numberLong, "$numberLong");
+            case "$numberDecimal": return __decimal(__decimalText(value.$numberDecimal, "$numberDecimal"));
+            case "$regularExpression": return checkedRegExp(value.$regularExpression);
+            default: return revive(value, key);
+            }
+        }
+
+        function checkedInt32(text) {
+            if (typeof text !== "string" || !/^[+-]?[0-9]+$/.test(text)) {
+                throw new Error("$numberInt takes a whole number");
+            }
+            return __checkedInt32(text, "$numberInt").valueOf();
+        }
+
+        function checkedDouble(text) {
+            if (typeof text !== "string" || !(__numeral.test(text) || /^(NaN|-?Infinity)$/.test(text))) {
+                throw new Error("$numberDouble takes a number");
+            }
+            return Number(text);
+        }
+
+        function checkedRegExp(wrapper) {
+            if (wrapper === null || typeof wrapper !== "object") {
+                throw new Error("$regularExpression takes a pattern and options");
+            }
+            var checked = BSONRegExp(wrapper.pattern, wrapper.options);
+            return __storedRegExp(checked.pattern, checked.options);
+        }
+
+        var deserializeChecked = deserializer(reviveChecked);
+        var deserializeFromServer = deserializer(revive);
 
         function revive(value, key) {
             switch (key) {
             case "$oid": return new ObjectId(value.$oid);
             case "$numberInt": return parseInt(value.$numberInt, 10);
             case "$numberDouble": return Number(value.$numberDouble);
-            case "$numberLong": return new NumberLong(value.$numberLong);
-            case "$numberDecimal": return new NumberDecimal(value.$numberDecimal);
+            case "$numberLong": return __long(value.$numberLong);
+            case "$numberDecimal": return __decimal(value.$numberDecimal);
             case "$date":
                 return new Date(typeof value.$date === "object" ? Number(value.$date.$numberLong) : value.$date);
             case "$regularExpression":
-                return new RegExp(value.$regularExpression.pattern, value.$regularExpression.options);
+                return __storedRegExp(value.$regularExpression.pattern, value.$regularExpression.options);
             case "$binary": return new BinData(parseInt(value.$binary.subType, 16), value.$binary.base64);
             case "$timestamp": return new Timestamp(value.$timestamp.t, value.$timestamp.i);
             case "$minKey": return MinKey;
@@ -658,12 +908,13 @@ enum MongoScriptPrelude {
 
         return {
             serialize: serialize,
-            deserialize: deserialize,
+            deserialize: deserializeChecked,
+            __fromServer: deserializeFromServer,
             stringify: function (value, indent) {
                 return JSON.stringify(serialize(value), null, indent === undefined ? 0 : indent);
             },
             parse: function (text) {
-                return deserialize(typeof text === "string" ? JSON.parse(text) : text);
+                return deserializeChecked(typeof text === "string" ? JSON.parse(text) : text);
             }
         };
     })();

@@ -22,6 +22,10 @@ extension DatabaseManager {
     /// and holding the connection's driver gate across a human prompt would freeze every other
     /// tab on that connection.
     ///
+    /// The gate's sheet is the only confirmation a save gets. A refusal throws
+    /// `ExecutionGateError.denied` and a Cancel throws `.cancelledByUser`, so the caller can keep
+    /// the edits staged and stay quiet about a choice the user just made.
+    ///
     /// The driver is asked `schemaChangeRefusalBeforeWriting` on the same connection, after the
     /// user has confirmed and before the first statement, which is the only point a check that
     /// reads the data belongs: SQL Preview composes the same script and must not pay for it. It is
@@ -35,28 +39,16 @@ extension DatabaseManager {
     func executeSchemaChanges(
         _ script: SchemaChangeScript,
         databaseType: DatabaseType,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let route = schemaChangeRoute(for: scope)
         let statements = script.statements
 
-        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
-        let schemaKind = Self.schemaOperationKind(for: statements, combinedSQL: combinedSQL, databaseType: databaseType)
-        let authorization = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: scope.connectionId,
-                databaseType: databaseType,
-                sql: combinedSQL,
-                kind: schemaKind,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Apply Schema Changes")
-            )
-        )
-        guard case .authorized = authorization else {
-            throw DatabaseError.queryFailed(
-                authorization.deniedReason ?? String(localized: "Schema change was not authorized")
-            )
+        let request = Self.schemaChangeAuthorizationRequest(statements, databaseType: databaseType, scope: scope)
+        let schemaKind = request.kind
+        if let denial = await gate.authorize(request).denialError {
+            throw denial
         }
 
         let executionTimes: [TimeInterval]
@@ -128,6 +120,25 @@ extension DatabaseManager {
         )
     }
 
+    /// What the gate is asked before a save runs, built apart from the run so a test can put it to
+    /// the real gate at every Safe Mode level.
+    nonisolated static func schemaChangeAuthorizationRequest(
+        _ statements: [SchemaStatement],
+        databaseType: DatabaseType,
+        scope: DatabaseScope
+    ) -> OperationRequest {
+        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
+        return OperationRequest(
+            connectionId: scope.connectionId,
+            databaseType: databaseType,
+            sql: combinedSQL,
+            kind: schemaOperationKind(for: statements, combinedSQL: combinedSQL, databaseType: databaseType),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: String(localized: "Apply Schema Changes")
+        )
+    }
+
     /// Tells everything that remembers the table's definition that it changed: the session's driver,
     /// which may keep what it learned about the columns, and every window, whose tabs on the table
     /// reload or are marked to reload their rows and structure. Addressed by the table, so a tab on
@@ -139,10 +150,11 @@ extension DatabaseManager {
         )
     }
 
-    /// Destructive when the statements' text says so or when the change a statement came from does.
-    /// A removed MongoDB field is an `updateMany` with `$unset`, which the text classifier tiers as a
-    /// plain write, so only the statement's own flag puts it behind the Safe Mode level that confirms
-    /// a dropped column.
+    /// Destructive when the text reads that way or when any statement was generated as one. The
+    /// text alone cannot see that `ALTER COLUMN .. TYPE`, `MODIFY COLUMN .. NOT NULL` or an added
+    /// `CHECK` can lose or refuse existing rows, or that a removed MongoDB field, an `updateMany`
+    /// with `$unset`, drops data. A destructive kind is confirmed at every Safe Mode level, Silent
+    /// included.
     nonisolated static func schemaOperationKind(
         for statements: [SchemaStatement],
         combinedSQL: String,

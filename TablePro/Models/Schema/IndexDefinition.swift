@@ -258,21 +258,6 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         return copy
     }
 
-    /// This index added to a table that keeps `remaining`, the indexes it will still have when the
-    /// add runs.
-    ///
-    /// A SQL Server table keeps its rows in the order of one clustered index, and its primary key is
-    /// that index unless it says otherwise. So a `CLUSTERED` copy beside one, which is what Duplicate
-    /// and a paste into the same table stage, is written `NONCLUSTERED`: the type the server reports
-    /// for every other index. Kept, the save wrote `CREATE CLUSTERED INDEX` and the server refused it
-    /// with "Cannot create more than one clustered index on table".
-    func addedBeside(_ remaining: [EditableIndexDefinition]) -> EditableIndexDefinition {
-        guard type == .clustered, remaining.contains(where: \.type.ordersTableRows) else { return self }
-        var added = self
-        added.type = .nonclustered
-        return added
-    }
-
     /// A copy under a fresh identity for a paste into a table on `target`, copied from a table on
     /// `source`.
     ///

@@ -103,6 +103,7 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsDropColumn = MongoDBStructureEditing.supportsDropColumn
     static let supportsAddIndex = MongoDBStructureEditing.supportsAddIndex
     static let supportsDropIndex = MongoDBStructureEditing.supportsDropIndex
+    static let supportsRenameView = false
     static let systemDatabaseNames: [String] = ["admin", "local", "config"]
     static let tableEntityName = "Collections"
     static let supportsForeignKeyDisable = false

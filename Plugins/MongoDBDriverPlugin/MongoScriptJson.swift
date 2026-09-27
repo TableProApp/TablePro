@@ -16,27 +16,51 @@ enum MongoScriptJson {
         "{\"ok\":false,\"e\":{\"m\":\(jsonString(message)),\"c\":\(code)}}"
     }
 
+    /// A JSON string literal that is also a JavaScript one on a single line, so a statement written
+    /// around it for the editor splits where the shell does.
     static func jsonString(_ value: String) -> String {
-        var escaped = ""
-        escaped.reserveCapacity(value.count + 2)
-        escaped.append("\"")
-        for character in value.unicodeScalars {
-            switch character {
+        var escaped = "\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\"": escaped.append("\\\"")
             case "\\": escaped.append("\\\\")
-            case "\n": escaped.append("\\n")
-            case "\r": escaped.append("\\r")
-            case "\t": escaped.append("\\t")
             default:
-                if character.value < 0x20 {
-                    escaped.append(String(format: "\\u%04x", character.value))
+                if let escape = lineBreakingEscape(scalar) {
+                    escaped.append(escape)
                 } else {
-                    escaped.unicodeScalars.append(character)
+                    escaped.unicodeScalars.append(scalar)
                 }
             }
         }
         escaped.append("\"")
         return escaped
+    }
+
+    /// The escape for a character that ends a line or cannot be seen, or nil for any other.
+    ///
+    /// JSON only requires the C0 controls to be escaped. JavaScript also ends a line at U+2028 and
+    /// U+2029, and the editor's statement scanner ends one wherever `Character.isNewline` does,
+    /// which adds U+0085. Written raw, any of them ends a `//` comment early, and the scanner ends a
+    /// string literal there while the shell keeps reading it.
+    static func lineBreakingEscape(_ scalar: Unicode.Scalar) -> String? {
+        switch scalar {
+        case "\n": return "\\n"
+        case "\r": return "\\r"
+        case "\t": return "\\t"
+        default:
+            let value = scalar.value
+            guard value < 0x20 || (0x7F ... 0x9F).contains(value) || value == 0x2028 || value == 0x2029 else {
+                return nil
+            }
+            return String(format: "\\u%04x", value)
+        }
+    }
+
+    /// The string a member's value text spells, escapes decoded, or nil when the value is not a string.
+    static func decodedString(_ valueJson: String) -> String? {
+        let trimmed = valueJson.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("\"") else { return nil }
+        return try? JSONDecoder().decode(String.self, from: Data(trimmed.utf8))
     }
 
     /// Whether this object is an Extended JSON wrapper around a single BSON value.

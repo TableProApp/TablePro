@@ -49,7 +49,7 @@ extension TableStructureView {
                 switch prepared.plan.cost {
                 case .metadataOnly:
                     try await StructureColumnReorderHandler.execute(
-                        prepared, tableName: tableName, databaseType: connection.type
+                        prepared, tableName: tableName, databaseType: connection.type, isConfirmationPreCleared: false
                     )
                     await finishColumnReorder(prepared, clearTarget: clearTarget)
                 case .tableRebuild:
@@ -75,22 +75,27 @@ extension TableStructureView {
             tableName: tableName,
             scope: prepared.scope,
             plan: prepared.plan,
-            action: TableRebuildReviewRequest.Action(title: String(localized: "Rebuild Table")) {
+            action: TableRebuildReviewRequest.Action(
+                title: String(localized: "Rebuild Table"),
+                operationDescription: StructureColumnReorderHandler.operationDescription
+            ) {
                 do {
                     try await StructureColumnReorderHandler.execute(
-                        prepared, tableName: tableName, databaseType: connection.type
+                        prepared, tableName: tableName, databaseType: connection.type, isConfirmationPreCleared: true
                     )
                     await finishColumnReorder(prepared, clearTarget: clearTarget)
                 } catch {
-                    CatalogChangeService.post(
-                        .changed(
-                            CatalogChange(
-                                connectionId: prepared.scope.connectionId,
-                                database: prepared.scope.database,
-                                kinds: .tables
+                    if StructureApplyFailure(error).reportsFailure {
+                        CatalogChangeService.post(
+                            .changed(
+                                CatalogChange(
+                                    connectionId: prepared.scope.connectionId,
+                                    database: prepared.scope.database,
+                                    kinds: .tables
+                                )
                             )
                         )
-                    )
+                    }
                     reportColumnReorderFailure(error)
                 }
             }
@@ -129,10 +134,12 @@ extension TableStructureView {
         )
     }
 
+    /// A Cancel at the gate's confirmation shows nothing: the user chose it a moment ago.
     private func reportColumnReorderFailure(_ error: any Error) {
+        guard let message = StructureApplyFailure(error).message else { return }
         AlertHelper.showErrorSheet(
             title: String(localized: "Column Reorder Failed"),
-            message: error.localizedDescription,
+            message: message,
             window: coordinator?.contentWindow
         )
     }

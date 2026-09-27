@@ -85,6 +85,27 @@ The filter bar's column picker lists paths inside nested objects and arrays of o
 
 The Structure tab lists a collection's indexes, and [renames or removes a field](#renaming-and-removing-fields) across the whole collection. Drop an index from a query tab with `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
 
+### Views
+
+Views sit in their own **Views** group in the sidebar and open read-only, with no cell edits, **Add Row** or **Delete**, and no **Rename** or **Truncate** on the context menu. **Show DDL** writes the `db.createView(…)` that makes the view again, pipeline and collation included. **Edit View Definition** opens a `collMod` holding the view's source and pipeline: run it to change the view in place, collation kept. Both write each value in its own BSON type, so the text runs the same in a query tab and in mongosh: `NumberLong("…")` for an Int64, `Double(1.0)` for a whole Double, `ISODate("…")` for a date, `BSONRegExp("…", "…")` for a regular expression. A date before year 1 or after 9999 is written as `new Date(…)`. Export writes a view's documents; import and table transfer skip views.
+
+A time-series collection is listed with the other collections, and its DDL starts with a `// Time series:` line naming its time and meta fields. `system.views`, `system.profile` and the `system.buckets.*` collections behind time series are marked as system collections, with no **Rename** or **Truncate**.
+
+### Indexes
+
+The Structure tab's **Indexes** list shows each index's fields in key order, and its type from the key:
+
+| Key | Type |
+|-----|------|
+| `{a: 1}` or `{a: -1}` | **BTREE** |
+| `{a: "hashed"}` | **HASH** |
+| `{a: "text"}` | **FULLTEXT**, listing the fields in its weights |
+| `{loc: "2dsphere"}` | **SPATIAL** |
+| `{loc: "2d"}` | **2D** |
+| `{"$**": 1}` or `{"tags.$**": 1}` | **WILDCARD** |
+
+**Show DDL** writes one `createIndex` per index with every option the server reports: TTL, partial filter, collation, text weights, wildcard projection and 2d bounds. Values are written the way a view's are, so run that text in a query tab and the indexes it builds match the originals, value types included. The collation leaves out the server's ICU `version`, so the statement also runs on a server built with a different ICU.
+
 ### Missing fields and null
 
 A field a document does not have reads **No Field**; a field holding null reads NULL. **Set Value > NULL** stores `null` and keeps the field. To delete a field, right-click the cell and choose **Remove Field**, or choose it from the value menu of the field in the inspector; saving sends `$unset`. A validator that lists the field in `required` refuses the save with `Document failed validation`.
@@ -129,6 +150,8 @@ A field exists only in the documents that hold it, so a collection with no docum
 </Frame>
 
 The text is Extended JSON: quote every field name, and write an ObjectId as `{"$oid": "…"}`, a date as `{"$date": "2024-05-01T10:00:00Z"}` and a decimal as `{"$numberDecimal": "1.10"}`. A whole number is stored as a 32-bit integer, or as a 64-bit one when it does not fit; `{"$numberLong": "5"}` stores a small 64-bit integer. A number with a decimal point is a double. Fields are stored in the order written. Leave out `_id` and the server generates one.
+
+Every field name is stored as typed, an empty name, a dotted name such as `a.b` and a top-level name starting with `$` included. MongoDB before 5.0 refuses the last two kinds. mongosh reads a document holding both `$ref` and `$id` at the top level as a DBRef, so keep that pair for references.
 
 ## Renaming and removing fields
 
@@ -179,6 +202,13 @@ available: object literals with unquoted keys, single-quoted strings, regex lite
 return, so a filter written that way keeps matching. `new Date` and `instanceof Date` are the
 native ones.
 
+`$type`, `$regex` and `$options` objects reach the server as the operator documents they are
+written as, the same as in mongosh: `{tags: {$type: ["array", "null"]}}` and
+`{name: {$regex: "^a", $options: "i"}}` filter in a query tab and in the filter bar's
+**Raw Filter** row. Such an object is a document everywhere, so `insertOne` stores
+`{$regex: "a", $options: "i"}` as an embedded document and MongoDB refuses it inside `$in`. Write
+a regular expression value as a literal, `/^a/i`.
+
 ```javascript
 db.orders.find({status: "completed"}, {customerId: 1, total: 1})
   .sort({date: -1})
@@ -206,6 +236,48 @@ print("stale orders: " + stale.length);
 `print` and `printjson` write to the result grid, one row per line, whenever the statement itself
 returns no documents. A statement that returns documents shows those instead, with the printed
 lines on the status line under the grid.
+
+### Values
+
+A number written without a constructor is stored by what it holds:
+
+| Number | Stored as |
+|---|---|
+| Whole, from -2147483648 to 2147483647 | int32 |
+| Whole, outside int32 up to 9007199254740991 (2^53 - 1) | int64 |
+| Whole past 2^53, a fraction, `-0`, `NaN`, `Infinity` | double |
+
+mongosh stores every whole number outside int32 as a double; write `Double(3000000000)` for the
+same result here. Past 2^53 a JavaScript number cannot hold every integer, so `9007199254740993`
+is already `9007199254740992` when the statement runs. Pass an exact 64-bit integer as a string:
+`Long("9007199254740993")`. Because `-0` is a double, `{$inc: {n: Math.round(-0.2)}}` turns an
+int32 field into a double, the same as in mongosh.
+
+| Constructor | Stores | Takes |
+|---|---|---|
+| `Int32`, `NumberInt` | int32 | A number or numeric string, cut toward zero |
+| `Long`, `NumberLong` | int64 | A string of digits, a number cut toward zero, or `Long(low, high)` from two 32-bit halves |
+| `Double` | double | A number |
+| `Decimal128`, `NumberDecimal` | decimal128 | A numeric string, `NaN`, `Infinity` or `-Infinity` |
+| `Timestamp` | timestamp | `(t, i)`, `{t, i}` or a `Long`, each part from 0 to 4294967295 |
+| `BSONRegExp` | regular expression | A pattern string, and options from `i`, `l`, `m`, `s`, `u` and `x` |
+
+A value out of range throws when the constructor runs. `Int32(2147483648)` and
+`NumberLong("9223372036854775808")` throw where mongosh wraps them round to a negative number.
+
+A document read into a script holds these:
+
+| Stored | Reads as | Compares |
+|---|---|---|
+| double | a number | A stored `5.0` makes `doc.qty === 5` true |
+| int32 | a number | A stored `5` makes `doc.qty === 5` true |
+| int64 | a `Long` | `doc.views == 5` is true and `doc.views === 5` is false; `.toNumber()` gives a number |
+| decimal128 | a `Decimal128` | `String(doc.price)` gives the stored digits |
+| regular expression | a `RegExp`, or a `BSONRegExp` for the `l` and `x` options and PCRE-only syntax such as `(?i)` | `.test()` works on a `RegExp` |
+
+Written back, a whole double is stored by the rules for a bare number: `5.0` becomes int32, as in
+mongosh, and `3000000000.0` becomes int64 where mongosh keeps a double. Wrap it in `Double()` to
+keep it a double. A regular expression goes back exactly as the server sent it, options included.
 
 ### Collection references
 
@@ -245,8 +317,8 @@ Collection: `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `estimated
 `totalIndexSize`, `totalSize`, `isCapped`, `validate`, `explain`.
 
 Database: `getCollection`, `getSiblingDB`, `getCollectionNames`, `getCollectionInfos`,
-`createCollection`, `dropDatabase`, `stats`, `version`, `serverStatus`, `hostInfo`, `currentOp`,
-`killOp`, `runCommand`, `adminCommand`. `use <name>`, `show dbs` and `show collections` work as
+`createCollection`, `createView`, `dropDatabase`, `stats`, `version`, `serverStatus`, `hostInfo`,
+`currentOp`, `killOp`, `runCommand`, `adminCommand`. `use <name>`, `show dbs` and `show collections` work as
 typed. Anything with no method of its own goes through `db.runCommand({…})`.
 
 `Cmd+Shift+F` reformats by nesting depth. Autocomplete offers collections, collection methods,
@@ -270,10 +342,17 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - A collection takes one text index. A second **FULLTEXT** row fails after the collection and the indexes before it are created: list every text field in one index instead.
 - **New Table…** writes the validator with the server's own level and action. To log bad documents instead of refusing them, run `db.runCommand({collMod: "articles", validationAction: "warn"})` after creating the collection.
 - Nested paths filter but do not sort. Sorting works on the grid's own columns.
+- Filtering, sorting or editing a field named `""` or starting with `$` fails in the grid. A dotted name such as `a.b` reads as the path to `b` inside `a`. Use `$getField` and `$setField` in the query editor.
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
 - GridFS buckets are not browsable, and change streams are unsupported.
+- A `Code` scope holding an object that opens with `$type`, `$regex` or `$options`, such as `Code("f", {a: {$type: "binData"}})`, fails with `This is not a document MongoDB can read`. List another key of that object first.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
 - Field names that are whole numbers up to 4294967294 (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them. A nested object with such a key after another key, or with a key named `__proto__`, refuses the save when it is duplicated or written whole. Use **Insert Document…** or a query for it.
+- `Decimal128("…")` with more than 34 significant digits, or an exponent outside the decimal128 range, fails when the statement runs with "This is not a document MongoDB can read". Round a long value to 34 digits. For an exponent out of range, store the value scaled to a unit that fits, or as a double or a string.
+- An MQL export of a view holds the view's documents, not the view, so restoring the file creates a collection of that name. Drop that collection and run the view's **Show DDL** text to get the view back.
+- A time-series collection takes inserts and deletes from the grid, but refuses an edited cell and a rename, and the server's error is shown. Change its documents from a query tab with `updateMany` filtered on the meta field.
+- A filter or validator with a regular expression under `$regex`, such as `{email: {$regex: /@/i}}`, is refused as a document MongoDB cannot read. Write `{email: /@/i}` or `{email: {$regex: "@", $options: "i"}}` instead. **Show DDL** writes such a validator the way the server holds it, which runs in mongosh but not in a query tab.
+- A DBPointer, an `undefined`, or a date more than 100 million days from 1 January 1970 has no mongosh spelling, so **Show DDL** keeps its Extended JSON wrapper. A query tab runs that text; mongosh does not.
 - A field rename checks indexes, search indexes, validators and views in the same database only. Other databases and application code keep the old name: update them after the rename.
 - A field rename does not lock the collection. A validator another client sets in the milliseconds between the last check and the save's `collMod` is replaced by it.
 - MongoDB before 4.4 cannot measure a document, so a rename to a longer name is not checked against the 16 MB limit there. Rename to a name no longer than the old one on those servers when documents are close to the limit.

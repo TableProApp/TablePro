@@ -1057,7 +1057,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
         guard case .addIndex(let index) = operation else { return nil }
         let identity = serverIdentity
-        return MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
+        return mysqlReservedIndexNameRefusal(for: index)
+            ?? MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {

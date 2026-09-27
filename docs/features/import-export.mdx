@@ -173,6 +173,8 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
     ```
 
     Top-level values keep their type: `ObjectId`, `ISODate`, `BinData` with its real subtype. A typed value nested inside a subdocument or array is written as a string, so re-importing gives you a string where the original held an ObjectId, date, or binary. Export those collections as JSON, or use `mongodump`.
+
+    **Indexes** writes each index as a `createIndex()` call and the collection's validator as a `collMod` command. Any other statement in the collection's DDL is left out, and the line `// Skipped a statement that is not an index or a validator` marks where it stood.
   </Tab>
   <Tab title="XLSX">
     | Option | Default |

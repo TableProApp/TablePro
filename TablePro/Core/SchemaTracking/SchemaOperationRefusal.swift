@@ -20,7 +20,8 @@ internal enum SchemaOperationRefusal {
         case .addIndex(let index):
             return driver.schemaOperationRefusal(.addIndex(index.toPlugin()))
         case .modifyIndex(let old, let new):
-            return driver.schemaOperationRefusal(.modifyIndex(old: old.toPlugin(), new: new.toPlugin()))
+            return driver.schemaOperationRefusal(.dropIndex(old.toPlugin()))
+                ?? driver.schemaOperationRefusal(.modifyIndex(old: old.toPlugin(), new: new.toPlugin()))
                 ?? driver.schemaOperationRefusal(.addIndex(new.toPlugin()))
         case .deleteIndex(let index):
             return driver.schemaOperationRefusal(.dropIndex(index.toPlugin()))

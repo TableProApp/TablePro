@@ -178,6 +178,11 @@ extension MongoDBConnection {
             identifiers.append("{\"$oid\": \"\(hex)\"}")
         }
 
+        guard let optsBson = jsonToBson(MongoInsertOptions.json) else {
+            throw MongoDBError(code: 0, message: MongoScriptText.invalidDocument(MongoInsertOptions.json))
+        }
+        defer { bson_destroy(optsBson) }
+
         try checkCancelled()
 
         var pointers: [OpaquePointer?] = prepared.map { Optional($0) }
@@ -187,7 +192,7 @@ extension MongoDBConnection {
 
         let ok = pointers.withUnsafeMutableBufferPointer { buffer -> Bool in
             guard let base = buffer.baseAddress else { return false }
-            return mongoc_collection_insert_many(handle, base, buffer.count, nil, reply, &error)
+            return mongoc_collection_insert_many(handle, base, buffer.count, optsBson, reply, &error)
         }
         guard ok else { throw makeError(error) }
         return identifiers
@@ -202,6 +207,30 @@ extension MongoDBConnection {
         defer { mongoc_collection_destroy(handle) }
 
         guard let cursor = mongoc_collection_find_indexes_with_opts(handle, nil) else {
+            throw MongoDBError(code: 0, message: MongoScriptText.cursorFailed)
+        }
+        defer { mongoc_cursor_destroy(cursor) }
+
+        return try iterateCursorJson(cursor, cap: 0).json
+    }
+
+    /// The whole `listCollections` entry for each namespace, `type` included, which libmongoc's
+    /// name listing drops. A named read takes the entry's options too; the full listing asks for
+    /// names and types only.
+    func listNamespacesSync(client: OpaquePointer, database: String, named name: String?) throws -> [String] {
+        try checkCancelled()
+
+        let optionsJson = name.map { "{\"filter\": {\"name\": \(MongoScriptJson.jsonString($0))}}" }
+            ?? "{\"nameOnly\": true}"
+        guard let options = jsonToBson(optionsJson) else {
+            throw MongoDBError(code: 0, message: MongoScriptText.invalidDocument(optionsJson))
+        }
+        defer { bson_destroy(options) }
+
+        let handle = try getDatabase(client, database: database)
+        defer { mongoc_database_destroy(handle) }
+
+        guard let cursor = mongoc_database_find_collections_with_opts(handle, options) else {
             throw MongoDBError(code: 0, message: MongoScriptText.cursorFailed)
         }
         defer { mongoc_cursor_destroy(cursor) }

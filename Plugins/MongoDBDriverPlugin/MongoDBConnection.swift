@@ -753,7 +753,8 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func listCollections(database: String) async throws -> [String] {
+    /// Every `listCollections` entry in the database, or the one named, as canonical Extended JSON.
+    func listNamespaces(database: String, named name: String?) async throws -> [String] {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -761,14 +762,15 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try listCollectionsSync(client: client, database: database)
+            return try listNamespacesSync(client: client, database: database, named: name)
         }
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
     }
 
-    func listIndexes(database: String, collection: String) async throws -> [[String: Any]] {
+    /// Every `listIndexes` document for the collection, as canonical Extended JSON in server order.
+    func listIndexes(database: String, collection: String) async throws -> [String] {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -776,10 +778,8 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try QueueTransfer(value: listIndexesSync(
-                client: client, database: database, collection: collection
-            ))
-        }.value
+            return try listIndexesJsonSync(client: client, database: database, collection: collection)
+        }
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -943,18 +943,14 @@ final class MongoStreamState: @unchecked Sendable {
 
 extension MongoDBConnection {
     /// Convert a JSON string to a bson_t pointer. Caller must call bson_destroy on the result.
+    ///
+    /// An object opening with `$type`, `$regex` or `$options` becomes the document it is written as,
+    /// the way mongosh sends it, rather than libbson's legacy binary or regular expression value.
     func jsonToBson(_ json: String) -> OpaquePointer? {
         #if canImport(CLibMongoc)
-        var error = bson_error_t()
-
-        // Pass -1 to let bson_new_from_json use strlen on the C string
-        let bson = json.withCString { bson_new_from_json($0, -1, &error) }
-        if bson == nil {
-            var err = error
-            let msg = bsonErrorMessage(&err)
-            logger.debug("Failed to parse JSON to BSON: \(msg)")
+        return MongoBsonBuilder.document(from: json) { message in
+            logger.debug("Failed to parse JSON to BSON: \(message)")
         }
-        return bson
         #else
         return nil
         #endif

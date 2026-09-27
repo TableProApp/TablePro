@@ -90,7 +90,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
                 )
             )
             guard confirmed else {
-                return .denied(reason: String(localized: "Operation cancelled by user"))
+                return .denied(reason: String(localized: "Operation cancelled by user"), cause: .cancelledByUser)
             }
         }
 
