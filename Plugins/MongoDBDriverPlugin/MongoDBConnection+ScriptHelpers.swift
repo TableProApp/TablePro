@@ -12,6 +12,10 @@ struct MongoScriptDocumentBatch: Sendable {
     var json: [String]
     var isTruncated: Bool
 
+    /// Whether these are whole documents as stored, which is what makes each one's `_id` a locator
+    /// the grid can hand back to edit it. A projection or a pipeline builds documents of its own.
+    var holdsStoredDocuments = false
+
     static let empty = MongoScriptDocumentBatch(json: [], isTruncated: false)
 
     var jsonArray: String { "[\(json.joined(separator: ","))]" }

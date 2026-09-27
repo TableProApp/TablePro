@@ -262,17 +262,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let rowCap, MongoDBFindLimitPolicy.isTruncated(rowCount: result.rows.count, rowCap: rowCap) else {
             return result
         }
-        var capped = PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: Array(result.rows.prefix(rowCap)),
-            rowsAffected: result.rowsAffected,
-            executionTime: result.executionTime,
-            isTruncated: true,
-            statusMessage: result.statusMessage
-        )
-        capped.absentCells = result.absentCells?.filter { $0.key < rowCap }
-        return capped
+        return result.capped(to: rowCap)
     }
 
     /// The error a failed statement surfaces, built in one place so the timeout wording and the

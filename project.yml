@@ -539,6 +539,14 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoNestedValueDiff.swift
       - Plugins/MongoDBDriverPlugin/MongoDocumentWritePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoInsertOptions.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBDocumentEditingError.swift
+      - Plugins/MongoDBDriverPlugin/MongoDocumentGuard.swift
+      - Plugins/MongoDBDriverPlugin/MongoDocumentIdentity.swift
+      - Plugins/MongoDBDriverPlugin/MongoDocumentPresentation.swift
+      - Plugins/MongoDBDriverPlugin/MongoDocumentReplacement.swift
+      - Plugins/MongoDBDriverPlugin/MongoEditableDocument.swift
+      - Plugins/MongoDBDriverPlugin/MongoExtendedJsonType.swift
+      - Plugins/MongoDBDriverPlugin/PluginQueryResult+MongoResult.swift
       - Plugins/MongoDBDriverPlugin/MongoDBStructureEditing.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoCollectionCatalog.swift

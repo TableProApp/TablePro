@@ -16,6 +16,10 @@ import Foundation
 public struct PluginDocumentWrite: Sendable, Equatable {
     public enum Operation: Sendable, Equatable {
         case insert(document: String)
+        /// Replaces a stored document with `edited`. `original` is the text `fetchDocument`
+        /// returned: it names the document and is what the edit is compared against, so a document
+        /// someone changed after it was fetched is refused rather than overwritten.
+        case replace(original: String, edited: String)
     }
 
     public let table: String

@@ -24,11 +24,16 @@ enum MongoScriptResultBuilder {
         }
 
         if outcome.producedDocuments {
+            let read = outcome.documents.readDocuments
             let grid = build(
-                outcome.documents.readDocuments,
+                read,
                 outcome.collection ?? "",
                 outcome.documents.isTruncated
-            ).withRowsAffected(outcome.rowsAffected)
+            )
+            .withRowsAffected(outcome.rowsAffected)
+            .withRowLocators(
+                outcome.documents.holdsStoredDocuments ? read.texts.map(MongoDocumentIdentity.locator(inDocument:)) : nil
+            )
             guard !outcome.printedLines.isEmpty else { return grid }
             return grid.withStatus(printedSummary(outcome.printedLines))
         }
@@ -69,36 +74,5 @@ enum MongoScriptResultBuilder {
         let joined = lines.joined(separator: " · ")
         guard joined.count > 400 else { return joined }
         return String(joined.prefix(400)) + "…"
-    }
-}
-
-private extension PluginQueryResult {
-    func withRowsAffected(_ count: Int) -> PluginQueryResult {
-        guard count != rowsAffected else { return self }
-        var copy = PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: count,
-            executionTime: executionTime,
-            isTruncated: isTruncated,
-            statusMessage: statusMessage
-        )
-        copy.absentCells = absentCells
-        return copy
-    }
-
-    func withStatus(_ message: String) -> PluginQueryResult {
-        var copy = PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: rowsAffected,
-            executionTime: executionTime,
-            isTruncated: isTruncated,
-            statusMessage: message
-        )
-        copy.absentCells = absentCells
-        return copy
     }
 }
