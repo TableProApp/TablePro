@@ -720,6 +720,40 @@ struct SchemaStatementGeneratorPluginTests {
         #expect(stmts[0].isDestructive == true)
     }
 
+    /// `MODIFY COLUMN .. NOT NULL` reads as a plain write, so the execution gate only confirms it at
+    /// Silent because the statement says it can refuse existing rows.
+    @Test("Making a column NOT NULL is destructive with its type unchanged")
+    func notNullWithSameTypeIsDestructive() throws {
+        let mock = MockPluginDriver()
+        mock.modifyColumnHandler = { _, _, newCol in
+            "ALTER TABLE users MODIFY COLUMN \(newCol.name) \(newCol.dataType) NOT NULL"
+        }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let oldCol = makeColumn(name: "email", dataType: "VARCHAR(255)", isNullable: true)
+        let newCol = makeColumn(name: "email", dataType: "VARCHAR(255)", isNullable: false)
+        let stmts = try generator.generate(changes: [.modifyColumn(old: oldCol, new: newCol)])
+
+        #expect(stmts.count == 1)
+        #expect(stmts[0].isDestructive)
+    }
+
+    @Test("Renaming a column is not destructive")
+    func renameIsNotDestructive() throws {
+        let mock = MockPluginDriver()
+        mock.modifyColumnHandler = { _, oldCol, newCol in
+            "ALTER TABLE users RENAME COLUMN \(oldCol.name) TO \(newCol.name)"
+        }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [
+            .modifyColumn(old: makeColumn(name: "email"), new: makeColumn(name: "contact_email"))
+        ])
+
+        #expect(stmts.count == 1)
+        #expect(!stmts[0].isDestructive)
+    }
+
     @Test("Add column is not destructive")
     func addColumnNotDestructive() throws {
         let mock = MockPluginDriver()

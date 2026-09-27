@@ -168,7 +168,7 @@ internal enum ExternalStatementGate {
                 operationDescription: operationDescription
             )
         )
-        if case .denied(let reason) = decision {
+        if case .denied(let reason, _) = decision {
             throw ExternalStatementGateError.denied(reason)
         }
     }

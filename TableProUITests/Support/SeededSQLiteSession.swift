@@ -12,9 +12,14 @@ import XCTest
 internal extension UITestCase {
     /// Each connection gets its own database file built from `databaseSQL`, and `tabsEach` query
     /// tabs, so nothing restored depends on a table's rows loading. Returns the database files in
-    /// connection order.
+    /// connection order. Every connection runs at `safeModeLevel`, Silent unless a test asks.
     @discardableResult
-    func seedSQLiteSession(connectionNames: [String], databaseSQL: String, tabsEach: Int = 1) throws -> [URL] {
+    func seedSQLiteSession(
+        connectionNames: [String],
+        databaseSQL: String,
+        tabsEach: Int = 1,
+        safeModeLevel: String = "silent"
+    ) throws -> [URL] {
         let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
         let supportDirectory = root.appendingPathComponent("TablePro", isDirectory: true)
         let tabStateDirectory = supportDirectory.appendingPathComponent("TabState", isDirectory: true)
@@ -27,7 +32,13 @@ internal extension UITestCase {
             let id = UUID().uuidString
             let databaseURL = root.appendingPathComponent("restored-\(index).sqlite")
             makeDatabase(at: databaseURL, sql: databaseSQL)
-            connections.append(connectionPayload(id: id, name: name, databasePath: databaseURL.path, sortOrder: index))
+            connections.append(connectionPayload(
+                id: id,
+                name: name,
+                databasePath: databaseURL.path,
+                sortOrder: index,
+                safeModeLevel: safeModeLevel
+            ))
             connectionIds.append(id)
             databaseURLs.append(databaseURL)
             try writeJSON(
@@ -63,7 +74,13 @@ internal extension UITestCase {
         return values
     }
 
-    private func connectionPayload(id: String, name: String, databasePath: String, sortOrder: Int) -> [String: Any] {
+    private func connectionPayload(
+        id: String,
+        name: String,
+        databasePath: String,
+        sortOrder: Int,
+        safeModeLevel: String
+    ) -> [String: Any] {
         [
             "id": id,
             "name": name,
@@ -78,6 +95,7 @@ internal extension UITestCase {
             "sshAuthMethod": "password",
             "sshPrivateKeyPath": "",
             "sortOrder": sortOrder,
+            "safeModeLevel": safeModeLevel,
         ]
     }
 

@@ -74,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export from a data file window to every bundled format, for all, filtered or selected rows.
 - **Import into Table** from a data file window, into an open connection's import sheet.
 - **Text Encoding** in a data file's Save As panel.
+- `BSONSymbol()` in the MongoDB shell.
 
 ### Changed
 
@@ -210,6 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Trigger** offered on a materialized view.
 - Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type.
 - Structure tab refusing to save a renamed or dropped primary key column.
+- Structure saves that could lose data, and table rebuilds, asking twice for one confirmation, and showing an error after Cancel.
 - Structure tab refusing to save an index or check constraint named like one deleted in the same save.
 - Structure tab refusing every save on a SQLite table with two check constraints of one name.
 - Primary key lost on MySQL and MariaDB when a save replaced the `PRIMARY` index row and changed a column.
@@ -218,6 +220,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure tab accepting a check constraint named like another in a different letter case.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
+- MongoDB views and `system.*` collections listed as ordinary collections.
+- MongoDB compound index keys out of order, and hashed, text and geospatial indexes shown as B-tree.
+- TTL, partial filter, collation and other index options missing from MongoDB DDL.
+- Index options such as `wildcardProjection` and a 2d index's bounds dropped by `createIndex` in the MongoDB shell.
+- `db.createView` missing from the MongoDB shell.
+- `Double()` and `BSONRegExp()` undefined in the MongoDB shell although autocomplete offers them.
+- `NumberDecimal("NaN")` and `NumberDecimal("Infinity")` refused by the MongoDB shell.
+- Fields named `__proto__` dropped from documents a MongoDB script writes or reads.
+- Error text after a carriage return or line separator left uncommented in Edit View Definition's fallback.
+- Capped MongoDB collection size shown as 0 in DDL.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
 - Model list not reloading when the API key changes, leaving the picker empty with no way to retry.
 - Empty model picker, with nothing said, for a local or OpenAI-compatible server answering 200 with an unexpected shape.
@@ -572,6 +584,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 - Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
+- Code in a MongoDB collection, view or index name running when its DDL is run from a query tab.
 - Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
 - Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
 - Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.

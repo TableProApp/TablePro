@@ -330,7 +330,7 @@ public actor MCPAuthPolicy {
                 operationDescription: Self.operationDescription(for: operationLabel)
             )
         )
-        if case .denied(let reason) = decision {
+        if case .denied(let reason, _) = decision {
             throw DatabaseAccessError.forbidden(reason)
         }
     }
