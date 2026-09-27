@@ -11,6 +11,10 @@ public struct PluginQueryResult: Codable, Sendable {
     public let columnMeta: [PluginColumnInfo]?
     public let timing: PluginQueryTiming
 
+    /// The cells whose row has no field for the column at all, as row index to column indices. A
+    /// document store sets it, because a missing field and a field holding null both read `.null`.
+    public var absentCells: [Int: Set<Int>]?
+
     public init(
         columns: [String],
         columnTypeNames: [String],
@@ -94,6 +98,7 @@ public struct PluginQueryResult: Codable, Sendable {
         columnMeta = try container.decodeIfPresent([PluginColumnInfo].self, forKey: .columnMeta)
         timing = try container.decodeIfPresent(PluginQueryTiming.self, forKey: .timing)
             ?? PluginQueryTiming(total: executionTime)
+        absentCells = try container.decodeIfPresent([Int: Set<Int>].self, forKey: .absentCells)
     }
 
     public static let empty = PluginQueryResult(

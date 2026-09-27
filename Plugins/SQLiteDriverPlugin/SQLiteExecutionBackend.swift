@@ -268,12 +268,14 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             try bind(parameters, to: statement, db: db)
         }
 
-        let columnCount = sqlite3_column_count(statement)
-        let (columns, columnTypeNames) = Self.columnMetadata(statement, count: columnCount)
+        let firstStep = SQLiteResultColumns.stepFirst(statement)
+        let columnCount = firstStep.count
+        let columns = firstStep.names
+        let columnTypeNames = firstStep.typeNames
 
         var rows: [[PluginCellValue]] = []
         var truncated = false
-        var stepResult = sqlite3_step(statement)
+        var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
@@ -310,17 +312,17 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
-        let columnCount = sqlite3_column_count(statement)
-        let (columns, columnTypeNames) = Self.columnMetadata(statement, count: columnCount)
+        let firstStep = SQLiteResultColumns.stepFirst(statement)
+        let columnCount = firstStep.count
         continuation.yield(.header(PluginStreamHeader(
-            columns: columns, columnTypeNames: columnTypeNames, estimatedRowCount: nil
+            columns: firstStep.names, columnTypeNames: firstStep.typeNames, estimatedRowCount: nil
         )))
 
         let batchSize = 5_000
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
 
-        var stepResult = sqlite3_step(statement)
+        var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty { continuation.yield(.rows(batch)) }
@@ -367,24 +369,6 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                 throw SQLitePluginError.queryFailed("Failed to bind parameter \(index): \(String(cString: sqlite3_errmsg(db)))")
             }
         }
-    }
-
-    private static func columnMetadata(_ statement: OpaquePointer?, count: Int32) -> ([String], [String]) {
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-        for i in 0..<count {
-            if let name = sqlite3_column_name(statement, i) {
-                columns.append(String(cString: name))
-            } else {
-                columns.append("column_\(i)")
-            }
-            if let typePtr = sqlite3_column_decltype(statement, i) {
-                columnTypeNames.append(String(cString: typePtr))
-            } else {
-                columnTypeNames.append("")
-            }
-        }
-        return (columns, columnTypeNames)
     }
 
     private static func readRow(_ statement: OpaquePointer?, columnCount: Int32) -> [PluginCellValue] {

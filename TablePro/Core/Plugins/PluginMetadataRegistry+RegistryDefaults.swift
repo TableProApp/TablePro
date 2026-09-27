@@ -45,6 +45,7 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
                     supportsDocumentEditing: true,
+                    supportsFieldRemoval: true,
                     supportsAddColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,

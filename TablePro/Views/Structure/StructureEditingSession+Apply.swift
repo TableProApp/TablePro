@@ -95,7 +95,7 @@ internal extension StructureEditingSession {
             Self.logger.fault("A structure save landed over staged edits it did not write; they stay staged")
             return .refused
         }
-        tabData.markAllStale()
+        markEveryTabStale()
         hasLoaded = false
         lastAppliedAt = Date()
         markApplied()
@@ -273,7 +273,7 @@ internal extension StructureEditingSession {
         let cleared = changeManager.releaseHold(hold, written: true)
         isApplying = false
         if cleared {
-            tabData.markAllStale()
+            markEveryTabStale()
             hasLoaded = false
             lastAppliedAt = Date()
             markApplied()
