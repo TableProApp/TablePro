@@ -9,6 +9,19 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+private final class BinaryCopyClipboard: ClipboardProvider {
+    var writtenRows: String?
+
+    func readText() -> String? { nil }
+    func readGridRows() -> GridRowsClipboardPayload? { nil }
+    func writeText(_ text: String) {}
+    func writeCsv(_ csv: String) {}
+    func writeImage(_ image: NSImage) {}
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) { writtenRows = tsv }
+    var hasText: Bool { false }
+    var hasGridRows: Bool { false }
+}
+
 @MainActor
 struct RowOperationsManagerBinaryCopyTests {
     private func makeManagerAndRows(binaryRow: [PluginCellValue]) -> (RowOperationsManager, TableRows) {
@@ -29,6 +42,16 @@ struct RowOperationsManagerBinaryCopyTests {
         return (rowOps, tableRows)
     }
 
+    /// The copy goes through `ClipboardService.shared`, and the system pasteboard reads back empty
+    /// on a headless runner, so the text is taken from a clipboard installed for the one copy.
+    private func copiedText(_ rowOps: RowOperationsManager, _ tableRows: TableRows) -> String {
+        let clipboard = BinaryCopyClipboard()
+        ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
+        rowOps.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
+        return clipboard.writtenRows ?? ""
+    }
+
     @Test("Issue #1188 row copies binary cell as 0xHEX, not NULL")
     func issue1188CopyAsHex() {
         let bytes = Data([
@@ -41,12 +64,7 @@ struct RowOperationsManagerBinaryCopyTests {
         ])
         let (rowOps, tableRows) = makeManagerAndRows(binaryRow: [.text("1"), .bytes(bytes)])
 
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-
-        rowOps.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
-
-        let copied = pasteboard.string(forType: .string) ?? ""
+        let copied = copiedText(rowOps, tableRows)
         #expect(copied.contains("0xD38CE566"))
         #expect(!copied.contains("NULL"))
         #expect(copied.contains("\t"))
@@ -56,9 +74,7 @@ struct RowOperationsManagerBinaryCopyTests {
     func emptyBytesCopiesAsZeroX() {
         let (rowOps, tableRows) = makeManagerAndRows(binaryRow: [.text("1"), .bytes(Data())])
 
-        NSPasteboard.general.clearContents()
-        rowOps.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
-        let copied = NSPasteboard.general.string(forType: .string) ?? ""
+        let copied = copiedText(rowOps, tableRows)
 
         #expect(copied.contains("0x") || copied.hasSuffix("\t"))
         #expect(!copied.contains("NULL"))
@@ -68,9 +84,7 @@ struct RowOperationsManagerBinaryCopyTests {
     func mixedNullAndBytes() {
         let (rowOps, tableRows) = makeManagerAndRows(binaryRow: [.null, .bytes(Data([0xAA, 0xBB]))])
 
-        NSPasteboard.general.clearContents()
-        rowOps.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
-        let copied = NSPasteboard.general.string(forType: .string) ?? ""
+        let copied = copiedText(rowOps, tableRows)
 
         #expect(copied.contains("NULL"))
         #expect(copied.contains("0xAABB"))
