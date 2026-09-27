@@ -668,7 +668,7 @@ struct MongoScriptPreludeTests {
     func writeFailureCarriesItsStage() throws {
         let host = RecordingHost()
         let stopped = MongoWriteFailure(code: 50, message: "operation exceeded time limit", stage: .command)
-        host.refusals = ["update": MongoScriptJson.failure(stopped)]
+        host.refusals = ["update": stopped.scriptReplyJson]
         let context = try makeContext(host)
 
         context.evaluateScript("db.orders.updateMany({}, {$set: {b: 1}})")
@@ -681,7 +681,7 @@ struct MongoScriptPreludeTests {
         let host = RecordingHost()
         let stopped = MongoWriteFailure(code: 50, message: "operation exceeded time limit", stage: .command)
         host.refusals = [
-            "update": MongoScriptJson.failure(stopped),
+            "update": stopped.scriptReplyJson,
             "command": MongoScriptJson.failure(message: "operation exceeded time limit", code: 50)
         ]
         let context = try makeContext(host)

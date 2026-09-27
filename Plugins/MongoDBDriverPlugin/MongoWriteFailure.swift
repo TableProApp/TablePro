@@ -77,6 +77,16 @@ struct MongoWriteFailure: Error, LocalizedError, Equatable, Sendable {
     }
 }
 
+extension MongoWriteFailure {
+    /// The failure as the script host answers a write, with its stage, so the exception a script
+    /// lets escape still says it was a write's failure and how far the write got.
+    var scriptReplyJson: String {
+        let quotedMessage = MongoScriptJson.jsonString(message)
+        let quotedStage = MongoScriptJson.jsonString(stage.rawValue)
+        return #"{"ok":false,"e":{"m":\#(quotedMessage),"c":\#(code),"s":\#(quotedStage)}}"#
+    }
+}
+
 /// One write's reply, kept whether or not the write failed, because a failed write can still have
 /// changed documents and the reply is the only record of how many.
 struct MongoWriteOutcome: Sendable {

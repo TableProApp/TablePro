@@ -16,14 +16,6 @@ enum MongoScriptJson {
         "{\"ok\":false,\"e\":{\"m\":\(jsonString(message)),\"c\":\(code)}}"
     }
 
-    /// A failed write, with its stage, so the exception a script lets escape still says it was a
-    /// write's failure and how far the write got.
-    static func failure(_ write: MongoWriteFailure) -> String {
-        """
-        {"ok":false,"e":{"m":\(jsonString(write.message)),"c":\(write.code),"s":\(jsonString(write.stage.rawValue))}}
-        """
-    }
-
     /// A JSON string literal that is also a JavaScript one on a single line, so a statement written
     /// around it for the editor splits where the shell does.
     static func jsonString(_ value: String) -> String {

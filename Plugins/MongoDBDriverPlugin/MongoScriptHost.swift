@@ -146,7 +146,7 @@ final class MongoScriptHost {
             markCancelled()
             return MongoScriptJson.failure(message: MongoScriptText.cancelled, code: 0)
         } catch let failedWrite as MongoWriteFailure {
-            return MongoScriptJson.failure(failedWrite)
+            return failedWrite.scriptReplyJson
         } catch let error as MongoDBError {
             return MongoScriptJson.failure(message: error.message, code: error.code)
         } catch let error as MongoScriptError {

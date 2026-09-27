@@ -192,7 +192,7 @@ struct MongoScriptStatementFailureTests {
     @Test("A failed write crosses the bridge with its stage")
     func bridgeCarriesStage() throws {
         let failure = MongoWriteFailure(code: 50, message: "operation \"exceeded\" time limit", stage: .unconfirmed)
-        let data = try #require(MongoScriptJson.failure(failure).data(using: .utf8))
+        let data = try #require(failure.scriptReplyJson.data(using: .utf8))
         let response = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let error = try #require(response["e"] as? [String: Any])
         #expect(response["ok"] as? Bool == false)
