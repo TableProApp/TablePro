@@ -18,6 +18,9 @@ struct MongoDocumentReplacement: Equatable, Sendable {
             throw MongoDBDocumentEditingError.identityChanged
         }
         let fields = edited.members.filter { !$0.key.utf8.elementsEqual(field.utf8) }
+        if let operatorField = fields.first(where: { Self.startsWithOperatorPrefix($0.key) }) {
+            throw MongoDBDocumentEditingError.operatorField(operatorField.key)
+        }
         if let stamped = fields.first(where: { Self.isEmptyTimestamp($0.value) }) {
             throw MongoDBDocumentEditingError.emptyTimestamp(stamped.key)
         }
@@ -33,5 +36,16 @@ struct MongoDocumentReplacement: Equatable, Sendable {
 
     static func emptyTimestampField(in document: MongoDocumentText) -> String? {
         document.members.first { isEmptyTimestamp($0.value) }?.key
+    }
+
+    /// A top-level name starting with `$`, which an insert stores and a replace cannot: the server
+    /// refuses the whole replacement (code 52), so such a document is refused when it opens rather
+    /// than when it is saved. Read from the first byte, as the server reads it.
+    static func operatorField(in document: MongoDocumentText) -> String? {
+        document.members.first { startsWithOperatorPrefix($0.key) }?.key
+    }
+
+    private static func startsWithOperatorPrefix(_ name: String) -> Bool {
+        name.utf8.first == UInt8(ascii: "$")
     }
 }

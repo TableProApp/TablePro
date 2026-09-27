@@ -184280,6 +184280,9 @@
     "The top-level field “%@” holds Timestamp(0, 0), which MongoDB replaces with the current time on every save." : {
 
     },
+    "The top-level field “%@” starts with $, which MongoDB refuses in a replaced document." : {
+
+    },
     "This document is too large to edit here. Saving it would send more than 16 MB to the server." : {
 
     },

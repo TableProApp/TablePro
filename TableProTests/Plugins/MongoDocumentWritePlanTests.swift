@@ -66,8 +66,8 @@ struct MongoDocumentWritePlanTests {
             collection: "events", operation: .insert(document: text), canonicalize: spy
         )
         #expect(asked)
-        #expect(plan.document == text)
-        #expect(plan.statement == "db.events.insertOne(\(text))")
+        #expect(plan?.write == .insert(document: text))
+        #expect(plan?.statement == "db.events.insertOne(\(text))")
     }
 
     @Test("A wrapper libbson cannot read is refused with libbson's reason")

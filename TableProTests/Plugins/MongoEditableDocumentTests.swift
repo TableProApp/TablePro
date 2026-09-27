@@ -115,7 +115,7 @@ struct MongoEditableDocumentTests {
 
     @Test("A stored top-level $ field and a repeated field are refused when the document opens")
     func unreadableAsText() {
-        #expect(throws: MongoDocumentText.Refusal.operatorField("$p")) {
+        #expect(throws: MongoDBDocumentEditingError.operatorField("$p")) {
             try open([MongoStoredDocument(canonical: #"{ "_id" : { "$numberInt" : "1" }, "$p" : 1 }"#, isRepresentable: true)])
         }
         #expect(throws: MongoDocumentText.Refusal.duplicateField("a")) {

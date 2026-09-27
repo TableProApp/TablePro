@@ -66,6 +66,9 @@ enum MongoEditableDocument {
         guard matches.count == 1 else { throw MongoDBDocumentEditingError.ambiguousIdentity }
 
         let document = try MongoDocumentText(parsing: match.canonical)
+        if let field = MongoDocumentReplacement.operatorField(in: document) {
+            throw MongoDBDocumentEditingError.operatorField(field)
+        }
         let filter = try MongoDocumentGuard.filter(for: document)
         guard match.isRepresentable else { throw MongoDBDocumentEditingError.inexactAsText }
         if let field = MongoDocumentReplacement.emptyTimestampField(in: document) {

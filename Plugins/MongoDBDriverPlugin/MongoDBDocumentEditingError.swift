@@ -10,6 +10,7 @@ enum MongoDBDocumentEditingError: Error, Equatable, LocalizedError {
     case missingIdentity
     case inexactAsText
     case emptyTimestamp(String)
+    case operatorField(String)
     case tooLarge
     case serverTooOld
     case view
@@ -43,6 +44,11 @@ enum MongoDBDocumentEditingError: Error, Equatable, LocalizedError {
                 format: String(
                     localized: "The top-level field \u{201C}%@\u{201D} holds Timestamp(0, 0), which MongoDB replaces with the current time on every save."
                 ),
+                field
+            )
+        case .operatorField(let field):
+            return String(
+                format: String(localized: "The top-level field \u{201C}%@\u{201D} starts with $, which MongoDB refuses in a replaced document."),
                 field
             )
         case .tooLarge:

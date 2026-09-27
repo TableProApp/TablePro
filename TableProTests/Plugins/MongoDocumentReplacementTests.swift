@@ -62,7 +62,7 @@ struct MongoDocumentReplacementTests {
 
     @Test("A top-level $ field is refused when the text is read")
     func topLevelOperator() {
-        #expect(throws: MongoDocumentText.Refusal.operatorField("$p")) {
+        #expect(throws: MongoDBDocumentEditingError.operatorField("$p")) {
             try replacement(original: original, edited: #"{"$p":{"$numberInt":"1"}}"#)
         }
     }
