@@ -75,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export from a data file window to every bundled format, for all, filtered or selected rows.
 - **Import into Table** from a data file window, into an open connection's import sheet.
 - **Text Encoding** in a data file's Save As panel.
+- `BSONSymbol()` in the MongoDB shell.
+- `MinKey`, `MaxKey`, `Code`, `DBRef` and the legacy UUID helpers in MongoDB shell autocomplete.
 
 ### Changed
 
@@ -119,6 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
 - Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
 - `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
+- `$regex` and `$options` objects in MongoDB scripts and **Raw Filter** sent as operator documents, as in mongosh.
+- Whole numbers past 2^53 and `-0` stored as doubles by the MongoDB shell, as mongosh stores them.
 
 ### Removed
 
@@ -210,8 +214,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Trigger** offered on a materialized view.
 - Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type.
 - Structure tab refusing to save a renamed or dropped primary key column.
+- Structure saves that could lose data, and table rebuilds, asking twice for one confirmation, and showing an error after Cancel.
+- Structure tab refusing to save an index or check constraint named like one deleted in the same save.
+- Structure tab refusing every save on a SQLite table with two check constraints of one name.
+- Primary key lost on MySQL and MariaDB when a save replaced the `PRIMARY` index row and changed a column.
+- Structure tab save failing partway when index or check constraint renames swapped names or took a freed one.
+- Clustered index lost on SQL Server when a duplicate of it replaced the original.
+- Structure tab accepting a check constraint named like another in a different letter case.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
+- MongoDB views and `system.*` collections listed as ordinary collections.
+- MongoDB compound index keys out of order, and hashed, text and geospatial indexes shown as B-tree.
+- TTL, partial filter, collation and other index options missing from MongoDB DDL.
+- Index options such as `wildcardProjection` and a 2d index's bounds dropped by `createIndex` in the MongoDB shell.
+- `db.createView` missing from the MongoDB shell.
+- `Double()` and `BSONRegExp()` undefined in the MongoDB shell although autocomplete offers them.
+- `NumberDecimal("NaN")` and `NumberDecimal("Infinity")` refused by the MongoDB shell.
+- Fields named `__proto__` dropped from documents a MongoDB script writes or reads.
+- Error text after a carriage return or line separator left uncommented in Edit View Definition's fallback.
+- Whole numbers from 2^63 up, such as `1e20`, refused by the MongoDB shell as a document MongoDB cannot read.
+- `NumberLong` given a number past 2^53 storing a different integer in the MongoDB shell.
+- Wrong values stored by `NumberInt` and `Timestamp` in the MongoDB shell, such as 12 for `NumberInt("12abc")`.
+- `Int32`, `Long`, `Decimal128` and `Timestamp({ t, i })` missing from the MongoDB shell although autocomplete offers them.
+- MongoDB scripts stopping on a stored decimal `NaN` or a regular expression JavaScript cannot compile.
+- Regular expressions changed when a MongoDB script writes back a document it read.
+- Capped MongoDB collection size shown as 0 in DDL.
 - **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
 - Model list not reloading when the API key changes, leaving the picker empty with no way to retry.
 - Empty model picker, with nothing said, for a local or OpenAI-compatible server answering 200 with an unexpected shape.
@@ -543,6 +570,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB collections could not be created from **New Table…**. (#3131)
 - A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
+- MongoDB inserts from the query editor and the data grid failing on a field named `""`. (#3132)
+- MongoDB filters, validators and pipelines with a `$type` or `$regex` object refused as "not a document MongoDB can read".
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
 - Every window's front tab reloading, and asking to discard its edits, after a row import, a new table or a structure change.
@@ -565,6 +594,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 - Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
+- Code in a MongoDB collection, view or index name running when its DDL is run from a query tab.
 - Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
 - Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
 - Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.
@@ -578,6 +608,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
 - Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
 - Stored MongoDB values and collection names that ran as shell code when a row was edited, duplicated or restored.
+- Server-provided collection, database and index names that could break out of comments and strings in an MQL export. (#3132)
 
 ## [0.75.0] - 2026-09-18
 
