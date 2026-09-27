@@ -34,8 +34,14 @@ internal enum OperationConfirmationPrompt {
     }
 
     internal static func subtitle(of request: OperationConfirmationRequest) -> String {
-        let connection = request.connectionName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let client = clientName(for: request.caller) else {
+        subtitle(connectionName: request.connectionName, caller: request.caller)
+    }
+
+    /// The line under a confirmation's heading, for a sheet that confirms without going through
+    /// the gate's own prompt, the table rebuild review among them.
+    internal static func subtitle(connectionName: String?, caller: OperationCaller) -> String {
+        let connection = connectionName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let client = clientName(for: caller) else {
             guard let connection, !connection.isEmpty else {
                 return String(localized: "Review this before it runs.")
             }
@@ -47,9 +53,12 @@ internal enum OperationConfirmationPrompt {
         return String(format: String(localized: "%1$@ wants to run this on '%2$@'."), client, connection)
     }
 
+    internal static var destructiveDataWarning: String {
+        String(localized: "This may permanently modify or delete data and cannot be undone.")
+    }
+
     internal static func destructiveWarning(of request: OperationConfirmationRequest) -> String? {
-        guard request.isDestructive else { return nil }
-        return String(localized: "This may permanently modify or delete data and cannot be undone.")
+        request.isDestructive ? destructiveDataWarning : nil
     }
 
     /// A rename has no statement to show: the driver builds it from the names, and two engines

@@ -222,22 +222,75 @@ struct MongoScriptCommandBuilderTests {
     @Test("An unnamed index takes the name MongoDB gives it")
     func indexNaming() {
         #expect(
-            MongoScriptCommandBuilder.indexName(keys: "{\"a\":1,\"b\":-1}", options: [:]) == "a_1_b_-1"
+            MongoScriptCommandBuilder.indexName(keys: "{\"a\":1,\"b\":-1}", optionsJson: nil) == "a_1_b_-1"
         )
         #expect(
-            MongoScriptCommandBuilder.indexName(keys: "{\"loc\":\"2dsphere\"}", options: [:]) == "loc_2dsphere"
+            MongoScriptCommandBuilder.indexName(keys: "{\"loc\":\"2dsphere\"}", optionsJson: "{}") == "loc_2dsphere"
         )
-        #expect(MongoScriptCommandBuilder.indexName(keys: "{\"a\":1}", options: ["name": "custom"]) == "custom")
+        #expect(
+            MongoScriptCommandBuilder.indexName(keys: "{\"a\":1}", optionsJson: "{\"name\":\"custom\"}") == "custom"
+        )
+        #expect(
+            MongoScriptCommandBuilder.indexName(keys: "{\"a\":1}", optionsJson: "{\"name\":\"a\\\"b\"}") == "a\"b"
+        )
     }
 
     @Test("createIndex passes the options MongoDB accepts")
     func createIndexOptions() {
         let command = MongoScriptCommandBuilder.createIndex(
-            collection: "orders", keys: "{\"a\":1}", options: ["unique": true, "expireAfterSeconds": 60]
+            collection: "orders", keys: "{\"a\":1}", optionsJson: "{\"unique\": true, \"expireAfterSeconds\": 60}"
         )
         #expect(command.contains("\"createIndexes\": \"orders\""))
         #expect(command.contains("\"unique\": true"))
         #expect(command.contains("\"expireAfterSeconds\": 60"))
+    }
+
+    @Test("Every index option reaches the spec as written, in the order written")
+    func createIndexKeepsEveryOption() throws {
+        let cases: [(keys: String, options: String, spec: String)] = [
+            (
+                "{\"$**\":1}",
+                "{\"wildcardProjection\":{\"zeta\":1,\"alpha\":1}}",
+                "{\"key\": {\"$**\":1}, \"name\": \"$**_1\", \"wildcardProjection\": {\"zeta\":1,\"alpha\":1}}"
+            ),
+            (
+                "{\"p\":\"2d\"}",
+                "{\"bits\":20,\"min\":-500,\"max\":500}",
+                "{\"key\": {\"p\":\"2d\"}, \"name\": \"p_2d\", \"bits\": 20, \"min\": -500, \"max\": 500}"
+            ),
+            (
+                "{\"age\":1}",
+                "{\"partialFilterExpression\":{\"b\":{\"$gt\":1},\"age\":{\"$exists\":true}}}",
+                "{\"key\": {\"age\":1}, \"name\": \"age_1\", \"partialFilterExpression\": {\"b\":{\"$gt\":1},\"age\":{\"$exists\":true}}}"
+            ),
+            (
+                "{\"_fts\":\"text\",\"_ftsx\":1}",
+                "{\"name\":\"t\",\"weights\":{\"b\":2},\"language_override\":\"lang\",\"textIndexVersion\":3}",
+                "{\"key\": {\"_fts\":\"text\",\"_ftsx\":1}, \"name\": \"t\", \"weights\": {\"b\":2}, \"language_override\": \"lang\", \"textIndexVersion\": 3}"
+            )
+        ]
+
+        for testCase in cases {
+            let command = MongoScriptCommandBuilder.createIndex(
+                collection: "people", keys: testCase.keys, optionsJson: testCase.options
+            )
+            #expect(command == "{\"createIndexes\": \"people\", \"indexes\": [\(testCase.spec)]}")
+            _ = try JSONSerialization.jsonObject(with: Data(command.utf8))
+        }
+    }
+
+    @Test("Options that belong to the createIndexes command are sent there, not in the index spec")
+    func createIndexCommandOptions() {
+        let command = MongoScriptCommandBuilder.createIndex(
+            collection: "people",
+            keys: "{\"a\":1}",
+            optionsJson: "{\"maxTimeMS\":5000,\"unique\":true,\"commitQuorum\":\"majority\",\"sparse\":null}"
+        )
+
+        #expect(command == """
+            {"createIndexes": "people", "indexes": [{"key": {"a":1}, "name": "a_1", "unique": true}], \
+            "maxTimeMS": 5000, "commitQuorum": "majority"}
+            """)
     }
 
     @Test("A find for EXPLAIN carries the cursor's own modifiers")
@@ -294,7 +347,9 @@ struct MongoScriptObjectIdTests {
 
     @Test("Two generated ids differ")
     func uniqueness() {
-        #expect(MongoScriptObjectId.generate() != MongoScriptObjectId.generate())
+        let first = MongoScriptObjectId.generate()
+        let second = MongoScriptObjectId.generate()
+        #expect(first != second)
     }
 
     @Test("The leading four bytes are the current time")
