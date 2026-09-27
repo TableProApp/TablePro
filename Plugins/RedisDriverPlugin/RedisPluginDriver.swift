@@ -577,27 +577,28 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let generator = RedisStatementGenerator(
             namespaceName: table,
             columns: columns,
             deleteBatching: redisConnection?.partitionsKeyspace == true ? .perHashSlot : .singleCommand
         )
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
         )
-        guard let conn = redisConnection, conn.supportsDatabaseSelection else { return statements }
+        guard let conn = redisConnection, conn.supportsDatabaseSelection else { return writes }
         return RedisDatabaseTarget.addressing(
-            statements,
+            writes,
             toDatabase: RedisDatabaseIndex.parse(table),
             from: conn.homeDatabase(),
             insideTransaction: conn.supportsTransactions

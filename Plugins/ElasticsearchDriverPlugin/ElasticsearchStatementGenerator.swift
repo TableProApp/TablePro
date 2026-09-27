@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 struct ElasticsearchWriteRequest: Equatable {
@@ -16,7 +15,6 @@ struct ElasticsearchWriteRequest: Equatable {
 }
 
 struct ElasticsearchStatementGenerator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ElasticsearchStatementGenerator")
     static let writeTag = "ELASTICSEARCH_WRITE:"
     private static let refreshQuery = "?refresh=true"
 
@@ -27,64 +25,71 @@ struct ElasticsearchStatementGenerator {
     /// A `nested` column carries the whole array of objects, and its dotted leaves are views of
     /// those same bytes. Writing both makes Elasticsearch expand the dotted key into the object the
     /// array already fills, which it rejects as a mapping conflict, so the array is written once
-    /// through its parent and an edit to a leaf is refused rather than sent.
-    private let nestedLeafColumns: Set<String>
+    /// through its parent and a value typed into a leaf is refused rather than sent. Each leaf maps
+    /// to the outermost array it belongs to, which is the column that writes it.
+    private let nestedParentByLeaf: [String: String]
 
     init(index: String, columns: [String], columnTypeNames: [String]) {
         self.index = index
         self.columns = columns
         self.columnTypeNames = columnTypeNames
-        self.nestedLeafColumns = Self.nestedLeaves(columns: columns, typeNames: columnTypeNames)
+        self.nestedParentByLeaf = Self.nestedParents(columns: columns, typeNames: columnTypeNames)
     }
 
-    private static func nestedLeaves(columns: [String], typeNames: [String]) -> Set<String> {
+    private static func nestedParents(columns: [String], typeNames: [String]) -> [String: String] {
         let parents = zip(columns, typeNames)
             .filter { $0.1 == ElasticsearchMappingFlattener.nestedTypeName }
             .map(\.0)
-        guard !parents.isEmpty else { return [] }
-        return Set(columns.filter { column in
-            parents.contains { column.hasPrefix("\($0).") }
-        })
+        guard !parents.isEmpty else { return [:] }
+        var parentByLeaf: [String: String] = [:]
+        for column in columns {
+            let owners = parents.filter { column.hasPrefix("\($0).") }
+            if let outermost = owners.min(by: { $0.count < $1.count }) {
+                parentByLeaf[column] = outermost
+            }
+        }
+        return parentByLeaf
     }
 
     private var metaColumns: Set<String> { Set(ElasticsearchMappingFlattener.metaColumns) }
 
-    func generateStatements(
+    /// One request per change, each naming the change it writes. A change carrying a value this
+    /// driver cannot send is refused whole, because writing the rest of it would let the save
+    /// succeed and clear the value it left out.
+    func generateRowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])] {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+    ) throws -> [PluginRowWrite] {
+        var writes: [PluginRowWrite] = []
 
         for change in changes {
+            let request: ElasticsearchWriteRequest?
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let statement = generateInsert(for: change, insertedRowData: insertedRowData) {
-                    statements.append(statement)
-                }
+                request = try insertRequest(for: change, insertedRowData: insertedRowData)
             case .update:
-                if let statement = generateUpdate(for: change) {
-                    statements.append(statement)
-                }
+                request = try updateRequest(for: change)
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let statement = generateDelete(for: change) {
-                    statements.append(statement)
-                }
+                request = try deleteRequest(for: change)
+            }
+            if let request {
+                writes.append(PluginRowWrite(statement: Self.encode(request), rowIndices: [change.rowIndex]))
             }
         }
 
-        return statements
+        return writes
     }
 
     // MARK: - INSERT
 
-    private func generateInsert(
+    private func insertRequest(
         for change: PluginRowChange,
         insertedRowData: [Int: [PluginCellValue]]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
+    ) throws -> ElasticsearchWriteRequest {
         var values: [String: PluginCellValue] = [:]
         if let rowData = insertedRowData[change.rowIndex] {
             for (columnIndex, column) in columns.enumerated() where columnIndex < rowData.count {
@@ -96,56 +101,128 @@ struct ElasticsearchStatementGenerator {
             }
         }
 
+        if let reason = unwritableInsertValue(in: change, values: values) {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: reason)
+        }
+
         var document: [String: Any] = [:]
-        for column in columns where !metaColumns.contains(column) && !nestedLeafColumns.contains(column) {
+        for column in columns where !metaColumns.contains(column) && nestedParentByLeaf[column] == nil {
             guard let value = values[column], let text = value.asText else { continue }
             document[column] = jsonValue(text, for: column)
         }
 
-        guard let body = serialize(document) else { return nil }
+        guard let body = serialize(document) else {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.notJSONReason)
+        }
 
         let explicitId = values[ElasticsearchMappingFlattener.idColumn]?.asText
         if let id = explicitId, !id.isEmpty {
-            return encode(.init(method: "PUT", path: docPath(id: id), body: body))
+            return .init(method: "PUT", path: docPath(id: id), body: body)
         }
-        return encode(.init(method: "POST", path: "/\(encodedIndex)/_doc\(Self.refreshQuery)", body: body))
+        return .init(method: "POST", path: "/\(encodedIndex)/_doc\(Self.refreshQuery)", body: body)
+    }
+
+    /// A new row's leaf value reaches the server only inside its array, so one the user typed, one
+    /// whose array is empty, or one that says something other than its array would be dropped.
+    /// Metadata other than `_id` is the server's to set.
+    private func unwritableInsertValue(in change: PluginRowChange, values: [String: PluginCellValue]) -> String? {
+        for cellChange in change.cellChanges where !cellChange.newValue.isNull {
+            let column = cellChange.columnName
+            if column != ElasticsearchMappingFlattener.idColumn, metaColumns.contains(column) {
+                return Self.metadataReason(column)
+            }
+            if let parent = nestedParentByLeaf[column] {
+                return Self.nestedLeafReason(leaf: column, parent: parent)
+            }
+        }
+        for column in columns {
+            guard let parent = nestedParentByLeaf[column], let leaf = values[column], !leaf.isNull else { continue }
+            guard let array = values[parent]?.asText,
+                  Self.sameCell(leaf, projectedLeaf(column, of: parent, arrayText: array)) else {
+                return Self.nestedLeafReason(leaf: column, parent: parent)
+            }
+        }
+        return nil
+    }
+
+    /// What the grid shows for `leaf` once `arrayText` is saved into `parent`, read by the same
+    /// flattener that reads the document back.
+    private func projectedLeaf(_ leaf: String, of parent: String, arrayText: String) -> PluginCellValue {
+        let placed = parent.split(separator: ".").reversed().reduce(jsonValue(arrayText, for: parent)) { inner, key in
+            [String(key): inner]
+        }
+        guard let source = placed as? [String: Any] else { return .null }
+        return ElasticsearchMappingFlattener.flattenSource(source, nestedParents: [parent])[leaf] ?? .null
+    }
+
+    /// Two cells that hold the same JSON value compare equal however it is spaced.
+    private static func sameCell(_ lhs: PluginCellValue, _ rhs: PluginCellValue) -> Bool {
+        guard let left = lhs.asText, let right = rhs.asText else { return lhs.isNull && rhs.isNull }
+        guard let leftValue = parsedJSON(left), let rightValue = parsedJSON(right) else { return left == right }
+        return (leftValue as AnyObject).isEqual(rightValue)
+    }
+
+    private static func parsedJSON(_ text: String) -> Any? {
+        try? JSONSerialization.jsonObject(with: Data(text.utf8), options: .fragmentsAllowed)
     }
 
     // MARK: - UPDATE
 
-    private func generateUpdate(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
+    private func updateRequest(for change: PluginRowChange) throws -> ElasticsearchWriteRequest? {
+        guard !change.cellChanges.isEmpty else { return nil }
         guard let id = documentId(from: change) else {
-            Self.logger.warning("Skipping UPDATE - missing _id")
-            return nil
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.missingIdReason)
         }
 
         var doc: [String: Any] = [:]
-        for cellChange in change.cellChanges where !metaColumns.contains(cellChange.columnName) {
-            if nestedLeafColumns.contains(cellChange.columnName) {
-                Self.logger.warning(
-                    "Skipping UPDATE of nested leaf \(cellChange.columnName, privacy: .public) - edit the parent column"
+        for cellChange in change.cellChanges {
+            let column = cellChange.columnName
+            if metaColumns.contains(column) {
+                throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.metadataReason(column))
+            }
+            if let parent = nestedParentByLeaf[column] {
+                throw PluginRowWriteRefusal(
+                    rowIndex: change.rowIndex, reason: Self.nestedLeafReason(leaf: column, parent: parent)
                 )
-                continue
             }
             if let text = cellChange.newValue.asText {
-                doc[cellChange.columnName] = jsonValue(text, for: cellChange.columnName)
+                doc[column] = jsonValue(text, for: column)
             } else {
-                doc[cellChange.columnName] = NSNull()
+                doc[column] = NSNull()
             }
         }
 
-        guard !doc.isEmpty, let body = serialize(["doc": doc]) else { return nil }
-        return encode(.init(method: "POST", path: "/\(encodedIndex)/_update/\(encodePathComponent(id))\(Self.refreshQuery)", body: body))
+        guard let body = serialize(["doc": doc]) else {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.notJSONReason)
+        }
+        return .init(method: "POST", path: "/\(encodedIndex)/_update/\(encodePathComponent(id))\(Self.refreshQuery)", body: body)
     }
 
     // MARK: - DELETE
 
-    private func generateDelete(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
+    private func deleteRequest(for change: PluginRowChange) throws -> ElasticsearchWriteRequest {
         guard let id = documentId(from: change) else {
-            Self.logger.warning("Skipping DELETE - missing _id")
-            return nil
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.missingIdReason)
         }
-        return encode(.init(method: "DELETE", path: docPath(id: id), body: nil))
+        return .init(method: "DELETE", path: docPath(id: id), body: nil)
+    }
+
+    // MARK: - Refusals
+
+    private static func nestedLeafReason(leaf: String, parent: String) -> String {
+        String(format: String(localized: "'%@' is a field of a nested array. Edit the array in '%@' instead."), leaf, parent)
+    }
+
+    private static func metadataReason(_ column: String) -> String {
+        String(format: String(localized: "'%@' is document metadata and cannot be edited."), column)
+    }
+
+    private static var missingIdReason: String {
+        String(localized: "The document's _id is unknown, so it cannot be addressed.")
+    }
+
+    private static var notJSONReason: String {
+        String(localized: "The new values cannot be written as JSON.")
     }
 
     // MARK: - Helpers
@@ -204,10 +281,6 @@ struct ElasticsearchStatementGenerator {
               let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         else { return nil }
         return String(data: data, encoding: .utf8)
-    }
-
-    private func encode(_ request: ElasticsearchWriteRequest) -> (statement: String, parameters: [PluginCellValue]) {
-        (statement: Self.encode(request), parameters: [])
     }
 
     static func encode(_ request: ElasticsearchWriteRequest) -> String {

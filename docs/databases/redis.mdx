@@ -106,13 +106,15 @@ The grid columns are **Key**, **Type**, **TTL**, **Length**, and **Value**. Valu
 
 A value that is not valid UTF-8, such as a gzip or MessagePack payload, opens in the hex editor instead of as text.
 
-A **Type**, **TTL**, **Length** or **Value** cell is NULL when the server will not say for your user. ACL key patterns do not filter `SCAN`, so a user limited to `~app:*` still sees every key name, and editing **Value** is skipped for a key whose **Type** is NULL.
+A **Type**, **TTL**, **Length** or **Value** cell is NULL when the server will not say for your user. ACL key patterns do not filter `SCAN`, so a user limited to `~app:*` still sees every key name, and a **Value** edit on a key whose **Type** is NULL stops the save.
 
 ### Editing
 
-Editing a **Key** cell runs `RENAME`. Editing a **TTL** cell runs `EXPIRE`, or `PERSIST` when you set it to `-1`; in that column `-1` means no expiry and `-2` means the key is gone. Editing a **Value** cell runs `SET`, and only on a string, since a preview of a hash or list is not the whole structure.
+Editing a **Key** cell runs `RENAME`. Editing a **TTL** cell runs `EXPIRE`, or `PERSIST` when you set it to `-1` or NULL; in that column `-1` means no expiry and `-2` means the key is gone. Editing a **Value** cell runs `SET`, and only on a string, since a preview of a hash or list is not the whole structure.
 
-Change the other types with a command: `HSET myhash field1 "value1"` rewrites one field and leaves the rest alone. Adding a row does follow the type you pick, generating `HSET`, `RPUSH`, `SADD`, `ZADD`, or `SET`.
+Save sends nothing, names the reason and keeps your edits when a row holds an edit these commands cannot make: a **Value** edit on any type but a string, a NULL **Value**, a **Type** edit, or a **TTL** that is not a whole number of seconds above 0.
+
+Change the other types with a command: `HSET myhash field1 "value1"` rewrites one field and leaves the rest alone. Adding a row does follow the type you pick, generating `HSET`, `RPUSH`, `SADD`, `ZADD`, or `SET`; any other type stops the save.
 
 ### Filtering
 

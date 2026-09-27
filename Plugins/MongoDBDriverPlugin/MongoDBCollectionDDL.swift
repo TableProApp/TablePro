@@ -114,15 +114,18 @@ enum MongoDBCollectionDDL {
         return nil
     }
 
-    /// The statement is a JavaScript object literal, and JavaScript lists integer-like keys first in
+    /// The statement is a JavaScript object literal, and JavaScript lists array-index keys first in
     /// ascending order and reads `__proto__` as the prototype rather than as a key, so neither kind of
-    /// name reaches the server where it was written.
-    private static func isReorderedByTheShell(_ name: String) -> Bool {
+    /// name reaches the server where it was written. An array index is an integer from 0 to
+    /// 4294967294 written without a leading zero; a larger one stays where it was written.
+    static func isReorderedByTheShell(_ name: String) -> Bool {
         if name == "__proto__" { return true }
-        guard !name.isEmpty, name.utf8.allSatisfy({ (UInt8(ascii: "0") ... UInt8(ascii: "9")).contains($0) }) else {
+        guard name.utf8.allSatisfy({ (UInt8(ascii: "0") ... UInt8(ascii: "9")).contains($0) }),
+              name == "0" || !name.hasPrefix("0"),
+              let index = UInt32(name) else {
             return false
         }
-        return name == "0" || !name.hasPrefix("0")
+        return index < UInt32.max
     }
 
     // MARK: - Indexes
