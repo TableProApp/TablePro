@@ -137,6 +137,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pre-connect script failures sometimes reported without the script's own error message.
 - Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
+- MongoDB **Write Concern** setting ignored by every write except inserts, data grid saves included.
+- `writeConcern` option ignored by MongoDB shell writes, and `ordered` by `insertMany`.
+- `remove(filter, {justOne: true})` in the MongoDB shell deleting every matching document.
+- MongoDB write that stopped part-way reported without saying documents had already changed.
+- Empty error message when a MongoDB `insertMany` stopped at an oversized document.
 - Save reporting success after leaving out an edit it could not write, such as a new MongoDB document left empty. (#3132)
 - Binary fields missing from duplicated or pasted MongoDB rows. (#3132)
 - Undo of a MongoDB delete refused when the document held binary data. (#3132)
