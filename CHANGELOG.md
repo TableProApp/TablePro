@@ -120,6 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
 - Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
 - `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
+- `$regex` and `$options` objects in MongoDB scripts and **Raw Filter** sent as operator documents, as in mongosh.
 - Whole numbers past 2^53 and `-0` stored as doubles by the MongoDB shell, as mongosh stores them.
 
 ### Removed
@@ -212,6 +213,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Trigger** offered on a materialized view.
 - Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type.
 - Structure tab refusing to save a renamed or dropped primary key column.
+- Structure saves that could lose data, and table rebuilds, asking twice for one confirmation, and showing an error after Cancel.
+- Structure tab refusing to save an index or check constraint named like one deleted in the same save.
+- Structure tab refusing every save on a SQLite table with two check constraints of one name.
+- Primary key lost on MySQL and MariaDB when a save replaced the `PRIMARY` index row and changed a column.
+- Structure tab save failing partway when index or check constraint renames swapped names or took a freed one.
+- Clustered index lost on SQL Server when a duplicate of it replaced the original.
+- Structure tab accepting a check constraint named like another in a different letter case.
 - Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
 - **SQL** offered as an import format on MongoDB.
 - MongoDB views and `system.*` collections listed as ordinary collections.
@@ -561,6 +569,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB collections could not be created from **New Table…**. (#3131)
 - A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
 - MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
+- MongoDB filters, validators and pipelines with a `$type` or `$regex` object refused as "not a document MongoDB can read".
 - **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
 - Executing indicator and Stop button carried over for a moment onto the query tab switched to.
 - Every window's front tab reloading, and asking to discard its edits, after a row import, a new table or a structure change.
@@ -597,6 +606,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server connections set to Required (skip verify) not encrypted past the login.
 - Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
 - Stored MongoDB values and collection names that ran as shell code when a row was edited, duplicated or restored.
+- Server-provided collection, database and index names that could break out of comments and strings in an MQL export. (#3132)
 
 ## [0.75.0] - 2026-09-18
 

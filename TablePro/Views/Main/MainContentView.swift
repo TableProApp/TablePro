@@ -283,6 +283,9 @@ struct MainContentView: View {
                     isPresented: dismissBinding,
                     statements: request.scriptStatements,
                     databaseType: connection.type,
+                    title: request.confirmationTitle,
+                    subtitle: request.confirmationSubtitle(connectionName: connection.name),
+                    showsStatementsVerbatim: request.showsStatementsVerbatim,
                     warning: request.warning,
                     primaryAction: request.runnableAction.map { action in
                         SQLReviewSheet.PrimaryAction(
