@@ -121,6 +121,42 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
     }
 
+    @Test("A tab whose table changed after its rows were fetched asks to load again")
+    func loadsAStaleTabWithRows() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId, rowCount: 5)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
+        coordinator.tabSessionRegistry.recordChange(TableFreshness.Change(extent: .rows, at: .now), for: tabId)
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
+    }
+
+    @Test("A stale tab holding edits is not reloaded behind the user")
+    func skipsAStaleTabWithPendingEdits() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId, rowCount: 1)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
+        tabManager.tabs[idx].pendingChanges.deletedRowIDs = [.existing(0)]
+        coordinator.tabSessionRegistry.recordChange(TableFreshness.Change(extent: .rows, at: .now), for: tabId)
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.pendingLoadTrigger == nil)
+    }
+
     @Test("Returns early when tab has pending edits in the change manager")
     func skipsWhenPendingChangesPresent() {
         let (coordinator, tabManager) = makeCoordinator()

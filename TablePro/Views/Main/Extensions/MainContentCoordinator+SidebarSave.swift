@@ -21,8 +21,10 @@ extension MainContentCoordinator {
         runQuery(viewport: .keepPlace)
     }
 
+    /// Each row keeps which fields it has none of, so a removal is written as one and a value
+    /// typed into a missing field is compared against a field that is not there.
     func sidebarEditStatements(
-        editedFields: [(columnIndex: Int, columnName: String, newValue: String?)]
+        editedFields: [InspectorFieldEdit]
     ) throws -> [ParameterizedStatement] {
         guard let tab = tabManager.selectedTab,
             !selectionState.indices.isEmpty,
@@ -57,10 +59,13 @@ extension MainContentCoordinator {
                         columnIndex: field.columnIndex,
                         columnName: field.columnName,
                         oldValue: oldValue,
-                        newValue: PluginCellValue.fromOptional(field.newValue)
+                        newValue: field.removesField ? .null : PluginCellValue.fromOptional(field.newValue),
+                        oldIsAbsent: resolvedRow.isAbsent(field.columnIndex),
+                        newIsAbsent: field.removesField
                     )
                 },
-                originalRow: originalRow
+                originalRow: originalRow,
+                absentColumns: resolvedRow.absentColumns
             )
         }
 

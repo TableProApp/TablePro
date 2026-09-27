@@ -65,7 +65,7 @@ struct RedisKeySlotHashTagTests {
     @Test("An empty tag falls back to hashing the whole key")
     func emptyTagHashesWholeKey() {
         #expect(RedisKeySlot.slot(for: "somekey{}") != RedisKeySlot.slot(for: ""))
-        #expect(RedisKeySlot.slot(for: "foo{}{bar}") == RedisKeySlot.slot(for: "foo{}{bar}"))
+        #expect(RedisKeySlot.slot(for: "foo{}{bar}") != RedisKeySlot.slot(for: "bar"))
     }
 
     @Test("An unclosed brace is not a tag")
@@ -101,17 +101,17 @@ struct RedisKeySlotCrossSlotTests {
 struct RedisKeySlotGroupingTests {
     @Test("Keys group by slot in the order each slot first appears")
     func firstSeenOrder() {
-        let groups = RedisKeySlot.groupedBySlot(["allowed:1", "{u}a", "forbidden:1", "{u}b"])
+        let groups = RedisKeySlot.groupedBySlot(["allowed:1", "{u}a", "forbidden:1", "{u}b"]) { $0 }
         #expect(groups == [["allowed:1"], ["{u}a", "{u}b"], ["forbidden:1"]])
     }
 
     @Test("A duplicate key stays in its group")
     func keepsDuplicates() {
-        #expect(RedisKeySlot.groupedBySlot(["a", "a", "b"]) == [["a", "a"], ["b"]])
+        #expect(RedisKeySlot.groupedBySlot(["a", "a", "b"]) { $0 } == [["a", "a"], ["b"]])
     }
 
     @Test("No keys make no groups")
     func empty() {
-        #expect(RedisKeySlot.groupedBySlot([]).isEmpty)
+        #expect(RedisKeySlot.groupedBySlot([String]()) { $0 }.isEmpty)
     }
 }

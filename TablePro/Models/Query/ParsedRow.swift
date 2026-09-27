@@ -16,6 +16,9 @@ struct ParsedRow {
     /// Original line number in clipboard (for error reporting)
     let sourceLineNumber: Int
 
+    /// The columns the row has no field for, for an engine that tells a missing field from NULL.
+    var absentColumns: Set<Int> = []
+
     /// Check if row has valid data
     var isValid: Bool {
         !values.isEmpty

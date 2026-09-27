@@ -267,6 +267,9 @@ struct TableStructureView: View {
         .onChange(of: structureChangeManager.hasChanges) { newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
+            if !newValue, session.settleOwedRefetch() {
+                Task { await loadInitialData() }
+            }
         }
         .onChange(of: session.appliedVersion) { _ in
             Task { await refreshAfterApply() }
@@ -279,15 +282,6 @@ struct TableStructureView: View {
             // call reloadData(). Without this, Cmd+Shift+N adds the row to the change
             // manager but the grid never displays it.
             displayVersion += 1
-        }
-        .onReceive(AppCommands.shared.refreshData) { request in
-            guard request.connectionId == connection.id else { return }
-            guard request.reaches(tabScope: scope) else { return }
-            /// A close applying another tab's staged edits broadcasts a refresh for the same
-            /// database. Answering it here would ask this tab whether to discard the edits the user
-            /// has just asked to save, in a sheet queued behind the close.
-            guard coordinator?.isApplyingStagedStructureEdits != true else { return }
-            onRefreshData()
         }
     }
 

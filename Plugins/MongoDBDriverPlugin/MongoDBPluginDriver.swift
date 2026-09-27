@@ -20,6 +20,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
     private var identityKindsByCollection: [String: BsonValueKind] = [:]
+    private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
+    private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -261,7 +263,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let rowCap, MongoDBFindLimitPolicy.isTruncated(rowCount: result.rows.count, rowCap: rowCap) else {
             return result
         }
-        return PluginQueryResult(
+        var capped = PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
             rows: Array(result.rows.prefix(rowCap)),
@@ -270,6 +272,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             isTruncated: true,
             statusMessage: result.statusMessage
         )
+        capped.absentCells = result.absentCells?.filter { $0.key < rowCap }
+        return capped
     }
 
     /// The error a failed statement surfaces, built in one place so the timeout wording and the
@@ -359,7 +363,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             PluginColumnInfo(
                 name: name,
                 dataType: BsonDocumentFlattener.typeName(for: kinds[index], representation: uuidRepresentation),
-                isNullable: name != MongoDBCollectionDDL.idField && schema.field(named: name)?.isRequired != true,
+                isNullable: name != MongoDBCollectionDDL.idField && schema.admitsNull(fieldNamed: name),
                 isPrimaryKey: name == MongoDBCollectionDDL.idField,
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
                 allowedValues: schema.allowedValues[name]
@@ -376,7 +380,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             name: name,
             dataType: field?.columnTypeName(representation: uuidRepresentation)
                 ?? BsonDocumentFlattener.typeName(for: .objectId, representation: uuidRepresentation),
-            isNullable: !isKey && field?.isRequired != true,
+            isNullable: !isKey && schema.admitsNull(fieldNamed: name),
             isPrimaryKey: isKey,
             defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
             allowedValues: schema.allowedValues[name]
@@ -797,20 +801,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = MongoDBStatementGenerator(
-            collectionName: table, columns: columns, columnKinds: columnKinds(for: table),
-            declaredKinds: declaredKinds(for: table), identityKind: identityKind(for: table)
-        )
-        return generator.generateStatements(
+    ) throws -> [PluginRowWrite]? {
+        try writeGenerator(for: table, columns: columns).generateRowWrites(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
         )
@@ -821,13 +822,32 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
-        rows: [[PluginCellValue]]
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = MongoDBStatementGenerator(
-            collectionName: table, columns: columns, columnKinds: columnKinds(for: table),
-            declaredKinds: declaredKinds(for: table), identityKind: identityKind(for: table)
-        )
-        return generator.generateRestore(rows: rows)
+        writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
+    }
+
+    private func writeGenerator(for table: String, columns: [String]) -> MongoDBStatementGenerator {
+        let key = columnKindKey(table)
+        return columnKindLock.withLock {
+            let declared = declaredSchemasByCollection[key] ?? .empty
+            return MongoDBStatementGenerator(
+                collectionName: table,
+                columns: columns,
+                columnKinds: columnKindsByCollection[key] ?? [:],
+                declaredKinds: declared.valueKinds,
+                identityKind: identityKindsByCollection[key],
+                fieldKinds: fieldKindsByCollection[key] ?? .empty,
+                binarySubtypes: binarySubtypesByCollection[key] ?? .empty,
+                declaredBinaryFields: Self.binaryFields(declaredBy: declared),
+                capabilities: { MongoDBCapabilities.parse(self.serverVersion) }
+            )
+        }
+    }
+
+    private static func binaryFields(declaredBy schema: MongoDBCollectionSchema) -> Set<String> {
+        Set(schema.fields.filter { $0.bsonTypes.filter { $0 != "null" } == ["binData"] }.map(\.name))
     }
 
     // MARK: - Streaming
@@ -892,7 +912,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// Hands over a statement that had already run by the time the export asked, rather than
-    /// running it a second time.
+    /// running it a second time. Nested values render the way a streamed cursor renders them, so
+    /// one export never mixes two spellings.
     private func yieldMaterialised(
         _ outcome: MongoScriptStatementResult,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
@@ -902,7 +923,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             startTime: Date(),
             documents: { documents, collection, isTruncated in
                 self.buildPluginResult(
-                    from: documents, startTime: Date(),
+                    from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
                     isTruncated: isTruncated, collection: collection
                 )
             }
@@ -921,12 +942,13 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Result Building
 
     private func buildPluginResult(
-        from documents: [[String: Any]],
+        from read: MongoReadDocuments,
         startTime: Date,
         isTruncated: Bool = false,
         collection: String = "",
         declared: MongoDBCollectionSchema = .empty
     ) -> PluginQueryResult {
+        let documents = read.dictionaries
         if documents.isEmpty {
             return PluginQueryResult(
                 columns: [], columnTypeNames: [],
@@ -942,21 +964,26 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
         rememberIdentityKind(of: documents, collection: collection)
         rememberFieldPathKinds(from: documents, collection: collection)
+        rememberBinarySubtypes(of: documents, collection: collection)
+        rememberFieldKinds(of: documents, collection: collection)
         let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
         let columns = sampled + unseen
         let kinds = sampledKinds + unseen.map { declared.field(named: $0)?.valueKind ?? .null }
         let typeNames = sampledKinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
             + unseen.map { declaredTypeName(of: $0, in: declared) }
         let rows = BsonDocumentFlattener.flatten(
-            documents: documents, columns: columns, kinds: kinds, representation: uuidRepresentation
+            documents: documents, columns: columns, kinds: kinds,
+            representation: uuidRepresentation, storedTexts: read.texts
         )
 
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: columns, columnTypeNames: typeNames,
             rows: rows, rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime),
             isTruncated: isTruncated
         )
+        result.absentCells = BsonDocumentFlattener.absentCells(of: documents, columns: columns)
+        return result
     }
 
     // MARK: - Helpers
@@ -1002,9 +1029,32 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columnKindLock.withLock { columnKindsByCollection[key] = byName }
     }
 
-    private func columnKinds(for collection: String) -> [String: BsonValueKind] {
+    /// Added to rather than replaced, so a value keeps its subtype after another page or another tab
+    /// of the same collection is read, and a value seen with two subtypes stays ambiguous. Past the
+    /// cap the collection starts over from this page: a value no longer found is refused, not guessed.
+    private func rememberBinarySubtypes(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let page = MongoDBBinarySubtypes.recording(documents)
+        guard !page.isEmpty else { return }
         let key = columnKindKey(collection)
-        return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
+        columnKindLock.withLock {
+            let merged = (binarySubtypesByCollection[key] ?? .empty).merging(page)
+            binarySubtypesByCollection[key] = merged.count > Self.binarySubtypeLimit ? page : merged
+        }
+    }
+
+    private static let binarySubtypeLimit = 50_000
+
+    /// Added to rather than replaced, for the same reason as the binary subtypes: a string an earlier
+    /// page held still makes a text that opens with `{` ambiguous after a later page held none.
+    private func rememberFieldKinds(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let page = MongoDBFieldKinds.recording(documents, representation: uuidRepresentation)
+        guard !page.isEmpty else { return }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock {
+            fieldKindsByCollection[key] = (fieldKindsByCollection[key] ?? .empty).merging(page)
+        }
     }
 
     private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
@@ -1014,16 +1064,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
         let key = columnKindKey(collection)
         columnKindLock.withLock { identityKindsByCollection[key] = kind }
-    }
-
-    private func identityKind(for collection: String) -> BsonValueKind? {
-        let key = columnKindKey(collection)
-        return columnKindLock.withLock { identityKindsByCollection[key] }
-    }
-
-    private func declaredKinds(for collection: String) -> [String: BsonValueKind] {
-        let key = columnKindKey(collection)
-        return columnKindLock.withLock { declaredSchemasByCollection[key]?.valueKinds ?? [:] }
     }
 
     /// Recorded from the documents a browse already fetched, on the session driver that will
