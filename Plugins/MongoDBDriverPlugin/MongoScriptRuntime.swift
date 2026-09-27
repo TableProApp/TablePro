@@ -84,7 +84,9 @@ final class MongoScriptRuntime: @unchecked Sendable {
                     do {
                         return try self.run(statement, on: engine)
                     } catch {
-                        throw MongoScriptStatementFailure.carrying(error, databaseSwitch: engine.host.databaseSwitch)
+                        throw MongoScriptStatementFailure.carrying(
+                            error, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes
+                        )
                     }
                 })
             }
@@ -106,9 +108,12 @@ final class MongoScriptRuntime: @unchecked Sendable {
                 watchForSilence(engine: engine, gate: gate)
                 return
             }
-            guard gate.finish(with: .failure(MongoDBError(
-                code: 0, message: MongoScriptText.timedOut(Self.silenceLimit)
-            ))) else { return }
+            let abandoned = MongoScriptStatementFailure.carrying(
+                MongoDBError(code: 0, message: MongoScriptText.timedOut(Self.silenceLimit)),
+                databaseSwitch: nil,
+                writes: engine.host.writes
+            )
+            guard gate.finish(with: .failure(abandoned)) else { return }
             poison(engine)
         }
     }
@@ -149,7 +154,9 @@ final class MongoScriptRuntime: @unchecked Sendable {
                     do {
                         return try self.runForExport(statement, on: engine)
                     } catch {
-                        throw MongoScriptStatementFailure.carrying(error, databaseSwitch: engine.host.databaseSwitch)
+                        throw MongoScriptStatementFailure.carrying(
+                            error, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes
+                        )
                     }
                 })
             }
@@ -171,7 +178,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
         if let value, value.isObject,
            let handle = value.objectForKeyedSubscript("__handle"), handle.isNumber,
            let plan = engine.host.cursorPlan(handle: Int(handle.toInt32())) {
-            return .cursor(plan)
+            return .cursor(plan, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes)
         }
 
         var result = MongoScriptStatementResult()
@@ -340,6 +347,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
     /// The shell answers a write with the object mongosh answers with, so the count the result bar
     /// reports has to be read back out of it rather than counted from the grid's one row.
     private static func rowsAffected(in json: String) -> Int {
+        guard MongoScriptJson.member(of: json, key: "acknowledged") != "false" else { return 0 }
         // Summed, not first-wins: a `bulkWrite` that mixes an insert with a delete carries two
         // positive counters and affected both rows.
         let total = ["modifiedCount", "deletedCount", "insertedCount", "upsertedCount"]
@@ -354,6 +362,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
         if exception.objectForKeyedSubscript("isMongoError")?.toBool() == true {
             let message = exception.objectForKeyedSubscript("message")?.toString() ?? ""
             if message == MongoScriptText.cancelled { return CancellationError() }
+            if let failedWrite = MongoScriptContext.writeFailure(in: exception) { return failedWrite }
             let code = UInt32(max(0, exception.objectForKeyedSubscript("code")?.toInt32() ?? 0))
             return MongoDBError(code: code, message: message)
         }
