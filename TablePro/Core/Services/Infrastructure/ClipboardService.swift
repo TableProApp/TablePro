@@ -11,6 +11,26 @@ import UniformTypeIdentifiers
 struct GridRowsClipboardPayload: Codable, Equatable {
     let columns: [String]
     let rows: [[PluginCellValue]]
+    /// Row index to the columns that row has no field for, so a paste leaves them missing.
+    var absentCells: [Int: Set<Int>]?
+}
+
+extension GridRowsClipboardPayload {
+    /// Rows copied out of a grid, in the columns the copy carries. Every copy builds its payload
+    /// here, so the fields a row has none of travel with its values rather than each copy path
+    /// deciding for itself whether to carry them.
+    init(columns: [String], copying copiedRows: [Row], projection: VisibleColumnProjection) {
+        var absentCells: [Int: Set<Int>] = [:]
+        for (index, row) in copiedRows.enumerated() {
+            let absent = projection.absentColumns(row.absentColumns)
+            if !absent.isEmpty { absentCells[index] = absent }
+        }
+        self.init(
+            columns: columns,
+            rows: copiedRows.map { projection.values(Array($0.values)) },
+            absentCells: absentCells.isEmpty ? nil : absentCells
+        )
+    }
 }
 
 protocol ClipboardProvider {

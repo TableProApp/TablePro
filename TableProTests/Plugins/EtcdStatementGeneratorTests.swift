@@ -6,14 +6,14 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 // MARK: - INSERT
 
 struct EtcdStatementGeneratorInsertTests {
     @Test("Basic insert generates put command")
-    func basicInsert() {
+    func basicInsert() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -30,7 +30,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["mykey", "myvalue", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -42,7 +42,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert with lease generates put --lease")
-    func insertWithLease() {
+    func insertWithLease() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -59,7 +59,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["mykey", "myvalue", nil, nil, nil, "12345"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -71,7 +71,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert with prefix prepending")
-    func insertWithPrefixPrepending() {
+    func insertWithPrefixPrepending() throws {
         let gen = EtcdStatementGenerator(
             prefix: "/app/config/",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -88,7 +88,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["setting1", "value1", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -100,7 +100,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert with key already containing prefix (no double prefix)")
-    func insertKeyAlreadyHasPrefix() {
+    func insertKeyAlreadyHasPrefix() throws {
         let gen = EtcdStatementGenerator(
             prefix: "/app/",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -118,7 +118,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["/app/mykey", "value", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -130,7 +130,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert with absolute key (leading slash) skips prefix prepend")
-    func insertAbsoluteKey() {
+    func insertAbsoluteKey() throws {
         let gen = EtcdStatementGenerator(
             prefix: "something/",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -147,7 +147,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["/absolute/key", "value", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -158,7 +158,7 @@ struct EtcdStatementGeneratorInsertTests {
         #expect(results[0].statement == "put /absolute/key value")
     }
 
-    @Test("Insert with empty key is skipped")
+    @Test("Insert with empty key is refused")
     func insertEmptyKey() {
         let gen = EtcdStatementGenerator(
             prefix: "",
@@ -176,17 +176,17 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["", "value", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: insertedData,
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "A new key needs a name.")) {
+            try gen.generateRowWrites(
+                from: [change],
+                insertedRowData: insertedData,
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
     }
 
-    @Test("Insert with nil key is skipped")
+    @Test("Insert with nil key is refused")
     func insertNilKey() {
         let gen = EtcdStatementGenerator(
             prefix: "",
@@ -204,18 +204,18 @@ struct EtcdStatementGeneratorInsertTests {
             0: [nil, "value", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: insertedData,
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "A new key needs a name.")) {
+            try gen.generateRowWrites(
+                from: [change],
+                insertedRowData: insertedData,
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
     }
 
     @Test("Insert with nil value uses empty string")
-    func insertNilValue() {
+    func insertNilValue() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -232,7 +232,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["mykey", nil, nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -244,7 +244,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert with lease=0 omits --lease flag")
-    func insertLeaseZero() {
+    func insertLeaseZero() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -261,7 +261,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["mykey", "value", nil, nil, nil, "0"]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -273,7 +273,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert from cell changes (no insertedRowData)")
-    func insertFromCellChanges() {
+    func insertFromCellChanges() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -289,7 +289,7 @@ struct EtcdStatementGeneratorInsertTests {
             originalRow: nil
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -301,7 +301,7 @@ struct EtcdStatementGeneratorInsertTests {
     }
 
     @Test("Insert with value containing spaces is quoted")
-    func insertValueWithSpaces() {
+    func insertValueWithSpaces() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -318,7 +318,7 @@ struct EtcdStatementGeneratorInsertTests {
             0: ["mykey", "hello world", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -334,7 +334,7 @@ struct EtcdStatementGeneratorInsertTests {
 
 struct EtcdStatementGeneratorUpdateTests {
     @Test("Value change generates put with original key")
-    func valueChange() {
+    func valueChange() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -349,7 +349,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["mykey", "oldval", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -361,7 +361,7 @@ struct EtcdStatementGeneratorUpdateTests {
     }
 
     @Test("Key rename generates put then del")
-    func keyRename() {
+    func keyRename() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -376,7 +376,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["oldkey", "myvalue", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -389,7 +389,7 @@ struct EtcdStatementGeneratorUpdateTests {
     }
 
     @Test("Value and key change combined")
-    func valueAndKeyChange() {
+    func valueAndKeyChange() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -405,7 +405,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["oldkey", "oldval", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -418,7 +418,7 @@ struct EtcdStatementGeneratorUpdateTests {
     }
 
     @Test("Lease change only generates put with --lease")
-    func leaseChangeOnly() {
+    func leaseChangeOnly() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -433,7 +433,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["mykey", "myvalue", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -445,7 +445,7 @@ struct EtcdStatementGeneratorUpdateTests {
     }
 
     @Test("Value and lease change combined")
-    func valueAndLeaseChange() {
+    func valueAndLeaseChange() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -461,7 +461,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["mykey", "oldval", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -472,7 +472,7 @@ struct EtcdStatementGeneratorUpdateTests {
         #expect(results[0].statement == "put mykey newval --lease=555")
     }
 
-    @Test("Update with empty new key is skipped")
+    @Test("Update with empty new key is refused")
     func updateEmptyNewKey() {
         let gen = EtcdStatementGenerator(
             prefix: "",
@@ -488,18 +488,18 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["mykey", "value", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
-            from: [change],
-            insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
-        )
-
-        #expect(results.isEmpty)
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "A key needs a name.")) {
+            try gen.generateRowWrites(
+                from: [change],
+                insertedRowData: [:],
+                deletedRowIndices: [],
+                insertedRowIndices: []
+            )
+        }
     }
 
     @Test("Update with no cell changes produces nothing")
-    func updateNoCellChanges() {
+    func updateNoCellChanges() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -512,7 +512,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["mykey", "value", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -523,7 +523,7 @@ struct EtcdStatementGeneratorUpdateTests {
     }
 
     @Test("Update with lease set to 0 omits --lease flag")
-    func updateLeaseToZero() {
+    func updateLeaseToZero() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -538,7 +538,7 @@ struct EtcdStatementGeneratorUpdateTests {
             originalRow: ["mykey", "myvalue", "1", "1", "1", "12345"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -554,7 +554,7 @@ struct EtcdStatementGeneratorUpdateTests {
 
 struct EtcdStatementGeneratorDeleteTests {
     @Test("Basic delete generates del command")
-    func basicDelete() {
+    func basicDelete() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -567,7 +567,7 @@ struct EtcdStatementGeneratorDeleteTests {
             originalRow: ["mykey", "myvalue", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [0],
@@ -579,7 +579,7 @@ struct EtcdStatementGeneratorDeleteTests {
     }
 
     @Test("Delete with key containing spaces is quoted")
-    func deleteKeyWithSpaces() {
+    func deleteKeyWithSpaces() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -592,7 +592,7 @@ struct EtcdStatementGeneratorDeleteTests {
             originalRow: ["my key", "value", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [0],
@@ -604,7 +604,7 @@ struct EtcdStatementGeneratorDeleteTests {
     }
 
     @Test("Delete not in deletedRowIndices is skipped")
-    func deleteNotInIndices() {
+    func deleteNotInIndices() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -617,7 +617,7 @@ struct EtcdStatementGeneratorDeleteTests {
             originalRow: ["mykey", "value", "1", "1", "1", "0"]
         )
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: [:],
             deletedRowIndices: [],
@@ -632,7 +632,7 @@ struct EtcdStatementGeneratorDeleteTests {
 
 struct EtcdStatementGeneratorBatchTests {
     @Test("Multiple changes in one batch")
-    func multipleBatch() {
+    func multipleBatch() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -665,7 +665,7 @@ struct EtcdStatementGeneratorBatchTests {
             0: ["newkey", "newval", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [insertChange, updateChange, deleteChange],
             insertedRowData: insertedData,
             deletedRowIndices: [2],
@@ -676,10 +676,11 @@ struct EtcdStatementGeneratorBatchTests {
         #expect(results[0].statement == "put newkey newval")
         #expect(results[1].statement == "put existingkey new")
         #expect(results[2].statement == "del delkey")
+        #expect(results.map(\.rowIndices) == [[0], [1], [2]])
     }
 
     @Test("Insert not in insertedRowIndices is skipped")
-    func insertNotInIndices() {
+    func insertNotInIndices() throws {
         let gen = EtcdStatementGenerator(
             prefix: "",
             columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
@@ -696,7 +697,7 @@ struct EtcdStatementGeneratorBatchTests {
             5: ["key", "val", nil, nil, nil, nil]
         ]
 
-        let results = gen.generateStatements(
+        let results = try gen.generateRowWrites(
             from: [change],
             insertedRowData: insertedData,
             deletedRowIndices: [],
@@ -704,5 +705,96 @@ struct EtcdStatementGeneratorBatchTests {
         )
 
         #expect(results.isEmpty)
+    }
+}
+
+// MARK: - Values a put cannot carry
+
+struct EtcdStatementGeneratorRefusalTests {
+    private static let columns = ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
+    private static let original: [PluginCellValue] = ["mykey", "oldval", "3", "1", "7", ""]
+
+    private func writes(
+        _ cells: [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)],
+        original: [PluginCellValue] = EtcdStatementGeneratorRefusalTests.original
+    ) throws -> [PluginRowWrite] {
+        try EtcdStatementGenerator(prefix: "", columns: Self.columns).generateRowWrites(
+            from: [PluginRowChange(rowIndex: 0, type: .update, cellChanges: cells, originalRow: original)],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+    }
+
+    /// An empty value reads back as a NULL cell, so NULL is how the grid spells one.
+    @Test("A Value set to NULL writes an empty value, never the old one")
+    func nullValueWritesEmpty() throws {
+        let written = try writes([(columnIndex: 1, columnName: "Value", oldValue: "oldval", newValue: .null)])
+        #expect(written.map(\.statement) == ["put mykey \"\""])
+        #expect(written.map(\.rowIndices) == [[0]])
+    }
+
+    @Test("A Lease set to NULL on its own removes the lease")
+    func nullLeaseDetaches() throws {
+        let written = try writes(
+            [(columnIndex: 5, columnName: "Lease", oldValue: "7b", newValue: .null)],
+            original: ["mykey", "oldval", "3", "1", "7", "7b"]
+        )
+        #expect(written.map(\.statement) == ["put mykey oldval"])
+    }
+
+    @Test("An edit to a column etcd sets is refused, even beside a Value edit it could write")
+    func serverOwnedColumnRefused() {
+        let refusal = PluginRowWriteRefusal(rowIndex: 0, reason: "'Version' is set by etcd and cannot be edited.")
+        #expect(throws: refusal) {
+            try writes([
+                (columnIndex: 1, columnName: "Value", oldValue: "oldval", newValue: "newval"),
+                (columnIndex: 2, columnName: "Version", oldValue: "3", newValue: "4"),
+            ])
+        }
+    }
+
+    @Test("A key renamed to NULL is refused rather than kept")
+    func keyRenamedToNullRefused() {
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "A key needs a name.")) {
+            try writes([
+                (columnIndex: 0, columnName: "Key", oldValue: "mykey", newValue: .null),
+                (columnIndex: 1, columnName: "Value", oldValue: "oldval", newValue: "newval"),
+            ])
+        }
+    }
+
+    @Test("A revision typed into a new row is refused, and a new row's NULL revision is not")
+    func insertRevisionRefused() throws {
+        let generator = EtcdStatementGenerator(prefix: "", columns: Self.columns)
+        let typed = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 4, columnName: "ModRevision", oldValue: .null, newValue: "9")],
+            originalRow: nil
+        )
+        let refusal = PluginRowWriteRefusal(rowIndex: 0, reason: "'ModRevision' is set by etcd and cannot be edited.")
+        #expect(throws: refusal) {
+            try generator.generateRowWrites(
+                from: [typed],
+                insertedRowData: [0: ["k", "v", nil, nil, "9", nil]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+
+        let cleared = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 4, columnName: "ModRevision", oldValue: "9", newValue: .null)],
+            originalRow: nil
+        )
+        let written = try generator.generateRowWrites(
+            from: [cleared],
+            insertedRowData: [0: ["k", "v", nil, nil, nil, nil]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        #expect(written.map(\.statement) == ["put k v"])
     }
 }

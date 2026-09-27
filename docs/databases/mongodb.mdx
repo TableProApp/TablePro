@@ -73,13 +73,25 @@ Over an SSH tunnel only the first host is used and the rest of the list is dropp
 
 ## Browsing collections
 
-Click a collection to page through its documents. The columns are the fields in the documents on screen, then any field the collection's `$jsonSchema` validator declares that none of them hold, so an empty collection still shows the fields it was created with. ObjectIds render as strings, arrays and nested objects as formatted JSON.
+Click a collection to page through its documents. The columns are the fields in the documents on screen, then any field the collection's `$jsonSchema` validator declares that none of them hold, so an empty collection still shows the fields it was created with. A top-level ObjectId renders as its hex string. A nested object or array shows as Extended JSON in the order it is stored: `{"$oid": "…"}`, `{"$date": "2024-05-01T10:00:00.123Z"}`, `{"$numberLong": "5"}`, and `3.0` for a double that holds a whole number.
 
 An edited cell keeps its field's type. A date stays a date, whether typed as `2024-01-02T03:04:05Z`, as `2024-01-02`, or picked in the date picker, which writes your local time. An ObjectId stays an ObjectId, an integer past 2^53 is sent as a 64-bit integer, and a field the validator declares as `string` is written as text even when it reads `123` or `true`. Where the grid has no type to go on, `123` is a number and `{"a": 1}` a document; text that only looks like JSON is written as a string.
+
+Editing a nested object or array writes only the paths that changed, such as `address.city` or `tags.1`, so every other value in it keeps its type and its place. Adding two keys at once, reordering keys, or changing an array's length writes the whole value instead. A binary cell keeps its BSON subtype when its bytes are edited, and a duplicated or pasted row keeps its binary fields.
+
+A field whose own name contains a dot, starts with `$` or is `__proto__` is written with `$setField`, which needs MongoDB 5.0 or later. On an older server the save is refused and nothing is sent.
 
 The filter bar's column picker lists paths inside nested objects and arrays of objects, so `customer.country` and `items.sku` filter directly; a row on an array field chooses **any element** or **same element**, which makes one array entry satisfy every row set to it. See [Filtering](/features/filtering#nested-fields). A field name containing a literal dot is left out of the picker, since MongoDB reads a dot as a path separator; reach it with `$getField` inside `$expr`.
 
 The Structure tab lists a collection's indexes; drop one from a query tab with `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
+
+### Missing fields and null
+
+A field a document does not have reads **No Field**; a field holding null reads NULL. **Set Value > NULL** stores `null` and keeps the field. To delete a field, right-click the cell and choose **Remove Field**, or choose it from the value menu of the field in the inspector; saving sends `$unset`. A validator that lists the field in `required` refuses the save with `Document failed validation`.
+
+A new row starts with every field missing, and only the cells you fill in are written, so a row saved untouched inserts a document holding only a generated `_id`. **Duplicate** and **Paste** keep which fields were missing and which held null. Pasted text carries no such distinction, so a `NULL` in it leaves the field out. Undo, discarding, and [restoring a save](/features/change-tracking#restoring-a-save) put a removed field back and take out a field that was filled in. A restore treats a field removed or added since the save as **Changed since the save**, and leaves that document alone.
+
+**Set Value > NULL** appears only where the validator takes null: the field's type lists `null` or is not declared, and any `enum` on it lists `null` too. A rule over the whole document, such as a top-level `anyOf` or a query operator beside `$jsonSchema`, hides it on every field. A validator set to `validationAction: "warn"` hides it on none. The filter bar's **is NULL** matches a field holding null and a missing field alike, as `{field: null}` does in `mongosh`. To find only documents that lack a field, run `db.users.find({nickname: {$exists: false}})` in a query tab.
 
 ### Binary UUIDs
 
@@ -219,8 +231,12 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 
 ## Limitations
 
-- A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
-- `_id` is read-only in the grid and in **Edit Document…**, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
+- A row with no `_id` cannot be updated or deleted. The save is refused rather than matched on the remaining fields, and every change stays pending. Keep `_id` in the projection so every row carries one.
+- A binary value keeps the subtype it was read with. Bytes typed into a new row are saved as subtype 0 where the validator declares the field `binData`.
+- Other bytes refuse the save when their subtype was never read, or was read as two different ones: bytes typed into an existing document, pasted from another collection, or put back by Data Rewind after TablePro restarts. Write that value with a query.
+- A field holding text in some documents and objects or arrays in others takes no value that reads as JSON from the grid, since it could be either type: the save is refused. Write it with a query.
+- A new row, duplicate or paste cannot hold a field named `__proto__`, or an empty field name at any depth: the save is refused. Use **Remove Field** on that cell, save, then set it on the saved document.
+- `_id` is read-only in the grid, the row inspector and **Edit Document…**, and a row added with **Add Row** is inserted without one so the server generates it. To choose your own, use **Insert Document…**.
 - **Edit Document…** opens a message instead of the text for a document it cannot write back exactly: a top-level field starting with `$`, a repeated field name, a subdocument shaped like `{"$numberInt": "5"}`, more than 28 levels of nesting, or a guarded save over 16 MB, which a document made mostly of numbers reaches at about 5 MB. Change such a document with `updateOne` in a query tab.
 - The server replaces a top-level `Timestamp(0, 0)` with the current time whenever a whole document is written, so **Insert Document…** stores the time there and **Edit Document…** refuses a document holding one. `$set` in a query tab keeps it.
 - **Edit Document…** also refuses a document holding a NaN, double or decimal, or JavaScript code with a scope. Change such a document with `updateOne` in a query tab.
@@ -233,7 +249,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
 - GridFS buckets are not browsable, and change streams are unsupported.
 - A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
-- Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+- Field names that are whole numbers up to 4294967294 (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them. A nested object with such a key after another key, or with a key named `__proto__`, refuses the save when it is duplicated or written whole. Use **Insert Document…** or a query for it.
 
 ## Troubleshooting
 

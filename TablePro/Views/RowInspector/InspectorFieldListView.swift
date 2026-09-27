@@ -17,6 +17,10 @@ internal struct InspectorFieldListView: View {
     internal let databaseType: DatabaseType
     internal let userDefinedTypeScope: DatabaseScope?
     internal var offersDatabaseValues = true
+
+    private var offersFieldRemoval: Bool {
+        offersDatabaseValues && PluginManager.shared.supportsFieldRemoval(for: databaseType)
+    }
     internal var onPopOut: ((FieldEditState, String, FieldEditorKind) -> Void)?
 
     @State private var searchText = ""
@@ -153,6 +157,9 @@ internal struct InspectorFieldListView: View {
             onSetDefault: { editState.setFieldToDefault(at: field.columnIndex) },
             onSetEmpty: { editState.setFieldToEmpty(at: field.columnIndex) },
             onSetFunction: { editState.setFieldToFunction(at: field.columnIndex, function: $0) },
+            onRemoveField: offersFieldRemoval && !field.isSchemaField
+                ? { editState.removeField(at: field.columnIndex) }
+                : nil,
             onToggleExpand: FieldEditorContent.canExpand(kind: kind, state: FieldValueState.resolve(field))
                 ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
                 : nil,

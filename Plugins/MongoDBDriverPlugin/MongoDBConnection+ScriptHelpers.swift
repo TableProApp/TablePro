@@ -20,21 +20,17 @@ struct MongoScriptDocumentBatch: Sendable {
 
     var jsonArray: String { "[\(json.joined(separator: ","))]" }
 
-    var dictionaries: [[String: Any]] {
-        readRows().map(\.fields)
-    }
-
-    /// Each document read once, with its locator taken from the same text, so a document that
-    /// cannot be read drops out of both and the two stay in step.
-    func readRows() -> [(fields: [String: Any], locator: String?)] {
-        json.compactMap { document in
+    var readDocuments: MongoReadDocuments {
+        var dictionaries: [[String: Any]] = []
+        var texts: [String] = []
+        for document in json {
             guard let data = document.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data),
-                  let dictionary = object as? [String: Any] else { return nil }
-            let fields = MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary
-            let locator = holdsStoredDocuments ? MongoDocumentIdentity.locator(inDocument: document) : nil
-            return (fields, locator)
+                  let dictionary = object as? [String: Any] else { continue }
+            dictionaries.append(MongoDBConnection.unwrapExtendedJson(dictionary) as? [String: Any] ?? dictionary)
+            texts.append(document)
         }
+        return MongoReadDocuments(dictionaries: dictionaries, texts: texts)
     }
 }
 

@@ -96,6 +96,20 @@ internal final class StructureEditingSession: ObservableObject {
         StructureTabAvailability.tabs(for: connection.type, serverSupport: serverSupport)
     }
 
+    /// What a mount fetches: the sub-tabs the change manager is baselined from, then the one the
+    /// user left selected. A mount does not change the selection, so nothing else fetches that one,
+    /// and after `markStructureStale` or an apply it would go on showing the object as it was.
+    internal var tabsFetchedOnMount: [StructureTab] {
+        var tabs: [StructureTab] = [.columns, .indexes, .foreignKeys]
+        if availableTabs.contains(.checkConstraints) {
+            tabs.append(.checkConstraints)
+        }
+        if !tabs.contains(selectedTab) {
+            tabs.append(selectedTab)
+        }
+        return tabs
+    }
+
     /// What the bottom bar offers while this tab is showing its structure.
     ///
     /// Keyed by tab through the session, so two structure tabs cannot answer for each other. The
@@ -151,6 +165,37 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal func markApplied() {
         appliedVersion += 1
+    }
+
+    /// A change made elsewhere while edits were staged here. Fetching it would re-baseline the change
+    /// manager and discard the edits without asking, so it waits for them to go. An apply fetches
+    /// everything again, which answers it; an undo or a discard leaves it to `settleOwedRefetch`.
+    internal private(set) var owesRefetch = false
+
+    /// The object changed outside this editor, so the next mount fetches it again. A session holding
+    /// staged edits keeps them and the baseline they were made against, and owes the fetch instead.
+    internal func markStructureStale() {
+        guard !changeManager.hasChanges else {
+            owesRefetch = true
+            return
+        }
+        markEveryTabStale()
+        hasLoaded = false
+    }
+
+    /// Answers a change owed from while edits were staged, once they are gone. True when it did, and
+    /// the structure on screen, if any, has to be fetched again now.
+    @discardableResult
+    internal func settleOwedRefetch() -> Bool {
+        guard owesRefetch, !changeManager.hasChanges else { return false }
+        markStructureStale()
+        return true
+    }
+
+    /// Every sub-tab is fetched again from here, which answers an owed change too.
+    internal func markEveryTabStale() {
+        tabData.markAllStale()
+        owesRefetch = false
     }
 
     internal func reloadConcurrentRefreshAvailability(

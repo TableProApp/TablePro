@@ -122,6 +122,7 @@ extension MainContentCoordinator {
         isEditable: Bool,
         metadata: ParsedSchemaMetadata?,
         hasSchema: Bool,
+        read: TableFreshness.Read,
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
@@ -130,7 +131,8 @@ extension MainContentCoordinator {
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
         serverOutput: PluginServerOutput = .none,
-        rowLocators: [String?]? = nil
+        rowLocators: [String?]? = nil,
+        absentCells: [Int: Set<Int>] = [:]
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -144,6 +146,7 @@ extension MainContentCoordinator {
             isEditable: isEditable,
             metadata: metadata,
             hasSchema: hasSchema,
+            read: read,
             sql: sql,
             connection: conn,
             isTruncated: isTruncated,
@@ -152,7 +155,8 @@ extension MainContentCoordinator {
             timing: timing,
             viewport: viewport,
             serverOutput: serverOutput,
-            rowLocators: rowLocators
+            rowLocators: rowLocators,
+            absentCells: absentCells
         )
     }
 

@@ -135,4 +135,36 @@ struct FieldValueStateTests {
         #expect(FieldPickerSentinel.isSentinel(FieldPickerSentinel.defaultValue))
         #expect(FieldPickerSentinel.isSentinel(FieldPickerSentinel.multiple))
     }
+
+    @Test("Choosing a row that only says where the field stands writes nothing")
+    func stateRowsWriteNothing() {
+        for tag in [FieldPickerSentinel.absent, FieldPickerSentinel.multiple] {
+            var written: [String] = []
+            var commands = 0
+            FieldPickerSentinel.choose(tag, onSetNull: { commands += 1 }, onSetDefault: { commands += 1 }) {
+                written.append($0)
+            }
+            #expect(written.isEmpty)
+            #expect(commands == 0)
+        }
+    }
+
+    @Test("Choosing NULL, DEFAULT or a value does what it names")
+    func commandsAndValuesAreRouted() {
+        var calls: [String] = []
+        let choose = { (tag: String) in
+            FieldPickerSentinel.choose(
+                tag,
+                onSetNull: { calls.append("null") },
+                onSetDefault: { calls.append("default") },
+                onValue: { calls.append("value \($0)") }
+            )
+        }
+
+        choose(FieldPickerSentinel.null)
+        choose(FieldPickerSentinel.defaultValue)
+        choose("1")
+
+        #expect(calls == ["null", "default", "value 1"])
+    }
 }

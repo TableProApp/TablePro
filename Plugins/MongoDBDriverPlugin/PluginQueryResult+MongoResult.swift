@@ -3,9 +3,9 @@ import TableProPluginKit
 
 /// The copies the MongoDB driver makes of a result on its way to the grid.
 ///
-/// Every copy goes through `rebuilt`, which carries the column metadata, the timing and the row
-/// locators across. Rebuilding field by field is how a copy used to drop the timing, and dropping
-/// the locators would leave every row of a table uneditable without a word.
+/// Every copy goes through `rebuilt`, which carries the column metadata, the timing, the row
+/// locators and the absent cells across. Rebuilding field by field is how a copy used to drop the
+/// timing, and dropping the locators would leave every row of a table uneditable without a word.
 extension PluginQueryResult {
     func withRowsAffected(_ count: Int) -> PluginQueryResult {
         guard count != rowsAffected else { return self }
@@ -28,6 +28,7 @@ extension PluginQueryResult {
         guard rows.count > rowCap else { return self }
         var result = rebuilt(rows: Array(rows.prefix(max(rowCap, 0))), isTruncated: true)
         result.rowLocators = rowLocators.map { Array($0.prefix(max(rowCap, 0))) }
+        result.absentCells = absentCells?.filter { $0.key < rowCap }
         return result
     }
 
@@ -48,6 +49,7 @@ extension PluginQueryResult {
             columnMeta: columnMeta
         )
         result.rowLocators = rowLocators
+        result.absentCells = absentCells
         return result
     }
 }

@@ -22,6 +22,8 @@ struct QueryFetchResult {
 
     /// Per row, what the driver finds that row by again.
     var rowLocators: [String?]?
+    /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
+    var absentCells: [Int: Set<Int>] = [:]
 
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
@@ -158,7 +160,8 @@ final class QueryExecutor {
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
             timing: result.timing,
-            rowLocators: result.rowLocators
+            rowLocators: result.rowLocators,
+            absentCells: result.absentCells
         )
     }
 
@@ -185,7 +188,8 @@ final class QueryExecutor {
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
             timing: result.timing,
-            rowLocators: result.rowLocators
+            rowLocators: result.rowLocators,
+            absentCells: result.absentCells
         )
     }
 
@@ -210,11 +214,18 @@ final class QueryExecutor {
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
             timing: result.timing,
-            rowLocators: result.rowLocators
+            rowLocators: result.rowLocators,
+            absentCells: result.absentCells
         )
     }
 
     // MARK: - Schema fetch + parse
+
+    /// The schema read that runs beside a load's rows, when the load needs one.
+    static func schemaFetch(tableName: String?, scope: DatabaseScope) -> Task<FetchedTableSchema, Error>? {
+        guard let tableName else { return nil }
+        return Task { try await fetchTableSchema(scope: scope, tableName: tableName) }
+    }
 
     static func fetchTableSchema(scope: DatabaseScope, tableName: String) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
