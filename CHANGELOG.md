@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Welcome window toolbar growing and captioning its search field after choosing Icon and Text.
 - Teradata widening an unreadable CA file to the system trust store.
 
 ### Security
