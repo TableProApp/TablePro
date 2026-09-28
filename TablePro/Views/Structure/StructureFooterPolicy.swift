@@ -38,6 +38,11 @@ enum StructureFooterPolicy {
         }
     }
 
+    /// Why the grid and the pair under it take no edits while a save runs.
+    static var savingReason: String {
+        String(localized: "The staged changes are being saved.")
+    }
+
     static func labels(for tab: StructureTab) -> (add: String, remove: String)? {
         switch tab {
         case .columns:
@@ -63,6 +68,7 @@ enum StructureFooterPolicy {
         tab: StructureTab,
         canEditSchema: Bool,
         hasSelection: Bool,
+        isSaving: Bool,
         resolve: (StructureEditOperation) -> StructureEditAvailability
     ) -> StructureFooterCapability {
         guard canEditSchema,
@@ -71,6 +77,15 @@ enum StructureFooterPolicy {
               let removing = operation(forRemoving: tab)
         else {
             return StructureFooterCapability()
+        }
+
+        /// A save holds what is staged until it ends, so nothing can be added or removed meanwhile.
+        guard !isSaving else {
+            return StructureFooterCapability(
+                addLabel: labels.add,
+                removeLabel: labels.remove,
+                unavailableReason: savingReason
+            )
         }
 
         let addAvailability = resolve(adding)

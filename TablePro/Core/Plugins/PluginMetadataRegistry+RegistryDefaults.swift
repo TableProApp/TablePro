@@ -20,13 +20,18 @@ extension PluginMetadataRegistry {
         return [
             ("MongoDB", PluginMetadataSnapshot(
                 displayName: "MongoDB", iconName: "mongodb-icon", defaultPort: 27_017,
-                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "mongodb", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["mongodb", "mongodb+srv"], postConnectActions: [],
                 brandColorHex: "#00ED63",
                 queryLanguageName: "MQL", editorLanguage: .javascript,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                structureEditing: SchemaEditingSupport(
+                    structureEdits: StructureObjectEditMatrix([
+                        .table: [.addColumn, .renameColumn, .dropColumn, .addIndex, .dropIndex]
+                    ])
+                ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -41,8 +46,12 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: true,
                     supportsDocumentEditing: true,
                     supportsFieldRemoval: true,
+                    supportsAddColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
-                    authenticationIsDatabaseScoped: true
+                    authenticationIsDatabaseScoped: true,
+                    columnsAreSampled: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

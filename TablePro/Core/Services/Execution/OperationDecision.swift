@@ -21,9 +21,17 @@ internal struct OperationReceipt: Sendable, Equatable {
     }
 }
 
+/// Why the gate said no. Only the gate knows whether the person at the keyboard answered Cancel or
+/// a rule refused them, and a caller needs that to stay quiet after a Cancel rather than report the
+/// user's own choice back to them as a failure.
+internal enum OperationDenialCause: Sendable, Equatable {
+    case policy
+    case cancelledByUser
+}
+
 internal enum OperationDecision: Sendable {
     case authorized(OperationReceipt)
-    case denied(reason: String)
+    case denied(reason: String, cause: OperationDenialCause = .policy)
 }
 
 internal extension OperationDecision {
@@ -35,19 +43,31 @@ internal extension OperationDecision {
     }
 
     var deniedReason: String? {
-        if case .denied(let reason) = self {
+        if case .denied(let reason, _) = self {
             return reason
         }
         return nil
+    }
+
+    /// What a caller that throws its denial raises, with a Cancel kept apart from a refusal.
+    var denialError: ExecutionGateError? {
+        guard case .denied(let reason, let cause) = self else { return nil }
+        switch cause {
+        case .policy:
+            return .denied(reason)
+        case .cancelledByUser:
+            return .cancelledByUser(reason)
+        }
     }
 }
 
 internal enum ExecutionGateError: LocalizedError {
     case denied(String)
+    case cancelledByUser(String)
 
     var errorDescription: String? {
         switch self {
-        case .denied(let reason):
+        case .denied(let reason), .cancelledByUser(let reason):
             return reason
         }
     }

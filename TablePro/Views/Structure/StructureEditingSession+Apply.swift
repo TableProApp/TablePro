@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProPluginKit
 
 /// What happened when a tab was asked to apply its staged structure edits.
@@ -16,8 +17,8 @@ internal enum StructureSaveOutcome: Equatable {
     /// Nothing was staged. The close may proceed: there is no work to lose.
     case nothingToApply
     case applied
-    /// Safe Mode refused the write, or the user cancelled the destructive-changes prompt. The edits
-    /// are still staged.
+    /// Safe Mode refused the write, or the user cancelled at the execution gate's confirmation. The
+    /// edits are still staged.
     case refused
     case failed(String)
 
@@ -26,6 +27,54 @@ internal enum StructureSaveOutcome: Equatable {
         case .nothingToApply, .applied: true
         case .refused, .failed: false
         }
+    }
+}
+
+/// How a save that did not apply ends, read from the error alone so it can be tested without
+/// presenting anything.
+///
+/// The gate's sheet is the one confirmation a save gets, so Cancel there is the ordinary way to
+/// back out, and it ends quietly the way closing any confirmation does. Answering it with an
+/// "Error Applying Changes" sheet put a second dialog in front of the user for the choice they had
+/// just made.
+internal enum StructureApplyFailure: Equatable {
+    case cancelledByUser
+    case refused(String)
+    case failed(String)
+
+    internal init(_ error: any Error) {
+        guard let gateError = error as? ExecutionGateError else {
+            self = .failed(error.localizedDescription)
+            return
+        }
+        switch gateError {
+        case .cancelledByUser:
+            self = .cancelledByUser
+        case .denied(let reason):
+            self = .refused(reason)
+        }
+    }
+
+    internal var outcome: StructureSaveOutcome {
+        switch self {
+        case .cancelledByUser, .refused: .refused
+        case .failed(let message): .failed(message)
+        }
+    }
+
+    /// What the error sheet says. Nil for a Cancel, which shows nothing.
+    internal var message: String? {
+        switch self {
+        case .cancelledByUser: nil
+        case .refused(let reason), .failed(let reason): reason
+        }
+    }
+
+    /// A refusal and a Cancel both stop at the gate, before the first statement, so neither is a
+    /// failed operation to report or a reason to reload the catalog.
+    internal var reportsFailure: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
 
@@ -44,7 +93,12 @@ internal extension StructureEditingSession {
         let changes = changeManager.getChangesArray()
         guard !changes.isEmpty else { return .nothingToApply }
 
-        /// Asked before Safe Mode and before the destructive prompt, because an incomplete row is
+        /// A save that is already running holds the tab until it ends. On MongoDB that includes the
+        /// check that reads the documents, which can take as long as the query timeout, and a second
+        /// press would otherwise start the same save again behind it.
+        guard !isApplying, !changeManager.isHeldForSave else { return .refused }
+
+        /// Asked before Safe Mode and before the gate's confirmation, because an incomplete row is
         /// not a change the user meant to make. Without this a foreign key added and never filled
         /// in reached DDL generation as `ADD CONSTRAINT "" FOREIGN KEY () REFERENCES "" ()`, which
         /// SQLite refused as an unsupported operation and MySQL sent to the server as a syntax
@@ -75,6 +129,31 @@ internal extension StructureEditingSession {
             return .refused
         }
 
+        /// Taken before the first suspension and held until the save ends, so a second press is
+        /// refused before it can start the same save again, and no edit can land between the
+        /// statements being composed and the staged edits being cleared. The edits a save clears
+        /// are the ones it held, and only while they are still exactly those.
+        guard let hold = changeManager.holdForSave() else { return .refused }
+        isApplying = true
+        let outcome = await saveHeldChanges(hold.changes, coordinator: coordinator)
+        let cleared = changeManager.releaseHold(hold, written: outcome == .applied)
+        isApplying = false
+        guard outcome == .applied else { return outcome }
+        guard cleared else {
+            Self.logger.fault("A structure save landed over staged edits it did not write; they stay staged")
+            return .refused
+        }
+        markEveryTabStale()
+        hasLoaded = false
+        lastAppliedAt = Date()
+        markApplied()
+        return outcome
+    }
+
+    private func saveHeldChanges(
+        _ changes: [SchemaChange],
+        coordinator: MainContentCoordinator?
+    ) async -> StructureSaveOutcome {
         let planStart = ContinuousClock.Instant.now
         let plan: StructureSavePlan
         do {
@@ -95,68 +174,56 @@ internal extension StructureEditingSession {
             /// instead, and a rebuild is never run from a Save press. It is shown in full, with what
             /// it cannot carry over, and confirmed before anything is dropped.
             ///
-            /// Ahead of the destructive-changes prompt, not after it. The review sheet is already
-            /// that confirmation and shows the exact script rather than a list of descriptions, so
-            /// asking first would be two dialogs for one decision. The HIG's rule is one alert at a
-            /// time.
-            return presentRebuildReview(prepared, startedAt: planStart, coordinator: coordinator)
-        case .alter(let statements):
-            return await applyAlterStatements(statements, changes: changes, coordinator: coordinator)
+            /// The review sheet is that confirmation and shows the exact script, so the run it
+            /// starts tells the gate it was confirmed rather than stacking the gate's own sheet over
+            /// it for the same decision. The HIG's rule is one alert at a time.
+            return presentRebuildReview(prepared, preparedFrom: changes, startedAt: planStart, coordinator: coordinator)
+        case .alter(let script):
+            return await applyAlterStatements(script, coordinator: coordinator)
         }
     }
 
+    /// The execution gate is the one confirmation an `ALTER` save gets. It shows the statements
+    /// verbatim, applies the connection's Safe Mode level, and confirms a change that can lose data
+    /// at every level because `SchemaStatementGenerator` marks those statements destructive. The
+    /// editor used to ask first with a list of descriptions, which made one decision two dialogs,
+    /// and three with Touch ID.
     private func applyAlterStatements(
-        _ statements: [SchemaStatement],
-        changes: [SchemaChange],
+        _ script: SchemaChangeScript,
         coordinator: MainContentCoordinator?
     ) async -> StructureSaveOutcome {
-        let destructiveChanges = changes.filter(\.requiresDataMigration)
-        if !destructiveChanges.isEmpty {
-            let message = String(
-                format: String(localized: "The following changes may cause data loss:\n\n%@\n\nDo you want to proceed?"),
-                destructiveChanges.map(\.description).joined(separator: "\n")
-            )
-            let confirmed = await AlertHelper.confirmDestructive(
-                title: String(localized: "Destructive Changes"),
-                message: message,
-                confirmButton: String(localized: "Apply Changes"),
-                cancelButton: String(localized: "Cancel"),
-                window: coordinator?.contentWindow
-            )
-            guard confirmed else { return .refused }
-        }
-
-        /// Started here, not at the top of the function. The destructive-changes prompt sits above
-        /// this and the user can take as long as they like over it, so a clock started earlier
-        /// measures their reading time and reports an instant ALTER as having taken a minute.
         let operationStart = ContinuousClock.Instant.now
-        isApplying = true
 
         do {
             try await DatabaseManager.shared.executeSchemaChanges(
-                statements,
+                script,
                 databaseType: connection.type,
                 scope: scope,
-                table: tableName
+                gate: executionGate
             )
-            changeManager.discardChanges()
-            markEveryTabStale()
-            hasLoaded = false
-            lastAppliedAt = Date()
-            isApplying = false
-            markApplied()
             report(.succeeded(OperationSummary()), startedAt: operationStart, coordinator: coordinator)
             return .applied
         } catch {
-            isApplying = false
-            report(.failed(reason: error.localizedDescription), startedAt: operationStart, coordinator: coordinator)
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Error Applying Changes"),
-                message: error.localizedDescription,
-                window: coordinator?.contentWindow
-            )
-            return .failed(error.localizedDescription)
+            let failure = StructureApplyFailure(error)
+            present(failure, startedAt: operationStart, coordinator: coordinator)
+            return failure.outcome
         }
+    }
+
+    private func present(
+        _ failure: StructureApplyFailure,
+        startedAt: ContinuousClock.Instant,
+        coordinator: MainContentCoordinator?
+    ) {
+        guard let message = failure.message else { return }
+        if failure.reportsFailure {
+            report(.failed(reason: message), startedAt: startedAt, coordinator: coordinator)
+        }
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Error Applying Changes"),
+            message: message,
+            window: coordinator?.contentWindow
+        )
     }
 
     /// Hands the rebuild script to the review sheet.
@@ -166,6 +233,7 @@ internal extension StructureEditingSession {
     /// action if the user confirms it there.
     private func presentRebuildReview(
         _ prepared: StructureRebuildPlanRunner.Prepared,
+        preparedFrom changes: [SchemaChange],
         startedAt operationStart: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
     ) -> StructureSaveOutcome {
@@ -176,8 +244,11 @@ internal extension StructureEditingSession {
             plan: prepared.plan,
             action: TableRebuildReviewRequest.Action(
                 title: String(localized: "Apply and Rebuild"),
+                operationDescription: Self.applyOperationDescription,
                 perform: { [weak coordinator] in
-                    await self.runRebuild(prepared, startedAt: operationStart, coordinator: coordinator)
+                    await self.runRebuild(
+                        prepared, preparedFrom: changes, startedAt: operationStart, coordinator: coordinator
+                    )
                 }
             )
         )
@@ -185,34 +256,55 @@ internal extension StructureEditingSession {
         return .refused
     }
 
+    private static var applyOperationDescription: String {
+        String(localized: "Apply Schema Changes")
+    }
+
     /// Runs a confirmed rebuild and does everything a save owes the rest of the app afterwards.
     ///
     /// The table was dropped and recreated, so the grid's rows, the query history and the saved
     /// column layout all describe a table that no longer exists in that form. The ordinary save
     /// path does not record history or clear a layout because an `ALTER` leaves both valid.
+    ///
+    /// The script was built from the edits staged when Save was pressed, and the sheet can stay up
+    /// for as long as the user likes, so it runs only while those are still the staged edits, and
+    /// holds them the way a save does until it ends.
+    ///
+    /// Only the review sheet's own button reaches this, so the gate is told the script was
+    /// confirmed. Touch ID and the Read-Only refusal still apply.
     private func runRebuild(
         _ prepared: StructureRebuildPlanRunner.Prepared,
+        preparedFrom changes: [SchemaChange],
         startedAt: ContinuousClock.Instant,
         coordinator: MainContentCoordinator?
     ) async {
+        guard !isApplying, changeManager.getChangesArray() == changes, let hold = changeManager.holdForSave() else {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Error Applying Changes"),
+                message: String(localized: "The staged changes were edited after this script was prepared. Save again to review the new script."),
+                window: coordinator?.contentWindow
+            )
+            return
+        }
         isApplying = true
         do {
             try await StructureRebuildPlanRunner.execute(
                 prepared,
                 databaseType: connection.type,
-                operationDescription: String(localized: "Apply Schema Changes")
+                operationDescription: Self.applyOperationDescription,
+                isConfirmationPreCleared: true,
+                gate: executionGate
             )
         } catch {
+            changeManager.releaseHold(hold, written: false)
             isApplying = false
-            CatalogChangeService.post(
-                .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
-            )
-            report(.failed(reason: error.localizedDescription), startedAt: startedAt, coordinator: coordinator)
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Error Applying Changes"),
-                message: error.localizedDescription,
-                window: coordinator?.contentWindow
-            )
+            let failure = StructureApplyFailure(error)
+            if failure.reportsFailure {
+                CatalogChangeService.post(
+                    .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
+                )
+            }
+            present(failure, startedAt: startedAt, coordinator: coordinator)
             return
         }
 
@@ -231,23 +323,20 @@ internal extension StructureEditingSession {
             )
         )
 
-        changeManager.discardChanges()
-        markEveryTabStale()
-        hasLoaded = false
-        lastAppliedAt = Date()
+        let cleared = changeManager.releaseHold(hold, written: true)
         isApplying = false
-        markApplied()
+        if cleared {
+            markEveryTabStale()
+            hasLoaded = false
+            lastAppliedAt = Date()
+            markApplied()
+        } else {
+            Self.logger.fault("A table rebuild landed over staged edits it did not write; they stay staged")
+        }
         if let clearTarget = coordinator?.selectedColumnLayoutClearTarget() {
             coordinator?.clearColumnLayout(clearTarget)
         }
-        AppCommands.shared.objectChanged.send(
-            DatabaseObjectChange(
-                connectionId: connection.id,
-                scope: prepared.scope,
-                name: prepared.tableName,
-                kind: .structure
-            )
-        )
+        DatabaseManager.shared.reportTableDefinitionChange(table: prepared.tableName, in: prepared.scope)
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
         )

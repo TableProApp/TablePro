@@ -56,6 +56,8 @@ struct MenuValidationContext: Equatable {
     /// Insert Document writes a whole document, which only an engine that stores documents offers,
     /// on a collection tab with no staged grid edits.
     var canInsertDocument = false
+    /// Edit Document also needs exactly one selected row that the driver can find its document by.
+    var canEditDocument = false
     var isQueryExecuting = false
     /// Whether Stop still has something to act on. A batch whose `COMMIT` is on the wire is
     /// executing and unstoppable at the same time, and `Cmd+.` must dim rather than fire into it.
@@ -262,6 +264,8 @@ extension MainSplitViewController: NSMenuItemValidation {
                 && context.isCurrentTabSchemaResolved
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
+        case #selector(editDocument(_:)):
+            return context.isConnected && context.canEditDocument && !context.isReadOnly
         case #selector(insertDocument(_:)):
             return context.isConnected && context.canInsertDocument && !context.isReadOnly
         case #selector(truncateTable(_:)):
@@ -435,11 +439,14 @@ extension MainSplitViewController: NSMenuItemValidation {
 
     /// The commands that act on the browse content, which Agent mode does not mount.
     ///
-    /// Every one of them has a toolbar twin whose `ToolbarContextResolver` arm answers no in Agent
-    /// mode, and the menu bar is where most of them now live, so leaving them lit here would be the
-    /// same defect one surface deeper: Refresh over a grid that is not there, Save over a commit gate
-    /// frozen at the moment the mode changed, Command Y flipping a persisted flag for a drawer that
-    /// is not mounted, and New Tab opening a tab behind the conversation.
+    /// Every one of them but the two document commands has a toolbar twin whose
+    /// `ToolbarContextResolver` arm answers no in Agent mode, and the menu bar is where most of them
+    /// now live, so leaving them lit here would be the same defect one surface deeper: Refresh over a
+    /// grid that is not there, Save over a commit gate frozen at the moment the mode changed, Command Y
+    /// flipping a persisted flag for a drawer that is not mounted, and New Tab opening a tab behind
+    /// the conversation. The document commands live on the Edit menu and on the grid's row menu, and
+    /// the row menu goes away with the grid, so the Edit menu is their only route in Agent mode, where
+    /// the coordinator still holds the row the user last selected.
     ///
     /// A set rather than an arm each, because the rule is one rule. `MenuContentModeParityTests`
     /// holds the two surfaces' answers together and derives this list back out of the toolbar, so a
@@ -453,6 +460,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(saveDocument(_:)),
         #selector(addRow(_:)),
         #selector(restorePreviousValues(_:)),
+        #selector(editDocument(_:)),
+        #selector(insertDocument(_:)),
         #selector(previewSQL(_:)),
         #selector(toggleResults(_:)),
         #selector(toggleQueryHistory(_:)),
@@ -598,6 +607,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
             canInsertDocument: actions.canInsertDocument,
+            canEditDocument: actions.canEditDocument,
             isQueryExecuting: actions.isQueryExecuting,
             isQueryStoppable: actions.isQueryStoppable,
             hasQueryText: actions.hasQueryText,

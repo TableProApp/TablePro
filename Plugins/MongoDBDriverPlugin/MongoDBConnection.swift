@@ -82,6 +82,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
+    private var _writeConcern = MongoWriteConcern.serverDefault
     private var _isCancelled: Bool = false
     private var _queryTimeoutMS: Int32 = 0
     #if canImport(CLibMongoc)
@@ -111,6 +112,13 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _queryTimeoutMS
+    }
+
+    /// The write concern the connection's URI sets, read from the client once it connects.
+    var configuredWriteConcern: MongoWriteConcern {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _writeConcern
     }
 
     func setQueryTimeout(_ seconds: Int) {
@@ -181,6 +189,14 @@ final class MongoDBConnection: @unchecked Sendable {
             return try body(client)
         }
         return try queue.sync {
+            guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
+            return try body(client)
+        }
+    }
+
+    /// Runs a libmongoc call on the connection's own queue without blocking the caller.
+    func withClient<T: Sendable>(_ body: @escaping @Sendable (OpaquePointer) throws -> T) async throws -> T {
+        try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
             return try body(client)
         }
@@ -282,8 +298,8 @@ final class MongoDBConnection: @unchecked Sendable {
             "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
             "tlsCAFile", "tlsCertificateKeyFile"
         ]
-        if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
-        if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
+        if let readPreference, !readPreference.isEmpty { explicitKeys.insert("readPreference") }
+        if let writeConcern, !writeConcern.isEmpty { explicitKeys.insert("w") }
         for (key, value) in extraUriParams where !explicitKeys.contains(key) {
             let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
             params.append("\(key)=\(encodedValue)")
@@ -364,9 +380,11 @@ final class MongoDBConnection: @unchecked Sendable {
             }
 
             self.client = newClient
+            let configuredWriteConcern = MongoWriteConcern(client: newClient)
 
             self.stateLock.lock()
             self._isConnected = true
+            self._writeConcern = configuredWriteConcern
             self.stateLock.unlock()
 
             logger.info("Connected to MongoDB at \(self.host):\(self.port)")
@@ -735,7 +753,8 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func listCollections(database: String) async throws -> [String] {
+    /// Every `listCollections` entry in the database, or the one named, as canonical Extended JSON.
+    func listNamespaces(database: String, named name: String?) async throws -> [String] {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -743,14 +762,15 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try listCollectionsSync(client: client, database: database)
+            return try listNamespacesSync(client: client, database: database, named: name)
         }
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
     }
 
-    func listIndexes(database: String, collection: String) async throws -> [[String: Any]] {
+    /// Every `listIndexes` document for the collection, as canonical Extended JSON in server order.
+    func listIndexes(database: String, collection: String) async throws -> [String] {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -758,10 +778,8 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try QueueTransfer(value: listIndexesSync(
-                client: client, database: database, collection: collection
-            ))
-        }.value
+            return try listIndexesJsonSync(client: client, database: database, collection: collection)
+        }
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -925,18 +943,14 @@ final class MongoStreamState: @unchecked Sendable {
 
 extension MongoDBConnection {
     /// Convert a JSON string to a bson_t pointer. Caller must call bson_destroy on the result.
+    ///
+    /// An object opening with `$type`, `$regex` or `$options` becomes the document it is written as,
+    /// the way mongosh sends it, rather than libbson's legacy binary or regular expression value.
     func jsonToBson(_ json: String) -> OpaquePointer? {
         #if canImport(CLibMongoc)
-        var error = bson_error_t()
-
-        // Pass -1 to let bson_new_from_json use strlen on the C string
-        let bson = json.withCString { bson_new_from_json($0, -1, &error) }
-        if bson == nil {
-            var err = error
-            let msg = bsonErrorMessage(&err)
-            logger.debug("Failed to parse JSON to BSON: \(msg)")
+        return MongoBsonBuilder.document(from: json) { message in
+            logger.debug("Failed to parse JSON to BSON: \(message)")
         }
-        return bson
         #else
         return nil
         #endif

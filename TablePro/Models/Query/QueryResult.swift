@@ -32,6 +32,9 @@ struct QueryResult {
 
     var columnMeta: [ResultColumnMeta]?
 
+    /// Per row, what the driver finds that row by again. Only the driver reads it.
+    var rowLocators: [String?]?
+
     /// What the statement printed on the server, read on its own session.
     var serverOutput: PluginServerOutput = .none
 

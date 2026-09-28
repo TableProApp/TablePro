@@ -58,15 +58,16 @@ final class StructureTypelessColumnUITests: UITestCase {
             text.contains("must have a name and a data type"),
             "A column with no type must not stop the save, got: \(text)"
         )
-        let apply = sheet.buttons["Apply Changes"].firstMatch
-        XCTAssertTrue(apply.waitToExist(timeout: 5), "The drop must be offered for confirmation, got: \(text)")
-        apply.click()
 
+        /// The first sheet is the execution gate's, and it is the only one. The editor used to ask
+        /// first with an alert of its own, so the same decision took two answers.
         let execute = window.sheets.buttons["sql-review-execute"].firstMatch
         XCTAssertTrue(
             execute.waitToExist(timeout: 20),
-            "Apply Changes hands the drop to the execution gate, which shows the statement before it runs"
+            "The first sheet must be the gate's, showing the statement it runs, got: \(text)"
         )
+        XCTAssertEqual(execute.label, "Execute")
+        XCTAssertFalse(window.sheets.buttons["Apply Changes"].exists, "The editor must not ask before the gate does")
         let statement = (window.sheets.textViews.firstMatch.value as? String) ?? ""
         XCTAssertTrue(statement.contains("DROP COLUMN"), "The gate must be showing the drop, got: \(statement)")
         execute.click()
@@ -81,5 +82,6 @@ final class StructureTypelessColumnUITests: UITestCase {
             waitForPredicate(timeout: 30) { grid.tableRows.count == 1 },
             "The grid must list the one column the save kept"
         )
+        XCTAssertFalse(window.sheets.firstMatch.exists, "One answer is the whole confirmation")
     }
 }

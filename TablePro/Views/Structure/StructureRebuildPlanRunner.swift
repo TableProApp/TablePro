@@ -65,6 +65,33 @@ enum StructureRebuildPlanRunner {
         }
     }
 
+    /// What the gate is asked before a plan runs.
+    ///
+    /// `isConfirmationPreCleared` is true only from a review sheet that showed this exact script
+    /// and was answered with its own button. That sheet is the confirmation, and the gate asking
+    /// again stacked a second sheet over it for the same decision. It clears the confirmation only:
+    /// Touch ID, the Read-Only refusal and the audit record all still apply. A plan that runs with
+    /// no review, a metadata-only reorder, passes false and is confirmed by the gate per level.
+    nonisolated static func authorizationRequest(
+        plan: PluginColumnReorderPlan,
+        scope: DatabaseScope,
+        databaseType: DatabaseType,
+        operationDescription: String,
+        isConfirmationPreCleared: Bool
+    ) -> OperationRequest {
+        var capabilities = CallerCapabilities.interactiveUser
+        if isConfirmationPreCleared { capabilities.insert(.confirmationPreCleared) }
+        return OperationRequest(
+            connectionId: scope.connectionId,
+            databaseType: databaseType,
+            sql: plan.scriptStatements.joined(separator: "\n"),
+            kind: plan.cost == .tableRebuild ? .destructiveQuery : .schemaMutation,
+            caller: .userInterface,
+            capabilities: capabilities,
+            operationDescription: operationDescription
+        )
+    }
+
     /// Runs a prepared plan, once, on the scope it was planned against.
     ///
     /// Authorization happens once for the whole plan, before any statement runs, and deliberately
@@ -75,25 +102,25 @@ enum StructureRebuildPlanRunner {
     static func execute(
         _ prepared: Prepared,
         databaseType: DatabaseType,
-        operationDescription: String
+        operationDescription: String,
+        isConfirmationPreCleared: Bool,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let plan = prepared.plan
         let scope = prepared.scope
         let tableName = prepared.tableName
 
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: scope.connectionId,
+        let decision = await gate.authorize(
+            authorizationRequest(
+                plan: plan,
+                scope: scope,
                 databaseType: databaseType,
-                sql: plan.scriptStatements.joined(separator: "\n"),
-                kind: plan.cost == .tableRebuild ? .destructiveQuery : .schemaMutation,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: operationDescription
+                operationDescription: operationDescription,
+                isConfirmationPreCleared: isConfirmationPreCleared
             )
         )
-        guard case .authorized = decision else {
-            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
+        if let denial = decision.denialError {
+            throw denial
         }
 
         let expectedFingerprint = prepared.fingerprint

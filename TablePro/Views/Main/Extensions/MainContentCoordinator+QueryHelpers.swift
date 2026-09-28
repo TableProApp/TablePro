@@ -131,6 +131,7 @@ extension MainContentCoordinator {
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
         serverOutput: PluginServerOutput = .none,
+        rowLocators: [String?]? = nil,
         absentCells: [Int: Set<Int>] = [:]
     ) {
         queryExecutionCoordinator.applyPhase1Result(
@@ -154,6 +155,7 @@ extension MainContentCoordinator {
             timing: timing,
             viewport: viewport,
             serverOutput: serverOutput,
+            rowLocators: rowLocators,
             absentCells: absentCells
         )
     }

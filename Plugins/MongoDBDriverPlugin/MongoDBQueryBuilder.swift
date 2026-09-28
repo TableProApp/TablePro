@@ -235,8 +235,9 @@ struct MongoDBQueryBuilder {
             guard ignoresCase else {
                 return MongoDBFilterClause(key: field, body: "{\"$ne\": \(typed(value, kind))}")
             }
-            let body = Self.regexBody(pattern: anchoredPattern(value), ignoresCase: true)
-            return MongoDBFilterClause(key: field, body: "{\"$not\": \(body)}")
+            return MongoDBFilterClause(
+                key: field, body: Self.negatedRegexBody(pattern: anchoredPattern(value), ignoresCase: true)
+            )
         case ">":
             return MongoDBFilterClause(key: field, body: "{\"$gt\": \(typed(value, kind))}")
         case ">=":
@@ -250,8 +251,9 @@ struct MongoDBQueryBuilder {
                 key: field, body: Self.regexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase)
             )
         case "NOT CONTAINS":
-            let body = Self.regexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase)
-            return MongoDBFilterClause(key: field, body: "{\"$not\": \(body)}")
+            return MongoDBFilterClause(
+                key: field, body: Self.negatedRegexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase)
+            )
         case "STARTS WITH":
             let pattern = "^\(escapeRegexChars(value))"
             return MongoDBFilterClause(
@@ -351,6 +353,13 @@ struct MongoDBQueryBuilder {
     private static func regexBody(pattern: String, ignoresCase: Bool) -> String {
         guard ignoresCase else { return "{\"$regex\": \"\(escapeJsonString(pattern))\"}" }
         return "{\"$regex\": \"\(escapeJsonString(pattern))\", \"$options\": \"i\"}"
+    }
+
+    /// `$not` takes a `$regex` operator document only from MongoDB 4.0.7, and a regular expression
+    /// value on every server, so the negated arms send the value.
+    private static func negatedRegexBody(pattern: String, ignoresCase: Bool) -> String {
+        let regex = "{\"pattern\": \"\(escapeJsonString(pattern))\", \"options\": \"\(ignoresCase ? "i" : "")\"}"
+        return "{\"$not\": {\"$regularExpression\": \(regex)}}"
     }
 
     private func anchoredPattern(_ value: String) -> String {

@@ -59,7 +59,7 @@ enum MongoDBCollectionDDL {
             return columnRefusal(column)
         case .addIndex(let index), .modifyIndex(_, let index):
             return indexRefusal(index)
-        case .renameCheckConstraint, .dropIndex:
+        case .renameCheckConstraint, .dropIndex, .modifyColumn, .dropColumn:
             return nil
         @unknown default:
             return nil

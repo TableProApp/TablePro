@@ -20,6 +20,7 @@ struct MongoScriptPreludeTests {
         private(set) var printed: [String] = []
         var replies: [String] = []
         var refusal: (message: String, code: Int)?
+        var refusals: [String: String] = [:]
         var database = "shop"
 
         func handle(_ requestJson: String) -> String {
@@ -39,6 +40,9 @@ struct MongoScriptPreludeTests {
             case "cursorConfigure", "cursorClose", "useDatabase", "sleep":
                 return "{\"ok\":true,\"v\":null}"
             default:
+                if let op = request["op"] as? String, let refused = refusals[op] {
+                    return refused
+                }
                 if let refusal {
                     return "{\"ok\":false,\"e\":{\"m\":\"\(refusal.message)\",\"c\":\(refusal.code)}}"
                 }
@@ -318,6 +322,46 @@ struct MongoScriptPreludeTests {
         #expect(value?.toString() == "507f1f77bcf86cd799439011")
     }
 
+    @Test("A document whose only field is named like a wrapper reads back as that document")
+    func wrapperNamedDocumentStaysADocument() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "1",
+            "{\"docs\": [{\"$oid\": \"not an id\"}, {\"$date\": \"2024\"}], \"done\": true}"
+        ]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("""
+        db.orders.find({}, {_id: 0}).toArray().map(function (d) { return Object.keys(d)[0] + "=" + d[Object.keys(d)[0]]; }).join(",")
+        """)
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "$oid=not an id,$date=2024")
+    }
+
+    @Test("A findOneAndUpdate document named like a wrapper comes back as that document")
+    func findAndModifyDocumentStaysADocument() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"value\": {\"$oid\": \"507f1f77bcf86cd799439011\"}}"]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("""
+        var found = db.orders.findOneAndUpdate({}, {$set: {a: 1}}, {projection: {_id: 0}}); typeof found.$oid
+        """)
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "string")
+    }
+
+    @Test("A findOneAndUpdate that matches nothing returns null")
+    func findAndModifyWithNoMatchIsNull() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"value\": null}"]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("db.orders.findOneAndUpdate({}, {$set: {a: 1}}) === null")
+        #expect(context.exception == nil)
+        #expect(value?.toBool() == true)
+    }
+
     @Test("Variables and functions survive from one evaluated statement to the next")
     func shellStateSurvives() throws {
         let host = RecordingHost()
@@ -421,6 +465,62 @@ struct MongoScriptPreludeTests {
         #expect(value?.toString() == "507f1f77bcf86cd799439011")
     }
 
+    @Test(
+        "EJSON.parse refuses a wrapper its constructor would refuse",
+        arguments: [
+            #"{"n": {"$numberLong": "abc"}}"#,
+            #"{"n": {"$numberLong": "9223372036854775808"}}"#,
+            #"{"n": {"$numberDecimal": "abc"}}"#,
+            #"{"n": {"$numberInt": "12abc"}}"#,
+            #"{"n": {"$numberInt": "2147483648"}}"#,
+            #"{"n": {"$numberDouble": "abc"}}"#,
+            #"{"r": {"$regularExpression": {"pattern": "a", "options": "z"}}}"#
+        ]
+    )
+    func ejsonParseChecksWrappers(json: String) throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+
+        context.evaluateScript("EJSON.parse(\(Self.javaScriptString(json)))")
+        #expect(context.exception != nil)
+    }
+
+    @Test("EJSON.parse still reads every well-formed wrapper, NaN and Infinity included")
+    func ejsonParseReadsWellFormedWrappers() throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+        let json = #"{"l": {"$numberLong": "9007199254740993"}, "d": {"$numberDecimal": "NaN"}, "#
+            + #""i": {"$numberInt": "-7"}, "f": {"$numberDouble": "-Infinity"}, "#
+            + #""r": {"$regularExpression": {"pattern": "^a", "options": "xi"}}}"#
+
+        let value = context.evaluateScript("""
+        var parsed = EJSON.parse(\(Self.javaScriptString(json)));
+        [String(parsed.l), String(parsed.d), parsed.i, parsed.f, parsed.r.options].join("|")
+        """)
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "9007199254740993|NaN|-7|-Infinity|ix")
+    }
+
+    @Test("A value the server sends is read back as stored, without the parse-time checks")
+    func serverRepliesAreNotRechecked() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "1",
+            #"{"docs": [{"_id": 1, "r": {"$regularExpression": {"pattern": "a", "options": "g"}}}], "done": true}"#
+        ]
+        let context = try makeContext(host)
+
+        let value = context.evaluateScript("db.orders.findOne({}).r.options")
+        #expect(context.exception == nil)
+        #expect(value?.toString() == "g")
+    }
+
+    private static func javaScriptString(_ text: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [text])) ?? Data()
+        let array = String(data: data, encoding: .utf8) ?? "[]"
+        return String(array.dropFirst().dropLast())
+    }
+
     @Test("A write with no document is refused rather than sent as null")
     func writesNeedADocument() throws {
         let host = RecordingHost()
@@ -438,6 +538,175 @@ struct MongoScriptPreludeTests {
         }
         #expect(host.requests(op: "update").isEmpty)
         #expect(host.requests(op: "insertOne").isEmpty)
+    }
+
+    @Test("insertOne, insertMany and bulkWrite pass their options on, and send null without them")
+    func writeOptionsReachTheHost() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "{\"insertedIds\": [1], \"insertedCount\": 1}",
+            "{\"insertedIds\": [1], \"insertedCount\": 1}",
+            "{\"insertedIds\": [1], \"insertedCount\": 1}",
+            "{\"insertedCount\": 0}",
+            "{\"insertedIds\": [1], \"insertedCount\": 1}",
+            "{\"insertedCount\": 0}"
+        ]
+        let context = try makeContext(host)
+
+        for statement in [
+            "db.orders.insertMany([{a: 1}], {ordered: false, writeConcern: {w: 'majority'}})",
+            "db.orders.insertOne({a: 1}, {writeConcern: {w: 'majority'}})",
+            "db.orders.insertOne({a: 1})",
+            "db.orders.bulkWrite([{deleteOne: {filter: {a: 1}}}], {writeConcern: {w: 'majority'}})",
+            "db.orders.insertMany([{a: 1}])",
+            "db.orders.bulkWrite([{deleteOne: {filter: {a: 1}}}])"
+        ] {
+            context.evaluateScript(statement)
+            #expect(context.exception == nil, "\(statement) threw")
+        }
+
+        let insertMany = host.requests(op: "insertMany")
+        #expect(insertMany.first?["options"] as? String == "{\"ordered\":false,\"writeConcern\":{\"w\":\"majority\"}}")
+        #expect(insertMany.last?["options"] is NSNull)
+        let insertOne = host.requests(op: "insertOne")
+        #expect(insertOne.first?["options"] as? String == "{\"writeConcern\":{\"w\":\"majority\"}}")
+        #expect(insertOne.last?["options"] is NSNull)
+        let bulkWrite = host.requests(op: "bulkWrite")
+        #expect(bulkWrite.first?["options"] as? String == "{\"writeConcern\":{\"w\":\"majority\"}}")
+        #expect(bulkWrite.last?["options"] is NSNull)
+    }
+
+    @Test("The legacy insert passes its options to whichever insert it becomes")
+    func legacyInsertOptions() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "{\"insertedIds\": [1], \"insertedCount\": 1}",
+            "{\"insertedIds\": [1, 2], \"insertedCount\": 2}"
+        ]
+        let context = try makeContext(host)
+
+        context.evaluateScript("db.orders.insert({a: 1}, {writeConcern: {w: 1}})")
+        context.evaluateScript("db.orders.insert([{a: 1}, {a: 2}], {ordered: false})")
+        #expect(context.exception == nil)
+
+        #expect(host.requests(op: "insertOne").first?["options"] as? String
+            == "{\"writeConcern\":{\"w\":{\"$numberInt\":\"1\"}}}")
+        #expect(host.requests(op: "insertMany").first?["options"] as? String == "{\"ordered\":false}")
+    }
+
+    @Test("remove with {justOne: true} deletes one document, and its options reach the host")
+    func legacyRemoveOptions() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"n\": 1}", "{\"n\": 1}", "{\"n\": 3}", "{\"n\": 3}", "{\"n\": 3}"]
+        let context = try makeContext(host)
+
+        for statement in [
+            "db.orders.remove({x: 1}, {justOne: true, writeConcern: {w: 'majority'}})",
+            "db.orders.remove({x: 1}, true)",
+            "db.orders.remove({x: 1}, {writeConcern: {w: 'majority'}})",
+            "db.orders.remove({x: 1}, false)",
+            "db.orders.remove({x: 1})"
+        ] {
+            context.evaluateScript(statement)
+            #expect(context.exception == nil, "\(statement) threw")
+        }
+
+        let deletes = host.requests(op: "delete")
+        try #require(deletes.count == 5)
+        #expect(deletes.map { $0["multi"] as? Bool } == [false, false, true, true, true])
+        #expect(deletes[0]["options"] as? String == "{\"justOne\":true,\"writeConcern\":{\"w\":\"majority\"}}")
+        #expect(deletes[2]["options"] as? String == "{\"writeConcern\":{\"w\":\"majority\"}}")
+        #expect(deletes[4]["options"] is NSNull)
+    }
+
+    @Test("A write sent with w: 0 reports acknowledged false and no counts, as mongosh does")
+    func unacknowledgedWriteResults() throws {
+        let host = RecordingHost()
+        host.replies = [
+            "{\"acknowledged\": false}",
+            "{\"acknowledged\": false}",
+            "{\"acknowledged\": false, \"insertedIds\": [{\"$numberInt\": \"7\"}]}",
+            "{\"acknowledged\": false, \"insertedIds\": [{\"$numberInt\": \"7\"}, {\"$numberInt\": \"8\"}]}",
+            "{\"acknowledged\": false}"
+        ]
+        let context = try makeContext(host)
+        let expected = [
+            ("db.orders.updateMany({}, {$set: {b: 1}}, {writeConcern: {w: 0}})", "{\"acknowledged\":false}"),
+            ("db.orders.deleteOne({a: 1}, {writeConcern: {w: 0}})", "{\"acknowledged\":false}"),
+            (
+                "db.orders.insertOne({_id: 7}, {writeConcern: {w: 0}})",
+                "{\"acknowledged\":false,\"insertedId\":{\"$numberInt\":\"7\"}}"
+            ),
+            (
+                "db.orders.insertMany([{_id: 7}, {_id: 8}], {writeConcern: {w: 0}})",
+                "{\"acknowledged\":false,\"insertedIds\":[{\"$numberInt\":\"7\"},{\"$numberInt\":\"8\"}]}"
+            ),
+            ("db.orders.bulkWrite([{deleteOne: {filter: {}}}], {writeConcern: {w: 0}})", "{\"acknowledged\":false}")
+        ]
+        for (statement, result) in expected {
+            let value = context.evaluateScript("EJSON.stringify(\(statement))")
+            #expect(context.exception == nil, "\(statement) threw")
+            #expect(value?.toString() == result, "\(statement)")
+        }
+    }
+
+    @Test("An acknowledged write still reports acknowledged true with its counts")
+    func acknowledgedWriteResults() throws {
+        let host = RecordingHost()
+        host.replies = ["{\"n\": 1}", "{\"insertedIds\": [{\"$numberInt\": \"7\"}], \"insertedCount\": 1}"]
+        let context = try makeContext(host)
+
+        let deleted = context.evaluateScript("EJSON.stringify(db.orders.deleteOne({a: 1}))")
+        let inserted = context.evaluateScript("EJSON.stringify(db.orders.insertMany([{_id: 7}]))")
+        #expect(context.exception == nil)
+        #expect(deleted?.toString() == "{\"acknowledged\":true,\"deletedCount\":{\"$numberInt\":\"1\"}}")
+        #expect(inserted?.toString()
+            == "{\"acknowledged\":true,\"insertedIds\":[{\"$numberInt\":\"7\"}],\"insertedCount\":{\"$numberInt\":\"1\"}}")
+    }
+
+    @Test("A write's failure reaches the script marked as a write's, with its stage")
+    func writeFailureCarriesItsStage() throws {
+        let host = RecordingHost()
+        let stopped = MongoWriteFailure(code: 50, message: "operation exceeded time limit", stage: .command)
+        host.refusals = ["update": stopped.scriptReplyJson]
+        let context = try makeContext(host)
+
+        context.evaluateScript("db.orders.updateMany({}, {$set: {b: 1}})")
+        let exception = try #require(context.exception)
+        #expect(MongoScriptContext.writeFailure(in: exception) == stopped)
+    }
+
+    @Test("A read that fails after the script caught a write's failure is not taken for the write")
+    func caughtWriteFailureDoesNotMarkALaterRead() throws {
+        let host = RecordingHost()
+        let stopped = MongoWriteFailure(code: 50, message: "operation exceeded time limit", stage: .command)
+        host.refusals = [
+            "update": stopped.scriptReplyJson,
+            "command": MongoScriptJson.failure(message: "operation exceeded time limit", code: 50)
+        ]
+        let context = try makeContext(host)
+
+        context.evaluateScript("""
+            try { db.orders.updateMany({}, {$set: {b: 1}}) } catch (e) {}
+            db.runCommand({count: "orders"})
+            """)
+        let read = try #require(context.exception)
+        #expect(read.objectForKeyedSubscript("code")?.toInt32() == 50)
+        #expect(read.objectForKeyedSubscript("message")?.toString() == "operation exceeded time limit")
+        #expect(MongoScriptContext.writeFailure(in: read) == nil)
+
+        context.exception = nil
+        context.evaluateScript("try { db.orders.updateMany({}, {$set: {b: 1}}) } catch (e) { throw e }")
+        let rethrown = try #require(context.exception)
+        #expect(MongoScriptContext.writeFailure(in: rethrown) == stopped)
+    }
+
+    @Test("An error a script throws itself is never taken for a write's failure")
+    func scriptErrorIsNotAWrite() throws {
+        let context = try makeContext(RecordingHost())
+        context.evaluateScript("var e = new Error('x'); e.code = 50; throw e")
+        let exception = try #require(context.exception)
+        #expect(MongoScriptContext.writeFailure(in: exception) == nil)
     }
 
     @Test("An aggregation pipeline crosses as an array of stages")

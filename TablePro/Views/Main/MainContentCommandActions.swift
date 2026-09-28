@@ -225,6 +225,15 @@ final class MainContentCommandActions: ObservableObject {
 
     private var dataGridOwnsSelection: Bool { selectionOwner == .dataGrid }
 
+    /// The display position of the one data-grid row a single-row command acts on, or nil when the
+    /// data grid does not own the selection or it holds other than one row.
+    var singleSelectedDataGridRow: Int? {
+        guard dataGridOwnsSelection else { return nil }
+        let indices = resolvedRowSelection()
+        guard indices.count == 1 else { return nil }
+        return indices.first
+    }
+
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
@@ -830,7 +839,7 @@ final class MainContentCommandActions: ObservableObject {
     /// False comes back whenever the work is still staged after the attempt, because the caller
     /// goes on to close and closing destroys it. User and role changes can only be applied after
     /// the SQL is reviewed, so Save opens the review sheet and stands the close down; a schema
-    /// change that Safe Mode refused, that the user cancelled at the destructive prompt, or that
+    /// change that Safe Mode refused, that the user cancelled at the gate's confirmation, or that
     /// the server rejected stands it down for the same reason, and so does a file that changed on
     /// disk, whose conflict sheet is now up, or a Save As the user cancelled.
     func saveSelectedTabWork() async -> Bool {

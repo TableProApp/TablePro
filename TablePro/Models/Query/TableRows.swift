@@ -28,6 +28,10 @@ struct TableRows: Sendable {
     /// empty set as "this table owns nothing".
     var hasAuthoritativeSchema: Bool
     var foreignKeysFetched: Bool
+    /// What the driver finds each fetched row by again, keyed by row identity so a sort, a value
+    /// filter or a removal cannot pair a row with another row's document. Only a driver that edits
+    /// whole documents fills it, and a row with none cannot be edited that way.
+    private(set) var rowLocators: [RowID: String] = [:]
 
     init(
         rows: ContiguousArray<Row> = [],
@@ -97,10 +101,15 @@ struct TableRows: Sendable {
         return rows[index]
     }
 
+    func rowLocator(for id: RowID) -> String? {
+        rowLocators[id]
+    }
+
     /// Releases the row payload while keeping the schema needed to render and reload the table.
     mutating func discardRowsKeepingMetadata() {
         rows = []
         indexByID = [:]
+        rowLocators = [:]
     }
 
     /// Writes a value into a cell, or with `isAbsent` takes the field out of the row. A value
@@ -181,7 +190,11 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func appendPage(_ pageRows: [[PluginCellValue]], startingAt offset: Int) -> Delta {
+    mutating func appendPage(
+        _ pageRows: [[PluginCellValue]],
+        startingAt offset: Int,
+        rowLocators pageLocators: [String?]? = nil
+    ) -> Delta {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count
         rows.reserveCapacity(rows.count + pageRows.count)
@@ -193,6 +206,7 @@ struct TableRows: Sendable {
             rows.append(row)
             indexByID[row.id] = newIndex
         }
+        rowLocators.merge(Self.locators(pageLocators, rowCount: pageRows.count, offset: offset)) { $1 }
         return .rowsInserted(IndexSet(integersIn: firstIndex...(rows.count - 1)))
     }
 
@@ -228,6 +242,7 @@ struct TableRows: Sendable {
     mutating func replace(
         rows replacementRows: [[PluginCellValue]],
         offset: Int = 0,
+        rowLocators replacementLocators: [String?]? = nil,
         absentCells: [Int: Set<Int>] = [:]
     ) -> Delta {
         var rebuilt = ContiguousArray<Row>()
@@ -246,6 +261,7 @@ struct TableRows: Sendable {
         }
         rows = rebuilt
         indexByID = rebuiltIndex
+        rowLocators = Self.locators(replacementLocators, rowCount: replacementRows.count, offset: offset)
         return .fullReplace
     }
 
@@ -323,6 +339,7 @@ struct TableRows: Sendable {
         rowMatchPolicy: RowMatchPolicy = .none,
         hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false,
+        rowLocators: [String?]? = nil,
         absentCells: [Int: Set<Int>] = [:]
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
@@ -335,7 +352,7 @@ struct TableRows: Sendable {
                 absentColumns: clamp(absentCells[index] ?? [], toCount: columns.count)
             ))
         }
-        return TableRows(
+        var tableRows = TableRows(
             rows: rows,
             columns: columns,
             columnTypes: columnTypes,
@@ -350,6 +367,19 @@ struct TableRows: Sendable {
             hasAuthoritativeSchema: hasAuthoritativeSchema,
             foreignKeysFetched: foreignKeysFetched
         )
+        tableRows.rowLocators = locators(rowLocators, rowCount: queryRows.count, offset: 0)
+        return tableRows
+    }
+
+    /// Locators that do not pair one to one with the rows are dropped rather than guessed at.
+    private static func locators(_ locators: [String?]?, rowCount: Int, offset: Int) -> [RowID: String] {
+        guard let locators, locators.count == rowCount else { return [:] }
+        var keyed: [RowID: String] = [:]
+        for (index, locator) in locators.enumerated() {
+            guard let locator else { continue }
+            keyed[.existing(offset + index)] = locator
+        }
+        return keyed
     }
 
     private mutating func removeIndices(_ indices: IndexSet) -> Delta {
@@ -358,6 +388,7 @@ struct TableRows: Sendable {
             let removedID = rows[index].id
             rows.remove(at: index)
             indexByID.removeValue(forKey: removedID)
+            rowLocators.removeValue(forKey: removedID)
         }
         if let minRemoved = indices.min(), minRemoved < rows.count {
             for offset in minRemoved..<rows.count {

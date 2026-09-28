@@ -37,6 +37,7 @@ extension TableStructureView {
             tab: selectedTab,
             canEditSchema: connection.type.supportsSchemaEditing,
             hasSelection: !selectedRows.isEmpty,
+            isSaving: structureChangeManager.isHeldForSave,
             resolve: { gate.resolve($0) }
         )
     }
@@ -56,6 +57,7 @@ extension TableStructureView {
     /// Why the Columns grid refuses every keystroke, when it does. A grid that will not take an edit
     /// and says nothing reads as broken, so the pointer carries this as the grid's tooltip.
     var structureEditRefusal: String? {
+        if structureChangeManager.isHeldForSave { return StructureFooterPolicy.savingReason }
         guard !editGate.allowsAnyEdit else { return nil }
         return editGate.resolve(.renameColumn).unavailableReason
     }

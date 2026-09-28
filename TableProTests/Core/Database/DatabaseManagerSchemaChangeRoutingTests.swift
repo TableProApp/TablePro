@@ -57,7 +57,57 @@ private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabase
 
     func execute(query: String) async throws -> PluginQueryResult {
         executedQueries.append(query)
+        if let failingStatement, query.contains(failingStatement) {
+            throw DatabaseError.queryFailed("statement timed out")
+        }
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    var failingStatement: String?
+    var shortfallAfterWriting: String?
+    private(set) var statementsRunBeforeShortfallCheck: [Int] = []
+    var review = PluginSchemaChangeReview()
+    var refusalBeforeWriting: String?
+    private(set) var reviewedOperationCounts: [Int] = []
+    private(set) var statementsRunBeforeEachCheck: [Int] = []
+    private(set) var reviewsCheckedBeforeWriting: [PluginSchemaChangeReview] = []
+
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview {
+        reviewedOperationCounts.append(operations.count)
+        return review
+    }
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        statementsRunBeforeEachCheck.append(executedQueries.count)
+        reviewsCheckedBeforeWriting.append(review)
+        return refusalBeforeWriting
+    }
+
+    private(set) var reviewsCheckedAfterWriting: [PluginSchemaChangeReview] = []
+    private(set) var changedTableDefinitions: [String] = []
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        statementsRunBeforeShortfallCheck.append(executedQueries.count)
+        reviewsCheckedAfterWriting.append(review)
+        return shortfallAfterWriting
+    }
+
+    func tableDefinitionDidChange(table: String, schema: String?) {
+        changedTableDefinitions.append(table)
     }
 
     func switchDatabase(to database: String) async throws {
@@ -163,17 +213,12 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         databaseType: DatabaseType,
         scope: DatabaseScope
     ) async throws {
-        let statements = try await DatabaseManager.shared.schemaChangeStatements(
+        let script = try await DatabaseManager.shared.schemaChangeStatements(
             tableName: "orders",
             changes: changes,
             scope: scope
         )
-        try await DatabaseManager.shared.executeSchemaChanges(
-            statements,
-            databaseType: databaseType,
-            scope: scope,
-            table: "orders"
-        )
+        try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: databaseType, scope: scope)
     }
 
     private static func tearDown(_ connections: DatabaseConnection...) {
@@ -204,6 +249,85 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         #expect(DatabaseManager.shared.schemaChangeRoute(for: poolingScope) == .pooled)
         #expect(DatabaseManager.shared.schemaChangeRoute(for: singleScope) == .sessionDriver)
         #expect(DatabaseManager.shared.schemaChangeRoute(for: serverScope) == .sessionDriver)
+    }
+
+    @Test("A review's leading statements show in the script, reach the check before writing as composed, and run first")
+    func reviewLeadingStatementsRunFirst() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        pooled.review = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"])
+
+        let script = try await DatabaseManager.shared.schemaChangeStatements(
+            tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+        )
+        #expect(script.statements.first?.sql == "PREPARE orders;")
+        #expect(script.statements.first?.isDestructive == false)
+        #expect(script.operations.count == 1)
+        #expect(script.review == PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"]))
+        #expect(pooled.reviewedOperationCounts == [1])
+
+        pooled.review = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders AGAIN"])
+        try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: .mysql, scope: scope)
+        #expect(pooled.reviewsCheckedBeforeWriting == [PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"])])
+        #expect(pooled.executedQueries.count == 2)
+        #expect(pooled.executedQueries.first == "PREPARE orders;")
+        #expect(pooled.executedQueries.last?.contains("ADD COLUMN") == true)
+    }
+
+    @Test("A review refusal stops SQL Preview and Save with the driver's reason before anything runs")
+    func reviewRefusalStopsTheSave() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        pooled.review = PluginSchemaChangeReview(refusal: "Index email_1 uses email.")
+
+        await #expect(throws: SchemaOperationRefusedError(reason: "Index email_1 uses email.")) {
+            _ = try await DatabaseManager.shared.schemaChangeStatements(
+                tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+            )
+        }
+        #expect(pooled.executedQueries.isEmpty)
+        #expect(pooled.statementsRunBeforeEachCheck.isEmpty)
+    }
+
+    /// SQL Preview composes the same script as Save, so a check that reads the data belongs only on
+    /// the path that goes on to write.
+    @Test("The check that reads the data runs on Save alone, on the writing connection, before any statement")
+    func checkBeforeWritingRunsOnSaveOnly() async throws {
+        let (connection, driver) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+
+        let script = try await DatabaseManager.shared.schemaChangeStatements(
+            tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+        )
+        #expect(pooled.statementsRunBeforeEachCheck.isEmpty)
+
+        try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: .mysql, scope: scope)
+        #expect(pooled.statementsRunBeforeEachCheck == [0])
+        #expect(driver.statementsRunBeforeEachCheck.isEmpty)
+    }
+
+    @Test("A refusal before writing stops the save before its first statement")
+    func refusalBeforeWritingStopsTheSave() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        pooled.refusalBeforeWriting = "Some documents hold both a and b."
+
+        await #expect(throws: SchemaOperationRefusedError(reason: "Some documents hold both a and b.")) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        #expect(pooled.executedQueries.isEmpty)
     }
 
     @Test("Schema changes run on the requested connection, not the last activated one")
@@ -349,22 +473,192 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         )
         defer { Self.tearDown(connection) }
 
-        let recorder = BroadcastRecorder()
-        let cancellables = recorder.observe(connectionId: connection.id)
-        defer { cancellables.forEach { $0.cancel() } }
-
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         _ = try await Self.seedPooledDriver(connection, scope: scope)
-        try await Self.composeAndSave(
-            changes: [Self.makeAddColumnChange()],
-            databaseType: .mysql,
-            scope: scope
-        )
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
 
-        #expect(recorder.objectChanges.map(\.announced) == [
-            .init(scope: scope, name: "orders", kind: .structure, originTabId: nil)
-        ])
-        #expect(recorder.refreshRequests.isEmpty)
+        #expect(outcome.error == nil)
+        #expect(outcome.changes == [Self.structureChange(scope)])
+        #expect(outcome.refreshes.isEmpty)
+    }
+
+    /// The session driver is not the one the save ran on, and it keeps what it learned about the
+    /// table's columns: a MongoDB driver typed a renamed field's writes and later pages by the old
+    /// name until a first page read them again.
+    @Test("The session's own driver is told the table changed after a save that wrote, and never after a refusal")
+    func sessionDriverForgetsTheTableDefinition() async throws {
+        let (connection, driver) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        #expect(driver.changedTableDefinitions == ["orders"])
+        #expect(pooled.changedTableDefinitions.isEmpty)
+
+        pooled.failingStatement = "ADD COLUMN"
+        _ = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        #expect(driver.changedTableDefinitions == ["orders", "orders"])
+
+        pooled.failingStatement = nil
+        pooled.refusalBeforeWriting = "Some documents hold both a and b."
+        _ = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        #expect(driver.changedTableDefinitions == ["orders", "orders"])
+    }
+
+    @Test("The check after writing is handed the review the save was composed with")
+    func checkAfterWritingGetsTheComposedReview() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        let composed = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"], basis: "entry 1")
+        pooled.review = composed
+        let script = try await DatabaseManager.shared.schemaChangeStatements(
+            tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+        )
+        pooled.review = PluginSchemaChangeReview(basis: "entry 2")
+        try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: .mysql, scope: scope)
+
+        #expect(pooled.reviewsCheckedBeforeWriting == [composed])
+        #expect(pooled.reviewsCheckedAfterWriting == [composed])
+    }
+
+    /// The save's questions went to the driver through a cast to the plugin adapter, so a
+    /// `DatabaseDriver` of any other kind was never asked and its save ran unchecked.
+    @Test("A DatabaseDriver that is not a plugin adapter is asked before and after writing")
+    func databaseDriverAnswersThroughTheProtocol() async throws {
+        let connection = TestFixtures.makeConnection(database: "orders", type: Self.singleConnectionType)
+        let mock = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: mock)
+        session.browseDatabase = "orders"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let script = SchemaChangeScript(
+            tableName: "orders",
+            statements: [SchemaStatement(sql: "ALTER orders", description: "Alter", isDestructive: false)],
+            operations: [],
+            review: PluginSchemaChangeReview()
+        )
+        mock.schemaChangeRefusalToReturn = "Refused by the driver."
+        await #expect(throws: SchemaOperationRefusedError(reason: "Refused by the driver.")) {
+            try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: Self.singleConnectionType, scope: scope)
+        }
+        #expect(!mock.executedQueries.contains("ALTER orders"))
+
+        mock.schemaChangeRefusalToReturn = nil
+        mock.schemaChangeShortfallToReturn = "Not finished."
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: Self.singleConnectionType, scope: scope)
+        }
+        #expect(outcome.error?.localizedDescription == "Not finished.")
+        #expect(mock.executedQueries.contains("ALTER orders"))
+        #expect(mock.changedTableDefinitions == ["orders"])
+    }
+
+    private static func recordChanges(
+        on connectionId: UUID,
+        during save: () async throws -> Void
+    ) async -> (changes: [AnnouncedChange], refreshes: [DataRefreshRequest], error: Error?) {
+        let recorder = BroadcastRecorder()
+        let cancellables = recorder.observe(connectionId: connectionId)
+        defer { cancellables.forEach { $0.cancel() } }
+        do {
+            try await save()
+            return (recorder.objectChanges.map(\.announced), recorder.refreshRequests, nil)
+        } catch {
+            return (recorder.objectChanges.map(\.announced), recorder.refreshRequests, error)
+        }
+    }
+
+    private static func structureChange(_ scope: DatabaseScope) -> AnnouncedChange {
+        AnnouncedChange(scope: scope, name: "orders", kind: .structure, originTabId: nil)
+    }
+
+    /// MongoDB keeps every document an `updateMany` changed before it stopped, and MySQL commits
+    /// each DDL statement as it runs, so the rows on screen can describe a table that moved on.
+    @Test("A statement that fails once the save has started writing reloads the rows")
+    func failureAfterWritingReloadsRows() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        pooled.review = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"])
+        pooled.failingStatement = "ADD COLUMN"
+
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        let error = try #require(outcome.error)
+        #expect(error is DatabaseError)
+        #expect(error.localizedDescription.contains("statement timed out"))
+        #expect(pooled.executedQueries.count == 2)
+        #expect(pooled.statementsRunBeforeShortfallCheck.isEmpty)
+        #expect(outcome.changes == [Self.structureChange(scope)])
+    }
+
+    @Test("A shortfall found after the last statement fails the save with the driver's reason and reloads the rows")
+    func shortfallAfterWritingFailsTheSave() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        let reason = "The save did not finish: one document still holds old."
+        pooled.shortfallAfterWriting = reason
+
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        let error = try #require(outcome.error)
+        #expect(error is DatabaseError)
+        #expect(error.localizedDescription == reason)
+        #expect(pooled.statementsRunBeforeShortfallCheck == [1])
+        #expect(outcome.changes == [Self.structureChange(scope)])
+    }
+
+    @Test("The check after writing runs once every statement has run, and a finished save reloads the rows once")
+    func finishedSaveChecksAfterItsLastStatement() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        pooled.review = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"])
+
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        #expect(outcome.error == nil)
+        #expect(pooled.statementsRunBeforeShortfallCheck == [2])
+        #expect(outcome.changes.count == 1)
+    }
+
+    @Test("A save refused before writing reloads nothing")
+    func refusalBeforeWritingReloadsNothing() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        pooled.refusalBeforeWriting = "Some documents hold both a and b."
+
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(changes: [Self.makeAddColumnChange()], databaseType: .mysql, scope: scope)
+        }
+        #expect(outcome.error is SchemaOperationRefusedError)
+        #expect(pooled.statementsRunBeforeShortfallCheck.isEmpty)
+        #expect(outcome.changes.isEmpty)
     }
 
     @Test("An inserted document announces its collection as a rows change and nothing broader")

@@ -130,11 +130,20 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return menu
     }
 
+    /// The row's locator is read while the menu is built and carried by the item, so a reload that
+    /// lands while the menu is open cannot turn the click into an edit of another document.
     func dataGridDocumentMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
         guard let coordinator, coordinator.canInsertDocument else { return [] }
-        return [Self.menuItem(String(localized: "Insert Document…")) { [weak coordinator] in
+        var items: [NSMenuItem] = []
+        if let locator = coordinator.documentLocator(forDisplayRow: displayRow) {
+            items.append(Self.menuItem(String(localized: "Edit Document…")) { [weak coordinator] in
+                coordinator?.presentEditDocument(locator: locator)
+            })
+        }
+        items.append(Self.menuItem(String(localized: "Insert Document…")) { [weak coordinator] in
             coordinator?.presentInsertDocument()
-        }]
+        })
+        return items
     }
 
     private static func menuItem(_ title: String, action: @escaping () -> Void) -> NSMenuItem {

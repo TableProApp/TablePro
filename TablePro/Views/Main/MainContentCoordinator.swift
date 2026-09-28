@@ -1189,7 +1189,7 @@ final class MainContentCoordinator: ObservableObject {
                 switch decision {
                 case .authorized:
                     executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
-                case .denied(let reason):
+                case .denied(let reason, _):
                     traceNavigationAbandoned(tabId: tab.id, outcome: .safeModeDenied)
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
@@ -1326,12 +1326,7 @@ final class MainContentCoordinator: ObservableObject {
                 }
             }
 
-            let schemaTask: Task<FetchedTableSchema, Error>?
-            if needsMetadataFetch, let tableName {
-                schemaTask = Task { try await QueryExecutor.fetchTableSchema(scope: scope, tableName: tableName) }
-            } else {
-                schemaTask = nil
-            }
+            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
 
             let fetchBeganAt = ContinuousClock.now
             do {
@@ -1409,6 +1404,7 @@ final class MainContentCoordinator: ObservableObject {
                         timing: fetchResult.resolvedTiming,
                         viewport: viewport,
                         serverOutput: fetchResult.serverOutput,
+                        rowLocators: isTableTab ? fetchResult.rowLocators : nil,
                         absentCells: fetchResult.absentCells
                     )
 

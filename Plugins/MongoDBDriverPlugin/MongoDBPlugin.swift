@@ -97,7 +97,13 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "MQL"
     static let editorLanguage: EditorLanguage = .javascript
     static let supportsForeignKeys = false
-    static let supportsSchemaEditing = false
+    static let supportsSchemaEditing = MongoDBStructureEditing.supportsSchemaEditing
+    static let supportsAddColumn = MongoDBStructureEditing.supportsAddColumn
+    static let supportsModifyColumn = MongoDBStructureEditing.supportsModifyColumn
+    static let supportsDropColumn = MongoDBStructureEditing.supportsDropColumn
+    static let supportsAddIndex = MongoDBStructureEditing.supportsAddIndex
+    static let supportsDropIndex = MongoDBStructureEditing.supportsDropIndex
+    static let supportsRenameView = false
     static let systemDatabaseNames: [String] = ["admin", "local", "config"]
     static let tableEntityName = "Collections"
     static let supportsForeignKeyDisable = false

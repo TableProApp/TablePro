@@ -47,4 +47,15 @@ struct QueryTabBaseQueryTests {
         #expect(!query.uppercased().contains("SUBSTRING"))
         #expect(!query.hasSuffix(";"))
     }
+
+    @Test("A JavaScript editor's own query reaches the collection through the shared accessor")
+    func javascriptQueryUsesSharedAccessor() throws {
+        let lineTerminators: Set<Unicode.Scalar> = ["\n", "\r", "\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}"]
+        for name in ["users", "stats", "a\u{2028}b", "c\u{85}d", "e\"f\ng"] {
+            let query = try QueryTab.buildBaseTableQuery(tableName: name, databaseType: .mongodb)
+            #expect(query.hasPrefix("\(MongoCollectionAccessor.expression(for: name)).find({}).limit("), "\(name)")
+            #expect(!query.unicodeScalars.contains { lineTerminators.contains($0) }, "\(name)")
+            #expect(QuerySqlParser.extractTableName(from: query) == name, "\(name)")
+        }
+    }
 }

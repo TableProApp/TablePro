@@ -7,577 +7,624 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Syntax error on opening a Cassandra or ScyllaDB table.
+
+## [0.76.0] - 2026-09-28
+
+Agent mode: one AI session that works across the whole connection window, with every statement it ran.
+A Data Files window for CSV, JSON, Excel and compressed files, with find and replace, column statistics and cleanup.
+MongoDB documents inserted and edited as Extended JSON, and fields renamed or removed from the Structure tab.
+Tools from your own MCP servers, available to AI sessions from Settings > Integrations.
+The table list beside the table browser on iPad, and a sample database on iPhone and iPad.
+
 ### Added
 
-- **Insert Document…** for MongoDB collections, written as Extended JSON. (#3132)
-- **Remove Field** for MongoDB cells, and **No Field** for a field a document does not have. (#3132)
-- **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran.
-- Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display.
-- Table list and table browser side by side on iPad and on iPhone Duo's inner display.
-- **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
-- Agent mode holds its connection at Safe Mode **Alert** while it is on, and hands back the level you set on the way out.
-- **Open in Agent Mode** on a connection in the welcome window.
-- **Show recent connections** and **Clear Recent** in **Settings > General > Connections**.
-- **Outside MCP Servers** in Settings > Integrations, letting a session call tools on an MCP server you run.
-- Per-connection allowlist for an outside MCP server, with its token in the Keychain and neither synced.
-- Welcome sheet on iPhone and iPad, asking once about iCloud sync and usage data.
-- Sample database on iPhone and iPad, opened from the empty connection list or the **More** menu.
-- What's New on iPhone and iPad after an update, and under **Settings > About**.
-- Tips in the iOS connection list for swiping to favorite, touch and hold, and tag search.
-- Acknowledgements and a privacy policy link under **Settings > About** on iPhone and iPad.
-- Privacy manifest for the iOS app.
-- Oracle `DBMS_OUTPUT` lines shown with the result of the statement that printed them, and in a new **Output** result view.
-- Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`.
-- **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995)
-- Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996)
-- **Saved Filters** in the filter bar's **Filter Settings**, for restoring a table's filter without running it, or not saving it at all. (#3006)
-- **Always Show Filter Bar** in **Filter Settings**, split out from the option that also decided what happened to the saved filter.
-- Numbered databases on Valkey 9 clusters with `cluster-databases` above 1.
-- `DB <index> <command>` in the Redis editor, running one command on another database.
-- Explain for Teradata.
-- **Actions** menu in the connection window's toolbar, with the commands for the tab you are on and every import format.
-- **Actions** menu in the connection window's toolbar, with the commands for the tab you are on.
-- **File > Import > Import Data From**, for choosing the import format from the menu bar.
-- **File > Session**, with the agent session commands and the assistant's conversation commands.
-- Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands.
-- **Global** on a saved query folder's menu, for a folder every connection shows.
-- DynamoDB reads that query the table, a local index or a global index when the grid's filters allow it.
-- Create Table form for DynamoDB: keys, capacity, table class, deletion protection and secondary indexes.
-- DynamoDB API requests in the editor, such as `CreateTable {…}`, `UpdateTimeToLive {…}` and `BatchWriteItem {…}`.
-- DynamoDB point-in-time recovery, deletion protection, stream, class and billing under **Maintenance**.
-- Adding and dropping a DynamoDB global secondary index from the **Structure** tab.
-- Nested DynamoDB attribute paths in the filter bar and autocomplete.
-- **DynamoDB Local (no credentials)** auth method.
-- Items read and read units for a DynamoDB browse in the result status bar.
-- Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048)
-- Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524)
-- **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502)
-- **Filter** in a data grid cell's context menu, for narrowing a table to rows sharing that cell's value. (#3066)
-- Version history for saved queries, with **Restore This Version**. (#2505)
-- Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505)
-- Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522)
-- Invalid PostgreSQL indexes named on the table's **Indexes** tab.
-- Expression keys typed into an index's **Columns** cell, such as `lower(email)`.
-- Application name `TablePro` on PostgreSQL, Redshift, CockroachDB and PGlite connections, `TablePro Metadata` on metadata connections.
-- `GO` batch separators in SQL Server scripts, and a result tab for every result set a batch returns. (#3078)
-- SQL Server `PRINT` output and informational messages in the **Output** result view.
-- **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command.
-- **Data Files** window for CSV, TSV, pipe-separated, `.txt` and `.dat` files, replacing the CSV inspector.
-- JSON and JSON Lines files opened and edited as a table, with nested values kept as JSON text.
-- Excel `.xlsx` workbooks opened read-only, one tab per sheet.
-- Compressed data files such as `.csv.gz` opened read-only.
-- Find & Replace across a whole data file, with Match Case, Whole Words and regular expressions.
-- **Search All Columns** in the data file window's toolbar.
-- Column statistics for a data file, with top values that filter the file when clicked.
-- Row Details pane in data file windows on ⌥⌘I.
-- **Edit > Data** cleanup: Fill Down, Set Cells to Value, Trim Whitespace, Change Case, Replace in Column, Remove Duplicate Rows.
-- Export from a data file window to every bundled format, for all, filtered or selected rows.
-- **Import into Table** from a data file window, into an open connection's import sheet.
-- **Text Encoding** in a data file's Save As panel.
+- **Insert Document…** and **Edit Document…** for MongoDB, written as Extended JSON. (#3132, #3140, #3152 by @datlechin)
+- **Remove Field** for MongoDB cells, and **No Field** for a field a document does not have. (#3132, #3160 by @datlechin)
+- **Agent** mode: one session with the whole connection window, sessions to start and delete, and what each one ran. (#3041 by @datlechin)
+- Row previews and the query editor sized to the display on iPad and on iPhone Duo's inner display. (#3035 by @datlechin)
+- Table list and table browser side by side on iPad and on iPhone Duo's inner display. (#3035 by @datlechin)
+- **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A. (#2384 by @J2TeamNNL)
+- Safe Mode held at **Alert** while Agent mode is on, with your level restored on the way out. (#2384 by @J2TeamNNL)
+- **Open in Agent Mode** on a connection in the welcome window. (#2384 by @J2TeamNNL)
+- **Show recent connections** and **Clear Recent** in **Settings > General > Connections**. (#3134 by @shuvroroy)
+- **Outside MCP Servers** in Settings > Integrations, letting a session call tools on an MCP server you run. (#2384 by @J2TeamNNL)
+- Per-connection allowlist for an outside MCP server, with its token in the Keychain and neither synced. (#2384 by @J2TeamNNL)
+- Welcome sheet on iPhone and iPad, asking once about iCloud sync and usage data. (#2980 by @datlechin)
+- Sample database on iPhone and iPad, opened from the empty connection list or the **More** menu. (#2980 by @datlechin)
+- What's New on iPhone and iPad after an update, and under **Settings > About**. (#2980 by @datlechin)
+- Tips in the iOS connection list for swiping to favorite, touch and hold, and tag search. (#2980 by @datlechin)
+- Acknowledgements and a privacy policy link under **Settings > About** on iPhone and iPad. (#2980 by @datlechin)
+- Privacy manifest for the iOS app. (#2980 by @datlechin)
+- Oracle `DBMS_OUTPUT` lines shown with the statement that printed them, and in a new **Output** result view. (#2990 by @datlechin)
+- Oracle transactions opened with `SET TRANSACTION`, `SAVEPOINT` or `LOCK TABLE`, held until `COMMIT` or `ROLLBACK`. (#3001 by @datlechin)
+- **Highlight When Focused** on the AI chat input's context menu, for turning its colored focus highlight off. (#2995, #3010 by @datlechin)
+- Several label columns beside the key in the foreign key picker, for a parent row only told apart by a combination. (#2996, #3009 by @datlechin)
+- **Saved Filters** in **Filter Settings**, for restoring a table's filter without running it, or not saving it. (#3006, #3026 by @datlechin)
+- **Always Show Filter Bar** in **Filter Settings**, as an option of its own. (#3026 by @datlechin)
+- Numbered databases on Valkey 9 clusters with `cluster-databases` above 1. (#3039 by @datlechin)
+- `DB <index> <command>` in the Redis editor, running one command on another database. (#3039 by @datlechin)
+- Explain for Teradata. (#3039 by @datlechin)
+- **Actions** menu in the connection window's toolbar, with the commands for the tab you are on and every import format. (#3041 by @datlechin)
+- **File > Import > Import Data From**, for choosing the import format from the menu bar. (#3041 by @datlechin)
+- **File > Session**, with the agent session commands and the assistant's conversation commands. (#3041 by @datlechin)
+- Eight more rebindable commands in **Settings > Keyboard**, among them the sidebar's lists and the session commands. (#3041 by @datlechin)
+- **Global** on a saved query folder's menu, for a folder every connection shows. (#3052 by @datlechin)
+- DynamoDB reads that query the table, a local index or a global index when the grid's filters allow it. (#3077 by @datlechin)
+- Create Table form for DynamoDB: keys, capacity, table class, deletion protection and secondary indexes. (#3077 by @datlechin)
+- DynamoDB API requests in the editor, such as `CreateTable {…}`, `UpdateTimeToLive {…}` and `BatchWriteItem {…}`. (#3077 by @datlechin)
+- DynamoDB point-in-time recovery, deletion protection, stream, class and billing under **Maintenance**. (#3077 by @datlechin)
+- Adding and dropping a DynamoDB global secondary index from the **Structure** tab. (#3077 by @datlechin)
+- Nested DynamoDB attribute paths in the filter bar and autocomplete. (#3077 by @datlechin)
+- **DynamoDB Local (no credentials)** auth method. (#3077 by @datlechin)
+- Items read and read units for a DynamoDB browse in the result status bar. (#3077 by @datlechin)
+- Tables from every schema in Open Quickly and the sidebar filter, and `schema.table` searches in both. (#3048, #3060 by @datlechin)
+- Recent-tab switching on Control-Tab, with a list of the window's tabs while Control is held. (#2524, #3061 by @datlechin)
+- **Extensions** for SQLite and local libSQL connections, loading sqlite-vec, SpatiaLite and other libraries on connect. (#2502, #3064 by @datlechin)
+- **Filter** in a data grid cell's context menu, for narrowing a table to rows sharing that cell's value. (#3066, #3101 by @datlechin)
+- Version history for saved queries, with **Restore This Version**. (#2505, #3076 by @datlechin)
+- Git status letters, history and **Discard Changes…** for files in a linked SQL folder. (#2505, #3076 by @datlechin)
+- Whether a materialized view can be refreshed concurrently, on its **Indexes** tab. (#2522, #3063 by @datlechin)
+- Invalid PostgreSQL indexes named on the table's **Indexes** tab. (#3075 by @datlechin)
+- Expression keys typed into an index's **Columns** cell, such as `lower(email)`. (#3080 by @datlechin)
+- `TablePro` as the application name on PostgreSQL, Redshift, CockroachDB and PGlite, `TablePro Metadata` for metadata. (#3106 by @datlechin)
+- `GO` batch separators in SQL Server scripts, and a result tab for every result set a batch returns. (#3078, #3105 by @datlechin)
+- SQL Server `PRINT` output and informational messages in the **Output** result view. (#3105 by @datlechin)
+- **Review with AI** in the query editor bar, the **Query** menu, the editor's context menu and the `/review` command. (#3104 by @datlechin)
+- **Data Files** window for CSV, TSV, pipe-separated, `.txt` and `.dat` files, replacing the CSV inspector. (#3107 by @datlechin)
+- JSON and JSON Lines files opened and edited as a table, with nested values kept as JSON text. (#3107 by @datlechin)
+- Excel `.xlsx` workbooks opened read-only, one tab per sheet. (#3107 by @datlechin)
+- Compressed data files such as `.csv.gz` opened read-only. (#3107 by @datlechin)
+- Find & Replace across a whole data file, with Match Case, Whole Words and regular expressions. (#3107 by @datlechin)
+- **Search All Columns** in the data file window's toolbar. (#3107 by @datlechin)
+- Column statistics for a data file, with top values that filter the file when clicked. (#3107 by @datlechin)
+- Row Details pane in data file windows on ⌥⌘I. (#3107 by @datlechin)
+- **Edit > Data**: Fill Down, Set Cells to Value, Trim Whitespace, Change Case, Replace in Column, Remove Duplicate Rows. (#3107 by @datlechin)
+- Export from a data file window to every bundled format, for all, filtered or selected rows. (#3107 by @datlechin)
+- **Import into Table** from a data file window, into an open connection's import sheet. (#3107 by @datlechin)
+- **Text Encoding** in a data file's Save As panel. (#3107 by @datlechin)
+- `BSONSymbol()` in the MongoDB shell. (#3150 by @datlechin)
+- `MinKey`, `MaxKey`, `Code`, `DBRef` and the legacy UUID helpers in MongoDB shell autocomplete. (#3158 by @datlechin)
 
 ### Changed
 
-- **Endpoint** is now **Base URL** in an AI provider's settings, with the URL requests resolve to shown under it. (#3040)
-- 537 driver and import/export strings are now translatable, having only ever shown in English.
-- Middle-dot separators dropped from the assistant transcript, slash command list and model picker.
-- Every plugin bundle compiled under the same concurrency settings as the app that loads it.
-- Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
-- Assistant conversations belong to one connection, and outlive the window that opened them.
-- iCloud sync and usage data on iPhone and iPad stay off until you turn them on.
-- Group rows in the iOS connection list take swipe actions and show even when no connection is saved.
-- Typed entry beside the stepper for number settings in the connection form.
-- Connection window toolbar trimmed to eight controls that follow the tab and the mode.
-- Connection window toolbar cut to eight controls that follow the tab and the mode, the rest in **Customize Toolbar**.
-- **Tables** and **Favorites** chooser moved from the toolbar to the top of the sidebar.
-- One header for the Inspector and the Assistant, with a picker between them and their commands in its menu.
-- **Fields** / **JSON** and the JSON view's options moved into the Inspector's header menu.
-- Pencil for the Inspector's unsaved-edit marker and a spinner for the AI chat's typing indicator.
-- Middle-dot separators dropped from the query history rows.
-- Connection marked with a tinted symbol rather than a color dot in the query history rows.
-- Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip.
-- DynamoDB maps, lists and sets shown as plain JSON and edited in the JSON editor.
-- DynamoDB column types named as the AWS console names them: String, Number, Map, String Set.
-- DynamoDB region taken from the AWS profile when the connection names none.
-- DynamoDB table counts left to **Count Exactly**, with no automatic full-table count.
-- DynamoDB table DDL shown as the `CreateTable` request that recreates it.
-- Plain HTTP DynamoDB endpoint refused for any host but this Mac, instead of switched to HTTPS.
-- ClickHouse materialized views read-only in the data grid, as on every other engine.
-- **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut.
-- SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy.
-- SQL Server scripts run outside an app-opened transaction, as in SQL Server Management Studio. (#3078)
-- One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases.
-- Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server.
-- Other-schema tables for Open Quickly and the sidebar filter read in one query on DuckDB files.
-- Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048)
-- Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read.
-- Columns, indexes, foreign keys and row counts of the tables a query uses, sent with every AI query action.
-- Selection or the statement at the cursor, not the whole tab, as what **Explain with AI** and **Optimize with AI** send.
-- Explain and Optimize with AI in the editor's context menu without a selection.
-- Tables for the MCP `review_query` and `propose_indexes` prompts read from the SQL, up to 12, with the ones not found named.
-- Data file windows filtering with the table grid's filter bar: 18 operators, **Match all** or **Match any**, typed comparisons and presets.
-- ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid.
-- Large data files opened, filtered, sorted and searched in the background, with progress and Cancel.
-- `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection.
+- **Base URL** in place of **Endpoint** in an AI provider's settings, with the resolved request URL shown under it. (#3040, #3042 by @datlechin)
+- 537 driver and import/export strings offered for translation, where they had only ever shown in English. (#2976 by @datlechin)
+- Middle-dot separators dropped from the assistant transcript, slash command list and model picker. (#3018 by @datlechin)
+- Every plugin bundle compiled under the same concurrency settings as the app that loads it. (#2384 by @J2TeamNNL)
+- Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies. (#2384 by @J2TeamNNL)
+- Assistant conversations belong to one connection, and outlive the window that opened them. (#2384 by @J2TeamNNL)
+- iCloud sync and usage data on iPhone and iPad stay off until you turn them on. (#2980 by @datlechin)
+- Group rows in the iOS connection list take swipe actions and show even when no connection is saved. (#2980 by @datlechin)
+- Typed entry beside the stepper for number settings in the connection form. (#3038 by @datlechin)
+- Connection window toolbar cut to eight controls that follow the tab and the mode, the rest in **Customize Toolbar**. (#3041 by @datlechin)
+- **Tables** and **Favorites** chooser moved from the toolbar to the top of the sidebar. (#3041 by @datlechin)
+- One header for the Inspector and the Assistant, with a picker between them and their commands in its menu. (#3041 by @datlechin)
+- **Fields** / **JSON** and the JSON view's options moved into the Inspector's header menu. (#3041 by @datlechin)
+- Pencil for the Inspector's unsaved-edit marker and a spinner for the AI chat's typing indicator. (#3041 by @datlechin)
+- Middle-dot separators dropped from the query history rows. (#3107 by @datlechin)
+- Connection marked with a tinted symbol rather than a color dot in the query history rows. (#3041 by @datlechin)
+- Safe Mode list offering only the levels a connection allows, with the reason under it and in the toolbar tooltip. (#3041 by @datlechin)
+- DynamoDB maps, lists and sets shown as plain JSON and edited in the JSON editor. (#3077 by @datlechin)
+- DynamoDB column types named as the AWS console names them: String, Number, Map, String Set. (#3077 by @datlechin)
+- DynamoDB region taken from the AWS profile when the connection names none. (#3077 by @datlechin)
+- DynamoDB table counts left to **Count Exactly**, with no automatic full-table count. (#3077 by @datlechin)
+- DynamoDB table DDL shown as the `CreateTable` request that recreates it. (#3077 by @datlechin)
+- Plain HTTP DynamoDB endpoint refused for any host but this Mac, instead of switched to HTTPS. (#3077 by @datlechin)
+- ClickHouse materialized views read-only in the data grid, as on every other engine. (#3072 by @datlechin)
+- **Show Previous Window Tab** and **Show Next Window Tab** for window tabs, with no default shortcut. (#3061 by @datlechin)
+- SQLite 3.53.4 built into the SQLite and libSQL drivers in place of the macOS copy. (#3064 by @datlechin)
+- SQL Server scripts run outside an app-opened transaction, as in SQL Server Management Studio. (#3078, #3105 by @datlechin)
+- One-time reset of Open Quickly's Recent query history, and of its objects on connections that switch databases. (#3082 by @datlechin)
+- Other-schema tables for Open Quickly and the sidebar filter read in one query on SQL Server and DuckDB files. (#3096 by @datlechin)
+- Tables and views from every schema in the MCP `search_schema` tool when no schema is named. (#3048, #3097 by @datlechin)
+- Sidebar filter on Oracle, Snowflake and BigQuery matching procedures, triggers and types only in schemas already read. (#3099 by @datlechin)
+- Columns, indexes, foreign keys and row counts of the tables a query uses, sent with every AI query action. (#3104 by @datlechin)
+- Selection or statement at the cursor, not the whole tab, sent by **Explain with AI** and **Optimize with AI**. (#3104 by @datlechin)
+- Explain and Optimize with AI in the editor's context menu without a selection. (#3104 by @datlechin)
+- Tables for the MCP `review_query` and `propose_indexes` prompts read from the SQL, up to 12, naming any not found. (#3104 by @datlechin)
+- The table grid's filter bar in data file windows, with its 18 operators, typed comparisons and presets. (#3107 by @datlechin)
+- ⌘F finds and ⇧⌘F toggles filters in data file windows, as in the table grid. (#3107 by @datlechin)
+- Large data files opened, filtered, sorted and searched in the background, with progress and Cancel. (#3107 by @datlechin)
+- `.json` and `.ndjson` files opened in the Data Files window rather than as a DuckDB connection. (#3107 by @datlechin)
+- `$regex` and `$options` objects in MongoDB scripts and **Raw Filter** sent as operator documents, as in mongosh. (#3156 by @datlechin)
+- Whole numbers past 2^53 and `-0` stored as doubles by the MongoDB shell, as mongosh stores them. (#3158 by @datlechin)
+- Column type changes from the Structure tab confirmed under Safe Mode, like a dropped column. (#3161 by @datlechin)
+- No structure sync script for MongoDB, whose fields are read from a sample of documents. (#3161 by @datlechin)
 
 ### Removed
 
-- **Refresh from iCloud**, **Sync Now** and the toolbar sync button on iPhone and iPad.
-- **Manage Groups**, the **Clear** button on **Recent**, and the **More** menu's tag filter on iPhone and iPad.
-- Throughput readout in the toolbar; the connection switcher still shows it.
-- Back, Forward, New Tab, Open Quickly, Add Row and Restore Previous Values from the default toolbar.
-- Toolbar **Assistant** button; the trailing pane's own picker chooses between the inspector and the assistant.
-- CSV Inspector plugin; the Data Files window took its place.
+- **Refresh from iCloud**, **Sync Now** and the toolbar sync button on iPhone and iPad. (#2980 by @datlechin)
+- **Manage Groups**, the **Clear** button on **Recent**, and the **More** menu's tag filter on iPhone and iPad. (#2980 by @datlechin)
+- Throughput readout in the toolbar; the connection switcher still shows it. (#3041 by @datlechin)
+- Back, Forward, New Tab, Open Quickly, Add Row and Restore Previous Values from the default toolbar. (#3041 by @datlechin)
+- Toolbar **Assistant** button; the trailing pane's own picker chooses between the inspector and the assistant. (#3041 by @datlechin)
+- CSV Inspector plugin; the Data Files window took its place. (#3107 by @datlechin)
 
 ### Fixed
 
-- Syntax error on opening a Cassandra or ScyllaDB table, from an `OFFSET` that CQL does not have.
-- Pre-connect script failures sometimes reported without the script's own error message.
-- Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result.
-- Save reporting success after leaving out an edit it could not write, such as a new MongoDB document left empty. (#3132)
-- Binary fields missing from duplicated or pasted MongoDB rows. (#3132)
-- Undo of a MongoDB delete refused when the document held binary data. (#3132)
-- Binary field deleted when editing a MongoDB binary cell. (#3132)
-- Error saving a new MongoDB row with every cell empty. (#3132)
-- **Set DEFAULT** on a MongoDB field storing the text `__DEFAULT__`. (#3132)
-- Edits to MongoDB fields named with a dot, a leading `$` or `__proto__` changing another field or nothing. (#3132)
-- Nested MongoDB values shown with sorted keys, and saved with ObjectIds, dates and numbers retyped. (#3132)
-- **Set NULL** on a MongoDB field deleting the field. (#3132)
-- Null fields dropped from duplicated, pasted or restored MongoDB documents. (#3132)
-- **Restore Previous Values** comparing the wrong MongoDB fields when a document lacks one. (#3132)
-- Row inspector accepting edits to a MongoDB `_id` or another read-only field that were never saved. (#3132)
-- `tablepro-mcp` crashing when its standard input was non-blocking.
-- `tablepro-mcp` using a full CPU core, or crashing, when its standard output or error was non-blocking.
-- Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103)
-- Variables declared in a SQL Server script lost after its first statement. (#3078)
-- Later SQL Server result sets shown under the first one's columns, or crashing the app.
-- SQL Server errors raised inside a query shown as an empty or partial result.
-- SQL Server connection refusing every query after a failed statement until it reconnected.
-- `-1 row(s) affected` after SQL Server DDL.
-- A quote, bracket or `?` in a comment breaking SQL Server query parameters.
-- Edits made while an iCloud sync was running reverted by that sync and never uploaded.
-- Saved queries unavailable until relaunch after their store failed to open once.
-- SQL files saved as UTF-8 whatever their encoding, and non-UTF-8 SQL files not opening from Finder or **File > Open File…**.
-- Unresponsive app while comparing large query plans.
-- Slow definition diff in Compare & Sync for large tables.
-- Autocomplete offering another schema's tables without their schema once that schema was completed or expanded.
-- Stale column and MongoDB field suggestions when a refresh ran while they were loading.
-- Autocomplete list that opened while typing ranked for an earlier prefix, such as `set` first for `sel`.
-- Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh.
-- Tables from the previous database listed under a schema after switching database on Snowflake or Trino.
-- Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery.
-- Every schema a search had opened read again after each commit on Oracle, Snowflake and BigQuery.
-- Schemas missing from Open Quickly on every reopen after one failed to load.
-- Unexpanded schemas hidden by the sidebar filter in the Tree layout.
-- Empty object sections opened as "No items" under every match while filtering the sidebar tree.
-- **Drop View** offered in Recent for a sequence or materialized view opened from Open Quickly.
-- Column default of NULL shown as Empty on MySQL and MariaDB, and a NULL default that never stuck. (#3058)
-- String column defaults misread on MariaDB 10.2.7 and later, and expression defaults on MariaDB 10.2.1 to 10.2.6.
-- `ERROR 1064` editing a MySQL 8 column whose expression default holds a quoted string.
-- `ERROR 1067` saving a column made NOT NULL while its default was NULL.
-- NULL default on a MySQL `TEXT`, `BLOB`, `JSON` or `GEOMETRY` column saved as the expression `(NULL)`.
-- Backslashes and line breaks mangled in MySQL defaults, comments, enum values and passwords under `NO_BACKSLASH_ESCAPES`.
-- Form feed in a MySQL comment, default or SQL export saved as the letter `f`.
-- Saved query from iCloud dropped for good when a query on this Mac held its keyword.
-- Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051)
-- Raw Oracle driver error in the schema switch failure dialog. (#3053)
-- Oracle health check closing a connection a statement was still running on. (#3053)
-- Oracle column defaults missing from the Structure tab.
-- ORA-01442 when changing the default or type of a `NOT NULL` Oracle column.
-- Oracle `VARCHAR2(n CHAR)` column turned into a byte length when only its nullability was edited.
-- Global saved query inside a folder missing from every other connection. (#3045)
-- Edit Metadata deleting a linked SQL file's other `-- @key: value` header lines.
-- Saved query and folder drawn nowhere when the folder holding it was gone.
-- Keyword accepted for a global saved query while another connection already held it.
-- Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files.
-- Cleared keyword, folder or **Global** on a saved query or its folder never reaching another device.
-- Renaming a folder putting back the scope another window had just set.
-- No changed-on-disk notice for an SQL file outside a linked folder or replaced by an older copy, and Save overwriting it.
-- Saved queries and their folders deleted at launch when their connection had not arrived from iCloud.
-- Saved queries left naming a deleted folder on other devices after that folder was deleted.
-- Unresponsive app when saving over a large SQL file that changed on disk.
-- A keyword two linked SQL files both declared reaching a different file on each launch.
-- A keyword a saved query shared with a global one reaching either query, depending on the connection.
-- Silent failure moving a linked SQL file to the Trash, and an open tab recreating a deleted file on save.
-- AI chat's saved query mentions missing a query saved earlier in the same session.
-- **File > Import > Import Data…** importing every file as SQL. (#3047)
-- Saved query longer than 500,000 characters silently cut short when saved.
-- A file the import panel dimmed still opening, and reaching the wrong importer.
-- Materialized view opened from Open Quickly edited as a plain view. (#2522)
-- Materialized view rows editable in the data grid, then refused at Save.
-- Index edits refused on a PGlite materialized view.
-- Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type.
-- **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them.
-- **New Trigger** offered on a materialized view.
-- Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type.
-- Structure tab refusing to save a renamed or dropped primary key column.
-- Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed.
-- **SQL** offered as an import format on MongoDB.
-- **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key.
-- Model list not reloading when the API key changes, leaving the picker empty with no way to retry.
-- Empty model picker, with nothing said, for a local or OpenAI-compatible server answering 200 with an unexpected shape.
-- No caution when an API key is sent unencrypted over `http` to another machine.
-- No Base URL reaching an OpenAI-compatible server whose version segment is not `/v1`, such as Z.ai's `/v4`. (#3040)
-- Doubled version segment on Claude, OpenAI, xAI and Gemini when the Base URL already carried one.
-- **Connection successful** on a custom provider whose Base URL answered 404.
-- "unsupported URL" instead of TablePro's own message when the Base URL had no `https://`.
-- Claude and Gemini filling the model picker from a built-in list when the server had rejected the request.
-- A wrong Base URL reported as **Model not found**.
-- Editing a saved provider in Settings replacing the transport of a conversation already streaming through it.
-- **Save Changes** and ⌘S dim on a Users & Roles tab with staged changes.
-- A deleted connection's inspector and assistant choice left behind, and inherited by a new connection with its id.
-- **Show Results** enabled on tabs that have no results pane.
-- **Restore Previous Values…** missing from **Settings > Keyboard**, with no shortcut to bind.
-- Toolbar **History** button enabled over a window that never connected.
-- Toolbar **Inspector** button dim on macOS 13 over a pane left open when the connection dropped.
-- **Auto-show inspector on row select** replacing the Assistant you left the pane on.
-- Current conversation in the Assistant's history not announced by VoiceOver.
-- Lines an AI walkthrough step highlighted staying highlighted for good when switched away from before they cleared.
-- Titlebar file icon left over from a query tab the window was no longer showing.
-- No tooltip on the Inspector's **Choose Type** and **Choose Value** buttons.
-- A column resized moments before its table was dropped saving the layout back over the clear.
-- A connection left pointing at a database that was dropped.
-- A dropped table's saved filters, column layout, highlight rules, value formats and label columns coming back on a table recreated with its name.
-- Database switcher, Safe Mode badge and multi-select actions missing from the side bar on iPhone Duo.
-- Sort, Filter, More, Insert Row, Share, Edit and Add Tag missing from the side bar on iPhone Duo.
-- Safe Mode badge with no accessibility label.
-- Keyboard bar separator measured against the main screen instead of the display the editor is on.
-- A dropped database or schema leaving every one of its tables' saved settings behind.
-- Favorites rows left behind by a dropped table, schema or database.
-- Column and operator pull-downs in **Highlight Rules** snapping back to their previous value, leaving every rule on **equals** and on the column it was created with. (#3015)
-- Lines of a multi-line value run together in the cell menu's **Highlight** titles.
-- Favorite queries missing from the sidebar Favorites tab on the first switch to it. (#3016)
-- Favorites list silently dropping rows during a burst of iCloud favorites updates.
-- A favorite moved out of **Global** still listed, and its keyword still expanding, in every other connection.
-- **No Favorites** shown over a Team Library search miss, or when the only favorite tables are in another database.
-- A filter row typed but never applied counted as applied, so the status bar reported it and the next page turn ran it. (#3006)
-- Filter rows typed and never applied lost on closing the tab. (#3006)
-- Saved filters lost on the next tab switch for every restored table tab but the selected one. (#3006)
-- Cancelling the unsaved-changes alert on **Apply** leaving the filter applied and saved over rows it never ran. (#3006)
-- **Clear** deleting a table's saved filter rows along with the query they were running. (#3006)
-- A highlight rule jumping to the top of the list, and taking rows another rule was coloring, when its color is picked again from the cell menu.
-- Picking the color a highlight rule already has deleting the rule.
-- The cell menu offering a switched-off highlight rule's color as the one in force.
-- An unfinished highlight rule kept on the table you started it from when you switch tab before typing a value.
-- A valid regular expression longer than 10,000 characters refused and reported as invalid.
-- A highlight rule's **between** second value field drawn past the edge of the popover on a long column name.
-- A highlight rule counted as active when its regular expression will not compile, matching nothing without saying so.
-- Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in.
-- etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994)
-- `DESCRIBE TOPIC` and `CONSUME` on a Kafka cluster of more than one broker failing with `this broker no longer leads the partition`. (#2993)
-- Kafka `SHOW GROUPS` listing only the groups the bootstrap broker coordinates, and reporting success.
-- Kafka `DESCRIBE GROUP` failing with `this broker does not coordinate that group`.
-- Kafka `DESCRIBE GROUP` on a group that does not exist returning an empty table.
-- Kafka `CONSUME ... FROM NEWEST` returning the oldest messages of its window on a topic with more than one partition.
-- Empty second page when paging a Kafka topic from the newest messages.
-- Kafka sidebar row counts and `DESCRIBE TOPIC` reporting zero for a partition whose broker could not be reached.
-- Backslashes dropped from a Kafka `PRODUCE` value, and a value able to close its own quotes and set the partition.
-- Kafka `CONSUME ... PARTITION` silently ignoring a partition the topic does not have, or one that is not a number.
-- Kafka `SHOW TOPICS INTERNAL` and `DESCRIBE TOPIC "a" "b"` discarding the tokens they cannot use.
-- Kafka `SHOW BROKERS` and `SHOW CLUSTER` naming a different broker as the controller on each run of a KRaft cluster.
-- A cancelled Kafka statement leaving every later one failing with `Not connected to the Kafka cluster`.
-- A Kafka connection dialled twice at once when two requests needed the same broker.
-- `two requests overlapped on one Kafka connection` when the health check ran during a long statement.
-- etcd connections carrying a username refusing a server that has authentication disabled.
-- Raw JSON shown instead of etcd's own message when a username or password is wrong.
-- etcd connections reported as unreachable every 30 seconds for a user without the root role.
-- An etcd `watch` returning no events instead of an error when the session is not authenticated.
-- `The request timed out` from an etcd `watch --timeout` above 60 seconds.
-- Stop in an etcd tab cancelling an unrelated request and leaving the running one alone.
-- Crash from an etcd `watch --timeout` with a negative or out-of-range value.
-- Colored highlight on the AI chat input painting over a window that is not key.
-- Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast.
-- AI chat input focus crossfade playing against Reduce Motion.
-- Sync status and the assistant's scroll-to-bottom button animating against Reduce Motion.
-- Pulsing toolbar symbols left dimmed instead of still under Reduce Motion.
-- Foreign key label picker animating open and closed against Reduce Motion.
-- AI chat input announced with no name by VoiceOver.
-- Assistant pane left with a transcript, no composer and no explanation after the active AI provider is removed.
-- Identical unlabelled **Run** buttons announced for every tool call in a turn that proposes several.
-- Images silently dropped from a multi-file drop on the AI chat input when only some of them failed.
-- An unreadable image file pasted into the AI chat input inserting its path as text.
-- Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
-- Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
-- SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
-- `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
-- 1 row affected reported for every Oracle PL/SQL block.
-- Crash when an Oracle query timed out or was cancelled while its rows were loading.
-- Empty results with no error after about 300 failed Oracle statements on one connection.
-- Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`.
-- Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad.
-- Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
-- Memory held for every connection an SSH tunnel served, and its listening socket closed while it was still accepting.
-- SSH tunnel stalling part-way through a result when two connections share one session, on iPhone and iPad.
-- Slow SSH tunnel throughput while a channel has bytes queued behind it.
-- Cancel ignored during an SSH connect on iPhone and iPad.
-- Sockets to the SSH server left open after a failed SSH connect on iPhone and iPad.
-- No more than a dozen SSH tunnels connecting at a time on iPhone and iPad.
-- SSH tunnels on iPhone and iPad spinning on a closed connection instead of ending.
-- Up to 150 seconds before an SSH forward that cannot open gives up, on iPhone and iPad.
-- MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
-- Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
-- Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
-- Foreign key picker rows that could only be chosen with a mouse.
-- No label and no working search in the foreign key picker on a SQLite table whose columns are declared without a type.
-- SQLite foreign keys written `REFERENCES parent` with no column list pointing at a column the parent does not have, in the object browser, the ER diagram and the JSON inspector.
-- Preview Referenced Row on iPhone and iPad building its filter by hand, so a value holding a backslash could reach the server as SQL. (#2996)
-- The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all.
-- Foreign key picker reporting no matching rows for a term none of its columns could be searched for.
-- No spoken sort direction on Query Plan columns.
-- No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
-- Composite foreign key columns listed out of order on MariaDB.
-- Export dialog listing no tables for a MySQL server behind a proxy, and failing to open at all on Kafka, Cassandra and Teradata.
-- ClickHouse object lists showing the connection's own database under every other database's name.
-- MySQL `SELECT ... INTO @var`, `INTO OUTFILE` and `INTO DUMPFILE` reported as an error or as an empty grid of another table's columns.
-- Schema sync scripts offering to drop the indexes and foreign keys of a table whose structure could not be read.
-- Schema sync scripts offering to drop a table the comparison could not read, as if the source no longer had it.
-- Truncate offered on MariaDB sequences, and on system-versioned tables on Mac.
-- MariaDB sequences, and OceanBase external, system and virtual tables, listed as ordinary tables.
-- Duplicate row for a MariaDB table that a temporary table of the same name shadows.
-- Partitioned tables and MariaDB sequences missing from the Backup Dump object list.
-- Partitioned tables missing from the import table picker.
-- PostgreSQL backup of a partitioned table writing an empty table.
-- System views, sequences and external tables listed as ordinary tables on iPhone and iPad.
-- PostgreSQL column types shown without their length, precision, enum name or domain name.
-- Compare & Sync missing a PostgreSQL column's length, precision or type change.
-- Compare & Sync missing a MySQL or MariaDB fractional seconds, enum label or precision change.
-- MySQL and MariaDB integer display width changes held back by Compare & Sync as data loss.
-- iCloud sync stopping for good once 250 records were waiting to upload.
-- Cassandra `date` values reading as a Buddhist or Japanese year in the grid, on the clipboard and in exports.
-- Menu rows that only a colour or a glyph tells apart reading as identical on macOS 27.
-- A UI test run writing sync bookkeeping into the real defaults instead of its sandbox.
-- Extra layout measurement on every sidebar, inspector, outline and field-list row.
-- Cut, Copy and Paste in the SQL editor's context menu were English in every language.
-- A statement count on a review sheet reading "1 statements".
-- Crash when a model proposed two tool calls carrying the same id in one turn.
-- Another connection's chat history appeared in a second connection's assistant, and could be deleted from there.
-- Two conversations on one Copilot configuration were answered with each other's context.
-- The sidebar toggle announced its SF Symbol names to VoiceOver instead of Tables and Favorites.
-- Choosing Tables or Favorites from the toolbar's overflow menu did nothing.
-- The Inspector toolbar button was permanently dimmed on macOS 13.
-- A connection's status on the welcome window stopped updating once the window was open.
-- The Compare & Sync licence notice froze the app instead of opening as a sheet.
-- `VACUUM`, `CREATE INDEX CONCURRENTLY`, `SET sql_log_bin` and `PRAGMA foreign_keys` failing or ignored when running several statements.
-- A batch committing, discarding or aborting a transaction already open on the connection.
-- Grid saves, structure changes and a Users & Roles apply committing a transaction already open on the connection.
-- Stopping a multi-statement run committing the batch anyway, or leaving its transaction open on the connection.
-- A lost connection during a commit reported as a clean rollback.
-- Query in one tab cancelled and rolled back when another tab or window on the connection starts or stops a query.
-- Stop on MySQL 5.5, 5.6 or MariaDB 5.5 interrupting the next statement on the connection.
-- `QUEUED` results and hidden command errors when running several Redis commands or saving Redis grid edits.
-- Query timeout ignored on MySQL before 5.7.8 and MariaDB before 10.1.1.
-- MySQL query run a second time, and left running on the server, after the connection timed out.
-- Empty error when a parameterized MySQL query timed out.
-- Check constraints reported as added on MySQL before 8.0.16 and MariaDB before 10.2.1, which discard them.
-- `Unknown table 'CHECK_CONSTRAINTS'` opening a table's structure on MariaDB 10.2 before 10.2.22 and 10.3 before 10.3.10.
-- Syntax error removing a check constraint on MySQL 8.0.16 to 8.0.18.
-- Syntax error setting a password or connection limit in Users & Roles on MySQL before 5.7.6 and MariaDB before 10.2.
-- Passwordless account created when a new user's connection limit was set before saving.
-- Connection held as "session settings changed" after a `SET PASSWORD`.
-- Rows saved, added or deleted on iPhone and iPad refused by a MySQL, MariaDB, PostgreSQL or Redshift server that starts sessions read-only.
-- Copying objects into a connection that already has a transaction open committing it.
-- Replace-copy into a remote libSQL target failing at `BEGIN`.
-- iOS edits uploaded to iCloud after iCloud Sync was turned off.
-- iOS text left in English for Korean, Vietnamese, Simplified Chinese and Traditional Chinese.
-- iOS connections overwritten by the next edit after the saved library failed to load.
-- A `.tablepro` file or link closing a half-filled form on iPhone and iPad.
-- Links to a table opening only its connection on iPhone and iPad.
-- Face ID symbol on the unlock button of Touch ID and Optic ID devices.
-- Empty icon tiles for Snowflake, Beancount, SurrealDB and Kafka connections on iPhone and iPad.
-- iOS edit mode left on after deleting every connection.
-- Two rename fields when renaming a favorite on iPhone and iPad.
-- Connection names cut off at large text sizes on iPhone and iPad.
-- `Cmd+W` closing the whole connection instead of the current tab until something in the window was clicked.
-- **Reset Sample Database** leaving the old Chinook copy's journal files beside the fresh one.
-- iPhone and iPad edits undoing changes synced while the form was open, and dropping SSH jump hosts set on the Mac.
-- Edits on iPhone and iPad closing as if saved after the connection, group or tag changed or was deleted on another device.
-- iCloud sync failing on iPhone and iPad after signing in to a different Apple Account.
-- SQLite and DuckDB connections on iPhone and iPad losing their file after a restore, or opening an empty database.
-- Table page arrows and row arrows hidden under the tab bar on iPhone and iPad with iOS 26 and later.
-- App unresponsive while a connection file is encrypted or decrypted with a passphrase.
-- Unsaved changes in the connection, group, tag and row forms discarded without asking on iPhone and iPad.
-- Open connection on iPhone and iPad jumping back to the table list after a rename, reorder or synced change.
-- Deleted connections still showing in Spotlight, Siri, Shortcuts and Handoff on iPhone and iPad.
-- No confirmation before deleting a tag on iPhone and iPad.
-- Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
-- Table page range shown in English in every language on iPhone and iPad.
-- Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting.
-- Every later connect to a connection on iPhone and iPad hanging for good once its SSH tunnel dropped.
-- Connection errors on iPhone and iPad given a title and advice picked from words in the message.
-- Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped.
-- Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported.
-- Oracle triggers synced into another schema created back in the source schema.
-- Oracle table with an index failing to sync or copy with ORA-03405.
-- Oracle object lost when a sync or copy replacing it failed.
-- Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run.
-- Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore.
-- Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical.
-- Compare & Sync scripting a `DROP` with no `CREATE` for a view, routine or trigger whose definition it could not read.
-- Compare & Sync offering to drop every target procedure, function or trigger when the source's list could not be read.
-- DuckDB macro dropped and not recreated by a Compare & Sync replace.
-- Copy To giving no reason for a view, routine or trigger whose definition could not be read.
-- Copy To skipping a view, routine or trigger with a comment above its `CREATE`.
-- Materialized view indexes ignored by Compare & Sync, and lost when it or Copy To recreated the view.
-- SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back.
-- An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad.
-- Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036)
-- Empty tab after clicking a Redis database the server refuses to switch to.
-- No wrong-mode error when a Standalone Redis connection points at a Valkey 8 or later Sentinel or cluster node.
-- Redis `MULTI` blocks aborted, or padded with extra replies, by the sidebar, the key browser and the connection check.
-- A Redis `MULTI` block or `WATCH` lost without notice when the connection dropped.
-- Redis row counts, statistics, DDL preview, export, grid edits and key tree using the session's database, not the row's.
-- Refreshing a Redis database tab after a refused switch showing another database's keys.
-- Redis key grid showing type UNKNOWN, TTL -1 and empty collections for keys an ACL user cannot read.
-- Redis Cluster writes and key counts reported as complete when a shard refused them, and `SCRIPT EXISTS` answering 0.
-- Database Index in the Redis connection form stopping at 15.
-- Empty Redis key list on iPhone and iPad when the server refuses the scan or a `MULTI` block is open.
-- Explain Query failing on Redis with a `DEBUG` command error, and enabled for databases with no query plan.
-- Redis key tree showing "No items" when the server refuses the key scan or a `MULTI` block is open.
-- Redis commands losing arguments such as `SCAN … TYPE` or `FLUSHDB ASYNC`, and valid `XGROUP` or `OBJECT` commands refused.
-- Redis Cluster running `FUNCTION LOAD`, `ACL SETUSER`, `CONFIG REWRITE` and other subcommands on a single node.
-- Redis connections whose database is written `db4` opening database 0 on the Mac.
-- Negative or non-numeric database index in a Redis connection URL accepted without an error.
-- Redis command errors on iPhone and iPad reported as a successful result.
-- Redis keys listed twice on iPhone and iPad.
-- Redis keys on iPhone and iPad failing to open with `ERR wrong number of arguments for 'select' command`.
-- Redis permission errors on iPhone and iPad reported as a failed sign-in.
-- Run and Explain Query in the Query menu enabled for an editor holding only whitespace.
-- `explain_query` sending an invented `EXPLAIN` to databases without one, and an estimate when `analyze` was asked for.
-- Explain on Redshift failing on PostgreSQL's `FORMAT JSON` and `ANALYZE` options.
-- Decimal points and minus signs accepted in DuckDB Port and BigQuery Max Bytes Billed.
-- Wrong Redis database in the toolbar of a second window opened on the same connection.
-- Backup Dump failing with `unknown variable 'ssl-mode=PREFERRED'` when the `mysqldump` on `PATH` is MariaDB's. (#3046)
-- Verify CA and Verify Identity connections unable to back up or restore on MySQL, MariaDB and PostgreSQL.
-- Partial MySQL dump of a MariaDB or MySQL 5.7 server, from the column statistics `mysqldump` 8 reads.
-- A database whose name starts with a dash backed up as a different database, reported as a success.
-- Cancel ignored while TablePro was locating the backup tool, and the dump running anyway.
-- Destination folder and the first database reading as one path in the backup result sheet. (#3046)
-- Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause.
-- Backup failure reported as an exit code alone when the tool wrote its message and exited at once.
-- DynamoDB edits saving numbers, booleans, maps and sets as strings.
-- DynamoDB binary, map and long-text edits lost or saved as a fragment, and **Set NULL** leaving a NULL attribute.
-- Duplicated DynamoDB row saved with `__DEFAULT__` as its key.
-- Nine DynamoDB filter operators matching nothing, and an OR filter dropping other partitions' items.
-- DynamoDB column sort ignored, and each page re-reading every page before it.
-- DynamoDB **Count Exactly** never finishing.
-- DynamoDB export dropping attributes first seen after the first page.
-- DynamoDB PartiQL result cut to its first 1 MB.
-- DynamoDB **Stop** cancelling the wrong request, and throttled requests failing instead of retrying.
-- AWS SSO sign-in prompt never shown for DynamoDB.
-- DynamoDB connections to China and European Sovereign Cloud regions failing.
-- DynamoDB connection sampling every table on connect.
-- Imported DynamoDB connection losing its AWS Region.
-- Failed **Count Exactly** showing no error.
-- PostgreSQL export and column reorder script failing on an index a failed `CREATE INDEX CONCURRENTLY` left behind.
-- PostgreSQL export and column reorder script failing on a foreign key that references a unique index.
-- PostgreSQL exclusion constraints missing from exports and the DDL tab.
-- PostgreSQL column reorder script dropping an index named like one of the table's check constraints.
-- Invalid PostgreSQL index recreated on the target by Compare & Sync and **Copy To**.
-- Expression key parts missing from SQLite, libSQL, Cloudflare D1, MySQL and DuckDB indexes.
-- Condition missing from SQLite, libSQL and Cloudflare D1 partial indexes.
-- Descending MySQL index keys recreated ascending by a rename.
-- MySQL index dropped when the index replacing it failed to create.
-- Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard.
-- Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's.
-- Show Previous Tab and Show Next Tab listed twice in the Window menu.
-- Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor.
-- Shift-Tab and Control-Tab accepting an inline AI suggestion instead of outdenting or reaching the menu.
-- Closing a background tab with unsaved work landing on its neighbour instead of the tab you were on.
-- Show Previous Tab, Show Next Tab and Select Tab 1 to 9 enabled in Agent mode and with no tab to go to.
-- Row data of a window's first connection kept in memory after switching to another connection.
-- Query picked from Open Quickly's Recent list dropping out of it once the query ran again.
-- Table opened in one database shown in Open Quickly's Recent in every other database, and opened there.
-- Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half.
-- MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted.
-- Structure and Create Table SQL Preview disagreeing with Save on the schema, primary key name or a SQLite foreign key.
-- Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save.
-- PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure.
-- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad.
-- **Apply to Editor** replacing the whole query tab with one rewritten statement.
-- AI schema context describing the sidebar's database instead of the query tab's.
-- The query and results of another tab sent as context with an AI query action.
-- `/fix` sending the result grid in place of the query's error.
-- AI query commands enabled on a connection whose AI access is **Never**.
-- The chat message after a declined AI request answered as a SQL rewrite.
-- Rows merged on save when a CSV file did not end with a line break.
-- Rows saved empty when a value held a character the file's encoding cannot store.
-- Column names added in the CSV inspector dropped on save.
-- UTF-16 CSV files read as garbage, and saving them corrupting the file.
-- `.tsv` files opened as comma-separated, and **Save As** TSV writing commas.
-- Edits and deletes under a filter or sort landing on a different row.
-- Filters and sorts pointing at the wrong column after a column was inserted or deleted.
-- Fields past the first row's column count hidden, and dropped by undo.
-- Delimiter guessed differently on each open when two delimiters tied.
-- **Reload** in the CSV inspector showing the file as first opened.
-- Renaming a column in a file without a header row doing nothing.
-- Values such as `NaN`, `inf` and `0x1F` read as numbers, breaking sort.
-- Grid commands enabled in the CSV inspector that did nothing.
-- Changing a filter or sort leaving the CSV inspector on a later page.
-- CSV inspector windows always opening as tabs, ignoring the system's tab setting.
-- SQL Server Verify CA refusing a certificate that does not name the host.
-- SQL Server login failing without a reason for a password longer than 128 bytes.
-- SQL Server connection that never answered again after Stop was pressed during a query.
-- SQL Server query cut at the row limit left running on the server, holding its locks and stalling the next query.
-- SQL Server statement that kept running on the server, and committed, after Disconnect.
-- SQL Server `MERGE` refused with Msg 10713 when run alone or as the last statement of a script.
-- Column sort re-running every statement in the editor for a result with query parameters or after Fetch All.
-- Format SQL, Fold and Save as Favorite shown dimmed in the query editor's context menu.
-- Format SQL and Save as Favorite in the editor's context menu acting on the right-clicked word alone.
-- Explain, Optimize and Fix with AI cancelling a reply the assistant was still writing.
-- AI chat unable to send again after a message too large to send, with an error naming the wrong setting.
-- A whole AI conversation lost when one part of it could not be read.
-- SQL Server `MERGE` statements and procedure bodies failing when imported from a .sql file.
-- Previous run's column headings left over an empty grid under the error of a script that failed partway.
-- Row numbers of a longer previous result left beside the rows of a shorter one.
-- Run executing an old sorted query after a column header was clicked while a query ran.
-- SQL Server scripts refused, or cut to their first result set, over MCP, AppleScript and the AI assistant.
-- SQL import into SQL Server sending `GO` lines to the server and splitting batches at each semicolon.
-- SQL Server dumps failing on their first view, routine or trigger when restored with sqlcmd or SSMS.
-- A leading `GO` line sent to SQL Server by MCP and AI assistant tools, and a `GO n` count ignored.
-- App hanging for a minute when an import stopped on a failing statement several megabytes long.
-- SQL Server Windows Authentication to another realm failing when the service principal name is over 128 bytes.
-- Data grid's inline cell editor and cell viewer unreachable by VoiceOver.
-- No Executing indicator or Stop button in the results status bar while a query tab runs its first query.
-- ER diagram opening at 100% instead of fitted, then losing its zoom the first time you came back to its tab.
-- Diagram Fit to Window stopping a scroll bar's width short when scroll bars are always shown.
-- No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan.
-- MongoDB collections could not be created from **New Table…**. (#3131)
-- A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares.
-- MongoDB edits that stored dates and ObjectIds as text, rounded integers past 2^53, or missed a string `_id` that looks numeric.
-- **New Table…** offered on databases that cannot create a table, such as Redis and Kafka.
-- Executing indicator and Stop button carried over for a moment onto the query tab switched to.
-- Every window's front tab reloading, and asking to discard its edits, after a row import, a new table or a structure change.
-- Tabs showing old rows, columns, DDL or triggers after a save, import, structure change or materialized view refresh.
-- Tables with hidden columns querying a dropped column, or leaving out a new one, after a SQL file import or a structure change.
-- First SQLite or libSQL query after a structure save showing the table's old columns, without the new column's values.
-- Edits after a structure change using the table's old primary key, defaults and generated columns.
+- Pre-connect script failures sometimes reported without the script's own error message. (#3133 by @datlechin)
+- Failed MongoDB statements, including writes the server rejected, reported as successful with an empty result. (#3139 by @datlechin)
+- MongoDB **Write Concern** setting ignored by every write except inserts, data grid saves included. (#3151 by @datlechin)
+- `writeConcern` option ignored by MongoDB shell writes, and `ordered` by `insertMany`. (#3151 by @datlechin)
+- `remove(filter, {justOne: true})` in the MongoDB shell deleting every matching document. (#3151 by @datlechin)
+- MongoDB write that stopped part-way reported without saying documents had already changed. (#3151 by @datlechin)
+- Empty error message when a MongoDB `insertMany` stopped at an oversized document. (#3151 by @datlechin)
+- Save reporting success after leaving out an edit it could not write, such as a new MongoDB document left empty. (#3132, #3149 by @datlechin)
+- Binary fields missing from duplicated or pasted MongoDB rows. (#3132, #3159 by @datlechin)
+- Undo of a MongoDB delete refused when the document held binary data. (#3132, #3159 by @datlechin)
+- Binary field deleted when editing a MongoDB binary cell. (#3132, #3159 by @datlechin)
+- Error saving a new MongoDB row with every cell empty. (#3132, #3159 by @datlechin)
+- **Set DEFAULT** on a MongoDB field storing the text `__DEFAULT__`. (#3132, #3159 by @datlechin)
+- Edits to MongoDB fields named with a dot, a leading `$` or `__proto__` changing another field or nothing. (#3132, #3159 by @datlechin)
+- Nested MongoDB values shown with sorted keys, and saved with ObjectIds, dates and numbers retyped. (#3132, #3159 by @datlechin)
+- **Set NULL** on a MongoDB field deleting the field. (#3132, #3160 by @datlechin)
+- Null fields dropped from duplicated, pasted or restored MongoDB documents. (#3132, #3160 by @datlechin)
+- **Restore Previous Values** comparing the wrong MongoDB fields when a document lacks one. (#3132, #3160 by @datlechin)
+- Row inspector accepting edits to a MongoDB `_id` or another read-only field that were never saved. (#3132, #3160 by @datlechin)
+- `tablepro-mcp` crashing, or using a full CPU core, when its standard input, output or error was non-blocking. (#3137, #3142 by @datlechin)
+- Server connections piling up while browsing many databases or schemas, and staying open after a failed connect. (#3103, #3106 by @datlechin)
+- Variables declared in a SQL Server script lost after its first statement. (#3078, #3105 by @datlechin)
+- Later SQL Server result sets shown under the first one's columns, or crashing the app. (#3105 by @datlechin)
+- SQL Server errors raised inside a query shown as an empty or partial result. (#3105 by @datlechin)
+- SQL Server connection refusing every query after a failed statement until it reconnected. (#3105 by @datlechin)
+- `-1 row(s) affected` after SQL Server DDL. (#3105 by @datlechin)
+- A quote, bracket or `?` in a comment breaking SQL Server query parameters. (#3105 by @datlechin)
+- Edits made while an iCloud sync was running reverted by that sync and never uploaded. (#3102 by @datlechin)
+- Saved queries unavailable until relaunch after their store failed to open once. (#3102 by @datlechin)
+- SQL files saved as UTF-8 whatever their encoding, and non-UTF-8 ones not opening from Finder or **File > Open File…**. (#3102 by @datlechin)
+- Unresponsive app while comparing large query plans. (#3102 by @datlechin)
+- Slow definition diff in Compare & Sync for large tables. (#3102 by @datlechin)
+- Autocomplete offering another schema's tables without their schema once that schema was completed or expanded. (#3070 by @datlechin)
+- Stale column and MongoDB field suggestions when a refresh ran while they were loading. (#3094 by @datlechin)
+- Autocomplete list that opened while typing ranked for an earlier prefix, such as `set` first for `sel`. (#3135 by @datlechin)
+- Tables in an expanded Oracle or Snowflake schema missing from Open Quickly until the next refresh. (#3060 by @datlechin)
+- Tables from the previous database listed under a schema after switching database on Snowflake or Trino. (#3095 by @datlechin)
+- Hundreds of catalog queries from one keystroke in the sidebar filter on Oracle, Snowflake and BigQuery. (#3099 by @datlechin)
+- Every schema a search had opened read again after each commit on Oracle, Snowflake and BigQuery. (#3099 by @datlechin)
+- Schemas missing from Open Quickly on every reopen after one failed to load. (#3060 by @datlechin)
+- Unexpanded schemas hidden by the sidebar filter in the Tree layout. (#3060 by @datlechin)
+- Empty object sections opened as "No items" under every match while filtering the sidebar tree. (#3060 by @datlechin)
+- **Drop View** offered in Recent for a sequence or materialized view opened from Open Quickly. (#3060 by @datlechin)
+- Column default of NULL shown as Empty on MySQL and MariaDB, and a NULL default that never stuck. (#3058, #3067 by @datlechin)
+- String column defaults misread on MariaDB 10.2.7 and later, and expression defaults on MariaDB 10.2.1 to 10.2.6. (#3067 by @datlechin)
+- `ERROR 1064` editing a MySQL 8 column whose expression default holds a quoted string. (#3067 by @datlechin)
+- `ERROR 1067` saving a column made NOT NULL while its default was NULL. (#3067 by @datlechin)
+- NULL default on a MySQL `TEXT`, `BLOB`, `JSON` or `GEOMETRY` column saved as the expression `(NULL)`. (#3067 by @datlechin)
+- Backslashes and line breaks mangled in MySQL defaults, comments, enums and passwords under `NO_BACKSLASH_ESCAPES`. (#3090 by @datlechin)
+- Form feed in a MySQL comment, default or SQL export saved as the letter `f`. (#3090 by @datlechin)
+- Saved query from iCloud dropped for good when a query on this Mac held its keyword. (#3087 by @datlechin)
+- Unresponsive app and a dropped keystroke when typing in the row inspector's JSON field. (#3051, #3056 by @datlechin)
+- Raw Oracle driver error in the schema switch failure dialog. (#3053, #3055 by @datlechin)
+- Oracle health check closing a connection a statement was still running on. (#3053, #3055 by @datlechin)
+- Oracle column defaults missing from the Structure tab. (#3089 by @datlechin)
+- ORA-01442 when changing the default or type of a `NOT NULL` Oracle column. (#3089 by @datlechin)
+- Oracle `VARCHAR2(n CHAR)` column turned into a byte length when only its nullability was edited. (#3089 by @datlechin)
+- Global saved query inside a folder missing from every other connection. (#3045, #3052 by @datlechin)
+- Edit Metadata deleting a linked SQL file's other `-- @key: value` header lines. (#3084 by @datlechin)
+- Saved query and folder drawn nowhere when the folder holding it was gone. (#3052 by @datlechin)
+- Keyword accepted for a global saved query while another connection already held it. (#3052 by @datlechin)
+- Garbled name and ISO-8859-1 label on a UTF-8, UTF-16 or UTF-32 linked SQL file, and garbled big-endian UTF-32 files. (#3083 by @datlechin)
+- Cleared keyword, folder or **Global** on a saved query or its folder never reaching another device. (#3052 by @datlechin)
+- Renaming a folder putting back the scope another window had just set. (#3052 by @datlechin)
+- No changed-on-disk notice for an SQL file outside a linked folder or replaced by an older copy, and Save overwriting it. (#3088 by @datlechin)
+- Saved queries and their folders deleted at launch when their connection had not arrived from iCloud. (#3054 by @datlechin)
+- Saved queries left naming a deleted folder on other devices after that folder was deleted. (#3054 by @datlechin)
+- Unresponsive app when saving over a large SQL file that changed on disk. (#3085 by @datlechin)
+- A keyword two linked SQL files both declared reaching a different file on each launch. (#3054 by @datlechin)
+- A keyword a saved query shared with a global one reaching either query, depending on the connection. (#3054 by @datlechin)
+- Silent failure moving a linked SQL file to the Trash, and an open tab recreating a deleted file on save. (#3088 by @datlechin)
+- AI chat's saved query mentions missing a query saved earlier in the same session. (#3054 by @datlechin)
+- **File > Import > Import Data…** importing every file as SQL. (#3047, #3050 by @datlechin)
+- Saved query longer than 500,000 characters silently cut short when saved. (#3086 by @datlechin)
+- A file the import panel dimmed still opening, and reaching the wrong importer. (#3050 by @datlechin)
+- Materialized view opened from Open Quickly edited as a plain view. (#2522, #3063 by @datlechin)
+- Materialized view rows editable in the data grid, then refused at Save. (#3072 by @datlechin)
+- Index edits refused on a PGlite materialized view. (#3063 by @datlechin)
+- Structure grid and inspector taking edits the object or engine refuses, such as a materialized view's Type. (#3063 by @datlechin)
+- **Delete** and **Duplicate** in a structure row's menu doing nothing on an object that refuses them. (#3063 by @datlechin)
+- **New Trigger** offered on a materialized view. (#3063 by @datlechin)
+- Structure tab refusing every save on a SQLite, libSQL or Cloudflare D1 table with a column that has no declared type. (#3147 by @datlechin)
+- Structure tab refusing to save a renamed or dropped primary key column. (#3147 by @datlechin)
+- Structure saves that could lose data, and table rebuilds, confirmed twice, with an error shown after Cancel. (#3154 by @datlechin)
+- Structure tab refusing to save an index or check constraint named like one deleted in the same save. (#3155 by @datlechin)
+- Structure tab refusing every save on a SQLite table with two check constraints of one name. (#3155 by @datlechin)
+- Primary key lost on MySQL and MariaDB when a save replaced the `PRIMARY` index row and changed a column. (#3155 by @datlechin)
+- Structure tab save failing partway when index or check constraint renames swapped names or took a freed one. (#3155 by @datlechin)
+- Clustered index lost on SQL Server when a duplicate of it replaced the original. (#3155 by @datlechin)
+- Structure tab accepting a check constraint named like another in a different letter case. (#3155 by @datlechin)
+- Compressed dump named `.GZ` rather than `.gz` reaching the parser still compressed. (#3050 by @datlechin)
+- **SQL** offered as an import format on MongoDB. (#3050 by @datlechin)
+- MongoDB views and `system.*` collections listed as ordinary collections. (#3150 by @datlechin)
+- MongoDB compound index keys out of order, and hashed, text and geospatial indexes shown as B-tree. (#3150 by @datlechin)
+- TTL, partial filter, collation and other index options missing from MongoDB DDL. (#3150 by @datlechin)
+- Index options such as `wildcardProjection` and a 2d index's bounds dropped by `createIndex` in the MongoDB shell. (#3150 by @datlechin)
+- `db.createView` missing from the MongoDB shell. (#3150 by @datlechin)
+- `Double()` and `BSONRegExp()` undefined in the MongoDB shell although autocomplete offers them. (#3150 by @datlechin)
+- `NumberDecimal("NaN")` and `NumberDecimal("Infinity")` refused by the MongoDB shell. (#3150 by @datlechin)
+- Fields named `__proto__` dropped from documents a MongoDB script writes or reads. (#3150 by @datlechin)
+- Error text after a carriage return or line separator left uncommented in Edit View Definition's fallback. (#3150 by @datlechin)
+- Whole numbers from 2^63 up, such as `1e20`, refused by the MongoDB shell as a document MongoDB cannot read. (#3158 by @datlechin)
+- `NumberLong` given a number past 2^53 storing a different integer in the MongoDB shell. (#3158 by @datlechin)
+- Wrong values stored by `NumberInt` and `Timestamp` in the MongoDB shell, such as 12 for `NumberInt("12abc")`. (#3158 by @datlechin)
+- `Int32`, `Long`, `Decimal128` and `Timestamp({ t, i })` missing from the MongoDB shell although autocomplete offers them. (#3158 by @datlechin)
+- MongoDB scripts stopping on a stored decimal `NaN` or a regular expression JavaScript cannot compile. (#3158 by @datlechin)
+- Regular expressions changed when a MongoDB script writes back a document it read. (#3158 by @datlechin)
+- Capped MongoDB collection size shown as 0 in DDL. (#3150 by @datlechin)
+- **Save** permanently dim on a Custom provider for an OpenAI-compatible server that wants no API key. (#3043 by @datlechin)
+- Model list not reloading when the API key changes, leaving the picker empty with no way to retry. (#3043 by @datlechin)
+- Empty model picker, with nothing said, for a local or OpenAI-compatible server answering 200 with an unexpected shape. (#3043 by @datlechin)
+- No caution when an API key is sent unencrypted over `http` to another machine. (#3043 by @datlechin)
+- No Base URL reaching an OpenAI-compatible server whose version segment is not `/v1`, such as Z.ai's `/v4`. (#3040, #3042 by @datlechin)
+- Doubled version segment on Claude, OpenAI, xAI and Gemini when the Base URL already carried one. (#3042 by @datlechin)
+- **Connection successful** on a custom provider whose Base URL answered 404. (#3042 by @datlechin)
+- "unsupported URL" instead of TablePro's own message when the Base URL had no `https://`. (#3042 by @datlechin)
+- Claude and Gemini filling the model picker from a built-in list when the server had rejected the request. (#3042 by @datlechin)
+- A wrong Base URL reported as **Model not found**. (#3042 by @datlechin)
+- Editing a saved provider in Settings replacing the transport of a conversation already streaming through it. (#3042 by @datlechin)
+- **Save Changes** and ⌘S dim on a Users & Roles tab with staged changes. (#3041 by @datlechin)
+- A deleted connection's inspector and assistant choice left behind, and inherited by a new connection with its id. (#3041 by @datlechin)
+- **Show Results** enabled on tabs that have no results pane. (#3041 by @datlechin)
+- **Restore Previous Values…** missing from **Settings > Keyboard**, with no shortcut to bind. (#3041 by @datlechin)
+- Toolbar **History** button enabled over a window that never connected. (#3041 by @datlechin)
+- Toolbar **Inspector** button dim on macOS 13 over a pane left open when the connection dropped. (#3041 by @datlechin)
+- **Auto-show inspector on row select** replacing the Assistant you left the pane on. (#3041 by @datlechin)
+- Current conversation in the Assistant's history not announced by VoiceOver. (#3041 by @datlechin)
+- Lines an AI walkthrough step highlighted staying highlighted for good when switched away from before they cleared. (#3041 by @datlechin)
+- Titlebar file icon left over from a query tab the window was no longer showing. (#3041 by @datlechin)
+- No tooltip on the Inspector's **Choose Type** and **Choose Value** buttons. (#3041 by @datlechin)
+- A column resized moments before its table was dropped saving the layout back over the clear. (#3033 by @datlechin)
+- A connection left pointing at a database that was dropped. (#3033 by @datlechin)
+- A dropped table's saved filters, layout, highlight rules, value formats and label columns applied to its namesake. (#3029 by @datlechin)
+- Database switcher, Safe Mode badge and multi-select actions missing from the side bar on iPhone Duo. (#3035 by @datlechin)
+- Sort, Filter, More, Insert Row, Share, Edit and Add Tag missing from the side bar on iPhone Duo. (#3035 by @datlechin)
+- Safe Mode badge with no accessibility label. (#3035 by @datlechin)
+- Keyboard bar separator measured against the main screen instead of the display the editor is on. (#3035 by @datlechin)
+- A dropped database or schema leaving every one of its tables' saved settings behind. (#3029 by @datlechin)
+- Favorites rows left behind by a dropped table, schema or database. (#3029 by @datlechin)
+- **Highlight Rules** column and operator pull-downs snapping back, leaving every rule on **equals** and its first column. (#3015, #3027 by @datlechin)
+- Lines of a multi-line value run together in the cell menu's **Highlight** titles. (#3101 by @datlechin)
+- Favorite queries missing from the sidebar Favorites tab on the first switch to it. (#3016, #3028 by @datlechin)
+- Favorites list silently dropping rows during a burst of iCloud favorites updates. (#3028 by @datlechin)
+- A favorite moved out of **Global** still listed, and its keyword still expanding, in every other connection. (#3030 by @datlechin)
+- **No Favorites** shown over a Team Library search miss, or when the only favorite tables are in another database. (#3030 by @datlechin)
+- A typed but unapplied filter row counted as applied, reported in the status bar and run on the next page turn. (#3006, #3026 by @datlechin)
+- Filter rows typed and never applied lost on closing the tab. (#3006, #3026 by @datlechin)
+- Saved filters lost on the next tab switch for every restored table tab but the selected one. (#3006, #3026 by @datlechin)
+- Cancelling the unsaved-changes alert on **Apply** leaving the filter applied and saved over rows it never ran. (#3006, #3026 by @datlechin)
+- **Clear** deleting a table's saved filter rows along with the query they were running. (#3006, #3026 by @datlechin)
+- A highlight rule re-picked from the cell menu jumping to the top and taking rows another rule was coloring. (#3031 by @datlechin)
+- Picking the color a highlight rule already has deleting the rule. (#3031 by @datlechin)
+- The cell menu offering a switched-off highlight rule's color as the one in force. (#3031 by @datlechin)
+- An unfinished highlight rule kept on the table you started it from when you switch tab before typing a value. (#3031 by @datlechin)
+- A valid regular expression longer than 10,000 characters refused and reported as invalid. (#3031 by @datlechin)
+- A highlight rule's **between** second value field drawn past the edge of the popover on a long column name. (#3026 by @datlechin)
+- A highlight rule counted as active when its regular expression will not compile, matching nothing without saying so. (#3026 by @datlechin)
+- Claude Agent listed as **Not configured** in Settings > AI however the CLI was signed in. (#3021 by @datlechin)
+- etcd connections failing with `Unexpected HTTP 400 from v3/maintenance/status` once authentication is enabled. (#2994, #3011 by @datlechin)
+- `DESCRIBE TOPIC` and `CONSUME` failing on a multi-broker Kafka cluster with `this broker no longer leads the partition`. (#2993, #3023 by @datlechin)
+- Kafka `SHOW GROUPS` listing only the groups the bootstrap broker coordinates, and reporting success. (#3023 by @datlechin)
+- Kafka `DESCRIBE GROUP` failing with `this broker does not coordinate that group`. (#3023 by @datlechin)
+- Kafka `DESCRIBE GROUP` on a group that does not exist returning an empty table. (#3023 by @datlechin)
+- Kafka `CONSUME ... FROM NEWEST` returning the oldest messages of its window on a topic with more than one partition. (#3023 by @datlechin)
+- Empty second page when paging a Kafka topic from the newest messages. (#3023 by @datlechin)
+- Kafka sidebar row counts and `DESCRIBE TOPIC` reporting zero for a partition whose broker could not be reached. (#3023 by @datlechin)
+- Backslashes dropped from a Kafka `PRODUCE` value, and a value able to close its own quotes and set the partition. (#3023 by @datlechin)
+- Kafka `CONSUME ... PARTITION` silently ignoring a partition the topic does not have, or one that is not a number. (#3023 by @datlechin)
+- Kafka `SHOW TOPICS INTERNAL` and `DESCRIBE TOPIC "a" "b"` discarding the tokens they cannot use. (#3023 by @datlechin)
+- Kafka `SHOW BROKERS` and `SHOW CLUSTER` naming a different broker as the controller on each run of a KRaft cluster. (#3023 by @datlechin)
+- A cancelled Kafka statement leaving every later one failing with `Not connected to the Kafka cluster`. (#3023 by @datlechin)
+- A Kafka connection dialled twice at once when two requests needed the same broker. (#3023 by @datlechin)
+- `two requests overlapped on one Kafka connection` when the health check ran during a long statement. (#3023 by @datlechin)
+- etcd connections carrying a username refusing a server that has authentication disabled. (#3011 by @datlechin)
+- Raw JSON shown instead of etcd's own message when a username or password is wrong. (#3011 by @datlechin)
+- etcd connections reported as unreachable every 30 seconds for a user without the root role. (#3011 by @datlechin)
+- An etcd `watch` returning no events instead of an error when the session is not authenticated. (#3011 by @datlechin)
+- `The request timed out` from an etcd `watch --timeout` above 60 seconds. (#3011 by @datlechin)
+- Stop in an etcd tab cancelling an unrelated request and leaving the running one alone. (#3011 by @datlechin)
+- Crash from an etcd `watch --timeout` with a negative or out-of-range value. (#3011 by @datlechin)
+- Colored highlight on the AI chat input painting over a window that is not key. (#3010 by @datlechin)
+- Colored highlight on the AI chat input ignoring Reduce Transparency and Increase Contrast. (#3010 by @datlechin)
+- AI chat input focus crossfade playing against Reduce Motion. (#3010 by @datlechin)
+- Sync status and the assistant's scroll-to-bottom button animating against Reduce Motion. (#3020 by @datlechin)
+- Pulsing toolbar symbols left dimmed instead of still under Reduce Motion. (#3020 by @datlechin)
+- Foreign key label picker animating open and closed against Reduce Motion. (#3020 by @datlechin)
+- AI chat input announced with no name by VoiceOver. (#3010 by @datlechin)
+- Assistant pane left with a transcript, no composer and no explanation after the active AI provider is removed. (#3018 by @datlechin)
+- Identical unlabelled **Run** buttons announced for every tool call in a turn that proposes several. (#3018 by @datlechin)
+- Images silently dropped from a multi-file drop on the AI chat input when only some of them failed. (#3018 by @datlechin)
+- An unreadable image file pasted into the AI chat input inserting its path as text. (#3018 by @datlechin)
+- Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984, #2988 by @datlechin)
+- Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success. (#2988 by @datlechin)
+- SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts. (#2988 by @datlechin)
+- `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel. (#2988 by @datlechin)
+- 1 row affected reported for every Oracle PL/SQL block. (#2988 by @datlechin)
+- Crash when an Oracle query timed out or was cancelled while its rows were loading. (#3000 by @datlechin)
+- Empty results with no error after about 300 failed Oracle statements on one connection. (#3000 by @datlechin)
+- Oracle 23ai connections hanging on a schema switch or any `ALTER SESSION`. (#3000 by @datlechin)
+- Oracle statements run outside a transaction never committed, on Mac and on iPhone and iPad. (#3001 by @datlechin)
+- Oracle table and database metadata failing to load from a size query on `ALL_SEGMENTS`, a view Oracle does not have. (#2999 by @datlechin)
+- Memory held for every connection an SSH tunnel served, and its listening socket closed while it was still accepting. (#3012 by @datlechin)
+- SSH tunnel stalling part-way through a result when two connections share one session, on iPhone and iPad. (#3012 by @datlechin)
+- Slow SSH tunnel throughput while a channel has bytes queued behind it. (#3012 by @datlechin)
+- Cancel ignored during an SSH connect on iPhone and iPad. (#3012 by @datlechin)
+- Sockets to the SSH server left open after a failed SSH connect on iPhone and iPad. (#3012 by @datlechin)
+- No more than a dozen SSH tunnels connecting at a time on iPhone and iPad. (#3012 by @datlechin)
+- SSH tunnels on iPhone and iPad spinning on a closed connection instead of ending. (#3012 by @datlechin)
+- Up to 150 seconds before an SSH forward that cannot open gives up, on iPhone and iPad. (#3012 by @datlechin)
+- MySQL procedures with a `CASE` statement swallowing the statements after them in the editor. (#2988 by @datlechin)
+- Icon-only buttons silent to VoiceOver in the grid, inspector, find bar, filter bar, structure, dashboard and settings. (#2969 by @datlechin)
+- Status icons silent to VoiceOver, shown only as a symbol and colour, in the AWS and app import steps and plugin lists. (#2974 by @datlechin)
+- Foreign key picker rows that could only be chosen with a mouse. (#2969 by @datlechin)
+- No label and no working search in the foreign key picker on a SQLite table whose columns are declared without a type. (#3022 by @datlechin)
+- SQLite `REFERENCES parent` foreign keys with no column list shown pointing at a column the parent does not have. (#3019 by @datlechin)
+- Preview Referenced Row on iPhone and iPad letting a value holding a backslash reach the server as SQL. (#2996, #3017 by @datlechin)
+- The referenced key column offered as a label in the foreign key picker, where choosing it showed no label at all. (#3009 by @datlechin)
+- Foreign key picker reporting no matching rows for a term none of its columns could be searched for. (#3009 by @datlechin)
+- No spoken sort direction on Query Plan columns. (#2969 by @datlechin)
+- No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error. (#2962 by @datlechin)
+- Composite foreign key columns listed out of order on MariaDB. (#2962 by @datlechin)
+- Export dialog listing no tables for a MySQL server behind a proxy, and not opening on Kafka, Cassandra and Teradata. (#2962 by @datlechin)
+- ClickHouse object lists showing the connection's own database under every other database's name. (#2962 by @datlechin)
+- MySQL `SELECT ... INTO @var`, `INTO OUTFILE` and `INTO DUMPFILE` shown as an error or an empty grid of another table. (#2962 by @datlechin)
+- Schema sync scripts offering to drop the indexes and foreign keys of a table whose structure could not be read. (#2962 by @datlechin)
+- Schema sync scripts offering to drop a table the comparison could not read, as if the source no longer had it. (#2962 by @datlechin)
+- Truncate offered on MariaDB sequences, and on system-versioned tables on Mac. (#2962 by @datlechin)
+- MariaDB sequences, and OceanBase external, system and virtual tables, listed as ordinary tables. (#2962 by @datlechin)
+- Duplicate row for a MariaDB table that a temporary table of the same name shadows. (#2962 by @datlechin)
+- Partitioned tables and MariaDB sequences missing from the Backup Dump object list. (#2962 by @datlechin)
+- Partitioned tables missing from the import table picker. (#2962 by @datlechin)
+- PostgreSQL backup of a partitioned table writing an empty table. (#2962 by @datlechin)
+- System views, sequences and external tables listed as ordinary tables on iPhone and iPad. (#2962 by @datlechin)
+- PostgreSQL column types shown without their length, precision, enum name or domain name. (#2959 by @datlechin)
+- Compare & Sync missing a PostgreSQL column's length, precision or type change. (#2959 by @datlechin)
+- Compare & Sync missing a MySQL or MariaDB fractional seconds, enum label or precision change. (#2959 by @datlechin)
+- MySQL and MariaDB integer display width changes held back by Compare & Sync as data loss. (#2959 by @datlechin)
+- iCloud sync stopping for good once 250 records were waiting to upload. (#2956 by @datlechin)
+- Cassandra `date` values reading as a Buddhist or Japanese year in the grid, on the clipboard and in exports. (#2956 by @datlechin)
+- Menu rows that only a colour or a glyph tells apart reading as identical on macOS 27. (#2956 by @datlechin)
+- A UI test run writing sync bookkeeping into the real defaults instead of its sandbox. (#2956 by @datlechin)
+- Extra layout measurement on every sidebar, inspector, outline and field-list row. (#2956 by @datlechin)
+- Cut, Copy and Paste in the SQL editor's context menu were English in every language. (#2961 by @datlechin)
+- A statement count on a review sheet reading "1 statements". (#2961 by @datlechin)
+- Crash when a model proposed two tool calls carrying the same id in one turn. (#2384 by @J2TeamNNL)
+- Another connection's chat history appeared in a second connection's assistant, and could be deleted from there. (#2384 by @J2TeamNNL)
+- Two conversations on one Copilot configuration were answered with each other's context. (#2384 by @J2TeamNNL)
+- The sidebar toggle announced its SF Symbol names to VoiceOver instead of Tables and Favorites. (#2384 by @J2TeamNNL)
+- Choosing Tables or Favorites from the toolbar's overflow menu did nothing. (#2384 by @J2TeamNNL)
+- The Inspector toolbar button was permanently dimmed on macOS 13. (#2384 by @J2TeamNNL)
+- A connection's status on the welcome window stopped updating once the window was open. (#2384 by @J2TeamNNL)
+- The Compare & Sync licence notice froze the app instead of opening as a sheet. (#2384 by @J2TeamNNL)
+- `VACUUM`, `CREATE INDEX CONCURRENTLY`, `SET sql_log_bin` and `PRAGMA foreign_keys` failing or ignored in a batch. (#2971 by @datlechin)
+- A batch committing, discarding or aborting a transaction already open on the connection. (#2971 by @datlechin)
+- Grid saves, structure changes and a Users & Roles apply committing a transaction already open on the connection. (#2971 by @datlechin)
+- Stopping a multi-statement run committing the batch anyway, or leaving its transaction open on the connection. (#2971 by @datlechin)
+- A lost connection during a commit reported as a clean rollback. (#2971 by @datlechin)
+- Query in one tab cancelled and rolled back when another tab or window on the connection starts or stops a query. (#2971 by @datlechin)
+- Stop on MySQL 5.5, 5.6 or MariaDB 5.5 interrupting the next statement on the connection. (#2971 by @datlechin)
+- `QUEUED` results and hidden command errors when running several Redis commands or saving Redis grid edits. (#2971 by @datlechin)
+- Query timeout ignored on MySQL before 5.7.8 and MariaDB before 10.1.1. (#2971 by @datlechin)
+- MySQL query run a second time, and left running on the server, after the connection timed out. (#2971 by @datlechin)
+- Empty error when a parameterized MySQL query timed out. (#2971 by @datlechin)
+- Check constraints reported as added on MySQL before 8.0.16 and MariaDB before 10.2.1, which discard them. (#2971 by @datlechin)
+- `Unknown table 'CHECK_CONSTRAINTS'` opening a table's structure on MariaDB 10.2 before 10.2.22 and 10.3 before 10.3.10. (#2971 by @datlechin)
+- Syntax error removing a check constraint on MySQL 8.0.16 to 8.0.18. (#2971 by @datlechin)
+- Syntax error setting a password or connection limit in Users & Roles on MySQL before 5.7.6 and MariaDB before 10.2. (#2971 by @datlechin)
+- Passwordless account created when a new user's connection limit was set before saving. (#2971 by @datlechin)
+- Connection held as "session settings changed" after a `SET PASSWORD`. (#2971 by @datlechin)
+- iPhone and iPad row edits refused by MySQL, MariaDB, PostgreSQL or Redshift servers that start sessions read-only. (#2971 by @datlechin)
+- Copying objects into a connection that already has a transaction open committing it. (#2971 by @datlechin)
+- Replace-copy into a remote libSQL target failing at `BEGIN`. (#2971 by @datlechin)
+- iOS edits uploaded to iCloud after iCloud Sync was turned off. (#2980 by @datlechin)
+- iOS text left in English for Korean, Vietnamese, Simplified Chinese and Traditional Chinese. (#2980 by @datlechin)
+- iOS connections overwritten by the next edit after the saved library failed to load. (#2980 by @datlechin)
+- A `.tablepro` file or link closing a half-filled form on iPhone and iPad. (#2980 by @datlechin)
+- Links to a table opening only its connection on iPhone and iPad. (#2980 by @datlechin)
+- Face ID symbol on the unlock button of Touch ID and Optic ID devices. (#2980 by @datlechin)
+- Empty icon tiles for Snowflake, Beancount, SurrealDB and Kafka connections on iPhone and iPad. (#2980 by @datlechin)
+- iOS edit mode left on after deleting every connection. (#2980 by @datlechin)
+- Two rename fields when renaming a favorite on iPhone and iPad. (#2980 by @datlechin)
+- Connection names cut off at large text sizes on iPhone and iPad. (#2980 by @datlechin)
+- `Cmd+W` closing the whole connection instead of the current tab until something in the window was clicked. (#2981 by @datlechin)
+- **Reset Sample Database** leaving the old Chinook copy's journal files beside the fresh one. (#2985 by @datlechin)
+- iPhone and iPad edits undoing changes synced while the form was open, and dropping SSH jump hosts set on the Mac. (#2986 by @datlechin)
+- Edits on iPhone and iPad closing as if saved after the connection, group or tag changed or was deleted on another device. (#2986 by @datlechin)
+- iCloud sync failing on iPhone and iPad after signing in to a different Apple Account. (#2986 by @datlechin)
+- SQLite and DuckDB connections on iPhone and iPad losing their file after a restore, or opening an empty database. (#2986 by @datlechin)
+- Table page arrows and row arrows hidden under the tab bar on iPhone and iPad with iOS 26 and later. (#2986 by @datlechin)
+- App unresponsive while a connection file is encrypted or decrypted with a passphrase. (#2986 by @datlechin)
+- Unsaved changes in the connection, group, tag and row forms discarded without asking on iPhone and iPad. (#2986 by @datlechin)
+- Open connection on iPhone and iPad jumping back to the table list after a rename, reorder or synced change. (#2986 by @datlechin)
+- Deleted connections still showing in Spotlight, Siri, Shortcuts and Handoff on iPhone and iPad. (#2986 by @datlechin)
+- No confirmation before deleting a tag on iPhone and iPad. (#2986 by @datlechin)
+- Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name. (#2986 by @datlechin)
+- Table page range shown in English in every language on iPhone and iPad. (#2987 by @datlechin)
+- Host key and Microsoft Entra prompts on iPhone and iPad closing by themselves, leaving the connection on Connecting. (#3002 by @datlechin)
+- Every later connect to a connection on iPhone and iPad hanging for good once its SSH tunnel dropped. (#3013 by @datlechin)
+- Connection errors on iPhone and iPad given a title and advice picked from words in the message. (#3013 by @datlechin)
+- Oracle `CALL` triggers failing to sync or copy, after the target's copy had already been dropped. (#2997 by @datlechin)
+- Oracle trigger `WHEN` clauses and disabled state lost when synced, copied or exported. (#2997 by @datlechin)
+- Oracle triggers synced into another schema created back in the source schema. (#2997 by @datlechin)
+- Oracle table with an index failing to sync or copy with ORA-03405. (#2997 by @datlechin)
+- Oracle object lost when a sync or copy replacing it failed. (#2997 by @datlechin)
+- Saved Compare & Sync scripts that SQL*Plus, DISQL, the mysql client or SQL Server tools could not run. (#2997 by @datlechin)
+- Oracle, Dameng and MySQL SQL dumps whose routines and triggers the engine's own client could not restore. (#2997 by @datlechin)
+- Compare & Sync showing an Oracle unit missing the `;` after its `END` as identical. (#2997 by @datlechin)
+- Compare & Sync scripting a `DROP` with no `CREATE` for a view, routine or trigger whose definition it could not read. (#3069 by @datlechin)
+- Compare & Sync offering to drop every target procedure, function or trigger when the source's list could not be read. (#3069 by @datlechin)
+- DuckDB macro dropped and not recreated by a Compare & Sync replace. (#3069 by @datlechin)
+- Copy To giving no reason for a view, routine or trigger whose definition could not be read. (#3069 by @datlechin)
+- Copy To skipping a view, routine or trigger with a comment above its `CREATE`. (#3069 by @datlechin)
+- Materialized view indexes ignored by Compare & Sync, and lost when it or Copy To recreated the view. (#3079 by @datlechin)
+- SSH jump hosts dropped from a connection synced to iPhone and iPad, and that connection then skipped on the way back. (#3014 by @datlechin)
+- An SSH tunnel pinned to port 22, and its auth method read back as Password, after a round trip through iPhone and iPad. (#3014 by @datlechin)
+- Redis database list failing on servers that refuse `CONFIG` or `INFO`, such as AWS ElastiCache and Azure Cache for Redis. (#3036, #3038 by @datlechin)
+- Empty tab after clicking a Redis database the server refuses to switch to. (#3038 by @datlechin)
+- No wrong-mode error when a Standalone Redis connection points at a Valkey 8 or later Sentinel or cluster node. (#3038 by @datlechin)
+- Redis `MULTI` blocks aborted, or padded with extra replies, by the sidebar, the key browser and the connection check. (#3038 by @datlechin)
+- A Redis `MULTI` block or `WATCH` lost without notice when the connection dropped. (#3038 by @datlechin)
+- Redis row counts, statistics, DDL preview, export, grid edits and key tree using the session's database, not the row's. (#3039 by @datlechin)
+- Refreshing a Redis database tab after a refused switch showing another database's keys. (#3038 by @datlechin)
+- Redis key grid showing type UNKNOWN, TTL -1 and empty collections for keys an ACL user cannot read. (#3038 by @datlechin)
+- Redis Cluster writes and key counts reported as complete when a shard refused them, and `SCRIPT EXISTS` answering 0. (#3039 by @datlechin)
+- Database Index in the Redis connection form stopping at 15. (#3038 by @datlechin)
+- Empty Redis key list when the server refuses the key scan or a `MULTI` block is open, on Mac, iPhone and iPad. (#3038 by @datlechin)
+- Explain Query failing on Redis with a `DEBUG` command error, and enabled for databases with no query plan. (#3038 by @datlechin)
+- Redis commands losing arguments such as `SCAN … TYPE` or `FLUSHDB ASYNC`, and valid `XGROUP` or `OBJECT` refused. (#3039 by @datlechin)
+- Redis Cluster running `FUNCTION LOAD`, `ACL SETUSER`, `CONFIG REWRITE` and other subcommands on a single node. (#3039 by @datlechin)
+- Redis connections whose database is written `db4` opening database 0 on the Mac. (#3039 by @datlechin)
+- Negative or non-numeric database index in a Redis connection URL accepted without an error. (#3039 by @datlechin)
+- Redis command errors on iPhone and iPad reported as a successful result. (#3039 by @datlechin)
+- Redis keys listed twice on iPhone and iPad. (#3039 by @datlechin)
+- Redis keys on iPhone and iPad failing to open with `ERR wrong number of arguments for 'select' command`. (#3039 by @datlechin)
+- Redis permission errors on iPhone and iPad reported as a failed sign-in. (#3039 by @datlechin)
+- Run and Explain Query in the Query menu enabled for an editor holding only whitespace. (#3039 by @datlechin)
+- `explain_query` sending an invented `EXPLAIN` to databases without one, and an estimate when `analyze` was asked for. (#3039 by @datlechin)
+- Explain on Redshift failing on PostgreSQL's `FORMAT JSON` and `ANALYZE` options. (#3039 by @datlechin)
+- Decimal points and minus signs accepted in DuckDB Port and BigQuery Max Bytes Billed. (#3039 by @datlechin)
+- Wrong Redis database in the toolbar of a second window opened on the same connection. (#3039 by @datlechin)
+- Backup Dump failing with `unknown variable 'ssl-mode=PREFERRED'` when the `mysqldump` on `PATH` is MariaDB's. (#3046, #3049 by @datlechin)
+- Verify CA and Verify Identity connections unable to back up or restore on MySQL, MariaDB and PostgreSQL. (#3049 by @datlechin)
+- Partial MySQL dump of a MariaDB or MySQL 5.7 server, from the column statistics `mysqldump` 8 reads. (#3049 by @datlechin)
+- A database whose name starts with a dash backed up as a different database, reported as a success. (#3049 by @datlechin)
+- Cancel ignored while TablePro was locating the backup tool, and the dump running anyway. (#3049 by @datlechin)
+- Destination folder and the first database reading as one path in the backup result sheet. (#3046, #3049 by @datlechin)
+- Only the last line of a failed backup's error shown, which on `pg_dump` is the hint rather than the cause. (#3049 by @datlechin)
+- Backup failure reported as an exit code alone when the tool wrote its message and exited at once. (#3049 by @datlechin)
+- DynamoDB edits saving numbers, booleans, maps and sets as strings. (#3077 by @datlechin)
+- DynamoDB binary, map and long-text edits lost or saved as a fragment, and **Set NULL** leaving a NULL attribute. (#3077 by @datlechin)
+- Duplicated DynamoDB row saved with `__DEFAULT__` as its key. (#3077 by @datlechin)
+- Nine DynamoDB filter operators matching nothing, and an OR filter dropping other partitions' items. (#3077 by @datlechin)
+- DynamoDB column sort ignored, and each page re-reading every page before it. (#3077 by @datlechin)
+- DynamoDB **Count Exactly** never finishing. (#3077 by @datlechin)
+- DynamoDB export dropping attributes first seen after the first page. (#3077 by @datlechin)
+- DynamoDB PartiQL result cut to its first 1 MB. (#3077 by @datlechin)
+- DynamoDB **Stop** cancelling the wrong request, and throttled requests failing instead of retrying. (#3077 by @datlechin)
+- AWS SSO sign-in prompt never shown for DynamoDB. (#3077 by @datlechin)
+- DynamoDB connections to China and European Sovereign Cloud regions failing. (#3077 by @datlechin)
+- DynamoDB connection sampling every table on connect. (#3077 by @datlechin)
+- Imported DynamoDB connection losing its AWS Region. (#3077 by @datlechin)
+- Failed **Count Exactly** showing no error. (#3077 by @datlechin)
+- PostgreSQL export and column reorder script failing on an index a failed `CREATE INDEX CONCURRENTLY` left behind. (#3075 by @datlechin)
+- PostgreSQL export and column reorder script failing on a foreign key that references a unique index. (#3075 by @datlechin)
+- PostgreSQL exclusion constraints missing from exports and the DDL tab. (#3075 by @datlechin)
+- PostgreSQL column reorder script dropping an index named like one of the table's check constraints. (#3075 by @datlechin)
+- Invalid PostgreSQL index recreated on the target by Compare & Sync and **Copy To**. (#3075 by @datlechin)
+- Expression key parts missing from SQLite, libSQL, Cloudflare D1, MySQL and DuckDB indexes. (#3080 by @datlechin)
+- Condition missing from SQLite, libSQL and Cloudflare D1 partial indexes. (#3080 by @datlechin)
+- Descending MySQL index keys recreated ascending by a rename. (#3080 by @datlechin)
+- MySQL index dropped when the index replacing it failed to create. (#3080 by @datlechin)
+- Indent and Outdent named the wrong way round for Command-[ and Command-] in Settings > Keyboard. (#3065 by @datlechin)
+- Table, routine or type missing from the sidebar or Open Quickly when a period in its quoted name matched another's. (#3068 by @datlechin)
+- Show Previous Tab and Show Next Tab listed twice in the Window menu. (#3061 by @datlechin)
+- Control-Tab and Control-Shift-Tab indenting a multi-line selection in the SQL editor. (#3061 by @datlechin)
+- Shift-Tab and Control-Tab accepting an inline AI suggestion instead of outdenting or reaching the menu. (#3061 by @datlechin)
+- Closing a background tab with unsaved work landing on its neighbour instead of the tab you were on. (#3073 by @datlechin)
+- Show Previous Tab, Show Next Tab and Select Tab 1 to 9 enabled in Agent mode and with no tab to go to. (#3073 by @datlechin)
+- Row data of a window's first connection kept in memory after switching to another connection. (#3073 by @datlechin)
+- Query picked from Open Quickly's Recent list dropping out of it once the query ran again. (#3082 by @datlechin)
+- Table opened in one database shown in Open Quickly's Recent in every other database, and opened there. (#3082 by @datlechin)
+- Open Quickly's Recent split between the Connections scope and the other scopes, each showing about half. (#3082 by @datlechin)
+- MySQL and MariaDB column defaults on iPhone and iPad missing for DEFAULT NULL, and string defaults shown unquoted. (#3091 by @datlechin)
+- Structure and Create Table SQL Preview disagreeing with Save on the schema, primary key name or a SQLite foreign key. (#3071 by @datlechin)
+- Row import creating its new table in another schema than its rows, and PGlite primary key changes failing to save. (#3071 by @datlechin)
+- PostgreSQL materialized views missing on iPhone and iPad, and wrong index columns, types and predicates in Structure. (#3074 by @datlechin)
+- Truncate and Drop Table offered on PostgreSQL foreign tables on iPhone and iPad. (#3074 by @datlechin)
+- **Apply to Editor** replacing the whole query tab with one rewritten statement. (#3104 by @datlechin)
+- AI schema context describing the sidebar's database instead of the query tab's. (#3104 by @datlechin)
+- The query and results of another tab sent as context with an AI query action. (#3104 by @datlechin)
+- `/fix` sending the result grid in place of the query's error. (#3104 by @datlechin)
+- AI query commands enabled on a connection whose AI access is **Never**. (#3104 by @datlechin)
+- The chat message after a declined AI request answered as a SQL rewrite. (#3104 by @datlechin)
+- Rows merged on save when a CSV file did not end with a line break. (#3107 by @datlechin)
+- Rows saved empty when a value held a character the file's encoding cannot store. (#3107 by @datlechin)
+- Column names added in the CSV inspector dropped on save. (#3107 by @datlechin)
+- UTF-16 CSV files read as garbage, and saving them corrupting the file. (#3107 by @datlechin)
+- `.tsv` files opened as comma-separated, and **Save As** TSV writing commas. (#3107 by @datlechin)
+- Edits and deletes under a filter or sort landing on a different row. (#3107 by @datlechin)
+- Filters and sorts pointing at the wrong column after a column was inserted or deleted. (#3107 by @datlechin)
+- Fields past the first row's column count hidden, and dropped by undo. (#3107 by @datlechin)
+- Delimiter guessed differently on each open when two delimiters tied. (#3107 by @datlechin)
+- **Reload** in the CSV inspector showing the file as first opened. (#3107 by @datlechin)
+- Renaming a column in a file without a header row doing nothing. (#3107 by @datlechin)
+- Values such as `NaN`, `inf` and `0x1F` read as numbers, breaking sort. (#3107 by @datlechin)
+- Grid commands enabled in the CSV inspector that did nothing. (#3107 by @datlechin)
+- Changing a filter or sort leaving the CSV inspector on a later page. (#3107 by @datlechin)
+- CSV inspector windows always opening as tabs, ignoring the system's tab setting. (#3107 by @datlechin)
+- SQL Server Verify CA refusing a certificate that does not name the host. (#3109 by @datlechin)
+- SQL Server login failing without a reason for a password longer than 128 bytes. (#3109 by @datlechin)
+- SQL Server connection that never answered again after Stop was pressed during a query. (#3108 by @datlechin)
+- SQL Server query cut at the row limit left running on the server, holding its locks and stalling the next query. (#3108 by @datlechin)
+- SQL Server statement that kept running on the server, and committed, after Disconnect. (#3112 by @datlechin)
+- SQL Server `MERGE` refused with Msg 10713 when run alone or as the last statement of a script. (#3115 by @datlechin)
+- Column sort re-running every statement in the editor for a result with query parameters or after Fetch All. (#3114 by @datlechin)
+- Format SQL, Fold and Save as Favorite shown dimmed in the query editor's context menu. (#3117 by @datlechin)
+- Format SQL and Save as Favorite in the editor's context menu acting on the right-clicked word alone. (#3117 by @datlechin)
+- Explain, Optimize and Fix with AI cancelling a reply the assistant was still writing. (#3117 by @datlechin)
+- AI chat unable to send again after a message too large to send, with an error naming the wrong setting. (#3117 by @datlechin)
+- A whole AI conversation lost when one part of it could not be read. (#3117 by @datlechin)
+- SQL Server `MERGE` statements and procedure bodies failing when imported from a .sql file. (#3120 by @datlechin)
+- Previous run's column headings left over an empty grid under the error of a script that failed partway. (#3119 by @datlechin)
+- Row numbers of a longer previous result left beside the rows of a shorter one. (#3119 by @datlechin)
+- Run executing an old sorted query after a column header was clicked while a query ran. (#3118 by @datlechin)
+- SQL Server scripts refused, or cut to their first result set, over MCP, AppleScript and the AI assistant. (#3123 by @datlechin)
+- SQL import into SQL Server sending `GO` lines to the server and splitting batches at each semicolon. (#3122 by @datlechin)
+- SQL Server dumps failing on their first view, routine or trigger when restored with sqlcmd or SSMS. (#3125 by @datlechin)
+- A leading `GO` line sent to SQL Server by MCP and AI assistant tools, and a `GO n` count ignored. (#3124 by @datlechin)
+- App hanging for a minute when an import stopped on a failing statement several megabytes long. (#3125 by @datlechin)
+- SQL Server Windows Authentication to another realm failing when the service principal name is over 128 bytes. (#3127 by @datlechin)
+- Data grid's inline cell editor and cell viewer unreachable by VoiceOver. (#3126 by @datlechin)
+- No Executing indicator or Stop button in the results status bar while a query tab runs its first query. (#3136 by @datlechin)
+- ER diagram opening at 100% instead of fitted, then losing its zoom the first time you came back to its tab. (#3136 by @datlechin)
+- Diagram Fit to Window stopping a scroll bar's width short when scroll bars are always shown. (#3136 by @datlechin)
+- No Executing indicator or Stop button for a query tab with no result grid, in Output mode or on a query plan. (#3138 by @datlechin)
+- MongoDB collections could not be created from **New Table…**. (#3131, #3145 by @datlechin)
+- A new or empty MongoDB collection showing only `_id` instead of the fields its validator declares. (#3145 by @datlechin)
+- MongoDB edits storing dates and ObjectIds as text, rounding integers past 2^53, or missing a numeric string `_id`. (#3145 by @datlechin)
+- MongoDB inserts from the query editor and the data grid failing on a field named `""`. (#3132, #3157 by @datlechin)
+- MongoDB filters, validators and pipelines with a `$type` or `$regex` object refused as "not a document MongoDB can read". (#3156 by @datlechin)
+- **New Table…** offered on databases that cannot create a table, such as Redis and Kafka. (#3145 by @datlechin)
+- Executing indicator and Stop button carried over for a moment onto the query tab switched to. (#3144 by @datlechin)
+- MongoDB fields that could not be renamed or removed from the Structure tab. (#3132, #3161 by @datlechin)
+- Structure tab edits made during a save, cleared without being saved. (#3161 by @datlechin)
+- Rows not reloaded after a Structure save that failed partway through its statements. (#3161 by @datlechin)
+- The front tab of every window reloading, and asking to discard edits, after an import, new table or structure change. (#3148 by @datlechin)
+- Tabs showing old rows, columns, DDL or triggers after a save, import, structure change or materialized view refresh. (#3148 by @datlechin)
+- Tables with hidden columns querying a dropped column, or omitting a new one, after a SQL import or structure change. (#3148 by @datlechin)
+- First SQLite or libSQL query after a structure save showing the table's old columns, without the new column's values. (#3148 by @datlechin)
+- Edits after a structure change using the table's old primary key, defaults and generated columns. (#3148 by @datlechin)
 
 ### Security
 
-- SQL favorites deleted by another Mac's sync tombstoned again from this one, pushing the deletion back at it.
-- Query history kept for a connection deleted on another Mac, including the statements' own text and its literals.
-- A locked launch on iPhone and iPad connecting to the last session, and asking to trust a host key, before Face ID was answered.
-- Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
-- The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
-- Driver error messages and server replies published in the system log by database plugins.
-- A chat tool registered at runtime could take the name of a tool TablePro ships.
-- An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock.
-- **Require Face ID** turned off on iPhone and iPad without authenticating.
-- SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
-- Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
-- Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
-- Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng.
-- Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server.
-- Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite.
-- Statements hidden in a dollar-quoted string skipped Safe Mode on DuckDB, Snowflake and Cassandra, or PostgreSQL with a non-ASCII tag.
-- Statements hidden behind an engine's own literal or comment forms, such as `E'\''`, `'''` or `--1`, skipped Safe Mode.
-- Statements hidden the same ways passed the one-statement check on MCP and AI chat queries.
-- Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad.
-- A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check.
-- `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app.
-- SQL Server statements written after another without a semicolon skipped Safe Mode, on Mac, iPhone and iPad.
-- SQL Server connections set to Required (skip verify) not encrypted past the login.
-- Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections.
-- Stored MongoDB values and collection names that ran as shell code when a row was edited, duplicated or restored.
+- SQL favorites deleted by another Mac's sync tombstoned again from this one, pushing the deletion back at it. (#3033 by @datlechin)
+- Query history kept for a connection deleted on another Mac, including the statements' own text and its literals. (#3032 by @datlechin)
+- A locked iPhone and iPad launch connecting to the last session, and asking to trust a host key, before Face ID. (#3014 by @datlechin)
+- Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded. (#2956 by @datlechin)
+- The system log holding query text, schema and table names, file paths and driver errors, which can include row values. (#2960 by @datlechin)
+- Driver error messages and server replies published in the system log by database plugins. (#3081 by @datlechin)
+- A chat tool registered at runtime could take the name of a tool TablePro ships. (#2384 by @J2TeamNNL)
+- An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock. (#2980 by @datlechin)
+- **Require Face ID** turned off on iPhone and iPad without authenticating. (#2980 by @datlechin)
+- SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file. (#2986 by @datlechin)
+- Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on. (#2986 by @datlechin)
+- Oracle and Dameng metadata reads, and Oracle's server-side export, captured by an object shadowing a `SYS` name. (#2999 by @datlechin)
+- Code in a MongoDB collection, view or index name running when its DDL is run from a query tab. (#3150 by @datlechin)
+- Statements hidden behind a backslash in a string skipped Safe Mode on PostgreSQL, DuckDB, SQL Server, SQLite and Dameng. (#3005 by @datlechin)
+- Statements hidden inside a nested block comment skipped Safe Mode on PostgreSQL, DuckDB and SQL Server. (#3005 by @datlechin)
+- Statements hidden behind a bracketed identifier skipped Safe Mode on SQL Server and SQLite. (#3005 by @datlechin)
+- Statements hidden in dollar quotes skipped Safe Mode on DuckDB, Snowflake, Cassandra, and PostgreSQL with a non-ASCII tag. (#3005 by @datlechin)
+- Statements hidden behind an engine's own literal or comment forms, such as `E'\''`, `'''` or `--1`, skipped Safe Mode. (#3005 by @datlechin)
+- Statements hidden the same ways passed the one-statement check on MCP and AI chat queries. (#3005 by @datlechin)
+- Writes hidden in a dollar-quoted string, a nested comment or a bracketed identifier skipped Safe Mode on iPhone and iPad. (#3005 by @datlechin)
+- A quoted Redis command such as `"FLUSHALL"` skipping Safe Mode and the MCP destructive-statement check. (#3039 by @datlechin)
+- `fts3_tokenizer` reachable from SQL on a libSQL Local File connection, where it could crash the app. (#3064 by @datlechin)
+- SQL Server statements written after another without a semicolon skipped Safe Mode, on Mac, iPhone and iPad. (#3110 by @datlechin)
+- SQL Server connections set to Required (skip verify) not encrypted past the login. (#3109 by @datlechin)
+- Inline suggestions sending the query and table columns to the AI provider on Ask Each Time and Never connections. (#3116 by @datlechin)
+- Stored MongoDB values and collection names that ran as shell code when a row was edited, duplicated or restored. (#3145 by @datlechin)
+- Server-provided collection, database and index names that could break out of comments and strings in an MQL export. (#3132, #3153 by @datlechin)
 
 ## [0.75.0] - 2026-09-18
 
@@ -5115,7 +5162,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.75.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.76.0...HEAD
+[0.76.0]: https://github.com/TableProApp/TablePro/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/TableProApp/TablePro/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/TableProApp/TablePro/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/TableProApp/TablePro/compare/v0.72.0...v0.73.0

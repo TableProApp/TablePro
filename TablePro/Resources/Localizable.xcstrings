@@ -52681,40 +52681,6 @@
         }
       }
     },
-    "Destructive Changes" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "파괴적 변경"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yıkıcı Değişiklikler"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thay đổi có thể mất dữ liệu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "破坏性更改"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "破壞性變更"
-          }
-        }
-      }
-    },
     "Destructive operations are not permitted for this client" : {
       "localizations" : {
         "ko" : {
@@ -134534,40 +134500,6 @@
         }
       }
     },
-    "Schema change was not authorized" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "스키마 변경 권한이 없습니다"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Şema değişikliğine izin verilmedi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thay đổi schema không được cho phép"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schema 更改未获授权"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "綱要變更未獲授權"
-          }
-        }
-      }
-    },
     "Schema for %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -159296,40 +159228,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下列 %1$lld 個查詢可能會永久修改或刪除資料。此動作無法復原。\n\n%2$@"
-          }
-        }
-      }
-    },
-    "The following changes may cause data loss:\n\n%@\n\nDo you want to proceed?" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음 변경 사항으로 인해 데이터가 손실될 수 있습니다.\n\n%@\n\n계속하시겠습니까?"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aşağıdaki değişiklikler veri kaybına neden olabilir:\n\n%@\n\nDevam etmek istiyor musunuz?"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các thay đổi sau có thể gây mất dữ liệu:\n\n%@\n\nBạn có muốn tiếp tục?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "以下更改可能导致数据丢失：\n\n%@\n\n是否继续？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下列變更可能導致資料遺失：\n\n%@\n\n是否要繼續？"
           }
         }
       }
@@ -184346,9 +184244,6 @@
     "The field “%@” appears more than once." : {
 
     },
-    "The top-level field “%@” starts with $, which MongoDB reads as an operator." : {
-
-    },
     "The document is nested more than %d levels deep." : {
 
     },
@@ -184362,6 +184257,126 @@
 
     },
     "This database does not store whole documents" : {
+
+    },
+    "A MongoDB field has no type, default or nullability to change. Only its name can change." : {
+
+    },
+    "_id cannot be renamed, removed or used as a new name. MongoDB keys every document by it." : {
+
+    },
+    "A MongoDB field needs a name." : {
+
+    },
+    "A MongoDB field name cannot contain a NUL character." : {
+
+    },
+    "%@ is changed twice in this save. Save one change to it at a time." : {
+
+    },
+    "%@ is a system collection. Its fields cannot be renamed or removed." : {
+
+    },
+    "Collection %@ no longer exists." : {
+
+    },
+    "%@ is a view. Rename or remove the field in the collection it reads." : {
+
+    },
+    "%@ is a time series collection. MongoDB cannot rename or remove its fields." : {
+
+    },
+    "%1$@ is a collection of type %2$@. Its fields cannot be renamed or removed." : {
+
+    },
+    "Index %1$@ uses %2$@. Drop it first by running %3$@ in a query tab, then save again." : {
+
+    },
+    "%@ is an encrypted field. MongoDB cannot rename or remove it." : {
+
+    },
+    "View %1$@ reads %2$@. Change the view first, then save again." : {
+
+    },
+    "The validator has a key named %@ that the shell would reorder or drop. Change the validator from a query tab instead." : {
+
+    },
+    "The validator already declares %@. Remove that declaration first, then save again." : {
+
+    },
+    "The validator uses %@ in a way that cannot be updated with the field. Change the validator first, then save again." : {
+
+    },
+    "The validator could not be read, so the change was not checked against it." : {
+
+    },
+    "Some documents hold both %1$@ and %2$@. Remove one of the two from those documents first." : {
+
+    },
+    "The validator would reject the document with _id %1$@ once %2$@ is removed. Fix the document or the validator first." : {
+
+    },
+    "The validator would reject the document with _id %1$@ once %2$@ is renamed to %3$@. Fix the document or the validator first." : {
+
+    },
+    "Checking the documents of %1$@ took over %2$d seconds, so nothing was changed. Raise the query timeout in Settings and save again." : {
+
+    },
+    "Couldn't check %1$@ before changing its documents: %2$@" : {
+
+    },
+    "%@ lists a collection's fields from a sample of its documents, so structures can be compared but no script is generated." : {
+
+    },
+    "%1$@ is a capped collection, and a longer field name makes MongoDB delete its oldest documents. Choose a name no longer than %2$@." : {
+
+    },
+    "Search index %1$@ uses %2$@. Change or drop that search index first, then save again." : {
+
+    },
+    "Once this save updates the validator, it would reject the document with _id %@. Fix the document or the validator first." : {
+
+    },
+    "Saving Changes…" : {
+
+    },
+    "The staged changes are being saved." : {
+
+    },
+    "The staged changes were edited after this script was prepared. Save again to review the new script." : {
+
+    },
+    "%@ changed while its documents were being checked, so nothing was changed. Save again." : {
+
+    },
+    "The save ran, but checking %1$@ afterwards failed: %2$@. Save again to make sure every document was changed." : {
+
+    },
+    "The save did not finish: one document still holds %@, most likely written by another client while the save ran. Save again to finish." : {
+
+    },
+    "The save did not finish: %1$lld documents still hold %2$@, most likely written by another client while the save ran. Save again to finish." : {
+
+    },
+    "This server runs Atlas Search but cannot list its search indexes, so one that uses the field cannot be ruled out. Check the collection's search indexes in Atlas, then change the field from a query tab." : {
+
+    },
+    "%@ changed after this save was prepared, so nothing was changed. Review the save and save again." : {
+
+    },
+    "The save did not finish: the updated validator of %1$@ rejects the document with _id %2$@, most likely written by another client while the save ran. Fix that document, then save again." : {
+
+    },
+    "Renaming would take the document with _id %@ past MongoDB's 16 MB limit. Choose shorter names, or shrink that document first." : {
+
+    },
+    "The save ran, but index %1$@ on %2$@ was created while it did and uses %3$@. Check that it indexes the field you meant." : {
+
+    },
+    "The save ran, but search index %1$@ on %2$@ was created while it did and uses %3$@. Check that it maps the field you meant." : {
+
+    },
+    "The save ran, but view %1$@ was created while it did and reads %2$@. Change it to read the field where it is now." : {
 
     },
     "Cannot save changes to '%@'." : {
@@ -184497,6 +184512,78 @@
 
     },
     "The shell drops a field named __proto__ from a new document. Remove the field, then set it on the saved document." : {
+
+    },
+    "No view named %@ in this database" : {
+
+    },
+    "PRIMARY is the primary key's name, and no other index can take it. Rename the index, or change the key on the Columns tab." : {
+
+    },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise the query timeout in Settings if it needs longer." : {
+
+    },
+    "%d document(s) had already been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "Some documents may already have been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "%d document(s), and possibly more that MongoDB does not report, had already been changed when this failed. MongoDB does not undo them, so check the data before you run it again." : {
+
+    },
+    "The insert stopped at a document larger than MongoDB accepts." : {
+
+    },
+    "This row does not name a stored document." : {
+
+    },
+    "The document changed on the server after it was opened, so nothing was saved. Copy your text, then open it again." : {
+
+    },
+    "More than one document has this _id, so it cannot be edited here." : {
+
+    },
+    "The _id cannot change. Put the original _id back, or insert a new document instead." : {
+
+    },
+    "This document has no _id, so it cannot be edited here." : {
+
+    },
+    "This document holds a value text cannot write back exactly, such as a subdocument like {\"$numberInt\": \"5\"}." : {
+
+    },
+    "The top-level field “%@” holds Timestamp(0, 0), which MongoDB replaces with the current time on every save." : {
+
+    },
+    "The top-level field “%@” starts with $, which MongoDB refuses in a replaced document." : {
+
+    },
+    "This document is too large to edit here. Saving it would send more than 16 MB to the server." : {
+
+    },
+    "Editing a document needs MongoDB 4.0 or later." : {
+
+    },
+    "This is a view, so its documents cannot be edited. Edit them in the collection the view reads." : {
+
+    },
+    "This document is nested more than %d levels deep, which is too deep to edit here." : {
+
+    },
+    "This document holds a value that cannot be edited as text." : {
+
+    },
+    "This is a time-series collection, which cannot replace a single document, so its documents cannot be edited here." : {
+
+    },
+    "MongoDB lists this as a “%@” rather than a collection, so its documents cannot be edited here." : {
+
+    },
+    "This document holds a NaN. MongoDB treats every NaN as the same value, so a save could not tell whether someone else changed it." : {
+
+    },
+    "This document holds JavaScript code with a scope. MongoDB compares a scope by value, so a save could not tell whether someone else changed it." : {
 
     }
   },

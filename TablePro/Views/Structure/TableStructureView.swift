@@ -271,6 +271,10 @@ struct TableStructureView: View {
                 Task { await loadInitialData() }
             }
         }
+        .onChange(of: structureChangeManager.isHeldForSave) { _ in
+            publishFooterCapability()
+            updateGridDelegate()
+        }
         .onChange(of: session.appliedVersion) { _ in
             Task { await refreshAfterApply() }
         }
@@ -316,6 +320,19 @@ struct TableStructureView: View {
             Spacer()
         }
         .padding()
+        .overlay(alignment: .trailing) {
+            if structureChangeManager.isHeldForSave {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Saving Changes…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.trailing)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("structure-save-progress")
+            }
+        }
     }
 
     // MARK: - Tab Label with Count Badge
@@ -482,7 +499,7 @@ struct TableStructureView: View {
 
     private var structureGrid: some View {
         let provider = makeCurrentProvider()
-        let canEdit = editGate.allowsAnyEdit
+        let canEdit = editGate.allowsAnyEdit && !structureChangeManager.isHeldForSave
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns
         /// Resolved once. It reads the engine's curated capabilities and the object's own kind, and

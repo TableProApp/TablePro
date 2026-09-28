@@ -156,12 +156,7 @@ extension QueryExecutionCoordinator {
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
-            let schemaTask: Task<FetchedTableSchema, Error>?
-            if needsMetadataFetch, let tableName {
-                schemaTask = Task { try await QueryExecutor.fetchTableSchema(scope: scope, tableName: tableName) }
-            } else {
-                schemaTask = nil
-            }
+            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
 
             do {
                 let fetchResult = try await DatabaseManager.shared.withScopedDriver(

@@ -34,7 +34,7 @@ import TableProPluginKit
 /// fetch is the only version of this that keeps the edits.
 @MainActor
 internal final class StructureEditingSession: ObservableObject {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
+    static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
 
     /// The scope and table this session was opened against. A tab retargeted to another table gets
     /// a new session rather than inheriting edits staged against the old one.
@@ -134,6 +134,11 @@ internal final class StructureEditingSession: ObservableObject {
     /// When the last apply landed, used to keep an incoming refresh notification from re-fetching
     /// what the save has just re-fetched.
     @Published internal var lastAppliedAt: Date?
+
+    /// What every save from this tab is authorized through. A test supplies one whose prompts
+    /// answer themselves, because the real gate raises an application-modal alert that nothing on
+    /// a CI runner can dismiss.
+    internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
 
     internal init(
         identity: String,
