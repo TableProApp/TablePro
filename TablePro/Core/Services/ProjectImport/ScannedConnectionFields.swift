@@ -32,6 +32,7 @@ struct ScannedConnectionFields {
             username: username,
             password: password,
             sslMode: sslMode,
+            disablesTLS: false,
             authSource: nil,
             sshHost: nil,
             sshPort: nil,

@@ -70,6 +70,48 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsOpportunisticTLS ?? true
     }
 
+    var tlsImpliedPorts: [Int] {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.tlsImpliedPorts ?? []
+    }
+
+    var defaultTLSPort: Int? {
+        tlsImpliedPorts.first
+    }
+
+    func portWhenOmitted(tlsEnabled: Bool) -> Int {
+        guard tlsEnabled, let defaultTLSPort else { return defaultPort }
+        return defaultTLSPort
+    }
+
+    var verifiesServerWithSystemTrust: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.verifiesServerWithSystemTrust ?? false
+    }
+
+    var supportsPerConnectionCertificatePaths: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsPerConnectionCertificatePaths ?? true
+    }
+
+    func requiresCACertificate(for mode: SSLMode) -> Bool {
+        guard mode == .verifyCa || mode == .verifyIdentity, supportsPerConnectionCertificatePaths else { return false }
+        return mode == .verifyCa || !verifiesServerWithSystemTrust
+    }
+
+    var sslModeWhenTLSEnabled: SSLMode {
+        verifiesServerWithSystemTrust ? .verifyIdentity : .required
+    }
+
+    func impliedSSLMode(forPort port: Int) -> SSLMode? {
+        guard tlsImpliedPorts.contains(port) else { return nil }
+        return sslModeWhenTLSEnabled
+    }
+
+    func sslModeResolution(forPort port: Int) -> SSLModeResolution {
+        guard let impliedMode = impliedSSLMode(forPort: port) else {
+            return SSLModeResolution(mode: defaultSSLMode, origin: .typeDefault)
+        }
+        return SSLModeResolution(mode: impliedMode, origin: .impliedByPort)
+    }
+
     var supportsClientKeyPassphrase: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsClientKeyPassphrase ?? false
     }

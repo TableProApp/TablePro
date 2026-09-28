@@ -12,7 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Endless reconnect attempts after a server started requiring TLS, stopped accepting it, or rejected the client certificate or key.
 - Reconnect status showing "The connection stopped responding" instead of the certificate error behind it.
 - ClickHouse host lookup failures reported as a TLS hostname mismatch.
+- Trino on port 443, and ClickHouse on 443 or 8443, sending plain HTTP to an HTTPS port. (#3166)
+- Verify modes refusing to save without a CA file on SQL Server, and Verify Identity on Trino and ClickHouse.
+- Trino certificate failures shown as "Query was cancelled", and PEM CA files rejected.
+- Raw HTML error pages in Trino connection errors.
+- ClickHouse Verify Identity ignoring the chosen CA certificate.
+- Missing "no TLS fallback" warning under Preferred for Trino.
 - Welcome window toolbar growing and captioning its search field after choosing Icon and Text.
+- Trino following a proxy's redirect, sending the query and password to another address or over plain HTTP.
+- Trino and etcd mutual TLS crashing on an RSA PRIVATE KEY file, rejecting other keys, and copying them to the login keychain.
+- `jdbc:` URLs rejected by Import from URL, and their `user` and `password` parameters ignored.
+- Imported Trino and ClickHouse URLs with `SSL=true` skipping certificate checks, and Trino's `SSLVerification` ignored.
+- Links opened from a browser or `open` ignoring the driver's default SSL mode, such as Preferred for PostgreSQL and MySQL.
+- Copied connection URLs losing SSL Disabled.
+- ClickHouse certificate failures under Verify CA, or with a CA file, reported as a generic connection failure.
+- etcd rejecting a PEM CA certificate.
+
+### Security
+
+- Trino password or access token sent in plain text when SSL Mode is Disabled.
+- Verify CA without a CA certificate accepting a certificate for any host on Trino, ClickHouse and etcd.
 
 ## [0.76.0] - 2026-09-28
 

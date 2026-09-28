@@ -242,14 +242,14 @@ struct ConnectionFormTransportTests {
     @Test("a driver with no SSL section cannot be blocked by an SSL rule")
     func sslIssuesAreSilentWhereThereIsNoSSLSection() {
         let coordinator = coordinator(type: .sqlite)
-        coordinator.ssl.mode = .verifyCa
+        coordinator.ssl.select(.verifyCa)
         coordinator.ssl.caCertPath = ""
 
         #expect(!coordinator.supportsSSL)
         #expect(coordinator.ssl.validationIssues.isEmpty)
 
         let networked = self.coordinator()
-        networked.ssl.mode = .verifyCa
+        networked.ssl.select(.verifyCa)
         networked.ssl.caCertPath = ""
         #expect(networked.supportsSSL)
         #expect(!networked.ssl.validationIssues.isEmpty, "A driver that shows the field still requires it")

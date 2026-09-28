@@ -93,6 +93,54 @@ private final class MockDynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockTrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock Trino"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed Trino plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "Trino"
+    static let databaseDisplayName = "Trino"
+    static let iconName = "trino-icon"
+    static let defaultPort = 8_080
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
+private final class MockClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock ClickHouse"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled ClickHouse plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "ClickHouse"
+    static let databaseDisplayName = "ClickHouse"
+    static let iconName = "clickhouse-icon"
+    static let defaultPort = 8_123
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
+private final class MockMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock MSSQL"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed SQL Server plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SQL Server"
+    static let databaseDisplayName = "SQL Server"
+    static let iconName = "mssql-icon"
+    static let defaultPort = 1_433
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockUnknownPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock Unknown"
     static let pluginVersion = "1.0.0"
@@ -219,6 +267,30 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.schema.implicitSchemaName == nil)
     }
 
+    @Test("Trino keeps its TLS port, system trust and no plaintext fallback when its plugin registers")
+    func trinoKeepsItsTLSCapabilities() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockTrinoPlugin.self)
+
+        #expect(built.capabilities.tlsImpliedPorts == [443])
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(built.capabilities.supportsOpportunisticTLS == false)
+    }
+
+    @Test("ClickHouse keeps its TLS ports and system trust when its plugin registers")
+    func clickHouseKeepsItsTLSCapabilities() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockClickHousePlugin.self)
+
+        #expect(built.capabilities.tlsImpliedPorts == [8_443, 443])
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+    }
+
+    @Test("SQL Server keeps its missing certificate fields when its plugin registers")
+    func mssqlKeepsItsCertificateFieldOptOut() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockMSSQLPlugin.self)
+
+        #expect(built.capabilities.supportsPerConnectionCertificatePaths == false)
+    }
+
     @Test("A plugin with no curated entry falls back to the defaults")
     func unknownPluginUsesTheStructDefaults() {
         let registry = PluginMetadataRegistry.shared
@@ -231,6 +303,9 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.browsingRequiresSelectedDatabase == false)
         #expect(built.capabilities.exactRowCountIsBilledScan == false)
         #expect(built.capabilities.columnsAreSampled == false)
+        #expect(built.capabilities.tlsImpliedPorts.isEmpty)
+        #expect(built.capabilities.verifiesServerWithSystemTrust == false)
+        #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)
         #expect(built.schema.implicitSchemaName == nil)
     }
 }

@@ -14,6 +14,7 @@ struct ParsedConnectionURL {
     let username: String
     let password: String
     let sslMode: SSLMode?
+    let disablesTLS: Bool
     let authSource: String?
     let sshHost: String?
     let sshPort: Int?
@@ -81,6 +82,8 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
 }
 
 struct ConnectionURLParser {
+    private static let jdbcPrefix = "jdbc:"
+
     static func parse(_ urlString: String) -> Result<ParsedConnectionURL, ConnectionURLParseError> {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -101,6 +104,7 @@ struct ConnectionURLParser {
                   !scheme.hasSuffix("+srv") {
             scheme = String(scheme[scheme.startIndex..<plusIdx])
         }
+        scheme = schemeWithoutJDBCPrefix(scheme)
 
         guard let dbType = resolveDBType(from: scheme) else {
             return .failure(.unsupportedScheme(scheme))
@@ -120,6 +124,7 @@ struct ConnectionURLParser {
                 username: "",
                 password: "",
                 sslMode: nil,
+                disablesTLS: false,
                 authSource: nil,
                 sshHost: nil,
                 sshPort: nil,
@@ -169,23 +174,22 @@ struct ConnectionURLParser {
             return .failure(.missingHost)
         }
 
+        var ext = parseQueryItems(components.queryItems, dbType: dbType)
+
         let rawPort = components.port
-        let port = (rawPort == dbType.defaultPort) ? nil : rawPort
+        var sslMode = ext.resolvedSSLMode(for: dbType, port: rawPort ?? dbType.defaultPort)
+        let port = significantPort(rawPort, for: dbType, sslMode: sslMode)
         let username = components.percentEncodedUser.flatMap {
             $0.removingPercentEncoding
-        } ?? ""
+        } ?? ext.user ?? ""
         let password = components.percentEncodedPassword.flatMap {
             $0.removingPercentEncoding
-        } ?? ""
+        } ?? ext.password ?? ""
 
         var database = components.path
         if database.hasPrefix("/") {
             database = String(database.dropFirst())
         }
-
-        var ext = parseQueryItems(components.queryItems, dbType: dbType)
-
-        var sslMode = ext.sslMode
         // Redis-specific: parse database index from path and handle TLS scheme
         var redisDatabase: Int?
         if dbType == .redis {
@@ -229,6 +233,7 @@ struct ConnectionURLParser {
             username: username,
             password: password,
             sslMode: sslMode,
+            disablesTLS: ext.disablesTLS,
             authSource: ext.authSource,
             sshHost: nil,
             sshPort: nil,
@@ -384,7 +389,7 @@ struct ConnectionURLParser {
         var port: Int?
         if let (h, p) = parseHostPort(dbHostPort) {
             host = h
-            port = (p == dbType.defaultPort) ? nil : p
+            port = p
         } else {
             host = dbHostPort
         }
@@ -394,6 +399,8 @@ struct ConnectionURLParser {
         }
 
         let ext = parseSSHQueryString(queryString, dbType: dbType)
+        let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
+        port = significantPort(port, for: dbType, sslMode: sslMode)
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -420,7 +427,8 @@ struct ConnectionURLParser {
             database: database,
             username: dbUsername,
             password: dbPassword,
-            sslMode: ext.sslMode,
+            sslMode: sslMode,
+            disablesTLS: ext.disablesTLS,
             authSource: ext.authSource,
             sshHost: sshHost,
             sshPort: sshPort,
@@ -519,7 +527,8 @@ struct ConnectionURLParser {
             database: database,
             username: username,
             password: password,
-            sslMode: ext.sslMode,
+            sslMode: ext.resolvedSSLMode(for: dbType, port: firstPort ?? dbType.defaultPort),
+            disablesTLS: ext.disablesTLS,
             authSource: ext.authSource,
             sshHost: nil,
             sshPort: nil,
@@ -552,6 +561,11 @@ struct ConnectionURLParser {
 
     private struct ExtendedParams {
         var sslMode: SSLMode?
+        var disablesTLS = false
+        var requestsTLS = false
+        var tlsVerification: SSLMode?
+        var user: String?
+        var password: String?
         var authSource: String?
         var connectionName: String?
         var usePrivateKey: Bool?
@@ -570,6 +584,15 @@ struct ConnectionURLParser {
         var safeModeLevel: Int?
         var useSrv: Bool = false
         var mongoQueryParams: [String: String] = [:]
+
+        func resolvedSSLMode(for type: DatabaseType, port: Int) -> SSLMode? {
+            if let sslMode { return sslMode }
+            guard !disablesTLS else { return nil }
+            let portImpliesTLS = type.impliedSSLMode(forPort: port) != nil
+            guard requestsTLS || portImpliesTLS else { return nil }
+            if let tlsVerification { return tlsVerification }
+            return requestsTLS ? type.sslModeWhenTLSEnabled : nil
+        }
     }
 
     private static func parseQueryItems(_ queryItems: [URLQueryItem]?, dbType: DatabaseType? = nil) -> ExtendedParams {
@@ -617,9 +640,21 @@ struct ConnectionURLParser {
         let key = rawKey.lowercased()
         switch key {
         case "sslmode":
-            ext.sslMode = parseSSLMode(value)
+            if let mode = parseSSLMode(value) {
+                ext.sslMode = mode
+            } else if let verification = parseTLSVerification(value) {
+                ext.tlsVerification = verification
+            }
+        case "sslverification":
+            if let verification = parseTLSVerification(value) {
+                ext.tlsVerification = verification
+            }
         case "authsource":
             ext.authSource = value
+        case "user" where dbType != .mongodb:
+            ext.user = value
+        case "password" where dbType != .mongodb:
+            ext.password = value
         case "statuscolor":
             ext.statusColor = value
         case "env", "enviroment", "environment":
@@ -651,8 +686,15 @@ struct ConnectionURLParser {
                 ext.sslMode = parseTlsModeInteger(intValue)
             }
         case "tls", "ssl":
-            if value.lowercased() == "true" && ext.sslMode == nil {
-                ext.sslMode = .required
+            switch value.lowercased() {
+            case "true":
+                ext.requestsTLS = true
+                ext.disablesTLS = false
+            case "false":
+                ext.disablesTLS = true
+                ext.requestsTLS = false
+            default:
+                break
             }
         case "authmechanism":
             ext.mongoQueryParams["authMechanism"] = value
@@ -701,8 +743,15 @@ struct ConnectionURLParser {
         return (hostPort, nil)
     }
 
+    private static func significantPort(_ port: Int?, for type: DatabaseType, sslMode: SSLMode?) -> Int? {
+        guard let port, port != type.portWhenOmitted(tlsEnabled: (sslMode ?? .disabled) != .disabled) else {
+            return nil
+        }
+        return port
+    }
+
     private static func parseSSLMode(_ value: String) -> SSLMode? {
-        switch value.lowercased() {
+        switch value.lowercased().replacingOccurrences(of: "_", with: "-") {
         case "disable", "disabled":
             return .disabled
         case "prefer", "preferred":
@@ -716,6 +765,25 @@ struct ConnectionURLParser {
         default:
             return nil
         }
+    }
+
+    private static func parseTLSVerification(_ value: String) -> SSLMode? {
+        switch value.lowercased() {
+        case "full", "strict":
+            return .verifyIdentity
+        case "ca":
+            return .verifyCa
+        case "none":
+            return .required
+        default:
+            return nil
+        }
+    }
+
+    private static func schemeWithoutJDBCPrefix(_ scheme: String) -> String {
+        guard scheme.hasPrefix(jdbcPrefix), resolveDBType(from: scheme) == nil else { return scheme }
+        let subprotocol = String(scheme.dropFirst(jdbcPrefix.count))
+        return resolveDBType(from: subprotocol) == nil ? scheme : subprotocol
     }
 
     private static func parseTlsModeInteger(_ value: Int) -> SSLMode? {

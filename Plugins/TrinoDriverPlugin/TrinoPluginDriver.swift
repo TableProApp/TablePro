@@ -6,7 +6,6 @@ import TableProTrinoCore
 final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
     let session: TrinoSessionState
-    private let clientConfig: TrinoClientConfig
     private let lock = NSLock()
     private var _client: TrinoStatementClient?
     private var _serverVersion: String?
@@ -16,7 +15,6 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self.clientConfig = Self.makeClientConfig(config)
         self.session = TrinoSessionState(
             catalog: config.database.isEmpty ? nil : config.database,
             schema: Self.trimmedField(config.additionalFields["trinoSchema"])
@@ -45,11 +43,17 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect() async throws {
+        let clientConfig = try Self.makeClientConfig(config)
         let transport = URLSessionTrinoTransport(tls: clientConfig.tls)
         let client = TrinoStatementClient(transport: transport, config: clientConfig, session: session)
         lock.withLock { _client = client }
 
-        let result = try await client.execute("SELECT version()")
+        let result: TrinoResultSet
+        do {
+            result = try await client.execute("SELECT version()")
+        } catch let error as TrinoError {
+            throw error.connectionFailure
+        }
         if case .text(let version)? = result.rows.first?.first {
             lock.withLock { _serverVersion = "Trino \(version)" }
         } else {
@@ -170,20 +174,21 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return String(format: String(localized: "%1$@: %2$lld rows"), updateType, Int64(count))
     }
 
-    private static func makeClientConfig(_ config: DriverConnectionConfig) -> TrinoClientConfig {
+    private static func makeClientConfig(_ config: DriverConnectionConfig) throws -> TrinoClientConfig {
         let useTLS = config.ssl.isEnabled
         let port = config.port > 0 ? config.port : (useTLS ? 8_443 : 8_080)
-        return TrinoClientConfig(
+        let clientConfig = TrinoClientConfig(
             host: config.host.isEmpty ? "localhost" : config.host,
             port: port,
             useTLS: useTLS,
-            tls: TrinoSSLMapping.tlsOptions(for: config.ssl),
+            tls: try TrinoSSLMapping.tlsOptions(for: config.ssl),
             user: config.username,
             catalog: config.database.isEmpty ? nil : config.database,
             schema: trimmedField(config.additionalFields["trinoSchema"]),
             timeZone: trimmedField(config.additionalFields["trinoTimeZone"]),
             auth: resolveAuth(config)
         )
+        return clientConfig
     }
 
     private static func resolveAuth(_ config: DriverConnectionConfig) -> TrinoAuth {

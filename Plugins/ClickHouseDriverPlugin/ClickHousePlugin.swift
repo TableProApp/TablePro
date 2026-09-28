@@ -130,6 +130,17 @@ struct ClickHouseError: Error, PluginDriverError {
 
     static let notConnected = ClickHouseError(message: String(localized: "Not connected to database"))
     static let connectionFailed = ClickHouseError(message: String(localized: "Failed to establish connection"))
+    static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
+        Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed \
+        the server's certificate, or set SSL Mode to Verify Identity.
+        """))
+
+    static func unreadableCACertificate(at path: String) -> ClickHouseError {
+        ClickHouseError(message: String(
+            format: String(localized: "The CA certificate at %@ could not be read as a PEM or DER certificate."),
+            path
+        ))
+    }
 }
 
 // MARK: - Internal Query Result
@@ -220,13 +231,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        let tlsDelegate = try ClickHouseTLSDelegate.make(for: config.ssl)
+
         let urlConfig = URLSessionConfiguration.default
         urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.withLock {
-            if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
-                session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
+            if let tlsDelegate {
+                session = URLSession(configuration: urlConfig, delegate: tlsDelegate, delegateQueue: nil)
             } else {
                 session = URLSession(configuration: urlConfig)
             }
@@ -240,6 +253,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 session = nil
             }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
+            if let refusal = tlsDelegate?.recordedRefusal {
+                throw refusal
+            }
             if let sslError = ClickHouseSSLClassifier.classifySSLError(error) {
                 throw sslError
             }
@@ -477,13 +493,17 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func killQuery(queryId: String) {
         lock.lock()
-        let hasSession = session != nil
+        let connectedSession = session
         lock.unlock()
-        guard hasSession else { return }
+        guard let connectedSession else { return }
 
         let killConfig = URLSessionConfiguration.default
         killConfig.timeoutIntervalForRequest = 5
-        let killSession = URLSession(configuration: killConfig)
+        let killSession = URLSession(
+            configuration: killConfig,
+            delegate: connectedSession.delegate,
+            delegateQueue: nil
+        )
 
         do {
             let escapedId = queryId.replacingOccurrences(of: "'", with: "''")
@@ -824,45 +844,52 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - TLS Delegate
 
-private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private enum Strategy {
         case skipVerify
-        case verifyChain(anchor: SecCertificate?)
-        case anchorUnavailable
+        case verifyChain(anchor: SecCertificate, checksHostname: Bool)
     }
 
     private let strategy: Strategy
+    private let lock = NSLock()
+    private var refusal: SSLHandshakeError?
+
+    var recordedRefusal: SSLHandshakeError? {
+        lock.withLock { refusal }
+    }
 
     private init(strategy: Strategy) {
         self.strategy = strategy
     }
 
-    /// Returns nil when the default URLSession trust evaluation is correct
-    /// (`.disabled` and `.verifyIdentity`).
-    static func make(for ssl: SSLConfiguration) -> ClickHouseTLSDelegate? {
+    static func make(for ssl: SSLConfiguration) throws -> ClickHouseTLSDelegate? {
+        let caPath = ssl.caCertificatePath.trimmingCharacters(in: .whitespaces)
         switch ssl.mode {
-        case .disabled, .verifyIdentity:
+        case .disabled:
             return nil
         case .preferred, .required:
             return ClickHouseTLSDelegate(strategy: .skipVerify)
+        case .verifyIdentity:
+            guard !caPath.isEmpty else { return nil }
+            return try anchored(at: caPath, checksHostname: true)
         case .verifyCa:
-            guard !ssl.caCertificatePath.isEmpty else {
-                return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: nil))
-            }
-            guard let anchor = loadAnchor(at: ssl.caCertificatePath) else {
-                return ClickHouseTLSDelegate(strategy: .anchorUnavailable)
-            }
-            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor))
+            guard !caPath.isEmpty else { throw ClickHouseError.verifyCaNeedsCertificate }
+            return try anchored(at: caPath, checksHostname: false)
         }
     }
 
-    /// A verification mode whose anchor cannot be read must fail, never quietly widen to the
-    /// system roots. `SecCertificateCreateWithData` takes DER only, so PEM is decoded first.
+    private static func anchored(at path: String, checksHostname: Bool) throws -> ClickHouseTLSDelegate {
+        guard let anchor = loadAnchor(at: path) else {
+            throw ClickHouseError.unreadableCACertificate(at: path)
+        }
+        return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor, checksHostname: checksHostname))
+    }
+
     private static func loadAnchor(at path: String) -> SecCertificate? {
-        guard !path.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let der = PEMCertificateDecoder.certificateDER(from: data) else {
             return nil
         }
-        guard let der = PEMCertificateDecoder.certificateDER(from: data) else { return nil }
         return SecCertificateCreateWithData(nil, der as CFData)
     }
 
@@ -880,19 +907,29 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         switch strategy {
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
-        case .anchorUnavailable:
-            completionHandler(.cancelAuthenticationChallenge, nil)
-        case .verifyChain(let anchor):
-            if let anchor {
-                SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)
-            }
-            let hostnameAgnostic = SecPolicyCreateSSL(true, nil)
-            SecTrustSetPolicies(serverTrust, [hostnameAgnostic] as CFArray)
-            if SecTrustEvaluateWithError(serverTrust, nil) {
-                completionHandler(.useCredential, URLCredential(trust: serverTrust))
-            } else {
+        case .verifyChain(let anchor, let checksHostname):
+            SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)
+            let hostname = checksHostname ? challenge.protectionSpace.host as CFString : nil
+            SecTrustSetPolicies(serverTrust, [SecPolicyCreateSSL(true, hostname)] as CFArray)
+            var evaluationError: CFError?
+            guard SecTrustEvaluateWithError(serverTrust, &evaluationError) else {
+                record(Self.refusal(for: evaluationError))
                 completionHandler(.cancelAuthenticationChallenge, nil)
+                return
             }
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
         }
+    }
+
+    static func refusal(for error: CFError?) -> SSLHandshakeError {
+        let message = error.map { CFErrorCopyDescription($0) as String } ?? ""
+        guard let error, CFErrorGetCode(error) == Int(errSecHostNameMismatch) else {
+            return .untrustedCertificate(serverMessage: message)
+        }
+        return .hostnameMismatch(serverMessage: message)
+    }
+
+    private func record(_ refused: SSLHandshakeError) {
+        lock.withLock { refusal = refused }
     }
 }
