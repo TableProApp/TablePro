@@ -184585,6 +184585,60 @@
     },
     "This document holds JavaScript code with a scope. MongoDB compares a scope by value, so a save could not tell whether someone else changed it." : {
 
+    },
+    "\"%1$@\" is not a valid %2$@ value." : {
+
+    },
+    "A %@ value cannot be written from the grid. Use the CQL editor." : {
+
+    },
+    "Cassandra orders rows only by clustering columns within one partition, so a table cannot be sorted by a column." : {
+
+    },
+    "Cassandra filters cannot match any one of several conditions. Use Match All." : {
+
+    },
+    "Enter at least one value to filter with IN." : {
+
+    },
+    "Enter both bounds to filter with BETWEEN." : {
+
+    },
+    "Cassandra cannot filter rows with %@." : {
+
+    },
+    "A column added to a Cassandra table cannot join its primary key." : {
+
+    },
+    "Cassandra has no NOT NULL constraint." : {
+
+    },
+    "Cassandra columns have no comment." : {
+
+    },
+    "Change a Cassandra column's name or type in the CQL editor. CQL renames only primary key columns and changes no column's type." : {
+
+    },
+    "Create and drop Cassandra indexes in the CQL editor." : {
+
+    },
+    "A row with this primary key already exists. Edit that row instead." : {
+
+    },
+    "The table's primary key is not loaded, so the row cannot be written." : {
+
+    },
+    "Enter a value for the primary key column %@." : {
+
+    },
+    "Cassandra cannot change the primary key column %@. Delete the row and add it again with the new key." : {
+
+    },
+    "Cassandra columns have no default value." : {
+
+    },
+    "The row's primary key is not loaded, so the row cannot be found." : {
+
     }
   },
   "version" : "1.1"
