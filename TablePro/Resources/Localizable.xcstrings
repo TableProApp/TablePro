@@ -453,6 +453,9 @@
         }
       }
     },
+    "\"%1$@\" is not a valid %2$@ value." : {
+
+    },
     "--" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11929,6 +11932,9 @@
     "A %@ index has no equivalent on this engine." : {
 
     },
+    "A %@ value cannot be written from the grid. Use the CQL editor." : {
+
+    },
     "A built-in plugin \"%@\" already provides this bundle ID" : {
       "localizations" : {
         "ko" : {
@@ -11996,6 +12002,9 @@
           }
         }
       }
+    },
+    "A column added to a Cassandra table cannot join its primary key." : {
+
     },
     "A column left out of the comparison is still written on insert and update. A filter and a row limit read only the rows they select, on both sides." : {
 
@@ -12761,6 +12770,9 @@
           }
         }
       }
+    },
+    "A row with this primary key already exists. Edit that row instead." : {
+
     },
     "A run is already in progress." : {
       "localizations" : {
@@ -24322,6 +24334,15 @@
         }
       }
     },
+    "Cassandra cannot change the primary key column %@. Delete the row and add it again with the new key." : {
+
+    },
+    "Cassandra columns have no comment." : {
+
+    },
+    "Cassandra has no NOT NULL constraint." : {
+
+    },
     "backslash" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27809,6 +27830,18 @@
         }
       }
     },
+    "Cassandra cannot filter rows with %@." : {
+
+    },
+    "Cassandra columns have no default value." : {
+
+    },
+    "Cassandra filters cannot match any one of several conditions. Use Match All." : {
+
+    },
+    "Cassandra orders rows only by clustering columns within one partition, so a table cannot be sorted by a column." : {
+
+    },
     "caret" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28644,6 +28677,9 @@
           }
         }
       }
+    },
+    "Change a Cassandra column's name or type in the CQL editor. CQL renames only primary key columns and changes no column's type." : {
+
     },
     "Change…" : {
 
@@ -44822,6 +44858,9 @@
         }
       }
     },
+    "Create and drop Cassandra indexes in the CQL editor." : {
+
+    },
     "Create connection..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -59879,6 +59918,12 @@
     "Enter Credentials Here" : {
 
     },
+    "Enter at least one value to filter with IN." : {
+
+    },
+    "Enter both bounds to filter with BETWEEN." : {
+
+    },
     "Enter database name" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -59947,6 +59992,9 @@
           }
         }
       }
+    },
+    "Enter a value for the primary key column %@." : {
+
     },
     "Enter table name" : {
       "localizations" : {
@@ -162096,6 +162144,9 @@
     "The table needs at least one column with a name and a type." : {
 
     },
+    "The table's primary key is not loaded, so the row cannot be written." : {
+
+    },
     "the target" : {
       "localizations" : {
         "ko" : {
@@ -182881,24 +182932,6 @@
     "Server response: %@" : {
 
     },
-    "Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter)." : {
-
-    },
-    "Open the connection editor, switch to the SSL tab, and set Mode to Disabled." : {
-
-    },
-    "Switch SSL Mode to Verify CA (validates the CA chain but skips hostname check), or update the host field to match the certificate." : {
-
-    },
-    "Provide the client certificate and key paths in the SSL tab." : {
-
-    },
-    "Open the connection editor, switch to the SSL tab, and enter the Key Passphrase." : {
-
-    },
-    "Open the connection editor, switch to the SSL tab, and correct the Key Passphrase." : {
-
-    },
     "Check that the Client Key path points to a valid PEM private key." : {
 
     },
@@ -184184,9 +184217,6 @@
     "The FreeTDS configuration could not be written: %@" : {
 
     },
-    "Verify CA and Verify Identity check the server certificate against the system trust store. A custom CA and client certificates are not available for SQL Server." : {
-
-    },
     "MongoDB refused the write (error %u)." : {
 
     },
@@ -184565,6 +184595,9 @@
     "Editing a document needs MongoDB 4.0 or later." : {
 
     },
+    "The row's primary key is not loaded, so the row cannot be found." : {
+
+    },
     "This is a view, so its documents cannot be edited. Edit them in the collection the view reads." : {
 
     },
@@ -184586,58 +184619,92 @@
     "This document holds JavaScript code with a scope. MongoDB compares a scope by value, so a save could not tell whether someone else changed it." : {
 
     },
-    "\"%1$@\" is not a valid %2$@ value." : {
+    "On the connection's Network tab, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
 
     },
-    "A %@ value cannot be written from the grid. Use the CQL editor." : {
+    "On the connection's Network tab, set SSL Mode to Disabled." : {
 
     },
-    "Cassandra orders rows only by clustering columns within one partition, so a table cannot be sorted by a column." : {
+    "Choose the client certificate and key on the connection's Network tab." : {
 
     },
-    "Cassandra filters cannot match any one of several conditions. Use Match All." : {
+    "Enter the Key Passphrase on the connection's Network tab." : {
 
     },
-    "Enter at least one value to filter with IN." : {
+    "Correct the Key Passphrase on the connection's Network tab." : {
 
     },
-    "Enter both bounds to filter with BETWEEN." : {
+    "The CA certificate at %@ could not be read as a PEM or DER certificate." : {
 
     },
-    "Cassandra cannot filter rows with %@." : {
+    "Leave empty to use the system trust store." : {
 
     },
-    "A column added to a Cassandra table cannot join its primary key." : {
+    "On the connection's Network tab, choose the server's CA certificate under Verify Identity or Verify CA. Required (skip verify) also connects, but does not check the certificate." : {
 
     },
-    "Cassandra has no NOT NULL constraint." : {
+    "Port %lld uses TLS, so SSL Mode is %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Port %1$lld uses TLS, so SSL Mode is %2$@."
+          }
+        }
+      }
+    },
+    "Port %lld usually requires TLS, and SSL Mode is Disabled." : {
 
     },
-    "Cassandra columns have no comment." : {
+    "Use %@" : {
 
     },
-    "Change a Cassandra column's name or type in the CQL editor. CQL renames only primary key columns and changes no column's type." : {
+    "Verify CA and Verify Identity check the server certificate against the system trust store. This driver takes no custom CA or client certificate." : {
 
     },
-    "Create and drop Cassandra indexes in the CQL editor." : {
+    "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
 
     },
-    "A row with this primary key already exists. Edit that row instead." : {
+    "A password is sent only over TLS, and SSL Mode is Disabled. Set SSL Mode to Verify Identity, or clear the password if the cluster has no authentication." : {
 
     },
-    "The table's primary key is not loaded, so the row cannot be written." : {
+    "An access token is sent only over TLS, and SSL Mode is Disabled. Set SSL Mode to Verify Identity, or clear the Access Token if the cluster has no authentication." : {
 
     },
-    "Enter a value for the primary key column %@." : {
+    "Change Host to a name the certificate covers." : {
 
     },
-    "Cassandra cannot change the primary key column %@. Delete the row and add it again with the new key." : {
+    "The client certificate at %@ could not be read as a PEM or DER certificate." : {
 
     },
-    "Cassandra columns have no default value." : {
+    "The client certificate at %@ could not be read." : {
 
     },
-    "The row's primary key is not loaded, so the row cannot be found." : {
+    "The client key at %1$@ does not belong to the certificate at %2$@." : {
+
+    },
+    "The client key at %@ could not be read." : {
+
+    },
+    "The client key at %@ is encrypted. This connection needs an unencrypted key." : {
+
+    },
+    "The client key at %@ is not an RSA or EC private key in PEM or DER form." : {
+
+    },
+    "The server answered with HTTP %lld and no address. Trino never redirects, so a proxy in front of it sent this. Check the host, port and SSL Mode." : {
+
+    },
+    "The server did not accept the client certificate. %@" : {
+
+    },
+    "The server redirected the request to %1$@, which needs HTTPS. Set Port to %2$lld and SSL Mode to Verify Identity." : {
+
+    },
+    "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
+
+    },
+    "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
 
     }
   },

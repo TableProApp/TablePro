@@ -70,15 +70,15 @@ ClickHouse mutations run in the background, so the grid reports the statement as
 
 ## SSL/TLS
 
-The default is **Disabled**, which sends plain HTTP. Any other mode switches the URL scheme to `https`.
+The default is **Disabled**, which sends plain HTTP. Any other mode switches the URL scheme to `https`. Port `443` or `8443` turns on **Verify Identity**; see [Ports that mean TLS](/connections/ssl#ports-that-mean-tls).
 
 | Mode | Verifies | Pick it for |
 |------|----------|-------------|
 | **Preferred**, **Required** | Nothing. Encryption only | A self-signed certificate you have no CA file for |
 | **Verify CA** | The chain, against the CA file | Private PKI |
-| **Verify Identity** | The chain and the hostname, against the system trust store | ClickHouse Cloud, on port 8443 |
+| **Verify Identity** | The chain and the hostname, against the CA file or, with none set, the system trust store | ClickHouse Cloud, on port 8443 |
 
-The CA file may be PEM or DER. If **Verify CA** cannot read it, the connection fails rather than falling back to the public root store. See [SSL/TLS](/connections/ssl).
+The CA file may be PEM or DER. **Verify CA** needs one, since it checks no hostname, and a connection without it is refused. If **Verify CA** or **Verify Identity** cannot read the file, the connection fails rather than falling back to the public root store. An imported URL with `ssl=true` opens as Verify Identity, and `sslmode=none` as Required. See [SSL/TLS](/connections/ssl).
 
 ## Limitations
 

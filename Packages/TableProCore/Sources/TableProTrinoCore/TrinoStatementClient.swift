@@ -85,6 +85,9 @@ public final class TrinoStatementClient: @unchecked Sendable {
         guard let statementURL = config.statementURL else {
             throw TrinoError.invalidConfiguration("Invalid Trino server URL")
         }
+        if let credential = config.plaintextCredential {
+            throw TrinoError.credentialsRequireTLS(credential)
+        }
         let statement = TrinoRunningStatement()
         lock.withLock { running[ObjectIdentifier(statement)] = statement }
         defer { lock.withLock { running[ObjectIdentifier(statement)] = nil } }
@@ -128,9 +131,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
 
         while let uri = nextUri {
             statement.advance(to: uri)
-            guard let nextURL = URL(string: uri) else {
-                throw TrinoError.invalidResponse("Trino returned an invalid nextUri")
-            }
+            let nextURL = try followURL(uri)
             httpResponse = try await sendWithRetry(
                 makeRequest(method: .get, url: nextURL, headers: followHeaders()),
                 for: statement
@@ -206,20 +207,22 @@ public final class TrinoStatementClient: @unchecked Sendable {
             case 502, 503, 504:
                 attempt += 1
                 guard attempt <= Self.maxTransientRetries else {
-                    throw TrinoError.httpStatus(code: response.statusCode, body: bodyText(response))
+                    throw TrinoError.httpStatus(code: response.statusCode, body: readableBody(response))
                 }
                 Self.logger.debug("Trino transient \(response.statusCode, privacy: .public), retry \(attempt)")
                 try await sleepBackoff(attempt: attempt, retryAfter: nil)
             case 429:
                 attempt += 1
                 guard attempt <= Self.maxTransientRetries else {
-                    throw TrinoError.httpStatus(code: 429, body: bodyText(response))
+                    throw TrinoError.httpStatus(code: 429, body: readableBody(response))
                 }
                 try await sleepBackoff(attempt: attempt, retryAfter: response.retryAfterSeconds())
+            case 300...399:
+                throw TrinoRedirectPolicy.refusal(for: response, requestURL: request.url, useTLS: config.useTLS)
             case 401, 403:
-                throw TrinoError.authenticationFailed(authMessage(response))
+                throw authenticationFailure(response)
             default:
-                throw TrinoError.httpStatus(code: response.statusCode, body: bodyText(response))
+                throw failure(for: response)
             }
         }
     }
@@ -243,7 +246,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
     }
 
     private func fireDelete(_ uri: String) {
-        guard let url = URL(string: uri) else { return }
+        guard let url = try? followURL(uri) else { return }
         let request = makeRequest(method: .delete, url: url, headers: followHeaders())
         let transport = self.transport
         Task.detached { _ = try? await transport.send(request) }
@@ -312,9 +315,41 @@ public final class TrinoStatementClient: @unchecked Sendable {
         return headers
     }
 
-    private func authMessage(_ response: TrinoHTTPResponse) -> String {
+    private func followURL(_ uri: String) throws -> URL {
+        guard let url = URL(string: uri) else {
+            throw TrinoError.invalidResponse("Trino returned an invalid nextUri")
+        }
+        guard config.useTLS, url.scheme?.lowercased() != "https" else { return url }
+        throw TrinoError.invalidResponse(
+            "Trino answered an HTTPS request with a plain http:// address, so it was not followed. "
+                + "A coordinator behind a TLS proxy needs http-server.process-forwarded=true."
+        )
+    }
+
+    private func failure(for response: TrinoHTTPResponse) -> TrinoError {
         let body = bodyText(response)
+        let readable = TrinoResponseText.readable(body)
+        guard !config.useTLS, TrinoResponseText.isPlaintextRejection(statusCode: response.statusCode, body: body) else {
+            return .httpStatus(code: response.statusCode, body: readable)
+        }
+        return .tlsHandshakeFailed(kind: .serverRejectedPlaintext, serverMessage: readable)
+    }
+
+    private func authenticationFailure(_ response: TrinoHTTPResponse) -> TrinoError {
+        let message = authMessage(response)
+        guard response.clientCertificateRequest == .unanswered, config.auth == .none else {
+            return .authenticationFailed(message)
+        }
+        return .tlsHandshakeFailed(kind: .clientCertificateRequired, serverMessage: message)
+    }
+
+    private func authMessage(_ response: TrinoHTTPResponse) -> String {
+        let body = readableBody(response)
         return body.isEmpty ? "Authentication failed" : body
+    }
+
+    private func readableBody(_ response: TrinoHTTPResponse) -> String {
+        TrinoResponseText.readable(bodyText(response))
     }
 
     private func bodyText(_ response: TrinoHTTPResponse) -> String {

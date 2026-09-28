@@ -172,6 +172,36 @@ struct ConnectionFailureClassifierTests {
         #expect(info.message.contains("self signed certificate"))
     }
 
+    @Test(
+        "A TLS failure only a settings change can fix stops the reconnect with its reason",
+        arguments: TLSFailureFixtures.configurationFailures
+    )
+    func configurationTLSFailureStopsReconnecting(error: SSLHandshakeError) {
+        #expect(
+            ConnectionFailureClassifier.reconnectVerdict(for: error)
+                == .stop(ConnectionFailureClassifier.info(for: error))
+        )
+    }
+
+    @Test(
+        "A certificate failure keeps the reconnect going and carries its reason",
+        arguments: TLSFailureFixtures.certificateFailures
+    )
+    func certificateFailureKeepsRetryingWithItsReason(error: SSLHandshakeError) {
+        #expect(
+            ConnectionFailureClassifier.reconnectVerdict(for: error)
+                == .retry(ConnectionFailureClassifier.info(for: error))
+        )
+    }
+
+    @Test(
+        "A TLS failure a server restart also produces keeps the reconnect going with no reason of its own",
+        arguments: TLSFailureFixtures.transientFailures
+    )
+    func transientTLSFailureKeepsRetrying(error: SSLHandshakeError) {
+        #expect(ConnectionFailureClassifier.reconnectVerdict(for: error) == .retry(nil))
+    }
+
     @Test("A TLS failure never leaks credentials from the server message")
     func tlsFailureRedactsCredentials() {
         let error = SSLHandshakeError.untrustedCertificate(

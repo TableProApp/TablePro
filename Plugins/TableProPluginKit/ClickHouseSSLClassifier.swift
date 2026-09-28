@@ -12,7 +12,7 @@ public enum ClickHouseSSLClassifier {
             case .secureConnectionFailed:
                 return .cipherMismatch(serverMessage: urlError.localizedDescription)
             default:
-                break
+                return nil
             }
         }
         let message = error.localizedDescription.lowercased()

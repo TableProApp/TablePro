@@ -75,6 +75,9 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsUserDefinedTypeBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
+        var tlsImpliedPorts: [Int] = []
+        var verifiesServerWithSystemTrust: Bool = false
+        var supportsPerConnectionCertificatePaths: Bool = true
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
@@ -716,6 +719,11 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsUserDefinedTypeBrowse: driverType.supportsUserDefinedTypeBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
+                tlsImpliedPorts: existingSnapshot?.capabilities.tlsImpliedPorts ?? [],
+                verifiesServerWithSystemTrust: existingSnapshot?.capabilities
+                    .verifiesServerWithSystemTrust ?? false,
+                supportsPerConnectionCertificatePaths: existingSnapshot?.capabilities
+                    .supportsPerConnectionCertificatePaths ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,

@@ -19,6 +19,7 @@ extension ParsedConnectionURL {
             username: overriddenUsername ?? username,
             password: overriddenPassword ?? password,
             sslMode: sslMode,
+            disablesTLS: disablesTLS,
             authSource: authSource,
             sshHost: sshHost,
             sshPort: sshPort,
