@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 @testable import TablePro
 import TableProPluginKit
+import Testing
 
 @Suite("Reconnect credential recovery", .serialized)
 @MainActor
@@ -15,6 +15,39 @@ struct ReconnectCredentialRecoveryTests {
         )
 
         #expect(DatabaseManager.shared.isAuthenticationFailure(error))
+    }
+
+    @Test("An authentication failure stops an unattended reconnect with the server's message")
+    func authenticationFailureStopsTheReconnect() {
+        let error = FakePluginAuthError(
+            pluginErrorMessage: "Access denied",
+            pluginErrorCode: nil,
+            pluginSqlState: "28000"
+        )
+
+        #expect(
+            DatabaseManager.shared.reconnectVerdict(for: error)
+                == .stop(ConnectionFailureInfo(message: "Reconnect failed: Access denied (SQLSTATE: 28000)"))
+        )
+    }
+
+    @Test("A connection that is merely gone keeps the reconnect going with no reason of its own")
+    func lostConnectionKeepsRetrying() {
+        #expect(DatabaseManager.shared.reconnectVerdict(for: DatabaseError.notConnected) == .retry(nil))
+    }
+
+    @Test("A TLS failure is decided by its kind, never by the authentication heuristic")
+    func tlsFailureIsDecidedByItsKind() {
+        let errors = TLSFailureFixtures.configurationFailures
+            + TLSFailureFixtures.certificateFailures
+            + TLSFailureFixtures.transientFailures
+
+        for error in errors {
+            #expect(
+                DatabaseManager.shared.reconnectVerdict(for: error)
+                    == ConnectionFailureClassifier.reconnectVerdict(for: error)
+            )
+        }
     }
 
     /// Nobody asked for a background reconnect, so it must not raise a modal sheet on whatever
@@ -56,7 +89,7 @@ struct ReconnectCredentialRecoveryTests {
         let session = ConnectionSession(connection: connection)
         let error = FakePluginAuthError(
             pluginErrorMessage: "Access denied",
-            pluginErrorCode: 1045,
+            pluginErrorCode: 1_045,
             pluginSqlState: "28000"
         )
 
@@ -78,7 +111,7 @@ struct ReconnectCredentialRecoveryTests {
         let session = ConnectionSession(connection: connection)
         let error = FakePluginAuthError(
             pluginErrorMessage: "Access denied",
-            pluginErrorCode: 1045,
+            pluginErrorCode: 1_045,
             pluginSqlState: "28000"
         )
 
@@ -100,7 +133,7 @@ struct ReconnectCredentialRecoveryTests {
         let session = ConnectionSession(connection: connection)
         let error = FakePluginAuthError(
             pluginErrorMessage: "Lost connection to server",
-            pluginErrorCode: 2013,
+            pluginErrorCode: 2_013,
             pluginSqlState: "HY000"
         )
 
@@ -127,7 +160,7 @@ struct ReconnectCredentialRecoveryTests {
         let session = ConnectionSession(connection: connection)
         let error = FakePluginAuthError(
             pluginErrorMessage: "Access denied",
-            pluginErrorCode: 1045,
+            pluginErrorCode: 1_045,
             pluginSqlState: "28000"
         )
 

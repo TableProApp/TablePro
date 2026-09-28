@@ -157,7 +157,7 @@ extension DatabaseManager {
             guard activeSessions[connectionId]?.driver === driver else { return }
             Self.logger.info("Connection \(connectionId) did not answer before use, reconnecting")
             let outcome = await performHealthMonitorReconnect(connectionId: connectionId)
-            guard outcome != .success else { return }
+            guard case .retry(let failure) = outcome else { return }
             /// The reconnect disconnected the installed driver before it failed, so the session is
             /// holding a handle that cannot work. Saying so is the whole point: `ensureConnected`
             /// and the window both read liveness, and leaving it `.live` puts the user's own
@@ -169,7 +169,7 @@ extension DatabaseManager {
             markSessionUnreachable(
                 connectionId,
                 startedWith: driver,
-                info: Self.unreachableBeforeUseInfo
+                info: failure ?? Self.unreachableBeforeUseInfo
             )
         }
     }
