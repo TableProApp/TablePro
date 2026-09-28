@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Endless reconnect attempts after a server started requiring TLS, stopped accepting it, or rejected the client certificate or key.
 - Reconnect status showing "The connection stopped responding" instead of the certificate error behind it.
 - ClickHouse host lookup failures reported as a TLS hostname mismatch.
+- Welcome window toolbar growing and captioning its search field after choosing Icon and Text.
 
 ## [0.76.0] - 2026-09-28
 
