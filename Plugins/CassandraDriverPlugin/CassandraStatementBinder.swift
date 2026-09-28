@@ -65,7 +65,11 @@ enum CassandraStatementBinder {
         case .null:
             return cass_statement_bind_null(statement, index)
         case .string(let text):
-            return cass_statement_bind_string(statement, index, text)
+            let utf8 = Data(text.utf8)
+            guard !utf8.isEmpty else { return cass_statement_bind_string(statement, index, "") }
+            return utf8.withUnsafeBytes { buffer in
+                cass_statement_bind_string_n(statement, index, buffer.bindMemory(to: CChar.self).baseAddress, utf8.count)
+            }
         case .int8(let number):
             return cass_statement_bind_int8(statement, index, number)
         case .int16(let number):

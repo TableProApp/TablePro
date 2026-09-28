@@ -68,15 +68,30 @@ struct CassandraResumePointsTests {
         #expect(points.nearest(atOrBefore: 1_000, for: key) == nil)
     }
 
+    private func statementKey(_ index: Int) -> CassandraResumePoints.Key {
+        CassandraResumePoints.key(keyspace: "a", cql: "SELECT * FROM t\(index)", values: [], pageSize: 1_000)
+    }
+
     @Test("Only the most recent statements keep their points")
     func oldestStatementIsEvicted() {
         var points = CassandraResumePoints()
         for index in 0...CassandraResumePoints.maximumStatements {
-            points.record(Data([1]), at: 100, for: "statement-\(index)")
+            points.record(Data([1]), at: 100, for: statementKey(index))
         }
 
-        #expect(points.nearest(atOrBefore: 100, for: "statement-0") == nil)
-        #expect(points.nearest(atOrBefore: 100, for: "statement-\(CassandraResumePoints.maximumStatements)") != nil)
+        #expect(points.nearest(atOrBefore: 100, for: statementKey(0)) == nil)
+        #expect(points.nearest(atOrBefore: 100, for: statementKey(CassandraResumePoints.maximumStatements)) != nil)
+    }
+
+    @Test("Values that join to the same text are still two statements")
+    func keysDoNotCollideOnAJoinCharacter() {
+        let first = CassandraResumePoints.key(keyspace: "a", cql: "SELECT", values: ["a\u{0}b", "c"], pageSize: 100)
+        let second = CassandraResumePoints.key(keyspace: "a", cql: "SELECT", values: ["a", "b\u{0}c"], pageSize: 100)
+        var points = CassandraResumePoints()
+        points.record(Data([1]), at: 100, for: first)
+
+        #expect(first != second)
+        #expect(points.nearest(atOrBefore: 100, for: second) == nil)
     }
 
     @Test("Clearing forgets every point")

@@ -15,20 +15,27 @@ struct CassandraResumePoints {
     static let maximumStatements = 8
     static let maximumPointsPerStatement = 512
 
-    private var points: [String: [Int: Data]] = [:]
-    private var recency: [String] = []
+    /// The keyspace is part of the key because a browse of an unqualified table reads whichever keyspace the
+    /// session is in, and two keyspaces can hold a table of the same name and shape.
+    struct Key: Hashable, Sendable {
+        let keyspace: String?
+        let cql: String
+        let values: [String]
+        let pageSize: Int
+    }
+
+    private var points: [Key: [Int: Data]] = [:]
+    private var recency: [Key] = []
 
     static func pageSize(forLimit limit: Int) -> Int {
         min(max(limit, 100), 5_000)
     }
 
-    /// The keyspace is part of the key because a browse of an unqualified table reads whichever keyspace the
-    /// session is in, and two keyspaces can hold a table of the same name and shape.
-    static func key(keyspace: String?, cql: String, values: [String], pageSize: Int) -> String {
-        ([keyspace ?? "", cql, String(pageSize)] + values).joined(separator: "\u{0}")
+    static func key(keyspace: String?, cql: String, values: [String], pageSize: Int) -> Key {
+        Key(keyspace: keyspace, cql: cql, values: values, pageSize: pageSize)
     }
 
-    func nearest(atOrBefore position: Int, for key: String) -> (position: Int, token: Data)? {
+    func nearest(atOrBefore position: Int, for key: Key) -> (position: Int, token: Data)? {
         guard let recorded = points[key],
               let best = recorded.keys.filter({ $0 <= position }).max(),
               let token = recorded[best]
@@ -38,7 +45,7 @@ struct CassandraResumePoints {
 
     /// A point is recorded by the walk that just read up to it, so the points past it came from an earlier walk
     /// over rows that may have changed since, and are dropped rather than mixed with the new ones.
-    mutating func record(_ token: Data, at position: Int, for key: String) {
+    mutating func record(_ token: Data, at position: Int, for key: Key) {
         guard !token.isEmpty else { return }
         recency.removeAll { $0 == key }
         recency.append(key)
@@ -54,7 +61,7 @@ struct CassandraResumePoints {
         }
     }
 
-    mutating func remove(_ key: String) {
+    mutating func remove(_ key: Key) {
         points.removeValue(forKey: key)
         recency.removeAll { $0 == key }
     }
@@ -69,7 +76,7 @@ struct CassandraResumePoints {
 struct CassandraBrowseWalk {
     let browse: CassandraBrowseStatement
     let pageSize: Int
-    let key: String
+    let key: CassandraResumePoints.Key
 }
 
 /// Stops a browse walk between pages. The walk runs inside the connection actor while the driver blocks on each
