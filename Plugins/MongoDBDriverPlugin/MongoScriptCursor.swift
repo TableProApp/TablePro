@@ -43,6 +43,11 @@ final class MongoScriptCursor {
         return false
     }
 
+    /// A find with no projection returns documents exactly as they are stored.
+    var returnsWholeDocuments: Bool {
+        isFind && options.projection == nil
+    }
+
     var filterJson: String {
         if case .find(let filter) = kind { return filter }
         return "{}"

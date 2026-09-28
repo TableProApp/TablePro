@@ -33,12 +33,18 @@ internal enum FieldValueState: Equatable {
     case pendingDefault
     /// Several rows are selected and they do not agree on this field.
     case multipleValues
+    /// The rows have no field for this column, which a document store tells apart from NULL.
+    case absent
+    /// The user asked for the field to be taken out of the row.
+    case pendingRemoval
 
     internal static func resolve(_ field: FieldEditState) -> FieldValueState {
         if field.isPendingNull { return .pendingNull }
         if field.isPendingDefault { return .pendingDefault }
+        if field.isPendingRemoval { return .pendingRemoval }
         if let pending = field.pendingValue { return .value(pending) }
         if field.hasMultipleValues { return .multipleValues }
+        if field.isAbsent { return .absent }
         guard let original = field.originalValue else { return .null }
         return .value(original)
     }
@@ -48,7 +54,7 @@ internal enum FieldValueState: Equatable {
     internal var editableText: String {
         switch self {
         case .value(let text): return text
-        case .null, .pendingNull, .pendingDefault, .multipleValues: return ""
+        case .null, .pendingNull, .pendingDefault, .multipleValues, .absent, .pendingRemoval: return ""
         }
     }
 
@@ -60,14 +66,15 @@ internal enum FieldValueState: Equatable {
         case .null, .pendingNull: return "NULL"
         case .pendingDefault: return "DEFAULT"
         case .multipleValues: return String(localized: "Multiple values")
+        case .absent, .pendingRemoval: return String(localized: "No Field")
         }
     }
 
     /// Whether the user has asked for something the stored row does not hold.
     internal var isPending: Bool {
         switch self {
-        case .pendingNull, .pendingDefault: return true
-        case .value, .null, .multipleValues: return false
+        case .pendingNull, .pendingDefault, .pendingRemoval: return true
+        case .value, .null, .multipleValues, .absent: return false
         }
     }
 }

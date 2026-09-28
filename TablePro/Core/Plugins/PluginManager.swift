@@ -99,6 +99,16 @@ final class PluginManager: ObservableObject {
     /// defaults answer nil and throw, so an already-built plugin keeps the column grid. It adds the
     /// `modifyIndex` and `dropIndex` cases to the non-frozen `PluginSchemaOperation`, which an
     /// already-built plugin answers through its `@unknown default`.
+    ///
+    /// 33 also adds the `modifyColumn` and `dropColumn` cases to `PluginSchemaOperation`, the
+    /// `PluginSchemaChangeReview` value, and `reviewSchemaChange(table:schema:operations:)`,
+    /// `schemaChangeRefusalBeforeWriting(table:schema:operations:review:)` and
+    /// `schemaChangeShortfallAfterWriting(table:schema:operations:review:)`, the save-level
+    /// questions a document store needs the server to answer, and
+    /// `tableDefinitionDidChange(table:schema:)`, which tells the session's driver to drop what it
+    /// learned about a table another connection changed. The defaults approve every save, find
+    /// every save finished and keep nothing, so an already-built plugin keeps loading and saves as
+    /// before.
     nonisolated static let currentPluginKitVersion = 33
 
     /// Still 19, so every plugin already published for the previous release keeps loading.

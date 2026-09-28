@@ -225,6 +225,15 @@ final class MainContentCommandActions: ObservableObject {
 
     private var dataGridOwnsSelection: Bool { selectionOwner == .dataGrid }
 
+    /// The display position of the one data-grid row a single-row command acts on, or nil when the
+    /// data grid does not own the selection or it holds other than one row.
+    var singleSelectedDataGridRow: Int? {
+        guard dataGridOwnsSelection else { return nil }
+        let indices = resolvedRowSelection()
+        guard indices.count == 1 else { return nil }
+        return indices.first
+    }
+
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
@@ -830,7 +839,7 @@ final class MainContentCommandActions: ObservableObject {
     /// False comes back whenever the work is still staged after the attempt, because the caller
     /// goes on to close and closing destroys it. User and role changes can only be applied after
     /// the SQL is reviewed, so Save opens the review sheet and stands the close down; a schema
-    /// change that Safe Mode refused, that the user cancelled at the destructive prompt, or that
+    /// change that Safe Mode refused, that the user cancelled at the gate's confirmation, or that
     /// the server rejected stands it down for the same reason, and so does a file that changed on
     /// disk, whose conflict sheet is now up, or a Save As the user cancelled.
     func saveSelectedTabWork() async -> Bool {
@@ -901,14 +910,6 @@ final class MainContentCommandActions: ObservableObject {
             tab.id != selectedId && coordinator.structureSessions[tab.id]?.changeManager.hasChanges == true
         }
         guard !victims.isEmpty else { return true }
-
-        /// Every apply broadcasts a data refresh for its scope, and a mounted structure view on the
-        /// same database answers that by asking whether to discard its own staged edits. Mid-close
-        /// that question is both unanswerable and destructive, so the views stand down while this
-        /// runs. Scoped by `defer` rather than latched, because a flag with no exit is how this
-        /// area has gone deaf before.
-        coordinator.isApplyingStagedStructureEdits = true
-        defer { coordinator.isApplyingStagedStructureEdits = false }
 
         for tab in victims {
             guard let session = coordinator.structureSessions[tab.id] else { continue }
@@ -1444,27 +1445,16 @@ final class MainContentCommandActions: ObservableObject {
         AppCommands.shared.refreshData
             .receive(on: RunLoop.main)
             .sink { [weak self] request in
-                guard let self, request.connectionId == self.connection.id,
-                      let coordinator = self.coordinator else { return }
-                if request.reaches(tabScope: coordinator.selectedTabScope) {
-                    coordinator.reloadActiveTableData(
-                        hasPendingTableOps: self.hasPendingTableOps,
-                        onDiscard: { [weak self] in self?.clearPendingTableOps() }
-                    )
-                }
+                guard let self, request.connectionId == self.connection.id else { return }
+                self.coordinator?.applyDataRefresh(request)
             }
             .store(in: &eventCancellables)
 
         AppCommands.shared.objectChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] change in
-                guard let self, change.connectionId == self.connection.id,
-                      let coordinator = self.coordinator else { return }
-                coordinator.applyObjectChange(
-                    change,
-                    hasPendingTableOps: self.hasPendingTableOps,
-                    onDiscard: { [weak self] in self?.clearPendingTableOps() }
-                )
+                guard let self, change.connectionId == self.connection.id else { return }
+                self.coordinator?.applyObjectChange(change)
             }
             .store(in: &eventCancellables)
 

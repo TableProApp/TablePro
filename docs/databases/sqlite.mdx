@@ -108,6 +108,8 @@ A rebuild writes the table with the definition you asked for, copies the rows ac
 
 Each column keeps its own stored text, so a `CHECK`, a `COLLATE`, a `GENERATED ALWAYS AS` and a `DEFAULT` containing a comma all survive a rebuild that touched a different column.
 
+A column declared without a type, such as `body` in `CREATE TABLE notes (id INTEGER PRIMARY KEY, body)`, has an empty **Type** cell. `CREATE TABLE … AS SELECT` declares one for every selected expression that is not a plain column or a `CAST`, so `price + 1 AS total` arrives typeless. Rename, index, drop or edit such a column like any other and it stays typeless. A type is required only on a column you add, or on one whose type you clear.
+
 Changing a column's type re-reads every value in it through the new affinity. Text that looks like a number becomes one, so `'007'` in a column retyped to `INTEGER` is stored as `7`. The review sheet says so before the script runs.
 
 A virtual table, such as an FTS5 table, cannot be recreated from what SQLite stored for it. The save is refused and names the table.

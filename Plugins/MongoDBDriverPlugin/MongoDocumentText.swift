@@ -28,7 +28,6 @@ struct MongoDocumentText: Equatable, Sendable {
         case trailingContent
         case malformed(line: Int, column: Int)
         case duplicateField(String)
-        case operatorField(String)
         case tooDeep
 
         var errorDescription: String? {
@@ -47,11 +46,6 @@ struct MongoDocumentText: Equatable, Sendable {
                 )
             case .duplicateField(let name):
                 return String(format: String(localized: "The field \u{201C}%@\u{201D} appears more than once."), name)
-            case .operatorField(let name):
-                return String(
-                    format: String(localized: "The top-level field \u{201C}%@\u{201D} starts with $, which MongoDB reads as an operator."),
-                    name
-                )
             case .tooDeep:
                 return String(
                     format: String(localized: "The document is nested more than %d levels deep."),
@@ -78,9 +72,6 @@ struct MongoDocumentText: Equatable, Sendable {
         guard case .object(let members) = try reader.readValue(depth: 1) else { throw Refusal.notAnObject }
         reader.skipWhitespace()
         guard reader.isAtEnd else { throw Refusal.trailingContent }
-        if let operatorField = members.first(where: { $0.key.hasPrefix("$") }) {
-            throw Refusal.operatorField(operatorField.key)
-        }
         self.members = members
     }
 
@@ -88,9 +79,34 @@ struct MongoDocumentText: Equatable, Sendable {
     var compactText: String {
         Value.object(members).compactText
     }
+
+    func value(of key: String) -> Value? {
+        members.first { $0.key.utf8.elementsEqual(key.utf8) }?.value
+    }
+
+    /// One top-level field of a document's text, read without building the others.
+    ///
+    /// Every row of a result pays for this, so the fields before the one asked for are stepped over
+    /// rather than read. Nil when the text is not an object or has no such field.
+    static func topLevelValue(named name: String, in text: String) -> Value? {
+        var reader = Reader(text)
+        return try? reader.readTopLevelValue(named: Array(name.utf8))
+    }
 }
 
 extension MongoDocumentText.Value {
+    /// One value read with the same strictness and depth limit as a document, and with no rule
+    /// about its field names: a stored document may hold a top-level name that starts with `$`.
+    init(parsing text: String) throws {
+        var reader = MongoDocumentText.Reader(text)
+        reader.skipWhitespace()
+        guard !reader.isAtEnd else { throw MongoDocumentText.Refusal.empty }
+        let value = try reader.readValue(depth: 1)
+        reader.skipWhitespace()
+        guard reader.isAtEnd else { throw MongoDocumentText.Refusal.trailingContent }
+        self = value
+    }
+
     var compactText: String {
         switch self {
         case .object(let members):
@@ -174,6 +190,87 @@ extension MongoDocumentText {
             default:
                 return .number(try readNumber())
             }
+        }
+
+        mutating func readTopLevelValue(named name: [UInt8]) throws -> Value? {
+            skipWhitespace()
+            guard peek == UInt8(ascii: "{") else { return nil }
+            index += 1
+            skipWhitespace()
+            guard peek != UInt8(ascii: "}") else { return nil }
+            while true {
+                skipWhitespace()
+                guard peek == UInt8(ascii: "\"") else { throw malformed }
+                let key = try readString()
+                skipWhitespace()
+                guard peek == UInt8(ascii: ":") else { throw malformed }
+                index += 1
+                if key.utf8.elementsEqual(name) { return try readValue(depth: 2) }
+                try skipValue()
+                skipWhitespace()
+                switch peek {
+                case UInt8(ascii: ","):
+                    index += 1
+                case UInt8(ascii: "}"):
+                    return nil
+                default:
+                    throw malformed
+                }
+            }
+        }
+
+        private mutating func skipValue() throws {
+            skipWhitespace()
+            guard let byte = peek else { throw malformed }
+            switch byte {
+            case UInt8(ascii: "\""):
+                try skipString()
+            case UInt8(ascii: "{"), UInt8(ascii: "["):
+                try skipContainer()
+            default:
+                while let current = peek, !isValueEnd(current) { index += 1 }
+            }
+        }
+
+        private mutating func skipContainer() throws {
+            var depth = 0
+            while let byte = peek {
+                switch byte {
+                case UInt8(ascii: "\""):
+                    try skipString()
+                    continue
+                case UInt8(ascii: "{"), UInt8(ascii: "["):
+                    depth += 1
+                case UInt8(ascii: "}"), UInt8(ascii: "]"):
+                    depth -= 1
+                    if depth == 0 {
+                        index += 1
+                        return
+                    }
+                default:
+                    break
+                }
+                index += 1
+            }
+            throw malformed
+        }
+
+        private mutating func skipString() throws {
+            index += 1
+            while let byte = peek {
+                index += 1
+                if byte == UInt8(ascii: "\\") {
+                    index += 1
+                } else if byte == UInt8(ascii: "\"") {
+                    return
+                }
+            }
+            throw malformed
+        }
+
+        private func isValueEnd(_ byte: UInt8) -> Bool {
+            byte == UInt8(ascii: ",") || byte == UInt8(ascii: "}") || byte == UInt8(ascii: "]")
+                || byte == 0x20 || byte == 0x0A || byte == 0x0D || byte == 0x09
         }
 
         private mutating func readObject(depth: Int) throws -> Value {

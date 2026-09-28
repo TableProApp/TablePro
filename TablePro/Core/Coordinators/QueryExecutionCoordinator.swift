@@ -86,7 +86,7 @@ final class QueryExecutionCoordinator: ObservableObject {
                 case .needsBatchDriver:
                     break
                 }
-            case .denied(let reason):
+            case .denied(let reason, _):
                 parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
             }
         }
@@ -128,7 +128,7 @@ final class QueryExecutionCoordinator: ObservableObject {
             switch await ExecutionGateProvider.shared.authorize(request) {
             case .authorized:
                 executeParameterizedAfterSafeMode(route, parameters: parameters, bypassRowLimit: bypassRowLimit)
-            case .denied(let reason):
+            case .denied(let reason, _):
                 parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
             }
         }

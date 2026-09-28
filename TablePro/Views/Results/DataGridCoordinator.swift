@@ -1127,6 +1127,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         refreshRowVisualState(at: row)
     }
 
+    var hasOpenCellOverlay: Bool {
+        overlayEditor?.isActive == true || overlayViewer?.isActive == true
+    }
+
     func commitActiveCellEdit() {
         overlayEditor?.dismiss(commit: true)
         overlayViewer?.dismiss()

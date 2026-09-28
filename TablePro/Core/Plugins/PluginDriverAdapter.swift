@@ -32,27 +32,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var sessionLexicalState: PluginSessionLexicalState? { pluginDriver.sessionLexicalState }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
-    func pluginGenerateStatements(
-        table: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        changes: [PluginRowChange],
-        insertedRowData: [Int: [String?]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])]? {
-        let pluginRowData = insertedRowData.mapValues { row in
-            row.map(PluginCellValue.fromOptional)
-        }
-        let result = pluginDriver.generateStatements(
-            table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
-            insertedRowData: pluginRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
-        )
-        return result?.map { (statement: $0.statement, parameters: $0.parameters.map { $0.asText }) }
-    }
-
     /// The underlying plugin driver, exposed for DDL schema generation delegation.
     var schemaPluginDriver: any PluginDatabaseDriver { pluginDriver }
 
@@ -565,6 +544,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.executeDocumentWrite(write)
     }
 
+    func fetchDocument(table: String, schema: String?, locator: String) async throws -> String? {
+        try await pluginDriver.fetchDocument(table: table, schema: schema, locator: locator)
+    }
+
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? {
         pluginDriver.createSchemaStatements(definition)
     }
@@ -955,6 +938,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         result.columnMeta = pluginResult.columnMeta?.map {
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
+        result.rowLocators = pluginResult.rowLocators
+        result.absentCells = pluginResult.absentCells ?? [:]
         return result
     }
 

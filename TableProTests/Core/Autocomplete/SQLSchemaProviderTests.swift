@@ -103,10 +103,38 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func execute(query: String) async throws -> QueryResult {
+        executedQueries.append(query)
         if executeDelaySeconds > 0 {
             try await Task.sleep(nanoseconds: UInt64(executeDelaySeconds * 1_000_000_000))
         }
         return QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+    }
+
+    private(set) var executedQueries: [String] = []
+    var schemaChangeRefusalToReturn: String?
+    var schemaChangeShortfallToReturn: String?
+    private(set) var changedTableDefinitions: [String] = []
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        schemaChangeRefusalToReturn
+    }
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        schemaChangeShortfallToReturn
+    }
+
+    func tableDefinitionDidChange(table: String, schema: String?) {
+        changedTableDefinitions.append(table)
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {

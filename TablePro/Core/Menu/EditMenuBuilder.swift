@@ -78,6 +78,10 @@ enum EditMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Edit Document…"),
+                action: #selector(MainSplitViewController.editDocument(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Insert Document…"),
                 action: #selector(MainSplitViewController.insertDocument(_:))
             ),

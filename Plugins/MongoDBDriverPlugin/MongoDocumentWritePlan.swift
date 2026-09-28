@@ -6,26 +6,48 @@
 import Foundation
 import TableProPluginKit
 
-/// What Insert Document sends, and the shell statement that says so.
+/// What Insert Document and Edit Document send, and the shell statement that says so.
 ///
 /// The statement is what the execution gate shows and query history keeps. The write itself goes
-/// to libmongoc with the same document, so the two cannot disagree about what was sent.
+/// to libmongoc with the same documents, so the two cannot disagree about what was sent.
 struct MongoDocumentWritePlan: Equatable, Sendable {
-    let document: String
+    enum Write: Equatable, Sendable {
+        case insert(document: String)
+        case replace(filter: String, replacement: String)
+    }
+
+    /// Written into the statement because the replace runs under it: only the simple collation
+    /// compares strings byte for byte, which is what makes the guard exact.
+    static let replaceOptions = #"{"collation":{"locale":"simple"}}"#
+
+    let write: Write
     let statement: String
 
+    /// Nil when an edit changes nothing, so there is nothing to write.
+    ///
     /// - Parameter canonicalize: libbson's reading of a text as canonical Extended JSON. It is
     ///   passed in so the plan can be built without a connection.
     static func make(
         collection: String,
         operation: PluginDocumentWrite.Operation,
         canonicalize: (String) throws -> String
-    ) throws -> MongoDocumentWritePlan {
+    ) throws -> MongoDocumentWritePlan? {
+        let accessor = MongoCollectionAccessor.expression(for: collection)
         switch operation {
         case .insert(let text):
             let document = try canonicalDocument(text, canonicalize: canonicalize).compactText
-            let accessor = MongoCollectionAccessor.expression(for: collection)
-            return MongoDocumentWritePlan(document: document, statement: "\(accessor).insertOne(\(document))")
+            return MongoDocumentWritePlan(write: .insert(document: document), statement: "\(accessor).insertOne(\(document))")
+        case .replace(let originalText, let editedText):
+            let original = try canonicalDocument(originalText, canonicalize: canonicalize)
+            let edited = try canonicalDocument(editedText, canonicalize: canonicalize)
+            let replacement = try MongoDocumentReplacement(original: original, edited: edited)
+            guard replacement.changesDocument else { return nil }
+            let filter = try MongoDocumentGuard.filter(for: original)
+            let document = replacement.document.compactText
+            return MongoDocumentWritePlan(
+                write: .replace(filter: filter, replacement: document),
+                statement: "\(accessor).replaceOne(\(filter), \(document), \(replaceOptions))"
+            )
         @unknown default:
             throw MongoDBDocumentEditingError.unsupportedOperation
         }
@@ -39,16 +61,5 @@ struct MongoDocumentWritePlan: Equatable, Sendable {
     ) throws -> MongoDocumentText {
         _ = try MongoDocumentText(parsing: text)
         return try MongoDocumentText(parsing: try canonicalize(text))
-    }
-}
-
-enum MongoDBDocumentEditingError: Error, Equatable, LocalizedError {
-    case unsupportedOperation
-
-    var errorDescription: String? {
-        switch self {
-        case .unsupportedOperation:
-            return String(localized: "MongoDB cannot make this change to a document.")
-        }
     }
 }

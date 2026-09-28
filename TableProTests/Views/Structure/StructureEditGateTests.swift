@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 /// The gate is the one impure half of the decision: it reads the engine's curated matrix and its
 /// capability flags, and every call site in the Structure tab asks it rather than reading a flag of
@@ -25,6 +25,31 @@ struct StructureEditGateTests {
         for operation in StructureEditOperation.allCases {
             #expect(table.allows(operation), "table refused \(operation)")
         }
+    }
+
+    /// A collection declares no columns, so the two column edits it takes are the two that can be
+    /// carried out on its documents. This is the gate that kept every MongoDB collection read-only.
+    @Test("A MongoDB collection renames and removes fields and refuses every other structure edit")
+    func mongoDBCollectionEdits() {
+        let collection = gate(.table, .mongodb)
+        #expect(collection.allowsAnyEdit)
+        #expect(collection.allows(.renameColumn))
+        #expect(collection.allows(.dropColumn))
+        for operation in StructureEditOperation.allCases where operation != .renameColumn && operation != .dropColumn {
+            #expect(!collection.allows(operation), "collection allowed \(operation)")
+        }
+        #expect(collection.editableColumnFields == [.name])
+    }
+
+    @Test("MongoDB's refusals say what MongoDB support cannot generate, not that a collection has no indexes")
+    func mongoDBRefusalWording() {
+        let collection = gate(.table, .mongodb)
+        #expect(collection.resolve(.addColumn).unavailableReason == String(
+            format: String(localized: "%@ cannot make this change to a table's columns."), "MongoDB"
+        ))
+        #expect(collection.resolve(.addIndex).unavailableReason == String(
+            format: String(localized: "%@ cannot add or remove a table's indexes."), "MongoDB"
+        ))
     }
 
     @Test("A PostgreSQL view refuses a column and an index but keeps a rename and a default")

@@ -11,7 +11,7 @@ enum MongoScriptResultBuilder {
         for outcome: MongoScriptStatementResult,
         startTime: Date,
         emptyColumns: [(name: String, typeName: String)] = [(name: "_id", typeName: "ObjectId")],
-        documents build: ([[String: Any]], String, Bool) -> PluginQueryResult
+        documents build: (MongoReadDocuments, String, Bool) -> PluginQueryResult
     ) -> PluginQueryResult {
         if outcome.producedDocuments, outcome.documents.json.isEmpty {
             // Zero columns reads as write-success in the result pane, so a query that matched
@@ -24,11 +24,16 @@ enum MongoScriptResultBuilder {
         }
 
         if outcome.producedDocuments {
+            let read = outcome.documents.readDocuments
             let grid = build(
-                outcome.documents.dictionaries,
+                read,
                 outcome.collection ?? "",
                 outcome.documents.isTruncated
-            ).withRowsAffected(outcome.rowsAffected)
+            )
+            .withRowsAffected(outcome.rowsAffected)
+            .withRowLocators(
+                outcome.documents.holdsStoredDocuments ? read.texts.map(MongoDocumentIdentity.locator(inDocument:)) : nil
+            )
             guard !outcome.printedLines.isEmpty else { return grid }
             return grid.withStatus(printedSummary(outcome.printedLines))
         }
@@ -69,32 +74,5 @@ enum MongoScriptResultBuilder {
         let joined = lines.joined(separator: " · ")
         guard joined.count > 400 else { return joined }
         return String(joined.prefix(400)) + "…"
-    }
-}
-
-private extension PluginQueryResult {
-    func withRowsAffected(_ count: Int) -> PluginQueryResult {
-        guard count != rowsAffected else { return self }
-        return PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: count,
-            executionTime: executionTime,
-            isTruncated: isTruncated,
-            statusMessage: statusMessage
-        )
-    }
-
-    func withStatus(_ message: String) -> PluginQueryResult {
-        PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: rowsAffected,
-            executionTime: executionTime,
-            isTruncated: isTruncated,
-            statusMessage: message
-        )
     }
 }

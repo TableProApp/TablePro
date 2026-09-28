@@ -1,8 +1,7 @@
-# TablePro 0.75.0
+# TablePro 0.76.0
 
-Runs on macOS 13 Ventura and later.
-Credential profiles: one saved login shared by any number of connections.
-Import RDS instances and Aurora clusters from AWS as connections.
-Updates download in the background and install when you quit.
-A rebuilt welcome window with Favorites, Recent, nested groups and drag and drop.
-Find and Replace in the SQL editor, a Run button with more ways to run, and partitions in the sidebar.
+Agent mode: one AI session that works across the whole connection window, with every statement it ran.
+A Data Files window for CSV, JSON, Excel and compressed files, with find and replace, column statistics and cleanup.
+MongoDB documents inserted and edited as Extended JSON, and fields renamed or removed from the Structure tab.
+Tools from your own MCP servers, available to AI sessions from Settings > Integrations.
+The table list beside the table browser on iPad, and a sample database on iPhone and iPad.
