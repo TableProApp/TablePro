@@ -138,4 +138,73 @@ final class TrinoStatementClientTests: XCTestCase {
         }
         XCTAssertEqual(transport.cancelAllCount, 1)
     }
+
+    private func plainHTTPClient(_ transport: StubTransport, auth: TrinoAuth) -> TrinoStatementClient {
+        let config = TrinoClientConfig(host: "h", port: 8_080, useTLS: false, user: "u", auth: auth)
+        return TrinoStatementClient(transport: transport, config: config, session: TrinoSessionState())
+    }
+
+    func testPasswordOverPlainHTTPIsRefusedBeforeAnyRequest() async {
+        let transport = StubTransport([canned(#"{"id":"q1"}"#)])
+
+        do {
+            _ = try await plainHTTPClient(transport, auth: .basic(password: "secret")).execute("SELECT 1")
+            XCTFail("Expected the password to be refused over plain HTTP")
+        } catch {
+            XCTAssertEqual(error as? TrinoError, .credentialsRequireTLS(.password))
+        }
+        XCTAssertTrue(transport.requests.isEmpty)
+    }
+
+    func testAccessTokenOverPlainHTTPIsRefusedBeforeAnyRequest() async {
+        let transport = StubTransport([canned(#"{"id":"q1"}"#)])
+
+        do {
+            _ = try await plainHTTPClient(transport, auth: .jwt(token: "t")).execute("SELECT 1")
+            XCTFail("Expected the access token to be refused over plain HTTP")
+        } catch {
+            XCTAssertEqual(error as? TrinoError, .credentialsRequireTLS(.accessToken))
+        }
+        XCTAssertTrue(transport.requests.isEmpty)
+    }
+
+    func testStreamedPasswordOverPlainHTTPIsRefusedBeforeAnyRequest() async {
+        let transport = StubTransport([canned(#"{"id":"q1","columns":[\#(bigintColumn)],"data":[[1]]}"#)])
+        var elements = 0
+
+        do {
+            for try await _ in plainHTTPClient(transport, auth: .basic(password: "secret")).executeStreamed("SELECT 1") {
+                elements += 1
+            }
+            XCTFail("Expected the password to be refused over plain HTTP")
+        } catch {
+            XCTAssertEqual(error as? TrinoError, .credentialsRequireTLS(.password))
+        }
+        XCTAssertEqual(elements, 0)
+        XCTAssertTrue(transport.requests.isEmpty)
+    }
+
+    func testAnonymousOverPlainHTTPStillPostsWithoutAuthorization() async throws {
+        let transport = StubTransport([canned(#"{"id":"q1"}"#)])
+
+        _ = try await plainHTTPClient(transport, auth: .none).execute("SELECT 1")
+
+        let post = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(post.headers["X-Trino-User"], "u")
+        XCTAssertNil(post.headers["Authorization"])
+    }
+
+    func testPasswordOverTLSIsSentOnThePostAndEveryPoll() async throws {
+        let transport = StubTransport([
+            canned(#"{"id":"q1","nextUri":"https://h:8443/v1/statement/executing/q1/1"}"#),
+            canned(#"{"id":"q1"}"#)
+        ])
+        let config = TrinoClientConfig(host: "h", port: 8_443, useTLS: true, user: "u", auth: .basic(password: "secret"))
+        let client = TrinoStatementClient(transport: transport, config: config, session: TrinoSessionState())
+
+        _ = try await client.execute("SELECT 1")
+
+        XCTAssertEqual(transport.requests.map(\.method), [.post, .get])
+        XCTAssertEqual(transport.requests.map { $0.headers["Authorization"] }, ["Basic dTpzZWNyZXQ=", "Basic dTpzZWNyZXQ="])
+    }
 }

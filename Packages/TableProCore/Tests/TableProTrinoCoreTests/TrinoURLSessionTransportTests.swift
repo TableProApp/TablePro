@@ -57,6 +57,10 @@ private final class TrinoStubProtocol: URLProtocol, @unchecked Sendable {
             respond(status: 204, body: "")
         case (_, "/ok"):
             respond(body: #"{"id":"ok"}"#, headers: ["X-Trino-Set-Schema": "analytics"])
+        case ("POST", "/redirect"):
+            redirect(to: "https://other:9443/redirected")
+        case (_, "/redirected"):
+            respond(body: #"{"id":"followed"}"#)
         default:
             return
         }
@@ -82,6 +86,24 @@ private final class TrinoStubProtocol: URLProtocol, @unchecked Sendable {
         else { return }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    private func redirect(to target: String) {
+        guard let url = request.url,
+              let targetURL = URL(string: target),
+              let response = HTTPURLResponse(
+                  url: url,
+                  statusCode: 307,
+                  httpVersion: "HTTP/1.1",
+                  headerFields: ["Location": target]
+              )
+        else { return }
+        var redirected = request
+        redirected.url = targetURL
+        client?.urlProtocol(self, wasRedirectedTo: redirected, redirectResponse: response)
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("<html><head><title>307 Temporary Redirect</title></head></html>".utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
@@ -146,6 +168,15 @@ struct TrinoURLSessionTransportTests {
         #expect(response.headers.first("x-trino-set-schema") == "analytics")
         #expect(String(bytes: response.body, encoding: .utf8) == #"{"id":"ok"}"#)
         #expect(TrinoStubProtocol.lastTimeout == 330)
+    }
+
+    @Test("A redirect is handed back to the caller, never followed")
+    func redirectIsNotFollowed() async throws {
+        let response = try await transport().send(try request(.post, "/redirect"))
+
+        #expect(response.statusCode == 307)
+        #expect(response.headers.first("Location") == "https://other:9443/redirected")
+        #expect(TrinoStubProtocol.started == ["POST /redirect"])
     }
 
     @Test("Cancelling everything stops every request in flight, not just the latest")

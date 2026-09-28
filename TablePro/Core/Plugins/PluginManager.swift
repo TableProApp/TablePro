@@ -1003,6 +1003,7 @@ final class PluginManager: ObservableObject {
             driverPlugins = driverPlugins.filter { key, _ in
                 !allTypeIds.contains(key)
             }
+            queryBuildingDriverCache.removeAll()
         }
 
         if let formatId = entry.exportFormatId {

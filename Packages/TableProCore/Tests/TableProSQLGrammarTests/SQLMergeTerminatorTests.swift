@@ -114,12 +114,12 @@ struct SQLMergeTerminatorTests {
     }
 
     @Test("A reader that drops every ; tracks only the grammars whose statements can own one")
-    func statementsCanOwnTerminator() {
+    func statementsCanOwnSemicolons() {
         let owning = SQLLexicalProfile.curatedDatabaseTypeIds.filter { typeId in
             let grammar = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil).execution
-            return SQLStatementBoundaries.statementsCanOwnTerminator(in: grammar)
+            return SQLStatementBoundaries.statementsCanOwnSemicolons(in: grammar)
         }
-        #expect(Set(owning) == ["SQL Server", "Oracle"])
+        #expect(Set(owning) == ["SQL Server", "Oracle", "Cassandra", "ScyllaDB"])
     }
 
     @Test("In a script only the MERGE keeps its ;")

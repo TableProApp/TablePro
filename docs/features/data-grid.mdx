@@ -16,6 +16,8 @@ A narrow window trims that bar rather than cutting it off. The Columns and Filte
 
 Click a header to cycle through the first direction, its opposite, and off. `Shift`-click a second header to sort by both. Sorting re-runs the query with a new `ORDER BY`, so it orders the whole table rather than the page in front of you. In a query tab that query is the one statement behind the result, never the rest of the script.
 
+A Cassandra or ScyllaDB table has no header sort, and a query result there sorts the rows it holds. See [Cassandra](/databases/cassandra#browsing-and-editing).
+
 **Sort direction** in [Settings > Data](/customization/data-settings) decides which way that first click goes. It is Ascending out of the box; set it to Descending to open on the newest rows and reach them in one click.
 
 To sort on open, set **Default row sort** to **Primary key** or **First column**; out of the box the order is the server's. That order is marked with a dimmed arrow rather than the solid one a click leaves, so a table you have not sorted does not look sorted. Clicking the same header reverses it, and **Don't Sort** in the header menu returns to the server's order and stays there.
@@ -128,13 +130,15 @@ With no row selected and a table open, the inspector shows that table's size, ro
 | `No matches` | Every row is loaded and none match |
 | `Not on this page` | None of the loaded rows match, and more rows exist |
 
-**Search All Rows** turns the term into a filter that runs at the database, covering the whole table. It replaces the tab's filters, so it appears only when none are applied; with a filter set, add the term to the filter bar instead.
+**Search All Rows** turns the term into a filter that runs at the database, covering the whole table. It replaces the tab's filters, so it appears only when none are applied; with a filter set, add the term to the filter bar instead. Cassandra and ScyllaDB cannot match any one of several columns, so it never appears there.
 
 ## Pages and row counts
 
 A table tab pages. The status bar offers 5, 10, 20, 100, 500 or 1,000 rows per page, **Custom…** up to 1,000,000, and **All rows…**, plus First, Previous, Next and Last; `Cmd+[` and `Cmd+]` step pages, and clicking the page indicator (`3 / 12`) jumps to a page number. In a narrow window that indicator is a menu carrying **Go to page…** and the row-count choices together. The size a table opens with is a [data setting](/customization/data-settings).
 
 A large table shows an estimated total prefixed with `~` instead of running a slow `COUNT(*)`. **Count Exactly** beside it runs the real count in the background, and `Cmd+.` cancels that. While a total is an estimate, **Last** and **All rows…** stay unavailable and **Next** works as long as the last page came back full.
+
+Cassandra and ScyllaDB have no estimate, and their count reads every partition, so a table there shows no total until you click **Count Exactly**.
 
 A query tab does not page. It stops at the [row cap](/customization/data-settings) instead and offers **Fetch All** to load the rest, and a query carrying its own `LIMIT`, `FETCH FIRST`, or `TOP` is never capped. `Cmd+.` cancels a running query or a Fetch All.
 

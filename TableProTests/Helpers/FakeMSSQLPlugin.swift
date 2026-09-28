@@ -9,8 +9,8 @@
 
 import Foundation
 import os
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 
 final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Fake MSSQL Driver"
@@ -39,11 +39,30 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         autoLimitStyle: .top
     )
 
-    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
-        FakeMSSQLPluginDriver()
+    private struct ConnectFailure: Sendable {
+        let error: any Error & Sendable
+        let delay: Duration
     }
 
-    required override init() {
+    private static let connectFailures = OSAllocatedUnfairLock<[String: ConnectFailure]>(initialState: [:])
+
+    static func failConnect(for connectionId: UUID, with error: any Error & Sendable, after delay: Duration = .zero) {
+        connectFailures.withLock { $0[connectionId.uuidString] = ConnectFailure(error: error, delay: delay) }
+    }
+
+    static func clearConnectFailure(for connectionId: UUID) {
+        _ = connectFailures.withLock { $0.removeValue(forKey: connectionId.uuidString) }
+    }
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        let connectionId = config.additionalFields["connectionId"] ?? ""
+        guard let failure = Self.connectFailures.withLock({ $0[connectionId] }) else {
+            return FakeMSSQLPluginDriver()
+        }
+        return FakeMSSQLPluginDriver(connectFailure: failure.error, connectDelay: failure.delay)
+    }
+
+    override required init() {
         super.init()
     }
 }
@@ -56,8 +75,20 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The one fact a driver reports about a connection the server has closed under it.
     var hasLostConnection = false
     private(set) var disconnectCallCount = 0
+    private let connectFailure: (any Error & Sendable)?
+    private let connectDelay: Duration
 
-    func connect() async throws {}
+    init(connectFailure: (any Error & Sendable)? = nil, connectDelay: Duration = .zero) {
+        self.connectFailure = connectFailure
+        self.connectDelay = connectDelay
+    }
+
+    func connect() async throws {
+        if connectDelay > .zero {
+            try? await Task.sleep(for: connectDelay)
+        }
+        if let connectFailure { throw connectFailure }
+    }
     func disconnect() { disconnectCallCount += 1 }
 
     func execute(query: String) async throws -> PluginQueryResult {

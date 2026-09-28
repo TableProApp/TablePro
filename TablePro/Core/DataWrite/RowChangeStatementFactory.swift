@@ -275,14 +275,15 @@ struct PluginKeyedChanges {
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
     ) {
+        let ordered = changes.sorted { $0.sequence < $1.sequence }
         var keys: [RowID: Int] = [:]
         var rowIDs: [RowID] = []
-        for change in changes where keys[change.rowID] == nil {
+        for change in ordered where keys[change.rowID] == nil {
             keys[change.rowID] = rowIDs.count
             rowIDs.append(change.rowID)
         }
         self.rowIDs = rowIDs
-        self.changes = changes.compactMap { change in
+        self.changes = ordered.compactMap { change in
             keys[change.rowID].map { PluginRowChange(change, key: $0) }
         }
         self.insertedRowData = Dictionary(

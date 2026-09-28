@@ -16,7 +16,7 @@ extension ConnectionHealthMonitor {
     enum HealthState: Sendable, Equatable {
         case healthy
         case checking
-        case reconnecting(attempt: Int) // 1-based attempt number
+        case reconnecting(attempt: Int, lastFailure: ConnectionFailureInfo?) // 1-based attempt number
         /// The reconnect handler gave up. A separate case rather than a flag beside `state`, so the
         /// health check's own `state == .healthy` guard and every future switch see it without a
         /// second variable to keep in step.
@@ -25,7 +25,7 @@ extension ConnectionHealthMonitor {
 
     enum ReconnectOutcome: Sendable, Equatable {
         case success
-        case retry
+        case retry(ConnectionFailureInfo?)
         case abort
     }
 }
@@ -209,6 +209,7 @@ actor ConnectionHealthMonitor {
     /// clean teardown initiated by `stopMonitoring`).
     private func attemptReconnect() async {
         var attempt = 0
+        var lastFailure: ConnectionFailureInfo?
 
         while !Task.isCancelled {
             attempt += 1
@@ -216,7 +217,7 @@ actor ConnectionHealthMonitor {
             let delay = backoffDelay(for: attempt)
 
             Self.logger.warning("Reconnect attempt \(attempt) for connection \(self.connectionId), waiting \(delay)s")
-            await transitionTo(.reconnecting(attempt: attempt))
+            await transitionTo(.reconnecting(attempt: attempt, lastFailure: lastFailure))
 
             try? await Task.sleep(for: .seconds(delay))
 
@@ -234,7 +235,8 @@ actor ConnectionHealthMonitor {
                 Self.logger.info("Reconnect aborted for connection \(self.connectionId)")
                 await transitionTo(.aborted)
                 return
-            case .retry:
+            case .retry(let failure):
+                lastFailure = failure
                 Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
             }
         }

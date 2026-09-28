@@ -165,11 +165,12 @@ struct GeneralPaneView: View {
             .disabled(usesForwardSocket)
             TextField(
                 String(localized: "Port"),
-                text: $coordinator.network.port,
+                text: portBinding,
                 prompt: Text(defaultPortString)
             )
             .accessibilityIdentifier("connection-form-port")
             .disabled(usesForwardSocket)
+            portTLSNotice
         }
         ForEach(connectionFields, id: \.id) { field in
             if !isHostListField(field) && coordinator.network.isFieldVisible(field) {
@@ -183,6 +184,45 @@ struct GeneralPaneView: View {
 
     private var usesForwardSocket: Bool {
         coordinator.ssh.state.enabled && coordinator.network.forwardsToUnixSocket
+    }
+
+    private var portBinding: Binding<String> {
+        Binding(
+            get: { coordinator.network.port },
+            set: { coordinator.network.setPort($0) }
+        )
+    }
+
+    @ViewBuilder
+    private var portTLSNotice: some View {
+        let port = coordinator.network.resolvedPort
+        if coordinator.supportsSSL, let impliedMode = type.impliedSSLMode(forPort: port) {
+            if coordinator.ssl.mode == impliedMode {
+                Text(String(
+                    format: String(localized: "Port %lld uses TLS, so SSL Mode is %@."),
+                    port,
+                    impliedMode.displayLabel
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("connection-form-port-tls-note")
+            } else if coordinator.ssl.mode == .disabled {
+                HStack {
+                    Label(
+                        String(format: String(localized: "Port %lld usually requires TLS, and SSL Mode is Disabled."), port),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    Spacer()
+                    Button(String(format: String(localized: "Use %@"), impliedMode.displayLabel)) {
+                        coordinator.ssl.select(impliedMode)
+                    }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("connection-form-port-tls-use")
+                }
+            }
+        }
     }
 
     // MARK: - Authentication

@@ -11,15 +11,17 @@ internal enum ExactRowCounter {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExactRowCounter")
 
-    /// An engine whose count is a billed scan has no `COUNT(*)` to fall back on, so its driver is the only source
-    /// and a failure there is the answer rather than a cue to try the host query.
+    /// A driver that writes its engine's queries counts them too, and when that count is a full scan its failure is
+    /// the answer, never a cue to run the host's `COUNT(*)` as a second scan. A driver that leaves the queries to the
+    /// app, such as an older plugin, has no count of its own, so the host's is the only one there is.
     internal static func route(
         countSQL: String?,
         driverOwnsQueryBuilding: Bool,
-        exactRowCountIsBilledScan: Bool
+        exactRowCountIsFullScan: Bool
     ) -> Route {
-        guard let countSQL, !exactRowCountIsBilledScan else { return .driverCount }
-        return driverOwnsQueryBuilding ? .driverCountThenHostSQL(countSQL) : .hostCountSQL(countSQL)
+        guard let countSQL else { return .driverCount }
+        guard driverOwnsQueryBuilding else { return .hostCountSQL(countSQL) }
+        return exactRowCountIsFullScan ? .driverCount : .driverCountThenHostSQL(countSQL)
     }
 
     internal static func count(
@@ -32,7 +34,7 @@ internal enum ExactRowCounter {
         let chosen = route(
             countSQL: countSQL,
             driverOwnsQueryBuilding: driver.queryBuildingPluginDriver != nil,
-            exactRowCountIsBilledScan: driver.connection.type.exactRowCountIsBilledScan
+            exactRowCountIsFullScan: driver.connection.type.exactRowCountIsFullScan
         )
         switch chosen {
         case .driverCount:

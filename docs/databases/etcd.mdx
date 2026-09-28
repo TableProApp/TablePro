@@ -28,7 +28,7 @@ Click **New Connection…**, select **etcd**, enter host and port, then click **
 | **Key Prefix Root** | Scope browsing to a subtree, `/app`. Empty browses the whole keyspace |
 | **TLS Mode** | Disabled, Required (skip verify), Verify CA, or Verify Identity |
 | **CA Certificate** | Path to `ca.pem`, for Verify CA and Verify Identity |
-| **Client Certificate** / **Client Key** | Paths to the client certificate and private key, for mutual TLS |
+| **Client Certificate** / **Client Key** | Paths to the client certificate and private key, for mutual TLS. PEM or DER, with an unencrypted RSA or EC key. Only used with both set |
 
 ## Authentication
 
@@ -87,6 +87,8 @@ Lease IDs take decimal or hex, and hex is detected by its letters. Prefix an all
 
 TLS here is set by **TLS Mode** in the Advanced fields, not by the connection's SSL mode, and it starts **Disabled**. **Required (skip verify)** encrypts without checking the certificate, **Verify CA** checks it against the **CA Certificate** you name, and **Verify Identity** adds the hostname check. **Client Certificate** and **Client Key** cover mutual TLS under either verifying mode. See [SSL/TLS](/connections/ssl) for the concepts.
 
+The **CA Certificate** may be PEM or DER. **Verify CA** needs one, since it checks no hostname, and a connection without it is refused. **Verify Identity** with no **CA Certificate** checks the system trust store. A file that cannot be read fails the connection rather than falling back to the system trust store.
+
 ## Limitations
 
 - No transactions. Each command, and each row you save, is its own gateway request.
@@ -111,6 +113,10 @@ The server wants a token and the connection carries no credentials. Add a **User
 ### etcdserver: authentication failed, invalid user ID or password
 
 etcd rejected the credentials. Check them with `etcdctl --user=name:password endpoint health`.
+
+### "Verify CA needs a CA certificate"
+
+**TLS Mode** is Verify CA and **CA Certificate** is empty. Choose the CA certificate that signed the server's certificate, or set **TLS Mode** to **Verify Identity** to check it against the system trust store.
 
 ### etcdserver: permission denied
 

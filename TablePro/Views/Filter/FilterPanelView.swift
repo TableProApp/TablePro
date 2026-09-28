@@ -66,7 +66,7 @@ struct FilterPanelView: View {
             Text("Filters")
                 .font(.callout.weight(.medium))
 
-            if state.filters.count > 1 {
+            if state.filters.count > 1, configuration.offersMatchAny {
                 Picker("", selection: $state.filterLogicMode) {
                     Text("Match all").tag(FilterLogicMode.and)
                     Text("Match any").tag(FilterLogicMode.or)

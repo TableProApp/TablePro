@@ -61,6 +61,7 @@ final class FilterCoordinator: ObservableObject {
                 $0.filterState.isVisible = true
             }
         }
+        normalizeLogicModeIfNeeded(at: tabIndex)
         parent.tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
 
         let tab = parent.tabManager.tabs[tabIndex]
@@ -70,7 +71,7 @@ final class FilterCoordinator: ObservableObject {
             schemaName: tab.tableContext.schemaName,
             filters: filters,
             logicMode: tab.filterState.filterLogicMode,
-            sortState: tab.sortState,
+            sortState: querySortState(for: tab),
             columns: queryColumns.columns,
             columnTypes: queryColumns.columnTypes,
             selectColumns: parent.selectColumns(for: tab),
@@ -115,7 +116,7 @@ final class FilterCoordinator: ObservableObject {
             let newQuery = parent.queryBuilder.buildBaseQuery(
                 tableName: capturedTableName,
                 schemaName: tab.tableContext.schemaName,
-                sortState: tab.sortState,
+                sortState: querySortState(for: tab),
                 columns: buffer.columns,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
@@ -241,6 +242,7 @@ final class FilterCoordinator: ObservableObject {
     func rebuildTableQuery(at tabIndex: Int) {
         guard tabIndex < parent.tabManager.tabs.count,
               let tableName = parent.tabManager.tabs[tabIndex].tableContext.tableName else { return }
+        normalizeLogicModeIfNeeded(at: tabIndex)
 
         let tab = parent.tabManager.tabs[tabIndex]
         let hasFilters = tab.filterState.hasAppliedFilters
@@ -254,7 +256,7 @@ final class FilterCoordinator: ObservableObject {
                 schemaName: tab.tableContext.schemaName,
                 pattern: search.pattern,
                 typeScope: search.typeScope,
-                sortState: tab.sortState,
+                sortState: querySortState(for: tab),
                 columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
@@ -266,7 +268,7 @@ final class FilterCoordinator: ObservableObject {
                 schemaName: tab.tableContext.schemaName,
                 filters: tab.filterState.appliedFilters,
                 logicMode: tab.filterState.filterLogicMode,
-                sortState: tab.sortState,
+                sortState: querySortState(for: tab),
                 columns: columns,
                 columnTypes: columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
@@ -277,7 +279,7 @@ final class FilterCoordinator: ObservableObject {
             newQuery = parent.queryBuilder.buildBaseQuery(
                 tableName: tableName,
                 schemaName: tab.tableContext.schemaName,
-                sortState: tab.sortState,
+                sortState: querySortState(for: tab),
                 columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
@@ -311,11 +313,26 @@ final class FilterCoordinator: ObservableObject {
 
     // MARK: - Filter Management
 
+    /// The sort a table query carries. An engine that cannot order a table by a column gets none, so a sort
+    /// restored from before the engine said so, or carried in by a stale tab, cannot turn every load into an error.
+    private func querySortState(for tab: QueryTab) -> SortState? {
+        parent.supportsColumnSort ? tab.sortState : nil
+    }
+
+    /// An engine whose filters cannot match any one of several conditions offers no Match Any, so only a logic
+    /// restored from before the engine said so can hold one. It is written back as Match All before anything reads
+    /// it, so the rows, the count and the cell filters all agree on what the filters mean.
+    private func normalizeLogicModeIfNeeded(at tabIndex: Int) {
+        guard !parent.supportsMatchAnyFilters,
+              parent.tabManager.tabs[tabIndex].filterState.filterLogicMode != .and else { return }
+        parent.tabManager.mutate(at: tabIndex) { $0.filterState.filterLogicMode = .and }
+    }
+
     /// One CONTAINS row per searchable column, joined with OR, replacing the filter set. Only the
     /// find bar calls this, and only when no filters are applied, because `filterLogicMode` is one
     /// mode for the whole array: switching it to OR would silently loosen filters the user wrote.
     func applyCrossColumnSearch(term: String, columns: [String]) {
-        guard !columns.isEmpty else { return }
+        guard !columns.isEmpty, parent.supportsMatchAnyFilters || columns.count == 1 else { return }
         applyFilters(TabFilterState.crossColumnSearchFilters(term: term, columns: columns), logicMode: .or)
     }
 

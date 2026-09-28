@@ -22,6 +22,7 @@ extension PluginMetadataRegistry {
         duckdbColumnTypes: [String: [String]],
         cassandraDialect: SQLDialectDescriptor,
         cassandraColumnTypes: [String: [String]],
+        cassandraCapabilities: PluginMetadataSnapshot.CapabilityFlags,
         mongoCompletions: [CompletionEntry],
         mongoColumnTypes: [String: [String]],
         etcdCompletions: [CompletionEntry],
@@ -430,6 +431,31 @@ extension PluginMetadataRegistry {
             "Boolean": ["BOOLEAN"],
             "Other": ["UUID", "TIMEUUID", "INET", "LIST", "SET", "MAP", "TUPLE", "FROZEN"]
         ]
+        let cassandraCapabilities = PluginMetadataSnapshot.CapabilityFlags(
+            supportsSchemaSwitching: false,
+            supportsImport: false,
+            supportsExport: true,
+            supportsSSH: true,
+            supportsSSL: true,
+            supportsCascadeDrop: false,
+            supportsForeignKeyDisable: false,
+            supportsReadOnlyMode: true,
+            supportsQueryProgress: false,
+            requiresReconnectForDatabaseSwitch: false,
+            supportsDropDatabase: true,
+            supportsModifyColumn: false,
+            supportsAddIndex: false,
+            supportsDropIndex: false,
+            supportsModifyPrimaryKey: false,
+            supportsRoutines: true,
+            supportsDatabaseTriggerBrowse: true,
+            supportsOpportunisticTLS: false,
+            supportsClientKeyPassphrase: true,
+            pagination: .leadingRowsOnly(maximumRows: nil),
+            exactRowCountIsFullScan: true,
+            supportsColumnSort: false,
+            supportsMatchAnyFilters: false
+        )
 
         let mongoCompletions: [CompletionEntry] = [
             CompletionEntry(label: "db.", insertText: "db."),
@@ -606,7 +632,7 @@ extension PluginMetadataRegistry {
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
             oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
             duckdbDialect, duckdbColumnTypes,
-            cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
+            cassandraDialect, cassandraColumnTypes, cassandraCapabilities, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         )
     }

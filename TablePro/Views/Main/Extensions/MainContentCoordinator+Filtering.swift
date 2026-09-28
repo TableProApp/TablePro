@@ -15,6 +15,14 @@ extension MainContentCoordinator {
         filterCoordinator.removeAllFiltersAndReload()
     }
 
+    var supportsColumnSort: Bool {
+        services.pluginManager.supportsColumnSort(for: connection.type)
+    }
+
+    var supportsMatchAnyFilters: Bool {
+        services.pluginManager.supportsMatchAnyFilters(for: connection.type)
+    }
+
     var browseFilterDescriptor: BrowseFilterDescriptor? {
         PluginManager.shared.browseFilterDescriptor(for: connection.type)
     }

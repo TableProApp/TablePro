@@ -70,6 +70,48 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsOpportunisticTLS ?? true
     }
 
+    var tlsImpliedPorts: [Int] {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.tlsImpliedPorts ?? []
+    }
+
+    var defaultTLSPort: Int? {
+        tlsImpliedPorts.first
+    }
+
+    func portWhenOmitted(tlsEnabled: Bool) -> Int {
+        guard tlsEnabled, let defaultTLSPort else { return defaultPort }
+        return defaultTLSPort
+    }
+
+    var verifiesServerWithSystemTrust: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.verifiesServerWithSystemTrust ?? false
+    }
+
+    var supportsPerConnectionCertificatePaths: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsPerConnectionCertificatePaths ?? true
+    }
+
+    func requiresCACertificate(for mode: SSLMode) -> Bool {
+        guard mode == .verifyCa || mode == .verifyIdentity, supportsPerConnectionCertificatePaths else { return false }
+        return mode == .verifyCa || !verifiesServerWithSystemTrust
+    }
+
+    var sslModeWhenTLSEnabled: SSLMode {
+        verifiesServerWithSystemTrust ? .verifyIdentity : .required
+    }
+
+    func impliedSSLMode(forPort port: Int) -> SSLMode? {
+        guard tlsImpliedPorts.contains(port) else { return nil }
+        return sslModeWhenTLSEnabled
+    }
+
+    func sslModeResolution(forPort port: Int) -> SSLModeResolution {
+        guard let impliedMode = impliedSSLMode(forPort: port) else {
+            return SSLModeResolution(mode: defaultSSLMode, origin: .typeDefault)
+        }
+        return SSLModeResolution(mode: impliedMode, origin: .impliedByPort)
+    }
+
     var supportsClientKeyPassphrase: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsClientKeyPassphrase ?? false
     }
@@ -78,8 +120,8 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsConnectionPooling ?? true
     }
 
-    var exactRowCountIsBilledScan: Bool {
-        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.exactRowCountIsBilledScan ?? false
+    var exactRowCountIsFullScan: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.exactRowCountIsFullScan ?? false
     }
 
     var columnsAreSampled: Bool {
@@ -137,7 +179,7 @@ extension DatabaseType {
         case "Oracle":
             return String(localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database.")
         case "Cassandra", "ScyllaDB":
-            return String(localized: "Use Required for AstraDB, DataStax Astra, and other hosted Cassandra deployments.")
+            return String(localized: "Use Required for Amazon Keyspaces and other hosted Cassandra deployments.")
         case "ClickHouse":
             return String(localized: "Use Required for ClickHouse Cloud and other managed instances.")
         default:

@@ -101,7 +101,7 @@ extension DatabaseManager {
                             }
                         }
                         self.markSessionLive(id)
-                    case .reconnecting(let attempt):
+                    case .reconnecting(let attempt, let lastFailure):
                         Self.logger.info("Reconnecting session \(id) (attempt \(attempt))")
                         if case .connecting = self.activeSessions[id]?.status {
                             // Already .connecting, skip redundant write
@@ -110,7 +110,7 @@ extension DatabaseManager {
                                 session.status = .connecting
                             }
                         }
-                        self.applyReconnectAttempt(attempt, to: id)
+                        self.applyReconnectAttempt(attempt, lastFailure: lastFailure, to: id)
                     case .checking:
                         break  // No UI update needed
                     case .aborted:
@@ -187,20 +187,36 @@ extension DatabaseManager {
             return .success
         } catch {
             Self.logger.debug("Reconnect failed: \(error.localizedDescription)")
-            if isAuthenticationFailure(error) {
-                let message = String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
-                updateSession(connectionId) { session in
-                    session.status = .error(message)
-                }
-                markSessionUnreachable(
-                    connectionId,
-                    startedWith: attemptedDriver,
-                    info: ConnectionFailureInfo(message: message)
-                )
+            switch reconnectVerdict(for: error) {
+            case .retry(let failure):
+                return .retry(failure)
+            case .stop(let failure):
+                Self.logger.info("Reconnect for \(connectionId) stopped: \(error.publicLogShape, privacy: .public)")
+                endUnattendedReconnect(connectionId, startedWith: attemptedDriver, failure: failure)
                 return .abort
             }
-            return .retry
         }
+    }
+
+    internal func reconnectVerdict(for error: Error) -> ConnectionFailureClassifier.ReconnectVerdict {
+        if let tlsError = error as? SSLHandshakeError {
+            return ConnectionFailureClassifier.reconnectVerdict(for: tlsError)
+        }
+        guard isAuthenticationFailure(error) else { return .retry(nil) }
+        let message = String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
+        return .stop(ConnectionFailureInfo(message: message))
+    }
+
+    private func endUnattendedReconnect(
+        _ connectionId: UUID,
+        startedWith attemptedDriver: DatabaseDriver?,
+        failure: ConnectionFailureInfo
+    ) {
+        guard activeSessions[connectionId]?.driver === attemptedDriver else { return }
+        updateSession(connectionId) { session in
+            session.status = .error(failure.message)
+        }
+        markSessionUnreachable(connectionId, startedWith: attemptedDriver, info: failure)
     }
 
     internal static let declinedReconnectInfo = ConnectionFailureInfo(
@@ -221,7 +237,11 @@ extension DatabaseManager {
         recoverySuggestion: String(localized: "TablePro is still trying to reconnect.")
     )
 
-    internal func applyReconnectAttempt(_ attempt: Int, to connectionId: UUID) {
+    internal func applyReconnectAttempt(
+        _ attempt: Int,
+        lastFailure: ConnectionFailureInfo?,
+        to connectionId: UUID
+    ) {
         guard attempt >= Self.unreachableAfterAttempt else {
             markSessionRecovering(connectionId)
             return
@@ -229,7 +249,7 @@ extension DatabaseManager {
         markSessionUnreachable(
             connectionId,
             startedWith: activeSessions[connectionId]?.driver,
-            info: Self.unreachableWhileRetryingInfo
+            info: lastFailure ?? Self.unreachableWhileRetryingInfo
         )
     }
 

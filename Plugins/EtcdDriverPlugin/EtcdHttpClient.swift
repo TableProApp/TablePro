@@ -7,6 +7,7 @@ import Foundation
 import os
 import Security
 import TableProPluginKit
+import TableProTLSClientIdentity
 
 // MARK: - Error Types
 
@@ -366,15 +367,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         case "Required":
             // Encryption without certificate verification — matches UI "Required (skip verify)"
             delegate = InsecureTlsDelegate()
-        case "VerifyCA", "VerifyIdentity":
-            delegate = EtcdTlsDelegate(
-                caCertPath: config.additionalFields["etcdCaCertPath"],
-                clientCertPath: config.additionalFields["etcdClientCertPath"],
-                clientKeyPath: config.additionalFields["etcdClientKeyPath"],
-                verifyHostname: tlsMode == "VerifyIdentity"
-            )
         default:
-            delegate = nil
+            delegate = try verifyingDelegate(tlsMode: tlsMode)
         }
 
         lock.withLock {
@@ -406,6 +400,30 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     private var hasCredentials: Bool {
         !config.username.isEmpty
+    }
+
+    private func verifyingDelegate(tlsMode: String) throws -> URLSessionDelegate? {
+        let caPath = config.additionalFields["etcdCaCertPath"]
+        guard let serverTrust = try EtcdServerTrust.make(tlsMode: tlsMode, caCertificatePath: caPath) else {
+            return nil
+        }
+        let clientCredential = try Self.clientCredential(
+            certificatePath: config.additionalFields["etcdClientCertPath"],
+            keyPath: config.additionalFields["etcdClientKeyPath"]
+        )
+        return EtcdTlsDelegate(serverTrust: serverTrust, clientCredential: clientCredential)
+    }
+
+    private static func clientCredential(certificatePath: String?, keyPath: String?) throws -> URLCredential? {
+        guard let certificatePath, !certificatePath.isEmpty, let keyPath, !keyPath.isEmpty else { return nil }
+        do {
+            return try TLSClientIdentity.credential(
+                certificateFile: URL(fileURLWithPath: certificatePath),
+                privateKeyFile: URL(fileURLWithPath: keyPath)
+            )
+        } catch let failure as TLSClientIdentityError {
+            throw EtcdError.connectionFailed(failure.message(certificatePath: certificatePath, keyPath: keyPath))
+        }
     }
 
     private func invalidateSession() {
@@ -1061,21 +1079,12 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     }
 
     private final class EtcdTlsDelegate: NSObject, URLSessionDelegate {
-        private let caCertPath: String?
-        private let clientCertPath: String?
-        private let clientKeyPath: String?
-        private let verifyHostname: Bool
+        private let serverTrust: EtcdServerTrust
+        private let clientCredential: URLCredential?
 
-        init(
-            caCertPath: String?,
-            clientCertPath: String?,
-            clientKeyPath: String?,
-            verifyHostname: Bool
-        ) {
-            self.caCertPath = caCertPath
-            self.clientCertPath = clientCertPath
-            self.clientKeyPath = clientKeyPath
-            self.verifyHostname = verifyHostname
+        init(serverTrust: EtcdServerTrust, clientCredential: URLCredential?) {
+            self.serverTrust = serverTrust
+            self.clientCredential = clientCredential
         }
 
         func urlSession(
@@ -1088,7 +1097,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             if authMethod == NSURLAuthenticationMethodServerTrust {
                 handleServerTrust(challenge: challenge, completionHandler: completionHandler)
             } else if authMethod == NSURLAuthenticationMethodClientCertificate {
-                handleClientCertificate(challenge: challenge, completionHandler: completionHandler)
+                handleClientCertificate(completionHandler: completionHandler)
             } else {
                 completionHandler(.performDefaultHandling, nil)
             }
@@ -1098,190 +1107,22 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             challenge: URLAuthenticationChallenge,
             completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
         ) {
-            guard let serverTrust = challenge.protectionSpace.serverTrust else {
+            guard let trust = challenge.protectionSpace.serverTrust,
+                  serverTrust.evaluate(trust, host: challenge.protectionSpace.host) else {
                 completionHandler(.cancelAuthenticationChallenge, nil)
                 return
             }
-
-            if let caPath = caCertPath, !caPath.isEmpty {
-                guard let caData = try? Data(contentsOf: URL(fileURLWithPath: caPath)),
-                      let caCert = SecCertificateCreateWithData(nil, caData as CFData) else {
-                    completionHandler(.cancelAuthenticationChallenge, nil)
-                    return
-                }
-
-                SecTrustSetAnchorCertificates(serverTrust, [caCert] as CFArray)
-                SecTrustSetAnchorCertificatesOnly(serverTrust, true)
-            }
-
-            if !verifyHostname {
-                // VerifyCA mode: validate the CA chain but skip hostname check
-                EtcdHttpClient.logger.debug("TLS: skipping hostname verification (VerifyCA mode)")
-                let policy = SecPolicyCreateBasicX509()
-                SecTrustSetPolicies(serverTrust, policy)
-            }
-
-            var error: CFError?
-            let isValid = SecTrustEvaluateWithError(serverTrust, &error)
-
-            if isValid {
-                completionHandler(.useCredential, URLCredential(trust: serverTrust))
-            } else {
-                completionHandler(.cancelAuthenticationChallenge, nil)
-            }
+            completionHandler(.useCredential, URLCredential(trust: trust))
         }
 
         private func handleClientCertificate(
-            challenge: URLAuthenticationChallenge,
             completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
         ) {
-            guard let certPath = clientCertPath, !certPath.isEmpty,
-                  let keyPath = clientKeyPath, !keyPath.isEmpty else {
+            guard let clientCredential else {
                 completionHandler(.performDefaultHandling, nil)
                 return
             }
-
-            guard let p12Data = buildPkcs12(certPath: certPath, keyPath: keyPath) else {
-                completionHandler(.cancelAuthenticationChallenge, nil)
-                return
-            }
-
-            let options: [String: Any] = [kSecImportExportPassphrase as String: ""]
-            var items: CFArray?
-            let status = SecPKCS12Import(p12Data as CFData, options as CFDictionary, &items)
-
-            guard status == errSecSuccess,
-                  let itemArray = items as? [[String: Any]],
-                  let firstItem = itemArray.first,
-                  let identityRef = firstItem[kSecImportItemIdentity as String],
-                  CFGetTypeID(identityRef as CFTypeRef) == SecIdentityGetTypeID() else {
-                completionHandler(.cancelAuthenticationChallenge, nil)
-                return
-            }
-
-            // swiftlint:disable:next force_cast
-            let identity = identityRef as! SecIdentity
-            let credential = URLCredential(
-                identity: identity,
-                certificates: nil,
-                persistence: .forSession
-            )
-            completionHandler(.useCredential, credential)
-        }
-
-        private func buildPkcs12(certPath: String, keyPath: String) -> Data? {
-            // Read PEM cert and key, create identity via SecItemImport
-            guard let certData = try? Data(contentsOf: URL(fileURLWithPath: certPath)),
-                  let keyData = try? Data(contentsOf: URL(fileURLWithPath: keyPath)) else {
-                return nil
-            }
-
-            var certItems: CFArray?
-            var certFormat = SecExternalFormat.formatPEMSequence
-            var certType = SecExternalItemType.itemTypeCertificate
-            let certStatus = SecItemImport(
-                certData as CFData,
-                nil,
-                &certFormat,
-                &certType,
-                [],
-                nil,
-                nil,
-                &certItems
-            )
-
-            guard certStatus == errSecSuccess,
-                  let certs = certItems as? [SecCertificate],
-                  let cert = certs.first else {
-                return nil
-            }
-
-            var keyItems: CFArray?
-            var keyFormat = SecExternalFormat.formatPEMSequence
-            var keyType = SecExternalItemType.itemTypePrivateKey
-            let keyStatus = SecItemImport(
-                keyData as CFData,
-                nil,
-                &keyFormat,
-                &keyType,
-                [],
-                nil,
-                nil,
-                &keyItems
-            )
-
-            guard keyStatus == errSecSuccess,
-                  let keys = keyItems as? [SecKey],
-                  let privateKey = keys.first else {
-                return nil
-            }
-
-            // Export to PKCS#12
-            let exportItems: CFArray? = nil
-            guard let identity = createIdentity(certificate: cert, privateKey: privateKey) else {
-                return nil
-            }
-
-            var exportParams = SecItemImportExportKeyParameters()
-            var p12Data: CFData?
-            let exportStatus = SecItemExport(
-                identity,
-                .formatPKCS12,
-                [],
-                &exportParams,
-                &p12Data
-            )
-
-            guard exportStatus == errSecSuccess, let data = p12Data else {
-                _ = exportItems
-                return nil
-            }
-            _ = exportItems
-            return data as Data
-        }
-
-        private func createIdentity(certificate: SecCertificate, privateKey: SecKey) -> SecIdentity? {
-            // Add cert and key to the keychain temporarily to create an identity
-            let addCertQuery: [String: Any] = [
-                kSecClass as String: kSecClassCertificate,
-                kSecValueRef as String: certificate,
-                kSecReturnRef as String: true
-            ]
-            var certRef: CFTypeRef?
-            let certAddStatus = SecItemAdd(addCertQuery as CFDictionary, &certRef)
-
-            let addKeyQuery: [String: Any] = [
-                kSecClass as String: kSecClassKey,
-                kSecValueRef as String: privateKey,
-                kSecReturnRef as String: true
-            ]
-            var keyRef: CFTypeRef?
-            let keyAddStatus = SecItemAdd(addKeyQuery as CFDictionary, &keyRef)
-
-            var identity: SecIdentity?
-            let status = SecIdentityCreateWithCertificate(nil, certificate, &identity)
-
-            // Clean up: only delete items that this call actually inserted
-            if certAddStatus == errSecSuccess {
-                let deleteCertQuery: [String: Any] = [
-                    kSecClass as String: kSecClassCertificate,
-                    kSecValueRef as String: certRef ?? certificate
-                ]
-                SecItemDelete(deleteCertQuery as CFDictionary)
-            }
-
-            if keyAddStatus == errSecSuccess {
-                let deleteKeyQuery: [String: Any] = [
-                    kSecClass as String: kSecClassKey,
-                    kSecValueRef as String: keyRef ?? privateKey
-                ]
-                SecItemDelete(deleteKeyQuery as CFDictionary)
-            }
-
-            if status == errSecSuccess {
-                return identity
-            }
-            return nil
+            completionHandler(.useCredential, clientCredential)
         }
     }
 }

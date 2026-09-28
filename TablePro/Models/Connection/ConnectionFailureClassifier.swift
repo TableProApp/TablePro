@@ -7,6 +7,25 @@ import Foundation
 import TableProPluginKit
 
 internal enum ConnectionFailureClassifier {
+    internal enum ReconnectVerdict: Equatable, Sendable {
+        case stop(ConnectionFailureInfo)
+        case retry(ConnectionFailureInfo?)
+    }
+
+    internal static func reconnectVerdict(for error: SSLHandshakeError) -> ReconnectVerdict {
+        switch error {
+        case .serverRejectedPlaintext, .serverRequiresPlaintext, .clientCertRequired,
+             .clientKeyPassphraseRequired, .clientKeyPassphraseIncorrect, .clientKeyInvalid:
+            return .stop(info(for: error))
+        case .untrustedCertificate, .hostnameMismatch:
+            return .retry(info(for: error))
+        case .cipherMismatch, .unknown:
+            return .retry(nil)
+        @unknown default:
+            return .retry(nil)
+        }
+    }
+
     internal static func outcome(for error: Error, canEditConnection: Bool = true) -> ConnectionAttemptOutcome {
         if isUserCancelled(error) { return .cancelled }
         if let action = recoveryAction(for: error, canEditConnection: canEditConnection) {

@@ -142,11 +142,19 @@ enum QueryClassifier {
         if let request = dynamoDBClassification(statement, databaseType: databaseType) {
             return request
         }
+        if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
+            return batch.reduce(cqlBatchWrites) { worst, inner in
+                worst.escalated(with: statementClassification(inner, grammar: grammar, databaseType: databaseType))
+            }
+        }
         if runsPLSQL(statement, grammar: grammar) {
             return plsqlBlockClassification(statement, grammar: grammar, databaseType: databaseType)
         }
         return sqlClassification(statement, grammar: grammar, databaseType: databaseType)
     }
+
+    /// A CQL batch writes whatever it holds, so it is never below a write and is otherwise the worst statement in it.
+    private static let cqlBatchWrites = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
 
     private static func statementDeletesEverything(
         _ statement: String,
@@ -155,6 +163,9 @@ enum QueryClassifier {
     ) -> Bool {
         if let request = dynamoDBDeletesEverything(statement, databaseType: databaseType) {
             return request
+        }
+        if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
+            return batch.contains { statementDeletesEverything($0, grammar: grammar, databaseType: databaseType) }
         }
         if runsPLSQL(statement, grammar: grammar) {
             return plsqlBlockDeletesEverything(statement, grammar: grammar)

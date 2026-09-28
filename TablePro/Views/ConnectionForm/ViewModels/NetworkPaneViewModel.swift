@@ -116,6 +116,12 @@ final class NetworkPaneViewModel: ObservableObject {
         coordinator?.value?.didChangeType(newType)
     }
 
+    func setPort(_ newPort: String) {
+        guard newPort != port else { return }
+        port = newPort
+        coordinator?.value?.didChangePort()
+    }
+
     func applyTypeDefaults(forNewType newType: DatabaseType) {
         port = String(newType.defaultPort)
         if host.trimmingCharacters(in: .whitespaces).isEmpty, let defaultHost = newType.defaultHost {

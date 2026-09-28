@@ -12,10 +12,10 @@ import Testing
 @Suite("MainContentCoordinator handleSortStateChanged", .serialized)
 @MainActor
 struct MainContentCoordinatorSortTests {
-    private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager, UUID) {
+    private func makeCoordinator(type: DatabaseType = .mysql) -> (MainContentCoordinator, QueryTabManager, UUID) {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
+            connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
@@ -391,11 +391,12 @@ struct MainContentCoordinatorSortTests {
 
     private func makeTableCoordinator(
         pageSize: Int,
-        tableName: String = "users"
+        tableName: String = "users",
+        type: DatabaseType = .mysql
     ) -> (MainContentCoordinator, QueryTabManager, UUID) {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
+            connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
@@ -417,6 +418,42 @@ struct MainContentCoordinatorSortTests {
         )
         coordinator.setActiveTableRows(tableRows, for: tab.id)
         return (coordinator, tabManager, tab.id)
+    }
+
+    /// CQL orders rows only by clustering columns inside one partition, so a Cassandra table has no column
+    /// sort to run: the header offers none, and a sort that reaches the coordinator anyway changes nothing.
+    @Test("A Cassandra table ignores a column sort instead of sending ORDER BY", arguments: [
+        DatabaseType.cassandra, .scylladb
+    ])
+    func cassandraTableIgnoresColumnSort(type: DatabaseType) throws {
+        let (coordinator, tabManager, tabId) = makeTableCoordinator(pageSize: 10, type: type)
+        let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
+        let queryBefore = tabManager.tabs[idx].content.query
+
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+
+        #expect(!tabManager.tabs[idx].sortState.isSorting)
+        #expect(tabManager.tabs[idx].content.query == queryBefore)
+    }
+
+    @Test("A Cassandra query result is sorted in place, never re-run with an ORDER BY CQL refuses")
+    func cassandraQueryResultSortsInPlace() throws {
+        let (coordinator, tabManager, tabId) = makeCoordinator(type: .cassandra)
+        let rows = TableRows.from(
+            queryRows: [["b"], ["c"], ["a"]].map { row in row.map(PluginCellValue.fromOptional) },
+            columns: ["msg"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        coordinator.setActiveTableRows(rows, for: tabId)
+        let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
+        let queryBefore = tabManager.tabs[idx].content.query
+
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+
+        #expect(tabManager.tabs[idx].content.query == queryBefore)
+        #expect(tabManager.tabs[idx].sortState.columns == [SortColumn(columnIndex: 0, direction: .ascending)])
+        let sorted = coordinator.tabSessionRegistry.tableRows(for: tabId).rows.map { $0[0].asText }
+        #expect(sorted == ["a", "b", "c"])
     }
 
     @Test("Table tab keeps the rows-per-page LIMIT through ascending, descending, and cleared sort")

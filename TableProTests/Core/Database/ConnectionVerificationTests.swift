@@ -31,6 +31,7 @@ struct ConnectionVerificationTests {
     }
 
     private func cleanUp(_ connectionId: UUID) async {
+        FakeMSSQLPlugin.clearConnectFailure(for: connectionId)
         DatabaseManager.shared.removeSession(for: connectionId)
         await SchemaService.shared.invalidate(connectionId: connectionId)
     }
@@ -212,6 +213,46 @@ struct ConnectionVerificationTests {
         await DatabaseManager.shared.verifyBeforeUse(connection.id)
 
         #expect(DatabaseManager.shared.activeSessions[connection.id]?.liveness != .live)
+        #expect(
+            DatabaseManager.shared.activeSessions[connection.id]?.liveness
+                == .unreachable(DatabaseManager.unreachableBeforeUseInfo)
+        )
+        await cleanUp(connection.id)
+    }
+
+    @Test("a check that cannot reconnect past a certificate problem names that problem")
+    func aCertificateFailureIsTheReasonShown() async {
+        let error = SSLHandshakeError.hostnameMismatch(serverMessage: "certificate is not valid for db.example.com")
+        let driver = MockDatabaseDriver()
+        let connection = makeSession(driver: driver)
+        FakeMSSQLPlugin.failConnect(for: connection.id, with: error)
+        driver.pingError = DatabaseError.notConnected
+        DatabaseManager.shared.markSessionVerified(connection.id, at: .distantPast)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        #expect(
+            DatabaseManager.shared.activeSessions[connection.id]?.liveness
+                == .unreachable(ConnectionFailureClassifier.info(for: error))
+        )
+        await cleanUp(connection.id)
+    }
+
+    @Test("a check whose reconnect stopped on a TLS setting keeps the reason the reconnect gave")
+    func aStoppedReconnectKeepsItsReason() async {
+        let error = SSLHandshakeError.serverRequiresPlaintext(serverMessage: "server does not support SSL")
+        let driver = MockDatabaseDriver()
+        let connection = makeSession(driver: driver)
+        FakeMSSQLPlugin.failConnect(for: connection.id, with: error)
+        driver.pingError = DatabaseError.notConnected
+        DatabaseManager.shared.markSessionVerified(connection.id, at: .distantPast)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        let expected = ConnectionFailureClassifier.info(for: error)
+        let session = DatabaseManager.shared.activeSessions[connection.id]
+        #expect(session?.liveness == .unreachable(expected))
+        #expect(session?.status == .error(expected.message))
         await cleanUp(connection.id)
     }
 

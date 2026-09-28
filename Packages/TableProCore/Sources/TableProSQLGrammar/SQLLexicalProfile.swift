@@ -66,7 +66,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// engine keeps the routine-body boundaries every non-Oracle engine has. So is T-SQL's statement that needs no
     /// terminator, which would make every `open`, `close` or `return` column an unknown engine names a statement of its
     /// own; an engine that runs statements without one says so through its plugin. A `MERGE` that keeps its `;` is left
-    /// out for the same reason: an engine that refuses one without it says so through its plugin.
+    /// out for the same reason: an engine that refuses one without it says so through its plugin. So is a CQL batch,
+    /// which would read one statement where an unknown engine may run several.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
@@ -75,6 +76,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             for reading in profile.readings {
                 let unitless = reading.subtracting([
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
+                    .cqlBatches,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -167,9 +169,9 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
     ]
 
-    /// CQL for Cassandra and ScyllaDB, from the reference: `$$` bodies are literals and `//` is a comment. Not
-    /// measured.
-    static let cql: SQLLexicalGrammar = [.untaggedDollarQuotes, .doubleSlashLineComments]
+    /// CQL for Cassandra and ScyllaDB, from the reference: `$$` bodies are literals, `//` is a comment, and a
+    /// `BEGIN BATCH ... APPLY BATCH` holds the `;` after each statement inside it. Not measured.
+    static let cql: SQLLexicalGrammar = [.untaggedDollarQuotes, .doubleSlashLineComments, .cqlBatches]
 
     /// SurrealQL, from its reference: a backslash escapes in both quotes, and `#`, `//` and `--` are comments. Not
     /// measured.

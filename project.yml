@@ -422,7 +422,14 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLMetadata.swift
+      - Plugins/CassandraDriverPlugin/CassandraBoundValue.swift
+      - Plugins/CassandraDriverPlugin/CassandraBrowseStatement.swift
+      - Plugins/CassandraDriverPlugin/CassandraCellText.swift
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
+      - Plugins/CassandraDriverPlugin/CassandraObjectQueries.swift
+      - Plugins/CassandraDriverPlugin/CassandraResumePoints.swift
+      - Plugins/CassandraDriverPlugin/CassandraRowWriter.swift
+      - Plugins/CassandraDriverPlugin/CassandraVarint.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
@@ -480,7 +487,10 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
       - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
+      - Plugins/EtcdDriverPlugin/EtcdServerTrust.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/TrinoDriverPlugin/TrinoConnectionFailure.swift
+      - Plugins/TrinoDriverPlugin/TrinoSSLMapping.swift
       - Plugins/TypesenseDriverPlugin/TypesenseApiKeys.swift
       - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift
       - Plugins/TypesenseDriverPlugin/TypesenseFilterBuilder.swift
@@ -792,7 +802,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
+        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProTLSClientIdentity, TableProTrinoCore, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1298,6 +1308,9 @@ targets:
     templateAttributes:
       folder: EtcdDriverPlugin
       principalClass: EtcdPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTLSClientIdentity
 
   KafkaDriverPlugin:
     templates: [DriverPlugin]
@@ -1442,6 +1455,8 @@ targets:
       folder: TrinoDriverPlugin
       principalClass: TrinoPlugin
     dependencies:
+      - package: TableProCore
+        product: TableProTLSClientIdentity
       - package: TableProCore
         product: TableProTrinoCore
 

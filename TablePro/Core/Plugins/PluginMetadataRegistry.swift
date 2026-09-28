@@ -75,6 +75,9 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsUserDefinedTypeBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
+        var tlsImpliedPorts: [Int] = []
+        var verifiesServerWithSystemTrust: Bool = false
+        var supportsPerConnectionCertificatePaths: Bool = true
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
@@ -90,10 +93,16 @@ struct PluginMetadataSnapshot: Sendable {
         /// database, such as ClickHouse's `default`, leaves this false.
         var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
-        /// Whether an exact count reads the whole table and the engine bills that read, while its query language
-        /// has no `COUNT(*)`. DynamoDB is the case: a count is a `Scan` of every item. Such an engine is counted
-        /// only when the user asks, and only by its driver.
-        var exactRowCountIsBilledScan: Bool = false
+        /// Whether an exact count reads the whole table with no estimate to stand in for it, and only the driver
+        /// knows how to count it. DynamoDB bills a `Scan` of every item and has no `COUNT(*)`; Cassandra reads
+        /// every partition, because `LIMIT` does not bound `COUNT(*)`, and a filtered count needs CQL the host
+        /// cannot write. Such an engine is counted only when the user asks, and only by its driver.
+        var exactRowCountIsFullScan: Bool = false
+        /// Whether a table can be ordered by any of its columns. CQL orders rows only by clustering columns inside
+        /// one partition, so a Cassandra table offers no column sort and a query result sorts the rows it holds.
+        var supportsColumnSort: Bool = true
+        /// Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
+        var supportsMatchAnyFilters: Bool = true
         /// Whether a table's columns are a sample of its rows rather than a declared schema. A
         /// MongoDB collection lists the fields found in its first documents, so a field missing from
         /// one side's list says nothing about whether that side holds it.
@@ -710,6 +719,11 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsUserDefinedTypeBrowse: driverType.supportsUserDefinedTypeBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
+                tlsImpliedPorts: existingSnapshot?.capabilities.tlsImpliedPorts ?? [],
+                verifiesServerWithSystemTrust: existingSnapshot?.capabilities
+                    .verifiesServerWithSystemTrust ?? false,
+                supportsPerConnectionCertificatePaths: existingSnapshot?.capabilities
+                    .supportsPerConnectionCertificatePaths ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
@@ -720,7 +734,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
                     .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
-                exactRowCountIsBilledScan: existingSnapshot?.capabilities.exactRowCountIsBilledScan ?? false,
+                exactRowCountIsFullScan: existingSnapshot?.capabilities.exactRowCountIsFullScan ?? false,
+                supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
+                supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
                 columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,

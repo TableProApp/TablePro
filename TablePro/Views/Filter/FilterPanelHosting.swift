@@ -53,6 +53,7 @@ internal struct FilterPanelConfiguration {
     var rawFilterLabel = String(localized: "Raw SQL")
     var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
     var caseMatching: FilterCaseMatching
+    var offersMatchAny = true
     var sqlPreview: (any FilterSQLPreviewing)?
     var presetStore: (any FilterPresetStoring)?
 }

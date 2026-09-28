@@ -10,7 +10,6 @@ import TableProSQLGrammar
 import Testing
 
 struct SQLFoldScannerTests {
-
     private func regions(_ sql: String, grammar: SQLLexicalGrammar = TestGrammar.standard) -> [SQLFoldRegion] {
         SQLFoldScanner.scan(sql as NSString, grammar: grammar).regions
     }
@@ -316,10 +315,28 @@ struct SQLFoldScannerTests {
         let blocks = regions(sql, grammar: TestGrammar.oracle).filter { $0.kind == .keywordBlock }
         #expect(blocks.map(\.endLine).sorted() == [3, 5])
     }
+
+    @Test("A CQL batch folds as one statement, and APPLY BATCH closes the block BEGIN BATCH opened")
+    func cqlBatchFoldsAsOneStatement() {
+        let sql = """
+        BEGIN UNLOGGED BATCH
+          INSERT INTO ks.t (id, v) VALUES (1, 'a');
+          UPDATE ks.t SET v = 'b' WHERE id = 2;
+        APPLY BATCH;
+        SELECT *
+        FROM ks.t;
+        """
+        let found = regions(sql, grammar: DatabaseType.cassandra.lexicalGrammar)
+        let statements = found.filter { $0.kind == .statement }
+        #expect(statements.map { $0.startLine } == [0, 4])
+        #expect(statements.map { $0.endLine } == [3, 5])
+        let blocks = found.filter { $0.kind == .keywordBlock }
+        #expect(blocks.map { $0.startLine } == [0])
+        #expect(blocks.map { $0.endLine } == [3])
+    }
 }
 
 struct SQLFoldEventOrderingTests {
-
     private func structure(_ sql: String, grammar: SQLLexicalGrammar = TestGrammar.standard) -> SQLFoldStructure {
         SQLFoldScanner.scan(sql as NSString, grammar: grammar)
     }

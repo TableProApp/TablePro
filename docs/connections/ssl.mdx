@@ -3,7 +3,7 @@ title: SSL/TLS
 description: Configure encrypted database connections, per-driver defaults, and certificate verification
 ---
 
-Managed databases require TLS, every one of them, from RDS and Cloud SQL to Supabase, Neon, Atlas, and ClickHouse Cloud. Set **Required (skip verify)** and stop there, unless your provider handed you a CA certificate, in which case use **Verify Identity** and point at it.
+Managed databases require TLS, every one of them, from RDS and Cloud SQL to Supabase, Neon, Atlas, and ClickHouse Cloud. Use **Verify Identity** when your provider hands you a CA certificate, or when the driver checks the system trust store on its own: ClickHouse, Trino, and SQL Server. Otherwise set **Required (skip verify)**.
 
 ## Modes
 
@@ -12,7 +12,7 @@ Managed databases require TLS, every one of them, from RDS and Cloud SQL to Supa
 | Disabled | Plain TCP, no TLS negotiation |
 | Preferred | TLS first, plain if the server will not, where the driver has a fallback at all |
 | Required (skip verify) | TLS or nothing. The certificate is not checked |
-| Verify CA | TLS, and the certificate is validated against the trust store. The hostname is not checked |
+| Verify CA | TLS, and the certificate must chain to the CA certificate you choose. The hostname is not checked, so a CA certificate is required |
 | Verify Identity | TLS, certificate validated, and the hostname must match the certificate subject |
 
 <Frame caption="SSL mode and certificates below the transport picker">
@@ -26,7 +26,7 @@ The certificate rows appear only once **SSL Mode** is anything but Disabled. Eac
 
 | Field | When it appears | What it takes |
 |---|---|---|
-| **Certificate**, under **CA Certificate** | Verify CA and Verify Identity only | The PEM the server's certificate chains to, for example `/path/to/ca-cert.pem`. Saving without it is blocked |
+| **Certificate**, under **CA Certificate** | Verify CA and Verify Identity only | The PEM or DER certificate the server's certificate chains to, for example `/path/to/ca-cert.pem`. Saving without it is blocked, except under Verify Identity on ClickHouse and Trino, which check the system trust store when it is empty |
 | **Client Certificate** | Any mode but Disabled | Your certificate, for a server that enforces mutual TLS. Optional otherwise |
 | **Client Key** | Any mode but Disabled | The matching private key. Required once a client certificate is set |
 | **Key Passphrase** | Once **Client Key** has a path, on drivers that support it (Cassandra and ScyllaDB) | The passphrase of an encrypted key. Stored in the Keychain |
@@ -35,7 +35,7 @@ SQL Server shows no certificate fields at all and verifies against the system tr
 
 ## Per-driver defaults
 
-A new connection starts on the mode that matches the driver's own default, and the driver's own guidance prints under the picker where there is any.
+A new connection starts on the mode that matches the driver's own default, and so does a connection URL that names no mode. The driver's own guidance prints under the picker where there is any.
 
 | Driver | Default | What Preferred does |
 |---|---|---|
@@ -50,6 +50,17 @@ A new connection starts on the mode that matches the driver's own default, and t
 | Snowflake, BigQuery, Spanner, DynamoDB, Cloudflare D1, Cloudflare R2 SQL, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS section |
 | SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No SSL/TLS section |
 
+## Ports that mean TLS
+
+| Driver | Ports |
+|---|---|
+| Trino | 443 |
+| ClickHouse | 443, 8443 |
+
+Type one of these ports while **SSL Mode** is still at the driver's default and the mode becomes **Verify Identity**, with a note under **Port**. Type a different port and the default comes back. A mode you picked yourself never changes.
+
+A saved connection set to **Disabled** on one of these ports shows a warning under **Port**, with a button that switches it to **Verify Identity**. An imported URL follows the same rule; see [Connection URL Reference](/connections/urls).
+
 ## Behind a tunnel
 
 Verify CA and Verify Identity do not survive a tunnel. An SSH tunnel, Cloudflare tunnel, Cloud SQL Auth Proxy, or SOCKS proxy has the driver connect to `127.0.0.1`, and no server certificate is issued for that, so the mode drops to Required for the tunneled connection and the certificate paths are cleared. TLS itself still runs the whole way to the database; only the certificate check goes. If you need the check, reach the server without a tunnel.
@@ -63,7 +74,7 @@ A TLS failure is reported with the cause, a mode to switch to, and the driver's 
 ```text
 The server requires an encrypted connection but TablePro is configured to connect in plain text.
 
-Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter).
+On the connection's Network tab, set SSL Mode to Verify Identity, or to Required to skip the certificate check.
 
 Server response: FATAL: no pg_hba.conf entry for host "…", user "…", database "…", no encryption
 ```
@@ -86,7 +97,7 @@ The server's certificate chains to nothing in the system trust store. Set **Veri
 
 ### "hostname does not match certificate"
 
-The certificate's CN or SAN does not cover the host you typed. Switch to **Verify CA**, which still validates the chain, or change **Host** to a name the certificate covers.
+The certificate's CN or SAN does not cover the host you typed. Change **Host** to a name the certificate covers.
 
 ### "client certificate required"
 
@@ -94,7 +105,7 @@ The server enforces mutual TLS. Fill in **Client Certificate** and **Client Key*
 
 ### "client private key is encrypted" / "passphrase is incorrect"
 
-Enter the key's passphrase in **Key Passphrase**, which appears once **Client Key** has a path.
+Enter the key's passphrase in **Key Passphrase**, which appears once **Client Key** has a path. Trino and etcd have no **Key Passphrase**: decrypt the key first with `openssl pkey -in encrypted.key -out client.key` and choose the decrypted file.
 
 ## On iPhone and iPad
 
