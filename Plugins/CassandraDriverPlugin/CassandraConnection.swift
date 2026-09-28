@@ -32,6 +32,7 @@ actor CassandraConnectionActor {
     private var currentKeyspace: String?
     private var resumePoints = CassandraResumePoints()
     private static let cancellationPollMicroseconds: cass_duration_t = 50_000
+    private static let queryPageSize: Int32 = 5_000
 
     var isConnected: Bool { session != nil }
 
@@ -221,52 +222,66 @@ actor CassandraConnectionActor {
         Self.logger.info("Disconnected from Cassandra")
     }
 
-    func executeQuery(_ cql: String) throws -> CassandraRawResult {
+    /// Reads every row a statement returns, a page at a time, so a large result neither stops at a count of the
+    /// driver's choosing nor asks the server for more than it answers unpaged: ScyllaDB aborts an unpaged read past
+    /// 100 MB. A statement the server will not page, `IN` with `ORDER BY` on the partition key, is read unpaged.
+    func executeQuery(_ cql: String, cancellation: CassandraCancellation? = nil) throws -> CassandraRawResult {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
         forgetResumePointsUnlessRead(cql)
 
         let startTime = Date()
-        let statement = cass_statement_new(cql, 0)
-        guard let statement else {
+        do {
+            return try executePaged(cql, pageSize: Self.queryPageSize, session: session, cancellation: cancellation,
+                                    startTime: startTime)
+        } catch let error as CassandraPluginError where error.refusesPaging {
+            return try executePaged(cql, pageSize: nil, session: session, cancellation: cancellation,
+                                    startTime: startTime)
+        }
+    }
+
+    private func executePaged(
+        _ cql: String,
+        pageSize: Int32?,
+        session: OpaquePointer,
+        cancellation: CassandraCancellation?,
+        startTime: Date
+    ) throws -> CassandraRawResult {
+        guard let statement = cass_statement_new(cql, 0) else {
             throw CassandraPluginError.queryFailed("Failed to create statement")
         }
-
         defer { cass_statement_free(statement) }
-
-        let future = cass_session_execute(session, statement)
-        guard let future else {
-            throw CassandraPluginError.queryFailed("Failed to execute query")
+        if let pageSize {
+            cass_statement_set_paging_size(statement, pageSize)
         }
 
-        defer { cass_future_free(future) }
+        var header: (columns: [String], typeNames: [String])?
+        var rows: [[PluginCellValue]] = []
+        while true {
+            try cancellation?.check()
+            guard let result = try executePage(statement, on: session, cancellation: cancellation) else { break }
+            defer { cass_result_free(result) }
 
-        cass_future_wait(future)
-        let rc = cass_future_error_code(future)
-
-        if rc != CASS_OK {
-            throw CassandraPluginError.queryFailed(extractFutureError(future))
+            if header == nil {
+                header = Self.columnHeader(of: result)
+            }
+            rows += Self.decodeRows(of: result, skipping: 0, taking: Int.max)
+            guard pageSize != nil, cass_result_has_more_pages(result) == cass_true else { break }
+            guard cass_statement_set_paging_state(statement, result) == CASS_OK else {
+                throw CassandraPluginError.queryFailed("Failed to read the next page")
+            }
         }
 
-        let result = cass_future_get_result(future)
-        defer {
-            if let result { cass_result_free(result) }
-        }
-
-        guard let result else {
-            let executionTime = Date().timeIntervalSince(startTime)
-            return CassandraRawResult(
-                columns: [],
-                columnTypeNames: [],
-                rows: [],
-                rowsAffected: 0,
-                executionTime: executionTime
-            )
-        }
-
-        return extractResult(from: result, startTime: startTime)
+        return CassandraRawResult(
+            columns: header?.columns ?? [],
+            columnTypeNames: header?.typeNames ?? [],
+            rows: rows,
+            rowsAffected: rows.count,
+            executionTime: Date().timeIntervalSince(startTime)
+        )
     }
+
 
     func executePrepared(
         _ cql: String,
@@ -568,15 +583,11 @@ actor CassandraConnectionActor {
             )
         }
 
-        let maxRows = min(Int(rowCount), 100_000)
-        var count = 0
-
-        while cass_iterator_next(iterator) == cass_true && count < maxRows {
+        while cass_iterator_next(iterator) == cass_true {
             let row = cass_iterator_get_row(iterator)
             guard let row else { continue }
 
             rows.append(Self.decodeRow(row, columnCount: colCount))
-            count += 1
         }
 
         let executionTime = Date().timeIntervalSince(startTime)
@@ -717,7 +728,25 @@ actor CassandraConnectionActor {
             return extractMapString(value)
 
         case CASS_VALUE_TYPE_TUPLE:
-            return extractCollectionString(value, open: "(", close: ")")
+            return extractTupleString(value)
+
+        case CASS_VALUE_TYPE_UDT:
+            return extractUserTypeString(value)
+
+        case CASS_VALUE_TYPE_DURATION:
+            var months: Int32 = 0
+            var days: Int32 = 0
+            var nanoseconds: Int64 = 0
+            guard cass_value_get_duration(value, &months, &days, &nanoseconds) == CASS_OK else { return nil }
+            return CassandraCellText.durationText(months: months, days: days, nanoseconds: nanoseconds)
+
+        case CASS_VALUE_TYPE_CUSTOM:
+            var bytes: UnsafePointer<UInt8>?
+            var length: Int = 0
+            guard cass_value_get_bytes(value, &bytes, &length) == CASS_OK, let bytes else { return nil }
+            return CassandraCellText.customText(
+                className: customClassName(of: value), bytes: Data(bytes: bytes, count: length)
+            )
 
         case CASS_VALUE_TYPE_DATE:
             var dateVal: UInt32 = 0
@@ -780,6 +809,47 @@ actor CassandraConnectionActor {
             }
         }
         return "\(open)\(elements.joined(separator: ", "))\(close)"
+    }
+
+    private static func extractTupleString(_ value: OpaquePointer) -> String {
+        guard let iterator = cass_iterator_from_tuple(value) else { return "()" }
+        defer { cass_iterator_free(iterator) }
+
+        var elements: [String] = []
+        while cass_iterator_next(iterator) == cass_true {
+            elements.append(cass_iterator_get_value(iterator).flatMap(nestedText) ?? "null")
+        }
+        return "(\(elements.joined(separator: ", ")))"
+    }
+
+    private static func extractUserTypeString(_ value: OpaquePointer) -> String {
+        guard let iterator = cass_iterator_fields_from_user_type(value) else { return "{}" }
+        defer { cass_iterator_free(iterator) }
+
+        var fields: [String] = []
+        while cass_iterator_next(iterator) == cass_true {
+            var namePointer: UnsafePointer<CChar>?
+            var nameLength: Int = 0
+            let name = cass_iterator_get_user_type_field_name(iterator, &namePointer, &nameLength) == CASS_OK
+                ? namePointer.flatMap { String(bytes: UnsafeRawBufferPointer(start: $0, count: nameLength), encoding: .utf8) }
+                : nil
+            let fieldValue = cass_iterator_get_user_type_field_value(iterator).flatMap(nestedText) ?? "null"
+            fields.append("\(name ?? "?"): \(fieldValue)")
+        }
+        return "{\(fields.joined(separator: ", "))}"
+    }
+
+    private static func nestedText(_ value: OpaquePointer) -> String? {
+        guard cass_value_is_null(value) == cass_false else { return nil }
+        return extractStringValue(value)
+    }
+
+    private static func customClassName(of value: OpaquePointer) -> String? {
+        guard let dataType = cass_value_data_type(value) else { return nil }
+        var name: UnsafePointer<CChar>?
+        var length: Int = 0
+        guard cass_data_type_class_name(dataType, &name, &length) == CASS_OK, let name else { return nil }
+        return String(bytes: UnsafeRawBufferPointer(start: name, count: length), encoding: .utf8)
     }
 
     private static func extractMapString(_ value: OpaquePointer) -> String {

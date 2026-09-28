@@ -49,13 +49,14 @@ public protocol SQLStatementBoundaryTracking {
 public enum SQLStatementBoundaries {
     /// The one place a grammar is matched to its statement boundaries, so no reader can pick a different one.
     public static func makeTracker(for grammar: SQLLexicalGrammar) -> any SQLStatementBoundaryTracking {
-        guard grammar.contains(.plsqlBlocks) else { return SQLRoutineBodyTracker(grammar: grammar) }
-        return PLSQLUnitTracker()
+        if grammar.contains(.plsqlBlocks) { return PLSQLUnitTracker() }
+        if grammar.contains(.cqlBatches) { return CQLBatchTracker() }
+        return SQLRoutineBodyTracker(grammar: grammar)
     }
 
-    /// Whether a statement `grammar` reads can own the `;` that ends it: a PL/SQL unit's, or a T-SQL `MERGE`'s. A
-    /// reader that ends a statement at every `;` and drops it is only right where none can.
-    public static func statementsCanOwnTerminator(in grammar: SQLLexicalGrammar) -> Bool {
-        !grammar.isDisjoint(with: [.plsqlBlocks, .terminatedMergeStatements])
+    /// Whether a statement `grammar` reads can own a `;`: the one that ends a PL/SQL unit or a T-SQL `MERGE`, or one
+    /// inside a CQL batch. A reader that ends a statement at every `;` and drops it is only right where none can.
+    public static func statementsCanOwnSemicolons(in grammar: SQLLexicalGrammar) -> Bool {
+        !grammar.isDisjoint(with: [.plsqlBlocks, .terminatedMergeStatements, .cqlBatches])
     }
 }

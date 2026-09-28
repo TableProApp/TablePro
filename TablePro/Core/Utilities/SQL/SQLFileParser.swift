@@ -193,10 +193,11 @@ final class SQLFileParser: Sendable {
         var batchStartUnit = 0
         var unitsBeforeBuffer = 0
 
-        /// The statement grammar, for a dialect whose statement can own its `;`: a PL/SQL unit arrives whole with
-        /// its own `;`, and so do a T-SQL `MERGE` and a `BEGIN...END` routine body. A batch keeps every `;` it holds,
-        /// so a file read in batches needs none. Every other dialect has always split an import at each `;` and
-        /// relies on `DELIMITER` or dollar quoting for a routine body, and keeps doing so.
+        /// The statement grammar, for a dialect whose statement can own a `;`: a PL/SQL unit arrives whole with
+        /// its own `;`, and so do a T-SQL `MERGE` and a `BEGIN...END` routine body, and a CQL batch arrives whole
+        /// with every `;` inside it. A batch keeps every `;` it holds, so a file read in batches needs none. Every
+        /// other dialect has always split an import at each `;` and relies on `DELIMITER` or dollar quoting for a
+        /// routine body, and keeps doing so.
         var boundaries: (any SQLStatementBoundaryTracking)?
         var word: [unichar] = []
         var alternativeQuoteCloser: unichar = 0
@@ -222,7 +223,7 @@ final class SQLFileParser: Sendable {
             self.readsBatches = readsBatches
             self.batchCutLength = batchCutLength
             self.keepsStatementComments = grammar.contains(.batchSeparatorLines)
-            self.boundaries = !readsBatches && SQLStatementBoundaries.statementsCanOwnTerminator(in: grammar)
+            self.boundaries = !readsBatches && SQLStatementBoundaries.statementsCanOwnSemicolons(in: grammar)
                 ? SQLStatementBoundaries.makeTracker(for: grammar)
                 : nil
         }
@@ -504,6 +505,7 @@ final class SQLFileParser: Sendable {
                     let openerRange = NSRange(location: i, length: length)
                     target.append(nsBuffer.substring(with: openerRange))
                 }
+                ctx.boundaries?.observeOpaqueToken()
                 ctx.state = .inDollarQuote
                 ctx.dollarTag = tag
                 i += length

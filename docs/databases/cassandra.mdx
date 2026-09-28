@@ -58,7 +58,7 @@ Keyspaces authenticates with SigV4, not a password, so set **Authentication** to
   <img className="hidden dark:block" src="/images/cassandra-keyspace-browser-dark.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
 </Frame>
 
-The structure view gives each column's name, CQL type, a primary key flag set for partition key and clustering columns alike, and the table's secondary indexes. Structure editing adds and drops columns; every other schema change goes in the CQL editor. In the grid, map, set, list, and tuple render as collections and blob as hex.
+The structure view gives each column's name, CQL type, a primary key flag set for partition key and clustering columns alike, and the table's secondary indexes. Structure editing adds and drops columns; every other schema change goes in the CQL editor. In the grid, map, set, list, and tuple render as collections, a user-defined type as `{field: value}`, a `duration` as `1d2h30m`, a float `vector` as a list of numbers, and blob as hex.
 
 CQL has no `OFFSET`, so a page is reached by reading forward from the first row. **Next** and **Previous** over pages already shown take one read each. Jumping straight to page 200 reads the 199 pages before it first. Rows arrive in token order, and a column header does not sort them: CQL orders rows only by clustering columns inside one partition. A result in the CQL editor sorts the rows it holds.
 
@@ -80,6 +80,8 @@ The filter bar offers **Match all** only, because CQL has no `OR`, and **Search 
 
 An edited value is sent as its column's type, so it has to read as one: a number for `int` or `decimal`, a UUID for `uuid`, `0x…` for `blob`. A `timestamp` takes the form the grid shows, the form cqlsh prints, a date alone, or milliseconds since 1970, and one with no zone is read as UTC. A value that does not parse is refused and nothing in the save is written. `list`, `set`, `map`, `tuple`, user-defined types and `duration` cannot be edited in the grid: write an `UPDATE` in the CQL editor.
 
+Each row in a save is written by its own statement, named by its whole primary key, so deleting several rows sends one `DELETE` each. **Add Row** writes `INSERT … IF NOT EXISTS`: a new row whose key is already taken is refused rather than written over the row that holds it. A primary key column cannot be edited in place. Delete the row and add it again with the new key.
+
 Results in the CQL editor are read-only. Open the table from the sidebar to edit its rows.
 
 ## SSL/TLS
@@ -98,7 +100,7 @@ Both verifying modes need a **CA Certificate** path, and refuse to connect witho
 
 - A page far into a large table is slow, because every row before it is read first. Filter the table down, or query it in the CQL editor with a `WHERE` on the partition key.
 - Counter columns cannot be set with a plain `UPDATE`. The grid will edit one and the server rejects the statement it generates. Use `UPDATE … SET c = c + 1` in the CQL editor.
-- Materialized views, UDTs, UDFs, and UDAs do not appear in the sidebar. Query `system_schema` in the CQL editor to see them.
+- Materialized views and UDTs do not appear in the sidebar. Query `system_schema` in the CQL editor to see them. UDFs and UDAs are listed under Functions; see [Procedures, functions, and triggers](/features/routines-triggers).
 - The DDL tab reconstructs `CREATE TABLE` from the column list, so table options (compaction, compression, `gc_grace_seconds`), clustering order, and the split between partition and clustering key are all missing from it. Read the real definition with `DESCRIBE TABLE` in `cqlsh`.
 - DataStax Astra DB does not connect. The Secure Connect Bundle it requires cannot be loaded, and there is no way around it.
 - Connect and request timeouts are fixed at 10 and 30 seconds. Neither the app-wide query timeout nor a multi-DC policy reaches this driver.

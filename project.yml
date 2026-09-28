@@ -424,8 +424,11 @@ targets:
       - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLMetadata.swift
       - Plugins/CassandraDriverPlugin/CassandraBoundValue.swift
       - Plugins/CassandraDriverPlugin/CassandraBrowseStatement.swift
+      - Plugins/CassandraDriverPlugin/CassandraCellText.swift
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
+      - Plugins/CassandraDriverPlugin/CassandraObjectQueries.swift
       - Plugins/CassandraDriverPlugin/CassandraResumePoints.swift
+      - Plugins/CassandraDriverPlugin/CassandraRowWriter.swift
       - Plugins/CassandraDriverPlugin/CassandraVarint.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift

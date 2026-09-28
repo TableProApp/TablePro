@@ -23,6 +23,15 @@ struct SQLLexicalFeatureMappingTests {
         #expect(grammarBits.rawValue == featureBits.rawValue)
         #expect(Set(pairs.map(\.1.rawValue)).count == pairs.count)
         #expect(grammarBits.rawValue == (1 << 25) - 1)
+        #expect(grammarBits.isDisjoint(with: .cqlBatches))
+    }
+
+    @Test("A CQL batch stays in the app's curated grammar and never reaches the kit")
+    func cqlBatchesAreAppCurated() {
+        let cql = DatabaseType.cassandra.lexicalGrammar
+        #expect(cql.contains(.cqlBatches))
+        #expect(cql.pluginFeatures == [.untaggedDollarQuotes, .doubleSlashLineComments])
+        #expect(SQLLexicalGrammar(pluginFeatures: cql.pluginFeatures) == cql.subtracting(.cqlBatches))
     }
 
     @Test("A grammar survives the trip through the kit's features")

@@ -55,6 +55,7 @@ struct PluginBrowsedQueryTabEditabilityTests {
     private func withCoordinator(
         type: DatabaseType,
         selecting tab: QueryTab,
+        alongside others: [QueryTab] = [],
         _ body: (MainContentCoordinator) -> Void
     ) {
         let connection = TestFixtures.makeConnection(type: type)
@@ -67,7 +68,7 @@ struct PluginBrowsedQueryTabEditabilityTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let tabManager = QueryTabManager()
-        tabManager.tabs.append(tab)
+        tabManager.tabs.append(contentsOf: others + [tab])
         tabManager.selectedTabId = tab.id
         let coordinator = MainContentCoordinator(
             connection: connection,
@@ -90,6 +91,19 @@ struct PluginBrowsedQueryTabEditabilityTests {
 
             #expect(resolved.tableName == nil)
             #expect(!resolved.isEditable)
+        }
+    }
+
+    @Test("A table tab that is not selected resolves its own table, not the selected tab's")
+    func backgroundTableTabResolvesItsOwnTable() {
+        var background = QueryTab(query: "", tabType: .table)
+        background.tableContext.tableName = "events"
+        var selected = QueryTab(query: "", tabType: .table)
+        selected.tableContext.tableName = "users"
+        withCoordinator(type: .cassandra, selecting: selected, alongside: [background]) { coordinator in
+            let resolved = coordinator.resolveTableEditability(tab: background, sql: "")
+
+            #expect(resolved.tableName == "events")
         }
     }
 

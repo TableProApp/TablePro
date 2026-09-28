@@ -102,6 +102,12 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.weaviate.pluginTypeId == "Weaviate")
     }
 
+    @Test("ScyllaDB resolves its own icon")
+    func scyllaDBIdentity() {
+        #expect(DatabaseType.scylladb.rawValue == "ScyllaDB")
+        #expect(DatabaseType.scylladb.iconName == "scylladb-icon")
+    }
+
     @Test("Hashable conformance")
     func hashableConformance() {
         var set: Set<DatabaseType> = [.mysql, .postgresql, .mysql]

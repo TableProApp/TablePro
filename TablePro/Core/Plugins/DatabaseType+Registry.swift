@@ -137,7 +137,7 @@ extension DatabaseType {
         case "Oracle":
             return String(localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database.")
         case "Cassandra", "ScyllaDB":
-            return String(localized: "Use Required for AstraDB, DataStax Astra, and other hosted Cassandra deployments.")
+            return String(localized: "Use Required for Amazon Keyspaces and other hosted Cassandra deployments.")
         case "ClickHouse":
             return String(localized: "Use Required for ClickHouse Cloud and other managed instances.")
         default:

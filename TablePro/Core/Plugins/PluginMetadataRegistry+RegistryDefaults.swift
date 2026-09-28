@@ -799,6 +799,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#26A0D8",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                structureEditing: SchemaEditingSupport(structureEdits: .cassandra),
                 capabilities: cassandraCapabilities,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -814,7 +815,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .comment]
+                    structureColumnFields: [.name, .type]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,
@@ -844,6 +845,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#6B2EE3",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                structureEditing: SchemaEditingSupport(structureEdits: .cassandra),
                 capabilities: cassandraCapabilities,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -859,7 +861,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .comment]
+                    structureColumnFields: [.name, .type]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,

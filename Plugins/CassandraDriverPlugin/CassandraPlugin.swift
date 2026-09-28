@@ -51,10 +51,13 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
     static let supportsForeignKeyDisable = false
     static let supportsSSH = true
     static let supportsSSL = true
-    /// CQL has neither. Its column definition is `column_name cql_type [STATIC] [column_mask]
-    /// [PRIMARY KEY]`, with no DEFAULT clause and no auto-increment, so the two cells the
-    /// `DriverPlugin` fallback would give this driver are cells nothing can be written into.
-    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
+    /// A CQL column definition is `column_name cql_type [STATIC] [column_mask] [PRIMARY KEY]`: no DEFAULT, no
+    /// auto-increment, no NOT NULL and no column comment, so a cell for any of them is one nothing can be written into.
+    static let structureColumnFields: [StructureColumnField] = [.name, .type]
+    static let supportsModifyColumn = false
+    static let supportsAddIndex = false
+    static let supportsDropIndex = false
+    static let supportsModifyPrimaryKey = false
     static let columnTypesByCategory: [String: [String]] = [
         "Numeric": ["TINYINT", "SMALLINT", "INT", "BIGINT", "VARINT", "FLOAT", "DOUBLE", "DECIMAL", "COUNTER"],
         "String": ["TEXT", "VARCHAR", "ASCII"],
@@ -244,7 +247,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         if let browse = CassandraBrowseStatement.parse(query) {
             return try await runBrowse(browse)
         }
-        let rawResult = try await connectionActor.executeQuery(query)
+        let cancellation = activeBrowse.begin()
+        defer { activeBrowse.end(cancellation) }
+        let rawResult = try await connectionActor.executeQuery(query, cancellation: cancellation)
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -262,6 +267,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             return try await runBrowse(browse)
         }
         let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
+        if let refusal = CassandraRowWriter.unappliedInsertRefusal(
+            statement: query, columns: rawResult.columns, rows: rawResult.rows
+        ) {
+            throw CassandraPluginError.queryFailed(refusal)
+        }
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -271,15 +281,38 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         )
     }
 
+    /// A capped read streams and stops at the cap, rather than reading every row the statement matches and
+    /// trimming them afterwards, which is what the protocol's default does with a cap.
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        if let parameters {
+            return try await executeParameterized(query: query, parameters: parameters)
+        }
+        guard let rowCap, rowCap > 0, let bounded = try await executeBoundedQuery(query: query, rowCap: rowCap) else {
+            return try await execute(query: query)
+        }
+        return bounded
+    }
+
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         if let browse = CassandraBrowseStatement.parse(query) {
             return try await runBrowse(browse.cappedAt(rowCap: rowCap), rowCap: rowCap)
         }
-        guard let bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap) as PluginQueryResult?
-        else {
-            return nil
+        let bounded: PluginQueryResult
+        do {
+            bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        } catch let error as CassandraPluginError where error.refusesPaging {
+            let whole = try await execute(query: query)
+            let isTruncated = whole.rows.count > rowCap
+            return PluginQueryResult(
+                columns: whole.columns,
+                columnTypeNames: whole.columnTypeNames,
+                rows: isTruncated ? Array(whole.rows.prefix(rowCap)) : whole.rows,
+                rowsAffected: min(whole.rows.count, rowCap),
+                executionTime: whole.executionTime,
+                isTruncated: isTruncated
+            )
         }
         /// The buffered path reports a read's row count here, so a bounded read reports the same
         /// rather than the collector's neutral zero.
@@ -592,6 +625,30 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         "ALTER TABLE \(qualifiedTableName(table)) ADD \(quoteIdentifier(column.name)) \(column.dataType)"
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        switch operation {
+        case .addColumn(let column):
+            if column.isPrimaryKey {
+                return String(localized: "A column added to a Cassandra table cannot join its primary key.")
+            }
+            if !column.isNullable {
+                return String(localized: "Cassandra has no NOT NULL constraint.")
+            }
+            if let comment = column.comment, !comment.isEmpty {
+                return String(localized: "Cassandra columns have no comment.")
+            }
+            return nil
+        case .modifyColumn:
+            return String(localized: "Change a Cassandra column's name or type in the CQL editor. CQL renames only primary key columns and changes no column's type.")
+        case .addIndex, .modifyIndex, .dropIndex:
+            return String(localized: "Create and drop Cassandra indexes in the CQL editor.")
+        case .dropColumn, .renameCheckConstraint:
+            return nil
+        @unknown default:
+            return nil
+        }
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {

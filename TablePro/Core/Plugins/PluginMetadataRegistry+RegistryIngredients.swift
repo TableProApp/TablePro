@@ -447,6 +447,8 @@ extension PluginMetadataRegistry {
             supportsAddIndex: false,
             supportsDropIndex: false,
             supportsModifyPrimaryKey: false,
+            supportsRoutines: true,
+            supportsDatabaseTriggerBrowse: true,
             supportsOpportunisticTLS: false,
             supportsClientKeyPassphrase: true,
             pagination: .leadingRowsOnly(maximumRows: nil),

@@ -1472,7 +1472,7 @@ final class MainContentCoordinator: ObservableObject {
         }
         let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if usesNoSQLBrowsing {
-            let name = tabManager.selectedTab?.tableContext.tableName
+            let name = tab.tableContext.tableName
             return (name, name != nil)
         } else if tab.tabType == .table, let existingName = tab.tableContext.tableName {
             return (existingName, true)

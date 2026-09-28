@@ -213,6 +213,31 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(scylla?.supportsMatchAnyFilters == cassandra?.supportsMatchAnyFilters)
     }
 
+    /// Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
+    /// primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
+    @Test("Cassandra and ScyllaDB offer only the column edits CQL can run", arguments: ["Cassandra", "ScyllaDB"])
+    func cassandraStructureEdits(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+        let matrix = snapshot.structureEditing.structureEdits
+
+        #expect(StructureEditEligibility.allows(.addColumn, on: .table, matrix: matrix))
+        #expect(StructureEditEligibility.allows(.dropColumn, on: .table, matrix: matrix))
+        for operation in [StructureEditOperation.renameColumn, .changeColumnType, .setNotNull, .commentOnColumn,
+                          .addIndex, .dropIndex] {
+            #expect(!StructureEditEligibility.allows(operation, on: .table, matrix: matrix), "\(operation)")
+        }
+        #expect(snapshot.schema.structureColumnFields == [.name, .type])
+        #expect(snapshot.capabilities.supportsAddIndex == false)
+        #expect(snapshot.capabilities.supportsRoutines)
+        #expect(snapshot.capabilities.supportsDatabaseTriggerBrowse)
+    }
+
+    @Test("Cassandra keeps its structure edits when its plugin registers")
+    func cassandraKeepsStructureEdits() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockCassandraPlugin.self)
+        #expect(!StructureEditEligibility.allows(.renameColumn, on: .table, matrix: built.structureEditing.structureEdits))
+    }
+
     @Test("MySQL keeps browsing only inside a selected database when its plugin registers")
     func mySQLKeepsBrowsingRequiresSelectedDatabase() {
         let registry = PluginMetadataRegistry.shared

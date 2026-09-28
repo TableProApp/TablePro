@@ -88,6 +88,12 @@ struct StructureObjectEditMatrix: Sendable, Equatable {
         .partitionedTable: everyOperation
     ])
 
+    /// Measured against Cassandra 5.0.9 and ScyllaDB 2026.3.1: `ALTER TABLE … ADD` and `DROP` run. `ADD … NOT NULL`
+    /// and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` answers "Altering column types is no longer
+    /// supported", and renaming a column outside the primary key answers "Cannot rename non PRIMARY KEY column".
+    /// Indexes are created and dropped in CQL, which the plugin does not write.
+    static let cassandra = StructureObjectEditMatrix([.table: [.addColumn, .dropColumn]])
+
     /// Measured against PostgreSQL 17.11, one statement per cell. A table and a partitioned table
     /// take all seventeen. A view and a materialized view differ on `SET DEFAULT` and on
     /// `CREATE INDEX`, which is why one row per kind is the only shape that works. A foreign table
