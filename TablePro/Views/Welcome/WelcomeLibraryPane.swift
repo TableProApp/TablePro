@@ -4,34 +4,11 @@
 //
 
 import AppKit
-import Combine
 import SwiftUI
 import TableProConnectionLibrary
 
-@MainActor
-internal final class WelcomeToolbarPresentation: ObservableObject {
-    @Published internal var labelMode: WelcomeToolbarLabelMode = .iconOnly
-}
-
-internal enum WelcomeToolbarLabelMode: CaseIterable, Hashable, Identifiable {
-    case iconAndText
-    case iconOnly
-
-    internal var id: Self { self }
-
-    internal var title: String {
-        switch self {
-        case .iconAndText:
-            String(localized: "Icon and Text")
-        case .iconOnly:
-            String(localized: "Icon Only")
-        }
-    }
-}
-
 internal struct WelcomeLibraryPane: View {
     @ObservedObject var viewModel: WelcomeViewModel
-    @ObservedObject var toolbarPresentation: WelcomeToolbarPresentation
 
     var body: some View {
         content
@@ -49,10 +26,7 @@ internal struct WelcomeLibraryPane: View {
                 viewModel.focusList(selectFirstRow: true)
             }
             .toolbar {
-                WelcomeLibraryToolbar(
-                    viewModel: viewModel,
-                    toolbarPresentation: toolbarPresentation
-                )
+                WelcomeLibraryToolbar(viewModel: viewModel)
             }
             .onAppear {
                 viewModel.setUp()
@@ -98,50 +72,26 @@ internal struct WelcomeLibraryPane: View {
 
 internal struct WelcomeLibraryToolbar: ToolbarContent {
     let viewModel: WelcomeViewModel
-    @ObservedObject var toolbarPresentation: WelcomeToolbarPresentation
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 WindowOpener.shared.openConnectionForm()
             } label: {
-                WelcomeToolbarActionLabel(
-                    title: String(localized: "New Connection"),
-                    systemImage: "plus",
-                    labelMode: toolbarPresentation.labelMode
-                )
+                Label(String(localized: "New Connection"), systemImage: "plus")
             }
             .help(newConnectionHelp)
             .accessibilityIdentifier("welcome-toolbar-new-connection")
-        }
 
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-        }
-
-        ToolbarItem(placement: .primaryAction) {
             Button {
                 viewModel.requestNewGroup(parentId: nil, movingConnectionIds: [])
             } label: {
-                WelcomeToolbarActionLabel(
-                    title: String(localized: "New Group"),
-                    systemImage: "folder.badge.plus",
-                    labelMode: toolbarPresentation.labelMode
-                )
+                Label(String(localized: "New Group"), systemImage: "folder.badge.plus")
             }
             .help(String(localized: "New Group"))
             .accessibilityIdentifier("welcome-toolbar-new-group")
-        }
 
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            WelcomeViewOptionsMenu(
-                viewModel: viewModel,
-                toolbarPresentation: toolbarPresentation
-            )
+            WelcomeViewOptionsMenu(viewModel: viewModel)
         }
     }
 
@@ -154,53 +104,14 @@ internal struct WelcomeLibraryToolbar: ToolbarContent {
     }
 }
 
-internal struct WelcomeToolbarActionLabel: View {
-    let title: String
-    let systemImage: String
-    let labelMode: WelcomeToolbarLabelMode
-
-    @ViewBuilder
-    var body: some View {
-        switch labelMode {
-        case .iconAndText:
-            label.labelStyle(WelcomeToolbarTitleAndIconLabelStyle())
-        case .iconOnly:
-            label.labelStyle(.iconOnly)
-        }
-    }
-
-    private var label: some View {
-        Label(title, systemImage: systemImage)
-    }
-}
-
-internal struct WelcomeToolbarTitleAndIconLabelStyle: LabelStyle {
-    internal static let spacing: CGFloat = 6
-
-    internal func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: Self.spacing) {
-            configuration.icon
-            configuration.title
-        }
-    }
-}
-
 internal struct WelcomeViewOptionsMenu: View {
     @ObservedObject var viewModel: WelcomeViewModel
-    @ObservedObject var toolbarPresentation: WelcomeToolbarPresentation
 
     var body: some View {
         Menu {
             Picker(String(localized: "Sort By"), selection: sortSelection) {
                 ForEach(WelcomeSortOption.allCases, id: \.self) { option in
                     Text(option.title).tag(option.mode)
-                }
-            }
-            .pickerStyle(.menu)
-
-            Picker(String(localized: "Toolbar"), selection: $toolbarPresentation.labelMode) {
-                ForEach(WelcomeToolbarLabelMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
                 }
             }
             .pickerStyle(.menu)
