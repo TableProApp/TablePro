@@ -7,6 +7,9 @@ public enum OracleTLSMapper {
         for description: OracleTLSDescription
     ) throws -> OracleNIO.OracleConnection.Configuration.TLS {
         guard description.mode != .disabled else { return .disable }
+        if description.mode == .verifyCA, description.caCertificatePath == nil {
+            throw OracleCoreError.certificateAuthorityRequired
+        }
 
         var configuration = TLSConfiguration.makeClientConfiguration()
         configuration.certificateVerification = certificateVerification(for: description.mode)

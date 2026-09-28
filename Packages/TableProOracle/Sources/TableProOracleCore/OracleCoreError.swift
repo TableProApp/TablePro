@@ -31,6 +31,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case nativeEncryptionRequired
     case tlsHandshakeFailed(kind: OracleTLSFailureKind, serverMessage: String)
     case certificateUnavailable(field: OracleCertificateField, path: String)
+    case certificateAuthorityRequired
 
     public var errorDescription: String? {
         switch self {
@@ -81,6 +82,8 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(format: String(localized: "TLS handshake failed: %@"), serverMessage)
         case .certificateUnavailable(let field, let path):
             return String(format: Self.certificateUnavailableFormat(for: field), path)
+        case .certificateAuthorityRequired:
+            return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
         }
     }
 

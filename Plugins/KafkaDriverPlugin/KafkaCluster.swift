@@ -79,6 +79,7 @@ actor KafkaCluster {
     /// (`send`'s cancellation handler does) and every later call threw `notConnected` for the
     /// life of the session with nothing able to heal it.
     func connect() async throws {
+        if let error = KafkaConnection.tlsConfigurationError(for: ssl) { throw error }
         if let bootstrapConnection, await bootstrapConnection.isOpen { return }
         bootstrapConnection = nil
         var failures: [String] = []

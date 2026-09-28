@@ -707,6 +707,7 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaScram.swift
       - Plugins/KafkaDriverPlugin/SnappyDecoder.swift
+      - Plugins/TeradataDriverPlugin/TeradataSSLMapping.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
@@ -802,6 +803,8 @@ targets:
         product: NIOPosix
       - package: swift-nio-ssl
         product: NIOSSL
+      - package: TableProCore
+        product: TableProTeradataCore
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1

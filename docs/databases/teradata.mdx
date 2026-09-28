@@ -53,8 +53,10 @@ Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so a table's
 | **Disabled** | Plain session on the gateway port |
 | **Preferred** | TLS on `443`, falling back to a plain session on `1025` when the HTTPS port is unreachable |
 | **Required (skip verify)** | TLS, certificate not checked |
-| **Verify CA** | Certificate chain checked. Point **CA Certificate** at your CA file for a private authority |
-| **Verify Identity** | Chain and hostname checked |
+| **Verify CA** | Certificate chain checked against the file in **CA Certificate**, hostname not checked. Refused without a CA certificate |
+| **Verify Identity** | Chain and hostname checked, against **CA Certificate** when set and the system trust store otherwise |
+
+A **CA Certificate** path that does not hold a readable certificate refuses the connection in both verify modes.
 
 Test TLS on **Required (skip verify)** rather than **Preferred**, or a failed handshake looks like a successful connect.
 

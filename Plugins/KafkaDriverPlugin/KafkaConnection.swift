@@ -365,7 +365,14 @@ actor KafkaConnection {
         try apiVersions.negotiated(api)
     }
 
+    static func tlsConfigurationError(for ssl: SSLConfiguration) -> KafkaError? {
+        guard ssl.mode == .verifyCa,
+              ssl.caCertificatePath.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return .verifyCaNeedsCertificate
+    }
+
     private static func makeSSLContext(_ ssl: SSLConfiguration) throws -> NIOSSLContext? {
+        if let error = tlsConfigurationError(for: ssl) { throw error }
         guard ssl.isEnabled else { return nil }
         var configuration = TLSConfiguration.makeClientConfiguration()
         configuration.certificateVerification = verification(for: ssl.mode)

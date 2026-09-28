@@ -116,10 +116,37 @@ struct ConnectionFormViewModelOracleTests {
         viewModel.oracleSSLMode = .disable
         #expect(viewModel.buildConnection().sslEnabled == false)
 
-        viewModel.oracleSSLMode = .verifyCa
+        viewModel.oracleSSLMode = .verifyFull
         let secured = viewModel.buildConnection()
         #expect(secured.sslEnabled)
-        #expect(secured.sslConfiguration?.mode == .verifyCa)
+        #expect(secured.sslConfiguration?.mode == .verifyFull)
+    }
+
+    @Test("A new Oracle connection is not offered Verify CA, which has no CA field on this device")
+    func newConnectionIsNotOfferedVerifyCa() {
+        let viewModel = ConnectionFormViewModel()
+        viewModel.type = .oracle
+        #expect(!viewModel.offersOracleVerifyCa)
+        #expect(viewModel.oracleSSLModeNote == nil)
+    }
+
+    @Test("A saved Verify CA connection keeps its mode listed and says why it cannot connect")
+    func savedVerifyCaConnectionKeepsItsModeAndExplains() {
+        let viewModel = ConnectionFormViewModel(editing: makeOracleConnection(additionalFields: [:], sslMode: .verifyCa))
+        #expect(viewModel.offersOracleVerifyCa)
+        #expect(viewModel.oracleSSLMode == .verifyCa)
+        #expect(viewModel.oracleSSLModeNote == DriverSSLConfiguration.oracleVerifyCaUnavailableMessage)
+
+        viewModel.oracleSSLMode = .verifyFull
+        #expect(viewModel.offersOracleVerifyCa)
+        #expect(viewModel.oracleSSLModeNote == nil)
+    }
+
+    @Test("A saved Verify Identity connection is not offered Verify CA")
+    func savedVerifyIdentityConnectionIsNotOfferedVerifyCa() {
+        let viewModel = ConnectionFormViewModel(editing: makeOracleConnection(additionalFields: [:], sslMode: .verifyFull))
+        #expect(!viewModel.offersOracleVerifyCa)
+        #expect(viewModel.oracleSSLModeNote == nil)
     }
 
     @Test("Role defaults to Normal and hydrates from additionalFields")

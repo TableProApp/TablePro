@@ -126,7 +126,7 @@ extension OraclePlugin {
                 supportURL: issuesURL
             )
         case .notConnected, .connectionFailed, .queryFailed, .cancelled, .tlsHandshakeFailed,
-             .transactionLost:
+             .transactionLost, .certificateAuthorityRequired:
             return nil
         }
     }

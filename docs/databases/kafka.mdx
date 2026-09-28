@@ -125,6 +125,9 @@ strictly the certificate is checked. Setting the protocol to `SSL` or `SASL_SSL`
 verifies the chain and the hostname. A private CA goes in the **CA Certificate** field; mutual TLS
 also needs the client certificate and key.
 
+**Verify CA** checks the chain against the certificate in **CA Certificate** and skips the hostname,
+so it needs that certificate: without one, the connection is refused before any broker is contacted.
+
 Setting the protocol to `PLAINTEXT` or `SASL_PLAINTEXT` turns encryption off whatever the SSL mode
 says, so a mode left over from an earlier edit cannot silently encrypt a plaintext listener.
 

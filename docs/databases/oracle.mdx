@@ -140,11 +140,13 @@ Anything else renders as `<unsupported: type>`. Report those through [GitHub Iss
 
 ## SSL/TLS
 
-New connections default to **Disabled**, and there is no opportunistic upgrade: **Preferred** connects in plain TCP, which is why the SSL pane flags it in red. **Required** is TCPS; **Verify CA** adds a CA certificate path for strict validation. See [SSL/TLS](/connections/ssl).
+New connections default to **Disabled**, and there is no opportunistic upgrade: **Preferred** connects in plain TCP, which is why the SSL pane flags it in red. **Required** is TCPS. **Verify CA** checks the server's certificate against the file in **CA Certificate** and skips the hostname, so it needs a CA certificate: without one, the connection is refused. **Verify Identity** checks the hostname as well. See [SSL/TLS](/connections/ssl).
 
 ## On iPhone and iPad
 
 The Oracle driver is compiled into TablePro Mobile, with no plugin to install. Browsing, queries, and row editing work; creating or altering tables and triggers stays on the Mac. See [iPhone and iPad](/ios).
+
+The SSL mode offers no certificate rows there, so **Verify Identity** checks the server against the system trust store and **Verify CA** is not listed for a new connection. A connection saved with **Verify CA** does not connect on iPhone or iPad until its mode changes.
 
 ## Limitations
 

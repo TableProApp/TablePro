@@ -100,7 +100,9 @@ struct ConnectionFormView: View {
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
                                 Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
-                                Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                if viewModel.offersOracleVerifyCa {
+                                    Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                }
                                 Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
@@ -111,6 +113,10 @@ struct ConnectionFormView: View {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
                                 Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
                             }
+                        }
+                    } footer: {
+                        if let note = viewModel.oracleSSLModeNote {
+                            Text(note)
                         }
                     }
                     if viewModel.usesCertificateSection {

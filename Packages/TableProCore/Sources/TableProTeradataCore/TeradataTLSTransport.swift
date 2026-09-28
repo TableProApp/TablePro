@@ -3,6 +3,12 @@ import Network
 import os
 import Security
 
+internal enum TeradataTrustPolicy {
+    case acceptAny
+    case systemTrust(hostname: String)
+    case anchors([SecCertificate], hostname: String?)
+}
+
 final class TeradataTLSTransport: TeradataTransport {
     private let connection: NWConnection
     private let condition = NSCondition()
@@ -22,22 +28,12 @@ final class TeradataTLSTransport: TeradataTransport {
         let queue = DispatchQueue(label: "com.TablePro.teradata.tls")
         let verifyQueue = DispatchQueue(label: "com.TablePro.teradata.tls.verify")
 
+        let trustPolicy = try Self.trustPolicy(for: options, host: host)
         let tlsOptions = NWProtocolTLS.Options()
-        let anchors = Self.loadAnchors(options.caCertificatePath)
-        let verifiesCertificate = options.verifiesCertificate
-        let verifiesHostname = options.verifiesHostname
         sec_protocol_options_set_verify_block(
             tlsOptions.securityProtocolOptions,
             { _, trustRef, complete in
-                guard verifiesCertificate else { complete(true); return }
-                let trust = sec_trust_copy_ref(trustRef).takeRetainedValue()
-                let policy = SecPolicyCreateSSL(true, verifiesHostname ? (host as CFString) : nil)
-                SecTrustSetPolicies(trust, policy)
-                if let anchors, !anchors.isEmpty {
-                    SecTrustSetAnchorCertificates(trust, anchors as CFArray)
-                    SecTrustSetAnchorCertificatesOnly(trust, true)
-                }
-                complete(SecTrustEvaluateWithError(trust, nil))
+                complete(Self.evaluate(sec_trust_copy_ref(trustRef).takeRetainedValue(), under: trustPolicy))
             },
             verifyQueue)
 
@@ -205,6 +201,36 @@ final class TeradataTLSTransport: TeradataTransport {
             return start..<(start + needle.count)
         }
         return nil
+    }
+
+    static func trustPolicy(for options: TeradataTLSOptions, host: String) throws -> TeradataTrustPolicy {
+        guard options.verifiesCertificate else { return .acceptAny }
+        let hostname = options.verifiesHostname ? host : nil
+        if !options.caCertificatePath.trimmingCharacters(in: .whitespaces).isEmpty {
+            guard let anchors = loadAnchors(options.caCertificatePath) else {
+                throw TeradataWireError.connectionFailed(
+                    "the CA certificate file \(options.caCertificatePath) could not be read as a certificate")
+            }
+            return .anchors(anchors, hostname: hostname)
+        }
+        guard let hostname else {
+            throw TeradataWireError.connectionFailed("Verify CA has no CA certificate to check the server against")
+        }
+        return .systemTrust(hostname: hostname)
+    }
+
+    private static func evaluate(_ trust: SecTrust, under policy: TeradataTrustPolicy) -> Bool {
+        switch policy {
+        case .acceptAny:
+            return true
+        case .systemTrust(let hostname):
+            SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, hostname as CFString))
+        case .anchors(let anchors, let hostname):
+            SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, hostname as CFString?))
+            SecTrustSetAnchorCertificates(trust, anchors as CFArray)
+            SecTrustSetAnchorCertificatesOnly(trust, true)
+        }
+        return SecTrustEvaluateWithError(trust, nil)
     }
 
     private static func loadAnchors(_ path: String) -> [SecCertificate]? {

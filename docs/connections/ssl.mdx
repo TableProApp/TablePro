@@ -98,7 +98,7 @@ Enter the key's passphrase in **Key Passphrase**, which appears once **Client Ke
 
 ## On iPhone and iPad
 
-Four modes, Preferred excluded. MySQL, MariaDB, PostgreSQL, Redshift, and Redis get **CA Certificate**, **Client Certificate**, and **Client Key** rows alongside them; Oracle gets the four modes with no certificate rows, and SQL Server only Disabled and Required.
+Four modes, Preferred excluded. MySQL, MariaDB, PostgreSQL, Redshift, and Redis get **CA Certificate**, **Client Certificate**, and **Client Key** rows alongside them. Oracle gets Disabled, Required, and Verify Identity with no certificate rows, so Verify Identity checks the server against the system trust store; an Oracle connection saved with Verify CA does not connect until its mode changes. SQL Server gets only Disabled and Required.
 
 Each row takes a file or pasted text. **Client Certificate** also accepts a PKCS#12 (`.p12` or `.pfx`) and fills in both the certificate and its key from it. iOS cannot read a `.p12` exported without a password, and rejects a private key carrying its own passphrase: strip the passphrase or export a `.p12`.
 

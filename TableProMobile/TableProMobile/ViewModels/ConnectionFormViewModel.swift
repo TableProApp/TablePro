@@ -219,6 +219,15 @@ final class ConnectionFormViewModel {
         )
     }
 
+    var offersOracleVerifyCa: Bool {
+        existingConnection?.sslConfiguration?.mode == .verifyCa
+    }
+
+    var oracleSSLModeNote: String? {
+        guard type == .oracle, oracleSSLMode == .verifyCa else { return nil }
+        return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+    }
+
     private var effectiveSSLMode: SSLConfiguration.SSLMode? {
         switch type {
         case .sqlite, .duckdb: nil

@@ -42,7 +42,6 @@ final class OracleDriverTests: XCTestCase {
         let mode: SSLConfiguration.SSLMode
         switch config["ORACLE_TEST_SSL_MODE"] ?? "disable" {
         case "require": mode = .require
-        case "verifyCa": mode = .verifyCa
         case "verifyFull": mode = .verifyFull
         default: mode = .disable
         }

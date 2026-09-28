@@ -156,7 +156,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: config.database.isEmpty ? nil : config.database,
             logMech: logMech,
             transactionMode: transactionMode,
-            tls: TeradataSSLMapping.tlsOptions(for: config.ssl))
+            tls: try TeradataSSLMapping.tlsOptions(for: config.ssl))
         let connection = TeradataAsyncConnection(config: coreConfig)
         try await connection.connect()
         self.connection = connection

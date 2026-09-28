@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Verify CA in the SSL mode picker for new Oracle connections on iPhone and iPad.
+
+### Fixed
+
+- Teradata widening an unreadable CA file to the system trust store.
+
+### Security
+
+- Verify CA without a CA certificate accepting a certificate for any host on Kafka, Oracle and Teradata.
+
 ## [0.76.0] - 2026-09-28
 
 Agent mode: one AI session that works across the whole connection window, with every statement it ran.

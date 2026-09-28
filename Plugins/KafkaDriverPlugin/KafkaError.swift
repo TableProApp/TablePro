@@ -21,6 +21,7 @@ enum KafkaError: LocalizedError {
     case brokerUnreachable(nodeId: Int32, address: String, reason: String)
     case partitionsLedElsewhere(topic: String, partitions: [Int32])
     case partitionsHaveNoLeader(topic: String, partitions: [Int32])
+    case verifyCaNeedsCertificate
 
     var errorDescription: String? {
         switch self {
@@ -125,6 +126,8 @@ enum KafkaError: LocalizedError {
                 KafkaPartitionList.describe(partitions),
                 topic
             )
+        case .verifyCaNeedsCertificate:
+            return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
         }
     }
 }
