@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Welcome window toolbar growing and captioning its search field after choosing Icon and Text.
 - Syntax error on opening, paging or filtering a Cassandra or ScyllaDB table.
 - Save dropping edited numbers, dates, UUIDs and booleans on Cassandra and ScyllaDB while reporting success.
 - `decimal` and `varint` values shown as hex, and `time` values cut to milliseconds, on Cassandra and ScyllaDB.

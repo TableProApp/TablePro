@@ -8,6 +8,25 @@ import SwiftUI
 import TableProConnectionLibrary
 
 @MainActor
+private final class WelcomeWindow: NSWindow {
+    override var toolbar: NSToolbar? {
+        didSet {
+            guard let toolbar else { return }
+            Self.fixAtIconOnly(toolbar)
+        }
+    }
+
+    private static func fixAtIconOnly(_ toolbar: NSToolbar) {
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        toolbar.autosavesConfiguration = false
+        if #available(macOS 15.0, *) {
+            toolbar.allowsDisplayModeCustomization = false
+        }
+    }
+}
+
+@MainActor
 internal final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     internal static let contentSize = NSSize(width: 900, height: 600)
 
@@ -30,9 +49,8 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         controller.viewModel.focusList()
     }
 
-    private init(viewModel: WelcomeViewModel) {
-        self.viewModel = viewModel
-        let window = NSWindow(
+    internal static func makeWelcomeWindow() -> NSWindow {
+        let window = WelcomeWindow(
             contentRect: NSRect(origin: .zero, size: Self.contentSize),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
@@ -46,13 +64,14 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         window.isRestorable = false
         window.tabbingMode = .disallowed
         window.collectionBehavior.insert([.fullScreenNone, .fullScreenDisallowsTiling])
-
-        let toolbar = NSToolbar(identifier: "com.TablePro.welcome.toolbar")
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-        window.toolbar = toolbar
+        window.toolbar = NSToolbar(identifier: "com.TablePro.welcome.toolbar")
         window.toolbarStyle = .unified
+        return window
+    }
 
+    private init(viewModel: WelcomeViewModel) {
+        self.viewModel = viewModel
+        let window = Self.makeWelcomeWindow()
         window.contentViewController = WelcomeSplitViewController(viewModel: viewModel)
         window.contentMinSize = Self.contentSize
         window.contentMaxSize = Self.contentSize
