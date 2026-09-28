@@ -250,6 +250,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let cancellation = activeBrowse.begin()
         defer { activeBrowse.end(cancellation) }
         let rawResult = try await connectionActor.executeQuery(query, cancellation: cancellation)
+        if let refusal = CassandraRowWriter.unappliedInsertRefusal(
+            statement: query, columns: rawResult.columns, rows: rawResult.rows
+        ) {
+            throw CassandraPluginError.queryFailed(refusal)
+        }
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -285,7 +290,16 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     /// trimming them afterwards, which is what the protocol's default does with a cap.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
         if let parameters {
-            return try await executeParameterized(query: query, parameters: parameters)
+            let whole = try await executeParameterized(query: query, parameters: parameters)
+            guard let rowCap, rowCap > 0, whole.rows.count > rowCap else { return whole }
+            return PluginQueryResult(
+                columns: whole.columns,
+                columnTypeNames: whole.columnTypeNames,
+                rows: Array(whole.rows.prefix(rowCap)),
+                rowsAffected: rowCap,
+                executionTime: whole.executionTime,
+                isTruncated: true
+            )
         }
         guard let rowCap, rowCap > 0, let bounded = try await executeBoundedQuery(query: query, rowCap: rowCap) else {
             return try await execute(query: query)

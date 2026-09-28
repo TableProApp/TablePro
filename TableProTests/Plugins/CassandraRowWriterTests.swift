@@ -130,6 +130,18 @@ struct CassandraRowWriterTests {
         }
     }
 
+    @Test("Undoing a delete writes the row back whole, with a plain INSERT")
+    func restoreWritesTheRowBack() {
+        let restored = CassandraRowWriter.restoreInserts(
+            keyspace: "shop", table: "events", columns: columns, rows: [original]
+        )
+
+        #expect(restored.count == 1)
+        #expect(restored.first?.statement
+            == #"INSERT INTO "shop"."events" ("tenant", "day", "ts", "name", "n") VALUES (?, ?, ?, ?, ?)"#)
+        #expect(restored.first?.parameters == original)
+    }
+
     @Test("An insert the server did not apply because the key is taken is a refusal, anything else is not")
     func unappliedInsertIsNamed() {
         let insert = #"INSERT INTO "t" ("id") VALUES (?) IF NOT EXISTS"#

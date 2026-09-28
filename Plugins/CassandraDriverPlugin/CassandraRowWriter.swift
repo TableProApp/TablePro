@@ -42,6 +42,23 @@ enum CassandraRowWriter {
         }
     }
 
+    /// Writes deleted rows back as they were, key included, to undo a delete. A plain `INSERT` rather than
+    /// `IF NOT EXISTS`: restoring a row means making it what it was, whatever took its place since.
+    static func restoreInserts(
+        keyspace: String?,
+        table: String,
+        columns: [String],
+        rows: [[PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])] {
+        let target = CassandraBrowseRenderer.qualifiedTable(keyspace: keyspace, table: table)
+        return rows.map { row in
+            let width = min(row.count, columns.count)
+            let names = columns.prefix(width).map(CassandraBrowseRenderer.quote).joined(separator: ", ")
+            let markers = Array(repeating: "?", count: width).joined(separator: ", ")
+            return ("INSERT INTO \(target) (\(names)) VALUES (\(markers))", Array(row.prefix(width)))
+        }
+    }
+
     /// An `INSERT … IF NOT EXISTS` that found its key taken answers with `[applied] = false` and the row already
     /// there, which the server reports as a success.
     static func unappliedInsertRefusal(statement: String, columns: [String], rows: [[PluginCellValue]]) -> String? {

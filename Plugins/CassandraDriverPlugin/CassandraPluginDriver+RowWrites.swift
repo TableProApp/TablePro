@@ -26,4 +26,15 @@ extension CassandraPluginDriver {
             insertedRowData: insertedRowData
         )
     }
+
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        CassandraRowWriter.restoreInserts(keyspace: schema, table: table, columns: columns, rows: rows)
+    }
 }

@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generic icon for ScyllaDB, libSQL, Teradata, Trino and Cloudflare R2 SQL in the iOS widget, and for ScyllaDB in the iOS app.
 - SSL/TLS hint recommending settings for DataStax Astra, which does not connect.
 - A result on a plugin-browsed engine taking the selected tab's table when it finished in another tab.
+- Saves on engines whose plugin writes the rows running changes out of order after an edit was undone.
 
 ## [0.76.0] - 2026-09-28
 

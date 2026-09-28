@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 struct PluginKeyedChangesTests {
     @Test("Every row gets its own key, and the key agrees across the changes and the sets")
@@ -34,6 +35,29 @@ struct PluginKeyedChangesTests {
         #expect(keyed.insertedRowData[keys[1]] == ["a"])
         #expect(keyed.insertedRowData[keys[3]] == ["b"])
         #expect(keyed.insertedRowData[keys[2]] == nil)
+    }
+
+    /// `PendingChanges` swap-removes a cancelled change, so the array stops matching edit order. A delete
+    /// followed by a new row on the same key only saves in that order, so a plugin is handed the changes by
+    /// sequence, the way the host's own generator reads them.
+    @Test("A plugin receives the changes in the order they were made, not array order")
+    func changesArriveInEditOrder() {
+        let replacement = RowID.inserted(UUID())
+        let changes = [
+            RowChange(rowID: replacement, type: .insert, sequence: 5),
+            RowChange(rowID: .existing(3), type: .update, originalRow: ["3"], sequence: 2),
+            RowChange(rowID: .existing(9), type: .delete, originalRow: ["9"], sequence: 1)
+        ]
+
+        let keyed = PluginKeyedChanges(
+            changes: changes,
+            insertedRowData: [replacement: ["9"]],
+            deletedRowIDs: [.existing(9)],
+            insertedRowIDs: [replacement]
+        )
+
+        #expect(keyed.changes.map(\.type) == [.delete, .update, .insert])
+        #expect(keyed.rowIDs == [.existing(9), .existing(3), replacement])
     }
 
     @Test("A row marked in a set but carried by no change is left out")
