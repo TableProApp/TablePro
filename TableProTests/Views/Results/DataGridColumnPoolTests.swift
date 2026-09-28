@@ -59,6 +59,29 @@ struct DataGridColumnPoolTests {
         #expect(dataColumns(in: tableView).count == 3)
     }
 
+    /// A column with no sort prototype is one AppKit does not treat as sortable, so a heading click leaves
+    /// `sortDescriptors` alone and the header's click-versus-drag test reads it as no sort at all.
+    @Test("reconcile gives a column no sort prototype on a grid that cannot sort by column")
+    func reconcile_dropsSortPrototypeWhenColumnSortIsUnavailable() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+
+        pool.reconcile(
+            tableView: tableView, schema: schema, columnTypes: makeColumnTypes(count: 2), savedLayout: nil,
+            isEditable: true, hiddenColumnNames: [], firstClickSortDirection: .ascending,
+            widthCalculator: defaultWidthCalculator
+        )
+        #expect(dataColumns(in: tableView).allSatisfy { $0.sortDescriptorPrototype != nil })
+
+        pool.reconcile(
+            tableView: tableView, schema: schema, columnTypes: makeColumnTypes(count: 2), savedLayout: nil,
+            isEditable: true, hiddenColumnNames: [], firstClickSortDirection: .ascending, supportsColumnSort: false,
+            widthCalculator: defaultWidthCalculator
+        )
+        #expect(dataColumns(in: tableView).allSatisfy { $0.sortDescriptorPrototype == nil })
+    }
+
     @Test("reconcile does not shrink pool when column count drops")
     func reconcile_doesNotShrinkPoolWhenColumnCountDrops() {
         let pool = DataGridColumnPool()

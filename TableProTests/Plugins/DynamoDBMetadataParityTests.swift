@@ -54,7 +54,7 @@ struct DynamoDBMetadataParityTests {
         #expect(capabilities.supportsSSH == DynamoDBPlugin.supportsSSH)
         #expect(capabilities.supportsSSL == DynamoDBPlugin.supportsSSL)
         #expect(capabilities.supportsReadOnlyMode == DynamoDBPlugin.supportsReadOnlyMode)
-        #expect(capabilities.exactRowCountIsBilledScan)
+        #expect(capabilities.exactRowCountIsFullScan)
     }
 
     @Test("Editor metadata matches the plugin")

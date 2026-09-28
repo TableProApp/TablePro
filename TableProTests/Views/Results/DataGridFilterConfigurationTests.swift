@@ -113,6 +113,35 @@ struct DataGridFilterConfigurationTests {
         #expect(!actions.contains(#selector(TableViewCoordinator.filterWithColumn(_:))))
     }
 
+    @Test("Applying a configuration carries the column sort flag")
+    func applyCarriesColumnSort() {
+        let coordinator = makeCoordinator(columns: ["id"], values: ["1"])
+        var configuration = DataGridConfiguration()
+        #expect(configuration.supportsColumnSort)
+        configuration.supportsColumnSort = false
+
+        coordinator.apply(configuration: configuration, isEditable: false)
+
+        #expect(!coordinator.supportsColumnSort)
+    }
+
+    @Test("A grid whose rows cannot be ordered by a column offers no sort in its header menu")
+    func noColumnSortRemovesSortCommands() throws {
+        let sortable = makeCoordinator(columns: ["id", "name"], values: ["1", "a"])
+        attachTableView(to: sortable, columnCount: 2)
+        let unsortable = makeCoordinator(columns: ["id", "name"], values: ["1", "a"])
+        unsortable.supportsColumnSort = false
+        attachTableView(to: unsortable, columnCount: 2)
+
+        let sortableActions = try headerMenuActions(sortable)
+        let unsortableActions = try headerMenuActions(unsortable)
+
+        #expect(sortableActions.contains(#selector(TableViewCoordinator.sortAscending(_:))))
+        #expect(!unsortableActions.contains(#selector(TableViewCoordinator.sortAscending(_:))))
+        #expect(!unsortableActions.contains(#selector(TableViewCoordinator.sortDescending(_:))))
+        #expect(unsortableActions.contains(#selector(TableViewCoordinator.hideColumn(_:))))
+    }
+
     @Test("A default grid offers both")
     func defaultGridOffersBoth() throws {
         let coordinator = makeCoordinator(columns: ["id", "name"], values: ["1", "a"])

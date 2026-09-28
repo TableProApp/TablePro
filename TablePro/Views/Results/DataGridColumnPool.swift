@@ -87,6 +87,7 @@ final class DataGridColumnPool {
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
         firstClickSortDirection: SortDirection,
+        supportsColumnSort: Bool = true,
         supportsValueFilter: Bool = true,
         widthCalculator: (String, Int) -> CGFloat
     ) -> Bool {
@@ -118,6 +119,7 @@ final class DataGridColumnPool {
                     width: resolvedWidth,
                     isEditable: isEditable,
                     firstClickSortDirection: firstClickSortDirection,
+                    supportsColumnSort: supportsColumnSort,
                     supportsValueFilter: supportsValueFilter
                 )
                 let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
@@ -264,6 +266,7 @@ final class DataGridColumnPool {
         width: CGFloat,
         isEditable: Bool,
         firstClickSortDirection: SortDirection,
+        supportsColumnSort: Bool = true,
         supportsValueFilter: Bool = true
     ) {
         if !(column.headerCell is SortableHeaderCell) || column.headerCell.stringValue != name {
@@ -297,6 +300,12 @@ final class DataGridColumnPool {
         }
         if column.isEditable != isEditable {
             column.isEditable = isEditable
+        }
+        guard supportsColumnSort else {
+            if column.sortDescriptorPrototype != nil {
+                column.sortDescriptorPrototype = nil
+            }
+            return
         }
         let prototypeAscending = firstClickSortDirection == .ascending
         if column.sortDescriptorPrototype?.key != name

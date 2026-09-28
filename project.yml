@@ -422,7 +422,11 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLMetadata.swift
+      - Plugins/CassandraDriverPlugin/CassandraBoundValue.swift
+      - Plugins/CassandraDriverPlugin/CassandraBrowseStatement.swift
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
+      - Plugins/CassandraDriverPlugin/CassandraResumePoints.swift
+      - Plugins/CassandraDriverPlugin/CassandraVarint.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift

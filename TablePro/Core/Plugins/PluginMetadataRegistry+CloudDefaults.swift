@@ -39,7 +39,7 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: true,
                     supportsDropIndex: true,
                     supportsModifyPrimaryKey: false,
-                    exactRowCountIsBilledScan: true
+                    exactRowCountIsFullScan: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",

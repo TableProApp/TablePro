@@ -1462,9 +1462,15 @@ final class MainContentCoordinator: ObservableObject {
         if tab.tabType != .table, QueryClassifier.isExplainStatement(sql) {
             return (nil, false)
         }
-        let usesNoSQLBrowsing = services.pluginManager.editorLanguage(for: connection.type) != .sql
-            || (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
-                .queryBuildingPluginDriver != nil
+        let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)
+        let pluginBuildsBrowse = (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
+            .queryBuildingPluginDriver != nil
+        /// A SQL engine whose plugin writes its own browse gets no table from a query's text, and the name a
+        /// query tab carries came from an earlier result or an older build, so it can name another table.
+        if tab.tabType != .table, editorLanguage == .sql, pluginBuildsBrowse {
+            return (nil, false)
+        }
+        let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if usesNoSQLBrowsing {
             let name = tabManager.selectedTab?.tableContext.tableName
             return (name, name != nil)
@@ -1528,7 +1534,7 @@ final class MainContentCoordinator: ObservableObject {
         if tab.tabType == .query {
             let tabId = tab.id
             let capturedSort = newState
-            guard let rerun = tab.sortRerun else {
+            guard supportsColumnSort, let rerun = tab.sortRerun else {
                 sortHeldRows(by: newState, tabId: tabId)
                 return
             }
@@ -1568,6 +1574,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
 
+        guard supportsColumnSort else { return }
         let tabId = tab.id
         let capturedSort = newState
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in

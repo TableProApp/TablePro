@@ -628,6 +628,7 @@ final class SortableHeaderView: NSTableHeaderView {
             coordinator.extendColumnSelection(dataIndex)
             return
         }
+        guard coordinator.supportsColumnSort else { return }
 
         let schema = coordinator.identitySchema
         /// The cycle runs over the sort the current result can actually show. An entry whose column

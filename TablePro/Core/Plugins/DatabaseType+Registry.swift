@@ -78,8 +78,8 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsConnectionPooling ?? true
     }
 
-    var exactRowCountIsBilledScan: Bool {
-        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.exactRowCountIsBilledScan ?? false
+    var exactRowCountIsFullScan: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.exactRowCountIsFullScan ?? false
     }
 
     var columnsAreSampled: Bool {

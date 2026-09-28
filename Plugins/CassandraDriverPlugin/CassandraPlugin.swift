@@ -15,7 +15,7 @@ import TableProPluginKit
 
 // MARK: - Plugin Entry Point
 
-internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
+internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, PluginDefaultSortProvider {
     static let pluginName = "Cassandra Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Apache Cassandra and ScyllaDB support via DataStax C driver"
@@ -110,13 +110,18 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         CassandraPluginDriver(config: config)
     }
+
+    func defaultSortHint(forTable table: String) -> DefaultSortHint {
+        .suppress
+    }
 }
 
 // MARK: - Plugin Driver
 
 internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let connectionActor = CassandraConnectionActor()
+    let connectionActor = CassandraConnectionActor()
+    let activeBrowse = CassandraActiveBrowse()
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentKeyspace: String?
 
@@ -214,6 +219,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func disconnect() {
+        activeBrowse.cancel()
         Task.detached(priority: .utility) { [connectionActor] in
             await connectionActor.close()
         }
@@ -235,6 +241,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse)
+        }
         let rawResult = try await connectionActor.executeQuery(query)
         return PluginQueryResult(
             columns: rawResult.columns,
@@ -249,6 +258,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         query: String,
         parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse)
+        }
         let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
         return PluginQueryResult(
             columns: rawResult.columns,
@@ -262,6 +274,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse.cappedAt(rowCap: rowCap), rowCap: rowCap)
+        }
         guard let bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap) as PluginQueryResult?
         else {
             return nil
@@ -280,6 +295,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return streamBrowse(browse)
+        }
         let cql = stripTrailingSemicolon(query)
         return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
@@ -510,20 +528,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let ks = resolveKeyspace(schema)
-        // Cassandra doesn't have a cheap row count — use a bounded count
-        let countQuery = "SELECT COUNT(*) FROM \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(table))\" LIMIT 100001"
-        let countResult = try? await execute(query: countQuery)
-        let rowCount: Int64? = {
-            guard let row = countResult?.rows.first, let countStr = row.first?.asText else { return nil }
-            return Int64(countStr)
-        }()
-
-        return PluginTableMetadata(
-            tableName: table,
-            rowCount: rowCount,
-            engine: "Cassandra"
-        )
+        PluginTableMetadata(tableName: table, engine: "Cassandra")
     }
 
     // MARK: - Database (Keyspace) Operations

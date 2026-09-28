@@ -80,7 +80,7 @@ extension MCPConnectionBridge {
         let databaseType = try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let dialect = try? resolveSQLDialect(for: databaseType)
-        let pagination = PaginationCapability.of(databaseType)
+        let pagination = await MainActor.run { PluginManager.shared.paginationCapability(for: databaseType) }
         let limit = try MCPConnectionBridge.browseLimit(for: request, pagination: pagination)
 
         let sql = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver -> String in

@@ -13,7 +13,7 @@ extension PluginMetadataRegistry {
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
             oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
             duckdbDialect, duckdbColumnTypes,
-            cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
+            cassandraDialect, cassandraColumnTypes, cassandraCapabilities, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         ) = registryDefaultIngredients()
 
@@ -799,28 +799,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#26A0D8",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
-                    supportsImport: false,
-                    supportsExport: true,
-                    supportsSSH: true,
-                    supportsSSL: true,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: false,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true,
-                    supportsModifyColumn: false,
-                    supportsAddIndex: false,
-                    supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false,
-                    supportsClientKeyPassphrase: true,
-                    pagination: .leadingRowsOnly(
-                        maximumRows: SettingsValidationRules.defaultPageSizeRange.upperBound
-                    )
-                ),
+                capabilities: cassandraCapabilities,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "default",
@@ -865,28 +844,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#6B2EE3",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
-                    supportsImport: false,
-                    supportsExport: true,
-                    supportsSSH: true,
-                    supportsSSL: true,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: false,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true,
-                    supportsModifyColumn: false,
-                    supportsAddIndex: false,
-                    supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false,
-                    supportsClientKeyPassphrase: true,
-                    pagination: .leadingRowsOnly(
-                        maximumRows: SettingsValidationRules.defaultPageSizeRange.upperBound
-                    )
-                ),
+                capabilities: cassandraCapabilities,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "default",
