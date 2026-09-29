@@ -117,6 +117,19 @@ final class RowDetailViewModel {
         return columnDetail(for: column.name)?.isNullable ?? column.isNullable
     }
 
+    func isEditableAsText(at index: Int) -> Bool {
+        let rowCells = cells(at: currentIndex)
+        guard index >= 0, index < rowCells.count else { return false }
+        switch rowCells[index] {
+        case .null, .text:
+            return true
+        case .truncatedText:
+            return hasOverride(forRow: currentIndex, cellIndex: index)
+        case .binary:
+            return false
+        }
+    }
+
     // MARK: - Row Navigation
 
     var showsRowNavigator: Bool { !isEditing }
@@ -148,12 +161,12 @@ final class RowDetailViewModel {
     }
 
     func setEditedValue(_ value: String, at index: Int) {
-        guard index < editedValues.count else { return }
+        guard index < editedValues.count, isEditableAsText(at: index) else { return }
         editedValues[index] = value
     }
 
     func toggleNull(at index: Int) {
-        guard index < editedValues.count else { return }
+        guard index < editedValues.count, isEditableAsText(at: index) else { return }
         if editedValues[index] == nil {
             editedValues[index] = ""
         } else {
@@ -162,20 +175,22 @@ final class RowDetailViewModel {
     }
 
     var hasUnsavedEdits: Bool {
-        isEditing && !editedChanges.isEmpty
+        isEditing && !editedColumnIndices.isEmpty
+    }
+
+    private var editedColumnIndices: [Int] {
+        let original = currentRow
+        return columns.indices.filter { index in
+            guard index < editedValues.count, !isPrimaryKey(at: index), isEditableAsText(at: index) else {
+                return false
+            }
+            let oldValue = index < original.count ? original[index] : nil
+            return oldValue != editedValues[index]
+        }
     }
 
     private var editedChanges: [(column: String, value: String?)] {
-        let original = currentRow
-        var changes: [(column: String, value: String?)] = []
-        for (index, column) in columns.enumerated() {
-            guard !isPrimaryKey(at: index), index < editedValues.count else { continue }
-            let oldValue = index < original.count ? original[index] : nil
-            let newValue = editedValues[index]
-            guard oldValue != newValue else { continue }
-            changes.append((column: column.name, value: newValue))
-        }
-        return changes
+        editedColumnIndices.map { (column: columns[$0].name, value: editedValues[$0]) }
     }
 
     // MARK: - Save
@@ -242,15 +257,14 @@ final class RowDetailViewModel {
     private func execute(sql: String, session: ConnectionSession) async -> Bool {
         isSaving = true
         defer { isSaving = false }
+        let savedCells = Dictionary(uniqueKeysWithValues: editedColumnIndices.map { index in
+            (index, editedValues[index].map { Cell.text($0) } ?? .null)
+        })
 
         do {
             try await session.driver.executeWrite([sql])
             guard currentIndex >= 0, currentIndex < rows.count else { return false }
-            let newCells = editedValues.map { value -> Cell in
-                value.map { Cell.text($0) } ?? .null
-            }
-            rows[currentIndex] = Row(cells: newCells)
-            fullValueOverrides[currentIndex] = nil
+            commitSavedCells(savedCells, toRow: currentIndex)
             isEditing = false
             showSaveSuccess = true
             onSaved?()
@@ -261,6 +275,15 @@ final class RowDetailViewModel {
             operationError = ErrorClassifier.classify(error, context: context)
             return false
         }
+    }
+
+    private func commitSavedCells(_ savedCells: [Int: Cell], toRow rowIndex: Int) {
+        let cells = rows[rowIndex].cells.enumerated().map { index, cell in
+            savedCells[index] ?? cell
+        }
+        rows[rowIndex] = Row(cells: cells)
+        let overrides = (fullValueOverrides[rowIndex] ?? [:]).filter { savedCells[$0.key] == nil }
+        fullValueOverrides[rowIndex] = overrides.isEmpty ? nil : overrides
     }
 
     private func scheduleSuccessDismiss() {
@@ -274,15 +297,17 @@ final class RowDetailViewModel {
 
     // MARK: - Lazy Load
 
-    func loadFullValue(ref: CellRef, cellIndex: Int) async {
+    func loadFullValue(ref: CellRef, forRow rowIndex: Int, cellIndex: Int) async {
         guard let loadFullValueProvider else { return }
         loadingCell = cellIndex
         defer { loadingCell = nil }
         do {
             let fullValue = try await loadFullValueProvider(ref)
-            var rowOverrides = fullValueOverrides[currentIndex] ?? [:]
+            var rowOverrides = fullValueOverrides[rowIndex] ?? [:]
             rowOverrides[cellIndex] = fullValue
-            fullValueOverrides[currentIndex] = rowOverrides
+            fullValueOverrides[rowIndex] = rowOverrides
+            guard isEditing, rowIndex == currentIndex, cellIndex < editedValues.count else { return }
+            editedValues[cellIndex] = fullValue
         } catch {
             operationError = AppError(
                 category: .network,
