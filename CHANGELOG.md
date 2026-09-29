@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
 - Missing Terminate button on ClickHouse server dashboard sessions that MCP could terminate.
 - SQLite server dashboard showing Cache Size as "-2000 pages".
+- Untranslatable "% used" on the Typesense server dashboard.
 
 ## [0.76.1] - 2026-09-29
 
