@@ -217,7 +217,17 @@ final class ImportService: ObservableObject {
             columnMapping: columnMapping,
             isCancelled: { progress.isCancelled }
         )
+        defer { reportNameHazards(sink.nameHazardStatements) }
         return try await plugin.performImport(source: source, sink: sink, progress: progress)
+    }
+
+    /// The file ran on the same session as the editor, so a temporary table it made shadows a real one there
+    /// for as long as the connection stays open, and has to reach the catalog like any statement the editor ran.
+    private func reportNameHazards(_ statements: [String]) {
+        guard !statements.isEmpty else { return }
+        CatalogChangeService.post(
+            .statementsRan(connectionId: connection.id, statements: statements, databaseType: connection.type)
+        )
     }
 
     /// An import the user cancelled reports nothing, matching what history already does with one

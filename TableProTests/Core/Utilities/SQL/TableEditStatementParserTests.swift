@@ -214,7 +214,7 @@ struct TableEditStatementParserTests {
         #expect(try Self.parse("BEGIN", .postgresql) == .beginsTransaction)
         #expect(try Self.parse("START TRANSACTION", .mysql) == .beginsTransaction)
         #expect(try Self.parse("BEGIN TRAN", .mssql) == .beginsTransaction)
-        #expect(try Self.parse("BEGIN TRY", .mssql) == .other)
+        #expect(try Self.parse("BEGIN TRY", .mssql) == .controlsFlow)
         #expect(try Self.parse("BEGIN IMMEDIATE", .sqlite) == .beginsTransaction)
         #expect(try Self.parse("BEGIN NULL; END", .oracle) == .runsUnseenCode)
         #expect(try Self.parse("COMMIT", .postgresql) == .commits)
@@ -232,6 +232,29 @@ struct TableEditStatementParserTests {
         #expect(try Self.parse("RELEASE s", .sqlite) == .commits)
         #expect(try Self.parse("SET IMPLICIT_TRANSACTIONS ON", .mssql) == .losesTransactionTracking)
         #expect(try Self.parse("SET ANSI_NULLS, IMPLICIT_TRANSACTIONS ON", .mssql) == .losesTransactionTracking)
+    }
+
+    /// SQL Server runs a batch whole, so a statement after one of these may never have run.
+    @Test("T-SQL control flow is read as such, and only on SQL Server")
+    func sqlServerControlFlow() throws {
+        for sql in [
+            "IF OBJECT_ID('dbo.people') IS NOT NULL DROP TABLE dbo.people",
+            "ELSE SELECT 1",
+            "WHILE @i < 3 SET @i += 1",
+            "GOTO done",
+            "RETURN",
+            "BREAK",
+            "done: SELECT 1",
+            "BEGIN TRY DROP TABLE dbo.people",
+            "END TRY BEGIN CATCH SELECT 1",
+            "END CATCH"
+        ] {
+            #expect(try Self.parse(sql, .mssql) == .controlsFlow, "\(sql)")
+        }
+        #expect(try Self.parse("BEGIN TRANSACTION", .mssql) == .beginsTransaction)
+        #expect(try Self.parse("SELECT :id FROM dual", .oracle) == .other)
+        #expect(try Self.parse("IF 1 = 1 THEN SELECT 1", .mysql) == .other)
+        #expect(try Self.parse("END TRY", .postgresql) == .commits)
     }
 
     @Test("A statement that moves where a bare name points is read as doing so")

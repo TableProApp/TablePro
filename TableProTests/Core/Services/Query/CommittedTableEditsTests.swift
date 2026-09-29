@@ -281,6 +281,13 @@ struct CommittedTableEditsTests {
         )
     }
 
+    @Test("A SQL Server run holding control flow adopts nothing, since a statement in its batch may have been skipped")
+    func controlFlowInsideABatch() {
+        #expect(Self.sqlServerEdits(["GOTO done", "DROP TABLE dbo.people", "done: SELECT 1"]).isEmpty)
+        #expect(Self.sqlServerEdits(["DROP TABLE dbo.a", "IF 1 = 0 BEGIN", "DROP TABLE dbo.b", "END"]).isEmpty)
+        #expect(Self.sqlServerEdits(["BEGIN TRY", "DROP TABLE dbo.people", "END TRY BEGIN CATCH", "END CATCH"]).isEmpty)
+    }
+
     // MARK: - Name context and hazards
 
     @Test("USE moves a MySQL bare name onto the database it selected")
@@ -481,6 +488,58 @@ struct SucceededStatementsProbeTests {
         #expect(created?.commit == .statementLeftSession(.unknown))
         let called = await Self.probe("CALL rebuild()", on: .mysql, state: .idle)
         #expect(called?.statements == ["CALL rebuild()"])
+    }
+}
+
+struct ExecutedStatementTextsTests {
+    /// `GO 2` runs a rename chain twice, which leaves every table where it started, so the chain has
+    /// to be replayed twice too.
+    @Test("A batch run more than once with GO n reports its statements once per run")
+    func repeatedBatch() {
+        let grammar = DatabaseType.mssql.lexicalGrammar
+        let batches = QueryBatchPlanner.batches(
+            in: "EXEC sp_rename 'dbo.a', 'tmp'; EXEC sp_rename 'dbo.b', 'a'; EXEC sp_rename 'dbo.tmp', 'b'\nGO 2",
+            model: QueryStatementModel.forDatabaseType(.mssql),
+            grammar: grammar
+        )
+        #expect(batches.count == 1)
+        let statements = batches.flatMap(\.executedStatementTexts)
+        #expect(statements.count == 6)
+        var hazards = TableNameHazards()
+        let edits = CommittedTableEdits.edits(
+            in: SucceededStatements(
+                scope: DatabaseScope(connectionId: UUID(), database: "sales", schema: "dbo"),
+                databaseType: .mssql,
+                statements: statements,
+                commit: .runStartedIn(.idle, endedIn: .idle, appTransaction: .none)
+            ),
+            grammar: grammar,
+            hazards: &hazards
+        )
+        let placed = { (name: String) in TablePlacement(database: "sales", schema: "dbo", name: name) }
+        let swap: [TableCatalogEdit] = [
+            .renamed(placed("a"), to: "tmp", kind: .table),
+            .renamed(placed("b"), to: "a", kind: .table),
+            .renamed(placed("tmp"), to: "b", kind: .table)
+        ]
+        #expect(edits == swap + swap)
+    }
+}
+
+struct ImportNameHazardTests {
+    /// The import runs on the editor's own session, so a temporary table it makes shadows the real
+    /// one there for every later run.
+    @Test("An imported file's temporary tables and procedure calls are kept for the catalog, and nothing else")
+    func importRecordsHazards() async throws {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let sink = ImportDataSinkAdapter(driver: ScriptAnsweringDriver(connection: connection), databaseType: .mysql)
+
+        try await sink.execute(statement: "CREATE TEMPORARY TABLE people (id int)")
+        try await sink.execute(statement: "INSERT INTO people VALUES (1)")
+        try await sink.execute(statement: "DROP TABLE IF EXISTS orders")
+        try await sink.execute(statement: "CALL rebuild()")
+
+        #expect(sink.nameHazardStatements == ["CREATE TEMPORARY TABLE people (id int)", "CALL rebuild()"])
     }
 }
 

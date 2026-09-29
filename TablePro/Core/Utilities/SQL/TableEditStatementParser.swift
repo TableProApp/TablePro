@@ -40,6 +40,10 @@ enum TableEditStatement: Equatable, Sendable {
     /// A procedure, a prepared statement or an anonymous block: code the server runs that the text
     /// does not show, and that can create a temporary table or move the schema.
     case runsUnseenCode
+    /// T-SQL's `IF`, `ELSE`, `WHILE`, `GOTO`, `RETURN`, a label, or a `TRY...CATCH` block. SQL Server
+    /// runs a batch whole, so the statements after one of these may have been skipped, or may have
+    /// failed into a `CATCH` without the batch failing.
+    case controlsFlow
     case other
 
     var editsTable: Bool {
@@ -47,7 +51,7 @@ enum TableEditStatement: Equatable, Sendable {
         case .drop, .rename:
             return true
         case .beginsTransaction, .commits, .rollsBack, .rollsBackToSavepoint, .losesTransactionTracking,
-             .selectsDatabase, .losesSchemaContext, .createsTemporaryTable, .runsUnseenCode, .other:
+             .selectsDatabase, .losesSchemaContext, .createsTemporaryTable, .runsUnseenCode, .controlsFlow, .other:
             return false
         }
     }
@@ -59,7 +63,7 @@ enum TableEditStatement: Equatable, Sendable {
         case .createsTemporaryTable, .losesSchemaContext, .runsUnseenCode:
             return true
         case .drop, .rename, .beginsTransaction, .commits, .rollsBack, .rollsBackToSavepoint,
-             .losesTransactionTracking, .selectsDatabase, .other:
+             .losesTransactionTracking, .selectsDatabase, .controlsFlow, .other:
             return false
         }
     }
@@ -82,9 +86,14 @@ enum TableEditStatementParser {
         return .other
     }
 
+    private static let controlFlowKeywords: Set<String> = ["IF", "ELSE", "WHILE", "BREAK", "CONTINUE", "GOTO", "RETURN"]
+
     private static func read(_ sql: String, dialect: TableEditDialect, grammar: SQLLexicalGrammar) -> TableEditStatement {
         var reader = Reader(SQLTokenCursor(sql, grammar: grammar))
         guard let keyword = reader.nextWord() else { return .other }
+        if dialect.branchesInsideBatches, controlFlowKeywords.contains(keyword) || reader.startsLabel() {
+            return .controlsFlow
+        }
         switch keyword {
         case "DROP":
             return reader.drop()
@@ -94,6 +103,7 @@ enum TableEditStatementParser {
             return reader.renameTables()
         case "BEGIN":
             if grammar.contains(.plsqlBlocks) || reader.opensCompoundStatement() { return .runsUnseenCode }
+            if dialect.branchesInsideBatches, reader.namesTryOrCatchBlock() { return .controlsFlow }
             return SqlBlockStructure.beginStartsTransaction(followedBy: reader.peekWord()) ? .beginsTransaction : .other
         case "DECLARE":
             return grammar.contains(.plsqlBlocks) ? .runsUnseenCode : .other
@@ -110,6 +120,7 @@ enum TableEditStatementParser {
         case "RELEASE":
             return .commits
         case "END":
+            if dialect.branchesInsideBatches, reader.namesTryOrCatchBlock() { return .controlsFlow }
             return dialect.endCommits ? reader.commit() : .other
         case "ROLLBACK", "ABORT":
             return reader.rollback()
@@ -278,6 +289,15 @@ private struct Reader {
         guard let name = name() else { return .other }
         let inTemporaryContainer = name.parts.dropLast().contains { dialect.namesTemporaryContainer($0.text) }
         return saysTemporary || inTemporaryContainer ? .createsTemporaryTable(name) : .other
+    }
+
+    /// `done:` before a statement, which a T-SQL `GOTO` can jump to or over.
+    func startsLabel() -> Bool {
+        cursor.peek()?.isSymbol(SQLTokenCursor.colon) == true
+    }
+
+    func namesTryOrCatchBlock() -> Bool {
+        peekWord() == "TRY" || peekWord() == "CATCH"
     }
 
     /// MariaDB's `BEGIN NOT ATOMIC ... END` runs a compound statement, not a transaction.

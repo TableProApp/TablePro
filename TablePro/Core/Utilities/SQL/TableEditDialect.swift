@@ -59,6 +59,9 @@ struct TableEditDialect: Sendable, Equatable {
     /// The containers that hold a session's own temporary objects, `pg_temp` and `pg_temp_3` or
     /// `temp`. A name inside one is never a table the app keeps settings for.
     let temporaryContainers: Set<String>
+    /// SQL Server runs a batch whole, and T-SQL's `IF`, `GOTO` and `TRY...CATCH` can skip a statement
+    /// inside it or swallow its error, so a batch that succeeded is not a list of statements that did.
+    let branchesInsideBatches: Bool
 
     static func of(_ type: DatabaseType) -> TableEditDialect? {
         if type == .clickhouse { return .clickHouse }
@@ -146,7 +149,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: true, commitsDDLImplicitly: false, endCommits: true,
         useSelectsDatabase: false, renameKeepsContainer: true, renamesWithoutTo: false,
         temporaryTablesShadowQualifiedNames: false, temporaryTablesShadowRealOnes: true,
-        temporaryContainers: ["pg_temp"]
+        temporaryContainers: ["pg_temp"], branchesInsideBatches: false
     )
 
     static let mySQL = TableEditDialect(
@@ -154,7 +157,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: false, commitsDDLImplicitly: true, endCommits: false,
         useSelectsDatabase: true, renameKeepsContainer: false, renamesWithoutTo: true,
         temporaryTablesShadowQualifiedNames: true, temporaryTablesShadowRealOnes: true,
-        temporaryContainers: []
+        temporaryContainers: [], branchesInsideBatches: false
     )
 
     static let clickHouse = TableEditDialect(
@@ -162,7 +165,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: false, commitsDDLImplicitly: true, endCommits: false,
         useSelectsDatabase: true, renameKeepsContainer: false, renamesWithoutTo: false,
         temporaryTablesShadowQualifiedNames: false, temporaryTablesShadowRealOnes: true,
-        temporaryContainers: []
+        temporaryContainers: [], branchesInsideBatches: false
     )
 
     /// An attached database is a schema to SQLite, and a bare name can resolve into one, so only a
@@ -172,7 +175,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: false, commitsDDLImplicitly: false, endCommits: true,
         useSelectsDatabase: false, renameKeepsContainer: true, renamesWithoutTo: false,
         temporaryTablesShadowQualifiedNames: false, temporaryTablesShadowRealOnes: true,
-        temporaryContainers: ["temp"]
+        temporaryContainers: ["temp"], branchesInsideBatches: false
     )
 
     /// `a.b` is a schema in the current catalog or the default schema of catalog `a`, whichever
@@ -182,7 +185,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: true, commitsDDLImplicitly: false, endCommits: true,
         useSelectsDatabase: false, renameKeepsContainer: true, renamesWithoutTo: false,
         temporaryTablesShadowQualifiedNames: false, temporaryTablesShadowRealOnes: true,
-        temporaryContainers: ["temp"]
+        temporaryContainers: ["temp"], branchesInsideBatches: false
     )
 
     static let sqlServer = TableEditDialect(
@@ -190,7 +193,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: true, commitsDDLImplicitly: false, endCommits: false,
         useSelectsDatabase: true, renameKeepsContainer: true, renamesWithoutTo: false,
         temporaryTablesShadowQualifiedNames: false, temporaryTablesShadowRealOnes: true,
-        temporaryContainers: ["tempdb"]
+        temporaryContainers: ["tempdb"], branchesInsideBatches: true
     )
 
     static let oracle = TableEditDialect(
@@ -198,7 +201,7 @@ struct TableEditDialect: Sendable, Equatable {
         acceptsDatabaseSchemaTable: false, commitsDDLImplicitly: true, endCommits: false,
         useSelectsDatabase: false, renameKeepsContainer: true, renamesWithoutTo: false,
         temporaryTablesShadowQualifiedNames: false, temporaryTablesShadowRealOnes: false,
-        temporaryContainers: []
+        temporaryContainers: [], branchesInsideBatches: false
     )
 }
 

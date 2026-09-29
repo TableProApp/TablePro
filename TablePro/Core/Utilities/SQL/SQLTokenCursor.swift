@@ -31,11 +31,11 @@ internal struct SQLTokenCursor {
     internal static let equals = UInt16(UnicodeScalar("=").value)
     internal static let comma = UInt16(UnicodeScalar(",").value)
     internal static let period = UInt16(UnicodeScalar(".").value)
+    internal static let colon = UInt16(UnicodeScalar(":").value)
     internal static let openParen = SqlLexer.openParen
     internal static let closeParen = SqlLexer.closeParen
 
     private static let at = UInt16(UnicodeScalar("@").value)
-    private static let colon = UInt16(UnicodeScalar(":").value)
     private static let openBracket = UInt16(UnicodeScalar("[").value)
 
     private let text: NSString

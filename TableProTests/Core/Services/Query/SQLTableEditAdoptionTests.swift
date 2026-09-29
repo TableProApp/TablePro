@@ -78,7 +78,11 @@ struct SQLTableEditAdoptionTests {
         }
     }
 
-    private func makeHarness(type: DatabaseType = .postgresql, browseSchema: String? = "public") throws -> Harness {
+    private func makeHarness(
+        type: DatabaseType = .postgresql,
+        browseSchema: String? = "public",
+        startupCommands: String? = nil
+    ) throws -> Harness {
         let connection = TestFixtures.makeConnection(database: "shop", type: type)
         var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
         session.status = .connected
@@ -95,7 +99,12 @@ struct SQLTableEditAdoptionTests {
         )
         let store = RecordingStore()
         let adoption = CatalogEditAdoption(settingsStores: [store], favoriteTables: favorites)
-        let service = CatalogChangeService(targets: [IgnoringTarget()], adoption: adoption, isSessionLive: { _ in true })
+        let service = CatalogChangeService(
+            targets: [IgnoringTarget()],
+            adoption: adoption,
+            isSessionLive: { _ in true },
+            startupCommands: { _ in startupCommands }
+        )
         return Harness(connection: connection, store: store, favorites: favorites, service: service)
     }
 
@@ -178,6 +187,20 @@ struct SQLTableEditAdoptionTests {
         harness.run(["CREATE TEMPORARY TABLE people (id int)"], schema: nil)
         harness.run(["DROP TABLE people"], schema: nil)
         harness.run(["DROP TABLE people", "DROP TABLE orders"], schema: nil)
+
+        #expect(harness.store.droppedTables == [harness.scope("orders", schema: nil)])
+    }
+
+    /// Startup commands run on every connect, before the session reports anything, and a MySQL
+    /// temporary table hides the real one under its qualified name as well.
+    @Test("A temporary table the startup commands create keeps drops of that name off the real table's settings")
+    func startupCommandTemporaryTable() throws {
+        let harness = try makeHarness(
+            type: .mysql, browseSchema: nil, startupCommands: "SET NAMES utf8mb4;\nCREATE TEMPORARY TABLE people (id int)"
+        )
+        defer { tearDown(harness) }
+
+        harness.run(["DROP TABLE shop.people", "DROP TABLE shop.orders"], schema: nil)
 
         #expect(harness.store.droppedTables == [harness.scope("orders", schema: nil)])
     }

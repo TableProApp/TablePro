@@ -37,6 +37,7 @@ final class CatalogChangeService {
     private let targets: [any CatalogChangeTarget]
     private let adoption: CatalogEditAdoption
     private let isSessionLive: @MainActor (UUID) -> Bool
+    private let startupCommands: @MainActor (UUID) -> String?
 
     private var pendingChanges: [UUID: CatalogChange] = [:]
     private var nameHazards: [UUID: TableNameHazards] = [:]
@@ -45,7 +46,8 @@ final class CatalogChangeService {
     init(
         targets: [any CatalogChangeTarget]? = nil,
         adoption: CatalogEditAdoption? = nil,
-        isSessionLive: (@MainActor (UUID) -> Bool)? = nil
+        isSessionLive: (@MainActor (UUID) -> Bool)? = nil,
+        startupCommands: (@MainActor (UUID) -> String?)? = nil
     ) {
         self.targets = targets ?? [
             SchemaRefreshService.shared,
@@ -57,6 +59,9 @@ final class CatalogChangeService {
         self.isSessionLive = isSessionLive ?? { connectionId in
             guard let session = DatabaseManager.shared.session(for: connectionId) else { return false }
             return Self.acceptsChanges(from: session)
+        }
+        self.startupCommands = startupCommands ?? { connectionId in
+            DatabaseManager.shared.session(for: connectionId)?.connection.startupCommands
         }
     }
 
@@ -133,6 +138,11 @@ final class CatalogChangeService {
     /// chain and a drop of a name another statement just freed both land on the right table.
     private func recordCommittedTableEdits(of succeeded: SucceededStatements) {
         let connectionId = succeeded.scope.connectionId
+        recordNameHazards(
+            of: DatabaseManager.startupStatements(from: startupCommands(connectionId)),
+            databaseType: succeeded.databaseType,
+            connectionId: connectionId
+        )
         let grammar = SQLLexicalResolver.executionGrammar(for: succeeded.databaseType, connectionId: connectionId)
         var hazards = nameHazards[connectionId] ?? TableNameHazards()
         let edits = CommittedTableEdits.edits(in: succeeded, grammar: grammar, hazards: &hazards)
@@ -159,7 +169,8 @@ final class CatalogChangeService {
     }
 
     /// Read from every statement that may have run, failed ones included, because a procedure that
-    /// failed part way can have created a temporary table first.
+    /// failed part way can have created a temporary table first. That includes the connection's
+    /// startup commands, which run on every connect before anything here hears of the session.
     private func recordNameHazards(of statements: [String], databaseType: DatabaseType, connectionId: UUID) {
         guard let dialect = TableEditDialect.of(databaseType) else { return }
         let grammar = SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)

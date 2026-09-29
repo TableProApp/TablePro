@@ -204,7 +204,7 @@ final class ScriptBatchProgress: Sendable {
         return SucceededStatements(
             scope: scope,
             databaseType: databaseType,
-            statements: batches.prefix(current.completedBatchCount).flatMap { $0.statements.map(\.sql) },
+            statements: batches.prefix(current.completedBatchCount).flatMap(\.executedStatementTexts),
             commit: .runStartedIn(current.startState, endedIn: current.endState, appTransaction: .none)
         )
     }

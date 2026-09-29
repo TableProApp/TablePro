@@ -339,7 +339,7 @@ extension QueryExecutionCoordinator {
         CatalogChangeService.post(.statementsSucceeded(SucceededStatements(
             scope: scope,
             databaseType: connection.type,
-            statements: prepared.prefix(run.outcome.succeededCount).flatMap { $0.batch.statements.map(\.sql) },
+            statements: prepared.prefix(run.outcome.succeededCount).flatMap(\.batch.executedStatementTexts),
             commit: .run(
                 startedIn: run.startState, endedIn: run.sessionState, plan: run.plan, completed: run.outcome.isCompleted
             )

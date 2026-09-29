@@ -37,7 +37,7 @@ struct TableNameHazards: Sendable, Equatable {
         case .losesSchemaContext, .runsUnseenCode:
             namesMayBeShadowed = true
         case .drop, .rename, .beginsTransaction, .commits, .rollsBack, .rollsBackToSavepoint,
-             .losesTransactionTracking, .selectsDatabase, .other:
+             .losesTransactionTracking, .selectsDatabase, .controlsFlow, .other:
             break
         }
     }
@@ -163,6 +163,8 @@ private struct TableEditWalk {
             context = dialect.context(afterUsing: name)
         case .losesSchemaContext:
             context.schema = nil
+        case .controlsFlow:
+            stopAdopting()
         case .createsTemporaryTable, .runsUnseenCode, .other:
             break
         }
@@ -180,6 +182,11 @@ private struct TableEditWalk {
     /// warning, and this holds back a drop that did commit, which keeps its settings in place.
     private mutating func disown() {
         guard !dialect.commitsDDLImplicitly else { return }
+        stopAdopting()
+    }
+
+    /// Nothing the run did is known to have happened, the edits before this point included.
+    private mutating func stopAdopting() {
         adopts = false
         committed.removeAll()
         pending.removeAll()
