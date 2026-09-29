@@ -7,6 +7,7 @@ typealias MCPToolName = String
 extension MCPToolName {
     static let requiresAdminScope: Set<String> = ["confirm_destructive_operation"]
     static let writeQueryTools: Set<String> = ["execute_query"]
+    static let alwaysWriteTools: Set<String> = [StopServerSessionTool.name]
 }
 
 enum AuthDecision: Sendable {
@@ -446,25 +447,18 @@ public actor MCPAuthPolicy {
         externalAccess: ExternalAccessLevel,
         databaseType: String
     ) -> String? {
-        if MCPToolName.requiresAdminScope.contains(tool) {
-            if externalAccess != .readWrite {
-                return String(localized: "Connection is read only for external clients")
-            }
-            return nil
-        }
+        guard externalAccess != .readWrite,
+              Self.intendsToWrite(tool: tool, sql: sql, databaseType: databaseType)
+        else { return nil }
+        return String(localized: "Connection is read only for external clients")
+    }
 
-        guard MCPToolName.writeQueryTools.contains(tool), let sql else {
-            return nil
+    private static func intendsToWrite(tool: MCPToolName, sql: String?, databaseType: String) -> Bool {
+        if MCPToolName.requiresAdminScope.contains(tool) || MCPToolName.alwaysWriteTools.contains(tool) {
+            return true
         }
-
-        let dbType = DatabaseType(rawValue: databaseType)
-        guard QueryClassifier.isWriteQuery(sql, databaseType: dbType) else {
-            return nil
-        }
-        if externalAccess != .readWrite {
-            return String(localized: "Connection is read only for external clients")
-        }
-        return nil
+        guard MCPToolName.writeQueryTools.contains(tool), let sql else { return false }
+        return QueryClassifier.isWriteQuery(sql, databaseType: DatabaseType(rawValue: databaseType))
     }
 
     static let defaultConnectionIdsProvider: MCPConnectionIdsProvider = {
