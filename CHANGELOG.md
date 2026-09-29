@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SAP HANA database driver plugin. (#1966)
 
+### Changed
+
+- Clipboard URL banner for every scheme Import from URL accepts, `+ssh` URLs included.
+
 ### Fixed
 
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
@@ -22,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local only** connections taking edits and deletions made on another device.
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- Clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into Required and ignoring `sslmode=disable`.
 
 ## [0.76.1] - 2026-09-29
 
