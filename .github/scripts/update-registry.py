@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument("--plugin-kit-version", required=True, type=int)
     parser.add_argument(
         "--keep-kit-versions",
-        default=2,
+        required=True,
         type=int,
         help="Number of distinct PluginKit versions to retain per plugin. Oldest dropped first.",
     )

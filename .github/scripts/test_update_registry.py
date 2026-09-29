@@ -3,8 +3,12 @@
 
 Run: python3 .github/scripts/test_update_registry.py
 """
+import contextlib
 import importlib.util
+import io
 import os
+import sys
+from unittest import mock
 
 _spec = importlib.util.spec_from_file_location(
     "update_registry",
@@ -255,6 +259,47 @@ def test_binaries_without_their_own_min_app_version_keep_the_entry_value():
     assert _entry(manifest)["minAppVersion"] == "0.76.0", _entry(manifest)["minAppVersion"]
 
 
+_REQUIRED_FLAGS = [
+    "--manifest", "plugins.json",
+    "--id", "com.TablePro.DynamoDBDriverPlugin",
+    "--name", "DynamoDB",
+    "--version", "1.0.16",
+    "--summary", "new",
+    "--db-type-ids", '["dynamodb"]',
+    "--arm64-url", "https://x/arm64",
+    "--arm64-sha", "a",
+    "--x86_64-url", "https://x/x86_64",
+    "--x86_64-sha", "b",
+    "--min-app-version", "0.76.1",
+    "--icon", "icon",
+    "--homepage", "https://tablepro.app",
+    "--plugin-kit-version", "33",
+]
+
+
+def _parse(flags):
+    with mock.patch.object(sys, "argv", ["update-registry.py", *flags]):
+        return update_registry.parse_args()
+
+
+def test_omitting_the_retention_count_refuses_to_run():
+    stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(stderr):
+            args = _parse(_REQUIRED_FLAGS)
+    except SystemExit as error:
+        assert error.code != 0, error.code
+        assert "--keep-kit-versions" in stderr.getvalue(), stderr.getvalue()
+    else:
+        raise AssertionError(
+            f"expected SystemExit without --keep-kit-versions, got {args.keep_kit_versions}"
+        )
+
+
+def test_the_retention_count_is_the_one_passed():
+    assert _parse([*_REQUIRED_FLAGS, "--keep-kit-versions", "3"]).keep_kit_versions == 3
+
+
 if __name__ == "__main__":
     test_kit_version_rejects_non_int()
     test_prune_drops_null_kit_binary()
@@ -270,4 +315,6 @@ if __name__ == "__main__":
     test_republishing_a_kit_never_raises_its_minimum_app_version()
     test_republishing_a_kit_never_raises_it_over_a_binary_without_its_own_value()
     test_binaries_without_their_own_min_app_version_keep_the_entry_value()
+    test_omitting_the_retention_count_refuses_to_run()
+    test_the_retention_count_is_the_one_passed()
     print("All update-registry tests passed.")
