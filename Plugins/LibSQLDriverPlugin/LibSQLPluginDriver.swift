@@ -191,14 +191,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch getBackend() {
         case .remote(let client):
             let startTime = Date()
-            let stringArgs: [String?] = parameters.map { param -> String? in
-                switch param {
-                case .null: return nil
-                case .text(let s): return s
-                case .bytes(let d): return "X'" + d.map { String(format: "%02X", $0) }.joined() + "'"
-                }
-            }
-            let result = try await client.execute(sql: trimmed, args: stringArgs)
+            let result = try await client.execute(sql: trimmed, args: parameters)
             let executionTime = Date().timeIntervalSince(startTime)
             return mapExecuteResult(result, executionTime: executionTime)
         case .local(let localBackend):
@@ -213,7 +206,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch getBackend() {
         case .remote(let client):
             let startTime = Date()
-            let statements = queries.map { (sql: $0, args: [] as [String?]) }
+            let statements = queries.map { HranaStatement(sql: $0) }
             let results = try await client.executeBatch(statements: statements)
             let elapsed = Date().timeIntervalSince(startTime)
 

@@ -14,7 +14,7 @@ struct SQLDDLFallbackPolicyTests {
     func sqlEnginesFabricate() {
         for type in [
             DatabaseType.mysql, .postgresql, .sqlite, .mssql, .oracle,
-            .duckdb, .cassandra, .trino, .teradata, .clickhouse, .bigQuery,
+            .duckdb, .cassandra, .trino, .teradata, .clickhouse, .bigQuery, .sapHana,
         ] {
             #expect(SQLDDLFallbackPolicy.allowsGeneratedDDL(for: type), "\(type.rawValue) should fabricate")
         }
@@ -82,7 +82,7 @@ struct SQLDDLFallbackPolicyTests {
         .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .sqlite, .redshift,
         .cockroachdb, .pglite, .mssql, .oracle, .snowflake, .dameng, .clickhouse, .duckdb,
         .cassandra, .scylladb, .cloudflareD1, .cloudflareR2SQL, .bigQuery, .spanner,
-        .libsql, .turso, .teradata, .trino,
+        .libsql, .turso, .teradata, .trino, .sapHana,
     ]
 
     /// The policy lives in the app and the statement lives in the plugin, so nothing but this

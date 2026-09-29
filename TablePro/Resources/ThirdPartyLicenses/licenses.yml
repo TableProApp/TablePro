@@ -149,6 +149,63 @@
     sources, so the modified library stays LGPL-2.0-or-later and the modification must be offered alongside.
     Static-linked LGPL: same relinking obligation as MariaDB Connector/C. One source tree serves the macOS
     and both iOS slices, so the patch covers all of them.'
+- id: go
+  name: Go (runtime and standard library)
+  version: 1.27.1
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright 2009 The Go Authors
+  homepageURL: https://go.dev
+  licenseTextURL: https://github.com/golang/go/blob/go1.27.1/LICENSE
+  textFile: texts/go.txt
+  source: manual
+  patched: false
+  notes: 'The toolchain line of Native/HanaBridge/go.mod pins go1.27.1. scripts/build-hana.sh builds
+    the bridge into tablepro-hana-helper, a CGO_ENABLED=0 executable the SAP HANA plugin carries in
+    Contents/MacOS and runs as a separate process, so the Go runtime and every standard library package
+    the helper reaches are linked into that executable. The standard
+    library vendors golang.org/x/crypto, x/net, x/sys and x/text (src/vendor/modules.txt at go1.27.1),
+    all under this same BSD-3-Clause notice from The Go Authors. PATENTS beside LICENSE is an extra
+    patent grant from Google and adds no notice duty. source is manual because the pin lives in go.mod,
+    not in a build-*.sh variable, so ThirdPartyLicenseInventoryTests does not check this version.
+    Reaches users only through the registry-only SAP HANA plugin: the app and every bundled plugin link
+    no Go code.'
+- id: go-hdb
+  name: go-hdb
+  version: v1.18.12
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2014-2026 SAP SE or an SAP affiliate company and go-hdb contributors
+  homepageURL: https://github.com/SAP/go-hdb
+  licenseTextURL: https://github.com/SAP/go-hdb/blob/v1.18.12/LICENSE.md
+  textFile: texts/go-hdb.txt
+  source: manual
+  patched: false
+  notes: 'Pinned by the require line in Native/HanaBridge/go.mod and verified by go.sum; source is manual
+    because no build-*.sh variable carries the version. LICENSE.md at the tag is the plain Apache-2.0
+    text (11357 bytes) and the repository has no NOTICE file, so section 4(d) adds nothing. The source
+    files carry no per-file header: the holder line is quoted from the SPDX-FileCopyrightText annotation
+    for path "**" in REUSE.toml at the tag. The same file carries an SPDX-PackageComment saying that
+    calls to the APIs of SAP products are not licensed under Apache-2.0 and are governed by the user''s
+    own agreement with SAP. Statically linked into the tablepro-hana-helper executable with the Go
+    runtime; reaches users only through the registry-only SAP HANA plugin.'
+- id: golang-x-text
+  name: golang.org/x/text
+  version: v0.42.0
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright 2009 The Go Authors
+  homepageURL: https://pkg.go.dev/golang.org/x/text
+  licenseTextURL: https://github.com/golang/text/blob/v0.42.0/LICENSE
+  textFile: texts/golang-x-text.txt
+  source: manual
+  patched: false
+  notes: 'Required by go-hdb v1.18.12, and imported directly by the bridge for its CESU-8 decoder. Pinned by
+    the require block of Native/HanaBridge/go.mod and verified by go.sum; source is manual for the same reason
+    as go-hdb. Both use only its transform package.
+    LICENSE at the tag is byte-identical to the Go distribution''s LICENSE, but this is a separate module
+    with its own version, so it has its own entry. Reaches users only through the registry-only SAP HANA
+    plugin.'
 - id: hiredis
   name: hiredis
   version: 1.2.0

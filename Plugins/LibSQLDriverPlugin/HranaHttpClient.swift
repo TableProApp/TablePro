@@ -67,6 +67,60 @@ enum HranaValue: Decodable {
     }
 }
 
+enum HranaArgument: Encodable {
+    case null
+    case text(String)
+    case blob(Data)
+
+    init(_ value: PluginCellValue) {
+        switch value {
+        case .null:
+            self = .null
+        case .text(let text):
+            self = .text(text)
+        case .bytes(let data):
+            self = .blob(data)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, value, base64
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .null:
+            try container.encode("null", forKey: .type)
+        case .text(let text):
+            try container.encode("text", forKey: .type)
+            try container.encode(text, forKey: .value)
+        case .blob(let data):
+            try container.encode("blob", forKey: .type)
+            try container.encode(data.base64EncodedString(), forKey: .base64)
+        }
+    }
+}
+
+struct HranaStatement: Encodable {
+    let sql: String
+    let args: [HranaArgument]?
+
+    init(sql: String, parameters: [PluginCellValue] = []) {
+        self.sql = sql
+        self.args = parameters.isEmpty ? nil : parameters.map(HranaArgument.init)
+    }
+}
+
+private struct HranaExecuteRequest: Encodable {
+    let type = "execute"
+    let stmt: HranaStatement
+}
+
+private struct HranaPipelineRequest: Encodable {
+    let requests: [HranaExecuteRequest]
+}
+
 struct HranaColumn: Decodable {
     let name: String
     let decltype: String?
@@ -165,24 +219,16 @@ final class HranaHttpClient: @unchecked Sendable {
 
     // MARK: - API Methods
 
-    func execute(sql: String, args: [String?] = []) async throws -> HranaExecuteResult {
-        let results = try await executeBatch(statements: [(sql: sql, args: args)])
+    func execute(sql: String, args: [PluginCellValue] = []) async throws -> HranaExecuteResult {
+        let results = try await executeBatch(statements: [HranaStatement(sql: sql, parameters: args)])
         guard let first = results.first else {
             throw HranaHttpError(message: String(localized: "Empty response from server"))
         }
         return first
     }
 
-    func executeBatch(statements: [(sql: String, args: [String?])]) async throws -> [HranaExecuteResult] {
-        let requests: [[String: Any]] = statements.map { stmt in
-            var stmtBody: [String: Any] = ["sql": stmt.sql]
-            if !stmt.args.isEmpty {
-                stmtBody["args"] = stmt.args.map { encodeArg($0) }
-            }
-            return ["type": "execute", "stmt": stmtBody]
-        }
-
-        let body = try JSONSerialization.data(withJSONObject: ["requests": requests])
+    func executeBatch(statements: [HranaStatement]) async throws -> [HranaExecuteResult] {
+        let body = try Self.pipelineRequestBody(statements: statements)
         let url = baseUrl.appendingPathComponent("v2/pipeline")
         let data = try await performRequest(url: url, body: body)
 
@@ -203,20 +249,12 @@ final class HranaHttpClient: @unchecked Sendable {
         return results
     }
 
-    // MARK: - Private Helpers
-
-    private func encodeArg(_ value: String?) -> [String: Any] {
-        guard let value else {
-            return ["type": "null"]
-        }
-        if Int64(value) != nil {
-            return ["type": "integer", "value": value]
-        }
-        if let d = Double(value), Int64(value) == nil {
-            return ["type": "float", "value": d]
-        }
-        return ["type": "text", "value": value]
+    static func pipelineRequestBody(statements: [HranaStatement]) throws -> Data {
+        let pipeline = HranaPipelineRequest(requests: statements.map { HranaExecuteRequest(stmt: $0) })
+        return try JSONEncoder().encode(pipeline)
     }
+
+    // MARK: - Private Helpers
 
     private func performRequest(url: URL, body: Data) async throws -> Data {
         let session = lock.withLock { self.session }

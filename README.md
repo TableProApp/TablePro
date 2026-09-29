@@ -84,6 +84,7 @@ TablePro is the missing fourth: native, multi-database, and open source.
 | MongoDB | Plugin |
 | Oracle Database | Plugin |
 | Dameng DM8 | Plugin |
+| SAP HANA | Plugin |
 | DuckDB | Plugin |
 | Beancount | Plugin |
 | Cassandra / ScyllaDB | Plugin |

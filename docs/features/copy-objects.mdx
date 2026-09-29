@@ -302,9 +302,9 @@ Two databases on one connection can be copied between only where the driver open
 connection of its own. DuckDB and PGlite hold their database inside the driver instance, so the
 sheet refuses and names the reason.
 
-Dameng and Teradata read a table whole before the first batch is written, because their drivers do
-not stream rows. On those two, a table larger than memory is a table this cannot copy, and **Stop**
-waits for the read.
+Dameng, SAP HANA and Teradata read a table whole before the first batch is written, because their
+drivers do not stream rows. On those three, a table larger than memory is a table this cannot copy,
+and **Stop** waits for the read.
 
 Read-only connections are dimmed in the target picker with the reason shown.
 

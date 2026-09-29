@@ -93,6 +93,8 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// The `;` that ends a `MERGE` belongs to it, because the engine refuses a `MERGE` without one, as T-SQL does.
     public static let terminatedMergeStatements = SQLLexicalGrammar(rawValue: 1 << 24)
 
+    public static let sqlScriptBlocks = SQLLexicalGrammar(rawValue: 1 << 25)
+
     /// `BEGIN BATCH ... APPLY BATCH` is one statement whose `;`s belong to it, as CQL reads a batch; see
     /// ``CQLBatchTracker``. Only the curated CQL grammar carries it, so the kit has no feature for it.
     public static let cqlBatches = SQLLexicalGrammar(rawValue: 1 << 26)

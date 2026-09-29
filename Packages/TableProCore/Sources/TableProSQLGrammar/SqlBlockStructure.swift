@@ -63,6 +63,15 @@ public enum SqlBlockStructure {
         routineDefinitionOpeners.contains(keyword)
     }
 
+    public static func opensBlockBody(_ keyword: String, grammar: SQLLexicalGrammar) -> Bool {
+        if grammar.contains(.sqlScriptBlocks), keyword == sqlScriptAnonymousBlockOpener {
+            return true
+        }
+        return opensRoutineDefinition(keyword)
+    }
+
+    private static let sqlScriptAnonymousBlockOpener = "DO"
+
     public static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
         guard let keyword else { return true }
         return transactionFollowers.contains(keyword)

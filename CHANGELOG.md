@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SAP HANA database driver plugin. (#1966)
+
 ### Fixed
 
+- Save disabled for Kafka connections set to Verify Identity without a CA file.
+- Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
+- External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
+- iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 
 ## [0.76.1] - 2026-09-29

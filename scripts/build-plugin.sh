@@ -46,6 +46,58 @@ else
     echo "Building plugin: $PLUGIN_TARGET for $ARCH (no version override)"
 fi
 
+is_helper_executable() {
+    local candidate="$1"
+    local main_binary="$2"
+    [ -f "$candidate" ] || return 1
+    [ ! -L "$candidate" ] || return 1
+    [ "$candidate" != "$main_binary" ] || return 1
+    case "$(file -b "$candidate")" in
+        *Mach-O*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+sign_helper_executables() {
+    local bundle="$1"
+    local main_binary="$2"
+    local helper
+    for helper in "$bundle/Contents/MacOS"/* "$bundle/Contents/Helpers"/*; do
+        is_helper_executable "$helper" "$main_binary" || continue
+        echo "  Signing helper: $(basename "$helper")" >&2
+        codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$helper"
+    done
+}
+
+# codesign --verify --deep --strict also accepts an ad-hoc signed helper, which notarization
+# then rejects, so each helper is checked for what notarization needs.
+verify_helper_signatures() {
+    local bundle="$1"
+    local main_binary="$2"
+    local helper
+    local details
+    for helper in "$bundle/Contents/MacOS"/* "$bundle/Contents/Helpers"/*; do
+        is_helper_executable "$helper" "$main_binary" || continue
+        if ! details="$(codesign -dvvv "$helper" 2>&1)"; then
+            echo "FATAL: $helper is not signed: $details" >&2
+            exit 1
+        fi
+        if ! grep -qE '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<< "$details"; then
+            echo "FATAL: $helper is not signed with the hardened runtime" >&2
+            exit 1
+        fi
+        if ! grep -q '^Authority=Developer ID Application: ' <<< "$details"; then
+            echo "FATAL: $helper is not signed with a Developer ID Application identity" >&2
+            exit 1
+        fi
+        if ! grep -q '^Timestamp=' <<< "$details"; then
+            echo "FATAL: $helper has no secure timestamp" >&2
+            exit 1
+        fi
+        echo "  Verified helper: $(basename "$helper") (hardened runtime, Developer ID, timestamp)" >&2
+    done
+}
+
 build_plugin() {
     local arch=$1
     local build_dir="$BUILD_DIR/$arch"
@@ -116,7 +168,7 @@ build_plugin() {
         echo "Stripped binary: $before -> $after" >&2
     fi
 
-    # Code sign inside-out: nested frameworks/dylibs first, then binary, then bundle
+    # Code sign inside-out: nested frameworks/dylibs and helper executables first, then binary, then bundle
     echo "Code signing with: $SIGN_IDENTITY" >&2
 
     # Sign nested frameworks
@@ -126,6 +178,8 @@ build_plugin() {
             codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$nested"
         done
     fi
+
+    sign_helper_executables "$plugin_bundle" "$plugin_binary"
 
     # Sign the main binary
     if [ -f "$plugin_binary" ]; then
@@ -139,6 +193,7 @@ build_plugin() {
         echo "FATAL: Code signature verification failed" >&2
         exit 1
     fi
+    verify_helper_signatures "$plugin_bundle" "$plugin_binary"
     echo "Code signature verified" >&2
 
     # Only the path goes to stdout (return value)

@@ -27,6 +27,15 @@ extension QueryClassifier {
         return startsPLSQL(SQLCodeProjection.code(of: sql, grammar: grammar))
     }
 
+    static func runsSQLScriptBlock(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
+        guard grammar.contains(.sqlScriptBlocks) else { return false }
+        return leadingCodeKeyword(SQLCodeProjection.code(of: sql, grammar: grammar)) == "DO"
+    }
+
+    static func runsProceduralBlock(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
+        runsPLSQL(sql, grammar: grammar) || runsSQLScriptBlock(sql, grammar: grammar)
+    }
+
     /// An anonymous block opens with `DECLARE` or `BEGIN`, after any number of `<<label>>` prefixes and comments. A
     /// query runs PL/SQL when its `WITH` clause opens with a `FUNCTION` or `PROCEDURE` declaration.
     static func startsPLSQL(_ sql: String) -> Bool {
@@ -46,27 +55,27 @@ extension QueryClassifier {
         text.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
 
-    static func plsqlBlockClassification(
+    static func proceduralBlockClassification(
         _ trimmed: String,
         grammar: SQLLexicalGrammar,
         databaseType: DatabaseType
     ) -> QueryClassification {
         let body = unitCode(of: trimmed, grammar: grammar)
         var tier: QueryTier = containsKeyword(body, plsqlDestructiveWordRegex) ? .destructive : .write
-        for statement in dynamicStatements(in: trimmed) {
+        for statement in dynamicStatements(in: trimmed, grammar: grammar) {
             tier = QueryClassification.worse(tier, classifyTier(statement, databaseType: databaseType))
         }
         return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: true)
     }
 
     /// Whether the block deletes without a `WHERE`, in its own text or in a statement it builds from a literal.
-    static func plsqlBlockDeletesEverything(_ trimmed: String, grammar: SQLLexicalGrammar) -> Bool {
+    static func proceduralBlockDeletesEverything(_ trimmed: String, grammar: SQLLexicalGrammar) -> Bool {
         let body = unitCode(of: trimmed, grammar: grammar)
         let spelledOut = body.split(separator: ";").contains { segment in
             deletesWithoutWhere(String(segment))
         }
         guard !spelledOut else { return true }
-        return dynamicStatements(in: trimmed).contains { statement in
+        return dynamicStatements(in: trimmed, grammar: grammar).contains { statement in
             deletesWithoutWhere(unitCode(of: statement, grammar: grammar))
         }
     }
@@ -109,12 +118,21 @@ extension QueryClassifier {
         #"\bDBMS_SQL\s*\.\s*PARSE\s*\([^,;]*,\s*"#,
     ].compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
 
+    private static let sqlScriptDynamicStatementOpeners: [NSRegularExpression] = [
+        #"\bEXEC\s+"#,
+    ].compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+
+    private static func dynamicStatementOpeners(for grammar: SQLLexicalGrammar) -> [NSRegularExpression] {
+        guard grammar.contains(.sqlScriptBlocks) else { return dynamicStatementOpeners }
+        return dynamicStatementOpeners + sqlScriptDynamicStatementOpeners
+    }
+
     private static let deleteWordRegex = try? NSRegularExpression(pattern: #"\bDELETE\b"#, options: [])
 
-    private static func dynamicStatements(in sql: String) -> [String] {
+    private static func dynamicStatements(in sql: String, grammar: SQLLexicalGrammar) -> [String] {
         let text = sql as NSString
         let whole = NSRange(location: 0, length: text.length)
-        return dynamicStatementOpeners.flatMap { opener in
+        return dynamicStatementOpeners(for: grammar).flatMap { opener in
             opener.matches(in: sql, range: whole).compactMap { match in
                 literal(in: text, at: match.range.location + match.range.length)
             }
