@@ -98,15 +98,30 @@ struct TableColumnMatcherTests {
         #expect(match.contestedDestinations == ["name"])
     }
 
+    /// The leftovers are out of name order on both sides, so a path that sorted them, as the
+    /// override path once did, would not compare equal.
     @Test("No overrides gives the automatic match")
     func noOverridesIsTheAutomaticMatch() {
-        let source = ["id", "Name", "name"]
-        let destination = ["id", "name"]
+        let source = ["zeta", "alpha", "id"]
+        let destination = ["id", "omega", "beta"]
 
-        #expect(
-            TableColumnMatcher.match(source: source, destination: destination, overrides: [:])
-                == TableColumnMatcher.match(source: source, destination: destination)
+        let automatic = TableColumnMatcher.match(source: source, destination: destination)
+
+        #expect(automatic.unmatchedSource == ["zeta", "alpha"])
+        #expect(automatic.unmatchedDestination == ["omega", "beta"])
+        #expect(TableColumnMatcher.match(source: source, destination: destination, overrides: [:]) == automatic)
+    }
+
+    @Test("An override leaves the unmatched source columns in the source table's order")
+    func overrideKeepsSourceOrder() {
+        let match = TableColumnMatcher.match(
+            source: ["zeta", "alpha", "id", "name"],
+            destination: ["id", "name"],
+            overrides: ["name": nil]
         )
+
+        #expect(match.mapping == ["id": "id"])
+        #expect(match.unmatchedSource == ["zeta", "alpha", "name"])
     }
 
     @Test("Only destination columns named more than once are contested, in name order")

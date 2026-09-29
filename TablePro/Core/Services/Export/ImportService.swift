@@ -57,7 +57,8 @@ final class ImportService: ObservableObject {
         ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil,
         targetTable: String? = nil,
-        columnMapping: [String: String] = [:]
+        columnMapping: [String: String] = [:],
+        sourceFields: [String] = []
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -138,7 +139,8 @@ final class ImportService: ObservableObject {
                     source: source,
                     progress: progress,
                     targetTable: targetTable,
-                    columnMapping: columnMapping
+                    columnMapping: columnMapping,
+                    sourceFields: sourceFields
                 )
             }
         } catch {
@@ -208,13 +210,15 @@ final class ImportService: ObservableObject {
         source: any PluginImportSource,
         progress: PluginImportProgress,
         targetTable: String?,
-        columnMapping: [String: String]
+        columnMapping: [String: String],
+        sourceFields: [String]
     ) async throws -> PluginImportResult {
         let sink = ImportDataSinkAdapter(
             driver: driver,
             databaseType: connection.type,
             targetTable: targetTable,
             columnMapping: columnMapping,
+            sourceFields: sourceFields,
             isCancelled: { progress.isCancelled }
         )
         return try await plugin.performImport(source: source, sink: sink, progress: progress)

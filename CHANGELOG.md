@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
 - Table Transfer emptying a destination table, then failing, when two source columns map to one column.
+- File import failing, or writing a skipped field, when two fields differ only by case.
 
 ## [0.76.1] - 2026-09-29
 

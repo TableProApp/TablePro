@@ -808,7 +808,13 @@ struct RowImportSheet: View {
         switch destination {
         case .existingTable:
             guard let table = selectedTargetTable else { return }
-            runImport(targetTable: table, mapping: existingMapping(), newTable: nil, scope: scope)
+            runImport(
+                targetTable: table,
+                mapping: existingMapping(),
+                sourceFields: mappings.map(\.field.name),
+                newTable: nil,
+                scope: scope
+            )
         case .newTable:
             let name = newTableName.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, let definition = newTableDefinition(tableName: name) else {
@@ -816,7 +822,13 @@ struct RowImportSheet: View {
                 showErrorDialog = true
                 return
             }
-            runImport(targetTable: name, mapping: newTableMapping(), newTable: definition, scope: scope)
+            runImport(
+                targetTable: name,
+                mapping: newTableMapping(),
+                sourceFields: newColumns.map(\.field.name),
+                newTable: definition,
+                scope: scope
+            )
         }
     }
 
@@ -877,6 +889,7 @@ struct RowImportSheet: View {
     private func runImport(
         targetTable: String,
         mapping: [String: String],
+        sourceFields: [String],
         newTable: PluginCreateTableDefinition?,
         scope: DatabaseScope
     ) {
@@ -895,7 +908,8 @@ struct RowImportSheet: View {
                     encoding: .utf8,
                     scope: scope,
                     targetTable: targetTable,
-                    columnMapping: mapping
+                    columnMapping: mapping,
+                    sourceFields: sourceFields
                 )
                 await MainActor.run {
                     showProgressDialog = false

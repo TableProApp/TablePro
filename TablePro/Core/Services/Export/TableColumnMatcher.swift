@@ -39,60 +39,41 @@ enum TableColumnMatcher {
     /// match nothing. A destination column goes to one source column at most, so `Name` and `name`
     /// on the source never both land on a lone `name`.
     static func match(source: [String], destination: [String]) -> Match {
-        let targets = pair(source, with: destination)
         var mapping: [String: String] = [:]
-        var unmatchedSource: [String] = []
-        for (column, target) in zip(source, targets) {
-            guard let target else {
-                unmatchedSource.append(column)
-                continue
-            }
+        for (column, target) in zip(source, pair(source, with: destination)) {
+            guard let target else { continue }
             mapping[column] = target
         }
-        let claimed = Set(mapping.values)
-        return Match(
-            mapping: mapping,
-            unmatchedSource: unmatchedSource,
-            unmatchedDestination: destination.filter { !claimed.contains($0) }
-        )
+        return resolved(mapping, source: source, destination: destination)
     }
 
-    /// The automatic match with the user's overrides laid over it.
+    /// The automatic match with the user's overrides laid over it. An override to nil excludes the
+    /// column, which is how a source column with no destination is deliberately dropped rather
+    /// than failing the transfer. An override may point at a column another source column
+    /// already holds; that is kept and reported through `contestedDestinations`, not resolved
+    /// by quietly unmapping the other one.
     static func match(
         source: [String],
         destination: [String],
         overrides: [String: String?]
     ) -> Match {
-        let automatic = match(source: source, destination: destination)
-        guard !overrides.isEmpty else { return automatic }
-        return applying(overrides: overrides, to: automatic, destination: destination)
-    }
-
-    /// Applies the user's overrides over an automatic match. An override to nil excludes the
-    /// column, which is how a source column with no destination is deliberately dropped rather
-    /// than failing the transfer. An override may point at a column another source column
-    /// already holds; that is kept and reported through `contestedDestinations`, not resolved
-    /// by quietly unmapping the other one.
-    static func applying(
-        overrides: [String: String?],
-        to match: Match,
-        destination: [String]
-    ) -> Match {
-        var mapping = match.mapping
-        var unmatchedSource = Set(match.unmatchedSource)
+        var mapping = match(source: source, destination: destination).mapping
         for (sourceColumn, target) in overrides {
             guard let target, destination.contains(target) else {
                 mapping.removeValue(forKey: sourceColumn)
-                unmatchedSource.insert(sourceColumn)
                 continue
             }
             mapping[sourceColumn] = target
-            unmatchedSource.remove(sourceColumn)
         }
+        return resolved(mapping, source: source, destination: destination)
+    }
+
+    /// Both sides' leftovers in their own table's column order, whichever way the mapping was made.
+    private static func resolved(_ mapping: [String: String], source: [String], destination: [String]) -> Match {
         let claimed = Set(mapping.values)
         return Match(
             mapping: mapping,
-            unmatchedSource: unmatchedSource.sorted(),
+            unmatchedSource: source.filter { mapping[$0] == nil },
             unmatchedDestination: destination.filter { !claimed.contains($0) }
         )
     }

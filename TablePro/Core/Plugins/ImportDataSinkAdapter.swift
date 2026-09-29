@@ -21,6 +21,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     /// `Name` and `name`, is left out, because a third spelling could mean either.
     private let mappingKeyByFoldedName: [String: String]
 
+    /// Every field the mapping was made from, the ones it leaves out included. The mapping alone
+    /// cannot tell a field the user skipped from a header cased differently, and folding the
+    /// skipped one wrote it into the column its twin was mapped to.
+    private let sourceFields: Set<String>
+
     private let rowGenerator: SQLStatementGenerator?
 
     /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
@@ -43,6 +48,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         databaseType: DatabaseType,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
+        sourceFields: [String] = [],
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.isCancelled = isCancelled
@@ -54,6 +60,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.columnMapping = columnMapping
         self.mappingKeyByFoldedName = Dictionary(grouping: columnMapping.keys, by: { $0.lowercased() })
             .compactMapValues { $0.count == 1 ? $0.first : nil }
+        self.sourceFields = Set(sourceFields)
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
@@ -202,38 +209,37 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     /// source table holding both wrote one column twice and the server refused the INSERT.
     internal func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
         var pairs: [(column: String, value: PluginCellValue)] = []
-        var unspelled: [(field: String, value: PluginCellValue)] = []
+        var unknown: [(field: String, value: PluginCellValue)] = []
         for (field, value) in values {
-            guard let column = columnMapping[field] else {
-                unspelled.append((field, value))
-                continue
+            if let column = columnMapping[field] {
+                pairs.append((column, value))
+            } else if !sourceFields.contains(field) {
+                unknown.append((field, value))
             }
-            pairs.append((column, value))
         }
-        if !unspelled.isEmpty {
-            pairs += caseFoldedPairs(unspelled, in: values)
+        if !unknown.isEmpty {
+            pairs += caseFoldedPairs(unknown, in: values)
         }
         pairs.sort { $0.column < $1.column }
         return (pairs.map(\.column), pairs.map(\.value))
     }
 
-    /// A field spelled like no mapping key still reaches the key it matches ignoring case, such as
-    /// a header cased differently from the one the mapping was made from, but only when nothing
-    /// else in the row answers to that name: not the key's own spelling, and not a second field.
+    /// A field the mapping was not made from, such as a JSON key first seen past the sampled
+    /// documents, still reaches the key it matches ignoring case, but only when nothing else in the
+    /// row answers to that name: not the key's own spelling, and not a second field.
     private func caseFoldedPairs(
-        _ unspelled: [(field: String, value: PluginCellValue)],
+        _ unknown: [(field: String, value: PluginCellValue)],
         in values: [String: PluginCellValue]
     ) -> [(column: String, value: PluginCellValue)] {
         var fieldsPerFoldedName: [String: Int] = [:]
-        for entry in unspelled {
-            fieldsPerFoldedName[entry.field.lowercased(), default: 0] += 1
+        for field in values.keys {
+            fieldsPerFoldedName[field.lowercased(), default: 0] += 1
         }
         var pairs: [(column: String, value: PluginCellValue)] = []
-        for (field, value) in unspelled {
+        for (field, value) in unknown {
             let folded = field.lowercased()
             guard fieldsPerFoldedName[folded] == 1,
                   let key = mappingKeyByFoldedName[folded],
-                  values[key] == nil,
                   let column = columnMapping[key] else { continue }
             pairs.append((column, value))
         }

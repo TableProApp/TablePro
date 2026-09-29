@@ -14,12 +14,13 @@ import Testing
 /// line, and the stop modes halt on a mapping that matches nothing.
 @MainActor
 struct ImportDataSinkAdapterMappingTests {
-    private func adapter(mapping: [String: String]) -> ImportDataSinkAdapter {
+    private func adapter(mapping: [String: String], sourceFields: [String] = []) -> ImportDataSinkAdapter {
         ImportDataSinkAdapter(
             driver: MockDatabaseDriver(),
             databaseType: .mysql,
             targetTable: "people",
-            columnMapping: mapping
+            columnMapping: mapping,
+            sourceFields: sourceFields
         )
     }
 
@@ -48,12 +49,45 @@ struct ImportDataSinkAdapterMappingTests {
         try await sink.insertRow(["name": .text("Ada")])
     }
 
-    /// The mapping is matched case-insensitively, so a header cased differently to the column still
-    /// reaches it rather than being refused.
+    /// A field the mapping was not made from, like a JSON key first seen past the sampled
+    /// documents, is matched ignoring case, so it reaches its column rather than being refused.
     @Test("Field matching ignores case")
     func fieldMatchingIgnoresCase() async throws {
         let sink = adapter(mapping: ["Name": "name"])
         try await sink.insertRow(["NAME": .text("Ada")])
+    }
+
+    @Test("A spelling the mapping was not made from still reaches the field it matches ignoring case")
+    func unknownSpellingFolds() {
+        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "id"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["NAME": .text("Ada")])
+
+        #expect(columns == ["name"])
+        #expect(values == [.text("Ada")])
+    }
+
+    /// The mapping alone cannot tell a skipped field from a header cased differently, so a document
+    /// carrying only the skipped spelling had its value written into the column its twin maps to.
+    @Test("A field the user skipped is never written into the column its case twin maps to")
+    func skippedCaseTwinIsNotFolded() async {
+        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("x")])
+
+        #expect(columns.isEmpty)
+        await #expect(throws: PluginImportError.self) {
+            try await sink.insertRow(["NAME": .text("x")])
+        }
+    }
+
+    @Test("An unknown spelling beside a skipped field of the same name reaches no column")
+    func unknownSpellingBesideASkippedTwinDoesNotFold() {
+        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("skipped"), "name": .text("unknown")])
+
+        #expect(columns.isEmpty)
     }
 
     /// Every name used to be folded, so the twin landed on the mapped field's column and the INSERT
