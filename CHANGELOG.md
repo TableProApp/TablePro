@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
+- etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
 
 ## [0.76.1] - 2026-09-29
 
