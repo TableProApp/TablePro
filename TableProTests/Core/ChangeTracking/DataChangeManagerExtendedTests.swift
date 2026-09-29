@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -311,6 +311,54 @@ struct DataChangeManagerExtendedTests {
         #expect(manager.changes.isEmpty)
     }
 
+    @Test("Restoring another tab's changes drops the undo steps recorded before it")
+    func restoreStateDropsTheOutgoingTabsUndoSteps() {
+        let manager = makeManager()
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "Alice", newValue: "Bob", originalRow: ["1", "Alice", "a@test.com"]
+        )
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
+        #expect(manager.canUndo)
+
+        manager.restoreState(
+            from: makeProductsTabState(), tableName: "products", databaseType: .mysql, generatedColumns: []
+        )
+        #expect(!manager.canUndo)
+
+        manager.undoManagerProvider?()?.undo()
+        manager.undoManagerProvider?()?.undo()
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(!manager.isRowDeleted(.existing(2)))
+        #expect(manager.changes.map(\.rowID) == [.existing(5)])
+    }
+
+    @Test("Restoring another tab's changes drops the redo steps recorded before it")
+    func restoreStateDropsTheOutgoingTabsRedoSteps() {
+        let manager = makeManager()
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
+        manager.undoManagerProvider?()?.undo()
+        #expect(manager.canRedo)
+
+        manager.restoreState(
+            from: makeProductsTabState(), tableName: "products", databaseType: .mysql, generatedColumns: []
+        )
+        #expect(!manager.canRedo)
+
+        manager.undoManagerProvider?()?.redo()
+        #expect(!manager.isRowDeleted(.existing(2)))
+        #expect(manager.changes.map(\.rowID) == [.existing(5)])
+    }
+
+    private func makeProductsTabState() -> TabChangeSnapshot {
+        let productsTab = makeManager(columns: ["sku", "title"], pk: "sku")
+        productsTab.recordCellChange(
+            rowID: .existing(5), columnIndex: 1, columnName: "title",
+            oldValue: "Lamp", newValue: "Desk Lamp", originalRow: ["P-5", "Lamp"]
+        )
+        return productsTab.saveState()
+    }
+
     // MARK: - discardChanges
 
     @Test("discardChanges sets hasChanges to false")
@@ -487,7 +535,7 @@ struct DataChangeManagerExtendedTests {
         #expect(manager.changes.count == 1)
 
         manager.undoManagerProvider?()?.undo()
-        #expect(manager.changes.count == 0)
+        #expect(manager.changes.isEmpty)
 
         manager.undoManagerProvider?()?.redo()
         #expect(manager.changes.count == 1)

@@ -6,10 +6,10 @@
 import SwiftUI
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 struct SafeModeLevelTests {
-
     // MARK: - Raw Values
 
     @Test("Raw values match expected strings")
@@ -161,5 +161,29 @@ struct SafeModeLevelTests {
             let decoded = try decoder.decode(SafeModeLevel.self, from: data)
             #expect(decoded == level)
         }
+    }
+
+    @Test("A macOS wire value decodes to its own level", arguments: SafeModeLevel.allCases)
+    func decodesOwnWireValues(_ level: SafeModeLevel) {
+        #expect(SafeModeLevel(wireValue: level.rawValue, isReadOnly: false) == level)
+    }
+
+    @Test("iOS wire values map to the nearest macOS level")
+    func decodesIOSWireValues() {
+        #expect(SafeModeLevel(wireValue: "off", isReadOnly: false) == .silent)
+        #expect(SafeModeLevel(wireValue: "confirmWrites", isReadOnly: false) == .alert)
+        #expect(SafeModeLevel(wireValue: "readOnly", isReadOnly: false) == .readOnly)
+    }
+
+    @Test("An unrecognized wire value requires confirmation instead of failing open")
+    func unknownWireValueFailsClosed() {
+        #expect(SafeModeLevel(wireValue: "someFutureLevel", isReadOnly: false) == .alert)
+        #expect(SafeModeLevel(wireValue: "someFutureLevel", isReadOnly: true) == .readOnly)
+    }
+
+    @Test("A missing wire value honors the read-only flag")
+    func missingWireValueHonorsReadOnly() {
+        #expect(SafeModeLevel(wireValue: nil, isReadOnly: true) == .readOnly)
+        #expect(SafeModeLevel(wireValue: nil, isReadOnly: false) == .silent)
     }
 }
