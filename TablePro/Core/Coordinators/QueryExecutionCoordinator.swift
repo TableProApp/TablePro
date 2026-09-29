@@ -70,7 +70,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         )
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
-            switch await ExecutionGateProvider.shared.authorize(request) {
+            switch await parent.executionGate.authorize(request) {
             case .authorized:
                 switch route {
                 case .single(let only):
@@ -125,7 +125,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         )
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
-            switch await ExecutionGateProvider.shared.authorize(request) {
+            switch await parent.executionGate.authorize(request) {
             case .authorized:
                 executeParameterizedAfterSafeMode(route, parameters: parameters, bypassRowLimit: bypassRowLimit)
             case .denied(let reason, _):
