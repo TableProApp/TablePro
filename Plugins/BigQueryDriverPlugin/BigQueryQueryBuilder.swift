@@ -428,7 +428,7 @@ internal struct BigQueryQueryBuilder {
     ) -> String? {
         let bounds: (lower: String, upper: String)
         if let secondValue = filter.secondValue {
-            bounds = (filter.value, secondValue)
+            bounds = (lowerBound(of: filter.value, upperBound: secondValue), secondValue)
         } else {
             let parts = filter.value.split(separator: ",", maxSplits: 1).map(String.init)
             guard parts.count == 2 else { return nil }
@@ -438,6 +438,13 @@ internal struct BigQueryQueryBuilder {
         let upper = bounds.upper.trimmingCharacters(in: .whitespaces)
         guard !lower.isEmpty, !upper.isEmpty else { return nil }
         return "\(column) BETWEEN \(literal(lower, kind: kind)) AND \(literal(upper, kind: kind))"
+    }
+
+    private static func lowerBound(of joinedValue: String, upperBound: String) -> String {
+        let joinedSuffix = ("," + upperBound).unicodeScalars
+        let scalars = joinedValue.unicodeScalars
+        guard scalars.reversed().starts(with: joinedSuffix.reversed()) else { return joinedValue }
+        return String(scalars.dropLast(joinedSuffix.count))
     }
 
     private static func comparisonClause(
