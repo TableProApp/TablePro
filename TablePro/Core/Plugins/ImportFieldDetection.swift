@@ -8,7 +8,8 @@ import TableProPluginKit
 
 /// `detectSourceFields` is synchronous and reads the file: the XLSX plugin materialises the whole
 /// workbook and the JSON one reads every row. The read runs off the main actor, and cancelling the
-/// caller, which the import sheet's task is when the sheet closes, cancels the read with it.
+/// caller cancels the read with it. The import sheet's `.task(id:)` cancels its caller when the
+/// sheet closes or the read it answers changes, such as another table picked.
 enum ImportFieldDetection {
     static func detectFields(
         plugin: any ImportFormatPlugin,

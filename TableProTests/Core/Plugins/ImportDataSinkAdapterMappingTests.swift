@@ -14,12 +14,13 @@ import Testing
 /// line, and the stop modes halt on a mapping that matches nothing.
 @MainActor
 struct ImportDataSinkAdapterMappingTests {
-    private func adapter(mapping: [String: String]) -> ImportDataSinkAdapter {
+    private func adapter(mapping: [String: String], sourceFields: Set<String> = []) -> ImportDataSinkAdapter {
         ImportDataSinkAdapter(
             driver: MockDatabaseDriver(),
             databaseType: .mysql,
             targetTable: "people",
-            columnMapping: mapping
+            columnMapping: mapping,
+            sourceFields: sourceFields
         )
     }
 
@@ -54,6 +55,72 @@ struct ImportDataSinkAdapterMappingTests {
     func fieldMatchingIgnoresCase() async throws {
         let sink = adapter(mapping: ["Name": "name"])
         try await sink.insertRow(["NAME": .text("Ada")])
+    }
+
+    @Test("A field whose twin differing only by case is mapped exactly is left out")
+    func caseTwinOfAMappedFieldStaysUnmapped() {
+        let sink = adapter(mapping: ["Email": "email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["Email": .text("work"), "email": .text("home")])
+
+        #expect(columns == ["email"])
+        #expect(values == [.text("work")])
+    }
+
+    @Test("Two fields that differ only by case reach their own columns")
+    func caseTwinsReachTheirOwnColumns() {
+        let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["Email": .text("work"), "email": .text("home")])
+
+        #expect(columns == ["home_email", "work_email"])
+        #expect(values == [.text("home"), .text("work")])
+    }
+
+    @Test("A field the sheet listed and the user skipped never folds onto its twin's column")
+    func skippedFieldNeverFolds() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email", "email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["email": .text("home")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A new spelling of two listed fields that differ only by case reaches neither, mapped or skipped")
+    func newSpellingOfListedCaseTwinsDoesNotFold() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email", "email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["EMAIL": .text("x"), "id": .text("1")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A new spelling of one listed field still reaches its column")
+    func newSpellingOfOneListedFieldFolds() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["EMAIL": .text("x")])
+
+        #expect(columns == ["email"])
+        #expect(values == [.text("x")])
+    }
+
+    @Test("A third spelling of two mapped fields that differ only by case reaches neither column")
+    func ambiguousMappingKeysDoNotFold() {
+        let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["EMAIL": .text("x")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("Two unknown spellings of one mapped field in a row reach neither column")
+    func ambiguousRowKeysDoNotFold() {
+        let sink = adapter(mapping: ["Name": "name"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("a"), "name": .text("b"), "id": .text("1")])
+
+        #expect(columns.isEmpty)
     }
 
     /// A row carrying nothing has nothing to lose, so it passes through. Only a row holding values

@@ -110,6 +110,7 @@ enum JSONImportParsing {
     // MARK: - Source introspection
 
     static func detectFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
+        try Task.checkCancellation()
         guard isLineDelimited(url) else {
             return try detectFields(in: try parseRows(at: url, targetTable: targetTable))
         }
