@@ -2,13 +2,15 @@ import CloudKit
 import Foundation
 import os
 
-public struct Tombstone: Codable, Sendable {
+public struct Tombstone: Codable, Equatable, Sendable {
     public let id: String
     public let deletedAt: Date
+    public let owner: UUID?
 
-    public init(id: String, deletedAt: Date = Date()) {
+    public init(id: String, deletedAt: Date = Date(), owner: UUID? = nil) {
         self.id = id
         self.deletedAt = deletedAt
+        self.owner = owner
     }
 }
 
@@ -108,11 +110,13 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         addTombstones([id], type: type)
     }
 
-    public func addTombstones(_ ids: [String], type: SyncRecordType) {
-        guard !ids.isEmpty else { return }
-        var current = tombstones(for: type)
-        current.append(contentsOf: ids.map { Tombstone(id: $0) })
-        saveTombstones(current, for: type)
+    public func addTombstones(_ ids: [String], type: SyncRecordType, owner: UUID? = nil) {
+        addTombstones(ids.map { Tombstone(id: $0, owner: owner) }, type: type)
+    }
+
+    public func addTombstones(_ added: [Tombstone], type: SyncRecordType) {
+        guard !added.isEmpty else { return }
+        saveTombstones(tombstones(for: type) + added, for: type)
     }
 
     public func removeTombstone(_ id: String, type: SyncRecordType) {
@@ -125,15 +129,48 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         userDefaults.removeObject(forKey: tombstoneKey(type))
     }
 
-    public func pruneTombstones(olderThan days: Int) {
+    public func pruneTombstones(
+        olderThan days: Int,
+        where isPushable: (SyncRecordType, Tombstone) -> Bool
+    ) {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        removeTombstones { type, tombstone in
+            tombstone.deletedAt < cutoff && isPushable(type, tombstone)
+        }
+    }
+
+    public func removeTombstones(where shouldRemove: (SyncRecordType, Tombstone) -> Bool) {
         for type in SyncRecordType.allCases {
             var current = tombstones(for: type)
             let before = current.count
-            current.removeAll { $0.deletedAt < cutoff }
+            current.removeAll { shouldRemove(type, $0) }
             guard current.count != before else { continue }
             saveTombstones(current, for: type)
         }
+    }
+
+    // MARK: - Owners Kept Off Sync
+
+    public func ownersKeptOffSync() -> Set<UUID> {
+        Set((userDefaults.stringArray(forKey: key("ownersKeptOffSync")) ?? []).compactMap(UUID.init(uuidString:)))
+    }
+
+    public func keepOffSync(owners: Set<UUID>) {
+        guard !owners.isEmpty else { return }
+        saveOwnersKeptOffSync(ownersKeptOffSync().union(owners))
+    }
+
+    public func releaseOwnersKeptOffSync(_ owners: Set<UUID>) {
+        guard !owners.isEmpty else { return }
+        saveOwnersKeptOffSync(ownersKeptOffSync().subtracting(owners))
+    }
+
+    private func saveOwnersKeptOffSync(_ owners: Set<UUID>) {
+        guard !owners.isEmpty else {
+            userDefaults.removeObject(forKey: key("ownersKeptOffSync"))
+            return
+        }
+        userDefaults.set(owners.map(\.uuidString).sorted(), forKey: key("ownersKeptOffSync"))
     }
 
     // MARK: - Last Sync Date

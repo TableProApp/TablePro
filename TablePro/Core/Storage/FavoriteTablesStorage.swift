@@ -156,7 +156,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
 
     @MainActor
     @discardableResult
-    func applyRemote(saved: [FavoriteEntry], deletedIds: Set<String>) -> Set<String> {
+    func applyRemote(saved: [FavoriteEntry], deletedIds: Set<String>) -> [UUID: Set<String>] {
         var removedThroughAliases: Set<FavoriteEntry> = []
         let change = mutateState { favorites in
             favorites.formUnion(saved)
@@ -166,7 +166,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         if change.changesEntries {
             NotificationCenter.default.post(name: .favoriteTablesDidChange, object: self)
         }
-        return Set(removedThroughAliases.map(Self.syncId(for:)))
+        return Self.syncIdsByConnection(of: removedThroughAliases)
     }
 
     @MainActor
@@ -222,14 +222,14 @@ final class FavoriteTablesStorage: @unchecked Sendable {
             remaining = favorites
         }
         guard change.changesEntries else { return change }
-        let removedIds = Self.recordIds(of: change.removed, keepingAliasesOf: remaining)
+        let removedIds = Self.recordIdsByConnection(of: change.removed, keepingAliasesOf: remaining)
         switch sync {
         case .track:
             let reclaimedAliases = Self.legacyAliases(of: change.removed).intersection(Self.legacyAliases(of: remaining))
-            syncTracker.markDeleted(.tableFavorite, ids: Array(removedIds))
+            syncTracker.markDeleted(.tableFavorite, idsByOwner: removedIds)
             syncTracker.markDirty(.tableFavorite, ids: Array(Self.recordIds(of: change.added).union(reclaimedAliases)))
         case .discard:
-            syncTracker.discardDirty(.tableFavorite, ids: Array(removedIds))
+            syncTracker.discardDirty(.tableFavorite, ids: removedIds.values.flatMap { $0 })
         }
         NotificationCenter.default.post(name: .favoriteTablesDidChange, object: self)
         return change
@@ -253,13 +253,22 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         Set(favorites.map(syncId(for:))).union(legacyAliases(of: favorites))
     }
 
-    private static func recordIds(
+    private static func recordIdsByConnection(
         of removed: Set<FavoriteEntry>,
         keepingAliasesOf remaining: Set<FavoriteEntry>
-    ) -> Set<String> {
+    ) -> [UUID: Set<String>] {
         let claimedAliases = legacyAliases(of: remaining)
-        let retiredAliases = legacyAliases(of: removed).subtracting(claimedAliases)
-        return Set(removed.map(syncId(for:))).union(retiredAliases)
+        var ids: [UUID: Set<String>] = [:]
+        for entry in removed {
+            ids[entry.connectionId, default: []].insert(syncId(for: entry))
+            guard let alias = legacyAlias(of: entry), !claimedAliases.contains(alias) else { continue }
+            ids[entry.connectionId, default: []].insert(alias)
+        }
+        return ids
+    }
+
+    private static func syncIdsByConnection(of entries: Set<FavoriteEntry>) -> [UUID: Set<String>] {
+        Dictionary(grouping: entries, by: \.connectionId).mapValues { Set($0.map(syncId(for:))) }
     }
 
     private static func remove(_ deletedIds: Set<String>, from favorites: inout Set<FavoriteEntry>) -> Set<FavoriteEntry> {

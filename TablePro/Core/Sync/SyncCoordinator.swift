@@ -127,7 +127,6 @@ final class SyncCoordinator: ObservableObject {
         lastSyncDate = Date()
         metadataStorage.lastSyncDate = lastSyncDate
         settle(.idle, from: generation)
-        metadataStorage.pruneTombstones(olderThan: 30)
 
         Self.logger.info("Sync completed successfully")
     }
@@ -249,7 +248,7 @@ final class SyncCoordinator: ObservableObject {
         let connections = services.connectionStorage.loadConnections()
         changeTracker.markDirty(
             .connection,
-            ids: connections.filter { !$0.localOnly }.map { $0.id.uuidString }
+            ids: connections.filter(\.participatesInSync).map { $0.id.uuidString }
         )
 
         let groups = services.groupStorage.loadGroups()
@@ -382,12 +381,15 @@ final class SyncCoordinator: ObservableObject {
 
     private func performPush() async -> PushReport {
         let snapshot = changeTracker.editSnapshot()
-        let settings = services.appSettingsStorage.loadSync()
+        let boundary = syncBoundary(settings: services.appSettingsStorage.loadSync())
         let zoneID = await transport.currentZoneID
-        let batch = await collectPushBatch(snapshot: snapshot, settings: settings, zoneID: zoneID)
+        let batch = await collectPushBatch(snapshot: snapshot, boundary: boundary, zoneID: zoneID)
         let deletions = batch.uniqueDeletions
 
-        guard !batch.records.isEmpty || !deletions.isEmpty else { return PushReport() }
+        guard !batch.records.isEmpty || !deletions.isEmpty else {
+            pruneTombstones(within: boundary)
+            return PushReport()
+        }
 
         let identities = SyncRecordMapper.identities(for: pushedLocalIds(snapshot), in: zoneID)
         var outcome: PushOutcome
@@ -426,6 +428,7 @@ final class SyncCoordinator: ObservableObject {
             return PushReport(echoGuard: echoGuard, error: interruption)
         }
         guard outcome.hasFailures, let firstFailure = outcome.failures.values.first else {
+            pruneTombstones(within: boundary)
             return PushReport(echoGuard: echoGuard)
         }
         let rejection = SyncError.pushRejected(count: outcome.failures.count, detail: firstFailure.message)
@@ -558,7 +561,7 @@ final class SyncCoordinator: ObservableObject {
         )
         changeTracker.isSuppressed = false
 
-        changeTracker.markDeleted(.tableFavorite, ids: Array(effects.tableFavoriteIdsToRetire))
+        changeTracker.markDeleted(.tableFavorite, idsByOwner: effects.tableFavoriteIdsToRetire)
         return !effects.persistenceFailed
     }
 
@@ -577,6 +580,7 @@ final class SyncCoordinator: ObservableObject {
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
+        let settingsTombstoneIds = Set(metadataStorage.tombstones(for: .settings).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
         var tableFavorites: [FavoriteTablesStorage.FavoriteEntry] = []
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
@@ -613,7 +617,7 @@ final class SyncCoordinator: ObservableObject {
                     persistenceFailed = true
                 }
             case .settings:
-                applyRemoteSettings(record)
+                applyRemoteSettings(record, tombstoneIds: settingsTombstoneIds)
             case .tableFavorite:
                 if let favorite = remoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds) {
                     tableFavorites.append(favorite)
@@ -824,8 +828,9 @@ final class SyncCoordinator: ObservableObject {
         services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
     }
 
-    private func applyRemoteSettings(_ record: CKRecord) {
+    private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
+              !tombstoneIds.contains(category),
               let data = SyncRecordMapper.settingsData(from: record)
         else { return }
         do {

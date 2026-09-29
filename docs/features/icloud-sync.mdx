@@ -33,7 +33,9 @@ A sync runs at launch, when you switch back to the app, and 2 seconds after you 
 
 ## Keeping a connection off iCloud
 
-A localhost or throwaway database is rarely worth a round trip. Mark it **Local only** in the connection form's **Advanced** pane, or right-click it and choose **Exclude from iCloud Sync**. They show a struck-through cloud icon in the connection list, and the flag survives duplicating and exporting.
+A localhost or throwaway database is rarely worth a round trip. Mark it **Local only** in the connection form's **Advanced** pane, or right-click it and choose **Exclude from iCloud Sync**. It shows a struck-through cloud icon in the connection list, and the flag survives duplicating and exporting.
+
+What belongs to the connection stays on this Mac with it: its table and database favorites, the saved queries and folders scoped to it, and its column widths, order, and hidden columns. Edits and removals you make to them wait here while the connection is Local only, and the first sync after you turn it off sends them. Deleting a Local only connection removes those items from this Mac and from nowhere else.
 
 ## Checking that it worked
 

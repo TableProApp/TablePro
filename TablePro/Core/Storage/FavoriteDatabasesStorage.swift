@@ -86,9 +86,10 @@ internal final class FavoriteDatabasesStorage {
         }
     }
 
-    internal func removeFavoriteWithoutSync(id: String) {
+    internal func removeFavoritesWithoutSync(ids: Set<String>) {
+        guard !ids.isEmpty else { return }
         commit(sync: .discard) { favorites in
-            favorites = favorites.filter { Self.syncId(for: $0) != id }
+            favorites = favorites.filter { !ids.contains(Self.syncId(for: $0)) }
         }
     }
 
@@ -116,6 +117,10 @@ internal final class FavoriteDatabasesStorage {
         case discard
     }
 
+    private static func syncIdsByConnection(of entries: Set<FavoriteDatabaseEntry>) -> [UUID: Set<String>] {
+        Dictionary(grouping: entries, by: \.connectionId).mapValues { Set($0.map(syncId(for:))) }
+    }
+
     private static func upsert(_ entry: FavoriteDatabaseEntry, into favorites: inout Set<FavoriteDatabaseEntry>) {
         guard !entry.database.isEmpty else { return }
         if let existing = favorites.first(where: { $0.id == entry.id }) {
@@ -131,17 +136,17 @@ internal final class FavoriteDatabasesStorage {
         edit(&favorites)
         let previousById = Dictionary(previous.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let currentIds = Set(favorites.map(\.id))
-        let removedIds = previous.filter { !currentIds.contains($0.id) }.map(Self.syncId(for:))
+        let removed = previous.filter { !currentIds.contains($0.id) }
         let changedIds = favorites.filter { previousById[$0.id] != $0 }.map(Self.syncId(for:))
-        guard !removedIds.isEmpty || !changedIds.isEmpty else { return }
+        guard !removed.isEmpty || !changedIds.isEmpty else { return }
 
         persist(favorites)
         switch sync {
         case .track:
-            syncTracker.markDeleted(.favoriteDatabase, ids: removedIds)
+            syncTracker.markDeleted(.favoriteDatabase, idsByOwner: Self.syncIdsByConnection(of: removed))
             syncTracker.markDirty(.favoriteDatabase, ids: changedIds)
         case .discard:
-            syncTracker.discardDirty(.favoriteDatabase, ids: removedIds)
+            syncTracker.discardDirty(.favoriteDatabase, ids: removed.map(Self.syncId(for:)))
         }
         postChangeNotification()
     }

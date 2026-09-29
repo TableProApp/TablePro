@@ -10,6 +10,8 @@ struct SyncPendingDeletions: Equatable {
     var sshProfiles: Set<UUID> = []
     var credentialProfiles: Set<UUID> = []
     var tableFavorites: Set<String> = []
+    var databaseFavorites: Set<String> = []
+    var settingsRecordNames: Set<String> = []
     var sqlFavorites: Set<UUID> = []
     var sqlFolders: Set<UUID> = []
 
@@ -38,8 +40,10 @@ struct SyncPendingDeletions: Equatable {
             if let uuid { credentialProfiles.insert(uuid) }
         case .tableFavorite:
             tableFavorites.insert(id)
-        case .favoriteDatabase, .settings:
-            return
+        case .favoriteDatabase:
+            databaseFavorites.insert(id)
+        case .settings:
+            settingsRecordNames.insert(type.recordNamePrefix + id)
         case .favorite:
             if let uuid { sqlFavorites.insert(uuid) }
         case .favoriteFolder:
@@ -52,7 +56,7 @@ struct SyncRemoteDeletionEffects {
     var connectionsChanged = false
     var groupsOrTagsChanged = false
     var persistenceFailed = false
-    var tableFavoriteIdsToRetire: Set<String> = []
+    var tableFavoriteIdsToRetire: [UUID: Set<String>] = [:]
 }
 
 extension SyncCoordinator {
@@ -67,13 +71,15 @@ extension SyncCoordinator {
             saved: tableFavorites,
             deletedIds: pending.tableFavorites
         )
+        services.favoriteDatabasesStorage.removeFavoritesWithoutSync(ids: pending.databaseFavorites)
 
         let persisted = [
             applyRemoteConnectionDeletions(pending.connections),
             applyRemoteGroupDeletions(pending.groups),
             applyRemoteTagDeletions(pending.tags),
             applyRemoteSSHProfileDeletions(pending.sshProfiles),
-            applyRemoteCredentialProfileDeletions(pending.credentialProfiles)
+            applyRemoteCredentialProfileDeletions(pending.credentialProfiles),
+            applyRemoteColumnLayoutDeletions(pending.settingsRecordNames)
         ]
         effects.persistenceFailed = persisted.contains(false)
         return effects
@@ -99,6 +105,12 @@ extension SyncCoordinator {
             queryHistory: services.queryHistoryManager
         )
         return true
+    }
+
+    private func applyRemoteColumnLayoutDeletions(_ recordNames: Set<String>) -> Bool {
+        guard !recordNames.isEmpty else { return true }
+        let persister = columnLayouts()
+        return persister.removeWithoutSync(storageKeys: persister.storageKeys(forSyncRecordNames: recordNames))
     }
 
     private func applyRemoteGroupDeletions(_ ids: Set<UUID>) -> Bool {
